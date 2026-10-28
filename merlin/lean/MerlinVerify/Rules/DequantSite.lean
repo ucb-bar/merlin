@@ -1,5 +1,5 @@
-/- C1 glue for the narrow dequantization lowering. -/
-import MerlinVerify.Rules.DequantSource
+/- C1 glue for the narrow dequantization lowering: per-channel i32, per-tensor i32 and i64. -/
+import MerlinVerify.Rules.DequantPerTensor
 import MerlinVerify.Check.C1
 import MerlinVerify.Check.RulesTensor
 
@@ -99,7 +99,7 @@ def Checks (ρ : Rho) (c : Dequant.Config) (src empty generic : Op)
   attrAffineMaps? generic "indexing_maps" = some maps ∧ iterKinds? generic = some iters ∧
   freshIds ρ [re.id, rg.id] = true ∧
   checkLayout c.channel c.axis c.shape (Dequant.paramShape c) maps iters = true ∧
-  checkBody c.channel args ops = true ∧
+  DequantPerTensor.bodyOK c.channel args ops = true ∧
   src.successors = [] ∧ empty.successors = [] ∧ generic.successors = []
 
 instance (ρ : Rho) (c : Dequant.Config) (src empty generic : Op)
@@ -142,56 +142,46 @@ theorem site_sound {ρ : Rho} {c : Dequant.Config} {src empty generic : Op}
     | stuck r => exact Or.inr (Or.inl ⟨r, rfl⟩)
     | ok result =>
       -- A successful source operation supplies the exact runtime typing/shape facts.
-      unfold Dequant.run at hrun
-      split at hrun
-      · next q s z =>
-        split at hrun
-        · next hv =>
-          cases hrun
-          simp only [hrs, Env.bindAll, List.length_singleton, ↓reduceIte, List.map_cons,
-            List.map_nil, List.zip_cons_cons, List.zip_nil_right, List.cons_append,
-            List.nil_append, Outcome.bind_ok, execOps]
-          let initial := Tensor.full c.shape (.float .f32) .poison
-          let out := Dequant.result c ctx.M q s z
-          let mid : Env := (re.id, RVal.tensor initial) :: envT
-          have hfr := (freshIds_sound hfresh).2
-          have hmid : Corr ρ envS mid := Corr.temporary hc (hfr _ (by simp)) _
-          have hinputs : mid.getAll ids = .ok [.tensor q, .tensor s, .tensor z] := by
-            rw [← Corr.getAll hmid _ _ hmap]
-            exact hget
-          have hvals : mid.getAll generic.operands =
-              .ok [.tensor q, .tensor s, .tensor z, .tensor initial] := by
-            rw [hgargs]
-            exact getAll_append_one mid ids re.id _ _ hinputs (by simp [mid, Env.get?, List.lookup])
-          have hloop : genericSem ctx maps iters [.tensor q, .tensor s, .tensor z] [.tensor initial]
-              (fun ctx => evalRegion opSem ctx callT mid (.mk [.mk args ops])) = .ok [.tensor out] :=
-            DequantSource.generic_result_sound ctx callT mid hv rfl rfl hlayout hbody
-          have hgeneric : opSem ctx callT generic
-              [.tensor q, .tensor s, .tensor z, .tensor initial]
-              (evalRegions opSem callT mid generic.regions) = .ok [.tensor out] := by
-            rw [hgregs]
-            exact generic_sem ctx callT generic [.tensor q, .tensor s, .tensor z] initial _ maps iters out
-              hgmodel hgd hgn hseg rfl hmaps hiters (by simp [hrg]) hloop
-          have heval : execOps opSem ctx callT envT [empty, generic] =
-              .ok ((rg.id, RVal.tensor out) :: mid) := by
-            rw [execOps_cons_step _ _ _ _ _ _ heterm]
-            unfold stepOp
-            rw [heargs, heregs]
-            simp only [Env.getAll, Outcome.mapM, evalRegions, Outcome.bind_ok]
-            rw [empty_sem ctx callT empty c.shape hemodel hed hen hetype]
-            simp only [hre, Env.bindAll, List.length_singleton, ↓reduceIte, List.map_cons,
-              List.map_nil, List.zip_cons_cons, List.zip_nil_right, List.cons_append,
-              List.nil_append, Outcome.bind_ok]
-            change execOps opSem ctx callT mid [generic] = _
-            rw [execOps_cons_step _ _ _ _ _ _ hgterm]
-            unfold stepOp
-            rw [hvals, Outcome.bind_ok, hgeneric]
-            simp [hrg, Env.bindAll, execOps]
-          refine Or.inr (Or.inr ⟨_, _, rfl, heval, ?_⟩)
-          exact Corr.extend hmid [rs.id] [rg.id] [.tensor out] rfl rfl (by simp)
-            (fun y hy => by simpa using hfr y (by simp_all))
-        · cases hrun
-      · cases hrun
+      let initial := Tensor.full c.shape (.float .f32) .poison
+      let mid : Env := (re.id, RVal.tensor initial) :: envT
+      obtain ⟨q, s, z, out, rfl, rfl, hloop⟩ :=
+        DequantPerTensor.generic_of_run ctx callT mid hrun hlayout hbody
+      simp only [hrs, Env.bindAll, List.length_singleton, ↓reduceIte, List.map_cons,
+        List.map_nil, List.zip_cons_cons, List.zip_nil_right, List.cons_append,
+        List.nil_append, Outcome.bind_ok, execOps]
+      have hfr := (freshIds_sound hfresh).2
+      have hmid : Corr ρ envS mid := Corr.temporary hc (hfr _ (by simp)) _
+      have hinputs : mid.getAll ids = .ok [.tensor q, .tensor s, .tensor z] := by
+        rw [← Corr.getAll hmid _ _ hmap]
+        exact hget
+      have hvals : mid.getAll generic.operands =
+          .ok [.tensor q, .tensor s, .tensor z, .tensor initial] := by
+        rw [hgargs]
+        exact getAll_append_one mid ids re.id _ _ hinputs (by simp [mid, Env.get?, List.lookup])
+      have hgeneric : opSem ctx callT generic
+          [.tensor q, .tensor s, .tensor z, .tensor initial]
+          (evalRegions opSem callT mid generic.regions) = .ok [.tensor out] := by
+        rw [hgregs]
+        exact generic_sem ctx callT generic [.tensor q, .tensor s, .tensor z] initial _ maps iters out
+          hgmodel hgd hgn hseg rfl hmaps hiters (by simp [hrg]) hloop
+      have heval : execOps opSem ctx callT envT [empty, generic] =
+          .ok ((rg.id, RVal.tensor out) :: mid) := by
+        rw [execOps_cons_step _ _ _ _ _ _ heterm]
+        unfold stepOp
+        rw [heargs, heregs]
+        simp only [Env.getAll, Outcome.mapM, evalRegions, Outcome.bind_ok]
+        rw [empty_sem ctx callT empty c.shape hemodel hed hen hetype]
+        simp only [hre, Env.bindAll, List.length_singleton, ↓reduceIte, List.map_cons,
+          List.map_nil, List.zip_cons_cons, List.zip_nil_right, List.cons_append,
+          List.nil_append, Outcome.bind_ok]
+        change execOps opSem ctx callT mid [generic] = _
+        rw [execOps_cons_step _ _ _ _ _ _ hgterm]
+        unfold stepOp
+        rw [hvals, Outcome.bind_ok, hgeneric]
+        simp [hrg, Env.bindAll, execOps]
+      refine Or.inr (Or.inr ⟨_, _, rfl, heval, ?_⟩)
+      exact Corr.extend hmid [rs.id] [rg.id] [.tensor out] rfl rfl (by simp)
+        (fun y hy => by simpa using hfr y (by simp_all))
 
 /-- Instance checking consumes one source dequantization op and its two target operations. -/
 def check (ρ : Rho) : List Op → List Op → Option Rho
@@ -238,6 +228,6 @@ theorem check_sound : ∀ ρ siteS siteT ρ', check ρ siteS siteT = some ρ' �
   | _, [_], [_], _, h => by simp [check] at h
   | _, [_], _ :: _ :: _ :: _, _, h => by simp [check] at h
 
-def rule : Rule := { name := "dequant_i8_i32_f32", check, sound := check_sound }
+def rule : Rule := { name := "dequant_i8_f32", check, sound := check_sound }
 
 end MerlinVerify.Rules.DequantSite
