@@ -1231,4 +1231,7 @@ def preprocess_text_textual(mlir_text: str) -> tuple[str, dict]:
         else:
             out_lines.append(_fix_insert_slices(_fix_extract_slices(line)))
     text, n_funcs = _attach_c_interface("\n".join(out_lines))
+    from ..verify import pass_validation
+
+    pass_validation.submit("preprocess_text_textual", mlir_text, text)
     return text, {"dequantize_lowered": n, "c_interface_funcs": n_funcs}

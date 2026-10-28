@@ -294,3 +294,20 @@ def test_a_conflicting_validation_is_refused(tmp_path, validation, tools):
                 lower.lower_model(LIVE, tmp_path / "lower", targets=(), pass_validation=other)
     finally:
         other.gate.close()
+
+
+def test_the_textual_whole_model_route_is_proved(tmp_path, validation):
+    lower.lower_model(
+        capture("small_consistent"), tmp_path / "lower", targets=(), textual=True, pass_validation=validation
+    )
+    assert [(v["label"], v["verdict"]) for v in validation.gate.verdicts] == [("preprocess_text_textual", "accepted")]
+
+
+def test_a_textual_dequantization_bug_stops_lowering(tmp_path, validation, monkeypatch):
+    real = passes_xdsl._dequant_to_generic
+    monkeypatch.setattr(passes_xdsl, "_dequant_to_generic", lambda op: real(op).replace("arith.mulf", "arith.addf", 1))
+    with pytest.raises(GateFailure) as raised:
+        lower.lower_model(
+            capture("small_consistent"), tmp_path / "lower", targets=(), textual=True, pass_validation=validation
+        )
+    assert raised.value.report["label"] == "preprocess_text_textual"

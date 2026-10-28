@@ -30,6 +30,8 @@ from typing import Any
 CHECKS = {
     "prune_dead_pure_tensor_ops": "tensor_refinement",
     "lower_quant_ext": "tensor_refinement",
+    # The whole-model route's textual preprocessing: dequantization, slice repair and C interface.
+    "preprocess_text_textual": "tensor_refinement",
 }
 ENV_PASSES = "MERLIN_VALIDATE_PASSES"
 ENV_SDK_BIN = "MERLIN_LEAN_SDK_BIN"
