@@ -1298,3 +1298,26 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/handoff/gemmini-resnet-kernel-spike/v1/handoff_gemmini-resnet-kernel-spike_v1_20261028T051934Z_b632e4c/summary.json
 !/out/artifacts/handoff/gemmini-resnet-kernel-spike/v1/handoff_gemmini-resnet-kernel-spike_v1_20261028T051934Z_b632e4c/evidence.tar.gz
 !/out/artifacts/handoff/gemmini-resnet-kernel-spike/v1/handoff_gemmini-resnet-kernel-spike_v1_20261028T051934Z_b632e4c/manifest.yaml
+
+# Reviewed TVM cleanup inventory and regression evidence.
+!/out/
+/out/*
+!/out/artifacts/
+/out/artifacts/*
+!/out/artifacts/verification/
+/out/artifacts/verification/*
+!/out/artifacts/verification/gemmini-tvm-cleanup/
+/out/artifacts/verification/gemmini-tvm-cleanup/*
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/
+/out/artifacts/verification/gemmini-tvm-cleanup/v1/*
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/
+/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/*
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/README.md
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/ast-equivalence.json
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/backend-tests-fixed.log
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/backend-tests.log.gz
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/branch-inventory.json
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/structure.log
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/summary.json
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/manifest.yaml
+!/out/artifacts/verification/gemmini-tvm-cleanup/v1/verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8/SHA256SUMS

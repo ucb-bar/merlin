@@ -1,0 +1,4 @@
+[23:33:28] /scratch/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/tvm-f2-followup/src/target/target_kind.cc:171: Warning: Unable to detect CUDA version, default to "-arch=sm_50" instead
+........................ [ 58%]
+.................                                        [100%]
+41 passed, 19 deselected, 238538 warnings, 64 subtests passed in 75.19s (0:01:15)

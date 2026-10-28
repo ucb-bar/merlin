@@ -1,0 +1,18 @@
+artifacts:
+- README.md
+- ast-equivalence.json
+- backend-tests-fixed.log
+- backend-tests.log.gz
+- branch-inventory.json
+- structure.log
+- summary.json
+- SHA256SUMS
+git_sha: 9530ee8
+notes: Read-only branch/worktree inventory; two duplicate local aliases proposed for deletion, all worktrees and remote refs retained.
+run_id: verification_gemmini-tvm-cleanup_v1_20261028T063041Z_9530ee8
+sources:
+- tvm: 2c0857ab88b18d4a090f2dd6e401e06266af1877
+target: gemmini-tvm-cleanup
+timestamp: 20261028T063041Z
+topic: verification
+version: 1

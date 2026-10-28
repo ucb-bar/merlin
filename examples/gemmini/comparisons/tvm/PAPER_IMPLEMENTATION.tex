@@ -1,0 +1,41 @@
+% Methods text only; see PAPER_IMPLEMENTATION.md for claims and evidence limits.
+% Bibliography: PAPER_REFERENCES.bib
+We implement a Gemmini backend in a fork of Apache TVM v0.19.0, following TVM's
+separation of graph and operator optimization \cite{chen2018tvm}.
+The backend uses TensorIR and TVM's TensorIntrin interface: each intrinsic pairs
+a mathematical computation description with a target implementation, and
+schedule-driven tensorization replaces matching computation blocks
+\cite{feng2023tensorir}.
+The same pinned Gemmini software specification supplied to Merlin defines the
+backend's capability and numerical requirements. Intrinsic recognition and
+finite tests establish implementation coverage; they do not discharge every
+specification proof obligation or qualify a deployed bitstream.
+
+Graph preparation uses stock Relax legalization, constant folding, binding
+canonicalization, operator/TIR fusion, reshape rewriting and dead-code
+elimination. Common-subexpression elimination is an optional stock graph choice;
+the initial configuration uses fusion level 2 with CSE disabled. Target schedule
+rules compose ordinary TensorIR transformations for tiling, loop ordering,
+blockization, cache placement and layout. Their traced choices expose intrinsic
+tile dimensions, operand-reuse groups, dataflow, staging and legal
+hoisting/pipelining alternatives. A capacity-checked, shape-derived schedule
+provides the initial baseline. Necessary target-specific integration supplies
+workload annotation, intrinsic implementations, final schedule placement, SRAM
+allocation and DMA synchronization, together with a primitive command runtime
+and static RV64 packaging. Explicit accumulator initialization may tensorize;
+automatic bias relocation, constant-weight prepacking and scale/readout
+normalization passes are excluded.
+
+We use MetaSchedule's search-space and measurement interfaces
+\cite{shao2022metaschedule},
+with stock ReplayTrace and no learned cost model. The configured allowance is
+at most 25 schedule proposals per kernel case or ResNet owner chunk, shared
+across its internal tasks and graph alternatives. Completed correct warm-cycle
+measurements select schedules; cycles are converted to seconds at the TVM
+Runner boundary. Measurements do not guide ReplayTrace sampling. Three baseline
+timings calibrate a median-based wall watchdog; failed or timed-out attempts do
+not supply completed cycle labels. Matching traces are applied through
+JSONDatabase and MetaScheduleApplyDatabase, retaining the measured default for
+misses or unsuccessful search. Final comparisons require rebuilding and timing
+the complete kernel or connected model, including executed host work, packing,
+DMA and completion; sums of isolated operator minima are not E2E results.
