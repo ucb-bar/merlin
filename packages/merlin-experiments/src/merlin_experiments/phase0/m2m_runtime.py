@@ -14,8 +14,7 @@ import shutil
 import tomllib
 from pathlib import Path
 
-import yaml
-
+from merlin.common.yaml import fast_safe_load
 from merlin_experiments.capture_execution.m2m_origin import (
     frozen_selector,
     git_origin,
@@ -47,7 +46,7 @@ def _workload_names(root: Path, synth_profile: Path | None) -> tuple[str, ...]:
         return ()
     from merlin.targetgen.capsule_source import resolve_model_loader
 
-    document = yaml.safe_load(synth_profile.read_bytes()) or {}
+    document = fast_safe_load(synth_profile.read_bytes()) or {}
     if not isinstance(document, dict) or not isinstance(document.get("capsules", []), list):
         raise ValueError("selected synthesis profile has no valid capsule list")
     names = set()

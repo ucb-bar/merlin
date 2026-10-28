@@ -8,9 +8,8 @@ import json
 import os
 from pathlib import Path
 
-import yaml
-
 from merlin.common.paths import checkout_root, module_source_path, python_import_roots
+from merlin.common.yaml import fast_safe_load
 from merlin_experiments import frozen_python, source_snapshot
 from merlin_experiments.measured_launch import FROZEN_PHASE0_ENV_POLICY
 from merlin_experiments.phase1.source_inputs import fingerprint
@@ -144,7 +143,7 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
     if not value or not Path(value).is_file():
         return {}
     profile = Path(value).absolute()
-    document = yaml.safe_load(profile.read_bytes())
+    document = fast_safe_load(profile.read_bytes())
     result = {}
     for entry in (document or {}).get("capsules", []):
         if entry.get("public_boundary"):

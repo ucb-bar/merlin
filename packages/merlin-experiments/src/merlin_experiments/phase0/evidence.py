@@ -16,6 +16,7 @@ from typing import Any
 
 import yaml
 
+from merlin.common.yaml import fast_safe_load
 
 from .evidence_output import _materialize_evidence
 from .provenance import _canonical_digest, _digest, _json
@@ -489,7 +490,7 @@ def select_evidence(
         raw = observe(value, role, required=required)
         if raw is None:
             return {}
-        loaded = yaml.safe_load(raw)
+        loaded = fast_safe_load(raw)
         if not isinstance(loaded, dict):
             raise ValueError(f"{value}: {role} must be a mapping")
         return loaded

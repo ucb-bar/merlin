@@ -11,6 +11,7 @@ import yaml
 
 from merlin.common.digest import is_sha256
 from merlin.common.paths import repo_root  # noqa: E402
+from merlin.common.yaml import fast_safe_load
 from merlin.perf.profile import TRAITS  # noqa: E402
 from merlin.runtime.backends.base import EXECUTION_CAPABILITIES  # noqa: E402
 from merlin.targetgen.software_spec import (
@@ -54,7 +55,7 @@ def _cross_product(axes: dict) -> list[dict]:
 def application_inventory_path(conformance_spec: str | Path, *, document: dict | None = None) -> Path | None:
     """Resolve only the requirement's adjacent generated sidecar, never an arbitrary path."""
     spec = Path(conformance_spec)
-    document = document if document is not None else yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
+    document = document if document is not None else fast_safe_load(spec.read_text(encoding="utf-8")) or {}
     if not isinstance(document, dict):
         raise ValueError(f"{spec}: conformance spec must be a mapping")
     demands = document.get("application_demands") or {}
@@ -99,12 +100,12 @@ def synthesis_input_identity(
     declaration inside the descriptor, so its canonical document digest avoids
     invalidating synthesis for unrelated descriptor comments or hardware setup.
     """
-    source = yaml.safe_load(Path(descriptor).read_text(encoding="utf-8")) or {}
+    source = fast_safe_load(Path(descriptor).read_text(encoding="utf-8")) or {}
     if not isinstance(source, dict) or not isinstance(source.get("workload_spec") or {}, dict):
         raise ValueError(f"{descriptor}: workload_spec must be a mapping")
     requirement_path = Path(conformance_spec)
     requirement_raw = requirement_path.read_bytes()
-    requirement = yaml.safe_load(requirement_raw) or {}
+    requirement = fast_safe_load(requirement_raw) or {}
     if not isinstance(requirement, dict):
         raise ValueError(f"{requirement_path}: conformance spec must be a mapping")
     selected_policies = requirement.get("quantization_policy_selections")
@@ -164,7 +165,7 @@ def verify_selected_synthesis(
     """
     if synth_profile is None or not Path(synth_profile).is_file():
         return {"status": "absent"}
-    selected = document if document is not None else yaml.safe_load(Path(synth_profile).read_text(encoding="utf-8"))
+    selected = document if document is not None else fast_safe_load(Path(synth_profile).read_text(encoding="utf-8"))
     if not isinstance(selected, dict):
         raise ValueError(f"{synth_profile}: synthesized profile must be a mapping")
     profile_document = selected
@@ -206,7 +207,7 @@ def verify_selected_synthesis(
     if not isinstance(descriptor_doc, dict):
         raise ValueError(f"{descriptor}: descriptor must be a mapping")
     applications = (descriptor_doc.get("workload_spec") or {}).get("applications") or {}
-    spec_doc = yaml.safe_load(Path(conformance_spec).read_text(encoding="utf-8")) or {}
+    spec_doc = fast_safe_load(Path(conformance_spec).read_text(encoding="utf-8")) or {}
     if not isinstance(spec_doc, dict):
         raise ValueError(f"{conformance_spec}: conformance spec must be a mapping")
     from .core_aten_stage import declaration as core_declaration
