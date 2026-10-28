@@ -1,0 +1,25 @@
+[19:02:23] /scratch/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/tvm-f2-followup/src/target/target_kind.cc:171: Warning: Unable to detect CUDA version, default to "-arch=sm_50" instead
+.                     [100%]
+=============================== warnings summary ===============================
+tests/python/relax/test_backend_contrib_gemmini_operator_inventory.py: 51 warnings
+  /usr/lib/python3.12/copyreg.py:99: FutureWarning: `isinstance(treespec, LeafSpec)` is deprecated, use `isinstance(treespec, TreeSpec) and treespec.is_leaf()` instead.
+    return cls.__new__(cls, *args)
+
+tests/python/relax/test_backend_contrib_gemmini_operator_inventory.py: 1782 warnings
+  /scratch/grammy/tvm-gemmini-simple/python/tvm/script/parser/core/doc.py:296: DeprecationWarning: Attribute s is deprecated and will be removed in Python 3.14; use value instead
+    kv = {attr: self.func(getattr(node, attr, None)) for attr in self.fields}
+
+tests/python/relax/test_backend_contrib_gemmini_operator_inventory.py: 1782 warnings
+  /scratch/grammy/tvm-gemmini-simple/python/tvm/script/parser/core/doc.py:296: DeprecationWarning: Attribute n is deprecated and will be removed in Python 3.14; use value instead
+    kv = {attr: self.func(getattr(node, attr, None)) for attr in self.fields}
+
+tests/python/relax/test_backend_contrib_gemmini_operator_inventory.py: 889 warnings
+  /scratch/grammy/tvm-gemmini-simple/python/tvm/script/parser/core/doc.py:297: DeprecationWarning: Attribute s is deprecated and will be removed in Python 3.14; use value instead
+    return self.doc_cls(**kv)
+
+tests/python/relax/test_backend_contrib_gemmini_operator_inventory.py: 889 warnings
+  /scratch/grammy/tvm-gemmini-simple/python/tvm/script/parser/core/doc.py:297: DeprecationWarning: Attribute n is deprecated and will be removed in Python 3.14; use value instead
+    return self.doc_cls(**kv)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1 passed, 5393 warnings, 51 subtests passed in 39.05s

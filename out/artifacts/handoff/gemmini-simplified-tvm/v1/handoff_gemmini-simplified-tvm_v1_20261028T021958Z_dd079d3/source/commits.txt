@@ -1,0 +1,4 @@
+619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a test(gemmini): verify frozen scales without graph specialization
+4e4fd363ca0180a39e6143bd725a2fbd63dc83f9 docs(gemmini): describe reduced mappings and median run watchdogs
+4052f83fa14d71ab5bc663d09c352b7bd535c67c fix(gemmini): restrict TensorIntrins to declared arithmetic domains
+59698d810110d5ac2b5cc0c33ab9dbf8f04f1b02 refactor(gemmini): remove custom graph and DMA peephole optimizations

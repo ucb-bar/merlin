@@ -1,0 +1,125 @@
+{
+  "alignment_bytes": 64,
+  "calls": [
+    {
+      "inputs": [
+        "input_0"
+      ],
+      "outputs": [
+        "tensor_0"
+      ],
+      "symbol": "stage_63_operator_kernel"
+    }
+  ],
+  "constants": [],
+  "constants_binding": {
+    "absolute_address_macro": "TVM_MODEL_CONSTANTS_ADDRESS",
+    "default": "link_symbol",
+    "symbol": "model_constants"
+  },
+  "constants_bytes": 576,
+  "constants_file": "/scratch/grammy/merlin-tvm-firesim-ready/out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/operator-checks/package/constants.bin",
+  "constants_sha256": "bf56ec880eb9c6b382b162c839dee99c0f861fb2ca9259952c29f21d8d4ae6b3",
+  "entrypoint": "stage_63_model_run",
+  "explicit_tensor_bytes": 1392,
+  "full_model_qualified": false,
+  "heap_required_by_orchestration": false,
+  "inputs": [
+    {
+      "birth": -1,
+      "bytes": 408,
+      "dtype": "float64",
+      "last_use": 0,
+      "name": "input_0",
+      "offset": 0,
+      "origin": "input",
+      "shape": [
+        3,
+        17
+      ]
+    }
+  ],
+  "intermediates": [
+    {
+      "birth": 0,
+      "bytes": 408,
+      "dtype": "float64",
+      "last_use": 1,
+      "name": "tensor_0",
+      "offset": 0,
+      "origin": "output",
+      "shape": [
+        17,
+        3
+      ]
+    }
+  ],
+  "memory_limit_bytes": 16777216,
+  "memory_preflight": {
+    "allocated": {
+      "constants_bytes": 576,
+      "explicit_tensor_bytes": 1392,
+      "input_bytes": 408,
+      "output_bytes": 408,
+      "workspace_bytes": 0
+    },
+    "completion": {
+      "live_tensor_bytes": 408,
+      "live_tensors": [
+        "tensor_0"
+      ]
+    },
+    "largest_intermediates": [],
+    "memory_limit_bytes": 16777216,
+    "output_bindings": [
+      {
+        "backing_tensor": "tensor_0",
+        "copy_required": false,
+        "index": 0,
+        "storage": "output",
+        "tensor": "tensor_0"
+      }
+    ],
+    "peak_live_tensor_bytes": 816,
+    "peak_live_workspace_aligned_bytes": 0,
+    "peak_live_workspace_bytes": 0,
+    "per_call": [
+      {
+        "index": 0,
+        "live_tensor_bytes": 816,
+        "live_tensors": [
+          "input_0",
+          "tensor_0"
+        ],
+        "live_workspace_aligned_bytes": 0,
+        "live_workspace_bytes": 0,
+        "operator_workspace_bytes": 0,
+        "symbol": "stage_63_operator_kernel"
+      }
+    ],
+    "scope": "explicit tensor storage only; excludes ELF sections, operator stack, startup and platform reservations"
+  },
+  "memory_scope": "graph tensor storage and explicit USMP operator pools; add ELF sections, operator stack, startup and platform reservations",
+  "operator_workspace_offset": 0,
+  "operator_workspaces": {},
+  "outputs": [
+    {
+      "birth": 0,
+      "bytes": 408,
+      "dtype": "float64",
+      "last_use": 1,
+      "name": "tensor_0",
+      "offset": 0,
+      "origin": "output",
+      "shape": [
+        17,
+        3
+      ]
+    }
+  ],
+  "runtime_workspace_allocator_required": false,
+  "target": "llvm -mtriple=riscv64-unknown-elf -mcpu=generic-rv64 -mattr=+m,+a,+f,+d,+c -mabi=lp64d -fp-contract=off",
+  "timing_qualified": false,
+  "views": [],
+  "workspace_bytes": 0
+}

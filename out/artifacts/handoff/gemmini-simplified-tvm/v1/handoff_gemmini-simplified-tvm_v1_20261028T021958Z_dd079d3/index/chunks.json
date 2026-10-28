@@ -1,0 +1,4188 @@
+[
+  {
+    "id": "resnet-classifier",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-classifier/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-classifier/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_as_strided_reshape_quantize_per_tensor_reshape1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "as_strided"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_wrapping_add_cast_multiply",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "mean",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "ef8eb0206f946ce6"
+    ],
+    "owned_keys": [
+      "ef8eb0206f946ce6"
+    ],
+    "prepared_sha256": "6440f418570d5fcd547d85da44ded0acca5df0af1391843cd04e7615ad60d1a9",
+    "extraction_seconds": 0.13130764290690422
+  },
+  {
+    "id": "resnet-stage1-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage1-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage1-block1/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor_pad_strided_slice1_strided_slice2_transpose_reshape_strided_slice1_strided_slice3_transpose_reshape_strided_slice1_strided_slice4_transpose_reshape_strided_slice5_strided_slice2_transpose_reshape_strided_slice5_strided_slice3_transpose_reshape_strided_slice5_strided_slice4_transpose_reshape_strided_slice6_strided_slice2_transpose_reshape_strided_slice6_strided_slice3_transpose_reshape_strided_slice6_strided_slice4_transpose_reshape_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape5_transpose8_wrapping_add1_cast1_multiply1_reshape5_transpose8_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_strided_slice_strided_slice_transpose_reshape",
+        "weight": 2,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 2,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "a55ec2d038b25363",
+      "b1513338f1b6ddae",
+      "98c415b0e6f140f4"
+    ],
+    "owned_keys": [
+      "a55ec2d038b25363",
+      "b1513338f1b6ddae",
+      "98c415b0e6f140f4"
+    ],
+    "prepared_sha256": "8ac340170d48a201663760deca7a3319ae89da3785f0ebc019f52df26ee3eb68",
+    "extraction_seconds": 0.424724058015272
+  },
+  {
+    "id": "resnet-stage1-block2",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage1-block2/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage1-block2/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "e1c0bb4617343fe5",
+      "b1513338f1b6ddae",
+      "98c415b0e6f140f4"
+    ],
+    "owned_keys": [
+      "e1c0bb4617343fe5"
+    ],
+    "prepared_sha256": "2828be41555c9e8c2d9456e79c7d7735f062623ba31634848bb7bf839def749a",
+    "extraction_seconds": 0.4769533008802682
+  },
+  {
+    "id": "resnet-stage1-block3",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage1-block3/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage1-block3/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "e1c0bb4617343fe5",
+      "b1513338f1b6ddae",
+      "98c415b0e6f140f4"
+    ],
+    "owned_keys": [],
+    "prepared_sha256": "f19d8ba09b83402e2dcee50750a58331dfe125eabb6b0280d1e908b2d10ff4d2",
+    "extraction_seconds": 0.40867563686333597
+  },
+  {
+    "id": "resnet-stage2-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage2-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage2-block1/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape5_transpose7_wrapping_add1_cast1_relu1_multiply1_quantize_per_tensor2_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape7_transpose10_wrapping_add2_cast2_multiply2_reshape7_transpose10_wrapping_add2_cast2_multiply2_add_relu2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_strided_slice8_strided_slice9_transpose11_reshape8",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "fused_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 7
+      },
+      {
+        "task": "matmul3",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 8
+      },
+      {
+        "task": "quantize_per_tensor",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "09bdb171695bfffa",
+      "916afde464d0c0aa",
+      "d926142637a8b39f",
+      "b13dfe5ba1a1638c"
+    ],
+    "owned_keys": [
+      "09bdb171695bfffa",
+      "916afde464d0c0aa",
+      "d926142637a8b39f",
+      "b13dfe5ba1a1638c"
+    ],
+    "prepared_sha256": "c04cd1d7745eaafe583c0b380aaa12605d41e925c1815e8c0f66076955cf1897",
+    "extraction_seconds": 0.5874390320386738
+  },
+  {
+    "id": "resnet-stage2-block2",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage2-block2/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage2-block2/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "0d718e000c59d06c",
+      "916afde464d0c0aa",
+      "d926142637a8b39f"
+    ],
+    "owned_keys": [
+      "0d718e000c59d06c"
+    ],
+    "prepared_sha256": "f381734223b8ada47e06c0507d126522984978a562dcf7c54f49ce43441b39d5",
+    "extraction_seconds": 0.44870266504585743
+  },
+  {
+    "id": "resnet-stage2-block3",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage2-block3/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage2-block3/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "0d718e000c59d06c",
+      "916afde464d0c0aa",
+      "d926142637a8b39f"
+    ],
+    "owned_keys": [],
+    "prepared_sha256": "96067c9ffd1301725e1f9b93263d5c73f5355c712092fa8698f794465c0a5ec2",
+    "extraction_seconds": 0.4621001339983195
+  },
+  {
+    "id": "resnet-stage2-block4",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage2-block4/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage2-block4/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "0d718e000c59d06c",
+      "916afde464d0c0aa",
+      "d926142637a8b39f"
+    ],
+    "owned_keys": [],
+    "prepared_sha256": "217ce5ea16336c2b894341ff70c8d87811ca7eec07dfd5c21c2052bf1d25a711",
+    "extraction_seconds": 0.42148262402042747
+  },
+  {
+    "id": "resnet-stage3-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block1/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape5_transpose7_wrapping_add1_cast1_relu1_multiply1_quantize_per_tensor2_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape7_transpose10_wrapping_add2_cast2_multiply2_reshape7_transpose10_wrapping_add2_cast2_multiply2_add_relu2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_strided_slice8_strided_slice9_transpose11_reshape8",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "fused_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 7
+      },
+      {
+        "task": "matmul3",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 8
+      },
+      {
+        "task": "quantize_per_tensor",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "2a58ce5e15eb63cc",
+      "a2935115ae425c8a",
+      "0d8e33b0035661b3",
+      "983c96900b0c24b7"
+    ],
+    "owned_keys": [
+      "2a58ce5e15eb63cc",
+      "a2935115ae425c8a",
+      "0d8e33b0035661b3",
+      "983c96900b0c24b7"
+    ],
+    "prepared_sha256": "9da5027bdc3d65e2db03d29741bb65253fc58d45e8cac1c5782f030d9c3a87f3",
+    "extraction_seconds": 0.6195546549279243
+  },
+  {
+    "id": "resnet-stage3-block2",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block2/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block2/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "65e28c4608e1cbb7",
+      "a2935115ae425c8a",
+      "0d8e33b0035661b3"
+    ],
+    "owned_keys": [
+      "65e28c4608e1cbb7"
+    ],
+    "prepared_sha256": "3be334439a009b6239b2e31ac2ae3f78c449c156d14e8d8c7bd1c68a949f5d27",
+    "extraction_seconds": 0.5298828759696335
+  },
+  {
+    "id": "resnet-stage3-block3",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block3/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block3/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "65e28c4608e1cbb7",
+      "a2935115ae425c8a",
+      "0d8e33b0035661b3"
+    ],
+    "owned_keys": [],
+    "prepared_sha256": "2740f1bae01d8f23a5f0d870ce4bc270ec9d9bc02f234bde1d8d2cf917b6f2b3",
+    "extraction_seconds": 0.48525069700554013
+  },
+  {
+    "id": "resnet-stage3-block4",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block4/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block4/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "65e28c4608e1cbb7",
+      "a2935115ae425c8a",
+      "0d8e33b0035661b3"
+    ],
+    "owned_keys": [],
+    "prepared_sha256": "c94b1b9ac6d5d91ed7b55fe6c4e5ae6fd0cf95f9eec79b7e1eb627054738fb33",
+    "extraction_seconds": 0.7316460928414017
+  },
+  {
+    "id": "resnet-stage3-block5",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block5/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block5/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "65e28c4608e1cbb7",
+      "a2935115ae425c8a",
+      "0d8e33b0035661b3"
+    ],
+    "owned_keys": [],
+    "prepared_sha256": "f9ec8f9f1d8c747b4a45828369415348c9947ccb784b376452577e5ea61f5ba3",
+    "extraction_seconds": 0.7108032698743045
+  },
+  {
+    "id": "resnet-stage3-block6",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block6/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block6/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "65e28c4608e1cbb7",
+      "a2935115ae425c8a",
+      "0d8e33b0035661b3"
+    ],
+    "owned_keys": [],
+    "prepared_sha256": "e69ad008653270976da29069a2da2fcf8889758e466d5210939a1e33541cec98",
+    "extraction_seconds": 0.5914815589785576
+  },
+  {
+    "id": "resnet-stage4-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage4-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage4-block1/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape5_transpose7_wrapping_add1_cast1_relu1_multiply1_quantize_per_tensor2_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape7_transpose10_wrapping_add2_cast2_multiply2_reshape7_transpose10_wrapping_add2_cast2_multiply2_add_relu2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_strided_slice8_strided_slice9_transpose11_reshape8",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "fused_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 7
+      },
+      {
+        "task": "matmul3",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 8
+      },
+      {
+        "task": "quantize_per_tensor",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "1aabcd8f4b0fcd1e",
+      "a09b8184249b6b21",
+      "8180993594cb5d0c",
+      "9d00d9d6f3288874"
+    ],
+    "owned_keys": [
+      "1aabcd8f4b0fcd1e",
+      "a09b8184249b6b21",
+      "8180993594cb5d0c",
+      "9d00d9d6f3288874"
+    ],
+    "prepared_sha256": "c88a31293358d017c67d125847001bfa0b04c9b1f40f72b622d27a638954f7a3",
+    "extraction_seconds": 0.7897239900194108
+  },
+  {
+    "id": "resnet-stage4-block2",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage4-block2/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage4-block2/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "374fdd6fa454b8a0",
+      "a09b8184249b6b21",
+      "8180993594cb5d0c"
+    ],
+    "owned_keys": [
+      "374fdd6fa454b8a0"
+    ],
+    "prepared_sha256": "1a33ff3ea1a4ce2e73972fc3e71f1fc53dfd558958a86d312c22dc7081df4c42",
+    "extraction_seconds": 0.5740837720222771
+  },
+  {
+    "id": "resnet-stage4-block3",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage4-block3/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage4-block3/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_quantize_per_tensor_strided_slice_strided_slice_transpose_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_pad_strided_slice1_strided_slice2_transpose4_reshape3_strided_slice1_strided_slice3_transpose4_reshape3_strided_slice1_strided_slice4_transpose4_reshape3_strided_slice5_strided_slice2_transpose4_reshape3_strided_slice5_strided_slice3_transpose4_reshape3_strided_slice5_strided_slice4_transpose4_reshape3_strided_slice6_strided_slice2_transpose4_reshape3_strided_slice6_strided_slice3_transpose4_reshape3_strided_slice6_strided_slice4_transpose4_reshape3_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_relu_multiply_quantize_per_tensor1_strided_slice7_strided_slice7_transpose4_reshape3",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape6_transpose9_wrapping_add1_cast1_multiply1_add_relu1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "matmul2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      }
+    ],
+    "contraction_keys": [
+      "374fdd6fa454b8a0",
+      "a09b8184249b6b21",
+      "8180993594cb5d0c"
+    ],
+    "owned_keys": [],
+    "prepared_sha256": "6a155b9264d5cc0486e121fc2ef937a28fe8de03e3391561e4cc709f4bf15355",
+    "extraction_seconds": 0.5909225270152092
+  },
+  {
+    "id": "resnet-stem",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stem/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stem/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_max_pool2d_quantize_per_tensor1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "pad_temp"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_quantize_per_tensor_pad_strided_slice_strided_slice1_transpose_reshape_strided_slice_strided_slice2_transpose_reshape_strided_slice_strided_slice3_transpose_reshape_strided_slice_strided_slice4_transpose_reshape_strided_slice_strided_slice5_transpose_reshape_strided_slice_strided_slice6_transpose_reshape_strided_slice_strided_slice7_transpose_reshape_strided_slice8_strided_slice1_transpose_reshape_strided_slice8_strided_slice2_transpose_reshape_strided_slice8_strided_slice3_transpose_reshape_strided_slice8_strided_slice4_transpose_reshape_strided_slice8_strided_slice5_transpose_reshape_strided_slice8_strided_slice6_transpose_reshape_strided_slice8_strided_slice7_transpose_reshape_strided_slice9_strided_slice1_transpose_reshape_strided_slice9_strided_slice2_transpose_reshape_strided_slice9_strided_slice3_transpose_reshape_strided_slice9_strided_slice4_transpose_reshape_strided_slice9_strided_slice5_transpose_reshape_strided_slice9_strided_slice6_transpose_reshape_strided_slice9_strided_slice7_transpose_reshape_strided_slice10_strided_slice1_transpose_reshape_strided_slice10_strided_slice2_transpose_reshape_strided_slice10_strided_slice3_transpose_reshape_strided_slice10_strided_slice4_transpose_reshape_strided_slice10_strided_slice5_transpose_reshape_strided_slice10_strided_slice6_transpose_reshape_strided_slice10_strided_slice7_transpose_reshape_strided_slice11_strided_slice1_transpose_reshape_strided_slice11_strided_slice2_transpose_reshape_strided_slice11_strided_slice3_transpose_reshape_strided_slice11_strided_slice4_transpose_reshape_strided_slice11_strided_slice5_transpose_reshape_strided_slice11_strided_slice6_transpose_reshape_strided_slice11_strided_slice7_transpose_reshape_strided_slice12_strided_slice1_transpose_reshape_strided_slice12_strided_slice2_transpose_reshape_strided_slice12_strided_slice3_transpose_reshape_strided_slice12_strided_slice4_transpose_reshape_strided_slice12_strided_slice5_transpose_reshape_strided_slice12_strided_slice6_transpose_reshape_strided_slice12_strided_slice7_transpose_reshape_strided_slice13_strided_slice1_transpose_reshape_strided_slice13_strided_slice2_transpose_reshape_strided_slice13_strided_slice3_transpose_reshape_strided_slice13_strided_slice4_transpose_reshape_strided_slice13_strided_slice5_transpose_reshape_strided_slice13_strided_slice6_transpose_reshape_strided_slice13_strided_slice7_transpose_reshape_concatenate",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "PadInput"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape2_transpose3_wrapping_add_cast_multiply_relu",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      }
+    ],
+    "contraction_keys": [
+      "47b8ed80131eddf9"
+    ],
+    "owned_keys": [
+      "47b8ed80131eddf9"
+    ],
+    "prepared_sha256": "db281219ab3adcd5d2bb198ea8dad22b332ac4dc6bd686bc1489a708b6af3d15",
+    "extraction_seconds": 0.6981242639012635
+  },
+  {
+    "id": "smolvla-action-input-projection",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-action-input-projection/program.json",
+    "fixture": "chunks/smolvla/smolvla-action-input-projection/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_reshape1_wrapping_add_cast_multiply",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      }
+    ],
+    "contraction_keys": [
+      "b7f909f335bc6f4d"
+    ],
+    "owned_keys": [
+      "b7f909f335bc6f4d"
+    ],
+    "prepared_sha256": "2dfafc9d99ff94b0e8c797ec50379258134ddda8e81bdbd28e2b5a092af41880",
+    "extraction_seconds": 0.05462419311515987
+  },
+  {
+    "id": "smolvla-action-projection-update",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-action-projection-update/program.json",
+    "fixture": "chunks/smolvla/smolvla-action-projection-update/fixture.npz",
+    "tasks": [
+      {
+        "task": "add1",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_quantize_per_tensor_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape1_wrapping_add_cast_multiply_multiply1_add",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      }
+    ],
+    "contraction_keys": [
+      "bfc53f6224892cc7"
+    ],
+    "owned_keys": [
+      "bfc53f6224892cc7"
+    ],
+    "prepared_sha256": "493754bcdab393b815015e7f5b4c26063dbe7d2300589b9ebbb635f024d9e80e",
+    "extraction_seconds": 0.07256852206774056
+  },
+  {
+    "id": "smolvla-action-time-embedding",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-action-time-embedding/program.json",
+    "fixture": "chunks/smolvla/smolvla-action-time-embedding/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_cast_expand_dims_broadcast_to_concatenate_quantize_per_tensor_reshape",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "expand_dims"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape1_wrapping_add_cast1_multiply_concatenate1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_reshape1_wrapping_add_cast1_multiply_tir_sigmoid_multiply1_quantize_per_tensor1_reshape2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "matmul",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "matmul1",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      }
+    ],
+    "contraction_keys": [
+      "b379ba1dad375cb9",
+      "b8054719977a6f75"
+    ],
+    "owned_keys": [
+      "b379ba1dad375cb9",
+      "b8054719977a6f75"
+    ],
+    "prepared_sha256": "acd080234251db9755f73624ae5a234a1973fab422bbc5e6be82d1165de5fe73",
+    "extraction_seconds": 0.19804240087978542
+  },
+  {
+    "id": "smolvla-expert-cross-attention-core",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-cross-attention-core/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-cross-attention-core/fixture.npz",
+    "tasks": [
+      {
+        "task": "cast",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "cast1",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "cast3",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "cast4",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_concatenate_reshape3_reshape4_cast2_multiply3_concatenate_reshape3_reshape4_cast2_multiply3_add_concatenate_reshape3_reshape4_cast2_multiply3_add_concatenate_reshape3_reshape4_cast2_multiply3_add_multiply4_expand_dims1_where",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_concat"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_divide1_round_even1_tir_clip1",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_divide2_round_even2_tir_clip2",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_divide3_subtract4_multiply7_round_even3_tir_clip3_cast4",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_divide_round_even_tir_clip",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_equal_where1_subtract3_tir_exp",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_expand_dims_broadcast_to_reshape_transpose",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "expand_dims"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_expand_dims_broadcast_to_reshape_transpose_transpose1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "expand_dims"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_matmul2_cast6_multiply8_multiply8",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "fused_maximum_concatenate1_reshape7_reshape8_cast5_multiply2_concatenate1_reshape7_reshape8_cast5_multiply2_add1_concatenate1_reshape7_reshape8_cast5_multiply2_add1_concatenate1_reshape7_reshape8_cast5_multiply2_add1_divide4_transpose3_reshape9_quantize_per_tensor_reshape10",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_concat"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "fused_multiply2_subtract1_divide1_round_even1_tir_clip1_cast1",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_multiply5_subtract2_divide2_round_even2_tir_clip2_cast3",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_multiply6_round_even3_tir_clip3",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_multiply_subtract_divide_round_even_tir_clip_cast",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_reshape11_multiply9_add2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "fused_strided_slice10_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      },
+      {
+        "task": "fused_strided_slice11_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 7
+      },
+      {
+        "task": "fused_strided_slice12_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 8
+      },
+      {
+        "task": "fused_strided_slice13_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 9
+      },
+      {
+        "task": "fused_strided_slice14_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 10
+      },
+      {
+        "task": "fused_strided_slice15_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 11
+      },
+      {
+        "task": "fused_strided_slice16_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 12
+      },
+      {
+        "task": "fused_strided_slice17_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 13
+      },
+      {
+        "task": "fused_strided_slice18_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 14
+      },
+      {
+        "task": "fused_strided_slice19_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 15
+      },
+      {
+        "task": "fused_strided_slice1_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 16
+      },
+      {
+        "task": "fused_strided_slice20_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 17
+      },
+      {
+        "task": "fused_strided_slice21_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 18
+      },
+      {
+        "task": "fused_strided_slice22_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 19
+      },
+      {
+        "task": "fused_strided_slice23_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 20
+      },
+      {
+        "task": "fused_strided_slice24_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 21
+      },
+      {
+        "task": "fused_strided_slice25_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 22
+      },
+      {
+        "task": "fused_strided_slice26_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 23
+      },
+      {
+        "task": "fused_strided_slice27_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 24
+      },
+      {
+        "task": "fused_strided_slice28_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 25
+      },
+      {
+        "task": "fused_strided_slice29_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 26
+      },
+      {
+        "task": "fused_strided_slice2_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 27
+      },
+      {
+        "task": "fused_strided_slice30_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 28
+      },
+      {
+        "task": "fused_strided_slice31_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 29
+      },
+      {
+        "task": "fused_strided_slice32_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 30
+      },
+      {
+        "task": "fused_strided_slice33_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 31
+      },
+      {
+        "task": "fused_strided_slice34_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 32
+      },
+      {
+        "task": "fused_strided_slice35_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 33
+      },
+      {
+        "task": "fused_strided_slice36_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 34
+      },
+      {
+        "task": "fused_strided_slice37_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 35
+      },
+      {
+        "task": "fused_strided_slice38_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 36
+      },
+      {
+        "task": "fused_strided_slice39_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 37
+      },
+      {
+        "task": "fused_strided_slice3_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 38
+      },
+      {
+        "task": "fused_strided_slice40_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 39
+      },
+      {
+        "task": "fused_strided_slice41_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 40
+      },
+      {
+        "task": "fused_strided_slice42_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 41
+      },
+      {
+        "task": "fused_strided_slice43_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 42
+      },
+      {
+        "task": "fused_strided_slice44_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 43
+      },
+      {
+        "task": "fused_strided_slice45_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 44
+      },
+      {
+        "task": "fused_strided_slice46_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 45
+      },
+      {
+        "task": "fused_strided_slice47_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 46
+      },
+      {
+        "task": "fused_strided_slice48_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 47
+      },
+      {
+        "task": "fused_strided_slice49_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 48
+      },
+      {
+        "task": "fused_strided_slice4_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 49
+      },
+      {
+        "task": "fused_strided_slice50_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 50
+      },
+      {
+        "task": "fused_strided_slice51_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 51
+      },
+      {
+        "task": "fused_strided_slice52_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 52
+      },
+      {
+        "task": "fused_strided_slice53_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 53
+      },
+      {
+        "task": "fused_strided_slice54_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 54
+      },
+      {
+        "task": "fused_strided_slice55_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 55
+      },
+      {
+        "task": "fused_strided_slice56_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 56
+      },
+      {
+        "task": "fused_strided_slice57_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 57
+      },
+      {
+        "task": "fused_strided_slice58_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 58
+      },
+      {
+        "task": "fused_strided_slice59_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 59
+      },
+      {
+        "task": "fused_strided_slice5_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 60
+      },
+      {
+        "task": "fused_strided_slice6_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 61
+      },
+      {
+        "task": "fused_strided_slice7_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 62
+      },
+      {
+        "task": "fused_strided_slice8_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 63
+      },
+      {
+        "task": "fused_strided_slice9_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 64
+      },
+      {
+        "task": "fused_strided_slice_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 65
+      },
+      {
+        "task": "matmul",
+        "weight": 60,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 66
+      },
+      {
+        "task": "matmul1",
+        "weight": 60,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 67
+      },
+      {
+        "task": "max",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "sum",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "transpose2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_transpose"
+        ],
+        "eligible": true,
+        "tuning_index": 68
+      }
+    ],
+    "contraction_keys": [
+      "07cd0beb89b89ff4",
+      "59a9645f84b857d0",
+      "0f9c42e92f2a3b3e"
+    ],
+    "owned_keys": [
+      "07cd0beb89b89ff4",
+      "59a9645f84b857d0",
+      "0f9c42e92f2a3b3e"
+    ],
+    "prepared_sha256": "a2d7859630736bb147e05ee20026bef238ebaa21b9382b822f7f4a03a77fbdf5",
+    "extraction_seconds": 1.6509176690597087
+  },
+  {
+    "id": "smolvla-expert-cross-qkv",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-cross-qkv/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-cross-qkv/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul1_cast1_multiply4_multiply4",
+        "weight": 2,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_mean_add_tir_rsqrt_multiply_multiply1_quantize_per_tensor",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_reshape1_multiply3_reshape2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape3_quantize_per_tensor1_reshape4",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "fused_reshape3_quantize_per_tensor2_reshape4",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "fused_reshape5_multiply5",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "fused_reshape5_multiply5_reshape6",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      },
+      {
+        "task": "power",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "77977bbc05b0ea97",
+      "06e9f1e871093216"
+    ],
+    "owned_keys": [
+      "77977bbc05b0ea97",
+      "06e9f1e871093216"
+    ],
+    "prepared_sha256": "05b740b78523bd37ec6cd3e414dad82c035313742d285291a59121887b3274f6",
+    "extraction_seconds": 0.194402544060722
+  },
+  {
+    "id": "smolvla-expert-mlp",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-mlp/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-mlp/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul1_cast1_multiply5_multiply5",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 2,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_mean_add_tir_rsqrt_multiply_multiply1_quantize_per_tensor",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_reshape1_multiply3_tir_sigmoid_multiply4_reshape1_multiply3_multiply4_quantize_per_tensor1_reshape2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape3_multiply6_add1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "power",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "2f1f8b3168fe5744",
+      "59f47fcbfd200cdb"
+    ],
+    "owned_keys": [
+      "2f1f8b3168fe5744",
+      "59f47fcbfd200cdb"
+    ],
+    "prepared_sha256": "f57fdf948eb62cfe443b39790cf6b83ea3cb4b403f2fae100cb88e7a504873fb",
+    "extraction_seconds": 0.2809870489872992
+  },
+  {
+    "id": "smolvla-expert-self-attention-core",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-self-attention-core/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-self-attention-core/fixture.npz",
+    "tasks": [
+      {
+        "task": "cast",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "cast1",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "cast3",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "cast4",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_concatenate1_reshape3_reshape4_cast2_multiply3_concatenate1_reshape3_reshape4_cast2_multiply3_add_concatenate1_reshape3_reshape4_cast2_multiply3_add_concatenate1_reshape3_reshape4_cast2_multiply3_add_multiply4_expand_dims1_where",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_concat"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_concatenate_expand_dims_broadcast_to_reshape_transpose",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_concat"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_concatenate_expand_dims_broadcast_to_reshape_transpose_transpose1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_concat"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_divide1_round_even1_tir_clip1",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_divide2_round_even2_tir_clip2",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_divide3_subtract4_multiply7_round_even3_tir_clip3_cast4",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_divide_round_even_tir_clip",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_equal_where1_subtract3_tir_exp",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_matmul2_cast6_multiply8_multiply8",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "fused_maximum_concatenate2_reshape7_reshape8_cast5_multiply2_concatenate2_reshape7_reshape8_cast5_multiply2_add1_concatenate2_reshape7_reshape8_cast5_multiply2_add1_concatenate2_reshape7_reshape8_cast5_multiply2_add1_divide4_transpose3_reshape9_quantize_per_tensor_reshape10",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_concat"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "fused_multiply2_subtract1_divide1_round_even1_tir_clip1_cast1",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_multiply5_subtract2_divide2_round_even2_tir_clip2_cast3",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_multiply6_round_even3_tir_clip3",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_multiply_subtract_divide_round_even_tir_clip_cast",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_reshape11_multiply9_add2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 5
+      },
+      {
+        "task": "fused_strided_slice10_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 6
+      },
+      {
+        "task": "fused_strided_slice11_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 7
+      },
+      {
+        "task": "fused_strided_slice12_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 8
+      },
+      {
+        "task": "fused_strided_slice13_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 9
+      },
+      {
+        "task": "fused_strided_slice14_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 10
+      },
+      {
+        "task": "fused_strided_slice15_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 11
+      },
+      {
+        "task": "fused_strided_slice16_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 12
+      },
+      {
+        "task": "fused_strided_slice17_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 13
+      },
+      {
+        "task": "fused_strided_slice18_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 14
+      },
+      {
+        "task": "fused_strided_slice19_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 15
+      },
+      {
+        "task": "fused_strided_slice1_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 16
+      },
+      {
+        "task": "fused_strided_slice20_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 17
+      },
+      {
+        "task": "fused_strided_slice21_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 18
+      },
+      {
+        "task": "fused_strided_slice22_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 19
+      },
+      {
+        "task": "fused_strided_slice23_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 20
+      },
+      {
+        "task": "fused_strided_slice24_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 21
+      },
+      {
+        "task": "fused_strided_slice25_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 22
+      },
+      {
+        "task": "fused_strided_slice26_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 23
+      },
+      {
+        "task": "fused_strided_slice27_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 24
+      },
+      {
+        "task": "fused_strided_slice28_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 25
+      },
+      {
+        "task": "fused_strided_slice29_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 26
+      },
+      {
+        "task": "fused_strided_slice2_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 27
+      },
+      {
+        "task": "fused_strided_slice30_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 28
+      },
+      {
+        "task": "fused_strided_slice31_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 29
+      },
+      {
+        "task": "fused_strided_slice32_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 30
+      },
+      {
+        "task": "fused_strided_slice33_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 31
+      },
+      {
+        "task": "fused_strided_slice34_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 32
+      },
+      {
+        "task": "fused_strided_slice35_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 33
+      },
+      {
+        "task": "fused_strided_slice36_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 34
+      },
+      {
+        "task": "fused_strided_slice37_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 35
+      },
+      {
+        "task": "fused_strided_slice38_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 36
+      },
+      {
+        "task": "fused_strided_slice39_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 37
+      },
+      {
+        "task": "fused_strided_slice3_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 38
+      },
+      {
+        "task": "fused_strided_slice40_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 39
+      },
+      {
+        "task": "fused_strided_slice41_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 40
+      },
+      {
+        "task": "fused_strided_slice42_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 41
+      },
+      {
+        "task": "fused_strided_slice43_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 42
+      },
+      {
+        "task": "fused_strided_slice44_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 43
+      },
+      {
+        "task": "fused_strided_slice45_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 44
+      },
+      {
+        "task": "fused_strided_slice46_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 45
+      },
+      {
+        "task": "fused_strided_slice47_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 46
+      },
+      {
+        "task": "fused_strided_slice48_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 47
+      },
+      {
+        "task": "fused_strided_slice49_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 48
+      },
+      {
+        "task": "fused_strided_slice4_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 49
+      },
+      {
+        "task": "fused_strided_slice50_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 50
+      },
+      {
+        "task": "fused_strided_slice51_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 51
+      },
+      {
+        "task": "fused_strided_slice52_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 52
+      },
+      {
+        "task": "fused_strided_slice53_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 53
+      },
+      {
+        "task": "fused_strided_slice54_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 54
+      },
+      {
+        "task": "fused_strided_slice55_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 55
+      },
+      {
+        "task": "fused_strided_slice56_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 56
+      },
+      {
+        "task": "fused_strided_slice57_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 57
+      },
+      {
+        "task": "fused_strided_slice58_squeeze2",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 58
+      },
+      {
+        "task": "fused_strided_slice59_squeeze3",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 59
+      },
+      {
+        "task": "fused_strided_slice5_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 60
+      },
+      {
+        "task": "fused_strided_slice6_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 61
+      },
+      {
+        "task": "fused_strided_slice7_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 62
+      },
+      {
+        "task": "fused_strided_slice8_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 63
+      },
+      {
+        "task": "fused_strided_slice9_squeeze1",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 64
+      },
+      {
+        "task": "fused_strided_slice_squeeze",
+        "weight": 4,
+        "kind": "elementwise",
+        "blocks": [
+          "T_strided_slice_with_axes"
+        ],
+        "eligible": true,
+        "tuning_index": 65
+      },
+      {
+        "task": "matmul",
+        "weight": 60,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 66
+      },
+      {
+        "task": "matmul1",
+        "weight": 60,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 67
+      },
+      {
+        "task": "max",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "sum",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "transpose2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_transpose"
+        ],
+        "eligible": true,
+        "tuning_index": 68
+      }
+    ],
+    "contraction_keys": [
+      "07cd0beb89b89ff4",
+      "3639e4e64574066f",
+      "c8e08a4595cd8811"
+    ],
+    "owned_keys": [
+      "3639e4e64574066f",
+      "c8e08a4595cd8811"
+    ],
+    "prepared_sha256": "7a080ca1430b92741e547f3c24272811a1cd260bed8eca409af9e13c3680c71a",
+    "extraction_seconds": 1.586676883045584
+  },
+  {
+    "id": "smolvla-expert-self-qkv",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-self-qkv/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-self-qkv/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul1_cast1_multiply4_multiply4",
+        "weight": 2,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_mean_add_tir_rsqrt_multiply_multiply1_quantize_per_tensor",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_reshape1_multiply3_reshape2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape3_multiply5",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "fused_reshape3_multiply5_reshape4",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 4
+      },
+      {
+        "task": "power",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "5ba7606fbc93f8f3",
+      "06e9f1e871093216"
+    ],
+    "owned_keys": [
+      "5ba7606fbc93f8f3"
+    ],
+    "prepared_sha256": "fee717e069dea130365c469d41471f108760830761813dcac89fc5f20d9e3715",
+    "extraction_seconds": 0.16016752202995121
+  },
+  {
+    "id": "tinyllama-k-projection-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-k-projection-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-k-projection-m1/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape1_multiply1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      }
+    ],
+    "contraction_keys": [
+      "5aaeef4a149b9067"
+    ],
+    "owned_keys": [
+      "5aaeef4a149b9067"
+    ],
+    "prepared_sha256": "2d2381fd6632cd2f7e4b0bedd158f04c1e706863f89c0ce1ad2e22fe57083791",
+    "extraction_seconds": 0.058986201882362366
+  },
+  {
+    "id": "tinyllama-k-projection-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-k-projection-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-k-projection-m16/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape1_multiply1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      }
+    ],
+    "contraction_keys": [
+      "fef20d5edd92a0d4"
+    ],
+    "owned_keys": [
+      "fef20d5edd92a0d4"
+    ],
+    "prepared_sha256": "8a84d25a965fe7b2b169e1ecddd52394b8bda43aa698cea2709887130a2f09c2",
+    "extraction_seconds": 0.05724930507130921
+  },
+  {
+    "id": "tinyllama-mlp-5728-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-5728-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m1/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul1_cast1_multiply5_multiply5",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 2,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_mean_add_tir_rsqrt_multiply_multiply1_quantize_per_tensor",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_reshape1_multiply3_tir_sigmoid_multiply4_reshape1_multiply3_multiply4_quantize_per_tensor1_reshape2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape3_multiply6_add1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "power",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "2522ba15ced42c41",
+      "e1f8625c16e09b56"
+    ],
+    "owned_keys": [
+      "2522ba15ced42c41",
+      "e1f8625c16e09b56"
+    ],
+    "prepared_sha256": "bee0559d91b7dac19b9619c186a8f0985bab4da8d2afffe70625b570196c7147",
+    "extraction_seconds": 1.3355423661414534
+  },
+  {
+    "id": "tinyllama-mlp-5728-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-5728-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m16/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul1_cast1_multiply5_multiply5",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 2,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_mean_add_tir_rsqrt_multiply_multiply1_quantize_per_tensor",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_reshape1_multiply3_tir_sigmoid_multiply4_reshape1_multiply3_multiply4_quantize_per_tensor1_reshape2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape3_multiply6_add1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "power",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "62706a06ea988b7e",
+      "49d7ca62726f3bdb"
+    ],
+    "owned_keys": [
+      "62706a06ea988b7e",
+      "49d7ca62726f3bdb"
+    ],
+    "prepared_sha256": "d3f1566f105ae2a784b37704e4a236ad302798ce56bc9a435f76615b2ce81589",
+    "extraction_seconds": 1.388422351097688
+  },
+  {
+    "id": "tinyllama-mlp-6096-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-6096-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m1/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul1_cast1_multiply5_multiply5",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 2,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_mean_add_tir_rsqrt_multiply_multiply1_quantize_per_tensor",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_reshape1_multiply3_tir_sigmoid_multiply4_reshape1_multiply3_multiply4_quantize_per_tensor1_reshape2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape3_multiply6_add1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "power",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "af45842dcbcd489e",
+      "3ae98f9c1a49871c"
+    ],
+    "owned_keys": [
+      "af45842dcbcd489e",
+      "3ae98f9c1a49871c"
+    ],
+    "prepared_sha256": "8930431b2ebf99c63b5ba76e9ba040da3a0743edaacfe013936cb57ec7771886",
+    "extraction_seconds": 1.468020745087415
+  },
+  {
+    "id": "tinyllama-mlp-6096-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-6096-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m16/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul1_cast1_multiply5_multiply5",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 2,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      },
+      {
+        "task": "fused_mean_add_tir_rsqrt_multiply_multiply1_quantize_per_tensor",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      },
+      {
+        "task": "fused_reshape1_multiply3_tir_sigmoid_multiply4_reshape1_multiply3_multiply4_quantize_per_tensor1_reshape2",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 2
+      },
+      {
+        "task": "fused_reshape3_multiply6_add1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 3
+      },
+      {
+        "task": "power",
+        "weight": 1,
+        "kind": null,
+        "blocks": [],
+        "eligible": false,
+        "reason": "No Gemmini rule; retained CPU fallback, outside this tuning campaign"
+      }
+    ],
+    "contraction_keys": [
+      "688a8d6d3f37183a",
+      "89f0741061a64cbf"
+    ],
+    "owned_keys": [
+      "688a8d6d3f37183a",
+      "89f0741061a64cbf"
+    ],
+    "prepared_sha256": "2ba4e9646c84e1ae660fbf9e3f18f801100e88dbee1d9f739f8a64c545ad77da",
+    "extraction_seconds": 1.5089157870970666
+  },
+  {
+    "id": "tinyllama-q-projection-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-q-projection-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-q-projection-m1/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape1_multiply1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      }
+    ],
+    "contraction_keys": [
+      "6db65851d76f6526"
+    ],
+    "owned_keys": [
+      "6db65851d76f6526"
+    ],
+    "prepared_sha256": "5fbca3646d7d43f30404a85c2e17eb23cb5aaa9334e318b81d5b809a2a2afe89",
+    "extraction_seconds": 0.17091766907833517
+  },
+  {
+    "id": "tinyllama-q-projection-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-q-projection-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-q-projection-m16/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape1_multiply1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      }
+    ],
+    "contraction_keys": [
+      "0988768c53d64a58"
+    ],
+    "owned_keys": [
+      "0988768c53d64a58"
+    ],
+    "prepared_sha256": "747fd1a44e22e658783545a6cf401bc51301653365ffc1bc32b4bd933f415a3a",
+    "extraction_seconds": 0.1695417540613562
+  },
+  {
+    "id": "tinyllama-v-projection-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-v-projection-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-v-projection-m1/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape1_multiply1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      }
+    ],
+    "contraction_keys": [
+      "5aaeef4a149b9067"
+    ],
+    "owned_keys": [],
+    "prepared_sha256": "754bc2a21da845fc999a2d09641a73f064610a9606afd3ec73a810fc4fb9ff49",
+    "extraction_seconds": 0.07642860990017653
+  },
+  {
+    "id": "tinyllama-v-projection-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-v-projection-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-v-projection-m16/fixture.npz",
+    "tasks": [
+      {
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1,
+        "kind": "contraction",
+        "blocks": [
+          "matmul"
+        ],
+        "eligible": true,
+        "tuning_index": 0
+      },
+      {
+        "task": "fused_reshape1_multiply1",
+        "weight": 1,
+        "kind": "elementwise",
+        "blocks": [
+          "T_reshape"
+        ],
+        "eligible": true,
+        "tuning_index": 1
+      }
+    ],
+    "contraction_keys": [
+      "fef20d5edd92a0d4"
+    ],
+    "owned_keys": [],
+    "prepared_sha256": "02185419a0d06a63efe46e154ac388516b0e8bc176a450c17a802223fe8f0983",
+    "extraction_seconds": 0.096654849126935
+  }
+]
