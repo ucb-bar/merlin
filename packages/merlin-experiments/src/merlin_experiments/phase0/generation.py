@@ -943,9 +943,10 @@ def generate_target(
                     if e.get("op") == "composition_program":
                         from .composition_generation import require_placement, withhold_unplaced
 
-                        # Verified evidence discloses a positive composition the screen cannot place whole
-                        # as planned_not_generated; the member refusals stand and nothing replaces them.
-                        unplaced = withhold_unplaced(actual, observed, Path(w)) if evidence_mode != "diagnostic" else None
+                        # Verified and diagnostic evidence alike disclose a positive composition the screen
+                        # cannot place whole as planned_not_generated; the member refusals stand and nothing
+                        # replaces them.
+                        unplaced = withhold_unplaced(actual, observed, Path(w))
                         if unplaced is not None:
                             composition_unplaced.append(unplaced)
                             print(

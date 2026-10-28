@@ -94,3 +94,39 @@ def test_other_programs_are_untouched(tmp_path):
     capsule = {"operation": {"op": "component_program"}}
     assert unplaced_members(capsule, _screen()) == []
     assert withhold_unplaced(capsule, _screen(), tmp_path) is None
+
+
+def _withhold_unplaced_calls():
+    import ast
+    import inspect
+
+    from merlin_experiments.phase0 import generation
+
+    tree = ast.parse(inspect.getsource(generation.generate_target))
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "withhold_unplaced"]
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    return calls, parents
+
+
+def test_generation_discloses_an_unplaced_composition_in_every_evidence_mode():
+    """Diagnostic generation discloses as verified generation does instead of raising at require_placement."""
+    import ast
+
+    calls, parents = _withhold_unplaced_calls()
+    assert len(calls) == 1
+    node = calls[0]
+    while node in parents:
+        node = parents[node]
+        if isinstance(node, (ast.IfExp, ast.If)):
+            assert "evidence_mode" not in ast.unparse(node.test), ast.unparse(node.test)
+
+
+def test_a_diagnostic_composition_with_a_refused_member_is_disclosed_not_raised(tmp_path):
+    """The generation sequence (withhold_unplaced, then require_placement) never reaches the raise."""
+    written = tmp_path / "capsule"
+    written.mkdir()
+    (written / "capsule.yaml").write_text("name: x\n")
+    screen = _screen(_decision([3], "admitted", "accelerator"), _decision([5], "unsupported", None), _decision([8], "admitted", "accelerator"))
+    record = withhold_unplaced(_capsule(), screen, written)
+    assert record is not None and record["status"] == "planned_not_generated" and record["unplaced_members"] == [5]
+    assert not written.exists()
