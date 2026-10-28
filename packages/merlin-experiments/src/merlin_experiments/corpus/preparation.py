@@ -934,20 +934,54 @@ def assemble(
 DERIVED_RESOURCE_BOUND = "phase0_qualified_models_v1"
 
 
-def derive_resource_bound(corpus: Path) -> dict:
+def _withheld_capstones(manifest: dict, declared, present: set) -> list[dict]:
+    """The declared capstones the generated manifest discloses as withheld, each with its reason.
+
+    ``declared`` is the reviewed opt-in (``grading.resource_bound.allow_withheld_capstones``). A name is
+    accepted only when generation itself recorded it as not published (``placement_generation``) with a
+    non-empty reason AND the staged corpus holds no capsule of that name; anything else raises.
+    """
+    disclosed: dict[str, str] = {}
+    for record in (manifest.get("placement_generation") or {}).values():
+        for row in (record or {}).get("host_placement_not_published") or ():
+            reason = str(row.get("reason") or "").strip()
+            if reason:
+                disclosed.setdefault(str(row.get("capsule")), reason)
+    names = [str(name) for name in declared]
+    if not names or any(not name.strip() for name in names) or len(set(names)) != len(names):
+        raise SpecError("allow_withheld_capstones must name each withheld capstone exactly once")
+    undisclosed = sorted(name for name in names if name not in disclosed)
+    if undisclosed:
+        raise SpecError(
+            "derived resource policy: capstones declared withheld are not disclosed as withheld, with a reason, "
+            f"in the generated manifest: {undisclosed}"
+        )
+    if published := sorted(name for name in names if name in present):
+        raise SpecError(f"derived resource policy: capstones declared withheld are present in the corpus: {published}")
+    return [{"capsule": name, "reason": disclosed[name]} for name in sorted(names)]
+
+
+def derive_resource_bound(corpus: Path, allow_withheld_capstones=()) -> dict:
     """The model resource policy the staged corpus itself states, never a hand-maintained name list.
 
     Every public whole-model capsule Phase 0 GENERATED and ADMITTED is a required capstone: an
     integer model is admitted only with a qualified ``model_qualification`` record, and a model whose
     arithmetic needs no such bound was admitted by being written. Any other public model (a retained,
     hand-authored or unqualified one) is excluded by name. Both lists name only capsules present.
+
+    With no admitted capstone this still raises, unless the reviewed descriptor opt-in
+    ``allow_withheld_capstones`` names every withheld capstone and generation disclosed each (see
+    ``_withheld_capstones``). The record then carries ``capstones_withheld`` and an EMPTY required list,
+    which consumers read as "no capstone grading claimed", never as "all capstones passed".
     """
     from merlin.targetgen import capsule_runner
 
     manifest = read_yaml(corpus / "MANIFEST.yaml")
     generated = {str(member) for member in manifest.get("generated") or ()}
     required, excluded = [], []
+    present = set()
     for cap in capsule_runner.discover_capsules(corpus, labels={"public", "dev"}):
+        present.add(str(cap["name"]))
         if cap.get("kind") != "model":
             continue
         name = str(cap["name"])
@@ -959,12 +993,14 @@ def derive_resource_bound(corpus: Path) -> dict:
         needs_bound = "integer_partial_sum_bound" in cap or qualification
         admitted = relative in generated and (not needs_bound or qualification.get("status") == "qualified")
         (required if admitted else excluded).append(name)
-    if not required:
+    withheld = _withheld_capstones(manifest, allow_withheld_capstones, present) if allow_withheld_capstones else []
+    if not required and not withheld:
         raise SpecError("derived resource policy found no admitted whole-model capstone in the staged corpus")
     return {
         "derive": DERIVED_RESOURCE_BOUND,
         "required_admitted_models": sorted(required),
         "exclude_capsules": sorted(excluded),
+        **({"capstones_withheld": withheld} if withheld else {}),
     }
 
 
@@ -1391,9 +1427,11 @@ def scaffold(
             raise SpecError(f"unknown resource_bound derivation {resource_bound.get('derive')!r}")
         if resource_bound.get("required_admitted_models") or resource_bound.get("exclude_capsules"):
             raise SpecError("a derived resource policy cannot also carry hand-maintained model names")
-        derived_bound = derive_resource_bound(corpus)
+        derived_bound = derive_resource_bound(corpus, resource_bound.get("allow_withheld_capstones") or ())
         document["grading"]["resource_bound"] = {
-            key: value for key, value in {**resource_bound, **derived_bound}.items() if key != "derive" and value != []
+            key: value
+            for key, value in {**resource_bound, **derived_bound}.items()
+            if key not in {"derive", "allow_withheld_capstones"} and value != []
         }
         inputs["resource_bound"] = {"policy": DERIVED_RESOURCE_BOUND, **derived_bound}
     descriptor = experiment / "target_experiment.yaml"

@@ -309,7 +309,9 @@ def phase_completion(
             if admission.get("resource_policy") != "representative_l3_capstones_v1":
                 reasons.append("cohort_admission_resource_policy_invalid")
             required_models = admission.get("required_admitted_models")
-            if not isinstance(required_models, list) or not required_models:
+            if not isinstance(required_models, list) or (
+                not required_models and not CG.capstones_withheld_disclosed(admission)
+            ):
                 reasons.append("cohort_admission_required_models_missing")
         if policy == "descriptor_search_cohort_v1":
             if not isinstance(admission.get("search_policy"), str) or not admission["search_policy"]:

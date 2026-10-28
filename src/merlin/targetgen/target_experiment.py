@@ -604,6 +604,10 @@ class TargetExperiment:
     graded_resource_exclude: tuple[str, ...] = ()
     graded_resource_policy: str | None = None
     graded_required_models: tuple[str, ...] = ()
+    # (capsule, reason) rows: whole-model capstones generation withheld, disclosed by a reviewed opt-in.
+    # With no required models this is the ONLY thing that makes an empty capstone set legitimate, and it
+    # means "no capstone grading claimed" for those models.
+    graded_capstones_withheld: tuple[tuple[str, str], ...] = ()
     # Authored Phase-0 input: the reviewed release resolves capability exclusions and
     # cardinalities from its staged corpus. This input cannot itself be graded.
     graded_release_admission: bool = False
@@ -1203,6 +1207,15 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
     required_models = names(
         resource_bound.get("required_admitted_models"), field="grading.resource_bound.required_admitted_models"
     )
+    withheld_rows = resource_bound.get("capstones_withheld") or []
+    if not isinstance(withheld_rows, list) or any(
+        not isinstance(row, dict)
+        or not str(row.get("capsule") or "").strip()
+        or not str(row.get("reason") or "").strip()
+        for row in withheld_rows
+    ):
+        raise ValueError(f"{p}: grading.resource_bound.capstones_withheld must list {{capsule, reason}} rows")
+    capstones_withheld = tuple((str(row["capsule"]), str(row["reason"])) for row in withheld_rows)
     phase_exclude = names(phase_bound.get("exclude_capsules"), field="grading.phase_bound.exclude_capsules")
     phase2_only = names(phase_bound.get("phase2_only_capsules"), field="grading.phase_bound.phase2_only_capsules")
     outside = sorted(set(phase_exclude) - set(phase2_only))
@@ -1229,8 +1242,15 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
         overlap = sorted(set(a) & set(b))
         if overlap:
             raise ValueError(f"{p}: {a_name} and {b_name} exclusions overlap: {overlap}")
-    if resource_exclude and (not resource_bound.get("policy") or not required_models):
-        raise ValueError(f"{p}: resource exclusions require a named policy and admitted model capstones")
+    if capstones_withheld and not resource_bound.get("policy"):
+        raise ValueError(f"{p}: withheld capstones require a named resource policy")
+    if set(c for c, _ in capstones_withheld) & (set(required_models) | set(split_exclude)):
+        raise ValueError(f"{p}: a withheld capstone is also required or excluded")
+    if resource_exclude and (not resource_bound.get("policy") or not (required_models or capstones_withheld)):
+        raise ValueError(
+            f"{p}: resource exclusions require a named policy and admitted model capstones "
+            "(or a disclosed capstones_withheld set)"
+        )
     phase_number = phase_bound.get("phase")
     phase_budget = phase_bound.get("budget_s")
     if phase_bound:
@@ -1329,6 +1349,7 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
         graded_resource_exclude=resource_exclude,
         graded_resource_policy=(lambda s: str(s) if s else None)(resource_bound.get("policy")),
         graded_required_models=required_models,
+        graded_capstones_withheld=capstones_withheld,
         graded_release_admission=bool(release_admission),
         performance_global_objective=performance_global_objective,
         graded_phase2_only=phase2_only,

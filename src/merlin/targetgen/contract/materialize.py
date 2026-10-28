@@ -160,6 +160,10 @@ def validate_materialized_cohort(root: str | Path, te, *, corpus_roots: list[Pat
         "resource_policy": getattr(te, "graded_resource_policy", None),
         "required_admitted_models": sorted(getattr(te, "graded_required_models", ()) or ()),
     }
+    if withheld_capstones := [
+        {"capsule": c, "reason": r} for c, r in sorted(getattr(te, "graded_capstones_withheld", ()) or ())
+    ]:
+        expected["capstones_withheld"] = withheld_capstones
     if search_include:
         expected["search_policy"] = getattr(te, "graded_cohort_policy", None)
         expected["n_search_excluded"] = len(excluded)
@@ -659,6 +663,9 @@ def materialize_public_cohort(
         "required_admitted_models": sorted(getattr(te, "graded_required_models", ()) or ()),
         "descriptor_sha256": descriptor_sha,
     }
+    if withheld_capstones := sorted(getattr(te, "graded_capstones_withheld", ()) or ()):
+        # Only when disclosed, so a cohort sealed without withheld capstones keeps the record it had.
+        cohort_record["capstones_withheld"] = [{"capsule": c, "reason": r} for c, r in withheld_capstones]
     if search_include:
         cohort_record.update(
             {

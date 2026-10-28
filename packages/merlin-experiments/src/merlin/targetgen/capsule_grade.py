@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 
 from merlin.perf import comparand as _comparand
@@ -47,6 +48,19 @@ from .trace_check import requirements_complete as _trace_requirements_complete
 
 def _name_set_sha256(names) -> str:
     return hashlib.sha256(json.dumps(sorted(str(x) for x in names), separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def capstones_withheld_disclosed(record) -> bool:
+    """True when a cohort record legitimately has no required capstones: every withheld one is named with a reason.
+
+    An empty ``required_admitted_models`` otherwise reads as "all required capstones passed" over nothing.
+    """
+    rows = record.get("capstones_withheld") if isinstance(record, Mapping) else None
+    return (
+        isinstance(rows, list)
+        and bool(rows)
+        and all(isinstance(r, Mapping) and str(r.get("capsule") or "").strip() and str(r.get("reason") or "").strip() for r in rows)
+    )
 
 
 def _materialized_cohort_admission(
@@ -92,7 +106,9 @@ def _materialized_cohort_admission(
         if record.get("resource_policy") != "representative_l3_capstones_v1":
             raise ValueError("materialized cohort has an unapproved resource-exclusion policy")
         required = record.get("required_admitted_models")
-        if not isinstance(required, list) or not required:
+        if not isinstance(required, list):
+            raise ValueError("materialized cohort does not name its required admitted model capstones")
+        if not required and not capstones_withheld_disclosed(record):
             raise ValueError("materialized cohort does not name its required admitted model capstones")
         if not set(str(x) for x in required).issubset(names):
             raise ValueError("materialized cohort is missing a required admitted model capstone")
