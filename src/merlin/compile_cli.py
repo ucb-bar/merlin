@@ -1234,6 +1234,7 @@ def main(argv: list[str] | None = None) -> int:
         return debug.list_stages(a)
     selection = command.pass_selection(ap, a)
     command.validate(ap, a)
+    command.apply_pass_validation(a)
     trace = debug.request_from_args(ap, a, target=a.target, workload=str(a.workload))
     run = a.run or ("none" if a.model_build else "k1" if a.target == "rvv" else "spike")
     try:

@@ -8,10 +8,15 @@ linalg-on-tensors text
 
 from __future__ import annotations
 
+import functools
+import inspect
 import os as _os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from merlin.verify.pass_validation import PassValidation
 
 from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit, audit_mode
@@ -74,7 +79,28 @@ class LowerResult:
     audit_index: Path | None = None
 
 
+def _validated_passes(function):
+    """Run the lowering inside the selected pass validation's guard, from the argument or environment."""
+    signature = inspect.signature(function)
+
+    @functools.wraps(function)
+    def invoke(*args, **kwargs):
+        from merlin.verify import pass_validation as validation_module
+
+        arguments = signature.bind(*args, **kwargs).arguments
+        validation = arguments.get("pass_validation") or validation_module.from_environment(
+            Path(arguments["workdir"]), index_bits=arguments.get("index_bits")
+        )
+        if validation is None:
+            return function(*args, **kwargs)
+        with validation_module.validating(validation):
+            return function(*args, **kwargs)
+
+    return invoke
+
+
 @host_admitted
+@_validated_passes
 def lower_model(
     mlir_text: str,
     workdir: str | Path,
@@ -95,8 +121,14 @@ def lower_model(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    pass_validation: PassValidation | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
+
+    ``pass_validation`` (or ``MERLIN_VALIDATE_PASSES`` with ``MERLIN_LEAN_SDK_BIN``) checks the selected
+    passes against Merlin's Lean proofs beside the lowering: each one's exact before/after IR goes to
+    the validation's speculative gate, lowering continues as if the check passes, and a check that does
+    not accept stops the lowering with its evidence. See :mod:`merlin.verify.pass_validation`.
 
     ``data_layout`` is the target's LLVM data layout, set on the module before translation (see
     :func:`merlin.llvmlower.pipeline.lower_to_llvm_ir`). ``index_bits`` explicitly binds every LLVM
@@ -254,6 +286,7 @@ def lower_model_file(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    pass_validation: PassValidation | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -276,4 +309,5 @@ def lower_model_file(
         masked_contraction_effects=masked_contraction_effects,
         source_observation_effects=source_observation_effects,
         source_scalar_carrier=source_scalar_carrier,
+        pass_validation=pass_validation,
     )

@@ -117,6 +117,13 @@ def parser(
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--json", action="store_true", help="emit the result dict as JSON")
     ap.add_argument(
+        "--validate-passes",
+        metavar="PASSES",
+        help="check these passes against Merlin's Lean proofs beside the compile ('all' or a comma "
+        "list); a failed check stops the compile",
+    )
+    ap.add_argument("--lean-sdk-bin", metavar="DIR", help="Lean SDK bin directory for --validate-passes")
+    ap.add_argument(
         "--list-passes",
         action="store_true",
         help="list the optional lowering passes (stage, exactness, default, effect) and exit",
@@ -216,3 +223,15 @@ def report(a: argparse.Namespace, res: dict) -> int:
             if res.get(k) is not None:
                 print(f"    {k}: {res[k]}")
     return 0 if res.get("status") in ("compiled", "ran", "verified", "verified_complete_output") else 1
+
+
+def apply_pass_validation(a: argparse.Namespace) -> None:
+    """Hand ``--validate-passes`` to every lowering in this process through its environment switch."""
+    import os
+
+    from merlin.verify import pass_validation
+
+    if a.validate_passes:
+        os.environ[pass_validation.ENV_PASSES] = a.validate_passes
+    if a.lean_sdk_bin:
+        os.environ[pass_validation.ENV_SDK_BIN] = a.lean_sdk_bin
