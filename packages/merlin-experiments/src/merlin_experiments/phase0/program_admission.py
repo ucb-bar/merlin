@@ -377,6 +377,11 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
     if "linalg_mlir" in capsule or capsule.get("kind") == "model":
         entries = account_program(program, name=str(capsule.get("name")), target=target, evidence=evidence)
         scope = "written source program: per-operation admission, as for a captured application"
+        if (capsule.get("operation") or {}).get("op") == "composition_program":
+            # A chain member proven to be its contraction's epilogue is judged as that fused stage.
+            from .source_fused_stages import observe as observe_fused_stages
+
+            entries = observe_fused_stages(program, entries, evidence=evidence)
         numeric_screens = []
     else:
         numeric_screens = _operand_sum_numeric_screens(program, evidence)
