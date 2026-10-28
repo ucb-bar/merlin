@@ -59,15 +59,36 @@ def replay_one(
     return evidence, attestation, selected
 
 
-def _task(replay, selection_path: Path, selected_sha256: str, model_path: Path):
+def _task(replay, *job):
     try:
-        return replay(selection_path, selected_sha256, model_path)
+        return replay(*job)
     except Exception as exc:  # noqa: BLE001 -- re-raised in the caller, never handled here
         try:
             pickle.loads(pickle.dumps(exc))
         except Exception:  # noqa: BLE001 -- an unportable error is reproduced by the caller instead
             return _Rerun()
         raise
+
+
+def _unpatched() -> bool:
+    """True while the replay entry points are their own source definitions.
+
+    A worker imports its own copy of them, so a caller that rebound one in this process (a test double,
+    an instrumented run) would silently be bypassed; such a caller keeps the in-process path.
+    """
+    from . import attested_evidence, capture_execution_attestation, capture_selection
+
+    return all(
+        getattr(function, "__code__", None) is not None
+        and Path(function.__code__.co_filename).resolve() == Path(module.__file__).resolve()
+        for module, function in (
+            (capture_selection, capture_selection.verify),
+            (capture_selection, capture_selection.load),
+            (capture_selection, capture_selection.bound_selection),
+            (capture_execution_attestation, capture_execution_attestation.attest_sealed_m2m),
+            (attested_evidence, attested_evidence.attested_one),
+        )
+    )
 
 
 def worker_count(jobs: int) -> int:
@@ -91,7 +112,7 @@ class Replays:
         self._futures: list[Any] = []
         self._pool: ProcessPoolExecutor | None = None
         size = worker_count(len(self._jobs))
-        if size > 1:
+        if size > 1 and (replay is not replay_one or _unpatched()):
             try:
                 self._pool = ProcessPoolExecutor(max_workers=size, mp_context=multiprocessing.get_context("spawn"))
                 self._futures = [self._pool.submit(_task, replay, *job) for job in self._jobs]

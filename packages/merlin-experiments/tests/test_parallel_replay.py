@@ -10,7 +10,7 @@ from merlin_experiments.phase0 import parallel_replay
 from merlin_experiments.phase0.parallel_replay import WORKERS_ENV, Replays
 
 
-def echo(selection_path, selected_sha256, model_path):
+def echo(selection_path, selected_sha256, model_path, *attestation):
     # Later labels finish first, so any completion-order consumption would be visible.
     time.sleep(0.4 if str(selection_path).endswith("0") else 0.0)
     return {"label": Path(selection_path).name}, {"pid": os.getpid()}, {"sha": selected_sha256}
@@ -47,6 +47,13 @@ def test_results_follow_declared_order(monkeypatch, workers):
     assert [row[2]["sha"] for row in got] == [f"{index:064d}" for index in range(6)]
     if workers == "4":
         assert {row[1]["pid"] for row in got} != {os.getpid()}
+
+
+def test_jobs_with_an_attestation_reach_pool_workers_whole(monkeypatch):
+    monkeypatch.setenv(WORKERS_ENV, "2")
+    attested = [(*job, Path("att.json"), "f" * 64) for job in jobs(3)]
+    with Replays(attested, replay=echo) as replays:
+        assert [replays[index][0]["label"] for index in range(3)] == ["0", "1", "2"]
 
 
 @pytest.mark.parametrize("workers", ["0", "4"])
