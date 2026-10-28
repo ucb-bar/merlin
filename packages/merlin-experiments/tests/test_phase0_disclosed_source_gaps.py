@@ -93,3 +93,60 @@ def test_generation_records_the_gap_and_skips_the_member_on_both_paths():
             and n.value.id == "source_gaps" for s in site.body for n in ast.walk(s)
         )
     assert "disclosed_source_gaps" in inspect.getsource(generation.generate_target)
+
+
+def _qualified_model(root, groups, name="SY_source_x"):
+    import yaml
+
+    for group in groups:
+        directory = root / "layers" / group
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "capsule.yaml").write_text(f"name: {group}\n")
+    directory = root / "model" / name
+    directory.mkdir(parents=True)
+    rows = [{"capsule": f"layers/{group}"} for group in groups]
+    (directory / "capsule.yaml").write_text(yaml.safe_dump({"name": name, "model_qualification": {"group_capsules": rows}}))
+    return directory
+
+
+UNSUPPORTED = {"status": "unsupported", "reason": "host op: x"}
+
+
+def test_a_qualified_source_model_the_host_lane_refuses_takes_its_qualifying_groups_with_it(tmp_path):
+    root = tmp_path / "capsules"
+    directory = _qualified_model(root, ["G_a", "G_b"])
+    row = withhold_source_gap(SOURCE, directory, observed=UNSUPPORTED, out_root=root, written=[])
+    assert row["kind"] == "host_lane_admission"
+    assert row["qualifying_groups_withheld"] == ["layers/G_a", "layers/G_b"]
+    assert not list(root.glob("*/*/capsule.yaml"))
+
+
+def test_a_qualifying_group_a_published_or_pending_member_names_is_kept(tmp_path):
+    root = tmp_path / "capsules"
+    directory = _qualified_model(root, ["G_shared", "G_pending", "G_only"])
+    pending = _qualified_model(root, ["G_pending"], name="SY_source_later")
+    row = withhold_source_gap(
+        SOURCE, directory, observed=UNSUPPORTED, out_root=root, written=[root / "layers" / "G_shared"]
+    )
+    assert row["qualifying_groups_withheld"] == ["layers/G_only"]
+    assert (root / "layers" / "G_shared").is_dir() and (root / "layers" / "G_pending").is_dir() and pending.is_dir()
+    assert not directory.exists() and not (root / "layers" / "G_only").exists()
+
+
+def test_a_fatal_admission_keeps_the_model_and_its_groups(tmp_path):
+    root = tmp_path / "capsules"
+    directory = _qualified_model(root, ["G_a"])
+    for kw in ({"observed": {"status": "refused", "reason": "x"}}, {"observed": UNSUPPORTED, "must_refuse": True}):
+        assert withhold_source_gap(SOURCE, directory, out_root=root, written=[], **kw) is None
+    assert directory.is_dir() and (root / "layers" / "G_a").is_dir()
+
+
+def test_the_admission_call_site_passes_the_output_root_and_published_members():
+    tree = ast.parse(inspect.getsource(generation.generate_target))
+    calls = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "withhold_source_gap"
+        and any(k.arg == "observed" for k in node.keywords)
+    ]
+    assert len(calls) == 1
+    assert {k.arg for k in calls[0].keywords} >= {"out_root", "written"}

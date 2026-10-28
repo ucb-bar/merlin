@@ -1024,7 +1024,9 @@ def generate_target(
                             host_placed.append(withheld)
                             print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}", flush=True)
                             continue
-                        gap = withhold_source_gap(e, Path(w), observed=observed, must_refuse=must_refuse)
+                        gap = withhold_source_gap(
+                            e, Path(w), observed=observed, must_refuse=must_refuse, out_root=out_root, written=written
+                        )
                         if gap is not None:
                             source_gaps.append(gap)
                             print(f"  [source-gap] {e.get('name')}: NOT PUBLISHED — {gap['reason']}", flush=True)
@@ -1589,6 +1591,13 @@ def withhold_unadmitted_member(
     record = withhold_unadmitted_micro_model(entry, observed, must_refuse=must_refuse)
     if record is None:
         return None
+    return _withhold_with_qualifying_groups(record, directory, out_root=out_root, written=written)
+
+
+def _withhold_with_qualifying_groups(
+    record: dict, directory: Path, *, out_root: Path | None, written: Iterable[Path], missing_ok: bool = False
+) -> dict:
+    """Remove a withheld member and the qualifying group capsules only it names; record the groups removed."""
     groups: list[Path] = []
     if out_root is not None:
         try:
@@ -1597,7 +1606,7 @@ def withhold_unadmitted_member(
             groups = []  # a group that is absent leaves nothing on disk to remove
         shared = {Path(path) for path in written} | _groups_named_by_others(out_root, directory)
         groups = [group for group in groups if group not in shared]
-    shutil.rmtree(directory)
+    shutil.rmtree(directory, ignore_errors=missing_ok)
     for group in groups:
         shutil.rmtree(group)
     if groups:
@@ -1663,12 +1672,20 @@ def disclosed_source_gap(
     }
 
 
-def withhold_source_gap(entry: dict, directory: Path, **evidence) -> dict | None:
-    """Record a disclosed source gap and remove whatever was written for it, so no glob or commitment sees it."""
+def withhold_source_gap(
+    entry: dict, directory: Path, *, out_root: Path | None = None, written: Iterable[Path] = (), **evidence
+) -> dict | None:
+    """Record a disclosed source gap and remove whatever was written for it, so no glob or commitment sees it.
+
+    A qualified model capsule that the host lane then cannot admit names the group capsules that qualified
+    it; the call site skips the loop that screens and commits them, so they leave with it exactly as a
+    withheld micro-model's do (``withhold_unadmitted_member``): a group a published member or another capsule
+    still under ``out_root`` names is kept, and the removed ones are recorded as ``qualifying_groups_withheld``.
+    """
     record = disclosed_source_gap(entry, **evidence)
-    if record is not None:
-        shutil.rmtree(directory, ignore_errors=True)
-    return record
+    if record is None:
+        return None
+    return _withhold_with_qualifying_groups(record, directory, out_root=out_root, written=written, missing_ok=True)
 
 
 def withhold_unaccelerated(name: str, observed: dict, directory: Path, *, capsule: dict | None = None) -> dict | None:
