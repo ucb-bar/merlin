@@ -4,11 +4,13 @@ The [simplified preparation release](../../../../out/artifacts/handoff/gemmini-s
 TVM **619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a**, the portable source bundle/patch,
 71-case diagnostic Spike ELFs/results and a fresh 36-chunk task index. Use this
 repository's median-watchdog runner (implementation commit dd079d3a0).
-For the new tuning settings use TVM `3d5e9c353ec39930e235e482b1fff678754dfc2c`
+For the new tuning settings use TVM `64bed0cb9c876b89707e69584909abe5e13b0384`
 on `gemmini/direct-intrinsics` plus the current Merlin runner. The frozen release
-above predates the cost-model changes; its ELFs/results remain historical.
+above predates ReplayTrace and the reuse defaults; its ELFs/results remain historical.
 The [cost-model re-audit](OPTIMIZATION_KNOBS.md#campaign-re-audit-2026-10-27)
-links the new source patches and test evidence.
+links the new source patches and test evidence. Fetch the exact TVM pin from
+`git@github.com:grammy117/tvm.git` on branch `gemmini/direct-intrinsics`;
+rebuild changed schedules instead of relabeling frozen ELFs.
 This is ready for remote build/qualification work, **not a completed FireSim or
 full-model qualification**. Remote cancellation, selected hardware facts and
 per-program spec admission remain required before paid model execution.
@@ -32,21 +34,37 @@ are not permission to launch those models in this campaign. Candidate median
 watchdogs are separate. Finish active jobs under their frozen watchdogs and
 report overrun; do not renew the spent budget on continuation.
 
-Requested tuning is **50 warmup candidate trials + 5 guided trials per workload**,
-or earlier verified space exhaustion. Use stock MetaSchedule/XGB with warmup=50,
-single-trial batches and epsilon-greedy exploration=0 for the guided phase.
-The prior compact profile's four-sample warmup is superseded. Three baseline
-wall timings and repeated timing samples do not count as 50 candidate schedules.
-The driver records feature-bearing sample count and learned-ranking availability;
-errors can count under stock XGB semantics. Report actual valid unique samples and
-guided trials, not just the requested total. Five additional attempts are not five
-successful guided measurements if builds/runs fail or training never becomes ready.
+Use **stock MetaSchedule ReplayTrace, up to 25 candidate trials total per
+kernel case or ResNet chunk**, shared across its internal tasks and graph options.
+There is no ML warmup, guided phase, XGBoost import/training or learned ranking.
+The 25 are sampled schedule proposals, not 25 different mathematical fixtures.
+Repeated timings and the three baseline watchdog calibrations are separate and
+consume the same occupied-slot allowance. Do not multiply the trial budget by
+head count or internal task count. Duplicate/failed proposals count against the
+cap; report actual unique successful candidates. Stop at the cap, wall budget,
+or an explicit search stop; stochastic failure is not proof of space exhaustion.
 
-Per-workload versus per-owner grouping, and whether the 4h cap truncates the
-50+5 targets, are awaiting the user's clarification. The kernel aggregate wall
-budget is not yet set. Do not infer extra paid time from the candidate-count goal.
-Current runner costs cover extracted contractions; the grouped kernel cases need
-complete-call measurement/build support before their results can use that label.
+Start from a deterministic shape-derived baseline: largest exact legal tile
+(up to 16), bounded M/N operand-reuse groups and K batching. Prefer less logical
+operand traffic, then larger legal groups; validate the actual aligned physical
+allocation. Try at most eight ranked choices and a one-group fallback. Preserve
+explicit user schedule settings. This is a heuristic, not a cycle predictor or a
+claimed optimum; pipeline/hoisting/dataflow alternatives remain search choices.
+Keep the baseline in the database and choose only correct measured winners.
+
+ResNet retains **4h total DSE and 30min per E2E run**; the time cap wins even
+if some chunks have fewer than 25 trials. For the 16-case **TVM** kernel sweep,
+use a conservative **24 occupied-slot-hour aggregate ceiling**, excluding CPU
+preparation. This is an authorized planning estimate, not measured runtime:
+400 proposals at an illustrative 3 minutes occupy 20h, plus 48 baseline jobs
+at 3 minutes occupy 2.4h, leaving 1.6h for confirmations. Actual calibration and
+profile counts may differ; the same cap still wins. This is not 24h per case,
+not 24h for every compiler, and concurrency must not multiply the allowance.
+Close admissions at budget; finish active jobs under their frozen median
+watchdogs and report overrun. Preserve actual cycle labels and failures.
+
+Current runner measurements are extracted contractions. Complete kernel-case
+builders/measurements remain required for the grouped-call benchmark contract.
 
 For reporting, disclose that ResNet received deeper model optimization effort;
 full-model TinyLlama/SmolVLA were deferred as too expensive. Do not imply equal
@@ -92,7 +110,7 @@ illustration; allocate no fixed paper-sized trial count in advance.
   Full-model TinyLlama/SmolVLA are backlogged.
   Automatic prepacking and bias folding are removed. Published packed/bias
   plans describe historical artifacts and must not be silently replayed.
-- Use stock MetaSchedule **EvolutionarySearch + XGB**, warmup=50, existing TensorIR schedules
+- Use stock MetaSchedule **ReplayTrace**, without a learned cost model, existing TensorIR schedules
   and registered TensorIntrins. Share records through exact structural equality.
 - Remote candidate validation uses FireSim guest checks. **No sequential Spike
   preflight** is added before candidates or long sessions. Preserve independent
@@ -273,7 +291,8 @@ commands, not newly built ELFs.
 1. Establish three correct baseline executions for each selected distinct task
    as budget permits, calibrating its wall watchdog and median cycle baseline. Rotate owners across chunks; prioritize measured connected cost,
    not guessed FLOP cost. Record any uncovered tasks if time runs out.
-2. Run stock EvolutionarySearch/XGB over the existing schedules. Then explore
+2. Run stock ReplayTrace over the existing schedules, capped at 25 total
+   proposals per chunk/case. Explore
    deduplicated graph alternatives within the same budget, with new task extraction.
    No hard per-chunk minute split is assumed. One ledger per model covers all
    chunks, graph plans and candidate validation/measurement occupancy.

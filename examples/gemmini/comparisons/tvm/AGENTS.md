@@ -11,9 +11,11 @@ The active next campaign is ResNet50 plus the 16 cases in
 KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md. Full-model TinyLlama and
 SmolVLA are backlogged; isolated T01–T07 kernels remain active. ResNet DSE has a
 4h allowance and each final E2E run has a 30min upper timeout. The requested
-candidate plan is 50 warmup trials plus 5 guided trials per workload, or earlier
-verified space exhaustion; see the handoff for pending grouping/budget decisions.
-Use XGB warmup=50, batch=1 and report actual learned-ranking availability and errors.
+candidate plan is up to 25 total ReplayTrace proposals per kernel case/chunk,
+shared across internal tasks and graph options. No ML warmup or guided phase.
+Use the capacity-checked shape/reuse default before sampling; keep its measured
+fallback. ResNet's 4h cap wins; the 16-case TVM kernel sweep has a conservative
+24 occupied-slot-hour ceiling. Stop admissions and finish active jobs safely.
 Keep old payloads as historical evidence. Automatic prepacking/bias folding stay
 removed; stock fusion/CSE and TensorIR schedules remain. Report unequal model
 optimization effort; do not present deferred models as equally tuned.

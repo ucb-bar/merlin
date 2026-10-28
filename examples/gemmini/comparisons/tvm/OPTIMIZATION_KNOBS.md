@@ -1,7 +1,7 @@
 # Simplified TVM path: implementation and measurement review
 
-**Current preparation release:** [source, checks and restore instructions](../../../../out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/README.md).
-TVM pin: `619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a`. All 71 unchanged operator
+**Historical ELF preparation release:** [source, checks and restore instructions](../../../../out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/README.md).
+Release TVM pin: `619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a`. All 71 unchanged operator
 fixtures pass diagnostic Spike with wrong-oracle rejection; fresh extraction
 retains 47 contractions/26 owners over 36 chunks. This supersedes local-only
 status in historical checkpoints below. Remote/full-model qualification and
@@ -17,82 +17,86 @@ fix. Its source and local checks are packaged above; it is not hardware-qualifie
 
 ## Campaign re-audit: 2026-10-27
 
-[Source-bound test evidence](../../../../out/artifacts/verification/gemmini-tvm-cost-model/v1/verification_gemmini-tvm-cost-model_v1_20261028T034616Z_3d0d7d2/README.md):
-71 runner/session tests and five search tests pass; the final-source warmup
-smoke also passes. The structure gate retains nine unchanged module-size failures.
-Current TVM source is `3d5e9c353ec39930e235e482b1fff678754dfc2c`; the compiler
-mapping evidence at `619c7c202` is preserved, not relabeled as a new execution.
+Current TVM source: `64bed0cb9c876b89707e69584909abe5e13b0384`.
+[ReplayTrace/default verification](../../../../out/artifacts/verification/gemmini-replay-defaults/v1/verification_gemmini-replay-defaults_v1_20261028T040938Z_9794880/README.md)
+contains portable source patches, checksums and compressed logs: 53 schedule/graph
+tests plus 21 subtests, 36 wrapper/publication tests, 3 inventory/replay tests plus
+51 operator subtests, and 57 FireSim control tests pass. Nine inherited module-size
+checks still fail in unrelated files; these are not execution failures.
 
-The latest campaign is ResNet plus the 16 separately specified kernels; full
-TinyLlama/SmolVLA are backlogged. ResNet caps: 4h DSE, 30min per E2E run.
-Requested search: 50 warmup + 5 guided candidate trials per workload, stopping
-for verified space exhaustion; exact grouping and wall-budget precedence are
-pending clarification in the handoff. Earlier few-run/default-transfer proposals
-are superseded for active workloads. Frozen release manifests stay unchanged.
+Use **stock MetaSchedule ReplayTrace, up to 25 candidate trials total per
+kernel case or ResNet chunk**, shared across its internal tasks and graph options.
+There is no ML warmup, guided phase, XGBoost import/training or learned ranking.
+The 25 are sampled schedule proposals, not 25 different mathematical fixtures.
+Repeated timings and the three baseline watchdog calibrations are separate and
+consume the same occupied-slot allowance. Do not multiply the trial budget by
+head count or internal task count. Duplicate/failed proposals count against the
+cap; report actual unique successful candidates. Stop at the cap, wall budget,
+or an explicit search stop; stochastic failure is not proof of space exhaustion.
 
-### Cost model and measurement
+Start from a deterministic shape-derived baseline: largest exact legal tile
+(up to 16), bounded M/N operand-reuse groups and K batching. Prefer less logical
+operand traffic, then larger legal groups; validate the actual aligned physical
+allocation. Try at most eight ranked choices and a one-group fallback. Preserve
+explicit user schedule settings. This is a heuristic, not a cycle predictor or a
+claimed optimum; pipeline/hoisting/dataflow alternatives remain search choices.
+Keep the baseline in the database and choose only correct measured winners.
 
-- Stock TVM v0.19 `XGBModel` defaults to 100 warmup samples. Our generic backend
-  previously defaulted to four. The FireSim entrypoint now explicitly passes
-  **50**, uses **batch=1**, sets **epsilon-greedy=0**, and caps each task at **55**
-  proposals. The explicit CLI/study settings and continuation ledger bind these
-  decisions. A multi-task invocation still shares one XGB instance; it does not
-  provide an independent 50-sample warmup to each task without splitting campaigns.
-- Warmup controls prediction, not the start of training: stock XGB may train
-  from its first eligible sample but returns random predictions until its
-  feature-bearing sample count reaches 50 and a booster exists. Runner-error
-  samples can count. Baseline watchdog calibration happens outside this search;
-  its three timings are inserted into the database afterward and do not count
-  toward XGB warmup. Saved records alone do not transfer an XGB model.
-- Every trial now records `training_samples_before_update` and
-  `learned_ranking_available` before the current label updates the model. This
-  distinguishes pre-threshold attempts from subsequent model-enabled selection.
-  Count valid unique timings and failures separately. If fewer than 50 eligible
-  samples arrive, do not claim five guided trials or convergence.
-- The optimization label is **completed warm target cycles**, converted to
-  seconds using the target counter frequency only at the TVM Runner boundary.
-  This positive constant scaling preserves ordering/normalized XGB scores.
-  Occupied wall duration controls watchdog/budget only; it is not a speed label.
-  Completed slower runs are retained; timeout thresholds never become cycle data.
-- The baseline test environment lacked `xgboost`. An isolated CPU-only
-  `xgboost-cpu==2.1.4` install passed a real stock-MetaSchedule smoke test with a
-  reduced 3+2 threshold, batch1, epsilon0 and per-task cap5: logged model state
-  was false/false/false/true/true. Diagnostic constant labels validate plumbing,
-  **not prediction accuracy or hardware speed**. Remote preparation must install
-  and smoke-test XGBoost before allocating FireSim time. No native TVM rebuild
-  is needed for these Python scheduling/telemetry changes.
+ResNet retains **4h total DSE and 30min per E2E run**; the time cap wins even
+if some chunks have fewer than 25 trials. For the 16-case **TVM** kernel sweep,
+use a conservative **24 occupied-slot-hour aggregate ceiling**, excluding CPU
+preparation. This is an authorized planning estimate, not measured runtime:
+400 proposals at an illustrative 3 minutes occupy 20h, plus 48 baseline jobs
+at 3 minutes occupy 2.4h, leaving 1.6h for confirmations. Actual calibration and
+profile counts may differ; the same cap still wins. This is not 24h per case,
+not 24h for every compiler, and concurrency must not multiply the allowance.
+Close admissions at budget; finish active jobs under their frozen median
+watchdogs and report overrun. Preserve actual cycle labels and failures.
 
-### Stack and readiness findings
+### Stack findings and limits
 
-| Layer | Verified state | Remaining requirement |
-| --- | --- | --- |
-| Op mapping | Ordinary math TensorIR, trace scheduling and registered TensorIntrins; automatic bias/packing/scale/normalization and DMA peepholes remain removed. Full-range i32 adds stay host. | Exact software-spec proof/selected hardware admission is separate from pattern recognition. No automatic all-obligations gate exists. |
-| Memory | SRAM allocation/capacity, DMA hazards and completion are required lowering; tile/reuse/staging decisions are traced. | Capability defaults bind an older source profile; selected deployed hardware facts must be checked. No general cross-function SRAM residency. |
-| Cost model | Stock EvolutionarySearch/XGB; mathematical loop/store features; explicit 50 warmup and measured cycle units. | No demonstrated hardware ranking quality. Five guided attempts are a small follow-up, not evidence of convergence. |
-| Coverage | Prior 71-case diagnostic Spike controls and 36-chunk/47-task extraction remain source-bound evidence. | They do not construct the new 16 nibble-input cases or validate complete grouped calls. |
-| Grouped kernel timing | Current remote driver measures individual extracted contractions. | T01/T02 need all32 heads, T04/T06 need all outputs within one complete-call interval. A single task's cycles cannot replace that interval. |
-| Runtime/qualification | Median watchdog, slot locks/quarantine and positive/wrong-oracle contract exist; local runner/session tests pass. | Actual remote cancellation and fixed-warm qualification remain mandatory. Kernel cache profiles must not be mislabeled as the model warm-repeat profile. |
-| Whole model | ResNet has frozen chunks and build/session interfaces. | Rebuild/confirm the connected model with current sources; the 30min timeout is an upper bound, not a measured runtime. |
-| Environment | Local op-audit env.sh still points PYTHONPATH at the older tvm-device-op-audit tree; this re-audit explicitly overrides it with tvm-gemmini-simple. | Verify imported tvm.__file__, native-library hash and app source pin together before a remote build; --tvm-source alone selects app scripts, not the imported Python package. |
-| Delivery | Previous release is tracked and checksum-restorable. | New settings/source revisions require fresh measurement identities; never relabel old ELFs, costs or model results. |
+- Ordinary mathematical TensorIR and registered TensorIntrins remain the device
+  interface. Automatic bias folding/prepacking/scale specialization, readout
+  normalization and DMA-merging peepholes remain removed. Required SRAM allocation,
+  capacity, host-DMA hazards and completion remain. No new graph-rewrite pass.
+- ReplayTrace resamples decisions from existing legal traced schedule spaces.
+  The shared tuner uses round-robin task allocation and no feature extraction or
+  cost-model update callback in replay mode. TVM's API receives an unused stock
+  RandomModel placeholder; ReplayTrace does not consult it. The evolutionary/XGB
+  route remains an explicit legacy option outside this FireSim campaign.
+- Raw completed target cycles remain evidence; the runner converts to seconds
+  using the documented counter frequency for ordinary JSONDatabase records.
+  Wall duration controls watchdogs/occupancy only. Best selection uses successful
+  actual measurements; complete slow results remain valid and timeouts are errors.
+- Prior 71-case Spike evidence does not qualify changed default schedules or the
+  new 16 kernel inputs. Exact per-program software-spec and selected-hardware
+  admission remain separate from matcher recognition. Capability defaults bind
+  an older source profile; do not infer deployment equivalence.
+- Current driver measures extracted contractions, not grouped complete calls.
+  Kernel T01/T02 require all 32 heads and T04/T06 all outputs in one timed call.
+  New complete-case fixtures/builders and remote correctness/cancellation
+  qualification remain outstanding; no FireSim cycle result is claimed.
+- The local env.sh points at the older tvm-device-op-audit Python tree. Explicitly
+  select the current TVM Python path and native-library identity alongside app
+  scripts before remote building. --tvm-source alone does not select Python imports.
 
-### Paper methods text (planned configuration, not results)
+### Paper methods text
 
-"TVM used stock MetaSchedule EvolutionarySearch with XGBoost and mathematical
-TensorIR features. We configured 50 warmup samples, followed by a target of five
-model-guided candidate evaluations per workload, using single-candidate batches
-and no epsilon-greedy exploration after warmup. Search cost was measured completed-
-call target cycles, represented as seconds using the target counter frequency.
-We recorded actual eligible training samples, successful unique measurements,
-failed attempts and stop reasons; requested budgets do not imply all guided
-trials completed or the search converged. Three baseline wall-time calibrations
-were separate from the cost-model warmup. Full-model TinyLlama and SmolVLA were
-deferred because broader model tuning was considered too expensive; their
-isolated kernel measurements are not full-model inference results."
+"TVM used stock MetaSchedule ReplayTrace to sample up to 25 candidate schedules
+per kernel case or ResNet chunk, shared across internal tasks and graph settings.
+We used a deterministic shape/capacity-based baseline favoring large legal tiles
+and operand reuse, and selected the fastest numerically correct measured result.
+No learned cost model, ML warmup or guided phase was used. We recorded unique
+successful trials, duplicates, failures, actual slot occupancy and stop reasons.
+The optimization label was completed target cycles, converted to seconds at the
+TVM Runner boundary. Baseline watchdog calibration and timing repetitions were
+separate from candidate count. Full TinyLlama/SmolVLA inference was backlogged;
+its isolated kernels do not represent full-model results."
 
-Before publication, fill in the resolved workload grouping, actual counts,
-stop reasons, hardware/cache profile and wall budgets. No paper/manuscript source
-was supplied; this is the versioned methods text for that later insertion.
+Fill actual counts, hardware/cache scope and stop reasons before publication.
+The earlier XGB experiment and tests remain immutable evidence at
+[the prior audit revision](https://github.com/ucb-bar/merlin/blob/f0b2d0681/examples/gemmini/comparisons/tvm/OPTIMIZATION_KNOBS.md);
+they no longer describe the active tuning method.
 
 ## Current implementation work
 
@@ -120,7 +124,7 @@ was supplied; this is the versioned methods text for that later insertion.
   packages and remeasure; do not reuse old costs or assume matching traces.
   Frozen input/reference payloads and receipts remain unchanged.
 
-## Scheduling and cost-model audit
+## Historical scheduling and cost-model audit (superseded by ReplayTrace above)
 
 Audited the active TVM `gemmini_search.py`, `gemmini_meta_schedule.py`,
 `gemmini_sketch.py`, `gemmini_tensorir.py`, `apps/gemmini/tune_models.py`, and
@@ -213,7 +217,7 @@ No complete-model rerun, FireSim measurement or publication is claimed by this
 checkpoint. The later simplified task index regenerates the roster separately;
 see FIRESIM_HANDOFF.md for exact counts and identity changes.
 
-## What the papers establish
+## Research context (not the current search policy)
 
 [Ansor, OSDI 2020, sections 7.1–7.3](https://www.usenix.org/system/files/osdi20-zheng.pdf)
 uses up to 1,000 measured candidate programs per operator/subgraph test and

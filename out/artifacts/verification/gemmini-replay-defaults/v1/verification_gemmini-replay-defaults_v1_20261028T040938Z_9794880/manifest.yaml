@@ -1,0 +1,23 @@
+artifacts:
+- README.md
+- default-shapes.json
+- logs/replay-inventory-tests.log.gz
+- logs/replay-runner-final.log.gz
+- logs/replay-structure.log.gz
+- logs/replay-wrapper-tests.log.gz
+- logs/reuse-integration-final.log.gz
+- merlin-runner.patch.gz
+- summary.json
+- tvm.patch.gz
+git_sha: '9794880'
+notes: Local ReplayTrace and capacity/reuse checks. No new Spike or FireSim qualification.
+run_id: verification_gemmini-replay-defaults_v1_20261028T040938Z_9794880
+sources:
+- commit: 64bed0cb9c876b89707e69584909abe5e13b0384
+  repository: grammy117/tvm
+- commit: 9794880b465a8fa456bd0949914187ea192a45e3
+  repository: ucb-bar/merlin
+target: gemmini-replay-defaults
+timestamp: 20261028T040938Z
+topic: verification
+version: 1
