@@ -3484,6 +3484,33 @@ operations:
         arith.extsi then linalg.yield over all-parallel iterators. Exhaustive 256-code
         equality is a property of sign extension; it has not been run on the selected
         host package.
+- id: host_i32_int_mm_seed_overflow_guard_rank1
+  status: unreviewed
+  ops:
+  - m2m_q.int_mm_seeded.default
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - i32
+    - i32
+    ordered_result_dtypes:
+    - i32
+    ranks:
+    - 1
+  source_body:
+    schema: merlin.static_i32_seed_overflow_guard_source_body.v1
+    operation: int32_seed_interval_assert
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      guard: a rank-1 i32 seed is read element by element and returned unchanged after cf.assert(lo <= seed <= hi) in i64
+      interval: lo = -2^31 + K*16384 and hi = 2^31 - 1 - K*16384 for the reduction extent K of the seeded contraction the guarded seed initializes; the source_body proof binds both constants to that K through the linalg.broadcast and the contraction
+      assertion_message: seeded contraction may overflow its int32 accumulator
+      effect: the value is unchanged; the only effect is the assertion, so a seed inside the interval cannot overflow the i32 accumulator of an i8 x i8 contraction over K
+    evidence:
+      reviewed_by: "PROPOSED, NOT REVIEWED (int-mm-seeded-apps 2026-10-28): the rank-1 i32 overflow guard that model2MLIR emits before every m2m_q.int_mm_seeded contraction (extsi i32 to i64, two i64 interval bounds, two cmpi, andi, cf.assert, yield). Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here. Open obligations: how the selected host lowering emits a cf.assert inside a linalg.generic body is not proved, and no Spike or host execution of the guard (in-range pass, out-of-range trap) is recorded."
+      basis: the digest-free structural proof in linalg_seed_guard_source_body (exact eight-operation body, one interval whose half-width is K*16384 for the consuming contraction's K, single use through the broadcast); no numerical or execution evidence has been collected for this row.
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:

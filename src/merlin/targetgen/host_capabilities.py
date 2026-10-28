@@ -27,6 +27,9 @@ from merlin.frontends.connected_index_source_body import SCHEMA as CONNECTED_IND
 from merlin.frontends.linalg_row_moments_source_body import SCHEMA as ROW_MOMENTS_SCHEMA
 from merlin.frontends.linalg_row_moments_source_body import screen as screen_row_moments
 from merlin.frontends.linalg_row_moments_source_body import validate_row as validate_row_moments_row
+from merlin.frontends.linalg_seed_guard_source_body import SCHEMA as SEED_GUARD_SCHEMA
+from merlin.frontends.linalg_seed_guard_source_body import screen as screen_seed_guard
+from merlin.frontends.linalg_seed_guard_source_body import validate_row as validate_seed_guard_row
 from merlin.frontends.connected_index_source_body import screen as screen_connected_index
 from merlin.frontends.linalg_embedding_gather import (
     SCHEMA as EMBEDDING_GATHER_SCHEMA,
@@ -210,6 +213,8 @@ def validate_host_capabilities(
                     raise ValueError("bounded control needs one exact scalar ABI and placement-only declaration")
             elif isinstance(body, dict) and body.get("schema") == ROW_MOMENTS_SCHEMA:
                 validate_row_moments_row(row)
+            elif isinstance(body, dict) and body.get("schema") == SEED_GUARD_SCHEMA:
+                validate_seed_guard_row(row)
             elif isinstance(body, dict) and body.get("schema") == STATIC_BOOLEAN_SOURCE_BODY_SCHEMA:
                 validate_static_boolean_source_body(body)
             elif isinstance(body, dict) and body.get("schema") == DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA:
@@ -502,6 +507,9 @@ def _screen_source_body(
 
     if declaration["source_body"]["schema"] == ROW_MOMENTS_SCHEMA:
         return screen_row_moments(declaration, row, signature, source_operations, source_context)
+
+    if declaration["source_body"]["schema"] == SEED_GUARD_SCHEMA:
+        return screen_seed_guard(declaration, row, signature, source_operations, source_context)
 
     from merlin.common import mlir_query as mq
     from merlin.frontends.bucketize_source import (
