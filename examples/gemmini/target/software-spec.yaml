@@ -116,16 +116,17 @@ numerical_semantics:
   # A whole [M, N] i32 tensor as a contraction's accumulator seed: the bias of `A @ B + S` loaded once,
   # unscaled, at full width into the accumulator, which the contraction then adds onto (i32 wraps in the
   # source and in AccumulatorMem alike, so the seeded contraction equals `A @ B + S` for every S). A
-  # per-column bias is the row-repeating special case. PROPOSED for operator review: not named in the
-  # 2026-10-28 sign-off, so Phase 0 observes no full-tensor seed until this is reviewed.
+  # per-column bias is the row-repeating special case. Operator reviewed under the 2026-10-28 sign-off
+  # addendum (reviewed_by below).
   accumulator_seed_tensor:
-    status: unreviewed
+    status: reviewed
     forms: [full_tensor]
     sources: [constant, runtime_input]
     seed_load: unscaled_full_i32_shrink0_once
     accumulation: wrapping_i32
     evidence:
-      review_status: unreviewed
+      review_status: reviewed
+      reviewed_by: "Loren Hung, operator sign-off addendum /scratch/loren/OPERATOR-SIGNOFF-20261028-ADDENDUM.txt sha256 c8a13df36f8d5ab27276eeb0909092357447fc1889104fab7d8a6c78996bcadc (recorded by the orchestrator from Loren Hung's message 'You're signed off to add to 47.'; to be confirmed in the original sign-off), alongside /scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68; reviewer text /scratch/loren/comp-more/stack/c5-RESULT.md (patch 0303)"
       basis: >-
         Proposed for Loren Hung's review (comp-more c5). transfer_contracts.accumulator_seed_load (reviewed,
         D1) is the full-width unscaled i32 load. RTL (Chipyard 0acc1e1, Gemmini 8c3f9923): LocalAddr.scala:21-23
@@ -197,7 +198,7 @@ operations:
     # unit is built. A bias is the int32 accumulator seed (`accumulator_seed_load` below). A
     # constant operand (a ones vector, a scaled identity) is an ordinary operand of this unit.
     # A whole [M, N] i32 tensor (a runtime input or a constant) as the seed is declared separately in
-    # numerical_semantics.accumulator_seed_tensor (proposed, unreviewed); its RTL evidence is cited
+    # numerical_semantics.accumulator_seed_tensor (reviewed, sign-off addendum); its RTL evidence is cited
     # there and in `evidence.basis`.
     families: [contraction, window_mean]
     placement: accelerator
@@ -223,7 +224,7 @@ operations:
       reviewed_by: Loren Hung, conditional packet 2 approval
       packet: packet2.md R12; seal3-base 118-145
       basis: Configs.scala:23-38; PE.scala:23,108-129; AccumulatorMem.scala:63-70; LoadController.scala:108; Configs.scala:114;
-        BeatMerger.scala:71-75. Full-tensor seed (comp-more c5, proposed, see accumulator_seed_tensor) - LocalAddr.scala:21-23 (acc and
+        BeatMerger.scala:71-75. Full-tensor seed (comp-more c5, reviewed, see accumulator_seed_tensor) - LocalAddr.scala:21-23 (acc and
         accumulate address bits); LoadController.scala:76,105,108,115-117 (32-bit acc mvin, nonzero stride loads
         distinct rows); Scratchpad.scala:401,407-419,832 and VectorScalarMultiplier.scala:94-97 with
         mvin_scale_acc_args None (no scale on a 32-bit acc mvin); ExecuteController.scala:951-952 and
@@ -1333,14 +1334,14 @@ quantization:
           # The value domain a model's runtime readout-scale input is declared over. Within it the
           # device (relu on the accumulator, then f32 RNE multiply, AccumulatorScale.scala:119-138)
           # and a scale-then-relu stage list agree, and no NaN/Inf reaches the multiplier.
-          # PROPOSED for operator review: not named in the 2026-10-28 operator sign-off, so it
-          # admits nothing (Phase 0 observes a runtime scale only under a reviewed domain).
+          # Operator reviewed under the 2026-10-28 sign-off addendum (reviewed_by below); Phase 0
+          # observes a runtime scale only under a reviewed domain.
           domain:
-            status: unreviewed
+            status: reviewed
             minimum: 0.0
             nonfinite: forbid
             basis: >-
-              Proposed for Loren Hung's review (comp-more c5; not in OPERATOR-SIGNOFF-20261028). Finite because a NaN scale gives
+              Reviewed by Loren Hung under the operator sign-off addendum /scratch/loren/OPERATOR-SIGNOFF-20261028-ADDENDUM.txt sha256 c8a13df36f8d5ab27276eeb0909092357447fc1889104fab7d8a6c78996bcadc (recorded by the orchestrator from Loren Hung's message 'You're signed off to add to 47.'; to be confirmed in the original sign-off), alongside /scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68; reviewer text /scratch/loren/comp-more/stack/c5-RESULT.md (comp-more c5 patch 0303). Finite because a NaN scale gives
               int32 max (RecFNToIN.scala:133-145) where the source fptosi of NaN is undefined, 0 * Inf is
               NaN, and the all-ones NaN word is ignored by CONFIG_ST (StoreController.scala:237-239, the
               previous scale stays). Non-negative so that relu-then-scale (device) equals scale-then-relu

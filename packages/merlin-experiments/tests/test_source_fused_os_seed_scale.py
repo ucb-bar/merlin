@@ -1136,28 +1136,30 @@ def test_gemmini_contraction_accepts_the_signed_interval_as_an_alternative_to_th
     assert all("execution.pe_bound_scope" in alternative for alternative in paths)
 
 
-def test_gemmini_runtime_input_domain_is_proposed_so_no_runtime_scale_is_observed(gemmini):
+def test_gemmini_runtime_input_domain_is_reviewed_so_a_runtime_scale_is_observed(gemmini):
     policy = gemmini["quantization"]["numerics"]["policies"]["scale_source"]["runtime_input"]
-    assert policy["domain"]["status"] == "unreviewed"
+    assert policy["domain"]["status"] == "reviewed"
+    assert "OPERATOR-SIGNOFF-20261028-ADDENDUM.txt sha256 c8a13df3" in " ".join(policy["domain"]["basis"].split())
     assert policy["domain"]["minimum"] == 0.0
     assert policy["domain"]["nonfinite"] == "forbid"
+    assert runtime_scale_domain(gemmini) == {"minimum": 0.0, "nonfinite": "forbid"}
     # Only a reviewed domain lets Phase 0 observe a runtime scale.
-    assert runtime_scale_domain(gemmini) is None
-    reviewed = copy.deepcopy(gemmini)
-    reviewed["quantization"]["numerics"]["policies"]["scale_source"]["runtime_input"]["domain"]["status"] = "reviewed"
-    assert runtime_scale_domain(reviewed) == {"minimum": 0.0, "nonfinite": "forbid"}
+    unreviewed = copy.deepcopy(gemmini)
+    unreviewed["quantization"]["numerics"]["policies"]["scale_source"]["runtime_input"]["domain"]["status"] = "unreviewed"
+    assert runtime_scale_domain(unreviewed) is None
 
 
-def test_gemmini_full_tensor_seed_is_proposed_so_no_seed_is_observed(gemmini):
+def test_gemmini_full_tensor_seed_is_reviewed_so_a_seed_is_observed(gemmini):
     declared = gemmini["numerical_semantics"]["accumulator_seed_tensor"]
-    assert declared["status"] == "unreviewed"
+    assert declared["status"] == "reviewed"
+    assert "OPERATOR-SIGNOFF-20261028-ADDENDUM.txt sha256 c8a13df3" in declared["evidence"]["reviewed_by"]
     assert declared["forms"] == ["full_tensor"] and declared["sources"] == ["constant", "runtime_input"]
     assert declared["seed_load"] == "unscaled_full_i32_shrink0_once" and declared["accumulation"] == "wrapping_i32"
     software_spec._validate_accumulator_seed_tensor(declared)
-    assert accumulator_seed_tensor(gemmini) is False
-    reviewed = copy.deepcopy(gemmini)
-    reviewed["numerical_semantics"]["accumulator_seed_tensor"]["status"] = "reviewed"
-    assert accumulator_seed_tensor(reviewed) is True
+    assert accumulator_seed_tensor(gemmini) is True
+    unreviewed = copy.deepcopy(gemmini)
+    unreviewed["numerical_semantics"]["accumulator_seed_tensor"]["status"] = "unreviewed"
+    assert accumulator_seed_tensor(unreviewed) is False
 
 
 @pytest.mark.parametrize(
