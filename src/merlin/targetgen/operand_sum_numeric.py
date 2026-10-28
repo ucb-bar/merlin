@@ -22,13 +22,37 @@ def _f32(value: float) -> float:
 
 
 def audit_i8_operand_sum(
-    *, lhs_scale: float, rhs_scale: float, bound_lsb: int, relu: bool, facet: Mapping[str, Any]
+    *,
+    lhs_scale: float,
+    rhs_scale: float,
+    bound_lsb: int,
+    relu: bool,
+    facet: Mapping[str, Any],
+    readout_scale: float | None = None,
 ) -> dict[str, Any]:
     """Check all 256² ordered operand pairs for one selected scalar-scale pair.
 
     The selected facet must establish two saturating i8 loads with half-even
     rounding and an i8 readout carrying a tensor-granular f32 scale.  Unknown
     facts fail closed; the result is a software-model bound, never an RTL proof.
+
+    Without ``readout_scale`` the screen is the legacy one: the source is the
+    saturated ``rint(f32(a*l) + f32(b*r))`` and the device reads the load-scaled
+    i8 pair out by the factor ``max(1, l, r)``.
+
+    With ``readout_scale`` g (a positive finite f32 no larger than f32 max / 256)
+    the SAME single-rounding contract also screens a readout gain applied to the
+    sum (all arithmetic in binary32, ``f32(x)`` meaning one rounding of x):
+
+    * source: ``s = rint(f32(f32(a*f32(l)) + f32(b*f32(r))))`` as an unclipped
+      integer (a sum beyond the i32 range is refused); with ``relu``
+      ``s = max(s, 0)``; ``out = clip(rint(f32(s) * f32(g)), -128, 127)``;
+    * device: loads ``la, lb`` exactly as above, ``summed = la + lb`` (relu
+      optional), ``register = f32(max(1, l, r) * g)`` (one rounding of the
+      product) and ``out = clip(rint(f32(summed) * register), -128, 127)``.
+
+    Both are software models of the declared operations; the result remains a
+    software-model screen, not RTL execution.
     """
     if not _establishes_i8_model(facet, relu):
         return {"status": "unknown", "reason": "selected facts do not establish the two-load i8 scaling model"}
@@ -41,20 +65,46 @@ def audit_i8_operand_sum(
     if not (math.isfinite(lhs) and math.isfinite(rhs) and lhs > 0 and rhs > 0):
         return {"status": "unknown", "reason": "operand scales must be positive finite f32 values"}
 
+    if readout_scale is not None:
+        try:
+            if isinstance(readout_scale, bool):
+                raise TypeError("a boolean is not a readout scale")
+            gain = _f32(float(readout_scale))
+        except (OverflowError, TypeError, ValueError):
+            return {"status": "unknown", "reason": "readout scale is not a finite f32 value"}
+        if not (math.isfinite(gain) and 0 < gain <= float(np.finfo(np.float32).max) / 256):
+            return {"status": "unknown", "reason": "readout scale must be a positive finite f32 value within range"}
+
     factor = _f32(max(1.0, lhs, rhs))
     load_lhs, load_rhs = _f32(lhs / factor), _f32(rhs / factor)
     domain = np.arange(-128, 128, dtype=np.int16)
     a = domain[:, None].astype(np.float32)
     b = domain[None, :].astype(np.float32)
-    reference = np.rint(a * np.float32(lhs) + b * np.float32(rhs))
-    reference = np.clip(reference, 0 if relu else -128, 127).astype(np.int16)
     la = np.clip(np.rint(a * np.float32(load_lhs)), -128, 127).astype(np.int16)
     lb = np.clip(np.rint(b * np.float32(load_rhs)), -128, 127).astype(np.int16)
     summed = la + lb
     if relu:
         summed = np.maximum(summed, 0)
-    actual = np.rint(summed.astype(np.float32) * np.float32(factor))
-    actual = np.clip(actual, -128, 127).astype(np.int16)
+    if readout_scale is None:
+        reference = np.rint(a * np.float32(lhs) + b * np.float32(rhs))
+        reference = np.clip(reference, 0 if relu else -128, 127).astype(np.int16)
+        actual = np.rint(summed.astype(np.float32) * np.float32(factor))
+        actual = np.clip(actual, -128, 127).astype(np.int16)
+        gained = {}
+    else:
+        try:
+            register = _f32(factor * gain)
+        except OverflowError:
+            return {"status": "unknown", "reason": "readout register is not a finite f32 value"}
+        with np.errstate(over="ignore", invalid="ignore"):
+            total = np.rint(a * np.float32(lhs) + b * np.float32(rhs))
+            if not np.all(np.isfinite(total)) or np.abs(total).max() >= 2.0**31:
+                return {"status": "unknown", "reason": "operand sum leaves the i32 range"}
+            if relu:
+                total = np.maximum(total, np.float32(0.0))
+            reference = np.clip(np.rint(total * np.float32(gain)), -128, 127).astype(np.int16)
+            actual = np.clip(np.rint(summed.astype(np.float32) * np.float32(register)), -128, 127).astype(np.int16)
+        gained = {"readout_gain_f32": gain, "readout_register_f32": register}
     params = {
         "lhs_scale_f32": lhs,
         "rhs_scale_f32": rhs,
@@ -65,6 +115,7 @@ def audit_i8_operand_sum(
         "relu": relu,
         "operand_dtype": "i8",
         "output_dtype": "i8",
+        **gained,
     }
     return _screen_result(reference, actual, params)
 

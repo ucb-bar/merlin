@@ -122,10 +122,15 @@ def test_per_operand_chain_is_proven_with_its_exact_constants(tmp_path):
     assert chain["readout_scale"] == float(SIXTH) and chain["relu"] is True and chain["shape"] == [16, 16]
 
 
-def test_float_single_rounding_sum_is_not_observed_even_at_unit_multipliers(tmp_path):
-    # Exact at unit multipliers, but its realization binds the single-rounding contract, whose
-    # witness (audit_i8_operand_sum) has no readout-gain parameter: the gain would go unscreened.
-    assert prove(tmp_path, unit_sum()) == []
+def test_float_single_rounding_sum_is_observed_only_at_unit_multipliers(tmp_path):
+    # Exact at unit multipliers, and its realization binds the single-rounding contract, whose
+    # witness (audit_i8_operand_sum) now carries the readout gain: the gain is screened, so the unit
+    # float sum IS observed (as single_rounding). Any other multiplier is not (see
+    # test_source_operand_sum_single.py for the refusals and the witness).
+    [chain] = prove(tmp_path, unit_sum())
+    assert chain["rounding"] == "single_rounding" and chain["lhs_scale"] == chain["rhs_scale"] == 1.0
+    assert chain["readout_scale"] == float(SIXTH) and chain["sum_members"] == [1]
+    assert prove(tmp_path, unit_sum(s0="0.5")) == [] and prove(tmp_path, unit_sum(s1="1.0000001")) == []
 
 
 WRONG_PER_OPERAND = {

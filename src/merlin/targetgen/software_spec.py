@@ -1143,6 +1143,14 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                     missing.append("output_column_component.readout_scale")
             elif isinstance(screens, list) and "tensor" not in screens:
                 missing.append("readout_gain_screens")
+            # A single-rounding witness that also screens a readout gain is accepted only by a row
+            # that declares the tensor readout-gain screen (operator review of that contract use).
+            if (
+                isinstance(parameters, dict)
+                and "readout_gain_f32" in parameters
+                and (not isinstance(screens, list) or "tensor" not in screens)
+            ):
+                missing.append("readout_gain_screens")
         for axis, bounds in (constraints.get("shape_bounds") or {}).items():
             dimensions = signature.get("dimensions") or {}
             observed = dimensions.get(axis)

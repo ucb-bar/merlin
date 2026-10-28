@@ -344,6 +344,41 @@ def per_operand_readout_witness(
     return {"form": "fused_operand_sum", **result}
 
 
+def single_rounding_readout_witness(
+    *, lhs_scale: float, rhs_scale: float, readout_scale: float, relu: bool, evidence
+) -> dict | None:
+    """The single-rounding operand-sum witness INCLUDING the readout gain, for a fused i8 operand sum.
+
+    The same gate as ``per_operand_readout_witness`` (a fused operand-sum row, exactly one selected
+    i8 facet, half-even/saturating readout numerics), but the exhaustive audit is the single-rounding
+    one (``audit_i8_operand_sum``) run with the source program's readout gain, so the witness carries
+    that gain under the contract the single-rounding realization binds. ``None`` when the selected
+    spec has no fused operand-sum row.
+    """
+    model = _operand_sum_model(evidence)
+    if model is None:
+        return None
+    selected, readout = model
+    if (
+        len(selected) != 1
+        or readout.get("acc_scale_rounding") != "half_even"
+        or readout.get("narrowing") != "saturate_to_declared_dtype"
+    ):
+        result = {"status": "unknown", "reason": "selected i8 operand-sum/readout numerics are incomplete or ambiguous"}
+    else:
+        from merlin.targetgen.operand_sum_numeric import audit_i8_operand_sum
+
+        result = audit_i8_operand_sum(
+            lhs_scale=lhs_scale,
+            rhs_scale=rhs_scale,
+            bound_lsb=0,
+            relu=relu,
+            facet=selected[0],
+            readout_scale=readout_scale,
+        )
+    return {"form": "fused_operand_sum", **result}
+
+
 def _operand_sum_numeric_screens_text(mlir: str, evidence) -> list[dict]:
     """Bound only a selected, fact-derived sum/readout composition.
 
@@ -382,6 +417,14 @@ def _operand_sum_numeric_screens_text(mlir: str, evidence) -> list[dict]:
             result = {
                 "status": "unknown",
                 "reason": "per-operand interface screen requires a separate readout-scale witness",
+            }
+        elif "acc_scale" in stages:
+            # An interface RESIDUAL_ADD cannot state a readout gain (its ABI epilogue is relu only):
+            # the single-rounding audit used to run here with that gain IGNORED. A readout gain is
+            # screened only by a source witness that carries it (single_rounding_readout_witness).
+            result = {
+                "status": "unknown",
+                "reason": "single-rounding interface screen requires a separate readout-scale witness",
             }
         else:
             audit = (

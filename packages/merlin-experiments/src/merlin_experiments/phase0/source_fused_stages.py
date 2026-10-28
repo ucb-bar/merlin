@@ -439,6 +439,68 @@ def integer_operand_sum(op) -> list[int] | None:
     return shape
 
 
+def unit_float_operand_sum(op) -> list[int] | None:
+    """``fptosi(roundeven(f32(a) * 1.0 + f32(b) * 1.0))`` of two i8 tensors: exactly ``a + b`` in i32.
+
+    Op-exact: two ``sitofp`` to f32, two constants both exactly 1.0, two ``mulf`` (each one distinct
+    ``sitofp`` result times one distinct unit constant), the ``addf`` of the two products, the
+    ``roundeven`` of that sum, an ``fptosi`` to i32 and the yield; no fast-math flag anywhere; two
+    distinct i8 inputs of one static shape, identity maps, a fresh output. Only UNIT multipliers are
+    accepted: then every product and the sum (|a + b| <= 256) are exact in f32, the rounding is the
+    identity and the integer result is the exact sum. Any other multiplier rounds, which is a
+    different computation this proof does not make.
+    """
+    pair = _elementwise_pair(op, "i8", "i32")
+    if pair is None:
+        return None
+    shape, x, y = pair
+    body = _body(op)
+    names = [_name(item) for item in body]
+    expected = [
+        "arith.sitofp",
+        "arith.sitofp",
+        "arith.constant",
+        "arith.constant",
+        "arith.mulf",
+        "arith.mulf",
+        "arith.addf",
+        "math.roundeven",
+        "arith.fptosi",
+        "linalg.yield",
+    ]
+    if names != expected or not all(_plain(item) for item in body):
+        return None
+    fa, fb, c0, c1, m0, m1, add, rounding, narrow, yld = body
+    if {id(fa.operands[0]), id(fb.operands[0])} != {id(x), id(y)}:
+        return None
+    if any(str(item.results[0].type) != "f32" for item in (fa, fb)):
+        return None
+    if _float_constant(c0) != 1.0 or _float_constant(c1) != 1.0:
+        return None
+    products, units = [], []
+    for mul in (m0, m1):
+        operands = list(mul.operands)
+        if len(operands) != 2 or operands[0] is operands[1]:
+            return None
+        factor = next((f for f in (fa, fb) if any(o is f.results[0] for o in operands)), None)
+        unit = next((c for c in (c0, c1) if any(o is c.results[0] for o in operands)), None)
+        if factor is None or unit is None:
+            return None
+        if {id(o) for o in operands} != {id(factor.results[0]), id(unit.results[0])}:
+            return None
+        products.append(factor)
+        units.append(unit)
+    if products[0] is products[1] or units[0] is units[1]:
+        return None
+    if len(add.operands) != 2 or {id(o) for o in add.operands} != {id(m0.results[0]), id(m1.results[0])}:
+        return None
+    if rounding.operands[0] is not add.results[0] or narrow.operands[0] is not rounding.results[0]:
+        return None
+    if str(narrow.results[0].type) != "i32" or yld.operands[0] is not narrow.results[0]:
+        return None
+    return shape
+
+
 def operand_sum_chain(op, users, *, numerics: dict, strategy: str | None) -> dict | None:
     """An operand sum of two program inputs read out once: the fused ``residual_add`` form.
 
@@ -454,30 +516,37 @@ def operand_sum_chain(op, users, *, numerics: dict, strategy: str | None) -> dic
     else ``None``. A column-varying readout only becomes rows through ``operand_sum_rows``, behind a
     reviewed spec row that declares the column-component screen.
 
-    A float (single-rounding) sum is not observed, not even at unit multipliers where it is exact:
-    its realization binds the single-rounding contract, whose witness carries no readout gain.
+    The one other proven form is the UNIT float sum (``unit_float_operand_sum``, exact at unit
+    multipliers): ``single_rounding`` with both scales 1.0 and no requantization members, over two
+    distinct program inputs. Its sole user must be the same proven readout; the single-rounding
+    witness (``single_rounding_readout_witness``) carries that readout gain, so the gain is screened
+    under the contract the single-rounding realization binds. Any other float sum is not observed.
     """
     shape = integer_operand_sum(op)
     if shape is None:
-        return None
-    members, scales, sources = [], [], []
-    for value in op.inputs:
-        requant = _defining_op(value)
-        if requant is None or users(value) is not op:
+        shape = unit_float_operand_sum(op)
+        if shape is None or not all(_program_input(value) for value in op.inputs):
             return None
-        proven = readout(
-            requant, requant.inputs[0], numerics=numerics, strategy=strategy, bound=128, source_dtype="i8"
-        )
-        if proven is None or proven["relu"] or proven["result"]["dtype"] != "i8":
+        rounding, members, scales = "single_rounding", [], [1.0, 1.0]
+    else:
+        rounding, members, scales, sources = "per_operand", [], [], []
+        for value in op.inputs:
+            requant = _defining_op(value)
+            if requant is None or users(value) is not op:
+                return None
+            proven = readout(
+                requant, requant.inputs[0], numerics=numerics, strategy=strategy, bound=128, source_dtype="i8"
+            )
+            if proven is None or proven["relu"] or proven["result"]["dtype"] != "i8":
+                return None
+            gain = _uniform(proven["gains"])
+            if gain is None or gain <= 0 or not _program_input(requant.inputs[0]):
+                return None
+            members.append(requant)
+            scales.append(gain)
+            sources.append(requant.inputs[0])
+        if sources[0] is sources[1]:
             return None
-        gain = _uniform(proven["gains"])
-        if gain is None or gain <= 0 or not _program_input(requant.inputs[0]):
-            return None
-        members.append(requant)
-        scales.append(gain)
-        sources.append(requant.inputs[0])
-    if sources[0] is sources[1]:
-        return None
     reader = users(op.results[0])
     if reader is None:
         return None
@@ -485,8 +554,13 @@ def operand_sum_chain(op, users, *, numerics: dict, strategy: str | None) -> dic
     if proven is None or proven["result"]["dtype"] != "i8":
         return None
     readout_gains = list(proven["gains"])
+    if rounding == "single_rounding":
+        # The unit sum is screened at ONE tensor gain only (no column components).
+        gain = _uniform(readout_gains)
+        if gain is None or not gain > 0:
+            return None
     return {
-        "rounding": "per_operand",
+        "rounding": rounding,
         "requants": members,
         "reader": reader,
         "lhs_scale": scales[0],
@@ -1088,6 +1162,37 @@ def prove_operand_sums(program: Path, *, numerics: dict, strategy: str | None = 
     return chains
 
 
+def _single_rounding_witness(chain: dict, evidence) -> dict | None:
+    """The single-rounding witness of a unit float sum, only if it screens exactly the source constants."""
+    import numpy as np
+
+    from .program_admission import single_rounding_readout_witness
+
+    if chain["lhs_scale"] != 1.0 or chain["rhs_scale"] != 1.0 or len(chain["sum_members"]) != 1:
+        return None
+    witness = single_rounding_readout_witness(
+        lhs_scale=1.0,
+        rhs_scale=1.0,
+        readout_scale=chain["readout_scale"],
+        relu=chain["relu"],
+        evidence=evidence,
+    )
+    if witness is None or witness.get("status") != "within_bound":
+        return None
+    parameters = witness.get("parameters") or {}
+    with np.errstate(over="ignore"):
+        gain = float(np.float32(chain["readout_scale"]))
+    if (
+        parameters.get("lhs_scale_f32") != 1.0
+        or parameters.get("rhs_scale_f32") != 1.0
+        or parameters.get("readout_gain_f32") != gain
+        or parameters.get("relu") is not chain["relu"]
+        or "numerical_contract" in witness
+    ):
+        return None
+    return witness
+
+
 def _f32(value: float) -> float:
     return struct.unpack("<f", struct.pack("<f", value))[0]
 
@@ -1149,7 +1254,7 @@ def _fused_command_rows(chain: dict, shape: list[int], gain: float, witness: dic
             "lhs_scale": chain["lhs_scale"],
             "rhs_scale": chain["rhs_scale"],
             "acc_scale": gain,
-            "operand_sum_rounding": "per_operand",
+            "operand_sum_rounding": chain["rounding"],
             "bound_lsb": 0,
             "output_dtype": "i8",
         },
@@ -1174,13 +1279,15 @@ def _fused_command_rows(chain: dict, shape: list[int], gain: float, witness: dic
 def operand_sum_rows(chain: dict, *, evidence) -> list[dict] | None:
     """The rows an interface program states for ``chain`` as fused operand-sum command(s).
 
-    The command is the per-operand form: both loads RNE-saturated to i8 at the proven operand
-    scales, the exact i32 sum, then the proven readout (relu, scale). Rows come from
+    The command is the per-operand form (both loads RNE-saturated to i8 at the proven operand
+    scales, the exact i32 sum) or the unit single-rounding form (the float sum at unit multipliers,
+    exactly the i32 sum; its witness is the single-rounding one carrying the readout gain), then the
+    proven readout (relu, scale). Rows come from
     ``command_rows`` (the interface observation itself), each RESIDUAL_ADD row carrying the numeric
     witness computed from the source program's own constants, as ``account_interface_text`` attaches
     one. ``None`` when the selected facts give no witness model.
 
-    A readout with ONE gain is one command over the full shape. A readout whose gain differs by
+    A readout with ONE gain is one command over the full shape. A per-operand readout whose gain differs by
     output column is observed as disjoint contiguous column components (maximal runs of equal gain
     covering every column exactly once), each a synthetic command over ``[M, stop - start]`` at that
     run's scalar gain with its own exhaustive witness (the command is never executed) and the
@@ -1192,15 +1299,22 @@ def operand_sum_rows(chain: dict, *, evidence) -> list[dict] | None:
     from .program_admission import per_operand_readout_witness
 
     shape = list(chain["shape"])
+    if chain["rounding"] not in {"per_operand", "single_rounding"}:
+        return None
     if chain["readout_scale"] is not None:
-        witness = per_operand_readout_witness(
-            lhs_scale=chain["lhs_scale"],
-            rhs_scale=chain["rhs_scale"],
-            readout_scale=chain["readout_scale"],
-            relu=chain["relu"],
-            evidence=evidence,
-        )
+        if chain["rounding"] == "single_rounding":
+            witness = _single_rounding_witness(chain, evidence)
+        else:
+            witness = per_operand_readout_witness(
+                lhs_scale=chain["lhs_scale"],
+                rhs_scale=chain["rhs_scale"],
+                readout_scale=chain["readout_scale"],
+                relu=chain["relu"],
+                evidence=evidence,
+            )
         return None if witness is None else _fused_command_rows(chain, shape, chain["readout_scale"], witness)
+    if chain["rounding"] != "per_operand":
+        return None
     gains = chain.get("readout_gains")
     if not gains or len(gains) != shape[-1] or not _column_components_declared(evidence):
         return None
