@@ -43,7 +43,7 @@ def _stage(directory: Path, label: str, before: str, after: str, name: str = "st
     return stage
 
 
-def tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
+def _tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
     """Prove a pass's output refines its input with Merlin's tensor checker.
 
     The boundary must verify under ``MerlinVerify.Check.TypedModule.check_sound``, every function of
@@ -114,9 +114,10 @@ def tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
         chains[function] = str(directory / f"chain-{function}.json")
     strengthenings["definedness"] = "verified" if defined_everywhere else "abstracted"
     established = [name for name, verdict in strengthenings.items() if verdict == "verified"]
-    domain = "for all inputs" if "universal_boundary" in established else "on inputs of the declared types"
     return {
-        "claim": f"strict refinement {domain}; "
+        # Universal conditional refinement does not widen the typed domain on
+        # which support established NotStuck, required for strict refinement.
+        "claim": "strict refinement on inputs of the declared types; "
         + ("defined (no UB or poison)" if "definedness" in established else "definedness not established"),
         "established": established,
         "strengthenings": strengthenings,
@@ -126,3 +127,11 @@ def tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
         "receipt": str(stage / "receipt.json"),
         "chains": chains,
     }
+
+
+def tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
+    """Run the real proof checks, reusing only their live results within this job."""
+    from .lean.receipt_session import reuse_receipts
+
+    with reuse_receipts():
+        return _tensor_refinement(job)
