@@ -1369,6 +1369,14 @@ def _tol(binding) -> tuple[float, float]:
     return atol, rtol
 
 
+def _scalars(value):
+    if isinstance(value, (list, tuple)):
+        for child in value:
+            yield from _scalars(child)
+    else:
+        yield value
+
+
 def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, binding, *, output_names=None) -> dict:
     """Grade in the captured result's element type, not the target's operand type.
 
@@ -1384,6 +1392,14 @@ def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, bi
     if len(dtypes) != 1 and output_names is not None:
         if len(output_names) != len(output_abi) or len(set(output_names)) != len(output_names):
             raise M2MUnavailable("typed model output numerical policy needs every unique original result")
+        # The per-output grader (capsule_golden.match_per_output) accepts only finite leaves; a
+        # non-finite golden needs a separately specified comparison contract. Refuse it here, so no
+        # published capsule carries a golden that no submission could ever match.
+        for name, value in zip(output_names, golden_values, strict=True):
+            if any(isinstance(leaf, float) and not math.isfinite(leaf) for leaf in _scalars(value)):
+                raise M2MUnavailable(
+                    f"captured result {name} has a non-finite golden; per-output comparison has no contract for it"
+                )
         return {
             "schema": "merlin.numeric_policy.per_output.v1",
             "compare": "per_output",
@@ -1440,7 +1456,9 @@ def _shape_of(nested) -> list[int]:
 
 def _flatten(nested) -> list:
     out: list = []
-    if not (isinstance(nested, list) and nested and isinstance(nested[0], list)):
+    if not isinstance(nested, (list, tuple)):  # a 0-d tensor decodes to one bare scalar
+        return [nested]
+    if not (nested and isinstance(nested[0], list)):
         return list(nested)
     for row in nested:
         out.extend(_flatten(row) if isinstance(row[0], list) else row)

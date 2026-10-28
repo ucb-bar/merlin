@@ -197,6 +197,9 @@ def _materialized_iteration_capsules(
                 "operand_dtype": artifact.dtype,
                 "source_role": "materialized_iteration_capture",
                 "source_reference": "full saved iteration capture; target compile and execution unverified",
+                # The capture's output ABI names every result and its dtype, so a mixed-dtype model is
+                # graded by one existing policy per result; a single-dtype model keeps its one policy.
+                "output_numeric_policy": "captured_per_output_v1",
                 "materialized_capture": {
                     **selection,
                     "path": f"{prefix}/{label}/model.mlir",
