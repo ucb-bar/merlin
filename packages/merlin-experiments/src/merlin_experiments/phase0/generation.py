@@ -941,7 +941,11 @@ def generate_target(
                         )
                     admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
                     if e.get("op") == "composition_program":
-                        from .composition_generation import require_placement, withhold_unplaced
+                        from .composition_generation import (
+                            require_placement,
+                            withhold_unaccelerated_twin,
+                            withhold_unplaced,
+                        )
 
                         # Verified and diagnostic evidence alike disclose a positive composition the screen
                         # cannot place whole as planned_not_generated; the member refusals stand and nothing
@@ -954,6 +958,14 @@ def generate_target(
                                 f"{unplaced['unplaced_members']} are not admitted on the accelerator",
                                 flush=True,
                             )
+                            continue
+                        # A must-refuse twin that places nothing on the accelerator grades no author work:
+                        # withheld and disclosed with the verbatim reason (host_placement_not_published),
+                        # never exempted from the public placement check.
+                        twin = withhold_unaccelerated_twin(actual, observed, Path(w))
+                        if twin is not None:
+                            host_placed.append(twin)
+                            print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {twin['reason']}", flush=True)
                             continue
                         require_placement(actual, observed)
                     # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation

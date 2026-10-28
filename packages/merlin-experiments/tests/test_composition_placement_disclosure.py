@@ -130,3 +130,83 @@ def test_a_diagnostic_composition_with_a_refused_member_is_disclosed_not_raised(
     record = withhold_unplaced(_capsule(), screen, written)
     assert record is not None and record["status"] == "planned_not_generated" and record["unplaced_members"] == [5]
     assert not written.exists()
+
+
+# --- a must-refuse twin that places nothing on the accelerator is withheld, never exempted ----------------
+
+_TWIN_REASON_FRAGMENT = "no operation of the written program is placed on the accelerator"
+
+
+def _written(tmp_path, group="layers"):
+    written = tmp_path / group / "SY_composition_chain_scheme_aligned"
+    written.mkdir(parents=True)
+    (written / "capsule.yaml").write_text("name: x\n")
+    return written
+
+
+def _twin_screen(placements):
+    return {"status": "unsupported", "decisions": [_decision([3], "unsupported", None)], "placements": placements}
+
+
+@pytest.mark.parametrize("placements", [{}, {"host": 2}, {"accelerator": 0, "host": 1}])
+def test_a_refusal_twin_with_no_accelerator_placement_is_withheld_with_the_verbatim_reason(tmp_path, placements):
+    from merlin_experiments.phase0.composition_generation import withhold_unaccelerated_twin
+    from merlin_experiments.phase0.program_admission import accelerator_placement_refusal
+
+    written = _written(tmp_path)
+    screen = _twin_screen(placements)
+    record = withhold_unaccelerated_twin(_capsule(outcome="refuse"), screen, written)
+    assert record is not None and not written.exists()
+    assert record["reason"] == accelerator_placement_refusal(screen) and _TWIN_REASON_FRAGMENT in record["reason"]
+    assert record["capsule"] == "SY_composition_chain_scheme_aligned"
+    assert record["placements"] == placements
+    assert (record["rule"], record["outcome"], record["chain"]) == (
+        "composition_refusal_twin_places_nothing_on_accelerator",
+        "refuse",
+        "chain",
+    )
+
+
+def test_a_refusal_twin_with_accelerator_placement_is_kept(tmp_path):
+    from merlin_experiments.phase0.composition_generation import withhold_unaccelerated_twin
+
+    written = _written(tmp_path)
+    assert withhold_unaccelerated_twin(_capsule(outcome="refuse"), _twin_screen({"accelerator": 1}), written) is None
+    assert written.is_dir()
+
+
+def test_withhold_unaccelerated_twin_never_touches_positives_diagnostics_or_other_programs(tmp_path):
+    from merlin_experiments.phase0.composition_generation import withhold_unaccelerated_twin
+
+    screen = _twin_screen({})
+    positive = _written(tmp_path)
+    assert withhold_unaccelerated_twin(_capsule(outcome="pass"), screen, positive) is None
+    assert positive.is_dir()
+    diagnostic = _written(tmp_path, "_diagnostic")
+    assert withhold_unaccelerated_twin(_capsule(outcome="refuse"), screen, diagnostic) is None
+    assert diagnostic.is_dir()
+    other = _written(tmp_path, "other")
+    assert withhold_unaccelerated_twin({"operation": {"op": "component_program"}}, screen, other) is None
+    assert other.is_dir()
+
+
+def test_public_preparation_still_refuses_a_refusal_twin_with_no_accelerator_placement(tmp_path):
+    """The prepare-side check is not exempted: a twin that was not withheld at generation is still refused."""
+    import yaml
+
+    from merlin_experiments.corpus.publication import require_accelerator_placement
+    from merlin_experiments.spec import SpecError
+
+    root = tmp_path / "public" / "SY_composition_chain_scheme_aligned"
+    root.mkdir(parents=True)
+    document = {
+        **_capsule(outcome="refuse"),
+        "label": "public",
+        "software_screen": _twin_screen({}),
+    }
+    (root / "capsule.yaml").write_text(yaml.safe_dump(document))
+    with pytest.raises(SpecError, match="carry no accelerator placement.*SY_composition_chain_scheme_aligned"):
+        require_accelerator_placement([tmp_path / "public"])
+    document["software_screen"] = _twin_screen({"accelerator": 1})
+    (root / "capsule.yaml").write_text(yaml.safe_dump(document))
+    assert require_accelerator_placement([tmp_path / "public"]) == 1

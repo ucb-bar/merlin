@@ -484,6 +484,43 @@ def withhold_unplaced(cap, screen, directory):
     return record
 
 
+def withhold_unaccelerated_twin(cap, screen, directory):
+    """Withhold a must-refuse composition whose written program places nothing on the accelerator.
+
+    Such a refusal twin grades none of the author's accelerator compiler (host placement is
+    Merlin-supplied), and public corpus preparation refuses a capsule with no accelerator placement. The
+    refusal is not exempted there: the twin leaves the output tree here and is disclosed with the verbatim
+    ``accelerator_placement_refusal`` reason, in the ``host_placement_not_published`` record shape plus the
+    chain identity. A positive composition, a twin that places an operation on the accelerator, and a
+    capsule already in the ``_diagnostic`` cohort are kept (``None``).
+    """
+    import shutil
+
+    from .program_admission import accelerator_placement_refusal
+
+    if cap.get("operation", {}).get("op") != "composition_program" or directory.parent.name == "_diagnostic":
+        return None
+    truth = cap["semantic"]["composition_truth"]
+    if truth.get("outcome") != "refuse":
+        return None
+    reason = accelerator_placement_refusal(screen)
+    if reason is None:
+        return None
+    record = dict(
+        capsule=cap.get("name"),
+        placements=copy.deepcopy(screen.get("placements") or {}),
+        reason=reason,
+        rule="composition_refusal_twin_places_nothing_on_accelerator",
+        outcome="refuse",
+        chain=truth.get("chain_id"),
+        scheme=truth.get("scheme_id"),
+        shape_class=truth.get("shape_class"),
+        screen_status=screen.get("status"),
+    )
+    shutil.rmtree(directory)
+    return record
+
+
 def read_bound_validation(binding, *, base, evidence, workers=None):
     """Reopen the declared record, selection, fixed suite and retained execution evidence.
 
