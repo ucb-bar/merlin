@@ -12,8 +12,9 @@ review:
   library_numerical_policy_addendum: "only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
   m2m_exact_quant_addendum: "REVIEWED by operator sign-off /scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68: four exact typed declarations for model2MLIR exact-quantization captures (m2m_q.quantize f32/f64/i64->i8, m2m_q.exact_readout i32/f32->f32, dequantize_per_tensor i8/f64/i64->f32, two-result f32 layer-norm moments). Each row records that review in its reviewed_by evidence."
   operator_chat_addendum: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28): exactly six rows, host_m2m_exact_quantize_f32_i8_rank3_4, host_m2m_exact_readout_i32_f32_rank3_4, host_m2m_dequantize_per_tensor_f64_scale_rank3_4, host_m2m_exact_readout_i32_i8_requantized_rank3_4, host_f32_max_pool2d_with_i64_indices_rank4 and host_i8_to_i32_to_copy_rank3; and, for core_aten_coverage_contraction and core_aten_coverage_reduce, exactly seven further rows: host_review_i32_add_projected_rank4, host_i8_to_i32_to_copy_rank4, host_f32_window_sum_pool_rank3_4_5, host_bf16_window_sum_adaptive_avg_pool3d_rank5, host_f16_window_sum_adaptive_avg_pool3d_rank5, host_i64_window_sum_avg_pool_rank3_4_5, host_f32_sum_reduce_rank0_1; each row's stated open evidence obligations remain mandatory."
-  operator_chat_addendum_2: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, item 2 of the proposed-row list): exactly 67 rows, host_review_static_i32_sum, host_review_static_i32_cumsum, host_review_static_i8_cumsum, host_proposed_convbwd_bf16_extf_loops4, host_proposed_convbwd_bf16_truncf_loops1_4_7, host_proposed_convbwd_bf16_extf_addf_truncf_loops4, host_proposed_convbwd_f16_extf_loops4, host_proposed_convbwd_f16_truncf_loops1_4_7, host_proposed_convbwd_f16_extf_addf_truncf_loops4, host_proposed_convbwd_f32_mulf_addf_contraction_loops4_7, host_proposed_convbwd_f32_bias_grad_reduce_loops1, host_proposed_scalar_extf_bf16_to_f32, host_proposed_scalar_extf_f16_to_f32, host_proposed_scalar_extf_f32_to_f64, host_proposed_scalar_truncf_f32_to_bf16, host_proposed_scalar_truncf_f32_to_f16, host_proposed_scalar_truncf_f64_to_f32, host_proposed_scalar_addf_f32_f32_to_f32, host_proposed_scalar_addf_f64_f64_to_f64, host_proposed_scalar_divui_index, host_proposed_scalar_remui_index, host_proposed_scalar_subi_index, host_proposed_scalar_cmpi_index, host_m2m_exact_readout_i32_f32_rank1, host_support_empty_f32, host_support_empty_bf16, host_support_empty_f16, host_support_empty_i64, host_support_empty_i32, host_support_empty_i8, host_support_empty_i1, host_support_empty_f64, host_support_splat_f32, host_support_splat_bf16, host_support_splat_f16, host_support_splat_i64, host_support_splat_i32, host_support_splat_i8, host_support_splat_i1, host_support_splat_f64, host_support_extract_f32, host_support_extract_bf16, host_support_extract_f16, host_support_extract_i8, host_support_from_elements_f32, host_support_from_elements_bf16, host_support_from_elements_f16, host_support_from_elements_i8, host_support_collapse_shape_f32, host_support_collapse_shape_bf16, host_support_collapse_shape_f16, host_support_collapse_shape_i8, host_support_expand_shape_f32, host_support_expand_shape_bf16, host_support_expand_shape_f16, host_support_expand_shape_i8, host_support_extract_slice_f32, host_support_extract_slice_bf16, host_support_extract_slice_f16, host_support_extract_slice_i64, host_support_insert_slice_f32, host_support_insert_slice_bf16, host_support_insert_slice_f16, host_support_insert_slice_i64, host_m2m_exact_quantize_f32_i8_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_bf16_result, host_m2m_dequantize_per_tensor_f64_scale_f16_result, host_m2m_dequantize_per_tensor_f64_scale_f64_result; every open evidence obligation and semantics question stays verbatim in each row (open_obligation and proposal_text_retained_verbatim) and this approval does not state that any of them was verified beyond what the row basis records."
+  operator_chat_addendum_2: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, item 2 of the proposed-row list): exactly 65 rows, host_review_static_i32_sum, host_review_static_i32_cumsum, host_review_static_i8_cumsum, host_proposed_convbwd_bf16_extf_loops4, host_proposed_convbwd_bf16_truncf_loops1_4_7, host_proposed_convbwd_bf16_extf_addf_truncf_loops4, host_proposed_convbwd_f16_extf_loops4, host_proposed_convbwd_f16_truncf_loops1_4_7, host_proposed_convbwd_f16_extf_addf_truncf_loops4, host_proposed_convbwd_f32_mulf_addf_contraction_loops4_7, host_proposed_convbwd_f32_bias_grad_reduce_loops1, host_proposed_scalar_extf_bf16_to_f32, host_proposed_scalar_extf_f16_to_f32, host_proposed_scalar_extf_f32_to_f64, host_proposed_scalar_truncf_f32_to_bf16, host_proposed_scalar_truncf_f32_to_f16, host_proposed_scalar_truncf_f64_to_f32, host_proposed_scalar_addf_f32_f32_to_f32, host_proposed_scalar_addf_f64_f64_to_f64, host_proposed_scalar_divui_index, host_proposed_scalar_remui_index, host_proposed_scalar_subi_index, host_proposed_scalar_cmpi_index, host_m2m_exact_readout_i32_f32_rank1, host_support_empty_f32, host_support_empty_bf16, host_support_empty_f16, host_support_empty_i64, host_support_empty_i32, host_support_empty_i8, host_support_empty_f64, host_support_splat_f32, host_support_splat_bf16, host_support_splat_f16, host_support_splat_i64, host_support_splat_i32, host_support_splat_i8, host_support_splat_f64, host_support_extract_f32, host_support_extract_bf16, host_support_extract_f16, host_support_extract_i8, host_support_from_elements_f32, host_support_from_elements_bf16, host_support_from_elements_f16, host_support_from_elements_i8, host_support_collapse_shape_f32, host_support_collapse_shape_bf16, host_support_collapse_shape_f16, host_support_collapse_shape_i8, host_support_expand_shape_f32, host_support_expand_shape_bf16, host_support_expand_shape_f16, host_support_expand_shape_i8, host_support_extract_slice_f32, host_support_extract_slice_bf16, host_support_extract_slice_f16, host_support_extract_slice_i64, host_support_insert_slice_f32, host_support_insert_slice_bf16, host_support_insert_slice_f16, host_support_insert_slice_i64, host_m2m_exact_quantize_f32_i8_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_bf16_result, host_m2m_dequantize_per_tensor_f64_scale_f16_result, host_m2m_dequantize_per_tensor_f64_scale_f64_result; every open evidence obligation and semantics question stays verbatim in each row (open_obligation and proposal_text_retained_verbatim) and this approval does not state that any of them was verified beyond what the row basis records."
   operator_chat_addendum_3: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, item 2 of the proposed-row list), core_aten_coverage_reduce non-reduction stages: exactly 22 rows, host_rd_extf_bf16_f32_to_f32, host_rd_divf_f32_f32_f32_to_f32, host_rd_truncf_f32_bf16_to_bf16, host_rd_extf_f16_f32_to_f32, host_rd_truncf_f32_f16_to_f16, host_rd_divf_bf16_bf16_bf16_to_bf16, host_rd_addf_bf16_bf16_bf16_to_bf16, host_rd_divf_f16_f16_f16_to_f16, host_rd_addf_f16_f16_f16_to_f16, host_rd_addf_f32_f32_f32_to_f32, host_rd_divsi_i64_i64_i64_to_i64, host_rd_addi_i64_i64_i64_to_i64, host_rd_complex_0e7649_bf16_f32_to_f32, host_rd_complex_06b1e1_f32_bf16_to_bf16, host_rd_complex_990961_bf16_bf16_to_bf16, host_rd_complex_e6a62e_bf16_bf16_to_bf16, host_rd_complex_0e7649_f16_f32_to_f32, host_rd_complex_35cbde_f32_f32_to_f32, host_rd_complex_6fcc8f_f32_f16_to_f16, host_rd_complex_9a688d_f16_f16_to_f16, host_rd_complex_9a688d_f32_f32_to_f32, host_rd_mean_scf_for_f32_sum_rank0; each row keeps its open_obligation verbatim; the scalar-primitive eager checks cover only division, addition and casts, and the complex-bodied and scf.for rows were not executed."
+  operator_chat_addendum_4: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, 'narrow first'): the narrowing of 38 support-op host rows (tensor.empty, splat, extract, from_elements, collapse_shape, expand_shape, extract_slice, insert_slice), each now limited to the ranks and dtypes observed in core_aten_coverage_contraction and core_aten_coverage_reduce, exactly: host_support_empty_f32, host_support_empty_bf16, host_support_empty_f16, host_support_empty_i64, host_support_empty_i32, host_support_empty_i8, host_support_empty_f64, host_support_splat_f32, host_support_splat_bf16, host_support_splat_f16, host_support_splat_i64, host_support_splat_i32, host_support_splat_i8, host_support_splat_f64, host_support_extract_f32, host_support_extract_bf16, host_support_extract_f16, host_support_extract_i8, host_support_from_elements_f32, host_support_from_elements_bf16, host_support_from_elements_f16, host_support_from_elements_i8, host_support_collapse_shape_f32, host_support_collapse_shape_bf16, host_support_collapse_shape_f16, host_support_collapse_shape_i8, host_support_expand_shape_f32, host_support_expand_shape_bf16, host_support_expand_shape_f16, host_support_expand_shape_i8, host_support_extract_slice_f32, host_support_extract_slice_bf16, host_support_extract_slice_f16, host_support_extract_slice_i64, host_support_insert_slice_f32, host_support_insert_slice_bf16, host_support_insert_slice_f16, host_support_insert_slice_i64. Static shapes and slice geometry remain unconstrained by the signature. Unobserved dtype rows removed: host_support_empty_i1, host_support_splat_i1."
   successor: attention-host-placement-v2-20261019
   attention_source_addendum: "add only the nine exact typed attention-preparation declarations below for a prospective fresh host view. Closed parsed source bodies, selected index bounds, source-to-linked-image correspondence and ordinary numerical execution remain mandatory. Existing declarations, sealed views, numerical policies and accelerator obligations are unchanged; this review is not an all-input numerical or hardware qualification."
 compiler:
@@ -4307,6 +4308,13 @@ operations:
     ordered_operand_dtypes: []
     ordered_result_dtypes:
     - f32
+    ranks:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
   numerical_contract:
     status: reviewed
     semantics: &id001
@@ -4317,6 +4325,7 @@ operations:
       basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 1, 2, 3, 4, 5], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_empty_bf16
   status: reviewed
   ops:
@@ -4329,6 +4338,13 @@ operations:
     ordered_operand_dtypes: []
     ordered_result_dtypes:
     - bf16
+    ranks:
+    - 0
+    - 1
+    - 3
+    - 4
+    - 5
+    - 7
   numerical_contract:
     status: reviewed
     semantics: *id001
@@ -4337,6 +4353,7 @@ operations:
       basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 1, 3, 4, 5, 7], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_empty_f16
   status: reviewed
   ops:
@@ -4349,6 +4366,13 @@ operations:
     ordered_operand_dtypes: []
     ordered_result_dtypes:
     - f16
+    ranks:
+    - 0
+    - 1
+    - 3
+    - 4
+    - 5
+    - 7
   numerical_contract:
     status: reviewed
     semantics: *id001
@@ -4357,6 +4381,7 @@ operations:
       basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 1, 3, 4, 5, 7], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_empty_i64
   status: reviewed
   ops:
@@ -4369,6 +4394,12 @@ operations:
     ordered_operand_dtypes: []
     ordered_result_dtypes:
     - i64
+    ranks:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
   numerical_contract:
     status: reviewed
     semantics: *id001
@@ -4377,6 +4408,7 @@ operations:
       basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1, 2, 3, 4, 5], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_empty_i32
   status: reviewed
   ops:
@@ -4389,6 +4421,8 @@ operations:
     ordered_operand_dtypes: []
     ordered_result_dtypes:
     - i32
+    ranks:
+    - 4
   numerical_contract:
     status: reviewed
     semantics: *id001
@@ -4397,6 +4431,7 @@ operations:
       basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_empty_i8
   status: reviewed
   ops:
@@ -4409,6 +4444,9 @@ operations:
     ordered_operand_dtypes: []
     ordered_result_dtypes:
     - i8
+    ranks:
+    - 2
+    - 4
   numerical_contract:
     status: reviewed
     semantics: *id001
@@ -4417,26 +4455,7 @@ operations:
       basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-- id: host_support_empty_i1
-  status: reviewed
-  ops:
-  - tensor.empty
-  families:
-  - movement
-  placement: host
-  signature:
-    family: movement
-    ordered_operand_dtypes: []
-    ordered_result_dtypes:
-    - i1
-  numerical_contract:
-    status: reviewed
-    semantics: *id001
-    evidence:
-      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
-      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [2, 4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_empty_f64
   status: reviewed
   ops:
@@ -4449,6 +4468,8 @@ operations:
     ordered_operand_dtypes: []
     ordered_result_dtypes:
     - f64
+    ranks:
+    - 1
   numerical_contract:
     status: reviewed
     semantics: *id001
@@ -4457,6 +4478,7 @@ operations:
       basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_splat_f32
   status: reviewed
   ops:
@@ -4470,6 +4492,13 @@ operations:
     - f32
     ordered_result_dtypes:
     - f32
+    ranks:
+    - 0
+    - 1
+    - 3
+    - 4
+    - 5
+    - 7
   numerical_contract:
     status: reviewed
     semantics: &id002
@@ -4480,6 +4509,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 1, 3, 4, 5, 7], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_splat_bf16
   status: reviewed
   ops:
@@ -4493,6 +4523,9 @@ operations:
     - bf16
     ordered_result_dtypes:
     - bf16
+    ranks:
+    - 4
+    - 5
   numerical_contract:
     status: reviewed
     semantics: *id002
@@ -4501,6 +4534,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4, 5], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_splat_f16
   status: reviewed
   ops:
@@ -4514,6 +4548,9 @@ operations:
     - f16
     ordered_result_dtypes:
     - f16
+    ranks:
+    - 4
+    - 5
   numerical_contract:
     status: reviewed
     semantics: *id002
@@ -4522,6 +4559,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4, 5], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_splat_i64
   status: reviewed
   ops:
@@ -4535,6 +4573,12 @@ operations:
     - i64
     ordered_result_dtypes:
     - i64
+    ranks:
+    - 0
+    - 2
+    - 3
+    - 4
+    - 5
   numerical_contract:
     status: reviewed
     semantics: *id002
@@ -4543,6 +4587,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 2, 3, 4, 5], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_splat_i32
   status: reviewed
   ops:
@@ -4556,6 +4601,11 @@ operations:
     - i32
     ordered_result_dtypes:
     - i32
+    ranks:
+    - 0
+    - 1
+    - 2
+    - 4
   numerical_contract:
     status: reviewed
     semantics: *id002
@@ -4564,6 +4614,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 1, 2, 4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_splat_i8
   status: reviewed
   ops:
@@ -4577,6 +4628,9 @@ operations:
     - i8
     ordered_result_dtypes:
     - i8
+    ranks:
+    - 0
+    - 2
   numerical_contract:
     status: reviewed
     semantics: *id002
@@ -4585,27 +4639,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-- id: host_support_splat_i1
-  status: reviewed
-  ops:
-  - tensor.splat
-  families:
-  - movement
-  placement: host
-  signature:
-    family: movement
-    ordered_operand_dtypes:
-    - i1
-    ordered_result_dtypes:
-    - i1
-  numerical_contract:
-    status: reviewed
-    semantics: *id002
-    evidence:
-      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
-      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
-      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 2], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_splat_f64
   status: reviewed
   ops:
@@ -4619,6 +4653,8 @@ operations:
     - f64
     ordered_result_dtypes:
     - f64
+    ranks:
+    - 0
   numerical_contract:
     status: reviewed
     semantics: *id002
@@ -4627,6 +4663,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_extract_f32
   status: reviewed
   ops:
@@ -4640,6 +4677,8 @@ operations:
     - f32
     ordered_result_dtypes:
     - f32
+    ranks:
+    - 0
   numerical_contract:
     status: reviewed
     semantics:
@@ -4650,6 +4689,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_extract_bf16
   status: reviewed
   ops:
@@ -4663,6 +4703,8 @@ operations:
     - bf16
     ordered_result_dtypes:
     - bf16
+    ranks:
+    - 0
   numerical_contract:
     status: reviewed
     semantics:
@@ -4673,6 +4715,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_extract_f16
   status: reviewed
   ops:
@@ -4686,6 +4729,8 @@ operations:
     - f16
     ordered_result_dtypes:
     - f16
+    ranks:
+    - 0
   numerical_contract:
     status: reviewed
     semantics:
@@ -4696,6 +4741,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_extract_i8
   status: reviewed
   ops:
@@ -4709,6 +4755,8 @@ operations:
     - i8
     ordered_result_dtypes:
     - i8
+    ranks:
+    - 0
   numerical_contract:
     status: reviewed
     semantics:
@@ -4719,6 +4767,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_from_elements_f32
   status: reviewed
   ops:
@@ -4732,6 +4781,8 @@ operations:
     - f32
     ordered_result_dtypes:
     - f32
+    ranks:
+    - 1
   numerical_contract:
     status: reviewed
     semantics:
@@ -4742,6 +4793,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_from_elements_bf16
   status: reviewed
   ops:
@@ -4755,6 +4807,8 @@ operations:
     - bf16
     ordered_result_dtypes:
     - bf16
+    ranks:
+    - 1
   numerical_contract:
     status: reviewed
     semantics:
@@ -4765,6 +4819,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_from_elements_f16
   status: reviewed
   ops:
@@ -4778,6 +4833,8 @@ operations:
     - f16
     ordered_result_dtypes:
     - f16
+    ranks:
+    - 1
   numerical_contract:
     status: reviewed
     semantics:
@@ -4788,6 +4845,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_from_elements_i8
   status: reviewed
   ops:
@@ -4801,6 +4859,8 @@ operations:
     - i8
     ordered_result_dtypes:
     - i8
+    ranks:
+    - 1
   numerical_contract:
     status: reviewed
     semantics:
@@ -4811,6 +4871,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_collapse_shape_f32
   status: reviewed
   ops:
@@ -4824,6 +4885,8 @@ operations:
     - f32
     ordered_result_dtypes:
     - f32
+    ranks:
+    - 1
   numerical_contract:
     status: reviewed
     semantics:
@@ -4834,6 +4897,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_collapse_shape_bf16
   status: reviewed
   ops:
@@ -4847,6 +4911,8 @@ operations:
     - bf16
     ordered_result_dtypes:
     - bf16
+    ranks:
+    - 1
   numerical_contract:
     status: reviewed
     semantics:
@@ -4857,6 +4923,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_collapse_shape_f16
   status: reviewed
   ops:
@@ -4870,6 +4937,8 @@ operations:
     - f16
     ordered_result_dtypes:
     - f16
+    ranks:
+    - 1
   numerical_contract:
     status: reviewed
     semantics:
@@ -4880,6 +4949,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_collapse_shape_i8
   status: reviewed
   ops:
@@ -4893,6 +4963,8 @@ operations:
     - i8
     ordered_result_dtypes:
     - i8
+    ranks:
+    - 1
   numerical_contract:
     status: reviewed
     semantics:
@@ -4903,6 +4975,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_expand_shape_f32
   status: reviewed
   ops:
@@ -4916,6 +4989,11 @@ operations:
     - f32
     ordered_result_dtypes:
     - f32
+    ranks:
+    - 2
+    - 4
+    - 5
+    - 6
   numerical_contract:
     status: reviewed
     semantics:
@@ -4926,6 +5004,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [2, 4, 5, 6], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_expand_shape_bf16
   status: reviewed
   ops:
@@ -4939,6 +5018,10 @@ operations:
     - bf16
     ordered_result_dtypes:
     - bf16
+    ranks:
+    - 2
+    - 4
+    - 6
   numerical_contract:
     status: reviewed
     semantics:
@@ -4949,6 +5032,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [2, 4, 6], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_expand_shape_f16
   status: reviewed
   ops:
@@ -4962,6 +5046,10 @@ operations:
     - f16
     ordered_result_dtypes:
     - f16
+    ranks:
+    - 2
+    - 4
+    - 6
   numerical_contract:
     status: reviewed
     semantics:
@@ -4972,6 +5060,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [2, 4, 6], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_expand_shape_i8
   status: reviewed
   ops:
@@ -4985,6 +5074,8 @@ operations:
     - i8
     ordered_result_dtypes:
     - i8
+    ranks:
+    - 2
   numerical_contract:
     status: reviewed
     semantics:
@@ -4995,6 +5086,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [2], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_extract_slice_f32
   status: reviewed
   ops:
@@ -5008,6 +5100,9 @@ operations:
     - f32
     ordered_result_dtypes:
     - f32
+    ranks:
+    - 4
+    - 6
   numerical_contract:
     status: reviewed
     semantics:
@@ -5018,6 +5113,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4, 6], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_extract_slice_bf16
   status: reviewed
   ops:
@@ -5031,6 +5127,10 @@ operations:
     - bf16
     ordered_result_dtypes:
     - bf16
+    ranks:
+    - 4
+    - 6
+    - 7
   numerical_contract:
     status: reviewed
     semantics:
@@ -5041,6 +5141,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4, 6, 7], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_extract_slice_f16
   status: reviewed
   ops:
@@ -5054,6 +5155,10 @@ operations:
     - f16
     ordered_result_dtypes:
     - f16
+    ranks:
+    - 4
+    - 6
+    - 7
   numerical_contract:
     status: reviewed
     semantics:
@@ -5064,6 +5169,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4, 6, 7], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_extract_slice_i64
   status: reviewed
   ops:
@@ -5077,6 +5183,8 @@ operations:
     - i64
     ordered_result_dtypes:
     - i64
+    ranks:
+    - 4
   numerical_contract:
     status: reviewed
     semantics:
@@ -5087,6 +5195,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_insert_slice_f32
   status: reviewed
   ops:
@@ -5101,6 +5210,8 @@ operations:
     - f32
     ordered_result_dtypes:
     - f32
+    ranks:
+    - 4
   numerical_contract:
     status: reviewed
     semantics:
@@ -5111,6 +5222,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_insert_slice_bf16
   status: reviewed
   ops:
@@ -5125,6 +5237,8 @@ operations:
     - bf16
     ordered_result_dtypes:
     - bf16
+    ranks:
+    - 4
   numerical_contract:
     status: reviewed
     semantics:
@@ -5135,6 +5249,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_insert_slice_f16
   status: reviewed
   ops:
@@ -5149,6 +5264,8 @@ operations:
     - f16
     ordered_result_dtypes:
     - f16
+    ranks:
+    - 4
   numerical_contract:
     status: reviewed
     semantics:
@@ -5159,6 +5276,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_support_insert_slice_i64
   status: reviewed
   ops:
@@ -5173,6 +5291,8 @@ operations:
     - i64
     ordered_result_dtypes:
     - i64
+    ranks:
+    - 4
   numerical_contract:
     status: reviewed
     semantics:
@@ -5183,6 +5303,7 @@ operations:
       basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
 - id: host_m2m_exact_quantize_f32_i8_rank0_1_5
   status: reviewed
   ops:
