@@ -20,6 +20,31 @@ class _ModelInput:
         self.key, self.shape, self.element = key, shape, element
 
 
+def bind_forward_array(value, shape, element, *, _np_dtype, f32_to_bf16) -> np.ndarray:
+    """Bind archive storage to the ABI, including its trailing (re, im) axis.
+
+    Complex storage may only become real through the producer's exact component
+    layout: complex64 -> (..., 2)xf32 or complex128 -> (..., 2)xf64. A byte view
+    preserves both components, signed zeros and NaN payloads without arithmetic.
+    """
+    arr = np.asarray(value)
+    dtype = np.dtype(_np_dtype(element))
+    if np.iscomplexobj(arr):
+        if dtype.kind == "c" and dtype == arr.dtype and tuple(shape) == arr.shape:
+            return arr.copy(order="C")
+        component = {
+            np.dtype("complex64"): ("f32", np.dtype("float32")),
+            np.dtype("complex128"): ("f64", np.dtype("float64")),
+        }.get(arr.dtype)
+        if component != (element, dtype) or tuple(shape) != (*arr.shape, 2):
+            raise DispatchRuntimeError(
+                "complex storage requires the exact real/imaginary component ABI shape and precision"
+            )
+        return arr.copy(order="C").reshape(-1).view(dtype).reshape(shape)
+    converted = f32_to_bf16(arr) if element == "bf16" else arr.astype(dtype, order="C")
+    return converted.reshape(shape)
+
+
 def plan_forward_args(
     model_dir: Path,
     input_files: tuple[str, ...],
@@ -100,8 +125,5 @@ def plan_forward_args(
             plan.append(_ModelInput(f"in{n_in}", shape, dt))
             n_in += 1
             continue
-        if dt == "bf16":
-            plan.append(f32_to_bf16(arr).reshape(shape))
-        else:
-            plan.append(arr.astype(_np_dtype(dt)).reshape(shape))
+        plan.append(bind_forward_array(arr, shape, dt, _np_dtype=_np_dtype, f32_to_bf16=f32_to_bf16))
     return plan

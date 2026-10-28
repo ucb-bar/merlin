@@ -261,7 +261,7 @@ def account_interface_text(
     from merlin.targetgen.interface_observations import command_rows
     from merlin.targetgen.operation_accounting import admit_operation_row
 
-    parsed = parse_interface_mlir(mlir)
+    parsed = parse_interface_mlir(mlir, include_results=True)
     if parsed.get("target") != target:
         raise ValueError("written interface program names a different target")
     if numeric_screens is None:
@@ -295,25 +295,103 @@ def _operand_sum_numeric_screens(program: Path, evidence) -> list[dict]:
     return _operand_sum_numeric_screens_text(program.read_text(encoding="utf-8"), evidence)
 
 
+def _operand_sum_model(evidence) -> tuple[list[dict], dict] | None:
+    """The selected i8 operand-sum facets and readout numerics; ``None`` without a fused operand-sum row."""
+    spec = getattr(evidence, "software_spec", None) or {}
+    if not any(
+        (row.get("derived_from_facts") or {}).get("form") == "fused_operand_sum" for row in spec.get("operations") or ()
+    ):
+        return None
+    facets = [
+        facet.to_dict() if hasattr(facet, "to_dict") else facet for facet in getattr(evidence, "readout_facets", ())
+    ]
+    selected = [facet for facet in facets if (facet.get("operand_sum") or {}).get("operand_dtype") in {"i8", "int8"}]
+    return selected, (spec.get("numerical_semantics") or {}).get("readout") or {}
+
+
+def per_operand_readout_witness(
+    *, lhs_scale: float, rhs_scale: float, readout_scale: float, relu: bool, evidence
+) -> dict | None:
+    """The per-operand operand-sum witness INCLUDING the readout scale, for a fused i8 operand sum.
+
+    An interface command states no readout scale for its operand sum, so its per-operand screen
+    with an ``acc_scale`` stage stays unknown (``_operand_sum_numeric_screens_text``). A source
+    program whose every parameter is a proven constant -- both operand scales, the one readout gain
+    and the relu -- supplies that separate readout-scale witness: the exhaustive audit run with that
+    gain. ``None`` when the selected spec has no fused operand-sum row (no screen is made then).
+    """
+    model = _operand_sum_model(evidence)
+    if model is None:
+        return None
+    selected, readout = model
+    if (
+        len(selected) != 1
+        or readout.get("acc_scale_rounding") != "half_even"
+        or readout.get("narrowing") != "saturate_to_declared_dtype"
+    ):
+        result = {"status": "unknown", "reason": "selected i8 operand-sum/readout numerics are incomplete or ambiguous"}
+    else:
+        from merlin.targetgen.operand_sum_numeric import audit_i8_per_operand_sum
+
+        result = audit_i8_per_operand_sum(
+            lhs_scale=lhs_scale,
+            rhs_scale=rhs_scale,
+            readout_scale=readout_scale,
+            relu=relu,
+            facet=selected[0],
+            bound_lsb=0,
+        )
+    return {"form": "fused_operand_sum", **result}
+
+
+def single_rounding_readout_witness(
+    *, lhs_scale: float, rhs_scale: float, readout_scale: float, relu: bool, evidence
+) -> dict | None:
+    """The single-rounding operand-sum witness INCLUDING the readout gain, for a fused i8 operand sum.
+
+    The same gate as ``per_operand_readout_witness`` (a fused operand-sum row, exactly one selected
+    i8 facet, half-even/saturating readout numerics), but the exhaustive audit is the single-rounding
+    one (``audit_i8_operand_sum``) run with the source program's readout gain, so the witness carries
+    that gain under the contract the single-rounding realization binds. ``None`` when the selected
+    spec has no fused operand-sum row.
+    """
+    model = _operand_sum_model(evidence)
+    if model is None:
+        return None
+    selected, readout = model
+    if (
+        len(selected) != 1
+        or readout.get("acc_scale_rounding") != "half_even"
+        or readout.get("narrowing") != "saturate_to_declared_dtype"
+    ):
+        result = {"status": "unknown", "reason": "selected i8 operand-sum/readout numerics are incomplete or ambiguous"}
+    else:
+        from merlin.targetgen.operand_sum_numeric import audit_i8_operand_sum
+
+        result = audit_i8_operand_sum(
+            lhs_scale=lhs_scale,
+            rhs_scale=rhs_scale,
+            bound_lsb=0,
+            relu=relu,
+            facet=selected[0],
+            readout_scale=readout_scale,
+        )
+    return {"form": "fused_operand_sum", **result}
+
+
 def _operand_sum_numeric_screens_text(mlir: str, evidence) -> list[dict]:
     """Bound only a selected, fact-derived sum/readout composition.
 
     This is a deterministic software-model refusal screen, not a replacement
     for the executable capsule's target oracle. Other fused forms are untouched.
     """
-    spec = getattr(evidence, "software_spec", None) or {}
-    if not any(
-        (row.get("derived_from_facts") or {}).get("form") == "fused_operand_sum" for row in spec.get("operations") or ()
-    ):
+    model = _operand_sum_model(evidence)
+    if model is None:
         return []
+    selected, readout = model
     from merlin.targetgen.contract.interface_emit import parse_interface_mlir
     from merlin.targetgen.operand_sum_numeric import audit_i8_operand_sum, audit_i8_per_operand_sum
 
-    facets = [
-        facet.to_dict() if hasattr(facet, "to_dict") else facet for facet in getattr(evidence, "readout_facets", ())
-    ]
-    selected = [facet for facet in facets if (facet.get("operand_sum") or {}).get("operand_dtype") in {"i8", "int8"}]
-    readout = (spec.get("numerical_semantics") or {}).get("readout") or {}
     commands = parse_interface_mlir(mlir).get("commands") or ()
     screens = []
     for index, command in enumerate(commands):
@@ -339,6 +417,14 @@ def _operand_sum_numeric_screens_text(mlir: str, evidence) -> list[dict]:
             result = {
                 "status": "unknown",
                 "reason": "per-operand interface screen requires a separate readout-scale witness",
+            }
+        elif "acc_scale" in stages:
+            # An interface RESIDUAL_ADD cannot state a readout gain (its ABI epilogue is relu only):
+            # the single-rounding audit used to run here with that gain IGNORED. A readout gain is
+            # screened only by a source witness that carries it (single_rounding_readout_witness).
+            result = {
+                "status": "unknown",
+                "reason": "single-rounding interface screen requires a separate readout-scale witness",
             }
         else:
             audit = (
@@ -373,10 +459,42 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
     if program is None:
         return None
     semantic = capsule.get("semantic") or capsule.get("generalization") or {}
+    runtime_scale_name = None
     host_only = semantic.get("must_accelerate") is False and semantic.get("eligible") is False
     if "linalg_mlir" in capsule or capsule.get("kind") == "model":
         entries = account_program(program, name=str(capsule.get("name")), target=target, evidence=evidence)
         scope = "written source program: per-operation admission, as for a captured application"
+        if (capsule.get("operation") or {}).get("op") == "composition_program":
+            # A chain member proven to be its contraction's epilogue is judged as that fused stage.
+            from .source_fused_stages import observe as observe_fused_stages
+
+            attributes = (capsule.get("operation") or {}).get("attributes") or {}
+            case = attributes.get("case") or {}
+            inputs = [row for row in capsule.get("inputs") or [] if isinstance(row, dict)]
+            names = [row.get("name") for row in inputs]
+            scale_name = case.get("runtime_scale_input")
+            runtime_scale = names.index(scale_name) if scale_name and names.count(scale_name) == 1 else None
+            # The fact-derived extended-K bound the generator resolved for this composition.
+            within = ((semantic.get("composition_facts") or {}).get("k_extension_within")) or {}
+            entries = observe_fused_stages(
+                program,
+                entries,
+                evidence=evidence,
+                readout_strategy=(attributes.get("quantization_scheme") or {}).get("readout_strategy"),
+                dataflow=case.get("dataflow"),
+                max_k=within.get("max_k") if type(within.get("max_k")) is int else None,
+                # The Linalg cannot state a fence; the composition declares it (an unfenced twin
+                # has byte-identical Linalg), so only a declared fence lets a pool be observed.
+                pooling_fenced=case.get("scratchpad_source_pooling_fenced") is True,
+                runtime_scale=runtime_scale,
+                inputs=inputs,
+            )
+            if any(
+                ((entry.get("observed_signature") or {}).get("composed_observation") or {}).get("scale_source")
+                == "runtime_input"
+                for entry in entries
+            ):
+                runtime_scale_name = scale_name
         numeric_screens = []
     else:
         numeric_screens = _operand_sum_numeric_screens(program, evidence)
@@ -399,6 +517,18 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
     from .numeric_domains import screen as screen_numeric_domain
 
     domain = screen_numeric_domain(capsule, directory, (evidence.software_spec or {}).get("numerical_semantics") or {})
+    if runtime_scale_name is not None:
+        # An observed runtime scale holds the capsule's own inputs to the reviewed domain it was
+        # observed under, so the reference is never computed outside it.
+        from .numeric_domains import screen_runtime_scale
+        from .source_fused_stages import runtime_scale_domain
+
+        scale_domain = screen_runtime_scale(
+            capsule, directory, runtime_scale_name, runtime_scale_domain(evidence.software_spec or {})
+        )
+        screen["runtime_scale_domain"] = scale_domain
+        if scale_domain["status"] != "within_domain" and (domain is None or domain["status"] == "within_domain"):
+            domain = scale_domain
     if domain is not None:
         screen["numeric_domain"] = domain
         if domain["status"] in {"unsupported", "unknown"}:

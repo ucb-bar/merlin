@@ -16,27 +16,78 @@ from collections.abc import Mapping
 from merlin.common import quant_formats
 
 SCHEMA = "merlin.phase0.quantization_contract.v1"
-_IDENTITY_FIELDS = frozenset(
+# Authored annotations are retained in declarations, but do not supply numeric
+# parameters. Their review authority is checked by software_spec/operator_review.
+_ANNOTATION_FIELDS = frozenset(
     {
-        "id",
-        "operand_dtype",
-        "accumulator_dtype",
-        "eligible_operations",
-        "unit",
-        "numerical_semantics",
-        "framework",
         "evidence",
+        "provenance",
+        "policy_reviews",
+        "basis",
+        "note",
+        "notes",
+        "rationale",
         "description",
+        "reason",
+        "justification",
     }
+)
+_IDENTITY_FIELDS = (
+    frozenset(
+        {
+            "id",
+            "operand_dtype",
+            "accumulator_dtype",
+            "eligible_operations",
+            "unit",
+            "numerical_semantics",
+            "framework",
+            "evidence",
+            "description",
+        }
+    )
+    | _ANNOTATION_FIELDS
 )
 _INTEGER_PARAMETERS = frozenset({"activation_zero_point", "weight_zero_point", "block_size"})
 _BOOL_PARAMETERS = frozenset({"subnormal_operand_flush"})
 
 
 def _unknown(value) -> bool:
+    """Recognize explicit unknown markers, never infer one from prose whitespace.
+
+    The authored ``unknown until reviewed`` convention may carry an explanation.
+    It is meaningful only in parameter fields; annotation subtrees are excluded
+    by the walkers below.
+    """
     return value is None or (
-        isinstance(value, str) and (value == "unknown" or value.startswith("unknown ") or " " in value)
+        isinstance(value, str) and (value.lower() == "unknown" or value.lower().startswith("unknown "))
     )
+
+
+def _review_status_leaves(value: object, prefix: str):
+    """Under a ``policy_reviews`` annotation only the review ``status`` is a value, never its prose."""
+    if isinstance(value, Mapping):
+        for key, member in value.items():
+            if key == "status" and not isinstance(member, (Mapping, list)):
+                yield f"{prefix}.{key}".lstrip("."), member
+            elif isinstance(member, Mapping):
+                yield from _review_status_leaves(member, f"{prefix}.{key}".lstrip("."))
+
+
+def _parameter_leaves(value: object, prefix: str):
+    """Walk parameter values without interpreting annotation text as constraints."""
+    if isinstance(value, Mapping):
+        for key, member in value.items():
+            if key == "policy_reviews":
+                # An explicit unknown review status still blocks; basis, notes and the like stay annotations.
+                yield from _review_status_leaves(member, f"{prefix}.{key}".lstrip("."))
+            elif key not in _ANNOTATION_FIELDS:
+                yield from _parameter_leaves(member, f"{prefix}.{key}".lstrip("."))
+    elif isinstance(value, list):
+        for index, member in enumerate(value):
+            yield from _parameter_leaves(member, f"{prefix}[{index}]")
+    else:
+        yield prefix, value
 
 
 def _dtype(value: str) -> str:
@@ -50,7 +101,8 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
 
     Id-less legacy declarations have a stable identity from their canonical
     operand/accumulator pairing. Same-pair variants must have distinct explicit
-    ids. Prose parameters remain visible unknowns, not executable constraints.
+    ids. Explicit unknown parameters remain diagnostic; typed parameters must
+    contain values of their declared type.
     """
     declaration = spec.get("quantization")
     if declaration is None:
@@ -296,17 +348,11 @@ def _resolve_scheme_constraints(row: dict, constraints: list, context: Mapping) 
 
 def unresolved_values(value: object, prefix: str = "") -> list[str]:
     """List every unresolved derived field, including nested lists and constraints."""
-    if isinstance(value, Mapping):
-        return [
-            name for key, member in value.items() for name in unresolved_values(member, f"{prefix}.{key}".lstrip("."))
-        ]
-    if isinstance(value, list):
-        return [name for i, member in enumerate(value) for name in unresolved_values(member, f"{prefix}[{i}]")]
-    missing = value is None or (
-        isinstance(value, str)
-        and (value in {"from_facts", "from_output_path"} or value.upper().split(" ")[0] == "UNKNOWN")
-    )
-    return [prefix] if missing else []
+    return [
+        name
+        for name, member in _parameter_leaves(value, prefix)
+        if _unknown(member) or (isinstance(member, str) and member in {"from_facts", "from_output_path"})
+    ]
 
 
 def _record(value, basis: str, *, not_applicable=False) -> dict:
@@ -318,18 +364,7 @@ def _record(value, basis: str, *, not_applicable=False) -> dict:
 
 
 def _unresolved(value, prefix: str) -> list[str]:
-    if isinstance(value, Mapping):
-        # Evidence prose describes the declaration; it is not a numerical
-        # parameter. Review acceptance remains the software admission gate.
-        return [
-            name
-            for key, member in value.items()
-            if key not in {"evidence", "provenance"}
-            for name in _unresolved(member, f"{prefix}.{key}")
-        ]
-    if isinstance(value, list):
-        return [name for index, member in enumerate(value) for name in _unresolved(member, f"{prefix}[{index}]")]
-    return [prefix] if _unknown(value) else []
+    return [name for name, member in _parameter_leaves(value, prefix) if _unknown(member)]
 
 
 def _parameters(
@@ -478,6 +513,53 @@ def _observations(accounting: Mapping | None, declaration_id: str) -> list[dict]
     return observations
 
 
+def _runtime_weight_contractions(recipe: dict, spec: Mapping) -> None:
+    """A calibrated weight may arrive through a reviewed operand load.
+
+    The caller has already selected a format-specific hardware recipe and SW
+    contraction scope and methodology. Storage origin does not change that
+    arithmetic. This does not license activation contractions or dynamic scales.
+    Missing transfer authority keeps the historical stored-weight policy.
+    """
+    from merlin.targetgen.transfer_contracts import validate_transfer_contracts
+
+    if recipe.get("status") != "derived" or "contraction" not in recipe["families"]:
+        return
+    if recipe["accumulator_dtype"] != "int32" or any(
+        tensor.get("dtype") != "int8"
+        or tensor.get("mode") != "static"
+        or tensor.get("symmetric") is not True
+        for tensor in (recipe["weight"], recipe["activation"])
+    ):
+        return
+    if (
+        recipe["weight"].get("granularity") not in {"tensor", "channel"}
+        or recipe["activation"].get("granularity") != "tensor"
+    ):
+        return
+    transfers = validate_transfer_contracts(spec.get("transfer_contracts"))
+    if transfers is None or transfers["status"] != "reviewed":
+        return
+    loads = [
+        row["id"]
+        for row in transfers["declarations"]
+        if row["from"] == "host"
+        and row["to"] == "accelerator"
+        and row["semantics"] == {"conversion": "bit_preserving"}
+        and row["evidence"].get("status") == "reviewed"
+        and row["signature"].get("operand_layout") == "row_major_contiguous"
+        and row["signature"].get("result_layout") == "row_major_contiguous"
+        and all(_dtype(row["signature"][key]) == "int8" for key in ("operand_dtype", "result_dtype"))
+    ]
+    if loads:
+        recipe["runtime_weight_contractions"] = True
+        recipe.setdefault("why", {})["runtime_weight_contractions"] = (
+            "the selected hardware contraction recipe and reviewed bit-preserving operand loads "
+            f"{loads!r} allow externally supplied weights on the selected static grids; "
+            "per-site software admission, calibration and integer agreement remain required"
+        )
+
+
 def capture_recipe_candidates(spec: Mapping, quantization_contract: Mapping) -> list[dict]:
     """Project saved hardware recipes through explicit SW format/operation scopes.
 
@@ -573,6 +655,9 @@ def capture_recipe_candidates(spec: Mapping, quantization_contract: Mapping) -> 
                     }
                     for variant in declared.get("model_variants") or ()
                 ]
+            for derived in [row["recipe"], *(variant["recipe"] for variant in row.get("model_variants", []))]:
+                _runtime_weight_contractions(derived, spec)
+                derived["recipe_sha256"] = digest(derived)
             result.append(row)
     return result
 
@@ -680,14 +765,36 @@ def _operation_eligibility(
     return decisions
 
 
+def _selected_output_path(target: str, hardware_snapshot: Mapping):
+    """Read the prepared path or derive the same view as conformance, without extraction."""
+    from merlin.targetgen.capability_manifests import derived_output_path
+    from merlin.targetgen.quant_methodology import output_path_of
+    from merlin.targetgen.rtl.facts import load_facts
+
+    contract = hardware_snapshot.get("contract")
+    path = output_path_of(contract)
+    if path is not None:
+        return path
+    if not target or contract is None:
+        return None
+    try:
+        facts = hardware_snapshot.get("facts")
+        if facts is None:
+            facts = load_facts(target, regenerate=False)
+        return derived_output_path(target, facts=facts, contract=contract)
+    except (KeyError, ValueError, FileNotFoundError):
+        return None  # unreadable selected inputs leave methodology derivation strict
+
+
 def build_quantization_contract(
     software_spec: Mapping | None, hardware_snapshot: Mapping, operation_accounting: Mapping | None = None
 ) -> dict:
     """Build JSON-only input for inspection and future TorchAO adapter selection.
 
     ``hardware_snapshot`` contains selected ``quantization_candidates`` produced
-    by quant_recipe.derive_candidates and their ``readout_facets``. This function
-    never resolves a target provider, reruns RTL extraction, or imports TorchAO.
+    by quant_recipe.derive_candidates, their ``readout_facets``, and selected
+    ``facts`` when available. A missing output path uses the shared fact/probe
+    derivation; this function never reruns RTL extraction or imports TorchAO.
     """
     software_spec = software_spec or {}
     declarations = validate_quantization_declarations(software_spec)
@@ -762,10 +869,13 @@ def build_quantization_contract(
         "model-layer admission, or TorchAO realization proof",
     }
     methodology = (software_spec.get("quantization") or {}).get("methodology")
+    path = (
+        _selected_output_path(body["target"], hardware_snapshot)
+        if methodology is not None or "schemes" in (software_spec.get("quantization") or {})
+        else None
+    )
     if "schemes" in (software_spec.get("quantization") or {}):
-        from merlin.targetgen import quant_methodology as QM
-
-        context = {"output_path": QM.output_path_of(hardware_snapshot.get("contract"))}
+        context = {"output_path": path}
         schemes, unknown = resolve_quantization_schemes(software_spec, context)
         body["schemes"] = {**schemes, "unresolved": unknown}
     if "numerics" in (software_spec.get("quantization") or {}):
@@ -776,7 +886,6 @@ def build_quantization_contract(
     if methodology is not None:
         from merlin.targetgen import quant_methodology as QM
 
-        path = QM.output_path_of(hardware_snapshot.get("contract"))
         body["methodology"] = {
             "declaration": QM.validate(methodology),
             "output_path": path,

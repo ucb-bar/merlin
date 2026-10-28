@@ -215,11 +215,18 @@ def execution_environment(command: dict) -> dict[str, str]:
         # on inputs absent from the selected source receipt and changes resume.
         # Optional generators remain unavailable until their owners are
         # explicitly selected and frozen by Phase 0.
+        selected = {}
+        if "phase0_execution_selection" in command:
+            from .phase0 import execution_runtime
+
+            execution_runtime.verify(command["phase0_execution_selection"], command["env"], live=False)
+            selected = execution_runtime.environment(command["phase0_execution_selection"])
         return {
             "PATH": "/usr/bin:/bin",
             "LC_ALL": "C.UTF-8",
             "PYTHONHASHSEED": "0",
             **command["env"],
+            **selected,
         }
     environment = dict(os.environ, **command["env"])
     if command.get("module") in {MODULE, "merlin_experiments.phase2.portfolio_cli"}:

@@ -52,7 +52,7 @@ def declaration(route, identity="arbitrary id"):
     elif route == "k_concat":
         row.update(
             extension="constant_integer_operand",
-            constraints=["coefficient_integer_exact", {"k_extension_within": "from_facts"}],
+            constraints=["coefficient_integer_exact", "residual_accumulates_before_readout", {"k_extension_within": "from_facts"}],
         )
     elif route == "output_stationary":
         row.update(

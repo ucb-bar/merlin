@@ -624,10 +624,12 @@ def read_out_floating_widths(graph_module: Any, moves: set[Any]) -> list[dict[st
             kwargs = {**node.kwargs, "dtype": torch.float32}
             with graph.inserting_before(node):
                 computed = graph.call_function(node.target, args=node.args, kwargs=kwargs)
-            args = torch.fx.map_arg(node.args, lambda n: n.meta["val"])
-            computed.meta = {**node.meta, "val": node.target(*args, **kwargs)}
+            computed.meta = {**node.meta, "val": value.to(torch.float32)}
         else:
             continue
+        # Keep the exported FakeTensor value and discard stale narrow metadata.
+        # PT2E requires FakeTensor outputs to insert the Q/DQ readout boundary.
+        computed.meta.pop("tensor_meta", None)
         computed.meta["_m2m_source_aten"] = str(node.target)
         with graph.inserting_after(computed):
             readout = graph.call_function(aten._to_copy.default, args=(computed,), kwargs={"dtype": value.dtype})
@@ -937,6 +939,15 @@ def build_quantizer(
     def eligible(node: Any, family: str) -> bool:
         if family == "operand_sum" and node.meta.get("merlin_contraction_epilogue"):
             return False
+        if family in {"operand_sum", "window_mean"}:
+            from merlin.targetgen._recipe_integer import data_arguments
+
+            # Reduction observers and rewrites require FP32 data and results.
+            # Keep integer/Bool and dtype-changing reductions on their source path.
+            values = [node.meta.get("val")]
+            values.extend(a.meta.get("val") for a in data_arguments(node) if isinstance(a, torch.fx.Node))
+            if any(not isinstance(value, torch.Tensor) or value.dtype != torch.float32 for value in values):
+                return False
         # An activation contraction is a contraction to the SW admission screen; the family only
         # decides which spec its second operand takes.
         if not software_allows(node, "contraction" if family == ACTIVATION_CONTRACTION else family):
@@ -951,10 +962,15 @@ def build_quantizer(
                 not recipe.get("runtime_weight_contractions") and not stored_floating_weight(operands[-1])
             ):
                 return False
+            # The backward rewrite has no preserved non-FP32 Q/DQ path.
+            # Leave those source calls untouched on the host instead of adding
+            # observers whose dequantization rounding cannot be integerized.
+            backward = node.target == torch.ops.aten.convolution_backward.default
             if len(operands) not in (2, 3) or any(
                 not isinstance(operand, torch.fx.Node)
                 or not isinstance((value := operand.meta.get("val")), torch.Tensor)
                 or not value.is_floating_point()
+                or (backward and value.dtype != torch.float32)
                 for operand in operands
             ):
                 return False
@@ -1097,6 +1113,21 @@ def build_quantizer(
         if family == "contraction" and family not in dynamic_families and reader.args and reader.args[0] is source:
             return eligible(reader, family) and not (planes_block and _planes_site(planes_block, reader, owner(reader)))
         return family == ACTIVATION_CONTRACTION and family not in dynamic_families and source in reader.args[:2]
+
+    def feeds_host_contraction(node: Any) -> bool:
+        """Do not expose a standalone output grid to an unselected contraction.
+
+        PT2E output specs affect every reader. A single Q/DQ operand would make
+        an otherwise floating contraction look partially selected to the integer
+        partition, although this recipe never annotated that contraction.
+        """
+        for reader in node.users:
+            if reader.op != "call_function" or reader.target not in operators["contraction"]:
+                continue
+            family = family_of(reader)
+            if family not in listed or not eligible(reader, family):
+                return True
+        return False
 
     class CapabilityQuantizer(Quantizer):
         def __init__(self) -> None:
@@ -1398,6 +1429,8 @@ def build_quantizer(
 
         def _annotate_standalone(self, node: Any, family: str) -> None:
             """A sum or mean that reads itself out: its tensor inputs and its own output scale."""
+            if feeds_host_contraction(node):
+                return
             if family == "operand_sum":
                 operands = [a for a in node.args[:2] if isinstance(a, torch.fx.Node) and a.op != "get_attr"]
                 if len(operands) != 2:
@@ -1422,7 +1455,7 @@ def build_quantizer(
             """Input and output edges of a standalone affine map or movement."""
             from torchao.quantization.pt2e.quantizer import SharedQuantizationSpec
 
-            if fused_behind_contraction(node):
+            if fused_behind_contraction(node) or feeds_host_contraction(node):
                 return
             inputs = tensor_inputs(node)
             constant = family == "movement" and str(node.target).endswith(_CONSTANT_MOVEMENT)
@@ -1948,7 +1981,9 @@ def apply_recipe(
                 for sample in samples:
                     if calibrated >= sample_limit:
                         break
-                    require_finite_calibration(sample)
+                    # Only observer edges belong to calibration. Unselected host
+                    # branches may consume complex/nonfinite values; the pre-hooks
+                    # above still reject them if they reach an actual observer.
                     prepared(*_as_tuple(sample))
                     calibrated += 1
                     require_finite_observer_state(

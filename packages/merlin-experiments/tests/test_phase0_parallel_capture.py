@@ -71,3 +71,44 @@ def test_parallel_staging_publishes_complete_distinct_members(tmp_path):
     assert len(set(results)) == 4
     assert all((path/'golden.yaml').read_text() == 'complete\n' for path in results)
     assert not list(tmp_path.glob('.staging-*'))
+
+
+def _roomy(monkeypatch):
+    from merlin_experiments.phase0 import parallel_capture as PC
+
+    monkeypatch.setattr(PC.os, "sched_getaffinity", lambda _pid: set(range(64)), raising=False)
+    monkeypatch.setattr(PC, "_available_memory", lambda: 512 * 1024**3)
+    monkeypatch.setattr(PC, "_cgroup_limits", lambda: (None, None))
+    return PC
+
+
+def test_worker_limit_default_cap_is_eight(monkeypatch):
+    PC = _roomy(monkeypatch)
+    monkeypatch.delenv(PC.WORKER_LIMIT_ENV, raising=False)
+    assert PC.worker_limit() == 8
+
+
+def test_worker_limit_env_raises_and_lowers_the_cap(monkeypatch):
+    PC = _roomy(monkeypatch)
+    monkeypatch.setenv(PC.WORKER_LIMIT_ENV, "32")
+    assert PC.worker_limit() == 32
+    monkeypatch.setenv(PC.WORKER_LIMIT_ENV, "3")
+    assert PC.worker_limit() == 3
+
+
+def test_worker_limit_env_never_lifts_cpu_or_memory_bounds(monkeypatch):
+    PC = _roomy(monkeypatch)
+    monkeypatch.setenv(PC.WORKER_LIMIT_ENV, "1000")
+    assert PC.worker_limit() == 64
+    monkeypatch.setattr(PC, "_available_memory", lambda: 10 * 1024**3)
+    assert PC.worker_limit() == 5
+
+
+def test_worker_limit_env_refuses_a_bad_value(monkeypatch):
+    import pytest
+
+    PC = _roomy(monkeypatch)
+    for bad in ("0", "-2", "many", ""):
+        monkeypatch.setenv(PC.WORKER_LIMIT_ENV, bad)
+        with pytest.raises(ValueError, match=PC.WORKER_LIMIT_ENV):
+            PC.worker_limit()

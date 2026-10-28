@@ -311,6 +311,62 @@ def _integerization_census_admission(meta: dict, stage: Path):
     )
 
 
+def _exact_word_outputs(meta: dict, stage: Path) -> None:
+    """Special/complex admission uses every typed, independently compared word.
+
+    The source-bound worker compares uint8 views, including NaN payloads. JSON
+    reference values cannot preserve those payloads and are never a substitute
+    for that comparison. The ordinary materialization check binds both artifacts
+    and the reference implementation; here we additionally join every ABI row.
+    """
+    from .sealed_m2m import SealedM2MError, _file_digest, json
+
+    agreement = meta["integerization_receipt"]["golden_agreement"]
+    outputs, abi = agreement["outputs"], meta.get("output_abi")
+    spellings = {
+        "torch.bool": "i1",
+        "torch.int8": "i8",
+        "torch.uint8": "ui8",
+        "torch.int16": "i16",
+        "torch.int32": "i32",
+        "torch.int64": "i64",
+        "torch.float16": "f16",
+        "torch.bfloat16": "bf16",
+        "torch.float32": "f32",
+        "torch.float64": "f64",
+        "torch.complex64": "complex<f32>",
+        "torch.complex128": "complex<f64>",
+    }
+    pointer = agreement.get("output") or {}
+    reference = stage / "integer-reference.json"
+    try:
+        if (
+            not isinstance(abi, list)
+            or len(abi) != len(outputs)
+            or not isinstance(pointer, dict)
+            or pointer.get("path") != reference.name
+            or reference.is_symlink()
+            or _file_digest(reference) != pointer.get("sha256")
+            or any(
+                row.get("byte_equal") is not True
+                or row.get("dtype_before") != row.get("dtype_after")
+                or row.get("dtype_before") not in spellings
+                or not isinstance(row.get("shape"), list)
+                or any(type(dim) is not int or dim < 0 for dim in row["shape"])
+                or typed != {"shape": row["shape"], "dtype": spellings[row["dtype_before"]]}
+                for row, typed in zip(outputs, abi)
+            )
+        ):
+            raise ValueError("missing exact byte comparison for every typed output")
+        # Reference tensor data may contain IEEE specials. Only its ABI is used
+        # here; admission metrics remain strict, finite, zero-tolerance JSON.
+        recorded = json.loads(reference.read_bytes(), parse_constant=lambda _: None)
+        if recorded.get("schema") != "merlin.capture.integer_reference.v1" or recorded.get("output_abi") != abi:
+            raise ValueError("independent reference output ABI differs")
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        raise SealedM2MError(f"capture lacks exact special/complex output evidence: {exc}") from exc
+
+
 def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[str, Any]) -> dict[str, Any]:
     """Verify the complete saved ABI, including every declared session program."""
     from .sealed_m2m import (
@@ -326,7 +382,11 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
         strict_json,
     )
 
-    from merlin.capture.integerization import contraction_partition
+    from merlin.capture.integerization import (
+        contraction_partition,
+        non_contraction_annotations,
+        non_contraction_program,
+    )
 
     native = native_integer.selected(plan.get("worker_options"))
 
@@ -357,12 +417,16 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
         by_kind = receipt["quantized_by_kind"]
         count = receipt.get("exported_integer_mm_count")
         emitted = receipt.get("integer_mm_emitted")
+        batched = receipt.get("exported_integer_bmm_count", 0)
+        emitted_batched = receipt.get("integer_bmm_emitted", 0)
         max_k = receipt.get("max_reduction_k")
         annotated = stats.get("annotated_contractions")
         engine = recipe.get("software_numerical_engine")
-        verdict = _integerization_census_admission(meta, stage)
-        if not verdict.accepted:
-            raise SealedM2MError(f"capture lacks independently verified integer contractions: {verdict.reason}")
+        if not non_contraction_program(receipt):
+            # A contraction-free program is admitted below by its own parse and dynamic-work proof.
+            verdict = _integerization_census_admission(meta, stage)
+            if not verdict.accepted:
+                raise SealedM2MError(f"capture lacks independently verified integer contractions: {verdict.reason}")
         if (
             engine != "integer_reference"
             or type(annotated) is not int
@@ -374,7 +438,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             or not numerical_rows
             or any(
                 not isinstance(result, dict)
-                or result.get("finite") is not True
+                or type(result.get("finite")) is not bool
                 or (result is not agreement and result.get("within_tolerance") is not True)
                 or any(
                     type(result.get(key)) not in (int, float) or result[key] != 0.0
@@ -382,6 +446,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
                 )
                 for result in numerical_rows
             )
+            or agreement.get("finite") != all(row["finite"] for row in outputs)
             or not isinstance(executed, dict)
             or any(
                 type(executed.get(key)) is not int
@@ -390,11 +455,93 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             or executed.get("total") != partition["integerized"]
             or executed.get("selected") != partition["seen"]
             or executed.get("observed") != partition["seen"]
-            or any(executed.get(kind) != by_kind[kind]["integerized"] for kind in ("linear", "conv2d", "matmul"))
-            or type(count) is not int
-            or count <= 0
-            or type(emitted) is not int
-            or emitted < partition["integerized"]
+            or any(
+                not isinstance(by_kind.get(kind), dict) or executed.get(kind) != by_kind[kind].get("integerized")
+                for kind in ("linear", "conv2d", "matmul")
+            )
+            or any(type(value) is not int or value < 0 for value in (count, emitted, batched, emitted_batched))
+            or emitted_batched != batched
+        ):
+            raise SealedM2MError(
+                "capture lacks independently verified integer contractions or complete precision census"
+            )
+        if (
+            not agreement["finite"]
+            or any(str(row.get("dtype_before", "")).startswith("torch.complex") for row in outputs)
+            or any(
+                isinstance(row, dict) and str(row.get("dtype", "")).startswith("complex")
+                for row in (meta.get("output_abi") or [])
+            )
+        ):
+            _exact_word_outputs(meta, stage)
+        if non_contraction_program(receipt):
+            from merlin.targetgen.capture_refusals import M2MUnavailable
+            from merlin.targetgen.integerization_export import exported_integer_counts
+
+            # The marker alone cannot waive a MAC proof: require the quantizer's
+            # same annotation census and independently parse the saved program.
+            kinds = {"linear", "conv2d", "matmul", "unsupported"}
+            decisions = receipt.get("precision_decision_counts")
+            if (
+                non_contraction_annotations(stats) != receipt["non_contraction_annotations"]
+                or any((count, emitted, batched, emitted_batched))
+                or receipt.get("precision_decisions", []) != []
+                or (
+                    decisions is not None
+                    and (
+                        not isinstance(decisions, dict)
+                        or set(decisions) != {"integerized_i32", "preserve_float_qdq", "unresolved"}
+                        or any(type(value) is not int or value != 0 for value in decisions.values())
+                    )
+                )
+                or set(by_kind) != kinds
+                or any(
+                    set(row) != {"seen", "integerized", "remaining"}
+                    or any(type(value) is not int or value != 0 for value in row.values())
+                    for row in by_kind.values()
+                )
+                or any(
+                    type(receipt.get(key)) is not int or receipt[key] != 0
+                    for key in (
+                        "quantized_contractions_seen",
+                        "quantized_contractions_integerized",
+                        "quantized_contractions_remaining",
+                    )
+                )
+                or type(max_k) is not int
+                or max_k != 0
+            ):
+                raise SealedM2MError("non-contraction capture has inconsistent annotation or contraction evidence")
+            try:
+                if exported_integer_counts((stage / "model.mlir").read_text()) != (0, 0):
+                    raise ValueError("non-contraction program contains integer contractions")
+                if stats.get("dynamic_contractions") is not None:
+                    from merlin.capture.integerization import traced_integer_owners
+                    from merlin.targetgen.frontend_trace import loads_frontend_trace
+
+                    block = stats["dynamic_contractions"]
+                    if (
+                        not isinstance(block, dict)
+                        or block.get("sites") != []
+                        or block.get("kept_in_float") != []
+                        or any(
+                            type(block.get(key)) is not int or block[key] != 0
+                            for key in ("rewritten", "device_calls", "host_elements", "int8_macs")
+                        )
+                        or traced_integer_owners(
+                            loads_frontend_trace((stage / "frontend-trace.json").read_bytes()),
+                            _file_digest(stage / "model.mlir"),
+                        )
+                        != (0, {})
+                    ):
+                        raise ValueError("non-contraction program has dynamic contraction work")
+            except (OSError, ValueError, M2MUnavailable) as exc:
+                raise SealedM2MError(f"non-contraction capture export is unverified: {exc}") from exc
+        elif (
+            count + batched <= 0
+            or emitted + emitted_batched < partition["integerized"]
+            # Dynamic owners and export provenance are proven by the shared
+            # census admission above, not by comparing totals here.
             or receipt.get("accumulator_bound_checked") is not True
             or type(max_k) is not int
             or max_k < 1
@@ -403,7 +550,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             raise SealedM2MError(
                 "capture lacks independently verified integer contractions or complete precision census"
             )
-        return count, partition
+        return count + batched, partition
 
     report_path = output / "session-receipt.json"
     contract_path = output / "session_contract.yaml"

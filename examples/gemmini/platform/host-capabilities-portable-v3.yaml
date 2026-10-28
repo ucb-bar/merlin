@@ -10,6 +10,7 @@ review:
     mandatory; the historical source-only review leaves numerical contracts unreviewed
     unless separately reviewed below. Source-call-to-symbol routing is not proved.'
   library_numerical_policy_addendum: "only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
+  m2m_exact_quant_addendum: "REVIEWED by operator sign-off /scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68: four exact typed declarations for model2MLIR exact-quantization captures (m2m_q.quantize f32/f64/i64->i8, m2m_q.exact_readout i32/f32->f32, dequantize_per_tensor i8/f64/i64->f32, two-result f32 layer-norm moments). Each row records that review in its reviewed_by evidence."
   successor: attention-host-placement-v2-20261019
   attention_source_addendum: "add only the nine exact typed attention-preparation declarations below for a prospective fresh host view. Closed parsed source bodies, selected index bounds, source-to-linked-image correspondence and ordinary numerical execution remain mandatory. Existing declarations, sealed views, numerical policies and accelerator obligations are unchanged; this review is not an all-input numerical or hardware qualification."
 compiler:
@@ -3100,6 +3101,165 @@ operations:
     evidence:
       reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       exact_typed_boolean_source_and_linked_image: required
+- id: host_m2m_exact_quantize_f32_i8
+  status: reviewed
+  ops:
+  - m2m_q.quantize.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - f32
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - i8
+    ranks:
+    - 2
+    quantization_parameters:
+      zero_point: 0
+      quant_min: -128
+      quant_max: 127
+  numerical_contract:
+    status: reviewed
+    semantics:
+      formula: q = clamp(round_half_even(x / scale) + zero_point, quant_min, quant_max)
+      quotient: exact_rational_no_reciprocal
+      rounding: round_half_to_even
+      scale: binary64 operand equal to prov.quant.scale_numerator/scale_denominator (lowering refuses otherwise)
+      scale_granularity: tensor
+      zero_point: 0
+      quant_min: -128
+      quant_max: 127
+      infinity: saturates_to_quant_min_or_quant_max
+      nan: runtime_assert_refusal (unless recipe quantization_nonfinite=byte_storage_zero_nan_saturating_infinity sets merlin.quantizer_nan_storage_zero, then NaN -> code 0)
+    evidence:
+      reviewed_by: "Loren Hung, operator sign-off 2026-10-28 (/scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68); reviewer text /scratch/loren/hostfix-review/REVIEW.md section 5 (the reviewer text is on the stopped compute-2 disk; proposal and narrowing evidence in this history: commits 12e617cd4 and 860cf3ec4); the stated basis and RV64 obligations remain mandatory."
+      basis: 'model2MLIR m2m_q::quantize CPU evaluator m2m/capture/exact_quant.py quantize_tensor
+        (exact Fraction quotient, Python round half-even, clamp, NaN raises); host lowering
+        llvmlower/passes_xdsl.py selects llvmlower/exact_quantize.py for prov.aten
+        m2m_q.quantize.default (255 exact RNE thresholds over ordered binary32 codes,
+        integer bisection, cf.assert on NaN). Threshold-adjacency check over every
+        threshold proves the table equals the evaluator for every finite binary32
+        input at the checked scales; RV64 execution remains a separate obligation.'
+- id: host_m2m_exact_readout_i32_f32
+  status: reviewed
+  ops:
+  - m2m_q.exact_readout.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 2
+    aliasing: disjoint_inputs_outputs
+    layouts:
+    - row_major_contiguous
+    readout_dtype: f32
+  numerical_contract:
+    status: reviewed
+    semantics:
+      formula: y = round_to_binary32_half_even(acc * activation_scale * alpha * weight_scale[channel])
+      arithmetic: exact_rational_wide_integer_body
+      rounding: single_round_half_to_even_to_binary32
+      accumulator: i32 full range (no |acc| < 2^24 premise)
+      subnormals: produced_exactly
+      overflow: infinity
+      operand_1: f32 init tensor (outs), value unused
+      excluded_forms: bias operand and requantized integer output have other typed signatures
+    evidence:
+      reviewed_by: "Loren Hung, operator sign-off 2026-10-28 (/scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68); reviewer text /scratch/loren/hostfix-review/REVIEW.md section 5 (the reviewer text is on the stopped compute-2 disk; proposal and narrowing evidence in this history: commits 12e617cd4 and 860cf3ec4); the stated basis and RV64 obligations remain mandatory."
+      basis: 'model2MLIR m2m_q::exact_readout CPU evaluator m2m/capture/exact_quant.py
+        exact_readout/float_bits; emitted linalg.generic body from m2m/ir/integer_readout.py
+        decompose_exact_readout (i32 -> wide signed integer product with the exact
+        rational scale numerator, shift, normalize, RNE, binary32 bit assembly).
+        A Python integer interpretation of the emitted body matched the evaluator
+        on boundary and random accumulators; RV64 legalization of the non-native
+        integer widths remains a separate obligation.'
+- id: host_m2m_dequantize_per_tensor_f64_scale
+  status: reviewed
+  ops:
+  - quantized_decomposed.dequantize_per_tensor.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i8
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 2
+    quantization_parameters:
+      zero_point: 0
+      quant_min: -128
+      quant_max: 127
+  numerical_contract:
+    status: reviewed
+    semantics:
+      formula: f32((i8 - zero_point) * scale)
+      host_arithmetic: binary64 product then one truncation to binary32
+      exactness_premise: scale is exactly representable in binary32 (then the binary64
+        product of a byte code and the scale is exact and the only rounding is the
+        final half-even narrowing, equal to PyTorch's binary32 multiply)
+      exactness_premise_enforcement: none in signature screen; operator obligation per admitted instance until a lowering guard refuses non-binary32 f64 scales
+      scale_granularity: tensor
+      zero_point: 0
+    evidence:
+      reviewed_by: "Loren Hung, operator sign-off 2026-10-28 (/scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68); reviewer text /scratch/loren/hostfix-review/REVIEW.md section 5 (the reviewer text is on the stopped compute-2 disk; proposal and narrowing evidence in this history: commits 12e617cd4 and 860cf3ec4); the stated basis and RV64 obligations remain mandatory."
+      basis: 'host lowering llvmlower/passes_xdsl.py dequantize rewrite (f64 compute
+        when the scale is f64, truncf to f32). Exhaustive 256-code comparison
+        against torch eager at the captured scales. The binary32-representable scale
+        premise is not checked by this signature screen.'
+- id: host_f32_layer_norm_two_result_moments
+  status: reviewed
+  ops:
+  - aten.native_layer_norm.default
+  families:
+  - reduction
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    - f32
+    ranks:
+    - 2
+  source_body:
+    schema: merlin.static_f32_row_moments_source_body.v1
+    operation: row_mean_biased_variance
+    data_operand:
+      dtype: f32
+      shape:
+      - 32
+      - 32
+      reduction_axis: 1
+    canonical_body_sha256: 2caf020879e81e59b013922f88747a6b65507a6056e8c1bb187bc6f1b961e3b0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_binary32
+      rounding: round_to_nearest_even
+      accumulator: f32
+      reduction_order: selected_lowering
+      existing_numerical_tolerance: unchanged
+      data_operand: one captured static [32, 32] f32 tensor read by tensor.extract; source_body proves the single capture, its shape and dtype, the row index and that every column of the row is read exactly once (axis 1)
+      tolerance: atol 0.03125, rtol 0.02 against eager native_layer_norm mean and rstd
+      fused_multiply_add: math.fma must lower to a fused llvm.fma (fmadd.s or correctly rounded fmaf)
+    evidence:
+      reviewed_by: "Loren Hung, operator sign-off 2026-10-28 (/scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68); reviewer text /scratch/loren/hostfix-ln/RESULT.md section 6 (the reviewer text is on the stopped compute-2 disk; source-body screen evidence in this history: commit 0e20d3243); the stated basis and RV64 obligations remain mandatory."
+      basis: the digest-pinned parsed body, executed op by op in binary32 with single-rounding fma, against eager native_layer_norm mean and rstd on edge and random rows (out-of-tree /scratch/loren/hostfix-ln/evidence/ln_moments_evidence.out sha256 326b5a59db61566b4d566ece2463d5d448690bf9e3d80868ab6932566566a1c3; 1472 rows, mean and rstd bit-exact vs eager with single-rounding fma); RV64 lowering, fused-fma emission and Spike execution remain obligations
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:

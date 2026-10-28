@@ -418,6 +418,49 @@ def test_scaled_operand_sum_binding_selects_its_declaration(hardware):
     assert set(proof["kernels"][0]["emission_obligations"]) == {"elementwise_map_after_operand_sum"}
 
 
+def test_single_rounding_realization_and_phase0_source_witness_share_one_row_and_contract(hardware):
+    """The realization binds the row the Phase 0 witness (with its readout gain) is judged by."""
+    from merlin.targetgen.admission_conditions import (
+        OPERAND_SUM_CONTRACT_ROUNDING,
+        binding_declaration,
+        declaration_numerics,
+    )
+    from merlin.targetgen.operand_sum_numeric import audit_i8_operand_sum
+
+    spec = load_software_spec(SPEC)
+    rows = {r["id"]: r for r in spec["operations"]}
+    binding = copy.deepcopy(SCALED_OPERAND_SUM)
+    assert binding["numeric"]["operand_sum_rounding"] == "single_rounding"
+    identity = binding_declaration(binding)
+    assert identity == "elementwise_map_after_operand_sum"
+    declaration_numerics(binding, identity, rows[identity])  # accepted: no refusal
+    contract = rows[identity]["numerical_contract"]
+    assert OPERAND_SUM_CONTRACT_ROUNDING[contract] == "single_rounding"
+    facet = dict(
+        rounding="half_even",
+        clamp=[-128, 127],
+        accumulator_dtype="i32",
+        operand_sum=dict(
+            operands=2, operand_dtype="i8", operand_rounding="half_even", operand_saturates=True, scale_dtype="f32"
+        ),
+        readouts=[dict(selector="i8", applies=["acc_scale", "relu"])],
+        scale=dict(dtype="f32", granularities=["tensor"]),
+    )
+    witness = audit_i8_operand_sum(
+        lhs_scale=1.0, rhs_scale=1.0, bound_lsb=0, relu=True, facet=facet, readout_scale=0.16666667
+    )
+    assert witness["status"] == "within_bound" and "readout_gain_f32" in witness["parameters"]
+    # the validator's default: a witness without a numerical_contract key is the row's v1 contract
+    assert witness.get("numerical_contract", "operand_sum_exhaustive_i8_v1") == contract
+    # the per-operand realization is a different row and contract
+    other = copy.deepcopy(SCALED_OPERAND_SUM)
+    other["numeric"]["operand_sum_rounding"] = "per_operand"
+    assert binding_declaration(other) == "elementwise_map_after_per_operand_sum"
+    assert rows[binding_declaration(other)]["numerical_contract"] != contract
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        declaration_numerics(other, identity, rows[identity])
+
+
 @pytest.mark.parametrize("scale", [1.0, 2.0**-7])
 def test_scaled_operand_sum_admits_its_operand_multiplier_domain(hardware, scale):
     spec = load_software_spec(SPEC)

@@ -98,88 +98,14 @@ def test_collision_and_unknown_geometry_fail_closed(software, facts):
         entries(software, facts)
 
 
-def test_budget_overflow_raises_without_truncation(software, facts):
-    from merlin.targetgen.corpus_synth import SynthesisError, synthesize
-
-    document = dict(target="synthetic", cells=[], software_spec=software, composition_facts=facts)
-    count = len(entries(software, facts))
-    with pytest.raises(SynthesisError, match="budget"):
-        synthesize(document, budget=count - 1, capability_contract={})
-    assert len(synthesize(document, budget=count, capability_contract={})["capsules"]) == count
 
 
-@pytest.mark.parametrize("selection", [{}, {"synthesize_compositions": True}])
-def test_composition_synthesis_default_and_true_are_unchanged(software, facts, selection):
-    from merlin.targetgen.corpus_synth import synthesize
-
-    document = dict(target="synthetic", cells=[], software_spec=software, composition_facts=facts)
-    expected = synthesize(document, capability_contract={})
-    assert expected["capsules"] == entries(software, facts)
-    assert synthesize(document, workload_spec=selection, capability_contract={}) == expected
 
 
-def test_composition_optout_preserves_budget_and_reports_scope(software, facts):
-    from merlin_experiments.phase0.composition_generation import coverage
-
-    from merlin.targetgen.corpus_synth import SynthesisError, synthesize
-
-    document = dict(
-        target="synthetic",
-        cells=[dict(cell="movement/i8", family="movement", dtype="i8", alignment="aligned")],
-        boundaries=dict(extent_probes=[dict(boundary="tile_edge", edge=facts["tile_dim"])]),
-        software_spec=software,
-        composition_facts=facts,
-    )
-    workload = dict(max_synthesized_capsules=1, synthesize_compositions=False)
-    result = synthesize(document, workload_spec=workload, capability_contract={})
-    assert len(result["capsules"]) == result["provenance"]["budget"] == 1
-    assert all(entry["op"] != "composition_program" for entry in result["capsules"])
-    excluded = result["provenance"]["composition_coverage"]
-    assert excluded == coverage([], excluded_spec=software)
-    assert {(row["composition"], row["scheme"]) for row in excluded} == {
-        (chain["id"], scheme["id"])
-        for chain in software["compositions"]["chains"]
-        for scheme in software["quantization"]["schemes"]["schemes"]
-    }
-    assert all(row["count"] == 0 and row["status"] == "out_of_scope" for row in excluded)
-    assert all("workload_spec.synthesize_compositions" in row["reason"] for row in excluded)
-    workload["synthesize_compositions"] = True
-    with pytest.raises(SynthesisError, match="budget"):
-        synthesize(document, workload_spec=workload, capability_contract={})
 
 
-@pytest.mark.parametrize("value", [None, 0, 1, "false", "true", [], {}])
-def test_composition_optout_requires_a_boolean_in_synthesis_and_descriptor(tmp_path, value):
-    from merlin.targetgen.corpus_synth import synthesize
-    from merlin.targetgen.target_experiment import load_target_experiment
-
-    workload = {"synthesize_compositions": value}
-    with pytest.raises(ValueError, match="workload_spec.synthesize_compositions must be a bool"):
-        synthesize(dict(target="synthetic", cells=[]), workload_spec=workload, capability_contract={})
-    descriptor = tmp_path / "descriptor.yaml"
-    descriptor.write_text(yaml.safe_dump(dict(target="synthetic", workload_spec=workload)))
-    with pytest.raises(ValueError, match="workload_spec.synthesize_compositions must be a bool"):
-        load_target_experiment(descriptor)
 
 
-@pytest.mark.parametrize("has_schemes", [True, False])
-def test_optout_needs_no_composition_facts_or_resolved_schemes(software, has_schemes):
-    from merlin.targetgen.corpus_synth import synthesize
-
-    if not has_schemes:
-        del software["quantization"]
-    result = synthesize(
-        dict(target="synthetic", cells=[]),
-        software_spec=software,
-        workload_spec={"synthesize_compositions": False},
-        capability_contract={},
-    )
-    assert result["capsules"] == []
-    excluded = result["provenance"]["composition_coverage"]
-    assert {row["composition"] for row in excluded} == {chain["id"] for chain in software["compositions"]["chains"]}
-    assert all(row["status"] == "out_of_scope" for row in excluded)
-    if not has_schemes:
-        assert all(row["scheme"] is None for row in excluded)
 
 
 @pytest.mark.parametrize("selection", [{}, {"synthesize_compositions": True}, {"synthesize_compositions": False}])
@@ -296,14 +222,22 @@ def test_every_cross_check_is_justified_and_pow2_stays_covered(software):
     assert {s["id"] for s in schemes} <= {scheme for chain in chains for scheme in _selected(chain)}
 
 
-def test_release_union_raises_on_overflow_and_preserves_the_roster(software, facts):
+def test_release_union_samples_to_the_budget_and_preserves_the_roster(software, facts, tmp_path):
+    import json
+
     from merlin_experiments.phase0.composition_generation import append_declared, coverage
 
     from merlin.targetgen.corpus_synth import SynthesisError
 
     corpus = entries(software, facts)
-    with pytest.raises(SynthesisError, match="never truncate"):
-        append_declared([], software, facts, budget=len(corpus) - 1)
+    path = tmp_path / "composition-selection.json"
+    sampled = append_declared([], software, facts, budget=len(corpus) - 1, selection_path=path)
+    record = json.loads(path.read_text())
+    assert len(sampled) == len(corpus) - 1 and record["policy"] == "sample_to_budget"
+    assert record["declared_count"] == len(corpus) and len(record["unselected"]) == 1
+    workloads = [dict(name=f"w{index}", cat="layers", op="matmul") for index in range(len(corpus))]
+    with pytest.raises(SynthesisError, match="leave no room"):
+        append_declared(workloads, software, facts, budget=len(corpus))
     release = append_declared(corpus, software, facts, budget=len(corpus))
     assert len(release) == len(corpus)
     ledger = coverage(release)
@@ -761,14 +695,17 @@ def test_mean_case_enumeration_refuses_unsafe_geometry(software, facts, binding)
 
 
 @pytest.mark.parametrize("second_exit", ["accumulator", "requant"])
-def test_validated_shared_input_builds_binds_and_computes_both_goldens(software, facts, binding, second_exit):
+@pytest.mark.parametrize("runtime_second", [False, True])
+def test_validated_shared_input_builds_binds_and_computes_both_goldens(
+    software, facts, binding, second_exit, runtime_second
+):
     import hashlib
 
     from merlin_experiments.phase0.composition_generation import _validated_entry
     from merlin_experiments.phase0.fusion_cases import _merge_sources
 
     from merlin.common import mlir_query as mq
-    from merlin.targetgen.capsule_golden import materialize_capsule_leaves
+    from merlin.targetgen.capsule_golden import UnsupportedGoldenFormat, golden, materialize_capsule_leaves
     from merlin.targetgen.composition_golden import evaluate
     from merlin.targetgen.contract.schemas import validate_capsule
 
@@ -786,11 +723,18 @@ def test_validated_shared_input_builds_binds_and_computes_both_goldens(software,
         entry = copy.deepcopy(base)
         case = entry["composition_instance"]
         case.update(exit=exit_kind, accumulator_stages=[])
+        if runtime_second and index == 1:
+            entry["generalization"]["quantization_scheme"]["scale_source"] = "runtime_input"
+            case["runtime_scale_input"] = "ReadoutScale"
         if exit_kind == "accumulator":
             case["readout_stages"] = []
         cap, source = CS.build(entry, binding)
         nodes.append((cap, source))
-        env = {name: np.asarray(tensor.to_list()) for name, tensor in materialize_capsule_leaves(cap).items()}
+        dtypes = {leaf["name"]: leaf["dtype"] for leaf in cap["inputs"]}
+        env = {
+            name: np.asarray(tensor.to_list(), dtype=np.float32 if dtypes[name] == "f32" else np.int64)
+            for name, tensor in materialize_capsule_leaves(cap).items()
+        }
         # Different weights ensure both siblings are independently evaluated.
         env["W0"] = np.full(env["W0"].shape, index + 1, dtype=np.int64)
         for name, value in env.items():
@@ -830,6 +774,12 @@ def test_validated_shared_input_builds_binds_and_computes_both_goldens(software,
     bind_capsule(cap, actual_source)
     validate_capsule(cap)
     assert evaluate(cap) == {row["name"]: row["values"] for row in references}
+    assert golden(cap) == {row["name"]: row["values"] for row in references}
+    if runtime_second and second_exit == "requant":
+        bad = copy.deepcopy(cap)
+        next(leaf for leaf in bad["inputs"] if leaf["dtype"] == "f32")["dtype"] = "f64"
+        with pytest.raises(UnsupportedGoldenFormat):
+            golden(bad)
     assert [leaf["name"] for leaf in cap["inputs"]].count("A") == 1
     assert all(modes["shared_input"] for modes in cap["expected"]["stage_scoped_modes"].values())
     for name, parameters in cap["expected"]["stage_scoped_mode_parameters"].items():

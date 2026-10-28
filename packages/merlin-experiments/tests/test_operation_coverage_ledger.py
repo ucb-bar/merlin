@@ -343,3 +343,298 @@ def test_disabled_composition_synthesis_is_out_of_scope(inputs, tmp_path, input_
 )
 def test_composition_synthesis_defaults_to_enabled(inputs, scope):
     assert L.prepare(**inputs, **scope).record() == L.prepare(**inputs).record()
+
+
+def test_capture_ledger_does_not_require_validation_record(inputs):
+    inputs.pop("spec_validation").unlink()
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    assert document["spec_validation"] is None
+    assert document["captures"]["mlp"]["sha256"]
+    assert set(_rows(document)) == {"mm.default", "relu.default", "convolution.default", "view.default"}
+    assert all(row["reference"]["spec_validation"] is None for row in document["operations"])
+    assert document["release_authority"] == "not_issued"
+
+
+def _twin(chain="scaled_operand_sum"):
+    return {
+        "name": f"SY_composition_{chain}_q_refusal",
+        "op": "composition_program",
+        "outcome": "refuse",
+        "generalization": {
+            "composition_chain": {"id": chain},
+            "quantization_scheme": {"id": "q"},
+            "composition_truth": {"outcome": "refuse", "lane": "must_refuse"},
+        },
+        "source_role": "derived_sweep",
+        "lanes": {"forbid": ["on_mesh"]},
+    }
+
+
+def _disclosure(chain="scaled_operand_sum", name=None):
+    return {
+        "capsule": name or f"SY_composition_{chain}_q_aligned",
+        "status": "planned_not_generated",
+        "rule": "composition_member_not_accelerator_admitted",
+        "chain": chain,
+        "unplaced_members": [3],
+        "screen_status": "partial",
+        "decisions": [{"source_op_indices": [3], "status": "host", "placement": "host", "reason": "no mesh kernel"}],
+    }
+
+
+def _composition_row(document, chain):
+    return next(row for row in document["compositions"] if row["composition"] == chain)
+
+
+def test_refusal_twin_alone_never_reads_generated(inputs):
+    capsules = [c for c in inputs["capsules"] if not c["name"].startswith("SY_composition_")] + [_twin()]
+    row = _composition_row(L.prepare(**dict(inputs, capsules=capsules)).record(), "scaled_operand_sum")
+    assert row["evidence_state"] == "not_evidenced"
+    assert row["test_identity"]["refusal_twins"] == ["SY_composition_scaled_operand_sum_q_refusal"]
+    assert "refusal twin" in row["justification"]
+
+
+def test_positive_composition_still_reads_generated_beside_its_twin(inputs):
+    inputs["capsules"].append(_twin())
+    document = L.prepare(**inputs).record()
+    row = _composition_row(document, "scaled_operand_sum")
+    assert row["evidence_state"] == "generated"
+    assert "SY_composition_scaled_operand_sum_q_tail" in row["justification"]
+    assert "q_refusal" not in row["justification"]
+
+
+def test_disclosed_unplaceable_chain_is_withheld_and_never_traced(inputs):
+    capsules = [c for c in inputs["capsules"] if not c["name"].startswith("SY_composition_")] + [_twin()]
+    disclosure = _disclosure()
+    document = L.prepare(**dict(inputs, capsules=capsules), composition_disclosures=[disclosure]).record()
+    row = _composition_row(document, "scaled_operand_sum")
+    assert row["evidence_state"] == "withheld_unplaceable"
+    (held,) = row["withheld_unplaceable"]
+    assert held["capsule"] == disclosure["capsule"] and held["unplaced_members"] == [3]
+    assert held["reasons"][0]["reason"] == "no mesh kernel"
+    assert disclosure["capsule"] in row["justification"]
+    assert document["omissions"]["compositions_withheld_unplaceable"] == ["scaled_operand_sum"]
+    assert document["status"] == "diagnostic_incomplete"
+    assert "withheld_unplaceable" in document["states"]
+    # recomputation from the same inputs, disclosures included, reproduces the ledger
+    ledger = L.prepare(**dict(inputs, capsules=capsules), composition_disclosures=[disclosure])
+    assert L.verify(ledger, **dict(inputs, capsules=capsules), composition_disclosures=[disclosure]) == ledger.record()
+
+
+def test_disclosure_credits_only_its_declared_chain(inputs):
+    document = L.prepare(**inputs, composition_disclosures=[_disclosure("lonely_chain")]).record()
+    assert _composition_row(document, "lonely_chain")["evidence_state"] == "withheld_unplaceable"
+    elsewhere = _disclosure("scaled_operand_sum")
+    other = L.prepare(**inputs, composition_disclosures=[dict(elsewhere, chain="undeclared_chain", capsule="x")]).record()
+    assert _composition_row(other, "lonely_chain")["evidence_state"] == "not_evidenced"
+    assert _composition_row(other, "scaled_operand_sum")["evidence_state"] == "generated"
+
+
+def test_a_disclosure_does_not_override_a_surviving_positive(inputs):
+    row = _composition_row(
+        L.prepare(**inputs, composition_disclosures=[_disclosure()]).record(), "scaled_operand_sum"
+    )
+    assert row["evidence_state"] == "generated"
+    assert [held["capsule"] for held in row["withheld_unplaceable"]] == ["SY_composition_scaled_operand_sum_q_aligned"]
+
+
+def test_malformed_disclosure_is_refused(inputs):
+    with pytest.raises(ValueError, match="needs a capsule name"):
+        L.prepare(**inputs, composition_disclosures=[{"chain": "lonely_chain"}])
+
+
+# --- capsule family from the capsule's own semantic block ---------------------------------------
+
+
+def _lite(inputs, ops):
+    """A capture-only (record-less) ledger over a model that contains exactly ``ops``."""
+    inputs.pop("spec_validation").unlink()
+    reviewed = dict(SPEC, operations=[dict(row, status="reviewed") for row in SPEC["operations"]])
+    inputs["software_spec"].write_text(yaml.safe_dump(reviewed, sort_keys=False))
+    inputs["captures"]["mlp"].write_text(
+        "\n".join(f'%{i} = linalg.generic {{prov.aten = "{op}"}}' for i, op in enumerate(ops))
+    )
+    inputs["capsules"] = [c for c in inputs["capsules"] if c["name"] != "SY_source_mlp"]
+    return inputs
+
+
+def test_component_program_takes_its_semantic_family(inputs):
+    _lite(inputs, ["aten.sum.dim_IntList"])
+    inputs["capsules"].append(
+        {"name": "SY_reduction_sum_i8_aligned", "op": "component_program", "source_role": "derived_sweep",
+         "generalization": {"semantic_family": "reduction"}}
+    )
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    capsules = {row["name"]: row for row in document["capsules"]}
+    assert capsules["SY_reduction_sum_i8_aligned"]["covers"] == ["family:reduction"]
+    assert "SY_reduction_sum_i8_aligned" not in document["omissions"]["unjustified_capsules"]
+    row = _rows(document)["sum.dim_IntList"]
+    assert row["test_identity"]["family_capsules"] == ["SY_reduction_sum_i8_aligned"]
+    assert row["evidence_state"] == "family_generated"
+
+
+def test_composed_epilogue_is_not_a_standalone_family_test(inputs):
+    _lite(inputs, ["aten.sum.dim_IntList"])
+    inputs["capsules"].append(
+        {"name": "SY_reduction_i8_aligned", "op": "matmul", "source_role": "derived_sweep",
+         "generalization": {"semantic_family": "contraction", "composed_families": ["reduction"]}}
+    )
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    capsules = {row["name"]: row for row in document["capsules"]}
+    assert capsules["SY_reduction_i8_aligned"]["covers"] == ["composed:reduction", "family:contraction"]
+    row = _rows(document)["sum.dim_IntList"]
+    assert row["test_identity"]["family_capsules"] == []
+    assert row["evidence_state"] == "not_evidenced"
+
+
+def test_semantic_family_contradicting_the_op_is_refused(inputs):
+    inputs["capsules"].append(
+        {"name": "SY_bad", "op": "matmul", "source_role": "derived_sweep",
+         "generalization": {"semantic_family": "reduction"}}
+    )
+    with pytest.raises(ValueError, match="declares family 'reduction'"):
+        L.prepare(**inputs)
+
+
+# --- ledger-local contraction spellings ---------------------------------------------------------
+
+
+def test_integer_and_batched_matmul_resolve_to_contraction(inputs):
+    _lite(inputs, ["aten._int_mm.default", "aten.bmm.default", "aten.mm.default"])
+    rows = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())
+    for overload in ("_int_mm.default", "bmm.default", "mm.default"):
+        assert rows[overload]["declaration"]["family"] == "contraction"
+        assert [row["id"] for row in rows[overload]["declaration"]["rows"]] == ["contraction"]
+        assert rows[overload]["evidence_state"] != "unmodeled"
+
+
+def test_namespaced_ops_never_reach_the_shared_table_by_their_bare_name(inputs):
+    _lite(inputs, ["m2m_q.quantize.default", "quantized_decomposed.dequantize_per_tensor.default",
+                   "m2m_q.int_mm_seeded.default", "aten.convolution_backward.default"])
+    rows = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())
+    for overload in ("m2m_q.quantize.default", "quantized_decomposed.dequantize_per_tensor.default",
+                     "m2m_q.int_mm_seeded.default", "convolution_backward.default"):
+        assert rows[overload]["evidence_state"] == "unmodeled", overload
+        assert rows[overload]["test_identity"]["family_capsules"] == []
+    assert "m2m_q.int_mm_seeded" in L.PENDING_ALIAS_REVIEW
+
+
+# --- direct credit from structured application provenance -------------------------------------
+
+
+def _int_mm_layer(inputs, name="SY_int_mm_m1_k8_n8", **overrides):
+    import hashlib
+
+    capture = hashlib.sha256(inputs["captures"]["mlp"].read_bytes()).hexdigest()
+    entry = {
+        "name": name,
+        "op": "matmul",
+        "kind": "layer",
+        "source_role": "derived_sweep",
+        "generalization": {"semantic_family": "contraction"},
+        "application_signature_match": {"status": "verified_capture_match", "sources": [{"capture_sha256": capture}]},
+        "software_screen": {
+            "status": "admitted",
+            "decisions": [
+                {"operation": "aten._int_mm.default", "frontend_op": "aten._int_mm.default", "status": "admitted"}
+            ],
+        },
+    }
+    entry.update(overrides)
+    return entry
+
+
+def test_verified_application_provenance_credits_its_overload(inputs):
+    _lite(inputs, ["aten._int_mm.default", "aten.bmm.default"])
+    inputs["capsules"].append(_int_mm_layer(inputs))
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    rows = _rows(document)
+    assert rows["_int_mm.default"]["test_identity"]["capsules"] == ["SY_int_mm_m1_k8_n8"]
+    assert rows["_int_mm.default"]["test_identity"]["capsule_sources"] == ["mlp"]
+    assert rows["_int_mm.default"]["evidence_state"] == "generated"
+    # the same capsule is only family credit for bmm, which its provenance does not name
+    assert rows["bmm.default"]["test_identity"]["capsules"] == []
+    assert "SY_int_mm_m1_k8_n8" in rows["bmm.default"]["test_identity"]["family_capsules"]
+    assert "capsule_sources" not in rows["bmm.default"]["test_identity"]
+    assert rows["bmm.default"]["evidence_state"] == "family_generated"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"kind": "model_slice"},
+        {"application_signature_match": {"status": "unverified", "sources": []}},
+        {"application_signature_match": {"status": "verified_capture_match", "sources": [{"capture_sha256": "0" * 64}]}},
+        {"software_screen": {"decisions": [{"operation": "aten.mm.default", "frontend_op": "aten._int_mm.default",
+                                            "status": "admitted"}]}},
+        {"software_screen": {"decisions": [{"operation": "aten._int_mm.default", "frontend_op": "aten._int_mm.default",
+                                            "status": "host"}]}},
+        {"software_screen": {"decisions": [{"operation": "aten._int_mm.default"}]}},
+    ],
+    ids=["perf_companion", "unverified", "foreign_capture", "frontend_disagrees", "not_admitted", "no_frontend_op"],
+)
+def test_unbacked_provenance_earns_no_direct_credit(inputs, overrides):
+    _lite(inputs, ["aten._int_mm.default"])
+    inputs["capsules"].append(_int_mm_layer(inputs, **overrides))
+    row = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())["_int_mm.default"]
+    assert row["test_identity"]["capsules"] == []
+
+
+def test_provenance_for_an_overload_the_capture_lacks_earns_nothing(inputs):
+    _lite(inputs, ["aten.bmm.default"])
+    inputs["capsules"].append(_int_mm_layer(inputs))
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    assert "_int_mm.default" not in _rows(document)
+    capsules = {row["name"]: row for row in document["capsules"]}
+    assert capsules["SY_int_mm_m1_k8_n8"]["covers"] == ["family:contraction"]
+
+
+def test_provenance_never_bypasses_the_declaration(inputs, monkeypatch):
+    _lite(inputs, ["aten._int_mm.default"])
+    inputs["capsules"].append(_int_mm_layer(inputs))
+    monkeypatch.setattr(L, "_LEDGER_FAMILY_ALIASES", {})
+    row = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())["_int_mm.default"]
+    assert row["test_identity"]["capsules"] == ["SY_int_mm_m1_k8_n8"]
+    assert row["evidence_state"] == "unmodeled"
+
+
+def test_family_only_credit_has_its_own_state(inputs):
+    inputs["capsules"] = [c for c in inputs["capsules"] if c["name"] != "SY_source_mlp"]
+    rows = _rows(L.prepare(**inputs).record())
+    assert rows["convolution.default"]["test_identity"]["capsules"] == []
+    assert rows["convolution.default"]["evidence_state"] == "family_generated"
+    assert "family cell capsule" in rows["convolution.default"]["justification"]
+    assert "family_generated" in L.STATES
+
+
+
+# --- host float island without a record -----------------------------------------------------------
+
+
+def test_float_island_is_read_from_the_quantization_methodology():
+    spec = {"quantization": {"methodology": {"float_island": {"host": "merlin", "ops": ["gelu", "softmax"]}}}}
+    assert L._float_island(spec) == {"gelu", "softmax"}
+    assert L._float_island({}) == frozenset()
+
+
+def test_float_island_operator_takes_no_accelerator_credit_without_a_record(inputs, monkeypatch):
+    monkeypatch.setattr(L, "_float_island", lambda spec: frozenset({"gelu"}))
+    _lite(inputs, ["aten.gelu.default", "aten.relu.default"])
+    spec = yaml.safe_load(inputs["software_spec"].read_text())
+    spec["operations"].append({"id": "maps", "families": ["elementwise_map"], "placement": "accelerator",
+                               "status": "reviewed", "signature": {"ranks": [2]}})
+    inputs["software_spec"].write_text(yaml.safe_dump(spec, sort_keys=False))
+    inputs["capsules"].append({"name": "SY_elementwise_map_i8_aligned", "op": "residual_add",
+                               "source_role": "derived_sweep"})
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    rows = _rows(document)
+    assert rows["gelu.default"]["declaration"]["status"] == "float_island_host"
+    assert rows["gelu.default"]["required_engine"] == "host"
+    assert rows["gelu.default"]["test_identity"]["family_capsules"] == []
+    assert rows["gelu.default"]["evidence_state"] == "unmodeled"
+    assert rows["relu.default"]["required_engine"] == "accelerator"
+    assert document["declaration_basis"] == "candidate_only_unscreened"
+
+
+def test_record_ledger_declares_its_basis(inputs):
+    assert L.prepare(**inputs).record()["declaration_basis"] == "spec_validation_record"

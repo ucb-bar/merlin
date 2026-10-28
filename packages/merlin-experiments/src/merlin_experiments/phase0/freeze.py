@@ -8,9 +8,8 @@ import json
 import os
 from pathlib import Path
 
-import yaml
-
 from merlin.common.paths import checkout_root, module_source_path, python_import_roots
+from merlin.common.yaml import fast_safe_load
 from merlin_experiments import frozen_python, source_snapshot
 from merlin_experiments.measured_launch import FROZEN_PHASE0_ENV_POLICY
 from merlin_experiments.phase1.source_inputs import fingerprint
@@ -144,7 +143,7 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
     if not value or not Path(value).is_file():
         return {}
     profile = Path(value).absolute()
-    document = yaml.safe_load(profile.read_bytes())
+    document = fast_safe_load(profile.read_bytes())
     result = {}
     for entry in (document or {}).get("capsules", []):
         if entry.get("public_boundary"):
@@ -206,6 +205,29 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
     return result
 
 
+def _held_out_capsule_exclusions(root: Path) -> set[str]:
+    """Exclude the capsule corpus from the frozen snapshot except the inputs composition synthesis reads.
+
+    Composition synthesis excludes the held-out model-layer shapes, which it reads from the pinned
+    manifest and the model-layer capsule definitions. Everything else in the corpus stays out.
+    """
+    from merlin.targetgen.composition_corpus import held_out_inputs
+
+    corpus = root / "merlin/contract/capsules"
+    manifest = corpus / "MANIFEST.yaml"
+    if not manifest.is_file():
+        return {"merlin/contract/capsules"}
+    keep_files = set(held_out_inputs(manifest))
+    keep_dirs = {parent.as_posix() for name in keep_files for parent in Path(name).parents if parent != Path(".")}
+    excluded = set()
+    for path in corpus.rglob("*"):
+        member = path.relative_to(corpus).as_posix()
+        if (path.is_dir() and member in keep_dirs) or (path.is_file() and member in keep_files):
+            continue
+        excluded.add(path.relative_to(root).as_posix())
+    return excluded
+
+
 def _source_layout():
     root = checkout_root()
     if root is None:
@@ -241,6 +263,9 @@ def stage(plan: dict) -> dict:
     target, run_root = frozen["target"], Path(frozen["run_dir"])
     evidence = selection(command, target)
     _verify_relocations(evidence, relocations)
+    from . import execution_runtime
+
+    execution = execution_runtime.select(target, evidence)
     from .component_semantic_basis import ComponentSemanticBasis
 
     basis = ComponentSemanticBasis.from_recipe(command["inputs"].get("recipe"))
@@ -260,10 +285,15 @@ def stage(plan: dict) -> dict:
     artifact_root = run_root / "phase0"
     manifest = export_evidence(evidence, artifact_root)
     root, source_roots, import_roots = _source_layout()
-    provider = source_snapshot.selected_provider(target)
-    # The selected support is an independent, contained private owner, even
-    # when its original location was a checkout reference shelf.
-    provider["kind"] = "external"
+    # Match evidence intake: this runtime family selects data, not executable
+    # support. Capturing a reference provider would change the selected contract.
+    data_only = (evidence.contract.get("runner") or {}).get("backend") == "chipyard_rocc"
+    provider = None
+    if not data_only:
+        provider = source_snapshot.selected_provider(target)
+        # The selected support is an independent, contained private owner, even
+        # when its original location was a checkout reference shelf.
+        provider["kind"] = "external"
     declared, names, layout = {}, {}, {}
     materialized = _materialized_inputs(command)
     materialized_pins = [pin for name, pin in frozen["inputs"].items() if name.startswith("phase0:materialized:")]
@@ -301,7 +331,7 @@ def stage(plan: dict) -> dict:
             owner = _input_owner(source.path.parent)
         layout[key] = f"{source_snapshot.INPUT_ROOT}/{owner}/{relative}"
     snapshot = artifact_root / "private" / "source"
-    excluded = {"merlin/contract/capsules"}
+    excluded = _held_out_capsule_exclusions(root)
     for relative in source_roots:
         for path in (root / relative).rglob(".env*"):
             if path.name == ".env" or path.name.startswith(".env."):
@@ -312,6 +342,28 @@ def stage(plan: dict) -> dict:
         # Resource selectors use root/merlin in both layouts. This alias points
         # only inside the sealed tree; it is never a link back to an installation.
         aliases["merlin"] = core
+    if data_only:
+        probes = [source for source in evidence.source_snapshots if source.role == "semantic-probes"]
+        if probes:
+            # Keep the selected semantic probes in a private metadata shelf.
+            # The selected execution contract remains the authoritative contract;
+            # this directory contains no support implementation or provider code.
+            metadata = f"{source_snapshot.INPUT_ROOT}/target_metadata/{target}"
+            for source in evidence.source_snapshots:
+                if source.role in {"semantic-probes", "semantic-probe-target"}:
+                    layout[source_names[str(source.path)]] = f"{metadata}/contracts/{source.path.name}"
+            resource_root = aliases.get("merlin", "merlin")
+            aliases[f"{resource_root}/targets/{target}"] = metadata
+    target_data_inputs = None
+    if data_only:
+        target_data_inputs = {
+            variable: next(key for key, path in declared.items() if str(path) == command["inputs"][field])
+            for variable, field in (
+                ("MERLIN_TARGET_CONTRACT", "capability_contract"),
+                ("MERLIN_RTL_FACTS", "rtl_facts"),
+            )
+            if command["inputs"].get(field)
+        }
     source_snapshot.create(
         root,
         snapshot,
@@ -321,6 +373,7 @@ def stage(plan: dict) -> dict:
         legacy_roots=(),
         target_name=target,
         provider=provider,
+        target_data_inputs=target_data_inputs,
         declared_inputs=declared,
         declared_input_layout=layout,
         root_files=(),
@@ -365,6 +418,8 @@ def stage(plan: dict) -> dict:
     command["cwd"] = str(snapshot)
     command["source_snapshot"] = str(snapshot)
     command["phase0_environment_policy"] = FROZEN_PHASE0_ENV_POLICY
+    command["phase0_execution_selection"] = execution
+    command["env"].update(execution_runtime.environment(execution))
     command["env"].update(source_snapshot.provider_environment(snapshot, receipt))
     command["env"].update(
         MERLIN_REPO_ROOT=str(snapshot),
@@ -458,6 +513,9 @@ def _verify_frozen_sources(plan: dict) -> dict:
         raise ValueError("frozen Phase 0 source selection changed")
     if command.get("phase0_environment_policy") != FROZEN_PHASE0_ENV_POLICY:
         raise ValueError("frozen Phase 0 launch predates selected-only environment; freeze a new run")
+    from . import execution_runtime
+
+    execution_runtime.verify(command.get("phase0_execution_selection"), command["env"], live=False)
     if command["env"].get("MERLIN_REPO_ROOT") != str(snapshot):
         raise ValueError("frozen Phase 0 repository ownership changed")
     for key, value in source_snapshot.provider_environment(snapshot, receipt).items():
@@ -547,6 +605,10 @@ def verify_completed_artifact(plan: dict) -> None:
 def verify(plan: dict) -> None:
     """Verify private copies AND the selected live host runtime before execution."""
     _verify_frozen_sources(plan)
+    from . import execution_runtime
+
+    command = plan["phases"]["0"]
+    execution_runtime.verify(command.get("phase0_execution_selection"), command["env"])
     selected_m2m = plan["phases"]["0"].get("phase0_m2m_selection")
     if selected_m2m is not None:
         from . import m2m_runtime

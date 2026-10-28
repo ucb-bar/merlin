@@ -599,6 +599,78 @@ def port_facts(target: str, *, fields=("completed", "busy"), fir=None) -> dict:
     return out
 
 
+def declared_firrtl(facts_doc: dict) -> tuple[Path, str]:
+    """The ONE elaborated FIRRTL a fact bundle declares it was read from, with its recorded digest.
+
+    ``inputs.firrtl_inputs`` is the extractor's own receipt of what it read. Exactly one entry with a
+    path and a sha256 is required; anything else is refused rather than guessed, because port facts
+    from a different elaboration than the one the facts describe would be a second machine.
+    """
+    rows = ((facts_doc or {}).get("inputs") or {}).get("firrtl_inputs") or []
+    rows = [r for r in rows if isinstance(r, dict) and r.get("path") and r.get("sha256")]
+    if len(rows) != 1:
+        raise ValueError(f"facts declare {len(rows)} digest-pinned FIRRTL input(s); exactly one is required")
+    return Path(str(rows[0]["path"])), str(rows[0]["sha256"])
+
+
+def attach_port_facts(facts_doc: dict, *, fields=("completed", "busy")) -> dict:
+    """``facts_doc`` plus a ``port_facts`` record read from the FIRRTL the facts themselves declare.
+
+    A selected (verified-mode) profile performs no external reads, so the port list has to travel IN
+    the fact bundle. The record is derived by :func:`port_facts` from the declared ``.fir`` only after
+    its bytes match the digest the extractor recorded, and it carries that digest
+    (``fir_sha256``) so a reader can check the binding without the file. A missing file or a digest
+    mismatch raises: an unbound record must never be written.
+    """
+    import hashlib
+
+    path, want = declared_firrtl(facts_doc)
+    data = path.read_bytes()
+    got = hashlib.sha256(data).hexdigest()
+    if got != want:
+        raise ValueError(f"{path} sha256 {got} does not match the facts' declared {want}")
+    record = port_facts(str((facts_doc.get("inputs") or {}).get("target") or ""), fields=tuple(fields), fir=path)
+    if record.get("status") != "derived":
+        raise ValueError(f"port facts could not be derived from {path}: {record.get('why')}")
+    record["fir_sha256"] = got
+    out = dict(facts_doc)
+    out["port_facts"] = record
+    return out
+
+
+def bound_port_facts(facts_doc: dict) -> dict:
+    """The fact bundle's ``port_facts`` if it is bound to the bundle's own declared FIRRTL, else UNKNOWN."""
+    record = (facts_doc or {}).get("port_facts")
+    if not isinstance(record, dict):
+        return {"status": "unavailable", "why": "selected snapshot supplies no completion-port facts", "fields": {}}
+    if record.get("status") != "derived":
+        return record
+    try:
+        _, want = declared_firrtl(facts_doc)
+    except ValueError as exc:
+        return {"status": "unavailable", "why": f"port facts are not bound: {exc}", "fields": {}}
+    if record.get("fir_sha256") != want:
+        return {
+            "status": "unavailable",
+            "why": "port facts were read from a different elaboration than the facts declare",
+            "fields": {},
+        }
+    return record
+
+
+def _main(argv=None) -> int:
+    import argparse
+    import json
+
+    ap = argparse.ArgumentParser(description="attach digest-bound port facts to an RTL fact bundle")
+    ap.add_argument("facts")
+    ap.add_argument("out")
+    a = ap.parse_args(argv)
+    doc = json.loads(Path(a.facts).read_text())
+    Path(a.out).write_text(json.dumps(attach_port_facts(doc), indent=1, sort_keys=True) + "\n")
+    return 0
+
+
 # ---------------------------------------------------------------- banked-store geometry (from ports)
 def _leaf_types(chunk: str) -> dict[str, str]:
     """Immediate sub-field name -> its declared TYPE TEXT, for one bundle field.
@@ -936,3 +1008,7 @@ def banked_store_ports(fir_text: str) -> list[dict]:
             f"lines ({why}), which is {banks} banks of {rec['rows_per_bank']} rows"
         )
     return out
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

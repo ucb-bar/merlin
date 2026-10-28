@@ -8,19 +8,18 @@ import json
 import os
 import shutil
 import subprocess
+from collections.abc import Iterable
 from contextlib import closing
 from pathlib import Path
 
 import yaml
 
 from merlin.targetgen import corpus_spec as CS  # noqa: E402
-from merlin.targetgen.composition_corpus import synthesize_compositions_enabled
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
-from merlin_experiments.phase0.generation_paths import (
-    _require_distinct_corpus_destinations as _require_distinct_corpus_destinations,
-)
 
 from .capture_recipe import _selected_capture_recipe as _selected_capture_recipe
+
+from merlin_experiments.phase0.generation_paths import _require_distinct_corpus_destinations as _require_distinct_corpus_destinations
 from .claim_boundary import assert_no_claim_capsules, held_out_models
 from .instruction_roles import enforcement_problems, validate_roles
 from .profiles import load_profile, validate_profile_inputs
@@ -288,15 +287,11 @@ def generate_target(
     packing_intake=None,
     source_preparation: str | None = None,
     operator_exclusion=None,
-    fusion_verify_workers: int | None = None,
 ) -> list[Path]:
     from merlin.common.paths import checkout_root
 
     if output_root is None:
         raise ValueError("Phase 0 requires an explicit output_root; generated capsules must not default to source data")
-    from .core_aten_stage import refuse_retained_stage
-
-    refuse_retained_stage(recipe)
     from .operator_exclusion import PublicationRefusal
     from .operator_exclusion import require_selection as require_operator_exclusion
 
@@ -383,18 +378,38 @@ def generate_target(
     te = load_target_experiment(descriptor)
     _require_distinct_corpus_destinations(te, output_root=output_root, evidence_root=evidence_root)
     hardware_target = te.target if explicit_descriptor else target
+    if recipe is not None:
+        from .core_aten_stage import declaration, generate
+
+        if declaration(Path(recipe)) is not None:
+            if any(value is not None for value in (software_spec, evidence_input, hidden_profile)):
+                raise ValueError("retained Core ATen stage cannot mix other generation or evidence inputs")
+            if conformance_spec is not None or synth_profile is not None:
+                from .profiles import verify_selected_synthesis
+
+                status = verify_selected_synthesis(
+                    synth_profile, conformance_spec=conformance_spec, recipe=recipe, descriptor=descriptor
+                )
+                if status.get("status") != "verified":
+                    raise ValueError("Core ATen generation requires verified selected synthesis")
+            if evidence_mode == "verified" or prohibited_instruction_roles:
+                raise ValueError(
+                    "retained Core ATen packaging is diagnostic; instruction policy needs execution evidence"
+                )
+            return generate(
+                Path(recipe),
+                Path(output_root),
+                target=hardware_target,
+                capability_contract=Path(capability_contract) if capability_contract else None,
+                rtl_facts=Path(rtl_facts) if rtl_facts else None,
+            )
     profile = load_profile(
         target,
         descriptor=descriptor,
         diagnostic=evidence_mode == "diagnostic",
-        rtl_facts=rtl_facts,
-        capability_contract=capability_contract,
-        hardware_spec=hardware_spec,
         **({"include_holdouts": False} if component_only else {}),
         **{key: value for key, value in profile_inputs.items() if value is not None},
     )
-    workload_spec = profile.get("workload_spec") or {}
-    synthesize_compositions = synthesize_compositions_enabled(workload_spec)
     from .component_source_performance import SCHEMA_V2, verify_curriculum_template
 
     if source_preparation == SCHEMA_V2:
@@ -638,19 +653,19 @@ def generate_target(
                 preflight_entry(entry, binding=binding)
             except ValueError as exc:
                 preallocation_denials[entry["name"]] = str(exc)
-    from .composition_generation import append_selected
+    composition_selection = {}
+    composition_unplaced: list[dict] = []
+    if not component_only and evidence is not None:
+        from merlin.targetgen.composition_corpus import synthesize_compositions_enabled
+        from .composition_generation import append_declared, selected_facts
 
-    entries, fusion_record, fusion_selection = append_selected(
-        entries,
-        evidence,
-        dict(
-            workload_spec=workload_spec,
-            descriptor=descriptor,
-            requirement=selected_requirement,
-            binding=binding,
-            fusion_verify_workers=fusion_verify_workers,
-        ),
-    )
+        workload = te.workload_spec or {}
+        if synthesize_compositions_enabled(workload) and evidence.software_spec.get("compositions"):
+            entries = append_declared(
+                entries, evidence.software_spec, selected_facts(evidence, selected_requirement, binding),
+                budget=int(workload.get("max_synthesized_capsules", 160)),
+                selection_sink=composition_selection,
+            )
     if evidence is not None and evidence.software_spec:
         screened = []
         for entry in entries:
@@ -754,6 +769,7 @@ def generate_target(
     # name, and re-raised at the end -- the run still fails, it just fails after doing the work it could.
     written, failures, unbuilt_roster, unprovable_forbids, omitted, admission = [], [], [], [], [], []
     host_placed: list[dict] = []
+    source_gaps: list[dict] = []
     refused_generated: list[Path] = []
     from .parallel_capture import ordered_jobs, worker_limit
 
@@ -891,6 +907,28 @@ def generate_target(
                     )
                     print(f"  [roster] {e.get('name')}: NOT BUILT — {why}")
                     continue
+                uncapturable = withhold_uncapturable_micro_model(
+                    e, exc, detail=detail, must_refuse=e.get("outcome") == "refuse"
+                )
+                if uncapturable is not None:
+                    host_placed.append(
+                        _withhold_with_qualifying_groups(
+                            uncapturable,
+                            out_root / str(e.get("cat") or "") / str(e.get("name") or ""),
+                            out_root=out_root,
+                            written=written,
+                            missing_ok=True,
+                        )
+                    )
+                    print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {uncapturable['reason']}", flush=True)
+                    continue
+                gap = withhold_source_gap(
+                    e, out_root / str(e.get("cat") or "") / str(e.get("name") or ""), exc=exc, detail=detail
+                )
+                if gap is not None:
+                    source_gaps.append(gap)
+                    print(f"  [source-gap] {e.get('name')}: NOT BUILT — {gap['reason']}", flush=True)
+                    continue
                 failures.append((e.get("name", "?"), detail))
                 print(f"  [failure] {e.get('name', '?')}: {detail}", flush=True)
                 if family:
@@ -918,8 +956,32 @@ def generate_target(
                         )
                     admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
                     if e.get("op") == "composition_program":
-                        from .composition_generation import require_placement
+                        from .composition_generation import (
+                            require_placement,
+                            withhold_unaccelerated_twin,
+                            withhold_unplaced,
+                        )
 
+                        # Verified and diagnostic evidence alike disclose a positive composition the screen
+                        # cannot place whole as planned_not_generated; the member refusals stand and nothing
+                        # replaces them.
+                        unplaced = withhold_unplaced(actual, observed, Path(w))
+                        if unplaced is not None:
+                            composition_unplaced.append(unplaced)
+                            print(
+                                f"  [composition] {e.get('name')}: NOT GENERATED — members "
+                                f"{unplaced['unplaced_members']} are not admitted on the accelerator",
+                                flush=True,
+                            )
+                            continue
+                        # A must-refuse twin that places nothing on the accelerator grades no author work:
+                        # withheld and disclosed with the verbatim reason (host_placement_not_published),
+                        # never exempted from the public placement check.
+                        twin = withhold_unaccelerated_twin(actual, observed, Path(w))
+                        if twin is not None:
+                            host_placed.append(twin)
+                            print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {twin['reason']}", flush=True)
+                            continue
                         require_placement(actual, observed)
                     # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation
                     # grades none of the author's work (host placement is Merlin-supplied), so it is removed
@@ -982,6 +1044,20 @@ def generate_target(
                         actual["source_reference"] = diagnostic_entry(actual, observed)["source_reference"]
                     (Path(w) / "capsule.yaml").write_text(yaml.safe_dump(actual, sort_keys=False))
                     if evidence_mode != "diagnostic" and observed["status"] != "admitted" and not must_refuse:
+                        withheld = withhold_unadmitted_member(
+                            e, observed, Path(w), must_refuse=must_refuse, out_root=out_root, written=written
+                        )
+                        if withheld is not None:
+                            host_placed.append(withheld)
+                            print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}", flush=True)
+                            continue
+                        gap = withhold_source_gap(
+                            e, Path(w), observed=observed, must_refuse=must_refuse, out_root=out_root, written=written
+                        )
+                        if gap is not None:
+                            source_gaps.append(gap)
+                            print(f"  [source-gap] {e.get('name')}: NOT PUBLISHED — {gap['reason']}", flush=True)
+                            continue
                         failures.append((e.get("name", "?"), "emitted SW operation admission: " + observed["reason"]))
                         print(
                             f"  [failure] {e.get('name', '?')}: emitted SW operation admission: {observed['reason']}",
@@ -1213,16 +1289,20 @@ def generate_target(
         }
     from .composition_generation import coverage as composition_coverage
 
+    withheld_compositions = {row["capsule"] for row in composition_unplaced}
     performance_record["composition_coverage"] = composition_coverage(
-        entries,
-        excluded_spec=evidence.software_spec if evidence is not None and not synthesize_compositions else None,
-        validation=fusion_record,
+        [entry for entry in entries if entry.get("name") not in withheld_compositions]
     )
-    if fusion_selection is not None:
-        from .composition_generation import verify_written
-
-        verify_written(entries, written, fusion_selection, te)
-        performance_record["fusion_corpus_selection"] = fusion_selection
+    if composition_selection:
+        performance_record["composition_selection"] = composition_selection
+    if composition_unplaced:
+        performance_record.setdefault("composition_selection", {})["planned_not_generated"] = sorted(
+            composition_unplaced, key=lambda row: row["capsule"]
+        )
+        print(
+            f"  [composition] {len(composition_unplaced)} selected composition(s) need a member the screen "
+            f"does not admit on the accelerator; they are recorded as planned_not_generated, never published"
+        )
     update_provenance_manifest(
         written,
         cap_root=out_root,
@@ -1323,6 +1403,7 @@ def generate_target(
             "operation_admission": admission,
             "unprovable_forbids": unprovable_forbids,
             "host_placement_not_published": host_placed,
+            "disclosed_source_gaps": source_gaps,
             "failures": [{"capsule": n, "reason": why} for n, why in failures],
             "performance_materialization_errors": len(_performance_errors),
             "qualification": "not_established",
@@ -1486,6 +1567,181 @@ def _with_reference_gate(entry: dict, te, descriptor: Path) -> dict:
     if not resolved.is_absolute():
         resolved = Path(descriptor).parent / resolved
     return {**entry, "reference_gate": str(resolved)}
+
+
+def withhold_unadmitted_micro_model(entry: dict, observed: dict, *, must_refuse: bool) -> dict | None:
+    """Account for a synthesized micro-model whose emitted program the selected host lane cannot admit.
+
+    A synthesized micro-model is derived from the application captures, and the programs it emits can need
+    host operations the selected portable host lane does not support. That refusal is the host screen
+    working, not a fault of the corpus: the capsule is not published (it stays in the diagnostic cohort) and the
+    refusal is reported verbatim as a withheld member. Only this case is relaxed. A roster model, a must-refuse
+    member, a capsule that is not a synthesized micro-model sweep entry and any screen result other than
+    ``unsupported`` still fail verified generation, and so does any exception raised while emitting: this is
+    reached only after the writer returned and the written program was screened. The screen is unchanged.
+    """
+    if (
+        must_refuse
+        or _is_roster_capsule(entry)
+        or not entry.get("micro_model")
+        or entry.get("source_role") != "derived_sweep"
+        or observed.get("status") != "unsupported"
+    ):
+        return None
+    return {
+        "capsule": str(entry.get("name", "?")),
+        "placements": copy.deepcopy(observed.get("placements") or {}),
+        "reason": "emitted program not admitted by the selected host lane: " + str(observed.get("reason", "")),
+    }
+
+
+def withhold_uncapturable_micro_model(
+    entry: dict, exc: BaseException, *, detail: str, must_refuse: bool
+) -> dict | None:
+    """Account for a synthesized micro-model whose generation-time capture model2MLIR refuses.
+
+    The micro-model is derived from the application captures; when the selected model2MLIR cannot lower
+    its program cleanly (a typed ``M2MUnavailable``, e.g. an opaque op left in the int8 capture), there is
+    no program to screen or publish. Like a micro-model the host lane cannot admit, it is withheld and
+    disclosed with the verbatim refusal instead of failing generation. Only this case is relaxed: a roster
+    model, a must-refuse member, any capsule that is not a synthesized micro-model sweep entry, and any
+    other exception still fail generation.
+    """
+    from merlin.targetgen.capture_refusals import M2MUnavailable
+
+    if (
+        must_refuse
+        or _is_roster_capsule(entry)
+        or not entry.get("micro_model")
+        or entry.get("source_role") != "derived_sweep"
+        or not isinstance(exc, M2MUnavailable)
+    ):
+        return None
+    return {
+        "capsule": str(entry.get("name", "?")),
+        "placements": {},
+        "reason": "generation-time capture refused by the selected model2MLIR: " + str(detail),
+    }
+
+
+def withhold_unadmitted_member(
+    entry: dict,
+    observed: dict,
+    directory: Path,
+    *,
+    must_refuse: bool,
+    out_root: Path | None = None,
+    written: Iterable[Path] = (),
+) -> dict | None:
+    """Withhold a synthesized micro-model the host lane cannot admit: record it and remove what was written.
+
+    The member must leave the output tree, as a placement-withheld member does: a directory left under the
+    output root (even in ``_diagnostic``) is globbed as a corpus member, counted in the manifest and the
+    commitments, and copied into the release, while the same capsule is also reported as not published.
+    The qualifying group capsules the model names go with it: the call site skips the loop that screens and
+    commits them, so a group left on disk would be a member the receipt never commits. A group is kept when
+    a published member (``written``) or any other capsule still under ``out_root`` also names it. The
+    removed group names are recorded as ``qualifying_groups_withheld``.
+    Returns the record that replaces it in the manifest, or ``None`` when the member stays and fails.
+    """
+    record = withhold_unadmitted_micro_model(entry, observed, must_refuse=must_refuse)
+    if record is None:
+        return None
+    return _withhold_with_qualifying_groups(record, directory, out_root=out_root, written=written)
+
+
+def _withhold_with_qualifying_groups(
+    record: dict, directory: Path, *, out_root: Path | None, written: Iterable[Path], missing_ok: bool = False
+) -> dict:
+    """Remove a withheld member and the qualifying group capsules only it names; record the groups removed."""
+    groups: list[Path] = []
+    if out_root is not None:
+        try:
+            groups = _qualifying_group_capsules(directory, out_root)
+        except ValueError:
+            groups = []  # a group that is absent leaves nothing on disk to remove
+        shared = {Path(path) for path in written} | _groups_named_by_others(out_root, directory)
+        groups = [group for group in groups if group not in shared]
+    shutil.rmtree(directory, ignore_errors=missing_ok)
+    for group in groups:
+        shutil.rmtree(group)
+    if groups:
+        record["qualifying_groups_withheld"] = [str(group.relative_to(out_root)) for group in groups]
+    return record
+
+
+def _groups_named_by_others(out_root: Path, excluded: Path) -> set[Path]:
+    """Qualifying group capsule directories named by any capsule under ``out_root`` other than ``excluded``."""
+    named: set[Path] = set()
+    for capsule_file in out_root.glob("*/*/capsule.yaml"):
+        if capsule_file.parent == excluded:
+            continue
+        capsule = yaml.safe_load(capsule_file.read_text(encoding="utf-8"))
+        qualification = capsule.get("model_qualification") if isinstance(capsule, dict) else None
+        for row in (qualification or {}).get("group_capsules") or []:
+            if row.get("capsule"):
+                named.add(out_root / str(row["capsule"]))
+    return named
+
+
+def disclosed_source_gap(
+    entry: dict, *, exc: BaseException | None = None, detail: str | None = None, observed: dict | None = None,
+    must_refuse: bool = False,
+) -> dict | None:
+    """Name a source-backed model capsule that the selected inputs cannot produce, with its verbatim reason.
+
+    A model captured from an application can be refused for reasons that belong to the inputs rather than the
+    corpus: its writer raises a typed refusal (the capture cannot be described by one numerical policy, or has
+    no device group whose arithmetic can be verified) or its emitted program needs host operations the selected
+    host lane does not declare. Such a capsule is disclosed with the exact reason and its digest and is not
+    published. Only a typed refusal or an ``unsupported`` screen of a materialized source capsule qualifies; a
+    roster model, a must-refuse member and every other exception (a bug) stay fatal. Whether a given capsule
+    and reason are EXPECTED is decided by the release review, which holds the reviewed table.
+    """
+    if (
+        must_refuse
+        or _is_roster_capsule(entry)
+        or str(entry.get("kind")) != "model"
+        or entry.get("source_role") != "materialized_iteration_capture"
+    ):
+        return None
+    if exc is not None:
+        from merlin.targetgen.capture_refusals import M2MUnavailable
+
+        from .model_qualification import QualificationMissing
+
+        typed = isinstance(exc, M2MUnavailable) or (
+            isinstance(exc, ValueError) and isinstance(exc.__cause__, QualificationMissing)
+        )
+        if not typed:
+            return None
+        kind, reason = "writer_refusal", str(detail if detail is not None else exc)
+    elif observed is not None and observed.get("status") == "unsupported":
+        kind, reason = "host_lane_admission", "emitted SW operation admission: " + str(observed.get("reason", ""))
+    else:
+        return None
+    return {
+        "capsule": str(entry.get("name", "?")),
+        "kind": kind,
+        "reason": reason,
+        "reason_sha256": hashlib.sha256(reason.encode()).hexdigest(),
+    }
+
+
+def withhold_source_gap(
+    entry: dict, directory: Path, *, out_root: Path | None = None, written: Iterable[Path] = (), **evidence
+) -> dict | None:
+    """Record a disclosed source gap and remove whatever was written for it, so no glob or commitment sees it.
+
+    A qualified model capsule that the host lane then cannot admit names the group capsules that qualified
+    it; the call site skips the loop that screens and commits them, so they leave with it exactly as a
+    withheld micro-model's do (``withhold_unadmitted_member``): a group a published member or another capsule
+    still under ``out_root`` names is kept, and the removed ones are recorded as ``qualifying_groups_withheld``.
+    """
+    record = disclosed_source_gap(entry, **evidence)
+    if record is None:
+        return None
+    return _withhold_with_qualifying_groups(record, directory, out_root=out_root, written=written, missing_ok=True)
 
 
 def withhold_unaccelerated(name: str, observed: dict, directory: Path, *, capsule: dict | None = None) -> dict | None:

@@ -465,30 +465,66 @@ def _bind_result_slices(decoded, binding, args):
 
 
 def _operand_sum_proof(proof, symbol):
-    kernel = next(k for k in proof["kernels"] if k["symbol"] == symbol)
-    declared = kernel["operand_sum"]
-    if kernel["status"] != "proven" or declared["status"] != "proven":
+    kernel = next((k for k in proof.get("kernels") or () if k.get("symbol") == symbol), None)
+    declared = kernel.get("operand_sum") if isinstance(kernel, dict) else None
+    if (
+        not isinstance(declared, dict)
+        or kernel.get("status") != "proven"
+        or declared.get("status") != "proven"
+        or any(key not in declared for key in ("load_scale_bits", "multiplier_bits", "relu", "operand_sum_rounding"))
+    ):
         raise ValueError("pending_audit: operand-sum register choices have no numeric proof")
     return declared
 
 
+def _unit_single_rounding(cap) -> bool:
+    """A single-rounding operand-sum case at exactly unit operand multipliers (an exact i32 sum)."""
+    attrs = cap["operation"]["attributes"]
+    return (
+        attrs["quantization_scheme"].get("operand_sum_rounding") == "single_rounding"
+        and [float(m) for m in attrs["case"].get("operand_multipliers", ())] == [1.0, 1.0]
+    )
+
+
+#: f32 1.0: the only load register a unit single-rounding sum may use.
+_F32_ONE_BITS = 0x3F800000
+
+
 def _screen_per_operand_case(cap, declared, facet):
-    """Recheck source parameters against provider register choices, independently."""
+    """Recheck source parameters against provider register choices, independently.
+
+    A unit single-rounding case is screened here too: at load scales of exactly 1.0 the
+    single-rounding sum and the per-operand sum are both the exact i32 ``a + b`` (no load rounds
+    or saturates an i8 code), so ``audit_i8_per_operand_sum`` at source scales (1, 1) and the
+    source gain, against the provider's load and readout registers, is exactly the single-rounding
+    readout-gain screen of ``audit_i8_operand_sum(1, 1, readout_scale=g)`` with the device register
+    taken from the proof. The provider must then declare single rounding and two unit loads.
+    """
     from merlin.targetgen.operand_sum_numeric import audit_i8_per_operand_sum
 
     attrs = cap["operation"]["attributes"]
     case, scheme = attrs["case"], attrs["quantization_scheme"]
+    # The caller selects only per-operand and unit single-rounding members; a scheme without the
+    # axis keeps the legacy per-operand screen.
+    rounding = scheme.get("operand_sum_rounding", "per_operand")
+    unit = _unit_single_rounding(cap)
     if (
         case["exit"] != "requant"
         or set(case["readout_stages"]) - {"activation", "convert", "scale", "requant"}
         or case.get("accumulator_stages")
         or case.get("coefficient") is not None
-        or declared.get("operand_sum_rounding") != "per_operand"
+        or rounding not in {"per_operand", "single_rounding"}
+        or (rounding == "single_rounding" and not unit)
+        or declared.get("operand_sum_rounding") != rounding
     ):
         raise ValueError("pending_audit: per-operand contract does not cover this source tail")
     loads, gains = declared["load_scale_bits"], declared["multiplier_bits"]
-    if len(loads) != 2 or len(gains) != attrs["N"]:
+    if len(loads) != 2 or len(gains) not in ({attrs["N"]} if rounding == "per_operand" else {1, attrs["N"]}):
         raise ValueError("pending_audit: per-operand register choices do not match source columns")
+    if unit and any(bits != _F32_ONE_BITS for bits in loads):
+        raise ValueError("pending_audit: a unit single-rounding sum must load both operands at scale 1.0")
+    if len(gains) == 1 and len(set(case["multipliers"])) != 1:
+        raise ValueError("pending_audit: one readout register cannot realize several source gains")
 
     def value(bits):
         if type(bits) is not int or not 0 <= bits < 2**32:
@@ -526,7 +562,10 @@ def _per_operand_numeric_screens(payload, proof, symbol, facts, target):
         cap
         for cap in payload["nodes"]
         if cap["operation"]["attributes"]["case"]["producer"] == "operand_sum"
-        and cap["operation"]["attributes"]["quantization_scheme"]["operand_sum_rounding"] == "per_operand"
+        and (
+            cap["operation"]["attributes"]["quantization_scheme"]["operand_sum_rounding"] == "per_operand"
+            or _unit_single_rounding(cap)
+        )
     ]
     if not members:
         return []

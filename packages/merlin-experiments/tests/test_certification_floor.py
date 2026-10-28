@@ -90,6 +90,7 @@ def test_explicit_floor_never_reads_ambient_application_cost_history(monkeypatch
     from merlin.targetgen import cert_cost, corpus_spec, target_registry
 
     monkeypatch.setattr(conformance, "_binding_engine_fit", unexpected)
+    monkeypatch.setattr(conformance, "admitted", lambda _target: {"contraction": ("i8",)})
     monkeypatch.setattr(cert_cost, "fit_for", unexpected)
     monkeypatch.setattr(target_registry, "load_contract", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(corpus_spec, "_tile_dim", lambda *_args, **_kwargs: 16)
@@ -131,6 +132,7 @@ def test_application_axis_reports_missing_selected_tile_as_refusal(monkeypatch):
         raise ValueError("selected fixed mesh has no derived tile geometry")
 
     monkeypatch.setattr(corpus_spec, "_tile_dim", missing_tile)
+    monkeypatch.setattr(conformance, "admitted", lambda _target: {"contraction": ("i8",)})
     monkeypatch.setattr(
         applications,
         "classify_captures",

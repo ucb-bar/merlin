@@ -528,8 +528,19 @@ def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, li
         from merlin.targetgen.composition_golden import evaluate
 
         return evaluate(capsule)
+    runtime_scales = set()
+    if capsule.get("operation", {}).get("op") == "composition_program":
+        for index, node in enumerate(attrs.get("validated_graph", [])):
+            child = node["operation"]["attributes"]
+            name = child.get("case", {}).get("runtime_scale_input")
+            if name and child.get("quantization_scheme", {}).get("scale_source") == "runtime_input":
+                runtime_scales.add(
+                    f"node{index}_{name}" if attrs.get("validated_structure") == "shared_input" and name != "A" else name
+                )
     for leaf in capsule.get("inputs", []):
         dtype = leaf.get("dtype", "i8")
+        if dtype == "f32" and leaf.get("name") in runtime_scales:
+            continue  # The composition oracle checks its role, shape and finite f32 storage.
         if _int_dtype_bits(dtype) is None:
             raise UnsupportedGoldenFormat(
                 f"integer golden cannot grade declared operand {leaf.get('name')!r} "

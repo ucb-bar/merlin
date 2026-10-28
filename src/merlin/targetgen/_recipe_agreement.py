@@ -7,11 +7,11 @@ from itertools import islice
 
 
 class AgreementError(ValueError):
-    """The result trees have no complete, finite tensor correspondence."""
+    """The result trees have no complete tensor correspondence."""
 
 
 class NonfiniteReference(AgreementError):
-    """The floating-point reference itself is NaN or infinite, so no agreement exists to report.
+    """A nonfinite floating-point reference was not exactly preserved.
 
     Distinct from a nonfinite candidate: the quantized path did not introduce the special value,
     the source arithmetic did (a nonfinite input, an overflow, a degenerate normalization).
@@ -25,6 +25,7 @@ class NonfiniteReference(AgreementError):
 class _Metrics:
     def __init__(self):
         self.count = self.agree = 0
+        self.preserved = 0
         self.cosines = []
         self.worst = 0.0
 
@@ -37,10 +38,18 @@ class _Metrics:
         self.count += 1
 
     def result(self, empty=0):
+        preserved = {"exact_preserved_samples": self.preserved} if self.preserved else {}
         if not self.count:
+            if self.preserved:
+                return {
+                    "samples": self.preserved + empty,
+                    **preserved,
+                    **({"empty_samples": empty} if empty else {}),
+                }
             return {"samples": empty, "empty_samples": empty} if empty else {"samples": 0}
         return {
-            "samples": self.count + empty,
+            "samples": self.count + empty + self.preserved,
+            **preserved,
             **({"empty_samples": empty} if empty else {}),
             "argmax_agreement": self.agree / self.count,
             "cosine_min": min(self.cosines),
@@ -58,6 +67,8 @@ def compare(reference, candidate, samples, *, limit, as_tuple):
     empty on both sides has nothing to compare; a sample of only such outputs is
     counted, not scored. Each sample is restored after the reference call and the
     candidate runs on its own copy, so an in-place operation can affect neither.
+    Complex and nonfinite results must match byte for byte and are counted as
+    exactly preserved; they never receive a cosine or argmax score.
     """
     import copy
 
@@ -101,17 +112,31 @@ def compare(reference, candidate, samples, *, limit, as_tuple):
                 outputs = [_Metrics() for _ in expected]
             elif topology != expected_tree:
                 raise AgreementError("agreement result topology changed between samples")
-            pairs = []
+            pairs, preserved = [], []
             for index, (left, right) in enumerate(zip(expected, actual, strict=True)):
                 if not isinstance(left, torch.Tensor) or not isinstance(right, torch.Tensor):
                     raise AgreementError(f"agreement output {index} is not a tensor")
                 if left.shape != right.shape:
                     raise AgreementError(f"agreement output {index} has different shapes")
-                if left.is_complex() or right.is_complex():
-                    raise AgreementError(f"agreement output {index} is complex")
                 if left.numel() == 0:
                     pairs.append(None)
                     continue
+                special = left.is_complex() or right.is_complex() or (
+                    left.is_floating_point() and not bool(torch.isfinite(left).all())
+                )
+                if special and left.dtype == right.dtype and torch.equal(
+                    left.detach().contiguous().reshape(-1).view(torch.uint8),
+                    right.detach().contiguous().reshape(-1).view(torch.uint8),
+                ):
+                    # Preserved host results need no floating metric. Require
+                    # every byte, including NaN payload/sign and finite components.
+                    # Never hide a changed component behind equal_nan or masking.
+                    outputs[index].preserved += 1
+                    preserved.append(index)
+                    pairs.append(None)
+                    continue
+                if left.is_complex() or right.is_complex():
+                    raise AgreementError(f"agreement output {index} is complex and not exactly preserved")
                 if left.is_floating_point() and not bool(torch.isfinite(left).all()):
                     count = int((~torch.isfinite(left)).sum())
                     raise NonfiniteReference(sample=sample_index, output=index, nonfinite_count=count)
@@ -123,7 +148,10 @@ def compare(reference, candidate, samples, *, limit, as_tuple):
                 pairs.append((left, right))
             scored = [pair for pair in pairs if pair is not None]
             if not scored:
-                empty += 1
+                if preserved:
+                    summary.preserved += 1
+                else:
+                    empty += 1
             elif len(pairs) == 1:
                 summary.add(*pairs[0])
             else:
@@ -132,6 +160,8 @@ def compare(reference, candidate, samples, *, limit, as_tuple):
                         metrics.add(*pair)
                 summary.add(torch.cat([pair[0] for pair in scored]), torch.cat([pair[1] for pair in scored]))
     result = summary.result(empty)
+    if any(metrics.preserved for metrics in outputs):
+        result["preserved_output_policy"] = "exact_bytes_v1"
     if len(outputs) > 1:
         result["multi_output_metric_policy"] = "fp32_values_fp64_accumulation_v1"
         result["outputs"] = [{"output_index": index, **metrics.result()} for index, metrics in enumerate(outputs)]

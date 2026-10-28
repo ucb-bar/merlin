@@ -6,8 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
-import yaml
-
+from merlin.common.yaml import fast_safe_load
 from merlin.targetgen import corpus_spec as CS
 from merlin.targetgen.rtl.facts import observed_facts
 from merlin.targetgen.target_experiment import load_target_experiment
@@ -31,7 +30,7 @@ def check_performance_oracles(command: dict, *, target: str, profile_target: str
         ) if key in inputs},
     )
     requirement_raw = Path(inputs["conformance_spec"]).read_bytes() if inputs.get("conformance_spec") else None
-    requirement = yaml.safe_load(requirement_raw) if requirement_raw is not None else None
+    requirement = fast_safe_load(requirement_raw) if requirement_raw is not None else None
     if requirement is not None and not isinstance(requirement, dict):
         raise ValueError("selected conformance requirement must be a mapping")
     basis_raw = evidence_artifacts(selected).get("coverage/performance-basis.json") if requirement is not None else None

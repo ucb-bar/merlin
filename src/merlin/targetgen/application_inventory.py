@@ -136,7 +136,22 @@ def _known_rational_reference(source):
 
     def identity(name):
         path = module_source_path(name).resolve()
-        return dict(path=str(path), sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+        return dict(path=name.replace(".", "/") + ".py", sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+
+    def recorded(entry):
+        # A sealed worker imports Merlin from its own source mount, so the recorded location is
+        # that mount's path. Bind the module identity (its package-relative path) and the exact bytes.
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            return None
+        for name in (
+            "merlin.targetgen.exact_quantized_reference",
+            "merlin.targetgen.exact_arithmetic",
+            "merlin.runtime.exact_readout",
+        ):
+            relative = name.replace(".", "/") + ".py"
+            if entry["path"] == relative or entry["path"].endswith("/" + relative):
+                return dict(path=relative, sha256=entry.get("sha256"))
+        return None
 
     expected = identity("merlin.targetgen.exact_quantized_reference")
     expected.update(
@@ -144,7 +159,12 @@ def _known_rational_reference(source):
         numerics=source["numerics"],
         dependencies=[identity("merlin.targetgen.exact_arithmetic"), identity("merlin.runtime.exact_readout")],
     )
-    return source == expected
+    dependencies = source.get("dependencies")
+    if not isinstance(dependencies, list):
+        return False
+    normalized = dict(source)
+    normalized.update(path=(recorded(source) or {}).get("path"), dependencies=[(recorded(d) or {}) for d in dependencies])
+    return normalized == expected
 
 
 def verify_capture_receipt(path: str | Path) -> dict:
@@ -694,6 +714,7 @@ def _application_operation_inventory(
     software_spec: dict | None = None,
     host_capabilities: dict | None = None,
     prepared_source: PreparedApplicationSource | None = None,
+    graph_jobs=None,
 ) -> dict:
     """Answer-free, operation-complete inventory for one application capture.
 
@@ -702,6 +723,8 @@ def _application_operation_inventory(
     `linalg.generic` therefore comes from its body, and a nested body op is a component of that region,
     not a second independent accelerator demand. Unknowns remain rows, never disappear from a count.
     """
+    from xdsl.dialects.builtin import TensorType
+
     from merlin.common import mlir_query as mq
     from merlin.frontends.capture_normalization import normalize_capture_mlir
     from merlin.targetgen import model_coverage as mc
@@ -799,8 +822,18 @@ def _application_operation_inventory(
         structure = operation_structure(op)
         from merlin.targetgen import access_observations
 
-        result_shapes = [shape for shape, _dtype in result_types if shape]
-        operand_shapes = [shape for shape, _dtype in operand_types if shape]
+        # [] is a known rank-zero tensor shape, not a missing shape. The query also
+        # returns [] for non-tensor scalars, so retain the type distinction here.
+        result_shapes = [
+            shape
+            for value, (shape, _dtype) in zip(op.results, result_types, strict=True)
+            if shape or isinstance(value.type, TensorType)
+        ]
+        operand_shapes = [
+            shape
+            for value, (shape, _dtype) in zip(op.operands, operand_types, strict=True)
+            if shape or isinstance(value.type, TensorType)
+        ]
         m, k, n, rank = extents.get(id(op), (None, None, None, None))
         if rank is None and result_shapes:
             rank = len(result_shapes[0])
@@ -987,7 +1020,9 @@ def _application_operation_inventory(
     if integerization is not None and integerization.get("source_quantization") == module_quantization:
         result["capture_integerization"] = integerization
     if include_graph:
-        result["operation_graph"] = application_graph_inventory(p)
+        # ``graph_jobs`` (a parse_pool.Prefetch over the roster's captures) reads the file here and returns
+        # the graph of exactly those bytes; without it this is the plain call.
+        result["operation_graph"] = graph_jobs.get(p) if graph_jobs is not None else application_graph_inventory(p)
     if prepared_source is not None:
         prepared_source.reopen(p)
     return result
@@ -1056,6 +1091,16 @@ def application_demand_inventory(
         else capability_map_for_target(target)
     )
     output: dict[str, dict] = {}
+    graph_jobs = None
+    if include_graph:
+        from merlin.common.parse_pool import Prefetch
+
+        # Each graph is a function of its capture's bytes alone: start them together; each is consumed
+        # (file read and graph taken) at the point the serial loop built it.
+        graph_jobs = Prefetch(
+            "merlin.targetgen.application_graph:application_graph_inventory_from_bytes",
+            [Path(path) for _, path in sorted(applications.items())],
+        ).start()
     for label, path in sorted(applications.items()):
         if cm.is_claim_bundle(label) or cm.is_claim_bundle(Path(path).resolve().parent.name):
             raise ValueError(f"application {label!r} is a held-out claim model and cannot derive Phase 0 demands")
@@ -1067,6 +1112,7 @@ def application_demand_inventory(
             capability_contract=capability_contract,
             software_spec=software_spec,
             host_capabilities=host_capabilities,
+            graph_jobs=graph_jobs,
         )
         identity = (application_metadata or {}).get(str(label))
         if identity is not None:
@@ -1087,6 +1133,8 @@ def application_demand_inventory(
                 if source is not None and cm.is_claim_bundle(source):
                     raise ValueError(f"application metadata {field} names a held-out validation source")
             output[str(label)]["workload_identity"] = dict(identity)
+    if graph_jobs is not None:
+        graph_jobs.close()
     full = {
         "schema_version": 2 if include_graph else 1,
         "status": "incomplete" if any(row["status"] == "incomplete" for row in output.values()) else "inventoried",

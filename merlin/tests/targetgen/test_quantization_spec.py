@@ -358,6 +358,97 @@ def test_capture_recipe_is_scoped_without_manually_authored_framework_bookkeepin
         capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
 
 
+def _operand_load_spec():
+    spec = _spec()
+    spec["transfer_contracts"] = {
+        "status": "reviewed",
+        "operand_load": {
+            "from": "host", "to": "accelerator",
+            "copy": {"dtype": "i8", "layout": "row_major_contiguous"},
+            "evidence": {"status": "reviewed", "basis": "test input datapath"},
+        },
+    }
+    return spec
+
+
+def test_runtime_weights_derive_from_selected_contraction_and_reviewed_operand_load(tmp_path):
+    from merlin_experiments.phase0.capture_recipe import recipe_outputs, _selected_capture_recipe
+
+    spec = _operand_load_spec()
+    contract = build_quantization_contract(spec, _hardware())
+    candidates = capture_recipe_candidates(spec, contract)
+    assert len(candidates) == 1
+    recipe = candidates[0]["recipe"]
+    assert recipe["runtime_weight_contractions"] is True
+    assert recipe["families"] == ["contraction"]  # attention retains its independent opt-in
+    assert recipe["recipe_sha256"] == quant_recipe.digest(recipe)
+    assert "operand_load" in recipe["why"]["runtime_weight_contractions"]
+    original = deepcopy(spec)
+    del original["transfer_contracts"]
+    baseline = capture_recipe_candidates(original, build_quantization_contract(original, _hardware()))[0]["recipe"]
+    assert baseline["weight"] == recipe["weight"]
+    assert baseline["activation"] == recipe["activation"]
+    assert baseline["recipe_sha256"] != recipe["recipe_sha256"]
+    encode = lambda value: (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+    outputs = recipe_outputs(candidates, target=spec["target"], software_review=spec["status"], encode=encode)
+    for rel, raw in outputs.items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+    assert _selected_capture_recipe(
+        tmp_path, target=spec["target"], operand_dtype="int8", accumulator_dtype="int32"
+    ) == recipe
+    assert capture_recipe_candidates(spec, contract) == candidates
+
+
+@pytest.mark.parametrize("change", ["missing", "unreviewed", "evidence", "dtype", "layout", "direction", "conversion"])
+def test_runtime_weights_require_reviewed_typed_bit_preserving_load(change):
+    spec = _operand_load_spec()
+    transfer = spec["transfer_contracts"]["operand_load"]
+    if change == "missing":
+        del spec["transfer_contracts"]
+    elif change == "unreviewed":
+        spec["transfer_contracts"]["status"] = "unreviewed"
+    elif change == "evidence":
+        transfer["evidence"]["status"] = "unreviewed"
+    elif change in {"dtype", "layout"}:
+        transfer["copy"][change] = "fp32" if change == "dtype" else "column_major_contiguous"
+    elif change == "direction":
+        transfer.update({"from": "accelerator", "to": "host"})
+    else:
+        del transfer["copy"]
+        transfer["signature"] = {"operand_dtype": "i8", "result_dtype": "i8"}
+        transfer["semantics"] = {"conversion": "requantize"}
+    recipes = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
+    assert "runtime_weight_contractions" not in recipes[0]["recipe"]
+
+
+def test_runtime_weights_require_matching_hardware_recipe_and_sw_contraction_scope():
+    spec = _operand_load_spec()
+    assert capture_recipe_candidates(spec, build_quantization_contract(spec, {})) == []
+    hardware = _hardware()
+    spec["operations"][0]["families"] = ["affine_map"]
+    spec["operations"][0]["ops"] = []
+    hardware["quantization_candidates"][0]["recipe"]["families"].append("affine_map")
+    recipe = capture_recipe_candidates(spec, build_quantization_contract(spec, hardware))[0]["recipe"]
+    assert recipe["families"] == ["affine_map"]
+    assert "runtime_weight_contractions" not in recipe
+
+
+@pytest.mark.parametrize("role,field,value", [
+    ("weight", "mode", "dynamic"),
+    ("activation", "mode", "dynamic"),
+    ("weight", "granularity", "block"),
+    ("activation", "granularity", "token"),
+    ("weight", "symmetric", False),
+])
+def test_runtime_weights_do_not_extend_unsupported_grids(role, field, value):
+    spec, hardware = _operand_load_spec(), _hardware()
+    hardware["quantization_candidates"][0]["recipe"][role][field] = value
+    candidates = capture_recipe_candidates(spec, build_quantization_contract(spec, hardware))
+    assert all("runtime_weight_contractions" not in row["recipe"] for row in candidates)
+
+
 def test_an_authored_calibration_count_reaches_the_recipe_and_its_digest():
     """The number of calibration samples changes the scales, so it is a recipe field (see
     test_recipe_calibration_count.py); absent, the recipe and its digest are what they were."""
@@ -400,7 +491,7 @@ def test_unknown_block_size_does_not_block_a_derived_per_tensor_format():
     assert match["parameters"]["block_size"]["status"] == "not_applicable"
 
 
-def test_a_declared_methodology_derives_each_capture_recipe_over_the_selected_output_path(tmp_path):
+def test_a_declared_methodology_derives_each_capture_recipe_over_the_selected_output_path(tmp_path, monkeypatch):
     """With ``quantization.methodology`` declared, the Phase 0 capture recipe is the methodology's
     recipe over the selected contract's derived output path; without that path it is underivable
     (never the hardware-only recipe), and a spec without a methodology is unchanged."""
@@ -463,6 +554,53 @@ def test_a_declared_methodology_derives_each_capture_recipe_over_the_selected_ou
     unresolved = build_quantization_contract(spec, _hardware())
     assert unresolved["methodology"]["status"] == "unresolved"
     assert capture_recipe_candidates(spec, unresolved)[0]["recipe"]["status"] == quant_recipe.UNDERIVABLE
+
+    from merlin.targetgen import capability_manifests as CM
+    from merlin.targetgen.rtl import facts as RF
+
+    prepared = _hardware()
+    original = deepcopy(prepared)
+    selected_facts = {"selected": "facts"}
+    calls = []
+
+    def derive(target, *, facts, contract):
+        assert target == spec["target"]
+        assert facts == selected_facts and contract == prepared["contract"]
+        calls.append(target)
+        return deepcopy(path)
+
+    def no_load(*args, **kwargs):
+        pytest.fail("explicit snapshot facts and declared paths must not load ambient facts")
+
+    monkeypatch.setattr(CM, "derived_output_path", derive)
+    monkeypatch.setattr(RF, "load_facts", no_load)
+    # Declared paths win even if the snapshot has unrelated facts.
+    assert build_quantization_contract(spec, {**hardware, "facts": {}}) == quantization
+    assert calls == []
+    fallback = build_quantization_contract(spec, {**prepared, "facts": selected_facts})
+    assert fallback == quantization
+    assert capture_recipe_candidates(spec, fallback) == rows  # includes model variants and digests
+    assert prepared == original  # the prepared execution contract keeps its input identity
+
+    def load(target, *, regenerate):
+        assert target == spec["target"] and regenerate is False
+        return deepcopy(selected_facts)
+
+    monkeypatch.setattr(RF, "load_facts", load)
+    assert build_quantization_contract(spec, prepared) == quantization
+    for failure in (None, FileNotFoundError("absent"), ValueError("unreadable"), KeyError("missing")):
+        def underivable(*args, **kwargs):
+            if failure is not None:
+                raise failure
+            return None
+
+        monkeypatch.setattr(CM, "derived_output_path", underivable)
+        refused = build_quantization_contract(spec, {**prepared, "facts": {}})
+        assert refused["methodology"]["status"] == "unresolved"
+        refused_row = capture_recipe_candidates(spec, refused)[0]
+        assert refused_row["recipe"]["status"] == quant_recipe.UNDERIVABLE
+        assert refused_row["model_variants"][0]["recipe"]["status"] == quant_recipe.UNDERIVABLE
+
     from merlin_experiments.phase0.capture_recipe import _selected_capture_recipe, recipe_outputs
 
     outputs = recipe_outputs(
@@ -500,6 +638,99 @@ def test_evidence_prose_is_not_an_unknown_numerical_parameter():
         "rounding": "unknown",
     }
     assert _unresolved(semantics, "numerical_semantics") == ["numerical_semantics.rounding"]
+
+
+def test_every_real_software_spec_string_is_not_an_implicit_unknown():
+    from merlin.common.paths import repo_root
+    from merlin.targetgen.quantization_spec import _unknown, _unresolved
+
+    spec = software_spec.load_software_spec(repo_root() / "examples/gemmini/target/software-spec.yaml")
+
+    def strings(value, path=""):
+        if isinstance(value, dict):
+            for key, member in value.items():
+                yield from strings(member, f"{path}.{key}")
+        elif isinstance(value, list):
+            for index, member in enumerate(value):
+                yield from strings(member, f"{path}[{index}]")
+        elif isinstance(value, str):
+            yield path, value
+
+    assert [(path, value) for path, value in strings(spec) if _unknown(value)] == []
+    # This subtree is actually traversed by hardware candidate selection. The
+    # calibration review basis must not suppress every static int8 recipe.
+    assert _unresolved(spec["numerical_semantics"], "numerical_semantics") == []
+    selected = _spec()
+    selected["numerical_semantics"] = spec["numerical_semantics"]
+    contract = build_quantization_contract(selected, _hardware())
+    assert contract["formats"][0]["hardware_matches"][0]["status"] == "candidate"
+    assert capture_recipe_candidates(selected, contract)
+
+
+@pytest.mark.parametrize("text", ["Operator R6; reviewed convention", "(0, 1]", "source\nreviewed", "scale\tpolicy"])
+def test_whitespace_is_not_an_unknown_value_marker(text):
+    from merlin.targetgen.quantization_spec import _record, _unknown, _unresolved, unresolved_values
+
+    assert not _unknown(text)
+    assert _record(text, "authored")["status"] == "known"
+    assert _unresolved({"future_field": text}, "parameters") == []
+    assert unresolved_values({"future_field": text}) == []
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "evidence",
+        "provenance",
+        "policy_reviews",
+        "basis",
+        "note",
+        "notes",
+        "rationale",
+        "description",
+        "reason",
+        "justification",
+    ],
+)
+def test_annotation_subtrees_are_not_numeric_parameters_even_when_they_mention_unknown(field):
+    from merlin.targetgen.quantization_spec import _unresolved, unresolved_values
+
+    annotations = {field: {"text": ["UNKNOWN source width", "from_facts", None]}}
+    value = {**annotations, "rounding": "unknown until reviewed", "nested": [None, "from_output_path"]}
+    original = deepcopy(value)
+    assert _unresolved(value, "parameters") == ["parameters.rounding", "parameters.nested[0]"]
+    assert unresolved_values(value) == ["rounding", "nested[0]", "nested[1]"]
+    assert value == original
+
+
+@pytest.mark.parametrize("value", [None, "unknown", "UNKNOWN", "unknown until reviewed", "UNKNOWN source width"])
+def test_explicit_unknown_parameters_still_block_candidates(value):
+    spec = _spec()
+    spec["quantization"]["formats"][0]["scale_encoding"] = value
+    match = build_quantization_contract(spec, _hardware())["formats"][0]["hardware_matches"][0]
+    assert match["status"] == "unknown"
+    assert "scale_encoding" in match["unknowns"]
+
+
+@pytest.mark.parametrize("field", ["basis", "notes", "rationale", "description", "policy_reviews"])
+def test_format_annotations_are_retained_without_becoming_capture_parameters(field):
+    spec = _spec()
+    baseline = build_quantization_contract(spec, _hardware())
+    text = "unknown historical detail; the numerical parameters are reviewed"
+    spec["quantization"]["formats"][0][field] = text
+    report = build_quantization_contract(spec, _hardware())
+    row = report["formats"][0]
+    assert row["declaration"][field] == text
+    assert row["hardware_matches"] == baseline["formats"][0]["hardware_matches"]
+    assert capture_recipe_candidates(spec, report) == capture_recipe_candidates(_spec(), baseline)
+
+
+@pytest.mark.parametrize("field", ["block_size", "activation_zero_point", "subnormal_operand_flush", "activation_mode"])
+def test_prose_cannot_satisfy_a_typed_quantization_parameter(field):
+    spec = _spec()
+    spec["quantization"]["formats"][0][field] = "a reviewed numerical parameter"
+    with pytest.raises(ValueError, match=field):
+        validate_quantization_declarations(spec)
 
 
 def _schemes_spec():
@@ -579,217 +810,70 @@ def _scheme_path(width):
     }
 
 
-@pytest.mark.parametrize("width", [3, 7, 29])
-def test_schemes_resolve_physical_width_and_grading_without_changing_baseline(width):
-    from merlin.targetgen.spec_fact_drift import FactField, resolve_spec
-
-    spec = _schemes_spec()
-    original = deepcopy(spec)
-    resolved, record = resolve_spec(
-        spec,
-        {
-            "composition": {
-                "output_path": _scheme_path(width),
-                "weight_panel_width": FactField((width + 2,), True, ("provider layout fact",)),
-                "dtype": FactField(("i8",), True, ("operand storage fact",)),
-                "max_k_extension": FactField((width * 5,), True, ("capacity bound",)),
-            }
-        },
-    )
-    assert record["status"] == "resolved"
-    assert spec == original
-    rows = {row["id"]: row for row in resolved["quantization_scheme_resolution"]["schemes"]}
-    baseline = rows["baseline"]
-    assert baseline["readout_strategy"] == "exact_rational_host"
-    assert baseline["readout_scale_granularity"] == "tensor"
-    assert baseline["exactness_gate"]["proof"] == "prove_fp32_products"
-    assert rows["column_block"]["columns_per_scale"] == width
-    assert rows["column_block"]["graded"] is True
-    assert rows["column"]["graded"] is False
-    assert rows["column"]["realization"] == "output_scale_partition"
-    residual = rows["residual"]
-    assert residual["residual_scope"] == "every_residual_add"
-    assert residual["weight_layout"]["panel_width"] == width + 2
-    assert residual["weight_layout"]["logical_order"] == ["N/panel_width", "K", "panel_width"]
-    assert residual["exactness_gate"]["definitional"] == "f32_product_rne"
-    assert residual["oracle_requirement"] == {"spike_extension": "rounding_fixed"}
 
 
-@pytest.mark.parametrize("width", [None, 0, -2, True, "unknown"])
-def test_unresolved_scheme_geometry_is_listed_and_never_defaulted(width):
-    from merlin.targetgen.spec_fact_drift import resolve_spec
-
-    resolved, record = resolve_spec(_schemes_spec(), {"composition": {"output_path": _scheme_path(width)}})
-    row = resolved["quantization_scheme_resolution"]["schemes"][2]
-    assert row["columns_per_scale"] == "UNKNOWN"
-    assert row["status"] == "unresolved"
-    assert "columns_per_scale" in row["unknown"]
-    assert record["status"] == "unresolved"
-    assert any(
-        item.get("scheme") == "column_block" and item["field"] == "columns_per_scale" for item in record["unresolved"]
-    )
-    assert any("coefficient_digits" in item["field"] for item in record["unresolved"])
 
 
-@pytest.mark.parametrize(
-    "mutation",
-    [
-        lambda b: b["axes"]["scale_value"].append("model_specific"),
-        lambda b: b["schemes"].append(deepcopy(b["schemes"][0])),
-        lambda b: b["axes"].__setitem__("weight_scale_granularity", ["tensor"]),
-        lambda b: b["schemes"][0].__setitem__("operation", "matmul"),
-        lambda b: b["constraints"][0].__setitem__("tolerance", 1),
-        lambda b: b["schemes"][-1]["weight_layout"].__setitem__("panel_width", 16),
-        lambda b: b["schemes"][-1]["weight_layout"].pop("panel_width"),
-        lambda b: b["schemes"][0].pop("operand_sum_rounding"),
-        lambda b: b["constraints"][0].__setitem__("when", {}),
-    ],
-)
-def test_scheme_axes_and_points_are_closed_and_fact_shaped(mutation):
-    spec = _schemes_spec()
-    mutation(spec["quantization"]["schemes"])
-    with pytest.raises(ValueError):
-        validate_quantization_declarations(spec)
 
 
-def test_arbitrary_scales_cannot_select_the_rational_readout():
-    from merlin.targetgen.spec_fact_drift import resolve_spec
-
-    spec = _schemes_spec()
-    spec["quantization"]["schemes"]["schemes"][1]["readout_strategy"] = "exact_rational_host"
-    with pytest.raises(ValueError, match="arbitrary_f32 requires"):
-        resolve_spec(spec, {})
 
 
-def test_missing_strategy_and_unproved_panel_layout_remain_unknown():
-    from merlin.targetgen.spec_fact_drift import FactField, resolve_spec
-
-    spec = _schemes_spec()
-    del spec["numerical_semantics"]["readout"]
-    resolved, record = resolve_spec(
-        spec,
-        {
-            "composition": {
-                "output_path": _scheme_path(5),
-                "weight_panel_width": FactField((19,), False, ("incomplete",)),
-            }
-        },
-    )
-    rows = resolved["quantization_scheme_resolution"]["schemes"]
-    assert rows[0]["readout_strategy"] == "UNKNOWN"
-    assert rows[-1]["weight_layout"]["panel_width"] == "UNKNOWN"
-    assert record["status"] == "unresolved"
 
 
-def test_contract_exposes_scheme_unknowns_and_legacy_contract_has_no_scheme_axis():
-    baseline = build_quantization_contract(_spec(), _hardware())
-    assert "schemes" not in baseline
-    selected = build_quantization_contract(_schemes_spec(), _hardware())
-    assert selected["schemes"]["unresolved"]
-    assert selected["schemes"]["schemes"][2]["status"] == "unresolved"
 
 
-def test_example_software_specs_validate_with_or_without_scheme_axes():
-    from merlin.common.paths import repo_root
-
-    paths = sorted((repo_root() / "examples").glob("*/target/software-spec.yaml"))
-    assert paths
-    legacy = software_spec.load_software_spec(
-        repo_root() / "examples/gemmini/phase0/history/software-spec-seals1-3.yaml"
-    )
-    assert "schemes" not in legacy["quantization"] and "compositions" not in legacy
-    software_spec.validate_software_spec(legacy)
-    for path in paths:
-        selected = software_spec.load_software_spec(path)
-        if "schemes" in (selected.get("quantization") or {}):
-            assert selected["quantization"]["schemes"]["schemes"]
-            assert selected["compositions"]["grading"] == "placement_and_instruction_audit"
 
 
-def test_new_schema_stage_vocabulary_matches_the_shared_output_path():
-    from merlin.targetgen import output_path as OP
-    from merlin.targetgen.contract.schemas import load_schema
-
-    chain = load_schema("software_compositions")["properties"]["chains"]["items"]["properties"]
-    assert set(chain["accumulator_stages"]["properties"]) == set(OP.ACCUMULATOR_KINDS)
-    assert chain["readout_stages"]["oneOf"][1]["items"]["enum"] == list(OP.READOUT_KINDS)
-    assert chain["exits"]["items"]["enum"] == list(OP.EXITS)
 
 
-def test_new_axes_do_not_modify_legacy_resolution_or_recipe_candidates():
-    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+
+
+
+
+
+
+
+def test_review_basis_does_not_suppress_a_frozen_capture_recipe(tmp_path):
+    from merlin_experiments.phase0.capture_recipe import _selected_capture_recipe, recipe_outputs
 
     spec = _spec()
-    resolved, record = resolve_spec(spec, {})
-    assert resolved == spec
-    assert record["unresolved"] == []
-    baseline = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
-    declared = _schemes_spec()
-    # An explicit scheme axis is prospective metadata; it does not silently select a new quantizer.
-    declared["numerical_semantics"] = deepcopy(spec["numerical_semantics"])
-    selected = capture_recipe_candidates(declared, build_quantization_contract(declared, _hardware()))
-    assert selected == baseline
-
-
-def test_missing_arbitrary_readout_strategy_is_listed_as_unknown():
-    from merlin.targetgen.spec_fact_drift import resolve_spec
-
-    spec = _schemes_spec()
-    del spec["numerical_semantics"]["readout"]
-    spec["quantization"]["schemes"]["schemes"][1].pop("readout_strategy")
-    resolved, record = resolve_spec(spec, {})
-    row = resolved["quantization_scheme_resolution"]["schemes"][1]
-    assert row["status"] == "unresolved"
-    assert row["readout_strategy"] == "UNKNOWN"
-    assert any(item.get("scheme") == "tensor" and item["field"] == "readout_strategy" for item in record["unresolved"])
-
-
-def test_full_accumulator_exit_constraints_and_digit_bounds_resolve_from_facts():
-    from merlin.targetgen.spec_fact_drift import FactField, resolve_spec
-
-    spec = _schemes_spec()
-    row = spec["quantization"]["schemes"]["schemes"][0]
-    row["readout_exit"] = "accumulator_full"
-    row["residual_coefficient"] = "integer_constant"
-    resolved, _ = resolve_spec(
-        spec,
-        {
-            "composition": {
-                "output_path": _scheme_path(5),
-                "dtype": FactField(("i8",), True, ("digit storage",)),
-                "max_k_extension": FactField((11,), True, ("mesh bound",)),
-            }
-        },
+    numeric = spec["numerical_semantics"]
+    numeric["calibration_domain"] = {"minimum": -1.0, "maximum": 1.0}
+    numeric["policy_reviews"] = {
+        "calibration_domain": {
+            "status": "reviewed",
+            "scope": "op_validation_only",
+            "composition_observers": "independent_scheme_policy",
+        }
+    }
+    expected = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
+    numeric["policy_reviews"]["calibration_domain"]["basis"] = (
+        "Operator R6; fixed op-validation convention only; composition tensor/block observers "
+        "and per-operand sum policies retain their selected domains and reductions"
     )
-    selected = resolved["quantization_scheme_resolution"]["schemes"][0]
-    assert selected["forbids_stages"] == ["convert", "scale", "requant"]
-    assert selected["coefficient_digits"] == {"dtype": "i8", "max_k_extension": 11}
-
-
-def test_runtime_scale_is_an_explicit_axis_on_the_existing_tensor_scheme():
-    import yaml
-
-    from merlin.common.paths import repo_root
-    from merlin.targetgen.quantization_spec import resolve_quantization_schemes, select_scheme_axes
-
-    spec = yaml.safe_load((repo_root() / "examples/gemmini/target/software-spec.yaml").read_text())
-    block = spec["quantization"]["schemes"]
-    context = dict(
-        output_path={"readout": [{"kind": "scale", "granularity": "per_command", "columns_per_scale": 3}]},
-        dtype="int8",
-        max_k_extension=256,
-        weight_panel_width=3,
+    candidates = capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware()))
+    assert len(candidates) == 1
+    assert candidates == expected
+    outputs = recipe_outputs(
+        candidates, target=spec["target"], software_review=spec["status"],
+        encode=lambda value: json.dumps(value, sort_keys=True).encode(),
     )
-    resolved, _ = resolve_quantization_schemes(spec, context)
-    constant = next(row for row in resolved["schemes"] if row["id"] == "q_f32_tensor")
-    runtime = select_scheme_axes(constant, block["axes"], {"scale_source": "runtime_input"})
-    assert constant["scale_source"] == "constant"
-    assert runtime == {**constant, "scale_source": "runtime_input"}
-    assert len(resolved["schemes"]) == len(block["schemes"])
-    with pytest.raises(ValueError, match="outside the declared domain"):
-        select_scheme_axes(constant, block["axes"], {"scale_source": "unknown"})
-    with pytest.raises(ValueError, match="undeclared quantization axis"):
-        select_scheme_axes(constant, block["axes"], {"scale_operand": "runtime_input"})
-    v1 = next(row for row in resolved["schemes"] if row["id"] == "q_pow2_tensor")
-    with pytest.raises(ValueError, match="arbitrary_f32 tensor"):
-        select_scheme_axes(v1, block["axes"], {"scale_source": "runtime_input"})
+    for member, raw in outputs.items():
+        path = tmp_path / member
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+    assert _selected_capture_recipe(
+        tmp_path, target=spec["target"], operand_dtype="int8", accumulator_dtype="int32"
+    ) == candidates[0]["recipe"]
+
+    # Descriptive metadata must not hide unresolved numerical values or review status.
+    for document, field, unknown in (
+        (numeric, "rounding", "unknown"),
+        (numeric["calibration_domain"], "minimum", None),
+        (numeric["policy_reviews"]["calibration_domain"], "status", "unknown"),
+    ):
+        original = document[field]
+        document[field] = unknown
+        assert capture_recipe_candidates(spec, build_quantization_contract(spec, _hardware())) == []
+        document[field] = original

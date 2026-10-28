@@ -113,7 +113,7 @@ _MAX_SELECTED_CAPTURE_SECONDS = 14_400
 
 # This literal is part of the selected issuer identity. Refuse changes to the
 # extracted verifier; historical issuer admission remains unchanged.
-_VALIDATION_SOURCE_SHA256 = "c46d4d4fdb8cdd3ffff343bff7eab463cd87c9938bd4b3e4e2a2a9cb292e6e9a"
+_VALIDATION_SOURCE_SHA256 = "7a7beedb4ee22941467d1e7d5928fe5adbc1034e113a0ffc5ac2974d712fb1b4"
 
 
 def _validation_functions():

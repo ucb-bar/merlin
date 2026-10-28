@@ -379,6 +379,32 @@ def _freeze_payload(root: Path) -> None:
     payload.chmod(0o500)
 
 
+def _derive_only_metadata(plan: dict) -> dict:
+    """Record release mode from the selected descriptor, without opening advisory evidence."""
+    location = plan['phases']['0']['inputs'].get('descriptor')
+    if not location:
+        return {}
+    descriptor = read_yaml(Path(location))
+    phase0 = descriptor.get('phase0') or {}
+    if not isinstance(phase0, dict):
+        raise SpecError('descriptor phase0 must be a mapping')
+    enabled = phase0.get('derive_only', False)
+    if not isinstance(enabled, bool):
+        raise SpecError('phase0.derive_only must be a boolean')
+    if not enabled:
+        return {}
+    return {'LITE': {'record': 'absent (derive_only)', 'fusion_campaign': 'absent (derive_only)'}}
+
+
+def _prepared_lite_metadata(prepared: dict) -> dict:
+    if 'LITE' not in prepared:
+        return {}
+    expected = {'record': 'absent (derive_only)', 'fusion_campaign': 'absent (derive_only)'}
+    if prepared['LITE'] != expected:
+        raise SpecError('invalid derive-only release commitments')
+    return {'LITE': expected}
+
+
 def inspect_release(path: Path) -> dict:
     """Return only safe counts/commitments, never member identities or review text."""
     root = _private_root(path)
@@ -400,6 +426,7 @@ def inspect_release(path: Path) -> dict:
         "descriptor": str(root / "payload" / "experiment" / "target_experiment.yaml"),
         "counts": prepared["admission"],
         "engine_readiness": "not_executed",
+        **_prepared_lite_metadata(prepared),
     }
 
 
@@ -613,6 +640,7 @@ def prepare(
                     "target": te.target,
                     "source_run": str(source),
                     "source_plan_sha256": fingerprint(source / "resolved-plan.json"),
+                    **_derive_only_metadata(plan),
                     "source_output_sha256": attempt["output_sha256"],
                     "source_descriptor_sha256": fingerprint(te.path),
                     "phase1_policy": phase1_policy,
@@ -669,6 +697,8 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
             generated = None
         else:
             plan, _, generated = source_run(Path(prepared["source_run"]))
+        if generated is not None and _derive_only_metadata(plan) != _prepared_lite_metadata(prepared):
+            raise SpecError('Phase-0 derive-only mode differs from the operator-reviewed preparation')
         if generated is not None and generation_lineage(plan, generated) != prepared.get("generation_lineage"):
             raise SpecError("Phase-0 generation lineage differs from the operator-reviewed preparation")
         supplement = (prepared.get("assembly") or {}).get("public_supplement")
@@ -715,6 +745,7 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
                 "identity": _content(root, prepared),
                 "review": {"reviewed_by": reviewed_by, "note": review_note, "at": datetime.now(UTC).isoformat()},
                 "retention_pin": token,
+                **_prepared_lite_metadata(prepared),
             },
         )
     result = inspect_release(root)
@@ -737,6 +768,9 @@ def verify(seal_path: Path, descriptor: Path) -> dict:
     workload = _verify_workload_coverage(root, prepared)
     sealed = _read(path)
     identity = _content(root, prepared)
+    lite = _prepared_lite_metadata(prepared)
+    if ({'LITE': sealed['LITE']} if 'LITE' in sealed else {}) != lite:
+        raise SpecError('corpus seal derive-only commitments differ from preparation')
     if any(member.stat().st_mode & 0o222 for member in [root / "payload", *(root / "payload").rglob("*")]):
         raise SpecError("sealed corpus payload became writable")
     if sealed.get("identity") != identity or sealed.get("review_digest") != _digest(identity):
@@ -752,6 +786,7 @@ def verify(seal_path: Path, descriptor: Path) -> dict:
         "payload_sha256": identity["payload_sha256"],
         "phase0_readiness": (prepared.get("admission") or {}).get("phase0_readiness"),
         "whole_workload_phase1": workload,
+        **lite,
     }
 
 

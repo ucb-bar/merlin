@@ -193,6 +193,41 @@ def test_verified_capture_plan_preserves_selected_runtime_store(authored, monkey
     assert plan["phases"]["0"]["env"][STORE_ENV] == str(store if explicit else cache_dir("sealed-m2m-runtime"))
 
 
+@pytest.mark.parametrize("width", [None, "32", "0", "eight"])
+def test_verified_capture_plan_freezes_the_operator_capture_width(authored, monkeypatch, tmp_path, width):
+    """The scrubbed generation child only sees the width frozen into its command."""
+    from merlin_experiments.phase0 import freeze as phase0_freeze
+    from merlin_experiments.phase0 import m2m_runtime
+    from merlin_experiments.phase0.parallel_capture import WORKER_LIMIT_ENV
+
+    make, definitions, config = authored
+    (definitions / "software.yaml").write_text("{}\n")
+    monkeypatch.setattr(m2m_runtime, "observe", lambda *args, **kwargs: {"base": str(tmp_path / "base")})
+    monkeypatch.setattr(m2m_runtime, "sealed_capture_config", lambda *args, **kwargs: {})
+    monkeypatch.setattr(phase0_freeze, "selected_inputs", lambda *args, **kwargs: ({}, {}))
+    make({**config, "software_spec": "software.yaml", "evidence_mode": "verified"})
+    if width is None:
+        monkeypatch.delenv(WORKER_LIMIT_ENV, raising=False)
+    else:
+        monkeypatch.setenv(WORKER_LIMIT_ENV, width)
+
+    def resolve():
+        return runner.resolve_plan(
+            load_spec(definitions / "experiment.yaml"),
+            phase="0",
+            run_dir=tmp_path / "run",
+            phase0_m2m_root=tmp_path / "m2m",
+            phase0_m2m_python=tmp_path / "venv/bin/python",
+        )
+
+    if width in ("0", "eight"):
+        with pytest.raises(runner.SpecError, match="must be a positive integer"):
+            resolve()
+        return
+    env = resolve()["phases"]["0"]["env"]
+    assert (env.get(WORKER_LIMIT_ENV) == width) and (width is not None or WORKER_LIMIT_ENV not in env)
+
+
 def test_versioned_phase0_artifacts_can_be_selected_without_editing_definition(authored):
     make, root, _ = authored
     original = make()

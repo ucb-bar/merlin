@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path, PurePosixPath
 
 OMIT = {"__pycache__", "_qa_ws"}
@@ -46,6 +47,7 @@ def provider_environment(root: Path, receipt: dict) -> dict[str, str]:
     """Authoritative source selection, decoded without consulting the live registry."""
     _require_current(receipt)
     provider = receipt.get("selected_provider")
+    data = receipt.get("target_data", {})
 
     def resource(name: str) -> Path:
         # Checkout resources and wheel resources have different owners. Both
@@ -55,8 +57,10 @@ def provider_environment(root: Path, receipt: dict) -> dict[str, str]:
 
     return {
         "MERLIN_TARGET_PATH": str(root / provider["root"]) if provider and provider["kind"] == "external" else "",
-        "MERLIN_TARGET_CONTRACT": "",
-        "MERLIN_RTL_FACTS": "",
+        "MERLIN_TARGET_CONTRACT": str(root / data["MERLIN_TARGET_CONTRACT"])
+        if "MERLIN_TARGET_CONTRACT" in data
+        else "",
+        "MERLIN_RTL_FACTS": str(root / data["MERLIN_RTL_FACTS"]) if "MERLIN_RTL_FACTS" in data else "",
         "MERLIN_TARGETS_DIR": str(root / "merlin/targets"),
         "MERLIN_CONTRACT_DIR": str(resource("contract")),
         "MERLIN_SCHEMAS_DIR": str(resource("schemas")),
@@ -257,6 +261,22 @@ def load_seal(root: Path, stem: str) -> tuple[Path, dict]:
     return path, json.loads(path.read_text())
 
 
+def _checkout_commit(source: Path) -> str | None:
+    # Installed sources have no Git identity. Never inherit an enclosing checkout.
+    if not (source / ".git").exists():
+        return None
+    owner, commit = subprocess.check_output(
+        ["git", "-C", str(source), "rev-parse", "--show-toplevel", "HEAD"], text=True
+    ).splitlines()
+    if Path(owner).resolve() != source or not _valid_commit(commit):
+        raise SnapshotError("source repository identity is invalid")
+    return commit
+
+
+def _valid_commit(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 40 and all(c in "0123456789abcdef" for c in value)
+
+
 def create(
     source: Path,
     destination: Path,
@@ -270,6 +290,7 @@ def create(
     directory_memberships: dict[str, tuple[str, ...] | None] | None = None,
     target_name: str | None = None,
     provider: dict | None = None,
+    target_data_inputs: dict[str, str] | None = None,
     declared_inputs: dict[str, Path] | None = None,
     declared_input_layout: dict[str, str] | None = None,
     root_files: tuple[str, ...] = ROOT_FILES,
@@ -280,8 +301,11 @@ def create(
     ``directory_memberships`` binds caller-selected directory child names, or explicit
     absence with ``None``, before copying and again before sealing. An empty tuple requires
     an existing empty directory; absence rejects files, directories and dangling links.
+    ``target_data_inputs`` binds contract/facts environment selectors to declared input
+    names for a data-only target without an executable provider.
     """
     source, destination = source.resolve(), destination.absolute()
+    repository_commit = _checkout_commit(source)
     source_roots = tuple(source_roots)
     _validate_roots(source, source_roots)
     excludes = {PurePosixPath(_relative(relative)) for relative in exclude_paths}
@@ -452,6 +476,11 @@ def create(
                 shutil.copy2(path, target)
             copied_inputs[relative.as_posix()] = path
         input_records[name] = {"source": str(path), "snapshot": relative.as_posix()}
+    target_data = {}
+    for variable, name in (target_data_inputs or {}).items():
+        if name not in input_records:
+            raise SnapshotError(f"target data is not a declared input: {name}")
+        target_data[variable] = input_records[name]["snapshot"]
     for relative in root_files:
         if len(PurePosixPath(_relative(relative)).parts) != 1:
             raise SnapshotError("snapshot root files must be basenames")
@@ -524,6 +553,7 @@ def create(
     document = {
         "schema": SCHEMA,
         "source_root": str(source),
+        **({"repository_commit": repository_commit} if repository_commit is not None else {}),
         "source_roots": list(source_roots),
         "files": files,
         "external_links": links,
@@ -531,6 +561,7 @@ def create(
         "directories": directories,
         "selected_provider": provider_record,
         "declared_inputs": input_records,
+        **({"target_data": target_data} if target_data_inputs is not None else {}),
         **(
             {
                 "declared_input_layout": {
@@ -547,6 +578,8 @@ def create(
     }
     _validate_layout(document)
     verify_memberships()
+    if _checkout_commit(source) != repository_commit:
+        raise SnapshotError("source repository commit changed during snapshot creation")
     receipt = seal(destination, "snapshot", document)
     for path in destination.rglob("*"):
         if not path.is_symlink() and path.is_dir():
@@ -569,6 +602,8 @@ def _require_current(receipt: dict) -> None:
 
 def _validate_layout(receipt: dict) -> None:
     """Validate explicit inventories independently of the original live tree."""
+    if "repository_commit" in receipt and not _valid_commit(receipt["repository_commit"]):
+        raise SnapshotError("invalid snapshot repository commit")
     roots, directories = receipt.get("source_roots"), receipt.get("directories")
     files, links, aliases = receipt.get("files"), receipt.get("external_links"), receipt.get("internal_aliases")
     if (
@@ -672,6 +707,16 @@ def _validate_layout(receipt: dict) -> None:
             ):
                 raise SnapshotError("invalid copied input mapping")
         provider = receipt.get("selected_provider")
+        if "target_data" in receipt:
+            data = receipt["target_data"]
+            if (
+                provider is not None
+                or not isinstance(data, dict)
+                or "MERLIN_TARGET_CONTRACT" not in data
+                or set(data) - {"MERLIN_TARGET_CONTRACT", "MERLIN_RTL_FACTS"}
+                or any(_relative(path) not in {row["snapshot"] for row in inputs.values()} for path in data.values())
+            ):
+                raise SnapshotError("invalid sealed target data selection")
         if provider is not None:
             required_provider = {"target", "resolved_target", "kind", "source", "root"}
             if (

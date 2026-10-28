@@ -242,7 +242,8 @@
                     "load_minimum_not_negated",
                     "scratchpad_source_pooling_fenced",
                     "coefficient_integer_exact",
-                    "per_output_readout_independent"
+                    "per_output_readout_independent",
+                    "residual_accumulates_before_readout"
                   ]
                 },
                 {

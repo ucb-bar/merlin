@@ -1,0 +1,672 @@
+PATH build_tools/scripts/make_spec_validation_selection.py
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+
+PATH build_tools/scripts/run_bounded_core_aten_suite.py
+b68f01f9f Loren Hung 2026-10-27 fix(targetgen): share software spec resolution across evidence paths
+db32d2eac Loren Hung 2026-10-26 fix(runtime): execute only byte-pinned provider code under a guard
+c973bbb66 Loren Hung 2026-10-25 fix(targetgen): stop when a missing certificate would decide the lane
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+0c0ebee66 Loren Hung 2026-10-20 Bind plain-export bounded runs to source bytes without requiring Git metadata
+635103a55 Loren Hung 2026-10-19 Make Phase 1 functional and remove performance-only lowering
+4422409cb Loren Hung 2026-10-19 Pin the selected execution provider and verify frozen source exports
+6686786f7 Loren Hung 2026-10-18 Retain proved metadata folds and explicit pending bounded cases
+d767395a0 Loren Hung 2026-10-18 Bind native policy source and screen parallel Boolean products
+b44168301 Loren Hung 2026-10-18 Expose packed DRAM size in the bounded execution runner
+0ff0c1898 Loren Hung 2026-10-18 Stream bounded responses and sealed verdicts from per-case records
+78f0cf58e Loren Hung 2026-10-18 Define zero-filled backing storage for native host input reads
+6883d9502 Loren Hung 2026-10-17 Use integer thresholds for exact input quantization
+4fbc7447e Loren Hung 2026-10-17 Default accelerator captures to integer readout
+aad5dc6a4 Loren Hung 2026-10-17 Use exact arithmetic for integer references and recipe proofs
+23720308c Loren Hung 2026-10-13 fix(capture): preserve batched MAC with proved host readout
+dd84a0445 Loren Hung 2026-10-13 fix(capture): refuse unrecorded layer-norm statistic storage
+4769e7268 Loren Hung 2026-10-12 fix(targetgen): execute and grade declared int8 device policies
+4bc5d4166 Loren Hung 2026-10-11 feat(targetgen): capture declared int8 contraction chains
+3be9558d7 Loren Hung 2026-10-11 fix(targetgen): separate spec-int8 host fallback result counts
+3b618baad Loren Hung 2026-10-11 fix(targetgen): bind bounded caches to numeric policy sources
+eccd67cab Loren Hung 2026-10-11 feat(targetgen): gate Core ATen int8 flow on declared spec
+531a6eb23 Loren Hung 2026-10-11 fix(targetgen): refuse evaluation when the interpreter lacks torch
+123ccc113 Loren Hung 2026-10-11 fix(targetgen): invalidate bounded caches on full provenance
+41b1b8a82 Loren Hung 2026-10-11 fix(targetgen): require explicit bounded semantic scope
+5efd648d5 Loren Hung 2026-10-11 refactor(targetgen): require external Core ATen support providers
+04a266f23 Loren Hung 2026-10-10 feat(aten): add opt-in W8A8 device execution and exact grading
+e4b40d31a Loren Hung 2026-10-10 fix(targetgen): restore bounded full-call capsule observations
+944fec8c1 Loren Hung 2026-10-08 feat(targetgen): Add resumable bounded ATen execution adapter
+
+PATH build_tools/scripts/run_spec_validation.py
+b04f8d918 Loren Hung 2026-10-26 fix(experiments): close attestation receipt and diff bypasses
+147e892d3 Loren Hung 2026-10-26 fix(experiments): harden attestation receipt binding and clean-tree check
+1489d84be Loren Hung 2026-10-26 feat(experiments): reuse spec-validation shards under an operator attestation
+33f3f1bf0 Loren Hung 2026-10-25 fix(spec-validation): separate component and descriptor host lanes
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+
+PATH docs/compiler/phase0_functional_truth.md
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+4f0243baa Loren Hung 2026-10-20 Vendor the exact-identity truth ruling into the strict checker
+829349df6 Loren Hung 2026-10-20 Remove the truth pre-filter from placement; keep the truth in the checker
+544851b20 Loren Hung 2026-10-20 Integrate functional coverage fixes and commit independent Phase 0 truth lanes
+
+PATH docs/guides/generating_capsules.md
+22d6a2776 Loren Hung 2026-10-26 feat(derivation): sample compositions from a bound fusion validation
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+bef296b17 Agustin N. Coppari Hollmann 2026-10-16 fix(integration): integrate compiler and documentation changes
+e5930f1fd Loren Hung 2026-10-13 feat(phase1): count spec-qualified device executions
+eb8ae1d52 Loren Hung 2026-10-13 feat(phase1): support optional device coverage with honest lane scores
+8aa6c4de9 Agustin N. Coppari Hollmann 2026-10-12 feat(experiments): Integrate selected diagnostics and public setup...
+078417c6a Agustin N. Coppari Hollmann 2026-10-11 feat: defer performance preparation for functional phase zero runs
+57a13992a Agustin N. Coppari Hollmann 2026-10-10 feat(tracking): show corpus coverage and compiler activity
+fe3e934d4 Agustin N. Coppari Hollmann 2026-10-08 docs: reconcile seven guides with the code they describe
+940c62f42 Agustin N. Coppari Hollmann 2026-10-07 docs: describe vendored support and its default selection
+edb27f847 Agustin N. Coppari Hollmann 2026-10-06 docs(guides): describe the gate-policy overlay in corpus preparation
+8f6c4fcdf Agustin N. Coppari Hollmann 2026-10-05 docs(guides): describe how the instruction policy fails closed
+3f0dc91bc Agustin N. Coppari Hollmann 2026-10-05 docs(workflows): explain installed compilation and measurement
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+032b0d37c Agustin N. Coppari Hollmann 2026-09-28 Explain rectangular attention capsule extents
+3d856a2c1 Agustin N. Coppari Hollmann 2026-09-27 Document phase workflows and untrack outputs
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH docs/guides/target_resolution.md
+22d6a2776 Loren Hung 2026-10-26 feat(derivation): sample compositions from a bound fusion validation
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+0ee1b089f Loren Hung 2026-10-14 fix(phase1): select owned full-call oracles and bind grading sources
+c98b14e59 Loren Hung 2026-10-13 fix(phase1): freeze and protect declared support dependencies
+69e6414eb Loren Hung 2026-10-10 docs(doctor): re-verify docs touched by Core ATen changes
+a5840009b Agustin N. Coppari Hollmann 2026-10-10 feat(runtime): integrate neutral RoCC tooling and complete readback
+702358786 Agustin N. Coppari Hollmann 2026-10-08 refactor(targets): remove reference implementations from fresh authoring
+2d9fbe665 Agustin N. Coppari Hollmann 2026-10-08 feat: package portable simulator worker inputs
+9e15d2b50 Agustin N. Coppari Hollmann 2026-10-08 fix(examples): drop host paths from vendored support provenance
+940c62f42 Agustin N. Coppari Hollmann 2026-10-07 docs: describe vendored support and its default selection
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH examples/gemmini/target/descriptor.yaml
+1ddf5d624 Loren Hung 2026-10-26 chore(gemmini): declare scale policies, schemes and readout contracts
+34a9b59f7 Loren Hung 2026-10-25 feat(gemmini): record the operator review of the software spec
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+fb322b6e6 Loren Hung 2026-10-24 feat(targetgen): declare constrained schemes and composition truth
+f8956af58 Agustin N. Coppari Hollmann 2026-10-20 feat(integration): merge current EL4 with shared scheduling contracts
+1add4e3f3 Agustin N. Coppari Hollmann 2026-10-19 feat(history): merge: integrate portable V26 qualification inputs
+533bee1be Agustin N. Coppari Hollmann 2026-10-15 feat(history): measure selected capsule kernel call cycles in...
+69816de2c Agustin N. Coppari Hollmann 2026-10-15 feat(history): broker visible model checks and publish six-program...
+7c68b01ad Agustin N. Coppari Hollmann 2026-10-11 feat: merge latest compiler readiness developments
+57a13992a Agustin N. Coppari Hollmann 2026-10-10 feat(tracking): show corpus coverage and compiler activity
+702358786 Agustin N. Coppari Hollmann 2026-10-08 refactor(targets): remove reference implementations from fresh authoring
+fd2263272 Agustin N. Coppari Hollmann 2026-10-06 feat(examples): Declare reviewed host rules and precision staging
+61ada9e1b Agustin N. Coppari Hollmann 2026-10-05 feat(phase1): Verify private full-model compiler builds
+9946504ba Agustin N. Coppari Hollmann 2026-10-05 feat(target): declare reviewed Gemmini capabilities
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+a4a1e4531 Agustin N. Coppari Hollmann 2026-09-23 Refine Phase 0 evidence, operation-aware quantization, and corpus review
+c145f6f5c Agustin N. Coppari Hollmann 2026-09-23 Bind generated corpora to application demand provenance
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH packages/merlin-experiments/README.md
+f12c1cd37 Loren Hung 2026-10-26 feat(experiments): validate fusion cases against independent references
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+9d6e0fd92 Agustin N. Coppari Hollmann 2026-10-16 feat(integration): integrate model check and tests changes
+67cfd1473 Loren Hung 2026-10-14 Bind Phase 1 source compilation to frozen candidate product transport
+8aa6c4de9 Agustin N. Coppari Hollmann 2026-10-12 feat(experiments): Integrate selected diagnostics and public setup...
+a5840009b Agustin N. Coppari Hollmann 2026-10-10 feat(runtime): integrate neutral RoCC tooling and complete readback
+57a13992a Agustin N. Coppari Hollmann 2026-10-10 feat(tracking): show corpus coverage and compiler activity
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH packages/merlin-experiments/src/merlin_experiments/cli.py
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+4499eebb9 Agustin N. Coppari Hollmann 2026-10-23 feat(experiments): add the experiment command console
+21672e5ec Agustin N. Coppari Hollmann 2026-10-22 feat(tracking): add unified animated terminal campaign view
+073058ca9 Agustin N. Coppari Hollmann 2026-10-21 feat(integration): integrate experiments and tests changes
+cf05eaad6 Agustin N. Coppari Hollmann 2026-10-21 feat(integration): integrate llvmlower and tests changes
+f8956af58 Agustin N. Coppari Hollmann 2026-10-20 feat(integration): merge current EL4 with shared scheduling contracts
+00eeb0d0e Agustin N. Coppari Hollmann 2026-10-18 feat(integration): integrate experiments and tests changes
+bef296b17 Agustin N. Coppari Hollmann 2026-10-16 fix(integration): integrate compiler and documentation changes
+fd25edc09 Loren Hung 2026-10-15 fix(corpus): seal preserved public-only experiment releases
+eac35a7a2 Agustin N. Coppari Hollmann 2026-10-12 feat(integration): integrate experiments and transforms changes
+078417c6a Agustin N. Coppari Hollmann 2026-10-11 feat: defer performance preparation for functional phase zero runs
+440018f19 Loren Hung 2026-10-08 feat(experiments): derive receipt-bound Core ATen cohorts
+57a13992a Agustin N. Coppari Hollmann 2026-10-10 feat(tracking): show corpus coverage and compiler activity
+c8c9504d2 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): generate mandatory independent coverage and source rosters
+0dd2656d2 Agustin N. Coppari Hollmann 2026-10-08 feat(experiments): record a traced group's memory requests for census
+585776f9f Agustin N. Coppari Hollmann 2026-10-08 refactor(experiments): make study status a merlin experiment subcommand
+76b6defe8 Agustin N. Coppari Hollmann 2026-10-08 feat(corpus): derive capacity-crossing workload variants from RTL facts
+34eaa7972 Agustin N. Coppari Hollmann 2026-10-06 merge: main through 7fee5cfda
+c1cda06ea Agustin N. Coppari Hollmann 2026-10-06 merge: experiment dashboard, watch view and automatic INDEX
+2537a8c85 Agustin N. Coppari Hollmann 2026-10-06 merge: measured-mode operations, exactness and run integrity
+0d4e9346f Agustin N. Coppari Hollmann 2026-10-06 feat(experiments): inspect one group of a candidate, rebuilt alone
+75f01e434 Agustin N. Coppari Hollmann 2026-10-05 feat(measured): write a run heartbeat and report STALLED runs
+61ada9e1b Agustin N. Coppari Hollmann 2026-10-05 feat(phase1): Verify private full-model compiler builds
+ffbfcd526 Agustin N. Coppari Hollmann 2026-10-05 chore(style): Format integrated Python sources
+e2b90e4d5 Agustin N. Coppari Hollmann 2026-10-05 feat(experiments): add a records-only run dashboard and watch view
+8af8784bd Agustin N. Coppari Hollmann 2026-10-05 feat(measured): prepare, launch and read cell runs from the command line
+353c1bf9b Agustin N. Coppari Hollmann 2026-10-05 feat(measured): show a run's status and follow its changes
+8f85c8ad7 Agustin N. Coppari Hollmann 2026-10-05 feat(measured): stop a run at its next session boundary on request
+b9a17b868 Agustin N. Coppari Hollmann 2026-10-05 feat(workflow): expose measured experiment levels
+6f15a7317 Agustin N. Coppari Hollmann 2026-09-30 feat(quant): select external capture policies
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+a4a1e4531 Agustin N. Coppari Hollmann 2026-09-23 Refine Phase 0 evidence, operation-aware quantization, and corpus review
+e467ed8ed Agustin N. Coppari Hollmann 2026-09-23 Expose model readiness and fail-closed corpus facts
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/__main__.py
+22d6a2776 Loren Hung 2026-10-26 feat(derivation): sample compositions from a bound fusion validation
+078417c6a Agustin N. Coppari Hollmann 2026-10-11 feat: defer performance preparation for functional phase zero runs
+c8c9504d2 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): generate mandatory independent coverage and source rosters
+7ed79b643 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): generate independent component objective corpora
+38d404d76 Agustin N. Coppari Hollmann 2026-10-05 feat(phase0): freeze corpus and release handoffs
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+c145f6f5c Agustin N. Coppari Hollmann 2026-09-23 Bind generated corpora to application demand provenance
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/composition_generation.py
+8b6a0b8d9 Loren Hung 2026-10-27 fix(experiments): repair four fusion generation and golden paths
+2f1596e61 Loren Hung 2026-10-27 fix(experiments): retain frozen fusion exclusion declarations
+22d6a2776 Loren Hung 2026-10-26 feat(derivation): sample compositions from a bound fusion validation
+afaeb8176 Loren Hung 2026-10-25 feat(gemmini): declare spec domains, numerics and bound engine inputs
+b0885513a Loren Hung 2026-10-25 fix(targetgen): exercise fenced movement pooling compositions
+353513637 Loren Hung 2026-10-25 fix(targetgen): verify source-bound accumulator seed lineage
+563e995e7 Loren Hung 2026-10-25 feat(targetgen): generate bounded composition scheme corpora
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/core_aten_stage.py
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+68f531fd2 Loren Hung 2026-10-23 feat(phase0): freeze Core ATen lane decisions as placement records
+60c66d776 Loren Hung 2026-10-20 Validate truth-derived no-work and host-guard cohorts
+544851b20 Loren Hung 2026-10-20 Integrate functional coverage fixes and commit independent Phase 0 truth lanes
+635103a55 Loren Hung 2026-10-19 Make Phase 1 functional and remove performance-only lowering
+f1fde6158 Loren Hung 2026-10-18 Build retained capsules with bounded workers and native references
+eb8ae1d52 Loren Hung 2026-10-13 feat(phase1): support optional device coverage with honest lane scores
+099932432 Loren Hung 2026-10-12 fix(corpus): release unselected cases after retained selection
+0d50a4f24 Loren Hung 2026-10-11 feat(corpus): preserve native calls in additive device drafts
+34d71ae64 Loren Hung 2026-10-11 feat(corpus): prepare capture-time int8 device capsules
+84562aaed Loren Hung 2026-10-08 fix(corpus): bind retained Core ATen conformance and synthesis selection
+0629f3078 Loren Hung 2026-10-08 feat(targetgen): grade submitted full-call device catalogs
+440018f19 Loren Hung 2026-10-08 feat(experiments): derive receipt-bound Core ATen cohorts
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/evidence.py
+d1be4fda9 Loren Hung 2026-10-27 fix(runtime): bind complex movement arguments by their typed component ABI
+0803a551b Loren Hung 2026-10-27 fix(experiments): read frontend traces and native host outputs without dropping falsy values
+47fff4a08 Loren Hung 2026-10-27 fix(experiments): derive the output path and honour review basis in recipe derivation
+cef761385 Loren Hung 2026-10-27 fix(experiments): keep probe discovery inside frozen Phase 0 selections
+b68f01f9f Loren Hung 2026-10-27 fix(targetgen): share software spec resolution across evidence paths
+0c080c83d Loren Hung 2026-10-26 fix(experiments): derive scheme and composition facts for data-only selections
+3d277c99c Loren Hung 2026-10-26 fix(experiments): give every unresolved derivation row a reason
+22d6a2776 Loren Hung 2026-10-26 feat(derivation): sample compositions from a bound fusion validation
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+1add4e3f3 Agustin N. Coppari Hollmann 2026-10-19 feat(history): merge: integrate portable V26 qualification inputs
+00eeb0d0e Agustin N. Coppari Hollmann 2026-10-18 feat(integration): integrate experiments and tests changes
+e25fae704 Loren Hung 2026-10-14 fix(corpus): preserve typed capability maps in evidence releases
+07f710006 Agustin N. Coppari Hollmann 2026-10-11 chore(integration): integrate experiments and targetgen changes
+dd7b4a8d3 Agustin N. Coppari Hollmann 2026-10-11 perf(integration): integrate runtime and compiler changes
+7c68b01ad Agustin N. Coppari Hollmann 2026-10-11 feat: merge latest compiler readiness developments
+123ece2ad Agustin N. Coppari Hollmann 2026-10-09 feat(phase0): Prepare component sources before backend authoring
+c8c9504d2 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): generate mandatory independent coverage and source rosters
+2a8d27235 Agustin N. Coppari Hollmann 2026-10-08 fix(evidence): flag provider scaling conflicts and phantom support
+71fbcc506 Agustin N. Coppari Hollmann 2026-10-08 refactor(evidence): move the coverage README renderer to its own module
+e1d682830 Agustin N. Coppari Hollmann 2026-10-08 feat(evidence): export a static, capture-bound performance basis
+6fc8cbd8c Agustin N. Coppari Hollmann 2026-10-05 refactor(evidence): move elaboration snapshot into its own module
+a0a7ab431 Agustin N. Coppari Hollmann 2026-10-04 feat(targetgen): bind dialect scope to selected RTL evidence
+7c521a3d1 Agustin N. Coppari Hollmann 2026-10-05 feat(phase0): bound evidence and claim status
+57a204ade Agustin N. Coppari Hollmann 2026-10-01 fix(examples): scope target reference evidence
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+451beebb2 Agustin N. Coppari Hollmann 2026-09-28 Flag readout scaling contradictions in Phase 0
+52912ce58 Agustin N. Coppari Hollmann 2026-09-28 Keep generated coverage review status honest
+e8299b4a1 Agustin N. Coppari Hollmann 2026-09-28 Bind derived corpus to selected provider readout
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/evidence_attestation.py
+b04f8d918 Loren Hung 2026-10-26 fix(experiments): close attestation receipt and diff bypasses
+147e892d3 Loren Hung 2026-10-26 fix(experiments): harden attestation receipt binding and clean-tree check
+1489d84be Loren Hung 2026-10-26 feat(experiments): reuse spec-validation shards under an operator attestation
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/freeze.py
+cef761385 Loren Hung 2026-10-27 fix(experiments): keep probe discovery inside frozen Phase 0 selections
+2f1596e61 Loren Hung 2026-10-27 fix(experiments): retain frozen fusion exclusion declarations
+8b693dffe Loren Hung 2026-10-27 fix(experiments): freeze phase zero execution tool selections
+9ccc851af Loren Hung 2026-10-27 fix(experiments): preserve frozen target data selection
+f8956af58 Agustin N. Coppari Hollmann 2026-10-20 feat(integration): merge current EL4 with shared scheduling contracts
+07f710006 Agustin N. Coppari Hollmann 2026-10-11 chore(integration): integrate experiments and targetgen changes
+c0065617f Agustin N. Coppari Hollmann 2026-10-10 feat(runtime): serve RoCC targets from data-only support
+c8c9504d2 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): generate mandatory independent coverage and source rosters
+fb1d480be Agustin N. Coppari Hollmann 2026-10-06 fix(phase0): Enforce explicit certification and bounded corpus closure
+10213e0ab Agustin N. Coppari Hollmann 2026-10-05 fix(corpus): reuse completed frozen captures
+38d404d76 Agustin N. Coppari Hollmann 2026-10-05 feat(phase0): freeze corpus and release handoffs
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/fusion_cases.py
+f12c1cd37 Loren Hung 2026-10-26 feat(experiments): validate fusion cases against independent references
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/fusion_execution.py
+67bea9103 Loren Hung 2026-10-26 fix(experiments): pass explicit provider roots in fusion execution
+7d19aef70 Loren Hung 2026-10-26 feat(targetgen): audit fused execution against RTL-derived dataflow
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/fusion_reference.py
+f12c1cd37 Loren Hung 2026-10-26 feat(experiments): validate fusion cases against independent references
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/fusion_validation.py
+46e0a7920 Loren Hung 2026-10-27 fix(experiments): seal repository origin for frozen fusion identity
+67bea9103 Loren Hung 2026-10-26 fix(experiments): pass explicit provider roots in fusion execution
+f12c1cd37 Loren Hung 2026-10-26 feat(experiments): validate fusion cases against independent references
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/generation.py
+22d6a2776 Loren Hung 2026-10-26 feat(derivation): sample compositions from a bound fusion validation
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+afaeb8176 Loren Hung 2026-10-25 feat(gemmini): declare spec domains, numerics and bound engine inputs
+563e995e7 Loren Hung 2026-10-25 feat(targetgen): generate bounded composition scheme corpora
+377f1b8a4 Loren Hung 2026-10-24 Merge el4-core-aten fixes into megaphase-core-aten
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+92a9d2bf5 Loren Hung 2026-10-23 feat(corpus): publish unscored host guards without accelerator work
+e9deb8537 Loren Hung 2026-10-23 Merge core-aten into feat/el4-experiment
+887b5cc23 Agustin N. Coppari Hollmann 2026-10-23 refactor(runtime): separate capsule diagnostics and mount replay
+f8956af58 Agustin N. Coppari Hollmann 2026-10-20 feat(integration): merge current EL4 with shared scheduling contracts
+91667e86c Agustin Coppari Hollmann 2026-10-20 feat(experiments): integrate native recipes and reproducible phase workflows
+1add4e3f3 Agustin N. Coppari Hollmann 2026-10-19 feat(history): merge: integrate portable V26 qualification inputs
+1fee4c485 Agustin Coppari Hollmann 2026-10-18 perf(phase0): capture independent operation capsules concurrently
+00eeb0d0e Agustin N. Coppari Hollmann 2026-10-18 feat(integration): integrate experiments and tests changes
+0a3b3832c Agustin Coppari Hollmann 2026-10-18 feat(targetgen): synthesize activation x activation int8 matmul members
+477b38659 Agustin Coppari Hollmann 2026-10-17 feat(phase0): publish only capsules with accelerator placement
+569dbeb0b Agustin N. Coppari Hollmann 2026-10-15 fix(history): merge: integrate latest compiler-readiness changes
+daa1cfae9 Agustin N. Coppari Hollmann 2026-10-14 refactor(experiments): Split grading and orchestration helpers
+078417c6a Agustin N. Coppari Hollmann 2026-10-11 feat: defer performance preparation for functional phase zero runs
+1850ada07 Agustin Coppari Hollmann 2026-10-11 feat: defer performance preparation for functional phase zero runs
+07f710006 Agustin N. Coppari Hollmann 2026-10-11 chore(integration): integrate experiments and targetgen changes
+5d2a57a00 Agustin N. Coppari Hollmann 2026-10-11 feat: qualify provided-host model builds through source-bound native...
+f46aee6e8 Agustin N. Coppari Hollmann 2026-10-11 feat(phase0): derive public source joint boundary witnesses
+e48174ce3 Agustin N. Coppari Hollmann 2026-10-11 feat(phase0): retain public performance programs through ordinary corpus path
+2ced97f62 Agustin N. Coppari Hollmann 2026-10-11 Merge upstream Phase 0 and Phase 1 experiment changes
+4668bd3e5 Agustin N. Coppari Hollmann 2026-10-11 feat(corpus): gate public promotion with private hash exclusions
+d48f5c495 Agustin Coppari Hollmann 2026-10-11 feat: report phase zero admission failures immediately
+393559032 Agustin N. Coppari Hollmann 2026-10-11 feat(corpus): derive ordinary source curriculum from live intake
+84562aaed Loren Hung 2026-10-08 fix(corpus): bind retained Core ATen conformance and synthesis selection
+440018f19 Loren Hung 2026-10-08 feat(experiments): derive receipt-bound Core ATen cohorts
+c0065617f Agustin N. Coppari Hollmann 2026-10-10 feat(runtime): serve RoCC targets from data-only support
+5516f492c Agustin Coppari Hollmann 2026-10-10 fix(corpus): admit typed probes and complete verified generation
+a0dd5c1d4 Agustin N. Coppari Hollmann 2026-10-09 feat(phase0): prepare bounded source performance campaigns
+99acec347 Agustin N. Coppari Hollmann 2026-10-09 feat(phase0): Derive storage probes from RTL bit partitions
+123ece2ad Agustin N. Coppari Hollmann 2026-10-09 feat(phase0): Prepare component sources before backend authoring
+6a85c4e45 Agustin N. Coppari Hollmann 2026-10-08 feat(experiments): compose independently derived numeric obligations
+89bfc64cc Agustin N. Coppari Hollmann 2026-10-08 feat(experiments): derive logical effects from public schemas
+a58ee9792 Agustin N. Coppari Hollmann 2026-10-08 feat(experiments): derive bounded components from source uses
+c8c9504d2 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): generate mandatory independent coverage and source rosters
+7ee6a88ab Agustin N. Coppari Hollmann 2026-10-08 Merge remote-tracking branch 'origin/main' into merge/batch3-target-agnostic
+ee196726c Agustin N. Coppari Hollmann 2026-10-08 docs: describe library behaviour without naming targets
+b66a592b0 Agustin N. Coppari Hollmann 2026-10-08 fix(phase0): exclude capture census from independent components
+7ed79b643 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): generate independent component objective corpora
+f3982d4bb Agustin N. Coppari Hollmann 2026-10-08 merge: IR validators, integer split-K, performance basis and cohorts
+a6558f7f2 Agustin N. Coppari Hollmann 2026-10-08 feat(corpus): derive performance cohorts at captured contraction shapes
+27196b991 Agustin N. Coppari Hollmann 2026-10-07 feat(targetgen): default MERLIN_TARGET_PATH to vendored support
+ec9b47db6 Agustin N. Coppari Hollmann 2026-10-07 fix(phase0): Screen per-entry numeric bindings
+c2d005f8f Agustin N. Coppari Hollmann 2026-10-05 fix(experiments): refuse an instruction policy whose roles match nothing
+ebe294b29 Agustin N. Coppari Hollmann 2026-10-05 feat(phase0): bind frozen capture inputs
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+037045909 Agustin N. Coppari Hollmann 2026-09-29 Adapt Phase 0 capture to missing fold API safely
+b8cc40cb5 Agustin N. Coppari Hollmann 2026-09-28 Preflight model2MLIR capture API
+7b5924d88 Agustin N. Coppari Hollmann 2026-09-28 Separate exact Phase 2 scope from raw source demand
+ddd9ee06e Agustin N. Coppari Hollmann 2026-09-28 Fail Phase 0 when performance materialization fails
+6cb7423e4 Agustin N. Coppari Hollmann 2026-09-28 Fix frozen scope generation import shadowing
+c88f3266a Agustin N. Coppari Hollmann 2026-09-28 Derive priced multi-region scope cohorts from frozen requirements
+afbc962fe Agustin N. Coppari Hollmann 2026-09-28 Respect scoped placement in derived micro models
+40bb8bf8c Agustin N. Coppari Hollmann 2026-09-28 Preflight static PT2E model capture dependency
+dd2b6fba9 Agustin N. Coppari Hollmann 2026-09-28 Bind Phase2 negative-lane guards to Phase1 source
+581773b8a Agustin N. Coppari Hollmann 2026-09-28 Derive micro model from frozen captures
+e8299b4a1 Agustin N. Coppari Hollmann 2026-09-28 Bind derived corpus to selected provider readout
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+a4a1e4531 Agustin N. Coppari Hollmann 2026-09-23 Refine Phase 0 evidence, operation-aware quantization, and corpus review
+c145f6f5c Agustin N. Coppari Hollmann 2026-09-23 Bind generated corpora to application demand provenance
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/operation_coverage_ledger.py
+4c3caab30 Loren Hung 2026-10-27 fix(experiments): credit generated fusion composition aliases
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/profiles.py
+22d6a2776 Loren Hung 2026-10-26 feat(derivation): sample compositions from a bound fusion validation
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+afaeb8176 Loren Hung 2026-10-25 feat(gemmini): declare spec domains, numerics and bound engine inputs
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+073058ca9 Agustin N. Coppari Hollmann 2026-10-21 feat(integration): integrate experiments and tests changes
+f8956af58 Agustin N. Coppari Hollmann 2026-10-20 feat(integration): merge current EL4 with shared scheduling contracts
+1add4e3f3 Agustin N. Coppari Hollmann 2026-10-19 feat(history): merge: integrate portable V26 qualification inputs
+00eeb0d0e Agustin N. Coppari Hollmann 2026-10-18 feat(integration): integrate experiments and tests changes
+07f710006 Agustin N. Coppari Hollmann 2026-10-11 chore(integration): integrate experiments and targetgen changes
+84562aaed Loren Hung 2026-10-08 fix(corpus): bind retained Core ATen conformance and synthesis selection
+7ee6a88ab Agustin N. Coppari Hollmann 2026-10-08 Merge remote-tracking branch 'origin/main' into merge/batch3-target-agnostic
+d70ba484d Agustin N. Coppari Hollmann 2026-10-08 fix(experiments): take the PJ regime bracket from the target
+ae66b28a0 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): derive aggregate resident allocation boundaries
+3dc4a58ba Agustin N. Coppari Hollmann 2026-10-06 feat(experiments): generate the PD, PA and PJ stream families
+aba2c7a64 Agustin N. Coppari Hollmann 2026-10-05 chore(style): format integrated Python sources
+4c2938bde Agustin N. Coppari Hollmann 2026-10-05 feat(phase0): qualify model forms and source policy
+48ba68939 Agustin N. Coppari Hollmann 2026-09-30 fix(quant): preserve selected capture policies
+be5c3d8d9 Agustin N. Coppari Hollmann 2026-09-28 Use concrete contract oracles without probing
+75ab70abf Agustin N. Coppari Hollmann 2026-09-28 Select Phase 0 oracles from recipes
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+a4a1e4531 Agustin N. Coppari Hollmann 2026-09-23 Refine Phase 0 evidence, operation-aware quantization, and corpus review
+c145f6f5c Agustin N. Coppari Hollmann 2026-09-23 Bind generated corpora to application demand provenance
+214d005a1 Agustin N. Coppari Hollmann 2026-09-23 Simplify Gemmini public capsule recipe metadata
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/requirements.py
+47fff4a08 Loren Hung 2026-10-27 fix(experiments): derive the output path and honour review basis in recipe derivation
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+377f1b8a4 Loren Hung 2026-10-24 Merge el4-core-aten fixes into megaphase-core-aten
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+d92580bb3 Loren Hung 2026-10-23 fix(phase0): pass reviewed standalone families to the grouping oracle
+e9deb8537 Loren Hung 2026-10-23 Merge core-aten into feat/el4-experiment
+073058ca9 Agustin N. Coppari Hollmann 2026-10-21 feat(integration): integrate experiments and tests changes
+f8956af58 Agustin N. Coppari Hollmann 2026-10-20 feat(integration): merge current EL4 with shared scheduling contracts
+91667e86c Agustin Coppari Hollmann 2026-10-20 feat(experiments): integrate native recipes and reproducible phase workflows
+77d3070ea Agustin Coppari Hollmann 2026-10-20 feat(corpus): add opt-in three-block readout coverage
+1add4e3f3 Agustin N. Coppari Hollmann 2026-10-19 feat(history): merge: integrate portable V26 qualification inputs
+152701ed2 Agustin Coppari Hollmann 2026-10-19 Preserve prospective source roles through ordinary publication
+00bef39e8 Agustin Coppari Hollmann 2026-10-19 Admit explicit complete integer public capture references through publication gates
+00eeb0d0e Agustin N. Coppari Hollmann 2026-10-18 feat(integration): integrate experiments and tests changes
+a5c0c45b1 Agustin Coppari Hollmann 2026-10-18 feat(targetgen): derive capture recipes from declared methodology
+186118602 Agustin N. Coppari Hollmann 2026-10-12 feat(integration): integrate experiments and perf changes
+1ff761cb6 Agustin Coppari Hollmann 2026-10-12 Merge latest compiler readiness while preserving owned-host model execution
+659be4764 Agustin N. Coppari Hollmann 2026-10-12 feat(corpus): derive typed public representation and reduction cases
+d80458568 Agustin N. Coppari Hollmann 2026-10-12 feat: publish authenticated loader profiles in fresh corpus releases
+63234fd33 Agustin Coppari Hollmann 2026-10-12 fix: retain authenticated iteration profiles in source requirement selections
+07f710006 Agustin N. Coppari Hollmann 2026-10-11 chore(integration): integrate experiments and targetgen changes
+f46aee6e8 Agustin N. Coppari Hollmann 2026-10-11 feat(phase0): derive public source joint boundary witnesses
+e48174ce3 Agustin N. Coppari Hollmann 2026-10-11 feat(phase0): retain public performance programs through ordinary corpus path
+7c68b01ad Agustin N. Coppari Hollmann 2026-10-11 feat: merge latest compiler readiness developments
+5c6596a7f Agustin Coppari Hollmann 2026-10-11 feat: merge latest compiler readiness developments
+628324d03 Agustin N. Coppari Hollmann 2026-10-10 fix(phase0): defer instruction checks for diagnostic bindings
+3c9ae47a7 Agustin N. Coppari Hollmann 2026-10-11 feat(targetgen): bind corpus roles to neutral instruction rosters
+131b6f902 Agustin Coppari Hollmann 2026-10-11 feat(phase0): join parsed source bodies to program admission
+2ac65229f Loren Hung 2026-10-10 fix(experiments): select the retained Core ATen stage from a recipe
+84562aaed Loren Hung 2026-10-08 fix(corpus): bind retained Core ATen conformance and synthesis selection
+440018f19 Loren Hung 2026-10-08 feat(experiments): derive receipt-bound Core ATen cohorts
+c0065617f Agustin N. Coppari Hollmann 2026-10-10 feat(runtime): serve RoCC targets from data-only support
+5516f492c Agustin Coppari Hollmann 2026-10-10 fix(corpus): admit typed probes and complete verified generation
+fb1d480be Agustin N. Coppari Hollmann 2026-10-06 fix(phase0): Enforce explicit certification and bounded corpus closure
+aba2c7a64 Agustin N. Coppari Hollmann 2026-10-05 chore(style): format integrated Python sources
+4c2938bde Agustin N. Coppari Hollmann 2026-10-05 feat(phase0): qualify model forms and source policy
+2cc869fb7 Agustin N. Coppari Hollmann 2026-10-01 feat(phase0): count derived candidate roles
+48ba68939 Agustin N. Coppari Hollmann 2026-09-30 fix(quant): preserve selected capture policies
+6f15a7317 Agustin N. Coppari Hollmann 2026-09-30 feat(quant): select external capture policies
+5543d1c36 Agustin N. Coppari Hollmann 2026-09-30 feat(phase0): bind external captures to selected specs
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+a6971b220 Agustin N. Coppari Hollmann 2026-09-28 Plan affordable oracle tiers from selected recipe
+7b5924d88 Agustin N. Coppari Hollmann 2026-09-28 Separate exact Phase 2 scope from raw source demand
+efc50cae5 Agustin N. Coppari Hollmann 2026-09-28 Bind required scope chains to typed source ops
+27e48517b Agustin N. Coppari Hollmann 2026-09-28 Validate selected capture recipe metadata
+59e91d3ac Agustin N. Coppari Hollmann 2026-09-28 Reject captures from stale quantization recipes
+e8299b4a1 Agustin N. Coppari Hollmann 2026-09-28 Bind derived corpus to selected provider readout
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/spec_validation.py
+1d904afbc Loren Hung 2026-10-26 fix(targetgen): decline metadata folds and host thresholds in admission
+9cd1cde68 Loren Hung 2026-10-26 fix(targetgen): agree spec admission with lane routing on bounded cases
+77faaeab0 Loren Hung 2026-10-26 fix(targetgen): refuse nonfinite agreement references as typed host
+33f3f1bf0 Loren Hung 2026-10-25 fix(spec-validation): separate component and descriptor host lanes
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+
+PATH packages/merlin-experiments/src/merlin_experiments/phase0/writer.py
+563e995e7 Loren Hung 2026-10-25 feat(targetgen): generate bounded composition scheme corpora
+073058ca9 Agustin N. Coppari Hollmann 2026-10-21 feat(integration): integrate experiments and tests changes
+f8956af58 Agustin N. Coppari Hollmann 2026-10-20 feat(integration): merge current EL4 with shared scheduling contracts
+1add4e3f3 Agustin N. Coppari Hollmann 2026-10-19 feat(history): merge: integrate portable V26 qualification inputs
+00eeb0d0e Agustin N. Coppari Hollmann 2026-10-18 feat(integration): integrate experiments and tests changes
+07f710006 Agustin N. Coppari Hollmann 2026-10-11 chore(integration): integrate experiments and targetgen changes
+7c68b01ad Agustin N. Coppari Hollmann 2026-10-11 feat: merge latest compiler readiness developments
+c0065617f Agustin N. Coppari Hollmann 2026-10-10 feat(runtime): serve RoCC targets from data-only support
+c8c9504d2 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): generate mandatory independent coverage and source rosters
+7ee6a88ab Agustin N. Coppari Hollmann 2026-10-08 Merge remote-tracking branch 'origin/main' into merge/batch3-target-agnostic
+b66a592b0 Agustin N. Coppari Hollmann 2026-10-08 fix(phase0): exclude capture census from independent components
+2741dceb0 Agustin N. Coppari Hollmann 2026-10-08 refactor: drop target names from library strings
+3dc4a58ba Agustin N. Coppari Hollmann 2026-10-06 feat(experiments): generate the PD, PA and PJ stream families
+ebe294b29 Agustin N. Coppari Hollmann 2026-10-05 feat(phase0): bind frozen capture inputs
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+bd6170716 Agustin N. Coppari Hollmann 2026-09-28 Bound integer attention score goldens
+ab15f2aa2 Agustin N. Coppari Hollmann 2026-09-28 Bound embedded integer scope contractions
+afbc962fe Agustin N. Coppari Hollmann 2026-09-28 Respect scoped placement in derived micro models
+581773b8a Agustin N. Coppari Hollmann 2026-09-28 Derive micro model from frozen captures
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+a4a1e4531 Agustin N. Coppari Hollmann 2026-09-23 Refine Phase 0 evidence, operation-aware quantization, and corpus review
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH packages/merlin-experiments/src/merlin_experiments/runner.py
+ed9bdc69d Loren Hung 2026-10-25 feat(derivation): derive the corpus from the spec with sealed validation
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+887b5cc23 Agustin N. Coppari Hollmann 2026-10-23 refactor(runtime): separate capsule diagnostics and mount replay
+4aa7df2b9 Loren Hung 2026-10-22 fix(phase1): freeze the full simulator selection and re-verify the toolchain on resume
+0930a87e2 Loren Hung 2026-10-22 feat(phase1): freeze the selected simulator toolchain and jail into the Phase 1 plan
+1dc394e90 Loren Hung 2026-10-22 fix(phase1): refuse an invalid MERLIN_CAPSULE_TIER_FLOOR when the plan is resolved
+32b78cd16 Loren Hung 2026-10-22 feat(phase1): freeze the selected grade parallelism into the Phase 1 plan
+4aa27eb4c Loren Hung 2026-10-22 feat(grading): operator tier floor for scored capsules (MERLIN_CAPSULE_TIER_FLOOR)
+f8956af58 Agustin N. Coppari Hollmann 2026-10-20 feat(integration): merge current EL4 with shared scheduling contracts
+d92557a16 Agustin N. Coppari Hollmann 2026-10-16 fix(history): bind model checks to selected numerics bundle and...
+569dbeb0b Agustin N. Coppari Hollmann 2026-10-15 fix(history): merge: integrate latest compiler-readiness changes
+a92cb9ab1 Agustin N. Coppari Hollmann 2026-10-14 feat(experiments): Dispatch diagnostics beside numerical selfchecks
+cfe7479c2 Agustin N. Coppari Hollmann 2026-10-14 feat(experiments): reuse original compiler custody across sealed...
+379aba970 Agustin N. Coppari Hollmann 2026-10-13 feat(experiments): Bind structural qualification to original evidence
+84e814adf Agustin N. Coppari Hollmann 2026-10-13 feat(runtime): bridge neutral outputs through lossless coherent packets
+862aa8572 Agustin N. Coppari Hollmann 2026-10-13 feat(cache): bind optional simulator verdict reuse to original exact...
+527f441ef Agustin N. Coppari Hollmann 2026-10-13 feat(snapshot): reuse digests under opt-in Linux read leases
+1ae56eba2 Agustin N. Coppari Hollmann 2026-10-13 feat(runtime): Share compute CPU leases across execution steps
+078417c6a Agustin N. Coppari Hollmann 2026-10-11 feat: defer performance preparation for functional phase zero runs
+07f710006 Agustin N. Coppari Hollmann 2026-10-11 chore(integration): integrate experiments and targetgen changes
+7c68b01ad Agustin N. Coppari Hollmann 2026-10-11 feat: merge latest compiler readiness developments
+3c9ae47a7 Agustin N. Coppari Hollmann 2026-10-11 feat(targetgen): bind corpus roles to neutral instruction rosters
+440018f19 Loren Hung 2026-10-08 feat(experiments): derive receipt-bound Core ATen cohorts
+57a13992a Agustin N. Coppari Hollmann 2026-10-10 feat(tracking): show corpus coverage and compiler activity
+c8c9504d2 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): generate mandatory independent coverage and source rosters
+27196b991 Agustin N. Coppari Hollmann 2026-10-07 feat(targetgen): default MERLIN_TARGET_PATH to vendored support
+e2ed82bf3 Agustin N. Coppari Hollmann 2026-10-07 fix(experiments): Honor selected capture runtime store
+18ad527a0 Agustin N. Coppari Hollmann 2026-10-06 feat(phase1): Carry trusted readback through authoring and grading
+aba2c7a64 Agustin N. Coppari Hollmann 2026-10-05 chore(style): format integrated Python sources
+b9a17b868 Agustin N. Coppari Hollmann 2026-10-05 feat(workflow): expose measured experiment levels
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+437e6b165 Agustin N. Coppari Hollmann 2026-09-28 Verify completed Phase 0 bytes on resume
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+a4a1e4531 Agustin N. Coppari Hollmann 2026-09-23 Refine Phase 0 evidence, operation-aware quantization, and corpus review
+c145f6f5c Agustin N. Coppari Hollmann 2026-09-23 Bind generated corpora to application demand provenance
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH packages/merlin-experiments/src/merlin_experiments/source_snapshot.py
+46e0a7920 Loren Hung 2026-10-27 fix(experiments): seal repository origin for frozen fusion identity
+9ccc851af Loren Hung 2026-10-27 fix(experiments): preserve frozen target data selection
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+f8956af58 Agustin N. Coppari Hollmann 2026-10-20 feat(integration): merge current EL4 with shared scheduling contracts
+c98b14e59 Loren Hung 2026-10-13 fix(phase1): freeze and protect declared support dependencies
+ebe294b29 Agustin N. Coppari Hollmann 2026-10-05 feat(phase0): bind frozen capture inputs
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH src/merlin/compile/fusion_enumeration.py
+49cea13b9 Loren Hung 2026-10-26 feat(compile): enumerate and stratify fusion candidates from facts
+
+PATH src/merlin/targetgen/composition_capsules.py
+22d6a2776 Loren Hung 2026-10-26 feat(derivation): sample compositions from a bound fusion validation
+b0885513a Loren Hung 2026-10-25 fix(targetgen): exercise fenced movement pooling compositions
+353513637 Loren Hung 2026-10-25 fix(targetgen): verify source-bound accumulator seed lineage
+563e995e7 Loren Hung 2026-10-25 feat(targetgen): generate bounded composition scheme corpora
+
+PATH src/merlin/targetgen/composition_corpus.py
+22d6a2776 Loren Hung 2026-10-26 feat(derivation): sample compositions from a bound fusion validation
+afaeb8176 Loren Hung 2026-10-25 feat(gemmini): declare spec domains, numerics and bound engine inputs
+b0885513a Loren Hung 2026-10-25 fix(targetgen): exercise fenced movement pooling compositions
+353513637 Loren Hung 2026-10-25 fix(targetgen): verify source-bound accumulator seed lineage
+563e995e7 Loren Hung 2026-10-25 feat(targetgen): generate bounded composition scheme corpora
+
+PATH src/merlin/targetgen/core_aten_spec_int8.py
+b68f01f9f Loren Hung 2026-10-27 fix(targetgen): share software spec resolution across evidence paths
+14efc9c79 Loren Hung 2026-10-26 feat(lowering): prove and trace runtime f32 readout scales
+c973bbb66 Loren Hung 2026-10-25 fix(targetgen): stop when a missing certificate would decide the lane
+34a9b59f7 Loren Hung 2026-10-25 feat(gemmini): record the operator review of the software spec
+377f1b8a4 Loren Hung 2026-10-24 Merge el4-core-aten fixes into megaphase-core-aten
+831685a0c Loren Hung 2026-10-23 fix(targetgen): screen host spec_int8 steps against host capabilities
+038a32e92 Loren Hung 2026-10-23 feat(targetgen): declare an integer-sum policy per quantization recipe
+2fa380f45 Loren Hung 2026-10-21 Re-prove declared contractions through one covering_proof helper
+8fc41516f Loren Hung 2026-10-21 Ask the provider for a schedule proof through one provider_proof helper
+e6250b9d2 Loren Hung 2026-10-19 fix(quant): derive static scales from a declared observer domain
+156ea0174 Loren Hung 2026-10-19 Apply pending acceptance to numerical readout contracts and native gate results
+b54825184 Loren Hung 2026-10-19 Admit planned exact integer readouts up to the int32 accumulator bound
+b22162983 Loren Hung 2026-10-18 Refuse malformed centered operand proof records cleanly
+743657fd7 Loren Hung 2026-10-18 Require exact byte plane proofs for centered int32 contractions
+d1fb1f509 Loren Hung 2026-10-18 Bind exact MAC continuation bounds to signed byte operands
+a1b777d12 Loren Hung 2026-10-18 Keep signed coefficient and ReLU semantics in exact host readouts
+bf1f86629 Loren Hung 2026-10-18 Prove bounded integer continuations before exact host readout
+a91546df5 Loren Hung 2026-10-17 Restore reviewed exact region offload
+a3345a2bf Loren Hung 2026-10-17 Pin the frontend quant schema and require full int32 device readout
+aad5dc6a4 Loren Hung 2026-10-17 Use exact arithmetic for integer references and recipe proofs
+85212865e Loren Hung 2026-10-17 Enforce exact primitive limits and source-bound provider coverage
+e5b1f8fdf Loren Hung 2026-10-17 feat(quant): quantize float dtype conversions and non-float32 fills, read out at their width
+e79bab0df Loren Hung 2026-10-17 feat(core-aten): integerize and admit quantized programs with no contraction
+1f293931f Loren Hung 2026-10-17 feat(core-aten): screen dequantize -> f32 op -> quantize sandwiches as int8 sites
+d8ea3c105 Loren Hung 2026-10-17 feat(core-aten): admit the on-device int8 readout and the int32 bias seed
+a999372f2 Loren Hung 2026-10-17 feat(core-aten): screen non-contraction sites in the int8 admission plan
+23720308c Loren Hung 2026-10-13 fix(capture): preserve batched MAC with proved host readout
+4769e7268 Loren Hung 2026-10-12 fix(targetgen): execute and grade declared int8 device policies
+b8432e8c4 Loren Hung 2026-10-11 fix(capture): type host refusals and validate readout structure
+542b7f498 Loren Hung 2026-10-11 fix(numerics): enforce declared exact int32 cast range
+349fb3c86 Loren Hung 2026-10-11 fix(numerics): preserve declared two-multiply host readout
+4bc5d4166 Loren Hung 2026-10-11 feat(targetgen): capture declared int8 contraction chains
+eccd67cab Loren Hung 2026-10-11 feat(targetgen): gate Core ATen int8 flow on declared spec
+
+PATH src/merlin/targetgen/corpus_synth.py
+5ba2f5989 Loren Hung 2026-10-27 fix(targetgen): handle falsy and missing values in four derivation paths
+22d6a2776 Loren Hung 2026-10-26 feat(derivation): sample compositions from a bound fusion validation
+afaeb8176 Loren Hung 2026-10-25 feat(gemmini): declare spec domains, numerics and bound engine inputs
+563e995e7 Loren Hung 2026-10-25 feat(targetgen): generate bounded composition scheme corpora
+377f1b8a4 Loren Hung 2026-10-24 Merge el4-core-aten fixes into megaphase-core-aten
+e04864b9c Loren Hung 2026-10-23 refactor(targetgen): move cell forms and column sum into own modules
+edc82df20 Loren Hung 2026-10-23 fix(targetgen): synthesize and score each declared capability row
+887b5cc23 Agustin N. Coppari Hollmann 2026-10-23 refactor(runtime): separate capsule diagnostics and mount replay
+00eeb0d0e Agustin N. Coppari Hollmann 2026-10-18 feat(integration): integrate experiments and tests changes
+1a5e2681b Agustin Coppari Hollmann 2026-10-18 feat(corpus): derive and require column-readout accelerator tests
+0a3b3832c Agustin Coppari Hollmann 2026-10-18 feat(targetgen): synthesize activation x activation int8 matmul members
+e2af24e82 Agustin Coppari Hollmann 2026-10-17 Merge RTL-derived output epilogue capabilities
+59930a9b3 Agustin Coppari Hollmann 2026-10-17 feat(conformance): demand the derived fused epilogue as group capsules
+f48f40489 Agustin Coppari Hollmann 2026-10-17 feat(targetgen): synthesize ragged-K matmul and ragged-N GEMV members
+477b38659 Agustin Coppari Hollmann 2026-10-17 feat(phase0): publish only capsules with accelerator placement
+07f710006 Agustin N. Coppari Hollmann 2026-10-11 chore(integration): integrate experiments and targetgen changes
+81e293647 Agustin N. Coppari Hollmann 2026-10-11 refactor(core): Extract capture and geometry helpers into focused modules
+7c68b01ad Agustin N. Coppari Hollmann 2026-10-11 feat: merge latest compiler readiness developments
+5c6596a7f Agustin Coppari Hollmann 2026-10-11 feat: merge latest compiler readiness developments
+d47485cfc Agustin N. Coppari Hollmann 2026-10-10 fix(corpus): derive typed host probes from selected source ABI
+c0065617f Agustin N. Coppari Hollmann 2026-10-10 feat(runtime): serve RoCC targets from data-only support
+5516f492c Agustin Coppari Hollmann 2026-10-10 fix(corpus): admit typed probes and complete verified generation
+fb1d480be Agustin N. Coppari Hollmann 2026-10-06 fix(phase0): Enforce explicit certification and bounded corpus closure
+fc040bb20 Agustin N. Coppari Hollmann 2026-10-05 feat(capsule): freeze source and golden inputs
+a6971b220 Agustin N. Coppari Hollmann 2026-09-28 Plan affordable oracle tiers from selected recipe
+c7aa37825 Agustin N. Coppari Hollmann 2026-09-28 Derive accumulator output capacity capsules
+c520c8c2e Agustin N. Coppari Hollmann 2026-09-28 Reject held-out captures during corpus synthesis
+7000e0011 Agustin N. Coppari Hollmann 2026-09-28 Keep source model names out of public capsules
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+a4a1e4531 Agustin N. Coppari Hollmann 2026-09-23 Refine Phase 0 evidence, operation-aware quantization, and corpus review
+c145f6f5c Agustin N. Coppari Hollmann 2026-09-23 Bind generated corpora to application demand provenance
+e467ed8ed Agustin N. Coppari Hollmann 2026-09-23 Expose model readiness and fail-closed corpus facts
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH src/merlin/targetgen/quant_methodology.py
+06c2c6506 Loren Hung 2026-10-27 fix(targetgen): derive the runtime weight opt-in and keep decoder score matmuls on the host
+3c5df3690 Loren Hung 2026-10-24 feat(targetgen): declare quantization schemes and fused compositions
+00eeb0d0e Agustin N. Coppari Hollmann 2026-10-18 feat(integration): integrate experiments and tests changes
+
+PATH src/merlin/targetgen/quant_recipe.py
+14efc9c79 Loren Hung 2026-10-26 feat(lowering): prove and trace runtime f32 readout scales
+fb322b6e6 Loren Hung 2026-10-24 feat(targetgen): declare constrained schemes and composition truth
+1fb1a5ac3 Loren Hung 2026-10-25 fix(targetgen): preserve implicit exact recipe digests
+2da5aeedd Loren Hung 2026-10-24 feat(quantization): derive scheme scales from the output path
+62055b848 Loren Hung 2026-10-24 feat(targetgen): evaluate declared quantization reference schemes
+3c5df3690 Loren Hung 2026-10-24 feat(targetgen): declare quantization schemes and fused compositions
+9bd82ffb0 Loren Hung 2026-10-24 fix(quantization): default integer sum recipes to exact
+377f1b8a4 Loren Hung 2026-10-24 Merge el4-core-aten fixes into megaphase-core-aten
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+038a32e92 Loren Hung 2026-10-23 feat(targetgen): declare an integer-sum policy per quantization recipe
+e9deb8537 Loren Hung 2026-10-23 Merge core-aten into feat/el4-experiment
+f8956af58 Agustin N. Coppari Hollmann 2026-10-20 feat(integration): merge current EL4 with shared scheduling contracts
+91667e86c Agustin Coppari Hollmann 2026-10-20 feat(experiments): integrate native recipes and reproducible phase workflows
+112fd748f Agustin Coppari Hollmann 2026-10-20 feat(targetgen): add exact shared-grid residual quantization
+00eeb0d0e Agustin N. Coppari Hollmann 2026-10-18 feat(integration): integrate experiments and tests changes
+49bfe5b59 Agustin Coppari Hollmann 2026-10-18 feat(quantization): Allow reviewed activation-plane variants
+ae7182e36 Agustin Coppari Hollmann 2026-10-18 feat(quantizer): add bounded residual planes for score operands
+cd80efbd4 Agustin Coppari Hollmann 2026-10-18 fix(quantizer): keep softmax partner planes on bounded int8 grids
+73cb7a106 Agustin Coppari Hollmann 2026-10-18 feat(quantizer): support static digit planes for softmax partners
+4fbc7447e Loren Hung 2026-10-17 Default accelerator captures to integer readout
+84cac7d05 Agustin Coppari Hollmann 2026-10-18 feat(capture): verify each recipe-rewritten contraction before sealing
+d8ea3c105 Loren Hung 2026-10-17 feat(core-aten): admit the on-device int8 readout and the int32 bias seed
+00671a822 Loren Hung 2026-10-17 feat(quant): quantize affine maps and movements in their exact integer forms
+c7fae0a6d Agustin N. Coppari Hollmann 2026-10-16 feat(integration): integrate tests and model check changes
+f63c10f28 Agustin Coppari Hollmann 2026-10-16 feat(targetgen): digit-plane operands for static per-head contractions
+643e4c332 Agustin Coppari Hollmann 2026-10-16 feat(targetgen): static digit planes for convolutions
+bef296b17 Agustin N. Coppari Hollmann 2026-10-16 fix(integration): integrate compiler and documentation changes
+827ccbcc8 Agustin Coppari Hollmann 2026-10-16 feat(targetgen): static per-head scales for activation contractions
+0e39a6943 Agustin Coppari Hollmann 2026-10-16 Merge branch 'cc/model-check' into cc/model-check--agent-a0fe245219bd5c247
+cfb0d40c6 Agustin Coppari Hollmann 2026-10-16 feat(targetgen): static activation planes and a percentile observer
+ef473c0b9 Agustin Coppari Hollmann 2026-10-16 feat(targetgen): add opt-in GPTQ rounding for recipe int8 weights
+1235e2e83 Agustin N. Coppari Hollmann 2026-10-15 feat(integration): integrate model check and tests changes
+fbd038fa5 Agustin Coppari Hollmann 2026-10-15 feat(targetgen): dynamic recipe block for run-time contraction scales
+4bf7faf3e Agustin Coppari Hollmann 2026-10-15 feat(targetgen): opt-in recipe family for activation contractions
+a4a1e4531 Agustin N. Coppari Hollmann 2026-09-23 Refine Phase 0 evidence, operation-aware quantization, and corpus review
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture
+
+PATH src/merlin/targetgen/quantization_spec.py
+f48209636 Loren Hung 2026-10-27 fix(targetgen): derive the runtime-weight opt-in after methodology derivation
+87b5e2d95 Loren Hung 2026-10-27 fix(targetgen): keep an unknown policy review status blocking
+47fff4a08 Loren Hung 2026-10-27 fix(experiments): derive the output path and honour review basis in recipe derivation
+155965792 Loren Hung 2026-10-27 fix(targetgen): treat annotation prose as non-numerical in quantization specs
+14efc9c79 Loren Hung 2026-10-26 feat(lowering): prove and trace runtime f32 readout scales
+afaeb8176 Loren Hung 2026-10-25 feat(gemmini): declare spec domains, numerics and bound engine inputs
+3c5df3690 Loren Hung 2026-10-24 feat(targetgen): declare quantization schemes and fused compositions
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+79125a3e9 Loren Hung 2026-10-20 fix(quantization): distinguish evidence prose from unknown semantics
+00eeb0d0e Agustin N. Coppari Hollmann 2026-10-18 feat(integration): integrate experiments and tests changes
+bef296b17 Agustin N. Coppari Hollmann 2026-10-16 fix(integration): integrate compiler and documentation changes
+024c9dfcc Agustin N. Coppari Hollmann 2026-10-05 feat(target): validate selected target contracts
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+dbe8363dd Agustin N. Coppari Hollmann 2026-09-28 Derive numerical engine in capture recipes
+d68330238 Agustin N. Coppari Hollmann 2026-09-27 Match registered scale dtype aliases
+123e45a0c Agustin N. Coppari Hollmann 2026-09-27 Derive usable FP8 observer defaults
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+
+PATH src/merlin/targetgen/software_spec.py
+184b98c17 Loren Hung 2026-10-26 chore(format): format the admission, spec and compute-group modules
+1ddf5d624 Loren Hung 2026-10-26 chore(gemmini): declare scale policies, schemes and readout contracts
+ada561538 Loren Hung 2026-10-26 feat(targetgen): route scaled and per-operand operand sums by contract
+34a9b59f7 Loren Hung 2026-10-25 feat(gemmini): record the operator review of the software spec
+afaeb8176 Loren Hung 2026-10-25 feat(gemmini): declare spec domains, numerics and bound engine inputs
+3c5df3690 Loren Hung 2026-10-24 feat(targetgen): declare quantization schemes and fused compositions
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+80a94b8b5 Loren Hung 2026-10-19 Fail closed across payload carriers and require exact RNE readout declarations
+69f9ade42 Loren Hung 2026-10-19 Preserve explicit review requirements for unchecked declarations
+8a8f7394a Loren Hung 2026-10-19 Separate authored operator acceptance from reviewed constraints
+6850bf649 Loren Hung 2026-10-18 Admit byte-exact movement with a native eager storage gate
+3eea772f8 Loren Hung 2026-10-18 Generalize exact host quantization rank constraints
+58c78043a Loren Hung 2026-10-17 Require explicit review for unchecked capability declarations
+85212865e Loren Hung 2026-10-17 Enforce exact primitive limits and source-bound provider coverage
+2535b1150 Loren Hung 2026-10-17 feat(eligibility): keep one unit's family rows apart and add reduction kinds
+1eed70ec2 Loren Hung 2026-10-17 fix(targetgen): exact host rows narrow admission only for their typed instance
+23720308c Loren Hung 2026-10-13 fix(capture): preserve batched MAC with proved host readout
+eac35a7a2 Agustin N. Coppari Hollmann 2026-10-12 feat(integration): integrate experiments and transforms changes
+c8c9504d2 Agustin N. Coppari Hollmann 2026-10-08 feat(phase0): generate mandatory independent coverage and source rosters
+04044afdd Agustin N. Coppari Hollmann 2026-10-07 fix(contracts): Keep explicit operation selectors exact
+aba2c7a64 Agustin N. Coppari Hollmann 2026-10-05 chore(style): format integrated Python sources
+024c9dfcc Agustin N. Coppari Hollmann 2026-10-05 feat(target): validate selected target contracts
+e5251ee1a Agustin N. Coppari Hollmann 2026-09-29 feat(experiments): integrate sealed target execution workflows
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+
+PATH src/merlin/targetgen/software_spec_resolution.py
+b68f01f9f Loren Hung 2026-10-27 fix(targetgen): share software spec resolution across evidence paths
+
+PATH src/merlin/targetgen/spec_fact_drift.py
+ada561538 Loren Hung 2026-10-26 feat(targetgen): route scaled and per-operand operand sums by contract
+3c5df3690 Loren Hung 2026-10-24 feat(targetgen): declare quantization schemes and fused compositions
+8968f5be1 Loren Hung 2026-10-23 Merge core-aten into feat/megaphase
+58c78043a Loren Hung 2026-10-17 Require explicit review for unchecked capability declarations
+ecd16ddf4 Loren Hung 2026-10-17 Keep unchecked semantic declarations out of fact-derived evidence
+7c68b01ad Agustin N. Coppari Hollmann 2026-10-11 feat: merge latest compiler readiness developments
+aba2c7a64 Agustin N. Coppari Hollmann 2026-10-05 chore(style): format integrated Python sources
+83a0f2683 Agustin N. Coppari Hollmann 2026-10-05 feat(target): diagnose source-to-spec drift
+
+PATH src/merlin/targetgen/target_experiment.py
+afaeb8176 Loren Hung 2026-10-25 feat(gemmini): declare spec domains, numerics and bound engine inputs
+fb322b6e6 Loren Hung 2026-10-24 feat(targetgen): declare constrained schemes and composition truth
+2100a1772 Agustin N. Coppari Hollmann 2026-10-21 chore(integration): integrate experiments changes
+c0065617f Agustin N. Coppari Hollmann 2026-10-10 feat(runtime): serve RoCC targets from data-only support
+ee196726c Agustin N. Coppari Hollmann 2026-10-08 docs: describe library behaviour without naming targets
+024c9dfcc Agustin N. Coppari Hollmann 2026-10-05 feat(target): validate selected target contracts
+a72b51ca5 Agustin N. Coppari Hollmann 2026-09-27 Bind phase artifacts and generated corpora
+a4a1e4531 Agustin N. Coppari Hollmann 2026-09-23 Refine Phase 0 evidence, operation-aware quantization, and corpus review
+0ab6920d3 Agustin N. Coppari Hollmann 2026-09-23 refactor: consolidate Merlin phase architecture

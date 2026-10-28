@@ -31,13 +31,14 @@ would be a second, competing description of the same machine:
 
 Facts win over the residual wherever they overlap, exactly as in ``derive_manifest``.
 
-One thing, and only one, is also read from the target's **contract**: its ``compute_units`` block, as
-the BASE declaration the residual overrides (:meth:`Sources.units`). The contract is not a fourth
-trait source and gates nothing; it is consulted because a target that ships no residual file was
-otherwise credited with no compute units at all, which lost its datapath kind and degraded its
-archetype to ``unknown-datapath`` -- an absent OVERRIDE read as an absent DECLARATION. A kind that
-came from the contract is tiered :data:`TIER_CONTRACT`, never :data:`TIER_FACTS`: it is declared, and
-the RTL has not been asked.
+Two things, and only two, are also read from the target's **contract**, each as the BASE declaration
+the residual overrides: its ``compute_units`` block (:meth:`Sources.units`) and its encoding ABI's
+``config_subtype`` table (``_t_persistent_configuration_state``). The contract is not a general
+fourth trait source; it is consulted because a target that ships no residual file was otherwise
+credited with no compute units and no configuration command at all, which lost its datapath kind and
+degraded its archetype to ``unknown-datapath`` -- an absent OVERRIDE read as an absent DECLARATION.
+Anything that came from the contract is tiered :data:`TIER_CONTRACT`, never :data:`TIER_FACTS`: it is
+declared, and the RTL has not been asked.
 
 WHAT THIS MODULE REFUSES TO DO
 ------------------------------
@@ -245,8 +246,9 @@ class Sources:
     body: dict[str, Any] = field(default_factory=dict)
     present: tuple[str, ...] = ()
     missing: tuple[str, ...] = ()
-    #: The target's own contract, as read. NOT a fourth source of TRAITS -- it is consulted for one
-    #: thing only (see :meth:`units`), and it never overrides a residual or a fact.
+    #: The target's own contract, as read. NOT a general fourth source of TRAITS -- it is consulted for
+    #: two base declarations only (:meth:`units` and the encoding's ``config_subtype``), and it never
+    #: overrides a residual or a fact.
     contract: dict[str, Any] = field(default_factory=dict)
     external_reads: bool = True
 
@@ -800,20 +802,39 @@ def _t_banked_memory(sources: Sources) -> tuple[Trait, str]:
 
 
 def _t_persistent_configuration_state(sources: Sources) -> tuple[Trait, str]:
-    enc = sources.residual.get("encoding") or {}
+    """Whether a configuration command sets state that later commands read.
+
+    The encoding ABI's ``config_subtype`` table is the declaration: a configuration op class whose
+    sub-types each select a piece of state that the commands issued after it consume. It is read from
+    the RESIDUAL if the residual declares one, else from the target's CONTRACT, with the same
+    precedence and for the same reason as :meth:`Sources.units`: the contract's ``encoding`` block is
+    the target's own BASE declaration of its command encoding, and the residual is the override a
+    human writes on top of it. A selection that ships no residual (a data-only selection supplies the
+    contract alone) was otherwise read as declaring no configuration command at all -- an absent
+    OVERRIDE read as an absent DECLARATION. Either way the trait is DECLARED, never grounded, and its
+    tier says which file declared it.
+    """
+    enc = sources.residual.get("encoding") if isinstance(sources.residual.get("encoding"), Mapping) else {}
+    contract_enc = sources.contract.get("encoding") if isinstance(sources.contract.get("encoding"), Mapping) else {}
     subtypes = enc.get("config_subtype") or {}
-    if subtypes:
+    tier, where = TIER_RESIDUAL, "residual encoding"
+    if not subtypes:
+        subtypes = contract_enc.get("config_subtype") or {}
+        tier, where = TIER_CONTRACT, "contract encoding (the base declaration; no residual override)"
+    if isinstance(subtypes, Mapping) and subtypes and all(isinstance(v, str) and v for v in subtypes.values()):
         return Trait(
             "persistent_configuration_state",
             True,
-            evidence=f"residual encoding DECLARES a configuration command with "
+            evidence=f"{where} DECLARES a configuration command with "
             f"{len(subtypes)} sub-types {sorted(subtypes.values())}: state set by "
             "one command and read by later ones",
-        ), TIER_RESIDUAL
+        ), tier
     return Trait(
         "persistent_configuration_state",
         None,
-        evidence=f"the residual's encoding block declares {sorted(enc) or 'nothing'}",
+        evidence=f"the residual's encoding block declares {sorted(enc) or 'nothing'} and the "
+        f"contract's encoding block declares {sorted(contract_enc) or 'nothing'}; neither carries a "
+        f"well-formed config_subtype table",
         missing=(
             "a configuration op class in the encoding ABI (config_subtype), or a "
             "roled configuration mnemonic in the ISA model",
@@ -913,11 +934,11 @@ def _t_explicit_completion(sources: Sources) -> tuple[Trait, str]:
 
             pf = port_facts(sources.target, fields=("completed",))
         else:
-            pf = sources.facts.get("port_facts") or {
-                "status": "unavailable",
-                "why": "selected snapshot supplies no completion-port facts",
-                "fields": {},
-            }
+            # A selected snapshot is read, never extended: its port list must travel in the bundle
+            # and be bound (by digest) to the elaboration the same bundle declares.
+            from merlin.targetgen.rtl.ports import bound_port_facts
+
+            pf = bound_port_facts(sources.facts)
     except Exception as e:  # noqa: BLE001
         pf = {"status": "unavailable", "why": f"{type(e).__name__}: {str(e)[:120]}", "fields": {}}
     if pf.get("status") == "derived":

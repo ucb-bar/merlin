@@ -1,6 +1,24 @@
 """Same-conversion exported tensor result roles and logical layout facts."""
 
 
+def restore_bundle_abi(root, input_abi, output_abi):
+    """Join bundle storage aliases to the worker's canonical typed ABI."""
+    import json
+
+    path = root / "meta.json"
+    meta = json.loads(path.read_text())
+    aliases = {"complex64": "complex<f32>", "complex128": "complex<f64>"}
+    for key, expected in (("input_abi", input_abi), ("output_abi", output_abi)):
+        actual = meta.get(key)
+        if not isinstance(actual, list) or any(not isinstance(row, dict) for row in actual):
+            raise ValueError(f"bundle {key} is missing or malformed")
+        normalized = [{**row, "dtype": aliases.get(row.get("dtype"), row.get("dtype"))} for row in actual]
+        if normalized != expected:
+            raise ValueError(f"bundle {key} differs from the captured tensor ABI")
+        meta[key] = expected
+    path.write_text(json.dumps(meta), encoding="utf-8")
+
+
 def exported_contract(result, inputs):
     """Read roles/layout/alias facts from the SAME conversion, never an eager result."""
     ep = getattr(result, "exported_program", None)

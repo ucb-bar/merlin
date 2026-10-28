@@ -51,7 +51,10 @@ ISLAND_OPS = ("softmax", "layer_norm", "rms_norm", "group_norm", "gelu", "silu",
 #: The only island format: Merlin's host computes these in IEEE single precision, never bf16/f16.
 ISLAND_DTYPE = "fp32"
 #: What a reviewed model variant may change in a derived recipe, and nothing else.
-VARIANT_CHANGES = ("families", "dynamic", "calibration_count", "scale_granularity", "bias", "static_planes", "recovery")
+VARIANT_CHANGES = (
+    "families", "dynamic", "calibration_count", "scale_granularity", "bias", "static_planes", "recovery",
+    "runtime_weight_contractions",
+)
 _FIELDS = {
     "schema",
     "scale_granularity",
@@ -162,6 +165,11 @@ def validate(block: Any) -> dict[str, Any]:
             )
         if "dynamic" in changes:
             _require(isinstance(changes["dynamic"], Mapping), f"{where}.changes.dynamic is a recipe dynamic block")
+        if "runtime_weight_contractions" in changes:
+            _require(
+                type(changes["runtime_weight_contractions"]) is bool,
+                f"{where}.changes.runtime_weight_contractions is Boolean",
+            )
         if "calibration_count" in changes:
             count = changes["calibration_count"]
             _require(type(count) is int and count > 0, f"{where}.changes.calibration_count is a positive integer")
@@ -237,7 +245,7 @@ def _preload(path: Mapping[str, Any]) -> dict[str, Any] | None:
 
 
 #: Variant blocks a base recipe may carry that this derivation does not take over silently.
-_VARIANT_BLOCKS = ("dynamic", "static_planes")
+_VARIANT_BLOCKS = ("dynamic", "static_planes", "runtime_weight_contractions")
 
 
 def derive(
@@ -477,6 +485,8 @@ def _finish(body, method, path, underivable, model) -> dict[str, Any]:
                 unquantized[family] = f"reviewed model variant {row['name']}: left in floating point on the host"
         if "dynamic" in changes:
             body["dynamic"] = json.loads(json.dumps(changes["dynamic"]))
+        if "runtime_weight_contractions" in changes:
+            body["runtime_weight_contractions"] = changes["runtime_weight_contractions"]
         if "calibration_count" in changes:
             body.setdefault("framework_capture_policy", {})["calibration_count"] = changes["calibration_count"]
         if "recovery" in changes:

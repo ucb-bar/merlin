@@ -91,13 +91,55 @@ def _canonical_operands(operation, operands):
     return "matmul", operands
 
 
-def operand_extents(document) -> tuple[tuple[int, ...], ...] | None:
+def _residual_state_operands(operation, named):
+    """Every contraction of a residual-state capsule: its main one and its independent ``prelude``.
+
+    Each contraction is resolved by the input names its attributes declare and normalized exactly
+    like a single-contraction capsule. All inputs must be claimed by exactly one contraction;
+    anything else (a missing, repeated or unclaimed operand, a non-contraction) has no identity.
+    """
+    attributes = operation.get("attributes")
+    prelude = attributes.get("prelude") if isinstance(attributes, dict) else None
+    if not isinstance(prelude, dict):
+        return None
+    shapes = {}
+    for name, role, shape in named:
+        if not isinstance(name, str) or not name or name in shapes:
+            return None
+        shapes[name] = (role, shape)
+    claimed = []
+    resolved = []
+    # The main contraction is the capsule's own operation (a matmul names its activation ``lhs``, a
+    # convolution ``ifm``); the prelude is always an independent matmul.
+    main_kind = _contraction_kind(operation["op"])
+    for source, op, lhs_key in (
+        (attributes, operation, "ifm" if main_kind == "conv2d" else "lhs"),
+        (prelude, {"op": "matmul"}, "lhs"),
+    ):
+        names = [source.get(lhs_key), source.get("weight")]
+        if any(not isinstance(name, str) or name not in shapes for name in names) or names[0] == names[1]:
+            return None
+        claimed.extend(names)
+        canonical = _canonical_operands(op, [shapes[name] for name in names])
+        if canonical is None or canonical[0] != (main_kind if op is operation else "matmul"):
+            return None
+        resolved.extend(canonical[1])
+    if sorted(claimed) != sorted(shapes):
+        return None
+    return resolved
+
+
+def operand_extents(document, *, residual_preludes=True) -> tuple[tuple[int, ...], ...] | None:
     """An operation's operands reduced to sorted non-unit extents, independent of spelling.
 
     After contraction normalization, neither the operation name, operand roles, tensor
     names, dimension order, unit dimensions, dtype nor numerical policy is kept: a held-out
     layer keeps its identity under any spelling, transposition or batch-1 wrapping.
     Missing roles or unresolved shapes have no established identity (``None``).
+
+    A residual-state capsule (``attributes.prelude``) is identified by all of its contractions, so
+    a held-out core in any one of them refuses it. ``residual_preludes=False`` keeps such a
+    declaration unidentified (the held-out side stays strict).
     """
     operation = document.get("operation") if isinstance(document, dict) else None
     inputs = document.get("inputs") if isinstance(document, dict) else None
@@ -110,6 +152,7 @@ def operand_extents(document) -> tuple[tuple[int, ...], ...] | None:
     ):
         return None
     operands = []
+    named = []
     for item in inputs:
         if not isinstance(item, dict) or not isinstance(item.get("role"), str) or not item["role"]:
             return None
@@ -117,6 +160,13 @@ def operand_extents(document) -> tuple[tuple[int, ...], ...] | None:
         if not isinstance(shape, list) or not shape or any(type(size) is not int or size <= 0 for size in shape):
             return None
         operands.append((item["role"], shape))
+        named.append((item.get("name"), item["role"], shape))
+    attributes = operation.get("attributes")
+    if isinstance(attributes, dict) and attributes.get("prelude") is not None:
+        resolved = _residual_state_operands(operation, named) if residual_preludes else None
+        if resolved is None:
+            return None
+        return tuple(sorted(tuple(sorted(size for size in shape if size != 1)) for _, shape in resolved))
     canonical = _canonical_operands(operation, operands)
     if canonical is None:
         return None
@@ -132,7 +182,7 @@ def _core(extents):
 @lru_cache(maxsize=512)
 def _excluded_extents(raw):
     # Cache only parsed immutable bytes; every boundary call reopens each file.
-    return operand_extents(yaml.safe_load(raw))
+    return operand_extents(yaml.safe_load(raw), residual_preludes=False)
 
 
 def _excluded_cores(experiment) -> list[Counter]:

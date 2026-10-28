@@ -537,6 +537,11 @@
         "fallback_allowed": {
           "type": "boolean"
         },
+        "reduction_kind": {
+          "type": "string",
+          "enum": ["max", "sum"],
+          "description": "Reduction kind the capsule computes (semantic_families.reduction_kind_of_op), carried from the synthesized generalization block so the eligibility oracle can check it against a kind-restricted capability row."
+        },
         "generalization_axis": {
           "type": "string",
           "enum": [

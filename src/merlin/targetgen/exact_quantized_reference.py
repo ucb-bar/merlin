@@ -1052,9 +1052,11 @@ def run(model, inputs, *, scheme=None):
             # A non-floating constant (a boolean mask, an integer index) carries no
             # rational value to track; it is evaluated as the framework defines it.
             requested = kwargs.get("dtype")
+            if requested is None and constant in {"fill", "full_like", "zeros_like", "ones_like"}:
+                requested = getattr(args[0], "dtype", None)
             if (
                 not any(isinstance(x, ExactTensor) for x in leaves)
-                and constant in {"full", "zeros", "ones"}
+                and constant in {"fill", "full", "full_like", "zeros", "zeros_like", "ones", "ones_like"}
                 and requested is not None
                 and not requested.is_floating_point
             ):

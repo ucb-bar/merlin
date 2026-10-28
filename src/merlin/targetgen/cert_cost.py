@@ -176,7 +176,7 @@ def _linalg_result_elements(mlir_text: str) -> int:
         entries = outputs.data if outputs is not None and hasattr(outputs, "data") else ()
         for t in entries:
             shape = getattr(getattr(t, "shape", None), "data", None)
-            if not shape:
+            if shape is None:
                 continue
             n = 1
             for d in shape:

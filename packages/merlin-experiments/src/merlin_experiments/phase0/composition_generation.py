@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import copy
 
 from merlin.targetgen.composition_corpus import coverage as coverage
@@ -258,7 +259,99 @@ def _bind_validated_capsule(cap, source):
     return cap
 
 
-def append_declared(entries, software_spec, facts, *, budget):
+def _obligations(entry):
+    """What one declared composition capsule covers: its chain, scheme, shape class and their pairings."""
+    generalization = entry["generalization"]
+    instance = generalization["composition_instance"]
+    chain = generalization["composition_chain_id"]
+    scheme = generalization["quantization_scheme_id"]
+    shape = generalization["shape_class"]
+    scale = "runtime_input" if "runtime_scale_input" in instance else "static"
+    return {
+        f"chain:{chain}",
+        f"scheme:{scheme}",
+        f"shape_class:{shape}",
+        f"chain+scheme:{chain}+{scheme}",
+        f"chain+shape_class:{chain}+{shape}",
+        f"scheme+shape_class:{scheme}+{shape}",
+        f"producer:{instance['producer']}",
+        f"scale_source:{scale}",
+    }
+
+
+def sample_declared(demanded, *, budget, workload_count):
+    """Choose the declared compositions that fit the budget left by the workloads, deterministically.
+
+    The ordinary synthesis budget is never raised and the declared set is never silently cut: when every
+    declared composition fits all are kept, otherwise the shortfall is a recorded sample. Each pick covers
+    the most chain, scheme and shape-class obligations not yet covered, ties going to the chain with the
+    fewest picks and then the name, so the sample spreads across the declared chains.
+    """
+    from merlin.common.jsonio import canonical_sha256
+    from merlin.targetgen.corpus_synth import SynthesisError
+
+    remaining = budget - workload_count
+    if remaining < 1:
+        raise SynthesisError(
+            f"{workload_count} workload capsules leave no room for compositions in a budget of {budget}"
+        )
+    pool = sorted(demanded, key=lambda entry: entry["name"])
+    obligations = {entry["name"]: _obligations(entry) for entry in pool}
+    everything = set().union(*obligations.values()) if pool else set()
+    allocation = min(len(pool), remaining)
+    chosen, covered, per_chain = [], set(), {}
+    while len(chosen) < allocation:
+        options = [entry for entry in pool if entry["name"] not in {row["name"] for row in chosen}]
+        entry = min(
+            options,
+            key=lambda e: (
+                -len(obligations[e["name"]] - covered),
+                per_chain.get(e["generalization"]["composition_chain_id"], 0),
+                e["name"],
+            ),
+        )
+        gain = sorted(obligations[entry["name"]] - covered)
+        chosen.append(dict(name=entry["name"], new_obligations=gain))
+        covered |= obligations[entry["name"]]
+        chain = entry["generalization"]["composition_chain_id"]
+        per_chain[chain] = per_chain.get(chain, 0) + 1
+    picked = {row["name"] for row in chosen}
+    by_name = {entry["name"]: entry for entry in pool}
+    record = dict(
+        schema="merlin.composition_selection.v1",
+        policy="all_declared_fit" if allocation == len(pool) else "sample_to_budget",
+        budget=budget,
+        workload_count=workload_count,
+        workload_rule="capsules other than performance companions (cat '_perf') and composition programs",
+        declared_count=len(pool),
+        selected_count=len(chosen),
+        selected_plus_workload=len(chosen) + workload_count,
+        pool_sha256=canonical_sha256([[entry["name"], sorted(obligations[entry["name"]])] for entry in pool]),
+        selected=[
+            dict(
+                name=row["name"],
+                chain=by_name[row["name"]]["generalization"]["composition_chain_id"],
+                scheme=by_name[row["name"]]["generalization"]["quantization_scheme_id"],
+                shape_class=by_name[row["name"]]["generalization"]["shape_class"],
+                new_obligations=row["new_obligations"],
+            )
+            for row in sorted(chosen, key=lambda row: row["name"])
+        ],
+        unselected=sorted(entry["name"] for entry in pool if entry["name"] not in picked),
+        obligations_total=len(everything),
+        obligations_uncovered=sorted(everything - covered),
+        chains={
+            chain: dict(
+                declared=sum(1 for e in pool if e["generalization"]["composition_chain_id"] == chain),
+                selected=per_chain.get(chain, 0),
+            )
+            for chain in sorted({e["generalization"]["composition_chain_id"] for e in pool})
+        },
+    )
+    return [by_name[row["name"]] for row in sorted(chosen, key=lambda row: row["name"])], record
+
+
+def append_declared(entries, software_spec, facts, *, budget, selection_path=None, selection_sink=None):
     """Add the selected composition axis before any release source is written."""
     from merlin.targetgen.composition_corpus import entries as composition_entries
     from merlin.targetgen.corpus_synth import SynthesisError
@@ -273,11 +366,23 @@ def append_declared(entries, software_spec, facts, *, budget):
         existing = by_name.get(entry["name"])
         if existing is not None and existing != entry:
             raise ValueError("selected composition capsule differs from its deterministic derivation")
+    workload_count = sum(
+        1 for entry in entries if entry.get("cat") != "_perf" and entry.get("op") != "composition_program"
+    )
+    chosen, record = sample_declared(demanded, budget=budget, workload_count=workload_count)
+    if selection_path is not None:
+        from merlin.common.jsonio import write_canonical_json
+
+        write_canonical_json(Path(selection_path), record)
+    if selection_sink is not None:
+        selection_sink.update(record)
+    for entry in chosen:
         by_name[entry["name"]] = entry
     result = list(by_name.values())
-    if len(result) > budget:
+    perf = sum(1 for entry in result if entry.get("cat") == "_perf")
+    if len(result) - perf > budget:
         raise SynthesisError(
-            f"composition release would emit {len(result)} capsules against a budget of {budget}; never truncate"
+            f"composition release would emit {len(result) - perf} capsules against a budget of {budget}"
         )
     return prepare_entries(result)
 
@@ -316,12 +421,12 @@ def selected_facts(evidence, requirement, binding):
     return context
 
 
-def require_placement(cap, screen):
-    """Require independently screened accelerator placement for every member."""
+def unplaced_members(cap, screen):
+    """The original chain members of a positive composition the screen did not admit on the accelerator."""
     if cap.get("operation", {}).get("op") != "composition_program":
-        return
+        return []
     if cap["semantic"]["composition_truth"]["outcome"] == "refuse":
-        return
+        return []
     members = set(cap["expected"]["composition"]["source_op_indices"])
     placements = {}
     for row in screen.get("decisions", []):
@@ -329,8 +434,91 @@ def require_placement(cap, screen):
             if index in placements:
                 raise ValueError("composition placement has ambiguous original source identities")
             placements[index] = row.get("placement") if row.get("status") == "admitted" else None
-    if any(placements.get(index) != "accelerator" for index in members):
+    return sorted(index for index in members if placements.get(index) != "accelerator")
+
+
+def require_placement(cap, screen):
+    """Require independently screened accelerator placement for every member."""
+    if unplaced_members(cap, screen):
         raise ValueError("composition requires accelerator placement for every original chain member")
+
+
+def withhold_unplaced(cap, screen, directory):
+    """Disclose a positive composition the screen cannot place whole, and remove what was written.
+
+    Nothing is admitted here: every member decision of the screen stands, and a must-refuse composition
+    is never withheld. A composition that needs a member the screen keeps off the accelerator cannot
+    grade fused placement, so it leaves the output tree and is recorded as ``planned_not_generated``
+    with the member decisions that kept it out. Returns ``None`` when every member is placed.
+    """
+    import shutil
+
+    unplaced = unplaced_members(cap, screen)
+    if not unplaced:
+        return None
+    truth = cap["semantic"]["composition_truth"]
+    members = set(cap["expected"]["composition"]["source_op_indices"])
+    record = dict(
+        capsule=cap.get("name"),
+        status="planned_not_generated",
+        rule="composition_member_not_accelerator_admitted",
+        chain=truth.get("chain_id"),
+        scheme=truth.get("scheme_id"),
+        shape_class=truth.get("shape_class"),
+        members=sorted(members),
+        unplaced_members=unplaced,
+        screen_status=screen.get("status"),
+        decisions=[
+            dict(
+                source_op_indices=list(row.get("source_op_indices") or []),
+                status=row.get("status"),
+                placement=row.get("placement"),
+                classification=row.get("classification"),
+                reason=row.get("reason"),
+            )
+            for row in screen.get("decisions", [])
+            if members & set(row.get("source_op_indices") or [])
+        ],
+    )
+    shutil.rmtree(directory)
+    return record
+
+
+def withhold_unaccelerated_twin(cap, screen, directory):
+    """Withhold a must-refuse composition whose written program places nothing on the accelerator.
+
+    Such a refusal twin grades none of the author's accelerator compiler (host placement is
+    Merlin-supplied), and public corpus preparation refuses a capsule with no accelerator placement. The
+    refusal is not exempted there: the twin leaves the output tree here and is disclosed with the verbatim
+    ``accelerator_placement_refusal`` reason, in the ``host_placement_not_published`` record shape plus the
+    chain identity. A positive composition, a twin that places an operation on the accelerator, and a
+    capsule already in the ``_diagnostic`` cohort are kept (``None``).
+    """
+    import shutil
+
+    from .program_admission import accelerator_placement_refusal
+
+    if cap.get("operation", {}).get("op") != "composition_program" or directory.parent.name == "_diagnostic":
+        return None
+    truth = cap["semantic"]["composition_truth"]
+    if truth.get("outcome") != "refuse":
+        return None
+    reason = accelerator_placement_refusal(screen)
+    if reason is None:
+        return None
+    record = dict(
+        capsule=cap.get("name"),
+        placements=copy.deepcopy(screen.get("placements") or {}),
+        reason=reason,
+        rule="composition_refusal_twin_places_nothing_on_accelerator",
+        outcome="refuse",
+        chain=truth.get("chain_id"),
+        scheme=truth.get("scheme_id"),
+        shape_class=truth.get("shape_class"),
+        screen_status=screen.get("status"),
+    )
+    shutil.rmtree(directory)
+    return record
 
 
 def read_bound_validation(binding, *, base, evidence, workers=None):
@@ -420,11 +608,15 @@ def read_bound_validation(binding, *, base, evidence, workers=None):
     suite = validation.read_suite(args.cases, args.candidates, args.facts, spec=spec, workers=workers)
     if suite.get("profile", {}).get("execution_scope") == "smoke":
         raise ValueError("fusion validation requires a complete deterministic campaign; smoke scope is insufficient")
+    from merlin.common.paths import merlin_dir
     from merlin.targetgen.composition_corpus import held_out_shapes
 
     from .fusion_cases import digest
 
-    if suite["identity"].get("private_exclusion_sha256") != digest(sorted(held_out_shapes())):
+    # In a frozen run this resolves to the declared private input tree. The
+    # canonical alias also serves the suite's payload/publication re-checks.
+    exclusion_manifest = (merlin_dir() / "contract/capsules/MANIFEST.yaml").resolve(strict=True)
+    if suite["identity"].get("private_exclusion_sha256") != digest(sorted(held_out_shapes(exclusion_manifest))):
         raise ValueError("fusion validation held-out selection changed")
     identity = validation.execution_identity(args, suite)
     if ledger["identity"] != {**suite["identity"], **identity}:
@@ -458,13 +650,13 @@ def _release_chain(node, dataflow, instance):
     chain = chain_for_node(node, dataflow)
     chain["producer"] = instance["producer"]
     if "pool" in instance["readout_stages"]:
-        chain["constraints"].extend(
-            [
-                {"max_requires_store_path_pooling": "from_facts"},
-                "scratchpad_source_pooling_fenced",
-                {"padded_max_requires": "producer_lower_bound_or_derived_pad_value"},
-            ]
-        )
+        for constraint in [
+            {"max_requires_store_path_pooling": "from_facts"},
+            "scratchpad_source_pooling_fenced",
+            {"padded_max_requires": "producer_lower_bound_or_derived_pad_value"},
+        ]:
+            if constraint not in chain["constraints"]:
+                chain["constraints"].append(constraint)
     return chain
 
 
@@ -566,6 +758,11 @@ def _display_aliases(software_spec, candidate):
             ("movement" if node["form"] == "window_movement" else node["form"]) in producers
             and node["readout"]["exit"] in chain.get("exits", [])
             and bool(node.get("residual")) == bool(chain.get("extension"))
+            and (
+                "movement" not in producers
+                or node["form"] == "window_movement"
+                or any(stage["kind"] == "pool" for stage in node["readout"]["stages"])
+            )
             for node in semantic["nodes"]
         ):
             aliases.append(chain["id"])

@@ -133,6 +133,20 @@ def scheme_scales(scheme):
     return grid, [*disagreements, *predecessors]
 
 
+def held_out_inputs(manifest):
+    """The files, relative to the corpus root, that ``held_out_shapes`` reads: the manifest and each model layer."""
+    from pathlib import Path
+
+    import yaml
+
+    document = yaml.safe_load(Path(manifest).read_text())
+    return ["MANIFEST.yaml"] + [
+        f"{member}/capsule.yaml"
+        for member in document.get("generated", [])
+        if member.startswith("_model_layers/")
+    ]
+
+
 def held_out_shapes(manifest=None):
     """Read shapes only inside trusted generation; never publish the exclusion set."""
     import yaml

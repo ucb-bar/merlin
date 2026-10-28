@@ -455,12 +455,8 @@ def _finish_capsule(entry, binding, out_root, written, *, component_only=False, 
     native_storage = (
         native_storage_source_spec(entry) if entry.get("source") == "pytorch" or entry.get("pytorch_ref") else None
     )
-    if (
-        diagnostic_source_protocol is None
-        and regime == "int"
-        and _is_source_backed(entry)
-        and (model_capsule or native_storage is None)
-    ):
+    if (diagnostic_source_protocol is None and regime == "int" and _is_source_backed(entry)
+            and (model_capsule or native_storage is None)):
         if model_capsule:
             # A whole model's contractions read internal tensors, so it is qualified by the isolated
             # verification of every device group it forms; without that evidence it is refused

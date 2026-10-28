@@ -796,7 +796,7 @@ def _application_axis(
         tile = 0
     if certification_floor is not None and tile <= 0:
         needs_anchor = any(
-            not admitted_pairs or (str(row["family"]), str(row["dtype"])) in admitted_pairs
+            (str(row["family"]), str(row["dtype"])) in admitted_pairs
             for row in grouped.get("classes") or ()
         )
         if needs_anchor:
@@ -806,7 +806,7 @@ def _application_axis(
 
     required, refused = [], []
     for row in grouped.get("classes") or ():
-        if admitted_pairs and (str(row["family"]), str(row["dtype"])) not in admitted_pairs:
+        if (str(row["family"]), str(row["dtype"])) not in admitted_pairs:
             # Refusals are strings here, matching what `size_class` returns, so a caller printing the
             # list does not have to know which refusal it is looking at.
             refused.append(
@@ -2287,11 +2287,21 @@ def _derived_epilogue_groups(target: str, oracle) -> list[dict]:
 
 
 def _declared_output_path(target: str):
+    """Read the selected path, deriving it when a prepared contract omits the record."""
     try:
+        from merlin.targetgen.capability_manifests import derived_output_path
+        from merlin.targetgen.rtl.facts import load_facts
         from merlin.xdsl_dialects.lowering import output_fusion as OF
 
-        return OF.declared_path(target)
-    except (KeyError, ValueError):  # an unreadable declaration evidences nothing
+        path = OF.declared_path(target)
+        if path is not None:
+            return path
+
+        # Prepared execution contracts need not carry output_epilogue. Use the
+        # same fact/probe derivation as fusion enumeration, under the caller's
+        # observed contract/facts scopes, without changing their input identity.
+        return derived_output_path(target, facts=load_facts(target, regenerate=False))
+    except (KeyError, ValueError, FileNotFoundError):  # unreadable inputs evidence nothing
         return None
 
 

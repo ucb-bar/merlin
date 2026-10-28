@@ -1,6 +1,7 @@
 """The worker's JSON reference retains exact native integer and boolean values."""
 
 import json
+import hashlib
 import math
 import os
 import subprocess
@@ -9,6 +10,24 @@ from pathlib import Path
 import pytest
 
 from merlin.targetgen import _m2m_capture_worker as worker
+
+
+def test_bundle_abi_restores_only_equivalent_complex_storage_spellings(tmp_path):
+    from merlin.targetgen._capture_result_contract import restore_bundle_abi
+
+    inputs = [{"shape": [2], "dtype": "complex<f32>"}]
+    outputs = [{"shape": [3], "dtype": "complex<f64>"}, {"shape": [], "dtype": "i1"}]
+    meta = {"input_abi": [{"shape": [2], "dtype": "complex64"}],
+            "output_abi": [{"shape": [3], "dtype": "complex128"}, outputs[1]], "other": 7}
+    path = tmp_path / "meta.json"
+    path.write_text(json.dumps(meta))
+    restore_bundle_abi(tmp_path, inputs, outputs)
+    assert json.loads(path.read_text()) == {**meta, "input_abi": inputs, "output_abi": outputs}
+    for wrong in ([], [{"shape": [4], "dtype": "complex64"}], [{"shape": [2], "dtype": "complex128"}], [None]):
+        path.write_text(json.dumps({**meta, "input_abi": wrong}))
+        with pytest.raises(ValueError, match="bundle input_abi"):
+            restore_bundle_abi(tmp_path, inputs, outputs)
+
 
 LOADER = """
 import os
@@ -73,6 +92,11 @@ def test_materialized_worker_json_reference_preserves_native_values(tmp_path, ca
     assert result.returncode == 0, result.stderr[-3000:]
     capture = tmp_path / "capture"
     assert (capture / "capture_receipt.json").is_file()
+    receipt = json.loads((capture / "capture_receipt.json").read_text())
+    meta_bytes = (capture / "meta.json").read_bytes()
+    assert receipt["artifacts"]["meta.json"] == {
+        "bytes": len(meta_bytes), "sha256": hashlib.sha256(meta_bytes).hexdigest()
+    }
     values = json.loads((capture / "golden.json").read_text(encoding="utf-8"))
     inputs = json.loads((capture / "inputs.json").read_text(encoding="utf-8"))
     if case == "upper":

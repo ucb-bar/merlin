@@ -87,7 +87,7 @@ def evaluate(cap, *, inputs=None):
             raise ValueError("composition data operands require signed integer storage")
     m, k, n = (attrs[key] for key in ("M", "K", "N"))
 
-    def readout(value, multipliers=None, relu=None, residual=None):
+    def readout(value, multipliers=None, relu=None):
         scales = multipliers or case["multipliers"]
         if multipliers is None and scheme.get("scale_source") == "runtime_input":
             scales = [runtime_multiplier(cap, env)]
@@ -98,18 +98,11 @@ def evaluate(cap, *, inputs=None):
         )
         gains = np.array([scales[min(i // width, len(scales) - 1)] for i in range(value.shape[-1])])
         activation = "activation" in case["readout_stages"] if relu is None else relu
-        if residual is not None or case.get("window_mean"):
+        if case.get("window_mean"):
             result = np.empty(value.shape, dtype=np.int64)
             for row, column in np.ndindex(value.shape):
                 converted = f32(int(value[row, column]))
-                if case.get("window_mean"):
-                    scaled = f32(converted / f32(k))
-                else:
-                    gain = f32(gains[column])
-                    scaled = f32(converted * gain)
-                    residual_scale = f32(float(case["coefficient"]) * gain)
-                    dequantized = f32(f32(int(residual[row, column])) * residual_scale)
-                    scaled = f32(scaled + dequantized)
+                scaled = f32(converted / f32(k))
                 result[row, column] = min(127, max(0 if activation else -128, round(scaled)))
             return result
         if scheme["readout_strategy"] == "f32_product_rne":
@@ -161,7 +154,9 @@ def evaluate(cap, *, inputs=None):
                 else env[f"W{index}"]
             )
             value = env["A"] @ weights
-            if "coefficient" in case and case["exit"] != "requant":
+            if "coefficient" in case:
+                # Declared integer residual term: c * R joins the i32 accumulator before the one
+                # readout rounding (residual_accumulates_before_readout), for every exit.
                 coefficient = Fraction(case["coefficient"])
                 value += np.array(
                     [[round(int(v) * coefficient) for v in row] for row in env["Residual"]], dtype=np.int64
@@ -169,11 +164,11 @@ def evaluate(cap, *, inputs=None):
             if "preload" in case["accumulator_stages"]:
                 value += np.asarray(case["constant_seed"], dtype=np.int64) if "constant_seed" in case else env["Bias"]
             if case.get("siblings"):
-                outputs.append(readout(value, residual=env.get("Residual")) if sibling["exit"] == "requant" else value)
+                outputs.append(readout(value) if sibling["exit"] == "requant" else value)
         if outputs:
             return {name: value.tolist() for name, value in zip(attrs["outputs"], outputs, strict=True)}
     if case["exit"] == "requant":
-        value = readout(value, residual=env.get("Residual"))
+        value = readout(value)
     if "pool" in case["readout_stages"]:
         h, w = case["pool_in_dims"]
         wh, ww = case["pool_window"]

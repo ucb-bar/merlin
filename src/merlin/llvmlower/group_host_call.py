@@ -115,12 +115,62 @@ def _shape(value) -> list[int]:
     return [int(v) for v in mq.type_shape_dtype(value.type)[0]]
 
 
+def _through_identity_copy(value, gather_ops: list):
+    """``value`` read back through one value-preserving element copy, or ``value`` unchanged.
+
+    A capture may spell a materialising clone between two layout steps of a gather as a
+    ``linalg.generic`` that only copies its input. It is transparent only when nothing about the
+    data can change: exactly one input and one init, identity indexing maps over an all-parallel
+    iteration space, a body that is a single ``linalg.yield`` of the INPUT element (not the init),
+    and an input of exactly the result's type (no widening, narrowing or reshape). Anything else is
+    returned unchanged, so the caller's own structural checks decide (and refuse) it."""
+    from merlin.kernels import shapes as KS
+
+    op = _owner(value)
+    if op is None or op.name != "linalg.generic" or len(op.results) != 1 or len(op.operands) != 2:
+        return value
+    inputs, outputs = getattr(op, "inputs", None), getattr(op, "outputs", None)
+    if inputs is None or outputs is None or len(inputs) != 1 or len(outputs) != 1:
+        return value
+    source = op.operands[0]
+    if source.type != op.results[0].type or op.operands[1].type != op.results[0].type:
+        return value
+    rank = len(_shape(op.results[0]))
+    maps, kinds = KS.indexing_maps(op), KS._iterator_types(op)  # noqa: SLF001 -- the shared readers
+    if (
+        maps is None
+        or kinds is None
+        or len(maps) != 2
+        or kinds != ["parallel"] * rank
+        or any([KS._dim_position(expr) for expr in m] != list(range(rank)) for m in maps)  # noqa: SLF001
+    ):
+        return value
+    if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
+        return value
+    block = op.regions[0].blocks[0]
+    body = list(block.ops)
+    if (
+        len(body) != 1
+        or body[0].name != "linalg.yield"
+        or len(body[0].operands) != 1
+        or len(block.args) != 2
+        or body[0].operands[0] is not block.args[0]
+    ):
+        return value
+    gather_ops.append(op)
+    init = _owner(op.operands[1])
+    if init is not None and init.name == "tensor.empty":
+        gather_ops.append(init)
+    return source
+
+
 def _gathered_piece(value, gather_ops: list):
     """One ``[positions, channels]`` piece of a host-side window gather, read back to its image.
 
     The capture's spelling: strided ``tensor.extract_slice``s of an NCHW image (taking every channel of
     its single batch), an NCHW->NHWC ``linalg.transpose``, a ``collapse_shape`` to one axis and an
-    ``expand_shape`` to ``[positions, channels]``. Returns ``(image, (offset_h, offset_w),
+    ``expand_shape`` to ``[positions, channels]``; a pure element copy between the transpose and the
+    collapse is read through (:func:`_through_identity_copy`). Returns ``(image, (offset_h, offset_w),
     (stride_h, stride_w), (rows, cols), channels)``; raises :class:`_NotAGather` for anything else."""
     expand = _owner(value)
     if expand is None or expand.name != "tensor.expand_shape" or len(_shape(value)) != 2:
@@ -128,7 +178,7 @@ def _gathered_piece(value, gather_ops: list):
     collapse = _owner(expand.operands[0])
     if collapse is None or collapse.name != "tensor.collapse_shape" or len(_shape(collapse.results[0])) != 1:
         raise _NotAGather("not a flattened view")
-    transpose = _owner(collapse.operands[0])
+    transpose = _owner(_through_identity_copy(collapse.operands[0], gather_ops))
     if transpose is None or transpose.name != "linalg.transpose" or _ints(transpose, "permutation") != [0, 2, 3, 1]:
         raise _NotAGather("not an NCHW->NHWC transpose")
     gather_ops += [expand, collapse, transpose]

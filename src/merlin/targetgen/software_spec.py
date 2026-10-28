@@ -31,6 +31,11 @@ _NUMERICAL_CONTRACTS = frozenset(
         "operand_sum_per_operand_exhaustive_i8_v1",
     }
 )
+#: How a fused operand-sum row's readout gain may vary over the output columns. ``tensor``: one gain
+#: for the whole result (the numeric witness is the row's only screen). ``column_component``: a gain
+#: that differs by output column is observed as disjoint contiguous column components, each carrying
+#: its own full witness at that component's scalar gain (``output_column_component`` on the signature).
+_READOUT_GAIN_SCREENS = frozenset({"tensor", "column_component"})
 _IEEE_ROUNDING = frozenset({"rne", "rmm", "rtz", "rdn", "rup"})
 _REDUCTION_ORDERS = frozenset({"index_sequential", "tree", "pairwise"})
 _REDUCTION_CADENCES = frozenset({"per_step", "single_final"})
@@ -46,6 +51,7 @@ _SIGNATURE_FIELDS = frozenset(
         "broadcasting",
         "aliasing",
         "scale_granularity",
+        "scale_sources",
         "epilogues",
         "composed_with",
         "shape_bounds",
@@ -154,6 +160,10 @@ def validate_numerical_semantics(document: dict) -> dict:
         raise ValueError("component_execution_constraints belong in emission_obligations")
     if "emission_obligations" in mesh:
         validate_emission_obligations(mesh["emission_obligations"])
+    if "os_value_bound" in mesh:
+        _validate_os_value_bound(mesh)
+    if "accumulator_seed_tensor" in document:
+        _validate_accumulator_seed_tensor(document["accumulator_seed_tensor"])
     model = document.get("model")
     if not isinstance(model, dict) or model.get("engine") not in {
         "specir_fp_reduce",
@@ -300,6 +310,8 @@ def _validate_composition_constraints(chain: dict) -> None:
         raise ValueError("dataflows require a constant-operand mesh partial-sum bound")
     if chain.get("extension") and not {"coefficient_integer_exact", "k_extension_within"} <= names:
         raise ValueError("constant integer operand extension requires coefficient and extended-K bounds")
+    if chain.get("extension") and "residual_accumulates_before_readout" not in names:
+        raise ValueError("constant integer operand extension must declare its residual an accumulator term")
     if chain.get("multiplicity") and not {"per_output_readout_independent", "shared_input_resident"} <= names:
         raise ValueError("shared-input multiplicity requires independent readouts and residency bounds")
     if (
@@ -314,6 +326,53 @@ def load_software_spec(path: str | Path, target: str | None = None) -> dict:
     source = Path(path)
     document = yaml.safe_load(source.read_bytes())
     return validate_software_spec(document, target=target, source=source)
+
+
+def _validate_accumulator_seed_tensor(declared) -> None:
+    """A whole [M, N] i32 tensor as a contraction's accumulator seed: one unscaled full-width load."""
+    if not isinstance(declared, dict) or declared.get("status") not in REVIEW_STATUSES:
+        raise ValueError("accumulator_seed_tensor requires an explicit review status")
+    if (
+        declared.get("forms") != ["full_tensor"]
+        or not set(declared.get("sources") or ()) <= {"constant", "runtime_input"}
+        or not declared.get("sources")
+        or declared.get("seed_load") != "unscaled_full_i32_shrink0_once"
+        or declared.get("accumulation") != "wrapping_i32"
+    ):
+        raise ValueError(
+            "accumulator_seed_tensor must declare forms [full_tensor], its sources, seed_load "
+            "unscaled_full_i32_shrink0_once and accumulation wrapping_i32"
+        )
+    evidence = declared.get("evidence")
+    if not isinstance(evidence, dict) or not str(evidence.get("basis") or "").strip():
+        raise ValueError("accumulator_seed_tensor requires evidence with a basis")
+
+
+#: Where a fused readout's scale comes from: a command constant, or a declared runtime input.
+SCALE_SOURCES = ("constant", "runtime_input")
+
+
+def _validate_os_value_bound(mesh: dict) -> None:
+    """The output-stationary value-bound mode of the mesh check: a signed two's-complement interval."""
+    declared = mesh["os_value_bound"]
+    bits = mesh.get("signed_bits")
+    if not isinstance(declared, dict) or declared.get("status") not in REVIEW_STATUSES:
+        raise ValueError("mesh_mac.os_value_bound requires an explicit review status")
+    if type(bits) is not int or bits <= 1 or "OS" not in (mesh.get("dataflows") or ()):
+        raise ValueError("mesh_mac.os_value_bound requires a signed mesh width and the OS dataflow")
+    if (
+        declared.get("mode") != "signed_interval"
+        or declared.get("interval") != [-(1 << (bits - 1)), (1 << (bits - 1)) - 1]
+        or declared.get("proof") != "constant_weight_all_prefix_intervals"
+        or declared.get("scope") != "every_retained_partial_sum_including_total_os_k"
+    ):
+        raise ValueError(
+            "mesh_mac.os_value_bound must declare mode signed_interval over the full signed mesh width, "
+            "proof constant_weight_all_prefix_intervals and the every-partial-sum scope"
+        )
+    evidence = declared.get("evidence")
+    if not isinstance(evidence, dict) or not str(evidence.get("basis") or "").strip():
+        raise ValueError("mesh_mac.os_value_bound requires evidence with a basis")
 
 
 def validate_software_spec(document: dict, target: str | None = None, *, source: str | Path = "software spec") -> dict:
@@ -377,6 +436,24 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
             or (isinstance(row["numerical_contract"], str) and row["numerical_contract"] not in _NUMERICAL_CONTRACTS)
         ):
             raise ValueError(f"{source}: operation {row['id']!r} has an unsupported numerical contract")
+        if "readout_gain_screens" in row:
+            screens = row["readout_gain_screens"]
+            if (
+                not isinstance(screens, list)
+                or not screens
+                or any(not isinstance(value, str) or value not in _READOUT_GAIN_SCREENS for value in screens)
+                or len(set(screens)) != len(screens)
+            ):
+                raise ValueError(
+                    f"{source}: operation {row['id']!r} readout_gain_screens must list distinct values from "
+                    f"{sorted(_READOUT_GAIN_SCREENS)}"
+                )
+            if not (
+                isinstance(row.get("numerical_contract"), str) and row["numerical_contract"] in _NUMERICAL_CONTRACTS
+            ):
+                raise ValueError(
+                    f"{source}: operation {row['id']!r} readout_gain_screens requires an exhaustive numerical contract"
+                )
         if "emission_obligations" in row:
             validate_emission_obligations(row["emission_obligations"])
         # The author names constraints directly; consumers keep one canonical
@@ -403,6 +480,7 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
                     "unconstrained",
                     "emission_obligations",
                     "admission_conditions",
+                    "readout_gain_screens",
                 }
             )
             if unknown:
@@ -462,6 +540,12 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
                 raise ValueError(
                     f"{source}: operation {row['id']!r} kinds must be reduction kinds from {sorted(REDUCTION_KINDS)}"
                 )
+        if "scale_sources" in signature and (
+            not isinstance(signature["scale_sources"], list)
+            or not signature["scale_sources"]
+            or any(value not in SCALE_SOURCES for value in signature["scale_sources"])
+        ):
+            raise ValueError(f"{source}: operation {row['id']!r} scale_sources must list {list(SCALE_SOURCES)}")
         if "max_tensor_operands" in signature and (
             type(signature["max_tensor_operands"]) is not int or signature["max_tensor_operands"] < 0
         ):
@@ -721,6 +805,12 @@ def precision_disjoint(row: dict, signature: dict) -> list[str]:
         if expected_formats != actual_formats:
             reasons.append(f"{key} {actual_formats} differs from declared {expected_formats}")
     observed_operand = signature.get("operand_dtype")
+    # An element type outside the quant-format registry is observed as ``unsupported_mlir:<mlir type>``
+    # (``model_coverage._elem_dtype``): the same raw MLIR spelling the ordered signature carries. Only
+    # this disjointness test compares the underlying type, so a reviewed host row naming it keeps its
+    # exact-roster priority and screens the full signature itself; the token stays ineligible elsewhere.
+    if isinstance(observed_operand, str) and observed_operand.startswith("unsupported_mlir:"):
+        observed_operand = observed_operand.removeprefix("unsupported_mlir:")
     expected = declared.get("ordered_operand_dtypes")
     if (
         _executable(observed_operand)
@@ -964,6 +1054,11 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                 actual, choices = canonical(actual), [canonical(choice) for choice in choices]
             if actual not in choices:
                 refused.append(f"{observed_key} {actual!r} not in {choices!r}")
+        # A scale read from a runtime input is admitted only by a declaration that names that source;
+        # an observation without one is a command constant (the interface ABI's acc_scale is a number).
+        scale_source = signature.get("scale_source") or "constant"
+        if scale_source not in constraints.get("scale_sources", ["constant"]):
+            refused.append(f"scale_source {scale_source!r} is not admitted by this declaration")
         if family == "elementwise_map" and signature.get("epilogues") and "epilogues" not in constraints:
             # An unconstrained standalone elementwise declaration is not a wildcard fused-stage
             # licence. A contraction's own declaration remains independent of its fused stage form.
@@ -1024,6 +1119,44 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                 or (witness["max_error_lsb"] > parameters["bound_lsb"])
             ):
                 refused.append("numerical_contract exceeds the selected fact-derived error bound")
+        # A fused sum read out with a gain that differs by output column is observed as column
+        # components. A declaration that consumes the numeric witness (an exhaustive numerical
+        # contract) must declare that screen, and the component's gain must be the very gain its
+        # witness was computed at, so a witness for one gain never admits another's columns. A
+        # declaration that never reads the witness (for example a standalone operand sum admitting the
+        # carrier command) is unaffected by the component field: it relies on none of it.
+        component = signature.get("output_column_component")
+        screens = row.get("readout_gain_screens")
+        if isinstance(row.get("numerical_contract"), str) and row["numerical_contract"] in _NUMERICAL_CONTRACTS:
+            if component is not None:
+                witness = signature.get("numeric_screen")
+                source_gain = (
+                    ((witness.get("parameters") or {}).get("source") or {}).get("readout_scale")
+                    if isinstance(witness, dict)
+                    else None
+                )
+                well_formed = (
+                    isinstance(component, dict)
+                    and set(component) == {"start", "stop", "columns", "readout_scale"}
+                    and all(type(component[key]) is int for key in ("start", "stop", "columns"))
+                    and 0 <= component["start"] < component["stop"] <= component["columns"]
+                    and type(component["readout_scale"]) is float
+                    and type(source_gain) is float
+                )
+                if not isinstance(screens, list) or "column_component" not in screens:
+                    missing.append("output_column_component")
+                elif not well_formed or component["readout_scale"] != source_gain:
+                    missing.append("output_column_component.readout_scale")
+            elif isinstance(screens, list) and "tensor" not in screens:
+                missing.append("readout_gain_screens")
+            # A single-rounding witness that also screens a readout gain is accepted only by a row
+            # that declares the tensor readout-gain screen (operator review of that contract use).
+            if (
+                isinstance(parameters, dict)
+                and "readout_gain_f32" in parameters
+                and (not isinstance(screens, list) or "tensor" not in screens)
+            ):
+                missing.append("readout_gain_screens")
         for axis, bounds in (constraints.get("shape_bounds") or {}).items():
             dimensions = signature.get("dimensions") or {}
             observed = dimensions.get(axis)

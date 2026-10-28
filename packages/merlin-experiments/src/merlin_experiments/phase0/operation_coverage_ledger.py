@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .component_generation import digest
-from .composition_generation import coverage
+from merlin.targetgen.composition_corpus import coverage
 
 SCHEMA = "merlin.phase0.operation_coverage_ledger.v1"
 SPEC_VALIDATION_SCHEMA = "merlin.phase0.spec_validation.v1"
@@ -37,6 +37,9 @@ FAILING_VERDICTS = frozenset(
     {"MISMATCH_admitted_not_device", "MISMATCH_device_not_admitted", "numeric_fail", "capture_unavailable"}
 )
 #: Evidence states, kept distinct. ``rtl_qualified`` is reserved; this ledger never produces it.
+#: ``generated`` means a capsule names the overload itself (a whole-model trace or verified application
+#: provenance); ``family_generated`` means only a same-family cell capsule exercises its declaration row,
+#: which no capsule ties to this overload. Composition rows keep ``generated``.
 STATES = (
     "mismatch",
     "unmodeled",
@@ -44,6 +47,8 @@ STATES = (
     "executed_spike",
     "executed_host",
     "generated",
+    "family_generated",
+    "withheld_unplaceable",
     "not_evidenced",
     "out_of_scope",
     "rtl_qualified",
@@ -64,6 +69,30 @@ def overload_name(name):
 
 def _base(overload):
     return overload.split(".", 1)[0]
+
+
+#: ATen spellings of contraction that ``semantic_families._OP_FAMILY`` lacks (``mm``, ``bmm`` and
+#: ``_int_mm``, which folds to ``intmm``). Ledger-local on purpose: the shared table drives routing and
+#: eligibility elsewhere. Each entry is an exact operator, never a pattern. ``convolution_backward`` is
+#: deliberately absent (a gradient composite, not a forward contraction).
+_LEDGER_FAMILY_ALIASES = {"mm": "contraction", "bmm": "contraction", "_int_mm": "contraction"}
+#: Namespaced custom operators held out of the alias table until an operator review accepts them.
+#: ``m2m_q.int_mm_seeded`` is an i8 matmul whose i32 seed is a separate elementwise add; the generation
+#: places the seed add on the host at its captured signatures and no capsule names the operator.
+PENDING_ALIAS_REVIEW = {"m2m_q.int_mm_seeded": "contraction"}
+
+
+def _alias_family(overload):
+    """Ledger-local family for an operator the shared spelling table does not know.
+
+    A namespaced overload (``ns.op.overload``) is looked up by its qualified ``ns.op`` only: ``_base``
+    returns the namespace, and the bare op segment must not reach the shared table (``quantize`` and
+    ``dequantize_per_tensor`` would resolve to elementwise_map there).
+    """
+    parts = overload.split(".")
+    if len(parts) == 3:
+        return None  # no reviewed namespaced alias yet; see PENDING_ALIAS_REVIEW
+    return _LEDGER_FAMILY_ALIASES.get(parts[0])
 
 
 def read_spec_validation(path, *, sha256=None):
@@ -112,7 +141,7 @@ def _candidates(spec, overload):
     rows = spec.get("operations") or []
     base = _base(overload)
     direct = [row for row in rows if {overload, base} & set(row.get("ops") or [])]
-    family = from_op(base)
+    family = from_op(base) or _alias_family(overload)
     by_family = [
         row
         for row in rows
@@ -125,6 +154,13 @@ def _candidates(spec, overload):
         )
     ]
     return family, direct or by_family
+
+
+def _float_island(spec):
+    """Operators the spec's quantization methodology keeps in a host float island (exact names)."""
+    island = ((spec.get("quantization") or {}).get("methodology") or {}).get("float_island") or {}
+    ops = island.get("ops") if isinstance(island, dict) else ()
+    return frozenset(str(name) for name in ops or ())
 
 
 def _validation_rows(record):
@@ -164,9 +200,65 @@ def _declarations_from_cases(cases):
 
 
 def _capsule_family(entry):
+    """The family a capsule's own semantic block names; the op spelling table is a fallback only.
+
+    A component program (``op: component_program``) has no op-table family, so without its
+    ``semantic_family`` a column-sum cell would credit nothing and read as unjustified. A declared family
+    that contradicts the op spelling is refused rather than resolved silently either way.
+    """
     from merlin.targetgen.semantic_families import from_op
 
-    return entry.get("family") or from_op(entry.get("op"))
+    declared = entry.get("family") or (entry.get("generalization") or {}).get("semantic_family")
+    spelled = from_op(entry.get("op"))
+    if declared and spelled and declared != spelled:
+        raise ValueError(
+            f"capsule {entry.get('name')!r} declares family {declared!r} but op {entry.get('op')!r} is {spelled!r}"
+        )
+    return declared or spelled
+
+
+def _composed_families(entry):
+    """Families a capsule only composes (for example a maxpool epilogue on a matmul).
+
+    Recorded as ``composed:<family>`` keys, which no operation row reads: an epilogue inside a
+    contraction test is not a standalone test of that family.
+    """
+    return sorted({str(name) for name in (entry.get("generalization") or {}).get("composed_families") or ()})
+
+
+def _must_refuse(entry):
+    """A refusal twin grades a refusal, not a composition the accelerator ran."""
+    truth = (entry.get("generalization") or {}).get("composition_truth") or {}
+    return entry.get("outcome") == "refuse" or truth.get("outcome") == "refuse" or truth.get("lane") == "must_refuse"
+
+
+def _composition_disclosures(disclosures, chains):
+    """Group the generation's ``planned_not_generated`` composition records by declared chain."""
+    by_chain = {}
+    for record in disclosures or ():
+        if not isinstance(record, dict) or not (record.get("capsule") or record.get("name")):
+            raise ValueError("composition disclosure needs a capsule name")
+        name = str(record.get("capsule") or record.get("name"))
+        chain = record.get("chain")
+        if chain not in chains:
+            chain = next((c for c in chains if name.startswith(f"SY_composition_{c}_")), None)
+        if chain is None:
+            continue  # matches no declared chain, so it can excuse nothing
+        reasons = [
+            {key: row.get(key) for key in ("source_op_indices", "status", "placement", "classification", "reason")}
+            for row in record.get("decisions") or ()
+            if row.get("reason") or row.get("status")
+        ]
+        by_chain.setdefault(chain, []).append(
+            {
+                "capsule": name,
+                "rule": record.get("rule"),
+                "screen_status": record.get("screen_status"),
+                "unplaced_members": list(record.get("unplaced_members") or ()),
+                "reasons": reasons,
+            }
+        )
+    return {chain: sorted(rows, key=lambda row: row["capsule"]) for chain, rows in by_chain.items()}
 
 
 def _capsule_engine(entry):
@@ -176,8 +268,42 @@ def _capsule_engine(entry):
     return "accelerator" if "on_mesh" in (lanes.get("require") or ()) else "unspecified"
 
 
-def _capsule_coverage(entries, *, traces, chains):
-    """What each capsule exercises: overloads (whole programs), families (cells) or a composition."""
+def _provenance_overloads(entry, *, traces, capture_labels):
+    """Overloads a capsule's verified application provenance names, with the captures that witness them.
+
+    Only a functional capsule (not a ``model_slice`` performance companion) whose
+    ``application_signature_match.status`` is ``verified_capture_match`` qualifies. Each admitted
+    ``software_screen`` decision must name the same overload as ``frontend_op`` and ``operation``, and the
+    overload must occur in a capture of this ledger whose sha256 one of the match's sources records.
+    Anything else earns no direct credit (fail closed): the result maps overload -> capture labels.
+    """
+    if entry.get("kind") == "model_slice":
+        return {}
+    match = entry.get("application_signature_match") or {}
+    if match.get("status") != "verified_capture_match":
+        return {}
+    labels = {capture_labels[source.get("capture_sha256")] for source in match.get("sources") or ()
+              if isinstance(source, dict) and source.get("capture_sha256") in capture_labels}
+    found = {}
+    for decision in (entry.get("software_screen") or {}).get("decisions") or ():
+        if not isinstance(decision, dict) or not decision.get("frontend_op"):
+            continue
+        overload = overload_name(decision["frontend_op"])
+        if decision.get("status") != "admitted" or overload_name(decision.get("operation") or "") != overload:
+            continue
+        witnesses = sorted(label for label in labels if overload in traces.get(label, ()))
+        if witnesses:
+            found.setdefault(overload, set()).update(witnesses)
+    return found
+
+
+def _capsule_coverage(entries, *, traces, chains, capture_labels=None, sources=None):
+    """What each capsule exercises: overloads (whole programs or verified provenance), families or a composition.
+
+    ``sources`` (optional dict) receives ``(capsule, overload) -> capture labels`` for direct credit.
+    """
+    capture_labels = capture_labels or {}
+    sources = {} if sources is None else sources
     covered = {}
     for entry in entries:
         name = str(entry.get("name") or "")
@@ -189,12 +315,25 @@ def _capsule_coverage(entries, *, traces, chains):
         model = entry.get("model")
         if entry.get("op") == "model" and model in traces:
             keys |= {f"overload:{op}" for op in traces[model]}
+            for op in traces[model]:
+                sources.setdefault((name, op), set()).add(model)
         elif entry.get("op") == "composition_program":
-            keys |= {f"composition:{chain}" for chain in chains if name.startswith(f"SY_composition_{chain}_")}
+            semantic = entry.get("generalization") or {}
+            validation = semantic.get("fusion_validation")
+            if validation is not None:
+                # Campaign identities are hashes; declared chains are retained as display aliases.
+                aliases = validation.get("display_aliases") or []
+                keys |= {f"composition:{chain}" for chain in chains if chain in aliases}
+            else:
+                keys |= {f"composition:{chain}" for chain in chains if name.startswith(f"SY_composition_{chain}_")}
         else:
             family = _capsule_family(entry)
             if family:
                 keys.add(f"family:{family}")
+            keys |= {f"composed:{composed}" for composed in _composed_families(entry)}
+            for op, labels in _provenance_overloads(entry, traces=traces, capture_labels=capture_labels).items():
+                keys.add(f"overload:{op}")
+                sources.setdefault((name, op), set()).update(labels)
         covered[name] = keys
     return covered
 
@@ -240,8 +379,10 @@ def _state(*, cases, unmodeled, admitting_rows, spec, direct, family_capsules, e
         return "executed_spike"
     if cases:
         return "executed_host"
-    if direct or family_capsules:
+    if direct:
         return "generated"
+    if family_capsules:
+        return "family_generated"
     return "not_evidenced"
 
 
@@ -279,7 +420,7 @@ class OperationCoverageLedger:
 
 def prepare(
     *,
-    spec_validation,
+    spec_validation=None,
     software_spec,
     capsules,
     captures=None,
@@ -288,13 +429,18 @@ def prepare(
     target=None,
     descriptor=None,
     workload_spec=None,
+    composition_disclosures=None,
 ):
     """Join validation evidence, the selected spec, derived capsules and captures into one ledger.
 
-    ``spec_validation`` and ``software_spec`` are paths; ``capsules`` are the selected manifest
+    ``spec_validation`` is optional advisory evidence; ``software_spec`` is a path; ``capsules`` are the selected manifest
     entries; ``captures`` maps an application label to its captured ``model.mlir``.
     ``descriptor`` is a mapping or YAML path; an explicit ``workload_spec`` takes precedence.
     Composition synthesis defaults to enabled when the workload spec omits the switch.
+    Only a positive (not must-refuse) composition capsule evidences a chain as ``generated``.
+    ``composition_disclosures`` are the generation's ``composition_selection.planned_not_generated`` records: a chain
+    with no surviving positive and at least one disclosure reads ``withheld_unplaceable`` (never ``generated``); the
+    consumer must still check that every selected positive of that chain is disclosed.
     """
     from merlin.targetgen.aten_coverage import aten_ops_in
     from merlin.targetgen.composition_corpus import synthesize_compositions_enabled
@@ -307,7 +453,11 @@ def prepare(
             descriptor = yaml.safe_load(Path(descriptor).read_bytes()) or {}
         workload_spec = descriptor.get("workload_spec")
 
-    record = read_spec_validation(spec_validation, sha256=spec_validation_sha256)
+    record = (
+        read_spec_validation(spec_validation, sha256=spec_validation_sha256)
+        if spec_validation is not None
+        else {"cases": [], "sha256": None}
+    )
     spec_sha = _sha256(software_spec)
     if record.get("software_spec_sha256") not in (None, spec_sha):
         raise ValueError("spec-validation record was produced for a different software spec")
@@ -323,10 +473,22 @@ def prepare(
         traces[label] = sorted({overload_name(op) for op in aten_ops_in(path)})
         capture_pins[label] = {"path": str(path), "sha256": _sha256(path)}
     entries = [copy.deepcopy(entry) for entry in capsules]
+    refusal_twins = {
+        str(entry.get("name")) for entry in entries if entry.get("op") == "composition_program" and _must_refuse(entry)
+    }
+    disclosed = _composition_disclosures(composition_disclosures, chains)
     composition_coverage = coverage(
-        entries, excluded_spec=spec if not synthesize_compositions_enabled(workload_spec) else None
+        [entry for entry in entries if str(entry.get("name")) not in refusal_twins],
+        excluded_spec=spec if not synthesize_compositions_enabled(workload_spec) else None
     )
-    covered = _capsule_coverage(entries, traces=traces, chains=chains)
+    direct_sources = {}
+    covered = _capsule_coverage(
+        entries,
+        traces=traces,
+        chains=chains,
+        capture_labels={pin["sha256"]: label for label, pin in capture_pins.items()},
+        sources=direct_sources,
+    )
     capsule_rows = _capsule_rows(entries, covered)
     by_key = {}
     for name, keys in covered.items():
@@ -341,6 +503,7 @@ def prepare(
             demand.setdefault(op, []).append(label)
     overloads = sorted(set(validation) | set(demand) | unmodeled)
 
+    island = _float_island(spec)
     operation_rows, exercised = [], set()
     for overload in overloads:
         cases = validation.get(overload, [])
@@ -354,6 +517,11 @@ def prepare(
             family = next((name for row in cited.values() for name in row["families"]), family)
         elif cases:
             declaration_status, admitting, engine = "unsupported", [], "host"
+        elif _base(overload) in island:
+            # Without a record no signature is screened; a name-only family candidate must not put an
+            # operator the spec keeps in its host float island on the accelerator (gelu would otherwise
+            # take residual_add cell credit). The record path decides placement case by case instead.
+            declaration_status, admitting, engine = "float_island_host", [], "host"
         else:
             admitting = candidates
             declaration_status = "candidate_only" if candidates else "unsupported"
@@ -409,6 +577,11 @@ def prepare(
                     "validation_verdicts": verdicts,
                     "capsules": direct,
                     "family_capsules": family_capsules,
+                    **(
+                        {"capsule_sources": sorted({label for name in direct for label in direct_sources[(name, overload)]})}
+                        if direct
+                        else {}
+                    ),
                 },
                 "required_engine": engine,
                 "evidence_state": state,
@@ -428,31 +601,46 @@ def prepare(
 
     composition_rows = []
     for chain in chains:
-        names = sorted(by_key.get(f"composition:{chain}", []))
+        all_names = sorted(by_key.get(f"composition:{chain}", []))
+        names = [name for name in all_names if name not in refusal_twins]
+        twins = [name for name in all_names if name in refusal_twins]
+        withheld = disclosed.get(chain, [])
         chain_coverage = [row for row in composition_coverage if row["composition"] == chain]
         excluded = next((row for row in chain_coverage if row.get("status") == "out_of_scope"), None)
         if excluded is not None:
             state = excluded["status"]
             justification = excluded["reason"]
-        elif any(row["count"] for row in chain_coverage):
+        elif names or any(row["count"] for row in chain_coverage):
             state = "generated"
             justification = f"declared chain {chain}; capsule(s) {', '.join(names)} exercise it"
+        elif withheld:
+            state = "withheld_unplaceable"
+            justification = (
+                f"disclosed: declared composition {chain} has no published positive capsule; "
+                f"{len(withheld)} selected positive(s) withheld because a member is not admitted on the accelerator "
+                f"({', '.join(row['capsule'] for row in withheld)})"
+            )
         else:
             state = "not_evidenced"
-            justification = f"omission: declared composition {chain} has no capsule"
-        composition_rows.append(
-            {
-                "kind": "composition",
-                "composition": chain,
-                "source_requirement": {"demanded_by": ["declared_composition_axis"]},
-                "declaration": {"status": "declared", "rows": [{"id": chain}]},
-                "reference": {"capsules": "capture golden of each listed capsule" if names else None},
-                "test_identity": {"capsules": names},
-                "required_engine": "accelerator",
-                "evidence_state": state,
-                "justification": justification,
-            }
-        )
+            justification = f"omission: declared composition {chain} has no positive capsule" + (
+                f" (refusal twin(s) {', '.join(twins)} grade refusals only)" if twins else ""
+            )
+        row = {
+            "kind": "composition",
+            "composition": chain,
+            "source_requirement": {"demanded_by": ["declared_composition_axis"]},
+            "declaration": {"status": "declared", "rows": [{"id": chain}]},
+            "reference": {"capsules": "capture golden of each listed capsule" if all_names else None},
+            "test_identity": {"capsules": all_names},
+            "required_engine": "accelerator",
+            "evidence_state": state,
+            "justification": justification,
+        }
+        if twins:
+            row["test_identity"]["refusal_twins"] = twins
+        if withheld:
+            row["withheld_unplaceable"] = withheld
+        composition_rows.append(row)
 
     linked = None
     if source_requirement_ledger is not None:
@@ -474,6 +662,9 @@ def prepare(
         "compositions_without_capsule": [
             row["composition"] for row in composition_rows if row["evidence_state"] == "not_evidenced"
         ],
+        "compositions_withheld_unplaceable": [
+            row["composition"] for row in composition_rows if row["evidence_state"] == "withheld_unplaceable"
+        ],
         "accelerator_declarations_unexercised": sorted(
             row["id"]
             for row in spec["operations"]
@@ -485,19 +676,28 @@ def prepare(
         "mismatches": [row["overload"] for row in operation_rows if row["evidence_state"] == "mismatch"],
         "unjustified_capsules": [row["name"] for row in capsule_rows if row["justification"] is None],
     }
-    blocking = ("admitted_without_evidence", "compositions_without_capsule", "mismatches", "unjustified_capsules")
+    blocking = (
+        "admitted_without_evidence",
+        "compositions_without_capsule",
+        "compositions_withheld_unplaceable",
+        "mismatches",
+        "unjustified_capsules",
+    )
     document = {
         "schema": SCHEMA,
         "spec_validation": {
             "schema": SPEC_VALIDATION_SCHEMA,
             "sha256": record["sha256"],
             "verdict": record.get("verdict"),
-        },
+        } if spec_validation is not None else None,
         "software_spec": {"path": str(software_spec), "sha256": spec_sha, "target": spec["target"]},
         "captures": capture_pins,
         "capsule_manifest_sha256": digest(entries),
         "source_requirement_ledger": linked,
         "states": list(STATES),
+        # How operation rows were declared: screened against the spec-validation record, or name-only
+        # candidates (no signature screened; an accelerator state then reflects the op name only).
+        "declaration_basis": "spec_validation_record" if spec_validation is not None else "candidate_only_unscreened",
         "operations": operation_rows,
         "compositions": composition_rows,
         "capsules": capsule_rows,

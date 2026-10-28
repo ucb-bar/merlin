@@ -96,8 +96,22 @@ def _cgroup_limits(proc: Path = Path("/proc")) -> tuple[int | None, int | None]:
         return 1, 0
 
 
+WORKER_LIMIT_ENV = "MERLIN_PHASE0_CAPTURE_WORKERS"
+DEFAULT_WORKER_CAP = 8
+
+
 def worker_limit() -> int:
-    """At most eight captures, bounded by affinity, host memory and cgroups."""
+    """Captures in flight: at most the operator's cap (default eight), bounded by affinity, host memory and cgroups.
+
+    ``MERLIN_PHASE0_CAPTURE_WORKERS`` raises or lowers the cap; it never lifts the CPU and memory bounds, and a value
+    that is not a positive integer is refused rather than ignored.
+    """
+    cap = DEFAULT_WORKER_CAP
+    raw = os.environ.get(WORKER_LIMIT_ENV)
+    if raw is not None:
+        if not raw.isdecimal() or int(raw) <= 0:
+            raise ValueError(f"{WORKER_LIMIT_ENV} must be a positive integer, got {raw!r}")
+        cap = int(raw)
     cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
     memory = _available_memory()
     cpu_ceiling, memory_ceiling = _cgroup_limits()
@@ -105,7 +119,7 @@ def worker_limit() -> int:
         cpus = min(cpus, cpu_ceiling)
     if memory_ceiling is not None:
         memory = min(memory, memory_ceiling)
-    return max(1, min(8, cpus, memory // (2 * 1024**3)))
+    return max(1, min(cap, cpus, memory // (2 * 1024**3)))
 
 
 def independent(entry: dict) -> bool:
@@ -171,8 +185,15 @@ def ordered_jobs(entries, write, *, workers: int, prepare_model=None):
 
     Exceptions remain attached to their original entry for the ordinary failure ledger.
     Every thread receives its own copy of the caller's observed-facts/import context.
+    Full sealed-tree inventories run in worker interpreters meanwhile, so capture
+    threads do not serialize their per-member bookkeeping on this process's GIL.
     """
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="phase0-capture") as pool:
+    from merlin_experiments.capture_execution.inventory_processes import offloaded_inventories
+
+    with (
+        offloaded_inventories(workers),
+        ThreadPoolExecutor(max_workers=workers, thread_name_prefix="phase0-capture") as pool,
+    ):
 
         def batch_kind(entry):
             if prepare_model is not None and _fresh_model(entry):

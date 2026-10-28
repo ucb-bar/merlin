@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import hashlib
-import io
 import json
 import math
 import os
@@ -16,6 +15,8 @@ from types import SimpleNamespace
 from typing import Any
 
 import yaml
+
+from merlin.common.yaml import fast_safe_load
 
 from .evidence_output import _materialize_evidence
 from .provenance import _canonical_digest, _digest, _json
@@ -105,8 +106,6 @@ def _reference_inventory_members(
 
 def _native_baseline_observations(selections, applications, observe) -> dict:
     """Select exact generated host checks, never generalize them into host admission."""
-    import numpy as np
-
     from merlin.common.mlir_query import forward_signature
     from merlin.runtime.dispatch_runtime import resolve_forward_args
     from merlin.targetgen.application_inventory import verify_capture_receipt
@@ -137,7 +136,7 @@ def _native_baseline_observations(selections, applications, observe) -> dict:
             or observed.get("native_host_numerical_verified") is not True
             or observed.get("full_native_lowering_verified") is not True
         ):
-            raise ValueError("selected native qualification is not a completed finite native-only check")
+            raise ValueError("selected native qualification is not a completed native-only check")
         app = applications[label]
         model = qualification._plain(Path(app["capture_source_path"]))
         bundle = model.parent
@@ -219,14 +218,19 @@ def _native_baseline_observations(selections, applications, observe) -> dict:
             or row.get("numeric_policy") != policy
         ):
             raise ValueError("native qualification requires its exact finite numerical policy")
-        inputs, outputs = forward_signature(model)
+        complete_outputs = row.get("output_comparison_policy") == "captured_per_output_v1"
+        inputs, outputs = qualification._native_host_signature(model) if complete_outputs else forward_signature(model)
         input_abi = [{"shape": shape, "dtype": dtype} for shape, dtype in inputs]
         output_abi = [{"shape": shape, "dtype": dtype} for shape, dtype in outputs]
-        arguments = resolve_forward_args(bundle)
-        storage = {"f32": "float32", "i64": "int64", "i32": "int32", "i8": "int8", "i1": "bool"}
+        arguments = qualification._native_host_arguments(bundle) if complete_outputs else resolve_forward_args(bundle)
+        storage = (
+            qualification._NATIVE_HOST_STORAGE
+            if complete_outputs
+            else {"f32": "float32", "i64": "int64", "i32": "int32", "i8": "int8", "i1": "bool"}
+        )
         if (
-            len(outputs) != 1
-            or outputs[0][1] != "f32"
+            not outputs
+            or (not complete_outputs and (len(outputs) != 1 or outputs[0][1] != "f32"))
             or len(arguments) != len(inputs)
             or any(
                 list(value.shape) != shape or str(value.dtype) != storage.get(dtype)
@@ -240,26 +244,16 @@ def _native_baseline_observations(selections, applications, observe) -> dict:
             or row.get("input_buffer_sha256") != [hashlib.sha256(value.tobytes()).hexdigest() for value in arguments]
         ):
             raise ValueError("native qualification typed ABI/argument bytes differ from selected capture")
-        actual = np.load(io.BytesIO(saved["program-000/output.npy"]), allow_pickle=False)
-        golden = np.load(
-            io.BytesIO(observe(bundle / "golden.npy", f"native-input:{label}", required=True)), allow_pickle=False
+        error = qualification._verify_native_host_outputs(
+            bundle,
+            outputs,
+            row,
+            saved,
+            policy,
+            legacy_golden=(
+                observe(bundle / "golden.npy", f"native-input:{label}", required=True) if not complete_outputs else None
+            ),
         )
-        if (
-            actual.shape != golden.shape
-            or list(actual.shape) != outputs[0][0]
-            or str(actual.dtype) != "float32"
-            or actual.dtype != golden.dtype
-            or not np.isfinite(actual).all()
-            or not np.isfinite(golden).all()
-        ):
-            raise ValueError("native qualification output/reference ABI or finiteness differs")
-        error = float(np.max(np.abs(actual.astype(np.float64) - golden)))
-        if (
-            not np.allclose(actual, golden, **policy, equal_nan=False)
-            or row.get("max_absolute_error") != error
-            or row.get("nonfinite_output_elements") != 0
-        ):
-            raise ValueError("native qualification saved output fails its recorded numerical comparison")
         results[label] = {
             "status": "whole_program_numerically_matched",
             "executor": "native_cpu",
@@ -397,6 +391,26 @@ def _record_scaling_contradictions(
         )
 
 
+def _unresolved_reason(row: Mapping[str, Any]) -> str:
+    """Why the software-spec derivation left a declaration unresolved, from the row's own keys.
+
+    ``spec_fact_drift`` emits rows of several shapes: operation and format rows carry a ``reason``, while readout,
+    scheme and composition rows state ``{field, value: "UNKNOWN"}`` with an optional ``scheme`` or ``composition``
+    owner. A row of any other shape means the resolver changed in a way this diagnostic does not understand, so it
+    refuses instead of being summarized.
+    """
+    reason = row.get("reason")
+    if reason is not None:
+        if not isinstance(reason, str) or not reason:
+            raise ValueError("software-spec derivation row has an empty or non-text reason")
+        return reason
+    field = row.get("field")
+    if not isinstance(field, str) or not field or row.get("value") != "UNKNOWN":
+        raise ValueError(f"software-spec derivation row has no reason and is not an UNKNOWN field: {sorted(row)}")
+    owner = next((f"{key} {row[key]}: " for key in ("composition", "scheme") if row.get(key)), "")
+    return f"{owner}{field} is UNKNOWN: the selected facts do not establish it"
+
+
 def select_evidence(
     target: str,
     *,
@@ -476,7 +490,7 @@ def select_evidence(
         raw = observe(value, role, required=required)
         if raw is None:
             return {}
-        loaded = yaml.safe_load(raw)
+        loaded = fast_safe_load(raw)
         if not isinstance(loaded, dict):
             raise ValueError(f"{value}: {role} must be a mapping")
         return loaded
@@ -560,56 +574,73 @@ def select_evidence(
                     capture_attestations and set(capture_attestations) != set(observed)
                 ):
                     raise ValueError("capture execution attestations must cover exactly the selected applications")
-                from merlin.targetgen.application_inventory import application_graph_inventory
+                from merlin.common.parse_pool import Prefetch
 
+                # Each capture's graph is a function of its bytes alone: start them together and consume
+                # them in label order, each after this loop's own read and digest check of the same file
+                # (see merlin.common.parse_pool).
+                graph_sources = {}
                 for label, application in sorted(observed.items()):
-                    # Only fresh inventories retain the exact capture owner.
-                    # Do not guess historical store paths from basename tags.
                     selected_capture = application.get("capture_source_path")
-                    if not isinstance(selected_capture, str) or not selected_capture:
-                        continue
-                    capture_path = Path(selected_capture)
-                    if not capture_path.is_absolute():
-                        capture_path = sidecar.parent / capture_path
-                    capture_raw = observe(capture_path, f"application-capture:{label}")
-                    if capture_raw is None:
-                        continue
-                    if _digest(capture_raw) != application.get("capture_sha256"):
-                        raise ValueError(f"selected application capture bytes changed: {label}")
-                    application_graphs[label] = application_graph_inventory(capture_path)
-                    if application_graphs[label]["capture_sha256"] != _digest(capture_raw):
-                        raise ValueError(f"application graph was derived from changed source bytes: {label}")
-                    normalized = (application.get("capture_normalization") or {}).get("output_sha256")
-                    if normalized and application_graphs[label]["normalized_mlir_sha256"] != normalized:
-                        raise ValueError(
-                            f"selected application normalization differs from the derived inventory: {label}; "
-                            "use the same frontend/MLIR environment for derivation and Phase 0 execution"
-                        )
-                    for name, filename, destination in (
-                        ("frontend-trace", "frontend-trace.json", frontend_traces),
-                        ("framework-catalog", "pytorch-opset.json", framework_catalogs),
-                    ):
-                        record = application.get(name.replace("-", "_")) or {}
-                        location = (
-                            (record.get("source_path") or record.get("path")) if isinstance(record, Mapping) else None
-                        )
-                        member = Path(location) if location else capture_path.with_name(filename)
-                        if not member.is_absolute():
-                            member = capture_path.parent / member
-                        if member.is_symlink():
-                            raise ValueError(f"selected {name} may not be symlinked: {label}")
-                        raw_member = observe(member, f"application-{name}:{label}")
-                        if raw_member is None:
+                    if isinstance(selected_capture, str) and selected_capture:
+                        graph_path = Path(selected_capture)
+                        if not graph_path.is_absolute():
+                            graph_path = sidecar.parent / graph_path
+                        graph_sources[str(graph_path)] = graph_path
+                graph_ref = "merlin.targetgen.application_graph:application_graph_inventory_from_bytes"
+                with Prefetch(graph_ref, graph_sources) as graph_jobs:
+                    for label, application in sorted(observed.items()):
+                        # Only fresh inventories retain the exact capture owner.
+                        # Do not guess historical store paths from basename tags.
+                        selected_capture = application.get("capture_source_path")
+                        if not isinstance(selected_capture, str) or not selected_capture:
                             continue
-                        expected_member = (
-                            (record.get("raw_sha256") or record.get("sha256")) if isinstance(record, Mapping) else None
-                        )
-                        if expected_member is not None and expected_member != _digest(raw_member):
-                            raise ValueError(f"selected application {name} bytes changed: {label}")
-                        parsed = json.loads(raw_member)
-                        if not isinstance(parsed, dict):
-                            raise ValueError(f"selected application {name} must be a mapping: {label}")
-                        destination[label] = parsed
+                        capture_path = Path(selected_capture)
+                        if not capture_path.is_absolute():
+                            capture_path = sidecar.parent / capture_path
+                        capture_raw = observe(capture_path, f"application-capture:{label}")
+                        if capture_raw is None:
+                            continue
+                        if _digest(capture_raw) != application.get("capture_sha256"):
+                            raise ValueError(f"selected application capture bytes changed: {label}")
+                        application_graphs[label] = graph_jobs.get(capture_path)
+                        if application_graphs[label]["capture_sha256"] != _digest(capture_raw):
+                            raise ValueError(f"application graph was derived from changed source bytes: {label}")
+                        normalized = (application.get("capture_normalization") or {}).get("output_sha256")
+                        if normalized and application_graphs[label]["normalized_mlir_sha256"] != normalized:
+                            raise ValueError(
+                                f"selected application normalization differs from the derived inventory: {label}; "
+                                "use the same frontend/MLIR environment for derivation and Phase 0 execution"
+                            )
+                        for name, filename, destination in (
+                            ("frontend-trace", "frontend-trace.json", frontend_traces),
+                            ("framework-catalog", "pytorch-opset.json", framework_catalogs),
+                        ):
+                            record = application.get(name.replace("-", "_")) or {}
+                            location = (
+                                (record.get("source_path") or record.get("path"))
+                                if isinstance(record, Mapping)
+                                else None
+                            )
+                            member = Path(location) if location else capture_path.with_name(filename)
+                            if not member.is_absolute():
+                                member = capture_path.parent / member
+                            if member.is_symlink():
+                                raise ValueError(f"selected {name} may not be symlinked: {label}")
+                            raw_member = observe(member, f"application-{name}:{label}")
+                            if raw_member is None:
+                                continue
+                            expected_member = (
+                                (record.get("raw_sha256") or record.get("sha256"))
+                                if isinstance(record, Mapping)
+                                else None
+                            )
+                            if expected_member is not None and expected_member != _digest(raw_member):
+                                raise ValueError(f"selected application {name} bytes changed: {label}")
+                            parsed = json.loads(raw_member)
+                            if not isinstance(parsed, dict):
+                                raise ValueError(f"selected application {name} must be a mapping: {label}")
+                            destination[label] = parsed
     if inventory_identity["status"] != "digest_bound":
         diagnostics.append(
             {
@@ -631,6 +662,15 @@ def select_evidence(
     )
     # The shared runtime family selects data, not a compiler-bearing provider.
     data_only = (contract.get("runner") or {}).get("backend") == "chipyard_rocc"
+    if data_only and not (contract.get("output_epilogue") or {}).get("output_path"):
+        from merlin.targetgen.rtl import semantic_facts
+
+        # Output-path derivation consumes these selected semantic probes.
+        # Bind the metadata even though this selection has no executable provider.
+        probes = semantic_facts.probes_path(target)
+        if probes.is_file():
+            observe(probes, "semantic-probes", required=True)
+            observe(probes.parent / "target_contract.yaml", "semantic-probe-target", required=True)
     residual, provider = {}, None
     try:
         provider = target_registry.resolve(target) if hardware_intake is None and not data_only else None
@@ -900,7 +940,7 @@ def select_evidence(
     # the authored bytes stay the selected source identity.
     software_derivation = None
     if software_spec is not None:
-        from merlin.targetgen import spec_fact_drift
+        from merlin.targetgen.software_spec_resolution import resolve_selected_spec
 
         # Some capability helpers still resolve by target name. Their reads
         # must use this selection too, never extract from an ambient provider.
@@ -908,29 +948,26 @@ def select_evidence(
             target_registry.observed_contract(target, contract),
             rtl_facts.observed_facts(target, refreshed_facts, selected_path),
         ):
-            fact_view = spec_fact_drift.fact_capabilities(
+            software_doc, software_derivation = resolve_selected_spec(
+                software_doc,
                 target=target,
                 contract=contract,
-                raw_facts=loaded_facts,
+                facts=loaded_facts,
                 readout_facets=[facet.to_dict() for facet in facets],
                 quantization_candidates=quantization_candidates,
                 taxonomy=taxonomy,
                 prohibited_roles=prohibited_roles,
-                **({"data_only": True} if data_only else {}),
+                data_only=data_only,
+                composition_validation=(descriptor_doc.get("workload_spec") or {}).get("fusion_validation"),
             )
-        software_doc, software_derivation = spec_fact_drift.resolve_spec(
-            software_doc,
-            fact_view,
-            composition_validation=(descriptor_doc.get("workload_spec") or {}).get("fusion_validation"),
-        )
         software_derivation["prohibited_instruction_roles"] = sorted(set(prohibited_roles))
         for row in software_derivation["unresolved"]:
             diagnostics.append(
                 {
                     "component": "software-spec-derivation",
                     "status": "unknown",
-                    "reason": row["reason"],
-                    "declaration": row.get("id") or row.get("format"),
+                    "reason": _unresolved_reason(row),
+                    "declaration": row.get("id") or row.get("format") or row.get("scheme") or row.get("composition"),
                 }
             )
     target_profile = derive_profile(target, facts=refreshed_facts, residual=residual, contract=contract).to_dict()
@@ -1248,6 +1285,7 @@ def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
         selection.software_spec,
         {
             "contract": selection.contract,
+            "facts": selection.refreshed_facts,
             "quantization_candidates": selection.quantization_snapshot.get("quantization_candidates", []),
             "readout_facets": selection.readout_facets,
             "readout_numerics": selection.readout_numerics,
