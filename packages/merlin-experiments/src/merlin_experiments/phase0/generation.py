@@ -1718,6 +1718,13 @@ def disclosed_source_gap(
         kind, reason = "writer_refusal", str(detail if detail is not None else exc)
     elif observed is not None and observed.get("status") == "unsupported":
         kind, reason = "host_lane_admission", "emitted SW operation admission: " + str(observed.get("reason", ""))
+    elif observed is not None and observed.get("status") == "unknown" and observed.get("pending_host_review_only") is True:
+        # Every remaining operation matches only a PROPOSED host row. Withholding the capsule is the
+        # conservative outcome and keeps generation from failing hard before an operator reviews the row.
+        kind, reason = "host_lane_admission", (
+            "emitted SW operation admission (pending operator review of a proposed host row): "
+            + str(observed.get("reason", ""))
+        )
     else:
         return None
     return {

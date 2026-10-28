@@ -30,6 +30,13 @@ from typing import Any
 SCHEMA = "merlin.phase0.whole_program_admission.v1"
 _NON_COMPUTE = {"structural", "nested_component", "support_lowering_required"}
 
+#: The host lane's own wording when the only declaration that matches an operation is a proposal no
+#: operator has reviewed. Such an operation is neither admitted nor refused: it is waiting for a review.
+_PENDING_HOST_REVIEW = (
+    "unresolved SW constraints: operation review",
+    "unreviewed host declarations cannot establish absence of operation support",
+)
+
 
 def _lanes(entry: dict) -> list[str]:
     return [
@@ -84,7 +91,24 @@ def _decision(entry: dict, *, host_only: bool) -> dict:
         "placement": lanes[0] if status == "admitted" else None,
         "status": status,
         "reason": reason,
+        **({"pending_host_review": True} if status == "unknown" and _awaits_host_review(entry, lanes) else {}),
     }
+
+
+def _awaits_host_review(entry: dict, lanes: list[str]) -> bool:
+    """Whether an unknown operation is unknown only because its host declaration is a proposal.
+
+    No lane admits it, the accelerator lane definitely refuses it, and the host lane reports exactly
+    the unreviewed-declaration wording. Anything else unknown (an unparsed body, an ambiguous placement,
+    an unresolved accelerator screen) is not this case.
+    """
+    host = entry.get("host_admission") or {}
+    return (
+        not lanes
+        and (entry.get("accelerator_admission") or {}).get("status") == "unsupported"
+        and host.get("status") == "unknown"
+        and host.get("reason") in _PENDING_HOST_REVIEW
+    )
 
 
 def accelerator_placement_refusal(screen: dict | None) -> str | None:
@@ -140,6 +164,8 @@ def summarize(entries: list[dict], *, host_only: bool = False, scope: str) -> di
             placements[row["placement"]] += row["count"]
     return {
         "status": status,
+        # True only when the screen is unknown and every unknown operation waits on a host-row review.
+        "pending_host_review_only": bool(unknown) and not refused and all(row.get("pending_host_review") for row in unknown),
         "constraints_status": "refused" if refused else "unknown" if unknown else "matched",
         "reason": "; ".join(f"{row['operation']}: {row['reason']}" for row in (refused or unknown))
         or "every compute operation of the written program has exactly one reviewed lane",
@@ -509,6 +535,7 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
         if failures:
             screen["status"] = "unsupported" if any(row["status"] == "exceeds_bound" for row in failures) else "unknown"
             screen["constraints_status"] = "refused" if screen["status"] == "unsupported" else "unknown"
+            screen["pending_host_review_only"] = False
             screen["reason"] = "operand-sum numerical screen: " + "; ".join(
                 f"command {row['command_index']}: {row.get('reason') or row['status']}" for row in failures
             )
@@ -535,6 +562,7 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
         screen["numeric_domain"] = domain
         if domain["status"] in {"unsupported", "unknown"}:
             screen.update(
+                pending_host_review_only=False,
                 status=domain["status"],
                 constraints_status="refused" if domain["status"] == "unsupported" else "unknown",
                 reason="selected numerical domain: " + domain["reason"],
@@ -551,16 +579,31 @@ def _check_saved_inventory(screen: dict, materialized: dict, evidence) -> dict:
         return {
             **screen,
             "status": "unknown",
+            "pending_host_review_only": False,
             "constraints_status": "unknown",
             "reason": "no derivation-time per-operation admission inventory names this capture",
         }
     expected = match[0]
     if expected.get("status") != "admitted":
-        return {**screen, "status": expected.get("status", "unknown"), "reason": expected.get("reason")}
+        # The derivation-time inventory is held to the same rule: it waits on a host-row review only
+        # when every one of its non-admitted operations does.
+        waiting = [row for row in expected.get("operations") or [] if row.get("status") in {"unknown", "unsupported"}]
+        pending = (
+            expected.get("status") == "unknown"
+            and bool(waiting)
+            and all(row.get("pending_host_review") is True for row in waiting)
+        )
+        return {
+            **screen,
+            "status": expected.get("status", "unknown"),
+            "pending_host_review_only": pending and screen.get("pending_host_review_only") is True,
+            "reason": expected.get("reason"),
+        }
     if expected.get("placements") != screen.get("placements"):
         return {
             **screen,
             "status": "unsupported",
+            "pending_host_review_only": False,
             "constraints_status": "refused",
             "reason": "the written program places operations differently from the derivation-time inventory",
             "expected_placements": expected.get("placements"),
