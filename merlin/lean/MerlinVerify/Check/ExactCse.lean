@@ -127,7 +127,7 @@ def captures (a : Op) : List ValueId :=
 /-- An operation whose value may be reused: effect-free, one result that it does not read, and
 regions that read outside values only among `captures`. -/
 def candidate (a : Op) : Bool :=
-  !a.isTerminator && Rules.Dce.pureOp a &&
+  !a.isTerminator && Rules.Dce.erasable a &&
     (match a.results with
      | [r] => !a.operands.contains r.id && !(captures a).contains r.id
      | _ => false) &&

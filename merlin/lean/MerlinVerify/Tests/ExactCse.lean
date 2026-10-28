@@ -34,5 +34,7 @@ def dequant (name : String) : Op := .mk name [⟨0, ty [2]⟩] [] [] [] [] []
 #guard Rules.Dce.erasable (dequant "quant_ext.dequantize_per_channel")
 #guard Rules.Dce.erasable (dequant "quant_ext.quantize_per_tensor")
 #guard !Rules.Dce.erasable (dequant "quant_ext.unknown")
+#guard ExactCse.candidate (dequant "quant_ext.quantize_per_tensor")
+#guard !ExactCse.candidate (dequant "quant_ext.unknown")
 
 end MerlinVerify.Tests.ExactCseRegression
