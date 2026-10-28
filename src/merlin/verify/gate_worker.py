@@ -58,6 +58,11 @@ def _stop_group(signum, frame) -> None:
 def main(argv: list[str]) -> int:
     if os.getpgid(0) == os.getpid():  # only as the leader of its own group (how the gate starts it)
         signal.signal(signal.SIGTERM, _stop_group)
+        parent = os.environ.get("MERLIN_GATE_PARENT_PID")
+        if parent is not None and str(os.getppid()) != parent:
+            # Covers death before setpriv armed the kernel signal. No checker has
+            # been started yet; never run one for an already vanished compile.
+            _stop_group(signal.SIGTERM, None)
     directory = Path(argv[1])
     request = json.loads((directory / "request.json").read_text())
     try:
