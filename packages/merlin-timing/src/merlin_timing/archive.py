@@ -293,7 +293,11 @@ def _verify_contexts(path: str | Path, wanted: dict[str, list[tuple[str, dict]]]
                                 else result.get("original_compiler_child")
                             ) or {}
                             buffer = result.get("command_buffer_artifact") or {}
-                            tensors = (buffer.get("command_buffer") or {}).get("tensors") or {}
+                            # An embedded buffer, or the inline summary of one stored beside
+                            # the result (merlin.perf.command_buffer_store): shapes only.
+                            tensors = (buffer.get("command_buffer") or buffer.get("command_buffer_summary") or {}).get(
+                                "tensors"
+                            ) or {}
                             shape = {
                                 name: {"dtype": spec.get("dtype"), "shape": spec.get("shape")}
                                 for name, spec in sorted(tensors.items())
