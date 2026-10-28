@@ -27,15 +27,29 @@ from typing import Any, Sequence
 WORKERS_ENV = "MERLIN_DERIVE_REPLAY_WORKERS"
 DEFAULT_WORKERS = 8
 
-Job = tuple[Path, str, Path]  # selection path, selection sha256, model path
+Job = tuple  # selection path, selection sha256, model path[, attestation path, attestation sha256]
 
 
 class _Rerun:
     """A worker failure that could not cross the process boundary intact."""
 
 
-def replay_one(selection_path: Path, selected_sha256: str, model_path: Path) -> tuple[dict, dict, dict]:
-    """One label's complete replay: (replay record, sealed attestation, loaded selection)."""
+def replay_one(
+    selection_path: Path,
+    selected_sha256: str,
+    model_path: Path,
+    attestation_path: Path | None = None,
+    attestation_sha256: str | None = None,
+) -> tuple[dict, dict, dict]:
+    """One label's complete replay: (replay record, sealed attestation, loaded selection).
+
+    With an issue-time attestation named, the evidence is that attestation, fully re-read
+    (:mod:`attested_evidence`), and the sandbox is not run again.
+    """
+    if attestation_path is not None:
+        from .attested_evidence import attested_one
+
+        return attested_one(selection_path, selected_sha256, model_path, attestation_path, attestation_sha256)
     from .capture_execution_attestation import attest_sealed_m2m
     from .capture_selection import load, verify
 

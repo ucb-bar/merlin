@@ -408,6 +408,14 @@ def main(argv: list[str] | None = None) -> int:
         help="pre-execution selection for each selected capture; omitted legacy captures remain diagnostic",
     )
     derive.add_argument(
+        "--application-capture-attestation",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH@SHA256",
+        help="issue-time attestation per selected capture (all or none); derive re-reads every byte it binds "
+        "instead of replaying the capture again",
+    )
+    derive.add_argument(
         "--application-quant-policy",
         action="append",
         default=[],
@@ -430,6 +438,13 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         metavar="LABEL=PATH@SHA256",
         help="pre-execution selection for each performance-scale capture (all or none)",
+    )
+    derive.add_argument(
+        "--performance-capture-attestation",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH@SHA256",
+        help="issue-time attestation per performance-scale capture (all or none)",
     )
     derive.add_argument(
         "--heldout-layer-shapes",
@@ -727,6 +742,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             elif args.operation == "derive":
                 from .phase0.requirements import (
+                    capture_attestation_specs,
                     capture_selection_specs,
                     capture_selections,
                     derive,
@@ -745,6 +761,8 @@ def main(argv: list[str] | None = None) -> int:
                         performance_captures=capture_selections(args.performance_capture),
                         performance_preselections=capture_selection_specs(args.performance_capture_selection),
                         heldout_layers=args.heldout_layer_shapes,
+                        capture_attestations_issued=capture_attestation_specs(args.application_capture_attestation),
+                        performance_attestations_issued=capture_attestation_specs(args.performance_capture_attestation),
                     )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc

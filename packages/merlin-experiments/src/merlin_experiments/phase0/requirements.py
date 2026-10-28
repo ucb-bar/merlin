@@ -295,6 +295,11 @@ def capture_selection_specs(selections: list[str]) -> dict[str, tuple[Path, str]
     return _selected_file_specs(selections, "capture preselection")
 
 
+def capture_attestation_specs(attestations: list[str]) -> dict[str, tuple[Path, str]]:
+    """Parse issue-time capture attestations and the digests recorded when they were written."""
+    return _selected_file_specs(attestations, "capture attestation")
+
+
 def quantization_policy_specs(selections: list[str]) -> dict[str, tuple[Path, str]]:
     """Parse operator-selected external quantization policies and byte digests."""
     return _selected_file_specs(selections, "quantization policy")
@@ -511,6 +516,8 @@ def derive(
     performance_captures: dict[str, Path] | None = None,
     performance_preselections: dict[str, tuple[Path, str]] | None = None,
     heldout_layers: str | Path | None = None,
+    capture_attestations_issued: dict[str, tuple[Path, str]] | None = None,
+    performance_attestations_issued: dict[str, tuple[Path, str]] | None = None,
 ) -> dict:
     """Write a byte-bound requirement, complete census and diagnostic candidate plan.
 
@@ -574,8 +581,24 @@ def derive(
     # below in the same label order, so a failure surfaces exactly where the serial loop raised it.
     iteration_labels = sorted(capture_preselections)
     performance_labels = sorted(performance_preselections)
-    replay_jobs = [(*capture_preselections[label], captures[label]) for label in iteration_labels]
-    replay_jobs += [(*performance_preselections[label], performance_captures[label]) for label in performance_labels]
+    # Opt-in: an issue-time attestation per label replaces that label's second sandbox replay with a
+    # complete re-read of everything the attestation binds. All labels of a roster, or none.
+    capture_attestations_issued = capture_attestations_issued or {}
+    performance_attestations_issued = performance_attestations_issued or {}
+    for issued, preselected, role in (
+        (capture_attestations_issued, capture_preselections, "iteration"),
+        (performance_attestations_issued, performance_preselections, "performance"),
+    ):
+        if issued and set(issued) != set(preselected):
+            raise ValueError(f"{role} capture attestations must cover exactly the preselected {role} roster")
+    replay_jobs = [
+        (*capture_preselections[label], captures[label], *capture_attestations_issued.get(label, ()))
+        for label in iteration_labels
+    ]
+    replay_jobs += [
+        (*performance_preselections[label], performance_captures[label], *performance_attestations_issued.get(label, ()))
+        for label in performance_labels
+    ]
     with Replays(replay_jobs) as replays:
         for index, label in enumerate(iteration_labels):
             selected_capture_evidence[label], capture_attestations[label], selected = replays[index]
@@ -726,7 +749,9 @@ def derive(
     if selected_capture_evidence:
         requirement["capture_execution_preselections"] = {
             "schema": "merlin.phase0.capture_preselections.v1",
-            "status": "replay_verified_nonadmissible",
+            "status": (
+                "attestation_verified_nonadmissible" if capture_attestations_issued else "replay_verified_nonadmissible"
+            ),
             "applications": selected_capture_evidence,
             "phase0_admission": "not_granted",
         }
@@ -736,7 +761,11 @@ def derive(
     if performance_capture_evidence:
         requirement["performance_capture_preselections"] = {
             "schema": "merlin.phase0.capture_preselections.v1",
-            "status": "replay_verified_nonadmissible",
+            "status": (
+                "attestation_verified_nonadmissible"
+                if performance_attestations_issued
+                else "replay_verified_nonadmissible"
+            ),
             "applications": performance_capture_evidence,
             "attestations": performance_attestations,
             "phase0_admission": "not_granted",

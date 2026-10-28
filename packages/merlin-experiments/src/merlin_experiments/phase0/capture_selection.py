@@ -311,14 +311,11 @@ def _issue(
     return receipt, replay
 
 
-def verify(path: Path, *, expected_sha256: str, model_path: Path, _replay: dict | None = None) -> dict:
-    """Read-only independent binding of selected bytes to a fresh replay.
+def bound_selection(path: Path, *, expected_sha256: str, model_path: Path) -> tuple[dict, Path, Path, bool, Path, dict]:
+    """Everything :func:`verify` binds before it replays: selection, owner-only run, model, receipt, libraries.
 
-    The returned record intentionally remains nonadmissible. The separately
-    issued sealed-M2M attestation checks these bytes again before granting
-    source-closure admission under its explicit operator policy. ``_replay`` is
-    only :func:`issue_and_attest`'s concurrent replay result, from
-    :func:`sealed_m2m.issue_and_replay`; every other caller replays now.
+    Returns the selection, its run directory, the model path, whether the selection is a full
+    capture, the pending receipt path and its parsed document.
     """
     selected = load(path, expected_sha256=expected_sha256)
     run = _canonical_path(Path(selected["run_dir"]), exists=True)
@@ -367,6 +364,21 @@ def verify(path: Path, *, expected_sha256: str, model_path: Path, _replay: dict 
             or _file_digest(copied) != library["sha256"]
         ):
             raise ValueError("sealed runtime differs from preselected system library bytes")
+    return selected, run, model, full_capture, pending, receipt
+
+
+def verify(path: Path, *, expected_sha256: str, model_path: Path, _replay: dict | None = None) -> dict:
+    """Read-only independent binding of selected bytes to a fresh replay.
+
+    The returned record intentionally remains nonadmissible. The separately
+    issued sealed-M2M attestation checks these bytes again before granting
+    source-closure admission under its explicit operator policy. ``_replay`` is
+    only :func:`issue_and_attest`'s concurrent replay result, from
+    :func:`sealed_m2m.issue_and_replay`; every other caller replays now.
+    """
+    selected, run, model, full_capture, pending, receipt = bound_selection(
+        path, expected_sha256=expected_sha256, model_path=model_path
+    )
     replay = sealed_m2m.replay_verify(run, bwrap_binary=Path(selected["bwrap"]["path"])) if _replay is None else _replay
     if (
         replay.get("status") != "verified_sandbox_replay"
