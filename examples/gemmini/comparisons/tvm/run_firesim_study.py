@@ -53,6 +53,16 @@ def memory_available():
     raise RuntimeError("Linux MemAvailable is required for build admission")
 
 
+def replay_trials(row):
+    """Total candidate budget per chunk/case; refuse obsolete learned studies."""
+    if "cost_model_warmup" in row or row.get("strategy", "replay") != "replay":
+        raise ValueError("Regenerate the study for ReplayTrace without ML settings")
+    trials = row.get("trials", 25)
+    if type(trials) is not int or not 1 <= trials <= 25:
+        raise ValueError("Use 1..25 total ReplayTrace trials per chunk/case")
+    return trials
+
+
 def graph_options(row):
     """Reject obsolete preparation instead of changing a saved study's meaning."""
     options = {key: row.get(key, default) for key, default in
@@ -69,13 +79,14 @@ def graph_options(row):
 
 
 def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap,
-                      bootstrap_seconds, ceiling_seconds, finish_active_runs=True):
+                      bootstrap_seconds, ceiling_seconds, finish_active_runs=True, campaign_kind="resnet"):
     """Persist one deadline/proposal budget across launcher invocations."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.with_suffix(path.suffix + ".lock").open("a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         binding = dict(
             deadline_epoch=deadline,
+            campaign_kind=campaign_kind,
             target_clock_hz=clock_hz,
             pool_sha256=identity(pool)["sha256"],
             proposal_cap=cap,
@@ -92,10 +103,10 @@ def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap,
             record = dict(
                 program_sha256=identity(root / row["program"])["sha256"],
                 fixture_sha256=identity(root / row["fixture"])["sha256"],
-                trials=row["trials"],
+                trials=replay_trials(row),
                 workload_keys=row.get("workload_keys", []),
                 graph_options=options,
-                cost_model_warmup=row.get("cost_model_warmup", 50),
+                strategy="replay",
                 batch=row.get("batch", 1),
             )
             old = state["campaigns"].get(row["id"])
@@ -105,6 +116,12 @@ def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap,
                 continue
             state["campaigns"][row["id"]] = record
             fresh.append(row)
+        totals = {}
+        for record in state["campaigns"].values():
+            key = (record["program_sha256"], record["fixture_sha256"])
+            totals[key] = totals.get(key, 0) + record["trials"]
+        if any(total > 25 for total in totals.values()):
+            raise ValueError("Chunk/case ReplayTrace reservations exceed 25 across graph plans")
         if sum(r["trials"] for r in state["campaigns"].values()) > cap:
             raise ValueError("Cumulative proposal reservations exceed the shared study cap")
         temporary = path.with_suffix(path.suffix + ".tmp")
@@ -133,7 +150,7 @@ def command(row, root, args, output, deadline):
         "--target-clock-hz",
         str(args.target_clock_hz),
         "--trials",
-        str(row["trials"]),
+        str(replay_trials(row)),
         "--batch",
         str(row.get("batch", 1)),
         "--builders",
@@ -141,7 +158,7 @@ def command(row, root, args, output, deadline):
         "--graph-fusion-level",
         str(options["graph_fusion_level"]),
     ]
-    argv.extend(["--cost-model-warmup", str(row.get("cost_model_warmup", 50))])
+    argv.extend(["--campaign-kind", getattr(args, "campaign_kind", "resnet")])
     argv.extend(["--finish-active-runs", "--candidate-bootstrap-seconds",
                  str(args.candidate_bootstrap_seconds), "--candidate-timeout-ceiling-seconds",
                  str(args.candidate_timeout_ceiling_seconds)])
@@ -206,6 +223,7 @@ def main():
     parser.add_argument("--deadline-epoch", type=float)
     parser.add_argument("--jobs", type=int)
     parser.add_argument("--memory-reserve-gib", type=float, default=4)
+    parser.add_argument("--campaign-kind", choices=("resnet", "kernel"), default="resnet")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--finish-active-runs", action="store_true", default=True)
     parser.add_argument("--candidate-bootstrap-seconds", type=float, required=True)
@@ -230,12 +248,13 @@ def main():
         if r["status"] == "ready_for_functional_build"
         and (args.phase == "all" or r.get("phase", "initial") == args.phase)
     ]
-    if sum(r["trials"] for r in rows) > manifest["global_proposal_cap"]:
+    if sum(replay_trials(r) for r in rows) > manifest["global_proposal_cap"]:
         parser.error("Campaign proposals exceed the shared study cap")
     keys = [key for row in rows for key in row.get("workload_keys", [])]
     if len(set(keys)) != len(keys):
         parser.error("A prepared workload has duplicate tuning owners")
     for row in rows:
+        row["trials"] = replay_trials(row)
         for field in ("program", "fixture"):
             identity(root / row[field])
     args.output_dir.mkdir(parents=True, exist_ok=False)
@@ -247,15 +266,15 @@ def main():
                 dict(
                     status="planned",
                     campaigns=len(plan),
-                    proposals=sum(r["trials"] for r in rows),
+                    proposals=sum(replay_trials(r) for r in rows),
                     skipped=[r["id"] for r in manifest["campaigns"] if r not in rows],
                 ),
                 indent=2,
             )
         )
         return
-    if args.deadline_epoch is None or not time.time() < args.deadline_epoch <= time.time() + 14400:
-        parser.error("Use the same future absolute deadline, at most four hours away, for the entire handoff study")
+    if args.deadline_epoch is None or not time.time() < args.deadline_epoch <= time.time() + (14400 if args.campaign_kind == "resnet" else 86400):
+        parser.error("Use one future deadline within 4h for ResNet or 24h for the kernel study")
     pool = qualification(args.pool)
     if not pool.get("slots"):
         parser.error("No assigned physical slots")
@@ -275,6 +294,7 @@ def main():
         clock_hz=args.target_clock_hz,
         pool=args.pool,
         cap=manifest["global_proposal_cap"],
+        campaign_kind=args.campaign_kind,
         finish_active_runs=args.finish_active_runs,
         bootstrap_seconds=args.candidate_bootstrap_seconds,
         ceiling_seconds=args.candidate_timeout_ceiling_seconds,
