@@ -55,6 +55,67 @@ def merlin_supplied_host_axis(spec_doc: dict, axis: str) -> dict:
     }
 
 
+def source_capsule_name(application: str) -> str:
+    """The capsule a source application is published as (``requirements.py`` names it the same way)."""
+    return f"SY_source_{application}"
+
+
+def disclose_withheld_scope(scope: dict | None, required: list | None, withheld: dict[str, str] | None) -> None:
+    """Record, never excuse, scope chains whose only planned witnesses were withheld.
+
+    A required adjacency chain is mined from named source applications (``observed_in``); each is
+    published as one whole-source capsule, and no other capsule presents that chain. When EVERY such
+    capsule was planned but withheld, the chain is recorded under ``withheld_unplaceable`` with the
+    withheld names and their recorded reasons. ``uncovered``, ``n_covered`` and ``status`` are left
+    exactly as measured: a disclosure is not coverage. A chain with any planned witness that was
+    published (so it should have witnessed it), unnamed, or withheld without a reason is not recorded
+    and stays a plain gap.
+    """
+    if not isinstance(scope, dict) or not scope.get("uncovered") or not withheld:
+        return
+    rows = {r.get("signature"): r for r in required or [] if isinstance(r, dict)}
+    disclosed = {}
+    for signature in scope["uncovered"]:
+        apps = (rows.get(signature) or {}).get("observed_in")
+        planned = sorted({source_capsule_name(str(app)) for app in apps or []})
+        if not planned or any(not withheld.get(name) for name in planned):
+            continue
+        disclosed[signature] = {
+            "basis": "required row observed_in -> whole-source capsule",
+            "planned_witnesses": planned,
+            "withheld": {name: withheld[name] for name in planned},
+        }
+    if disclosed:
+        scope["withheld_unplaceable"] = disclosed
+        scope["n_withheld_unplaceable"] = len(disclosed)
+
+
+def withheld_from_generation(plan: dict) -> dict[str, str]:
+    """Planned-but-unpublished capsules (name -> reason) from the run's generation receipt, if it has one."""
+    bundle = plan.get("phase0_evidence_bundle")
+    path = Path(str(bundle)) / "coverage" / "generation.json" if bundle else None
+    if path is None or path.is_symlink() or not path.is_file():
+        return {}
+    try:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for field in ("host_placement_not_published", "unprovable_forbids"):
+        for row in receipt.get(field) or []:
+            if isinstance(row, dict) and row.get("capsule") and str(row.get("reason") or "").strip():
+                out[str(row["capsule"])] = str(row["reason"])
+    # A source capsule the writer refused, or whose program the host lane cannot admit, is disclosed with its verbatim
+    # reason and the digest of that reason; the long reason is shortened here, never dropped.
+    for row in receipt.get("disclosed_source_gaps") or []:
+        if isinstance(row, dict) and row.get("capsule") and str(row.get("reason") or "").strip():
+            reason = str(row["reason"])
+            if len(reason) > 240:
+                reason = f"{reason[:240]} ... [{len(reason)} characters; sha256 {row.get('reason_sha256', '?')}]"
+            out[str(row["capsule"])] = reason
+    return out
+
+
 def selected_cohort_coverage(
     spec_doc: dict,
     roots: list[Path],
@@ -62,8 +123,13 @@ def selected_cohort_coverage(
     inputs: dict | None = None,
     labels: set[str] | None = None,
     phase: str = "phase1",
+    withheld: dict[str, str] | None = None,
 ) -> dict:
     """Measure pure capsule axes; never borrow ambient target facts for admission.
+
+    ``withheld`` maps a capsule the generation planned but did not publish to its recorded reason. It
+    only DISCLOSES: a scope chain whose every planned witness is withheld gains a
+    ``withheld_unplaceable`` entry naming them, and stays in ``uncovered`` and out of ``n_covered``.
 
     Composition needs a compiler-owned, exact-source-bound emitted host/device
     seam and execution evidence. Phase 0 has no such observer. Host-only and
@@ -100,6 +166,7 @@ def selected_cohort_coverage(
         "carried_state": conformance._carried_state_gap,
         "conv_geometry": conformance._conv_geometry_gap,
     }
+    scope_required = None
     for axis, reader in readers.items():
         if axis == "scope" and phase == "phase2":
             performance = (spec_doc.get("scope") or {}).get("performance") or {}
@@ -133,11 +200,14 @@ def selected_cohort_coverage(
             required = performance.get("required")
         else:
             required = (spec_doc.get(axis) or {}).get("required")
+        if axis == "scope":
+            scope_required = required
         result[axis] = (
             reader(required, roots, labels=labels)
             if required is not None
             else {"status": "not_measured", "reason": "selected requirement predates this coverage axis"}
         )
+    disclose_withheld_scope(result.get("scope"), scope_required, withheld)
     composition = (spec_doc.get("composition") or {}).get("required")
     if composition is None:
         result["composition"] = {
@@ -291,7 +361,9 @@ def inspect_run(run_dir: Path, spec_path: Path) -> dict:
     inputs = read_inputs(corpus)
     if inputs is not None and inputs.get("target") != target:
         raise SpecError("frozen coverage inputs belong to a different target")
-    result = selected_cohort_coverage(spec, category_roots, inputs=inputs, labels={"public"})
+    result = selected_cohort_coverage(
+        spec, category_roots, inputs=inputs, labels={"public"}, withheld=withheld_from_generation(plan)
+    )
     if not result["corpus_cells"]:
         raise SpecError("phase-0 public capsules yielded no classifiable coverage cells")
     return {
