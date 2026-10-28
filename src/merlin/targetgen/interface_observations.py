@@ -94,6 +94,7 @@ def _stage_rows(
     destination_declared: bool,
     attributes: dict,
     column_source: dict | None = None,
+    result_type: dict | None = None,
 ) -> list[dict]:
     from merlin.targetgen.semantic_families import from_op
 
@@ -106,6 +107,8 @@ def _stage_rows(
             from_op(stage),
             disposition="unclassified",
             operand_dtypes=[operand_dtype] if operand_dtype else [],
+            ordered_result_types=[result_type] if result_type is not None else [],
+            **({"reduction_kind": "max"} if stage == "maxpool" else {}),
             accumulator_dtypes=[accumulator],
             result_dtypes=[result_dtype] if result_dtype else [],
             layout=_ROW_MAJOR if destination_declared else None,
@@ -169,6 +172,7 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
                     result_dtype=attributes.get("output_dtype") or accumulator,
                     accumulator=accumulator,
                     destination_declared=_typed(tensors, destination) is not None,
+                    result_type=_typed(tensors, destination),
                     attributes=attributes,
                     column_source={
                         **column_sources[str(operands.get("src"))],
@@ -224,6 +228,13 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             layout=_ROW_MAJOR if all(item is not None for item in [*typed_sources, result]) else None,
             aliasing="disjoint_inputs_outputs" if destination not in sources else "in_place",
         )
+        # Only equal, statically declared tensor extents prove no broadcasting.
+        if family in {"elementwise_map", "movement"} and typed_sources and _static(*typed_sources, result):
+            if all(item["shape"] == result["shape"] for item in typed_sources):
+                row["broadcasting"] = "none"
+        if opcode == "RESIDUAL_ADD" and len(typed_sources) == 2 and all(item is not None for item in typed_sources):
+            row["tensor_operands"] = 2
+            row["expression"] = "affine"
         if family == "elementwise_map":
             # A standalone command consumes declared tensors, not a producer's accumulator: it is
             # observed as composed with nothing and as no carrier's epilogue. Its operands are tensors
@@ -271,6 +282,7 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
                     result_dtype=attributes.get("output_dtype") or (result or {}).get("dtype"),
                     accumulator=accumulator,
                     destination_declared=_typed(tensors, destination) is not None,
+                    result_type=_typed(tensors, destination),
                     attributes=attributes,
                     column_source=column_sources.get(str(destination)),
                 )

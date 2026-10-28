@@ -620,7 +620,7 @@ def undefined_op_mnemonics(text: str) -> list[str]:
     return sorted({m for m in op_mnemonics(text) if m not in known})
 
 
-def parse_interface_mlir(text: str) -> dict[str, Any]:
+def parse_interface_mlir(text: str, *, include_results: bool = False) -> dict[str, Any]:
     """Parse ``merlin_iface`` contract text back into a command-buffer dict.
 
     Reconstructs abi_version / target / tensors (leaf inputs) / commands so that
@@ -728,6 +728,8 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
             cb["commands"].append({"opcode": _NAMED_OP_TO_OPCODE[mnem], "operands": operands, "attributes": attrs})
         elif mnem == "commit":
             dst = attrs.pop("name", result)
+            if include_results:
+                declare_named_result(dst, op)
             cb["commands"].append({"opcode": "COMMIT", "operands": {"src": srcs[0], "dst": dst}, "attributes": attrs})
         elif mnem == "evict":
             cb["commands"].append({"opcode": "EVICT", "operands": {"handle": srcs[0]}})
