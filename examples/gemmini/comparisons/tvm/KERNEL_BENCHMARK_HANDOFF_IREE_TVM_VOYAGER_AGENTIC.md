@@ -39,12 +39,21 @@ watchdogs and report overrun. Preserve actual cycle labels and failures.
 T01/T02 still measure all 32 heads together; T04/T06 measure all outputs.
 Task-level tuning records are never complete-call results.
 
-This is a **preparation specification**, not a claim that 16 TVM kernel ELFs,
-other compilers' adapters or FireSim results already exist. The current TVM
-chunk driver measures extracted contractions; it cannot simply relabel those
-measurements as complete grouped-kernel costs. First supply the exact 16 inputs,
-independent references, complete-call builders and measurements below. Existing
-ResNet chunk fixtures do not replace these nibble-pattern kernel inputs.
+The TVM builders now exist: `prepare_kernel_benchmarks.py` defines ordinary
+mathematical TensorIR and complete Relax calls; `kernel_benchmark_data.py`
+implements the exact generator and independent INT64/FP32-RNE references below.
+All 16 complete cases pass local diagnostic Spike checks, including wrong-oracle
+rejection. See [SPIKE_HANDOFF_EVIDENCE.md](SPIKE_HANDOFF_EVIDENCE.md) and the
+[active FireSim instructions](FIRESIM_HANDOFF.md). These are not FireSim results
+or qualification of other compilers. Kernel builds reject CPU fallback. The
+current complete-call harness implements `warm_repeat`, not historical 2 MiB
+cache eviction. Match and label the actual profile before comparing cycles.
+
+Tuning still measures extracted contractions. Rebuild and measure the complete
+case for reporting; those task costs are not all-head or all-output measurements.
+The convolution definition uses the declared flat output layout and explicit
+bias initialization in TensorIR; inputs, nonzero VALID borders and references
+are unchanged. No custom bias-folding compiler pass is added.
 
 For IREE, Voyager and agentic compilation, retain their native optimization
 interfaces and disclose their search method/budget. MetaSchedule is the TVM

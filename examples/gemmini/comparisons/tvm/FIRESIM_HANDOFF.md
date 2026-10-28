@@ -1,399 +1,203 @@
-# FireSim ELF preparation and tuning plan
+# FireSim handoff: ResNet50 and 16 complete kernel cases
 
-For the current compiler design and limits on paper claims, read
-[ARCHITECTURE.md](ARCHITECTURE.md) and [operation support](TENSORIR_OP_AUDIT.md).
-
-The [simplified preparation release](../../../../out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/README.md) contains
-TVM **619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a**, the portable source bundle/patch,
-71-case diagnostic Spike ELFs/results and a fresh 36-chunk task index. Use this
-repository's median-watchdog runner (implementation commit dd079d3a0).
-For the new tuning settings use TVM `64bed0cb9c876b89707e69584909abe5e13b0384`
-on `gemmini/direct-intrinsics` plus the current Merlin runner. The frozen release
-above predates ReplayTrace and the reuse defaults; its ELFs/results remain historical.
-The [cost-model re-audit](OPTIMIZATION_KNOBS.md#campaign-re-audit-2026-10-27)
-links the new source patches and test evidence. Fetch the exact TVM pin from
-`git@github.com:grammy117/tvm.git` on branch `gemmini/direct-intrinsics`;
-rebuild changed schedules instead of relabeling frozen ELFs.
-This is ready for remote build/qualification work, **not a completed FireSim or
-full-model qualification**. Remote cancellation, selected hardware facts and
-per-program spec admission remain required before paid model execution.
-
-Our deliverable is ELFs or exact instructions to build them after handoff.
-**The remote worker owns deployment, manager configuration and physical slots.**
-Do not ask the user to supply deployment details to finish this preparation.
-No simulator job is started by the build commands below.
-
-## Next campaign: ResNet and kernel comparisons
-
-Active: **ResNet50 and the 16 standalone kernel cases** in
+Active scope is **ResNet50 plus G01–G06, C01–C03 and T01–T07** from
 [KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md](KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md).
-Full-model TinyLlama and SmolVLA are backlogged; their seven isolated kernel
-cases remain active. Their earlier small-sweep/default-transfer plan is deferred.
-Existing frozen deliveries retain historical budgets; the current handoff wins.
+**Do not run full TinyLlama or SmolVLA.** Their isolated kernels remain active.
+This file supersedes older three-model launch instructions and local `out/`
+paths in historical releases. Read [ARCHITECTURE.md](ARCHITECTURE.md) and
+[TENSORIR_OP_AUDIT.md](TENSORIR_OP_AUDIT.md) for the compiler and operation limits.
 
-ResNet: **4 hours DSE, 30 minutes maximum per baseline/tuned E2E run**.
-Backlogged model limits remain 1h DSE and 7h per E2E run when reactivated; they
-are not permission to launch those models in this campaign. Candidate median
-watchdogs are separate. Finish active jobs under their frozen watchdogs and
-report overrun; do not renew the spent budget on continuation.
+## Source, evidence and readiness
 
-Use **stock MetaSchedule ReplayTrace, up to 25 candidate trials total per
-kernel case or ResNet chunk**, shared across its internal tasks and graph options.
-There is no ML warmup, guided phase, XGBoost import/training or learned ranking.
-The 25 are sampled schedule proposals, not 25 different mathematical fixtures.
-Repeated timings and the three baseline watchdog calibrations are separate and
-consume the same occupied-slot allowance. Do not multiply the trial budget by
-head count or internal task count. Duplicate/failed proposals count against the
-cap; report actual unique successful candidates. Stop at the cap, wall budget,
-or an explicit search stop; stochastic failure is not proof of space exhaustion.
+Use TVM **bb4ad9f8dbd21dd96a4dc63121dfebc24742f260** on
+[`grammy117/tvm:gemmini/direct-intrinsics`](https://github.com/grammy117/tvm/tree/gemmini/direct-intrinsics)
+and Merlin builder commit `b632e4c97bcc5e1d05881db41aa5e22360740601` plus
+the documentation/evidence commit containing this handoff. The executable
+TVM implementation is unchanged from `64bed0cb9`; later changes are documentation.
+Do not use the historical `firesim-chunks` handoff pin or relabel old ELFs.
 
-Start from a deterministic shape-derived baseline: largest exact legal tile
-(up to 16), bounded M/N operand-reuse groups and K batching. Prefer less logical
-operand traffic, then larger legal groups; validate the actual aligned physical
-allocation. Try at most eight ranked choices and a one-group fallback. Preserve
-explicit user schedule settings. This is a heuristic, not a cycle predictor or a
-claimed optimum; pipeline/hoisting/dataflow alternatives remain search choices.
-Keep the baseline in the database and choose only correct measured winners.
+The current local Spike evidence and reproducible build commands are linked in
+[the verification delivery](SPIKE_HANDOFF_EVIDENCE.md). These are diagnostic
+functional checks, not RTL or FireSim performance results. The delivery publishes
+small receipts/checksums; build ELFs on the remote from the tracked sources and
+inputs below. Prebuilt ELF paths in receipts identify the original test machine.
+They are not download locations or a prerequisite to reproducing the builds.
 
-ResNet retains **4h total DSE and 30min per E2E run**; the time cap wins even
-if some chunks have fewer than 25 trials. For the 16-case **TVM** kernel sweep,
-use a conservative **24 occupied-slot-hour aggregate ceiling**, excluding CPU
-preparation. This is an authorized planning estimate, not measured runtime:
-400 proposals at an illustrative 3 minutes occupy 20h, plus 48 baseline jobs
-at 3 minutes occupy 2.4h, leaving 1.6h for confirmations. Actual calibration and
-profile counts may differ; the same cap still wins. This is not 24h per case,
-not 24h for every compiler, and concurrency must not multiply the allowance.
-Close admissions at budget; finish active jobs under their frozen median
-watchdogs and report overrun. Preserve actual cycle labels and failures.
+The remote worker owns deployment and physical slots. Before timing, qualify its
+actual hardware facts, guest output checks, startup exclusion, repeated timings,
+wall cancellation and safe slot reuse under [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md).
+No live active-cycle observer or incumbent-based cancellation is required.
+Do not add a sequential Spike preflight to each remote candidate: that work has
+been done locally for these baselines; remote candidates use guest checks.
 
-Current runner measurements are extracted contractions. Complete kernel-case
-builders/measurements remain required for the grouped-call benchmark contract.
+## Budgets, defaults and search
 
-For reporting, disclose that ResNet received deeper model optimization effort;
-full-model TinyLlama/SmolVLA were deferred as too expensive. Do not imply equal
-optimization effort, convergence, full-model results from kernels, or measured
-superiority solely from the allocation of time. See
-[the stack re-audit](OPTIMIZATION_KNOBS.md#campaign-re-audit-2026-10-27).
+| Campaign | Search | Aggregate occupied-slot budget | Final run timeout |
+| --- | --- | --- | --- |
+| ResNet50 | Up to 25 ReplayTrace proposals per owner chunk, shared across its tasks and graph plans | 4 hours | 30 minutes per baseline/tuned E2E run |
+| 16 kernels | Up to 25 ReplayTrace proposals per complete case, shared across its tasks and graph plans | 24 hours total for TVM | Calibrated per-case wall watchdog; no invented cycle limit |
 
-## Fresh simplified-compiler extraction
+The 24-hour kernel ceiling is a planning allowance, not a measured prediction.
+Close admissions at the first trial/time limit, finish active jobs under their
+frozen watchdogs and report overrun. Restarts do not renew budgets. CPU preparation
+and final ResNet E2E are outside DSE occupancy. Baseline calibration, failures,
+repeats and connected confirmations consume the DSE allowance. The launcher
+absolute deadline is an additional bound; the remote aggregate occupancy ledger
+must account for concurrent physical slots.
 
-The release's [task index](../../../../out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/index/summary.json) re-extracts
-all 36 ready chunks with fusion=2, CSE off, prepacking off and bias folding off.
-Frozen programs, weights/scales, boundary inputs and references are unchanged.
+Use **stock ReplayTrace, no ML, no 50-sample warmup and no guided phase**.
+A trial is a schedule proposal, not a new fixture. Duplicate/failed proposals
+count; report attempted, unique, built and successful candidates separately.
+The prepared study initially allocates 20 of 25 trials, reserving five for stock
+graph alternatives. This is one shared 25-trial allowance, not an additional
+five-trial phase. `--initial-trials 25` uses the whole allowance on the initial
+plan. A continuation must preserve the ledger and per-chunk total, re-extract
+changed graphs, and reuse only structurally identical tasks. Do not claim that
+stochastic generation failures prove search-space exhaustion.
 
-| Model | Chunks | Distinct contractions | Owners | Baseline jobs (three per task) |
-| --- | ---: | ---: | ---: | ---: |
-| ResNet50 | 18 | 21 | 10 | 63 |
-| TinyLlama | 10 | 12 | 8 | 36 |
-| SmolVLA | 8 | 14 | 8 | 42 |
-| Total | 36 | 47 | 26 | 141 |
+Start with fusion=2, CSE off, automatic prepacking and bias folding off. The
+backend's shape-derived default chooses the largest exact legal intrinsic tile
+(up to 16), ranks bounded M/N reuse groups by logical operand traffic and K
+batching, and validates actual aligned storage. It tries at most eight choices
+plus a one-group fallback. It is a heuristic, not a cost prediction or optimum.
+Keep the correct measured default in the database. Search legal tiles, reuse,
+OS/WS, traversal, hoisting, pipelining, staging and tails through existing traces;
+then stock fusion/CSE within the same trial and time budgets. Physical addresses
+and required fences are fixed lowering. Secondary ops are not separately tuned.
 
-No workload keys match the old catalog. Full structural equality was checked
-across occurrences of each shared key. Rebuild packages and remeasure; do not
-import historical costs. The excluded SmolVLA normalization probe stays excluded.
-Extraction is not connected-model execution. The release supplies its reproducer
-and source/input/compiler bindings; relocate inputs explicitly on the remote.
+The runner currently measures **extracted contractions**. These labels select
+schedules, but final results must time the rebuilt complete kernel/chunk. T01/T02
+include all 32 heads; T04/T06 include all outputs. Never sum task minima to
+manufacture complete-case or E2E cycles. Share records only after exact structural
+matching; remeasure old traces instead of importing old costs.
 
-At an illustrative 60 seconds per job, the baseline jobs alone occupy 63/36/42
-minutes. Under 4h/1h/1h budgets that leaves at most 177/24/18 further one-minute
-jobs before connected confirmation. Actual pilot occupancy must replace this
-illustration; allocate no fixed paper-sized trial count in advance.
+## Wall watchdog and cycle measurement
 
-## Approved decisions
+The remote pilot sets positive bootstrap and ceiling seconds. Run three correct
+uncached baseline jobs per selected task. Use three times their median as the
+floor. After nine successful uncached candidates, use the larger of that floor
+and three times the latest-nine median, capped by the explicit ceiling. A ceiling
+below the baseline floor refuses search. Freeze the limit at slot admission.
+Timeouts/failures do not update the median and never become cycle labels.
 
-- The following model allocation is retained for reference; only ResNet is active. Budgets are
-  **ResNet 4 hours; TinyLlama 1 hour; SmolVLA 1 hour**, total across each model's
-  chunks and graph configurations. Charge actual tuning slot occupancy; exclude
-  CPU preparation and final E2E. The remote worker implements this ledger and
-  resumes it without renewing spent time. Allocation can be revised by the user.
-- **TinyLlama tuning uses the published 16/1 row probes; E2E uses 32/32.**
-  Do not replace the tuning roster with newly derived 32-row chunks.
-- For the simplified compiler, start with stock fusion=2 and CSE off, then
-  search stock fusion/CSE and TensorIR schedules within the active ResNet budget.
-  Full-model TinyLlama/SmolVLA are backlogged.
-  Automatic prepacking and bias folding are removed. Published packed/bias
-  plans describe historical artifacts and must not be silently replayed.
-- Use stock MetaSchedule **ReplayTrace**, without a learned cost model, existing TensorIR schedules
-  and registered TensorIntrins. Share records through exact structural equality.
-- Remote candidate validation uses FireSim guest checks. **No sequential Spike
-  preflight** is added before candidates or long sessions. Preserve independent
-  guest wrong-oracle qualification and every-output checks.
+Record completed warm target cycles, including host work, packing, DMA and
+completion; exclude startup and the first warmup call. Retain slow correct
+measurements. Convert cycles to seconds at the stock TVM Runner boundary using
+the actual documented target counter frequency. Do not mix legacy cycle-valued
+JSON databases with these seconds-valued records. This watchdog still censors
+very slow candidates; report timeout counts and the policy in the paper.
 
-The publication's shared-four-hour/remaining-proposal wording and fixed-fusion-only
-instructions describe its original campaign; they do not override these decisions.
-The full-model protocol and its numerical choices remain fixed during tuning.
+## Restore and build on the remote CPU worker
 
-## Approved timeout policy and remote qualification
-
-| Model | Aggregate tuning allowance | Final E2E wall timeout per baseline/tuned run |
-| --- | --- | --- |
-| ResNet50 | 4 hours | 1,800 seconds |
-| TinyLlama | 1 hour | 25,200 seconds |
-| SmolVLA | 1 hour | 25,200 seconds |
-
-The user approved per-workload median wall watchdogs instead of best-so-far
-active-cycle cancellation. No live observer is required. Run three successful
-baseline jobs; use `min(ceiling, max(3*baseline_median, 3*recent_median))`, with the
-recent median taken from nine successful uncached candidates when available.
-Freeze each watchdog at slot admission. Charge baseline jobs, failures and
-candidate execution to tuning occupancy. Preserve all completed correct cycles,
-including slower candidates. Failed/timed-out attempts are not duration samples.
-
-The remote pilot supplies explicit positive bootstrap/ceiling values through
-`--candidate-bootstrap-seconds` and `--candidate-timeout-ceiling-seconds` to
-`run_firesim_study.py`. Both are required even for its dry-run plan; they are
-separate from final E2E limits. A ceiling below 3x baseline median refuses search.
-The source-bound timeout history is `timeout-history.json` in each campaign.
-
-Final E2E timeouts include deployment startup through result collection after
-slot admission; exclude queue wait and CPU preparation. They apply only to final
-E2E. Stop new tuning admissions at budget and finish active jobs under their
-frozen watchdogs; report overrun and do not launch queued jobs during completion.
-
-The installed v4 adapter must qualify fixed-warm measurement, wrong-oracle
-rejection, wall timeout and actual remote termination. Unconfirmed termination
-quarantines the physical slot. See [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md).
-The local median-policy/pool/study/cycle-unit suite passes 51 tests, including
-confirmed cancellation versus quarantined slots. Python lowering/build/runner
-sources and the native compiler are bound to the history. These changes are in the current repository; the prior frozen bundle does not
-contain this runner. Use the current runner and the simplified source release.
-
-Local tests do not qualify a deployment, and old v3 observer receipts do not
-qualify this new wall-watchdog contract. Preserve historical artifacts unchanged.
-
-## Contract and quality
-
-The sole full-model authority is [protocol at 8ec99308](https://github.com/ucb-bar/merlin/tree/8ec99308cb1182b9b896a6075300312266fadf6f/examples/gemmini/protocol).
-Use the frozen `run-contract/` in the preparation product. The user approved one
-correction to its linked numerics: TinyLlama prefill 128 -> 32. Decode is 32 and
-cache capacity is 64. Protocol/recipe bytes are unchanged; the correction patch
-and both numerical-file identities are retained. The pinned checker passes
-**3 recipes, 46 calls and 133 arrays**; that is definition consistency only.
-
-`functional_v1` checks every declared output, carried state and padded channel
-against the sealed selected quantized reference. Shape, dtype, arity and integer/
-bool values are exact; floats are finite with atol=2e-6 and rtol=1e-5. Use the
-pinned checker without tolerance overrides. **FP quality is report-only** under
-this profile. Earlier custom PPL/top-1/cosine gates are superseded. Independent
-exact-kernel and eligible-device-placement checks still apply.
-
-The selected target is full Gemmini/Rocket U250 at 30 MHz; hardware facts, image,
-clock and memory compatibility are verified by the remote worker. Local ELF link
-and instruction checks do not establish execution on that deployment.
-
-## Frozen chunks, workloads and owners
-
-Restore the publication at
-`out/artifacts/handoff/gemmini-shared-model-chunks/v1/latest/`. Its catalog SHA256
-is `839fad75688a9c2a87b975842f072f217a1f0fbc0ff3ba26e9b1707600e37c2a`.
-Restoration verified 171 shared payload members, the 182-member ResNet dependency,
-and relocated reference proofs. All 36 ready chunks' build inputs passed identity
-checks here. Published host/reference results remain attributed to the publication:
-36 host comparisons pass; all 19 new saved-export references replay exactly.
-
-| Model | Ready connected chunks | Initial distinct contractions | Initial owners | Coverage |
-| --- | --- | --- | --- | --- |
-| ResNet50 | 18 | 21 | 10 | Stem, 16 complete bottleneck blocks, classifier. |
-| TinyLlama | 10 | 12 | 8 | Q/K/V projections and complete MLPs of widths 5728/6096, each at 16 and 1 rows. K/V share structurally matching records. |
-| SmolVLA | 8 | 14 | 8 | Action input projection, time/action embedding, self QKV, self-attention core, cross QKV, cross-attention core, expert MLP, action projection/Euler update. |
-| Total | 36 | 47 | 26 | Counts apply to the published graph configuration. |
-
-A **workload** is an extracted TensorIR contraction; an **owner** supplies one
-representative exact task/fixture for shared tuning. A **chunk** includes connected
-host and device work and may contain several workloads. Thus 47 workloads are
-neither 47 E2E models nor 47 total schedule candidates.
-
-Keep `smolvla-action-update` excluded: its final-normalization-plus-update host
-comparison fails (max absolute error 0.000223577). The smaller
-`smolvla-action-projection-update` passes with normalized input at its explicit
-boundary. Do not widen tolerances or rename the failing diagnostic as ready.
-
-TinyLlama M=1 is a row-local probe, not a complete decode session. These chunks
-omit full QK/PV, cache, RoPE and LM head. M=16 records do not automatically match
-M=32 prefill. SmolVLA chunks include 50 action rows, 15 query heads, 163 self keys
-or 113 cross keys; attention starts after RoPE. Prefix vision/VLM, all layers,
-full normalization and ten-step state carry are not established by these probes.
-The supplied frozen chunk weights/scales/references are sufficient to tune these
-chunks; their source policy files remain provenance, not a replacement E2E protocol.
-
-## Knobs: searchable versus fixed
-
-| Layer | Existing choices | Boundary |
-| --- | --- | --- |
-| Graph preparation | Stock fusion 0/1/2/3 and CSE on/off | Start fusion=2/CSE off, then deduplicate the eight possible stock combinations. Automatic prepacking and bias folding are removed. |
-| Intrinsic geometry | Shape-derived legal M/N/K rectangles and interior/tail or K-padding alternatives | Hardware dimensions are 1–16, but current sketch generation uses selected divisor/tail templates, not every arbitrary triple. |
-| Reuse/loop order | Sampled M/N/K outer/reuse factors; `ij`/`ji` traversal | Stock `sample_perfect_tile` and mutators; reuse groups bounded at 64 tiles and checked against actual capacity. |
-| Dataflow | Primitive OS or WS | Preload/compute commands; hardware loop-FSM instructions remain forbidden. |
-| Movement placement | Operand hoisting, tile/root staging, legal two-slot software pipeline | Capacity, buffer lifetimes and host hazards must remain valid. |
-| Epilogue/loops | Tile/root epilogue placement, existing unroll choices (0/16/64/512; compact space 0/16) | Only legal existing schedule alternatives; no new CPU optimization search. |
-
-Physical SRAM addresses, allocation correctness, hazard fences, final completion,
-and config shadowing are fixed lowering rules. Adjacent-DMA coalescing was removed.
-They are not additional free optimizer dimensions. Tiling/reuse/staging decisions
-are exposed through ordinary TensorIR schedules and MetaSchedule traces. General
-cross-function SRAM residency, arbitrary DMA coalescing search and new host packing
-passes are not implemented. The FireSim campaign extracts contractions; it does
-not separately tune every secondary movement/reduction/pool task. Their actual
-cost remains in connected-chunk and E2E timing.
-
-Use `apps/gemmini/audit_graph_plans.py` to inspect/deduplicate existing graph plans
-before measuring them. Re-extract tasks after changing graph settings: published
-47-workload keys and 26-owner assignments cannot simply be reused for a different
-graph. Record hits/misses and fresh measurements for the exact task, target and
-measurement window. Reuse traces, not incompatible old cycle labels.
-
-## Build connected-chunk ELFs
-
-On the remote CPU worker, select the recorded patched Merlin/TVM sources and
-matching TVM/LLVM environment. Set PY, TVM_SOURCE, RISCV_GCC and ADAPTER_RECEIPT to
-its installed paths; COMPARISON is this directory. Use bounded compiler workers.
-The new entry point below uses the existing `compile_package.py` and
-`chunk_measure.build_chunk`; it adds no compiler passes and invokes no simulator.
+Set `MERLIN`, `TVM_SOURCE`, `PY`, `RISCV_GCC`, `ADAPTER_RECEIPT` and a fresh
+`WORK` directory to the worker's installed paths. No commands below deploy or run
+FireSim. Use Python 3.12+ for checked archive extraction and bounded build workers.
 
 ```sh
-export DELIVERY="$MERLIN/out/artifacts/handoff/gemmini-shared-model-chunks/v1/latest"
-# WORK is a new directory under the worker's authorized artifact/build root.
-python3 "$DELIVERY/restore.py" --output-dir "$WORK/shared-chunks"
-export INPUTS="$WORK/shared-chunks"
 export COMPARISON="$MERLIN/examples/gemmini/comparisons/tvm"
-export PYTHONPATH="$MERLIN/src:$TVM_SOURCE/python:$PYTHONPATH"
+export PYTHONPATH="$MERLIN/src:$TVM_SOURCE/python:$TVM_SOURCE/apps/gemmini:$COMPARISON:$PYTHONPATH"
 export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 TVM_NUM_THREADS=1
 
-"$PY" "$COMPARISON/build_shared_chunk_elf.py" \
-  --tvm-source "$TVM_SOURCE" --restored-root "$INPUTS" \
-  --chunk smolvla-action-input-projection \
-  --output-dir "$WORK/baseline/smolvla-action-input-projection" \
-  --riscv-gcc "$RISCV_GCC" --adapter-receipt "$ADAPTER_RECEIPT" \
-  --host-math-policy portable_neural_f32 --graph-fusion-level 2
+# Uses the committed split archive and frozen catalog; no full large-model restore.
+"$PY" "$COMPARISON/restore_resnet_inputs.py" --merlin-root "$MERLIN" \
+  --output-dir "$WORK/resnet-inputs"
+"$PY" "$COMPARISON/prepare_active_study.py" --kind resnet \
+  --input-root "$WORK/resnet-inputs" --output-dir "$WORK/resnet-study"
+
+# Generate exact signed-nibble inputs and independent references for all 16 cases.
+for CASE in $("$PY" "$COMPARISON/prepare_kernel_benchmarks.py" list); do
+  "$PY" "$COMPARISON/prepare_kernel_benchmarks.py" prepare --case "$CASE" \
+    --output-dir "$WORK/kernel-inputs/$CASE"
+  "$PY" "$COMPARISON/prepare_kernel_benchmarks.py" build \
+    --prepared "$WORK/kernel-inputs/$CASE" --output-dir "$WORK/baseline/$CASE" \
+    --riscv-gcc "$RISCV_GCC" --adapter-receipt "$ADAPTER_RECEIPT"
+done
+"$PY" "$COMPARISON/prepare_active_study.py" --kind kernel \
+  --input-root "$WORK/kernel-inputs" --output-dir "$WORK/kernel-study"
+
+# Repeat for every ID in resnet-study/study.json coverage (18 chunks).
+"$PY" "$COMPARISON/build_shared_chunk_elf.py" --tvm-source "$TVM_SOURCE" \
+  --restored-root "$WORK/resnet-inputs" --chunk resnet-stem \
+  --output-dir "$WORK/baseline/resnet-stem" --riscv-gcc "$RISCV_GCC" \
+  --adapter-receipt "$ADAPTER_RECEIPT" --host-math-policy native \
+  --tensor-memory-bytes 268435456
 ```
 
-`baseline-build-commands.json` in the preparation product enumerates this command
-for **all 36 ready chunks**, with their selected host math: ResNet `native`,
-TinyLlama `portable_exp_trig`, SmolVLA `portable_neural_f32`. The guest must still
-validate those compiled outputs; a host reference pass is not a target pass.
-Each build emits `package/`, `guest/valid.elf`, `guest/bad-oracle.elf`, instruction/
-memory audits, exact reference bindings and hashes. No Spike receipt is required.
-The connected harness currently links within its 256 MiB region and refuses an
-oversized image; a full-model session uses the separate memory planner below.
+ResNet has the stem, 16 complete bottleneck blocks and classifier. Its initial
+inventory has 21 distinct contractions across ten owners; all 18 connected chunks
+still need baseline/tuned confirmation even where records are shared. The frozen
+catalog SHA256 is `839fad75688a9c2a87b975842f072f217a1f0fbc0ff3ba26e9b1707600e37c2a`.
+The restorer preserves historical source/policy files as provenance. **Do not
+apply archived source patches or follow archived campaign instructions.**
 
-For tuned builds use a fresh output directory, add `--tuning-database "$DATABASE"`
-and the selected graph flags (`--graph-fusion-level`, `--graph-cse`,
-`--no-prepack-weights`, `--no-bias-preload`). The existing package compiler uses
-stock JSONDatabase/MetaScheduleApplyDatabase and rejects an explicit database with
-zero structural hits. Record partially tuned coverage; do not force a mismatch.
+Each builder emits `package/`, `guest/valid.elf`, `guest/bad-oracle.elf`, reference
+bindings, memory/placement and instruction audits. Kernel builds reject CPU
+fallback. Convolution kernels explicitly declare biased reductions in ordinary
+TensorIR with the benchmark's flattened output ABI; no automatic bias-folding
+pass was restored. Host gather/staging work is included. Use the whole output
+and guards; do not narrow the checker to one head or projection.
 
-One historical build used the prior compiler: `smolvla-action-input-projection`, both ELFs
-202,576 bytes, no forbidden instructions, 494,272 mapped bytes, 16 KiB stack.
-The positive ELF SHA256 is
-`e16f10a9ce19c93188bf54f2404e2fa97c9a95b5599532cd63ff11928cdf94b0`.
-**Neither ELF has run.** The other 35 ready chunks have verified inputs and build
-commands, not newly built ELFs.
+For tuned builds use fresh output directories, `--tuning-database "$DATABASE"`
+and the matching `--graph-fusion-level`/`--graph-cse`. The compiler rejects an
+explicit database with zero structural hits. Record misses and keep defaults;
+do not force traces onto different programs. The current harness measures
+`warm_repeat`; it does **not** implement the historical 2 MiB eviction profile.
+Other compilers must use the same declared timing profile for comparison.
 
-## Remote tuning sequence
+## Run tuning, then connected confirmations
 
-1. Establish three correct baseline executions for each selected distinct task
-   as budget permits, calibrating its wall watchdog and median cycle baseline. Rotate owners across chunks; prioritize measured connected cost,
-   not guessed FLOP cost. Record any uncovered tasks if time runs out.
-2. Run stock ReplayTrace over the existing schedules, capped at 25 total
-   proposals per chunk/case. Explore
-   deduplicated graph alternatives within the same budget, with new task extraction.
-   No hard per-chunk minute split is assumed. One ledger per model covers all
-   chunks, graph plans and candidate validation/measurement occupancy.
-3. Use the remote runner's guest checks and independent wrong-oracle qualification.
-   `tune_firesim_chunks.py` no longer requires a Spike receipt or sequential Spike
-   preflight. Its new explicit bootstrap/ceiling flags control candidate watchdogs.
-   The remote aggregate occupancy ledger must enforce 4h/1h/1h across owners;
-   the local absolute admission deadline remains an additional bound and includes
-   elapsed CPU-preparation time. It is not itself the required occupancy ledger.
-   `occupancy.json` records all admitted local lease durations and post-deadline
-   completion. Remote accounting must bind actual physical-slot occupancy.
-4. Retain every completed correct warm-cycle measurement, including slower
-   candidates. Timeout only under the frozen wall watchdog or explicit failure
-   cancellation. Keep startup/warmup outside measured model cycles and include
-   host work, DMA and completion inside them. Do not report failed placeholders
-   or timeout bounds as completed costs.
-5. Replay matching winners and confirm each promoted connected chunk, including
-   those sharing owners. Connected confirmation consumes the same tuning allowance.
-   Cover all 36 as budget permits; report unconfirmed chunks and retain untuned
-   schedules where promotion lacks evidence. Keep baseline/tuned timing identities. Stop tuning
-   at the approved budget or recorded search exhaustion. No quantitative plateau
-   rule has been selected; do not label a short trial cap as convergence.
-6. Assemble complete baseline and tuned model sessions and measure E2E afterward,
-   outside tuning time. Do not add operator minima to manufacture E2E cycles.
+After the remote qualification in ADAPTER_CONTRACT.md, invoke
+`run_firesim_study.py --study <study.json> --toolchain <toolchain.json>
+--pool <qualified-pool.json> --output-dir <new-dir> --campaign-kind resnet|kernel
+--target-clock-hz <verified-counter-Hz> --candidate-bootstrap-seconds <pilot>
+--candidate-timeout-ceiling-seconds <pilot-ceiling> --ledger <persistent-ledger>`.
+It first writes a dry-run command plan; `--execute` starts work. Use a separate
+persistent ledger for each active campaign, preserve it across graph phases,
+and enforce the aggregate occupancy caps remotely. For execution, supply `--deadline-epoch` with the campaign's fixed absolute
+admission deadline, and use `--phase continuation` for reserved graph trials.
+The remote agent supplies actual paths and concurrency; this handoff supplies no fake
+qualification receipt or guessed measured cycles.
 
-Prior FASED results may suggest candidate traces, not FireSim costs: the connected
-TinyLlama K/V CSE observation improved 622,531 -> 460,958 warm cycles in its own
-30/30/16/16 memory setup. Keep that and older magic-memory measurements separately
-attributed. Fresh FireSim measurements select winners for this deployment.
+Replay selected traces into complete packages and confirm every promoted chunk
+and all 16 complete cases, including shared-owner cases. Preserve untuned correct
+defaults for unconfirmed or uncovered work. Save input/output/ELF hashes, logs,
+cycles, clock, source/hardware identities, traces, failures, watchdogs and occupancy.
 
-## Complete E2E preparation after handoff
+## ResNet baseline and tuned E2E
 
-The 36 chunks do not form complete TinyLlama/SmolVLA sessions. Preserve selected
-checkpoints, recipes, scales and input identities; no recalibration to make a
-schedule match. Full selected releases/references still need producing or binding.
+The connected parent passes local diagnostic Spike, including wrong-reference
+rejection; see the evidence link above. The same ResNet delivery includes
+`resnet-release/full-resnet/program.json`,
+`fixture.npz` and the relocated independent reference. Build the connected parent
+using `build_shared_chunk_elf.py` above with `--chunk full-resnet`; use separate
+baseline/tuned directories and add the matching database only to the tuned build.
+This executes the actual parent graph; it does not substitute boundary fixtures
+or sum chunk timings. Retain all 53 convolutions, one linear, residual/pool/host
+work, 32 requant/ReLU and 22 raw exits. Check the complete 1000-logit output.
 
-- **ResNet:** use the restored parent export and independently bound selected
-  input/reference, then rebuild the whole model baseline and tuned. Check one
-  1000-logit array; retain all 53 convolutions and one linear, host residual/pool
-  work and the selected 32 requant/ReLU plus 22 raw exits.
-- **TinyLlama:** use the packaged selected seed and `prepare_remote_tinyllama.py`
-  with explicit `--protocol "$PROTOCOL"`; bootstrap, prefill, decode, then
-  references. Keep the selected operands2 recipe: ordinary QK has two planes per
-  operand (four products). Full prefill is 32 tokens; follow with 32 teacher-forced
-  decode calls, capacity 64, all 22 layers, and 99 output and state arrays. M=16/M=1
-  probe records transfer only with exact structural matches. Report misses; no
-  automatic retuning outside the one-hour allowance is implied.
-- **SmolVLA:** bind or reproduce the selected one-camera ALOHA episode 0/frame 100,
-  noise seed 1000 observation (SHA256
-  `e4863c12cb7f9ae9bdf9f20ec48d6788083a81f29bb680738f420daed5405414`). Capture the
-  exact selected `prefix_encode`, `flow_denoise`, `action_decode` stages and recipe,
-  then use `calculate_selected_references.py --model smolvla` with the frozen
-  protocol/models. Prefix + ten denoise calls + decode yields 12 calls/33 arrays.
-  The unrelated `prepare_smolvla_observation.py` selects two-camera SO100/LeRobot
-  0.5.1 and is unsuitable. `prepare_selected_inputs.py` still records a different
-  historical processed-input hash; do not treat its output as selected without
-  the exact protocol hash check. The needed selected full-session preparation is
-  not a completed artifact in this chunk delivery.
+The sole model-running authority is [protocol at 8ec99308](https://github.com/ucb-bar/merlin/tree/8ec99308cb1182b9b896a6075300312266fadf6f/examples/gemmini/protocol),
+also committed in the frozen `gemmini-firesim-elf-plan` release's `run-contract/`.
+Bind the parent checkpoint, recipe, selected input and numerical ledger to that
+protocol before claiming selected-model qualification; frozen source proofs
+still say `REVIEW_REQUIRED`. Use functional_v1: exact arity/shape/dtype and integer
+values, finite floats with rtol=1e-5 and atol=2e-6. FP quality is report-only.
+Do not substitute the archive's old CURRENT_RUN_POLICY as the authority.
 
-For each model compile its actual stage programs with `compile_package.py`, the
-selected host math and matching winning database. Construct `stages.json` as
-`{"version":1,"stages":{"stage_name":"relative/package/path"}}`. Construct
-`route.json` as version 1 calls with explicit fixture or prior-output edges;
-carry candidate cache/actions/time between calls. Bind `input_N`/`output_N` arrays
-and the exact route hash in independent fixture provenance. Never insert reference
-state to replace a candidate's state. Then link through the existing interface:
+The selected model target is full Gemmini/Rocket U250 at 30 MHz. The remote must
+check the actual image, capability/header/runtime facts and memory map. A kernel
+result on an F2 image is a separately attributed experiment. Baseline and tuned
+E2E each have a **1,800-second wall timeout**, startup through collection after
+slot admission, excluding queue wait. These final runs are outside DSE time.
 
-```sh
-"$PY" "$COMPARISON/build_package_session.py" \
-  --tvm-source "$TVM_SOURCE" --stages "$STAGES" --route "$ROUTE" \
-  --fixture "$SESSION_FIXTURE" --fixture-provenance "$SESSION_PROOF" \
-  --output-dir "$NEW_SESSION_DIR" --riscv-gcc "$RISCV_GCC" \
-  --memory-bytes 17179869184 --rtol 1e-5 --atol 2e-6 --readback
-```
+## Limits to report
 
-Here STAGES/ROUTE/SESSION_FIXTURE/SESSION_PROOF must be real completed assets;
-this is not a runnable placeholder session. Use the selected 16 GiB memory map;
-the existing memory planner must verify the actual weights, references, arena,
-code and stack. Supply explicit weights/arena bases if its absolute-layout path
-is needed. This command builds, audits and hashes positive/wrong-oracle complete
-session ELFs; it does not execute them. Preserve one warm and one measured chain,
-reset between repetitions, and use uninstrumented builds for headline cycles.
-
-## Operation evidence and remaining limits
-
-Read [TENSORIR_OP_AUDIT.md](TENSORIR_OP_AUDIT.md): exact 8ec software-spec declarations
-and obligations govern support, not similar op names. The 51 baseline and 20
-extension Spike fixtures passed the separately recorded diagnostic oracle, but
-that is not blanket all-dtype/shape support. The spec-pinned rounding-fixed
-Spike/libgemmini identity remains unavailable; retain that provenance limitation
-without blocking this simulator-free ELF handoff or inventing an oracle identity.
-The declaration inventory is not an implemented compiler admission gate. Bind
-actual selected lowering/proof and placement/instruction evidence before claiming
-full spec-qualified execution. No hardware results or E2E cycles are claimed here.
-
-Current preparation product: [plan](../../../../out/artifacts/handoff/gemmini-firesim-elf-plan/v1/handoff_gemmini-firesim-elf-plan_v1_20261027T235144Z_82b321a/firesim-plan.json), [all chunk rows](../../../../out/artifacts/handoff/gemmini-firesim-elf-plan/v1/handoff_gemmini-firesim-elf-plan_v1_20261027T235144Z_82b321a/WORKLOAD_ROSTER.md), [36 build commands](../../../../out/artifacts/handoff/gemmini-firesim-elf-plan/v1/handoff_gemmini-firesim-elf-plan_v1_20261027T235144Z_82b321a/baseline-build-commands.json).
-
-At the per-model tuning limit, stop admitting new work and **finish active runs**.
-Do not start queued jobs during this completion period. Record the time beyond
-budget separately; preserve the median wall watchdog and failure safeguards. This adds
-no new tuning allowance and does not renew a continuation's budget.
+- Diagnostic repaired Spike is not the missing spec-pinned libgemmini oracle.
+  Exact per-program spec proofs and deployed hardware bindings remain required.
+- Local functional success does not establish FireSim speedup or selected-model
+  quality; report actual complete-call and E2E results separately.
+- This is bounded random trace sampling with an engineered default, not an
+  ML-tuned optimum. Publish trials, failures, timeouts and actual tuning effort.
+- Full TinyLlama/SmolVLA are deferred as too expensive. Isolated kernels do not
+  establish their full-model performance or quality.
+- Nine inherited module-size failures and eight no-regex call sites in unchanged
+  files remain repository lint debt; they are not failed Spike tests.
