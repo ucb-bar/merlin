@@ -494,3 +494,26 @@ def test_semantic_family_contradicting_the_op_is_refused(inputs):
     )
     with pytest.raises(ValueError, match="declares family 'reduction'"):
         L.prepare(**inputs)
+
+
+# --- ledger-local contraction spellings ---------------------------------------------------------
+
+
+def test_integer_and_batched_matmul_resolve_to_contraction(inputs):
+    _lite(inputs, ["aten._int_mm.default", "aten.bmm.default", "aten.mm.default"])
+    rows = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())
+    for overload in ("_int_mm.default", "bmm.default", "mm.default"):
+        assert rows[overload]["declaration"]["family"] == "contraction"
+        assert [row["id"] for row in rows[overload]["declaration"]["rows"]] == ["contraction"]
+        assert rows[overload]["evidence_state"] != "unmodeled"
+
+
+def test_namespaced_ops_never_reach_the_shared_table_by_their_bare_name(inputs):
+    _lite(inputs, ["m2m_q.quantize.default", "quantized_decomposed.dequantize_per_tensor.default",
+                   "m2m_q.int_mm_seeded.default", "aten.convolution_backward.default"])
+    rows = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())
+    for overload in ("m2m_q.quantize.default", "quantized_decomposed.dequantize_per_tensor.default",
+                     "m2m_q.int_mm_seeded.default", "convolution_backward.default"):
+        assert rows[overload]["evidence_state"] == "unmodeled", overload
+        assert rows[overload]["test_identity"]["family_capsules"] == []
+    assert "m2m_q.int_mm_seeded" in L.PENDING_ALIAS_REVIEW

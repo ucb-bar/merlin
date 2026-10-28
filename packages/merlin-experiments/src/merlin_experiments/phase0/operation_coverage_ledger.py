@@ -67,6 +67,30 @@ def _base(overload):
     return overload.split(".", 1)[0]
 
 
+#: ATen spellings of contraction that ``semantic_families._OP_FAMILY`` lacks (``mm``, ``bmm`` and
+#: ``_int_mm``, which folds to ``intmm``). Ledger-local on purpose: the shared table drives routing and
+#: eligibility elsewhere. Each entry is an exact operator, never a pattern. ``convolution_backward`` is
+#: deliberately absent (a gradient composite, not a forward contraction).
+_LEDGER_FAMILY_ALIASES = {"mm": "contraction", "bmm": "contraction", "_int_mm": "contraction"}
+#: Namespaced custom operators held out of the alias table until an operator review accepts them.
+#: ``m2m_q.int_mm_seeded`` is an i8 matmul whose i32 seed is a separate elementwise add; the generation
+#: places the seed add on the host at its captured signatures and no capsule names the operator.
+PENDING_ALIAS_REVIEW = {"m2m_q.int_mm_seeded": "contraction"}
+
+
+def _alias_family(overload):
+    """Ledger-local family for an operator the shared spelling table does not know.
+
+    A namespaced overload (``ns.op.overload``) is looked up by its qualified ``ns.op`` only: ``_base``
+    returns the namespace, and the bare op segment must not reach the shared table (``quantize`` and
+    ``dequantize_per_tensor`` would resolve to elementwise_map there).
+    """
+    parts = overload.split(".")
+    if len(parts) == 3:
+        return None  # no reviewed namespaced alias yet; see PENDING_ALIAS_REVIEW
+    return _LEDGER_FAMILY_ALIASES.get(parts[0])
+
+
 def read_spec_validation(path, *, sha256=None):
     """Read a spec-validation record by schema name and digest only.
 
@@ -113,7 +137,7 @@ def _candidates(spec, overload):
     rows = spec.get("operations") or []
     base = _base(overload)
     direct = [row for row in rows if {overload, base} & set(row.get("ops") or [])]
-    family = from_op(base)
+    family = from_op(base) or _alias_family(overload)
     by_family = [
         row
         for row in rows
