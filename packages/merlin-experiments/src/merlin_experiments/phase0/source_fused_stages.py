@@ -728,9 +728,46 @@ def prove_window_chains(top, index, only_user, *, numerics: dict, strategy: str 
 
 
 #: Dataflows whose fused readout needs nothing beyond the program's own arithmetic. An
-#: output-stationary contraction keeps its partial sums in the mesh, whose bound Phase 0 does not
-#: prove, so its epilogue is not observed (any other or unknown dataflow likewise).
+#: output-stationary contraction keeps its partial sums in the mesh: its epilogue is observed only
+#: where ``os_value_bound`` proves the reviewed signed-interval bound (any other dataflow: never).
 _OBSERVED_DATAFLOWS = (None, "WS")
+_OUTPUT_STATIONARY = "OS"
+
+
+def os_value_bound(op, mesh_mac: dict | None) -> dict | None:
+    """The reviewed output-stationary value bound of contraction ``op``, else ``None``.
+
+    Proven only where the selected spec declares the OS dataflow AND the reviewed signed-interval
+    mode of the mesh check (``mesh_mac.os_value_bound``): ``require_value_mac_bound`` must then show,
+    from the literal weights, the signed i8 input range and the literal initializer, that every
+    partial sum of every column (every prefix, in any order and any K split) lies in
+    ``[-2**(bits-1), 2**(bits-1) - 1]``. A runtime weight, a non-literal initializer or a bound
+    outside that interval leaves no proof.
+    """
+    mesh = mesh_mac or {}
+    declared = mesh.get("os_value_bound") or {}
+    if (
+        "OS" not in (mesh.get("dataflows") or ())
+        or declared.get("status") != "reviewed"
+        or declared.get("mode") != "signed_interval"
+        or declared.get("proof") != "constant_weight_all_prefix_intervals"
+    ):
+        return None
+    from merlin.targetgen.native_mac_bound import require_value_mac_bound
+
+    # The bound reads the op's own operands (the same SSA values); only the generator's provenance
+    # attributes (``prov.*``), which carry no semantics, are dropped from the copy it inspects.
+    probe = None
+    try:
+        probe = op.clone()
+        for key in [key for key in probe.attributes if key.startswith("prov.")]:
+            del probe.attributes[key]
+        return require_value_mac_bound(probe, mesh_signed_bits=mesh.get("signed_bits"))
+    except Exception:  # noqa: BLE001 - any refusal (runtime weight, wrap, unreadable IR) is no proof
+        return None
+    finally:
+        if probe is not None:
+            probe.drop_all_references()
 
 
 def _top_level(program: Path):
@@ -761,12 +798,20 @@ def prove_chains(
     dataflow: str | None = None,
     max_k: int | None = None,
     pooling_fenced: bool = False,
+    mesh_mac: dict | None = None,
 ) -> list[dict]:
     """Every proven contraction -> [k_extension | bias_add] -> [readout] chain, and every proven
     movement -> readout -> max pool chain when its scratchpad-source pooling is fenced, by
-    top-level source op index."""
-    if dataflow not in _OBSERVED_DATAFLOWS:
+    top-level source op index.
+
+    Under OS a contraction chain needs ``os_value_bound`` for its producer and carries no K
+    extension and no bias (either would enter the partial sums the bound covers; neither is
+    observed there), and no movement window chain is observed.
+    """
+    if dataflow not in _OBSERVED_DATAFLOWS and dataflow != _OUTPUT_STATIONARY:
         return []
+    if dataflow == _OUTPUT_STATIONARY:
+        max_k, pooling_fenced = None, False
     parsed = _top_level(program)
     if parsed is None:
         return []
@@ -776,6 +821,11 @@ def prove_chains(
         carrier = contraction(op)
         if carrier is None:
             continue
+        if dataflow == _OUTPUT_STATIONARY:
+            mesh_bound = os_value_bound(op, mesh_mac)
+            if mesh_bound is None:
+                continue
+            carrier = {**carrier, "os_value_bound": {key: mesh_bound[key] for key in ("method", "mesh_signed_bits")}}
         stages = []
         value = op.results[0]
         user = only_user(value)
@@ -790,6 +840,8 @@ def prove_chains(
                 user = only_user(value)
         if user is not None and extension is None:
             bias = bias_add(user, value)
+            if bias is not None and dataflow == _OUTPUT_STATIONARY:
+                continue
             if bias is not None:
                 bound = bound + bias["bias_bound"] if bias["bias_bound"] is not None else None
                 stages.append({"member": index[id(user)], "stages": ["bias_add"], "bias": bias["bias"]})
@@ -1018,6 +1070,7 @@ def observe(
         dataflow=dataflow,
         max_k=max_k,
         pooling_fenced=pooling_fenced,
+        mesh_mac=((spec.get("numerical_semantics") or {}).get("native_unit_contract") or {}).get("mesh_mac"),
     )
     by_member: dict[int, list[dict]] = {}
     placed_producers = {

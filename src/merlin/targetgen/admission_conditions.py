@@ -181,6 +181,18 @@ def enforce_provider_emission_obligations(proof, spec):
             bound = kernel.get("schedule", {}).get("bound_proof", {})
             if "max_mesh_partial_sum" in bound:
                 execution["pe_partial_abs_bound"] = bound["max_mesh_partial_sum"]
+            # A signed-interval (OS value-bound) proof states each column's lowest and highest
+            # partial sum; project its extremes, never an absolute value of them.
+            lower, upper = bound.get("column_lower"), bound.get("column_upper")
+            if (
+                isinstance(lower, list)
+                and isinstance(upper, list)
+                and lower
+                and len(lower) == len(upper)
+                and all(type(v) is int for v in (*lower, *upper))
+            ):
+                execution["pe_partial_min"] = min(lower)
+                execution["pe_partial_max"] = max(upper)
             if type(bound.get("accumulator_min")) is int and type(bound.get("accumulator_max")) is int:
                 execution["accumulator_partial_abs_bound"] = max(
                     abs(bound["accumulator_min"]), abs(bound["accumulator_max"])

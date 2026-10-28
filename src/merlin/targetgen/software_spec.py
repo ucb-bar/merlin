@@ -154,6 +154,8 @@ def validate_numerical_semantics(document: dict) -> dict:
         raise ValueError("component_execution_constraints belong in emission_obligations")
     if "emission_obligations" in mesh:
         validate_emission_obligations(mesh["emission_obligations"])
+    if "os_value_bound" in mesh:
+        _validate_os_value_bound(mesh)
     model = document.get("model")
     if not isinstance(model, dict) or model.get("engine") not in {
         "specir_fp_reduce",
@@ -316,6 +318,29 @@ def load_software_spec(path: str | Path, target: str | None = None) -> dict:
     source = Path(path)
     document = yaml.safe_load(source.read_bytes())
     return validate_software_spec(document, target=target, source=source)
+
+
+def _validate_os_value_bound(mesh: dict) -> None:
+    """The output-stationary value-bound mode of the mesh check: a signed two's-complement interval."""
+    declared = mesh["os_value_bound"]
+    bits = mesh.get("signed_bits")
+    if not isinstance(declared, dict) or declared.get("status") not in REVIEW_STATUSES:
+        raise ValueError("mesh_mac.os_value_bound requires an explicit review status")
+    if type(bits) is not int or bits <= 1 or "OS" not in (mesh.get("dataflows") or ()):
+        raise ValueError("mesh_mac.os_value_bound requires a signed mesh width and the OS dataflow")
+    if (
+        declared.get("mode") != "signed_interval"
+        or declared.get("interval") != [-(1 << (bits - 1)), (1 << (bits - 1)) - 1]
+        or declared.get("proof") != "constant_weight_all_prefix_intervals"
+        or declared.get("scope") != "every_retained_partial_sum_including_total_os_k"
+    ):
+        raise ValueError(
+            "mesh_mac.os_value_bound must declare mode signed_interval over the full signed mesh width, "
+            "proof constant_weight_all_prefix_intervals and the every-partial-sum scope"
+        )
+    evidence = declared.get("evidence")
+    if not isinstance(evidence, dict) or not str(evidence.get("basis") or "").strip():
+        raise ValueError("mesh_mac.os_value_bound requires evidence with a basis")
 
 
 def validate_software_spec(document: dict, target: str | None = None, *, source: str | Path = "software spec") -> dict:
