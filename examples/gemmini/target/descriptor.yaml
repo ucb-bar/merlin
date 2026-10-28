@@ -219,7 +219,7 @@ workload_spec:
   # unknown until measured. Larger application shapes are not L2-only substitutes.
   certification_floor: L3
   precision_preference: [int8, fp8_e4m3, mxfp8, fp16, bf16, fp32]
-  max_synthesized_capsules: 160
+  max_synthesized_capsules: 170
 
 host_lane:
   capability_spec: examples/gemmini/platform/host-capabilities-portable-v3.yaml
