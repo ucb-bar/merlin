@@ -87,7 +87,10 @@ def test_live_job_does_not_repeat_proof_execution(tmp_path, pass_gate_tools, pro
         }
     )
     assert "universal_boundary" in result["established"]
-    assert result["claim"].startswith("strict refinement on inputs of the declared types;")
+    assert "definedness" in result["established"]
+    assert result["claim"] == (
+        "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)"
+    )
     assert proof_calls["check-module-typed"] == 1
     assert proof_calls["check-support"] == 1
     assert sum(proof_calls.values()) == 4  # typed, universal, support, definedness

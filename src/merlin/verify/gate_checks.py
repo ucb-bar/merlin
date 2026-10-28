@@ -48,9 +48,10 @@ def _tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
 
     The boundary must verify under ``MerlinVerify.Check.TypedModule.check_sound``, every function of
     the input must verify under ``supportCheck_sound`` (so the refinement is strict, not conditional),
-    and ``compose_chain`` must replay both. Two optional strengthenings are attempted and reported,
+    and ``compose_chain`` must validate and compose both. Two optional strengthenings are attempted and reported,
     never required: the universal boundary theorem (``moduleCheck_sound``, for all inputs) and
-    source definedness (no UB or poison), which ``compose_chain`` then folds into its verdict.
+    source definedness on typed, nonpoison inputs (no UB or poison), which
+    ``compose_chain`` then folds into its verdict.
     """
     params = job["params"]
     sdk_bin, python = Path(params["sdk_bin"]), Path(params["compiler_python"])
@@ -118,7 +119,11 @@ def _tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
         # Universal conditional refinement does not widen the typed domain on
         # which support established NotStuck, required for strict refinement.
         "claim": "strict refinement on inputs of the declared types; "
-        + ("defined (no UB or poison)" if "definedness" in established else "definedness not established"),
+        + (
+            "defined on typed, nonpoison inputs (no UB or poison)"
+            if "definedness" in established
+            else "definedness not established"
+        ),
         "established": established,
         "strengthenings": strengthenings,
         "theorems": THEOREMS,
