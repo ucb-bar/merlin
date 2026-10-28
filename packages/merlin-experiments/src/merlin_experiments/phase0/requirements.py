@@ -22,6 +22,7 @@ from merlin_experiments.spec import load_spec
 from .certification_floor import require_direct_tier, selected_floor
 from .declarations import from_definition
 from .evidence import _materialize_evidence, export_evidence, select_evidence
+from .parallel_replay import Replays
 from .performance_scope import derive_performance_scope
 from .profiles import selected_software_spec_path, synthesis_input_identity
 from .program_admission import entry_refusal_is_final
@@ -294,6 +295,11 @@ def capture_selection_specs(selections: list[str]) -> dict[str, tuple[Path, str]
     return _selected_file_specs(selections, "capture preselection")
 
 
+def capture_attestation_specs(attestations: list[str]) -> dict[str, tuple[Path, str]]:
+    """Parse issue-time capture attestations and the digests recorded when they were written."""
+    return _selected_file_specs(attestations, "capture attestation")
+
+
 def quantization_policy_specs(selections: list[str]) -> dict[str, tuple[Path, str]]:
     """Parse operator-selected external quantization policies and byte digests."""
     return _selected_file_specs(selections, "quantization policy")
@@ -510,6 +516,8 @@ def derive(
     performance_captures: dict[str, Path] | None = None,
     performance_preselections: dict[str, tuple[Path, str]] | None = None,
     heldout_layers: str | Path | None = None,
+    capture_attestations_issued: dict[str, tuple[Path, str]] | None = None,
+    performance_attestations_issued: dict[str, tuple[Path, str]] | None = None,
 ) -> dict:
     """Write a byte-bound requirement, complete census and diagnostic candidate plan.
 
@@ -568,18 +576,32 @@ def derive(
         raise ValueError("capture preselection must cover the entire declared iteration roster")
     selected_capture_evidence, capture_attestations, loader_snapshots = {}, {}, {}
     capture_python = None
-    if capture_preselections:
-        from .capture_execution_attestation import attest_sealed_m2m
-        from .capture_selection import load, verify
-
-        for label, (selection_path, selected_sha256) in sorted(capture_preselections.items()):
-            selected_capture_evidence[label] = verify(
-                selection_path, expected_sha256=selected_sha256, model_path=captures[label]
-            )
-            capture_attestations[label] = attest_sealed_m2m(
-                selected_capture_evidence[label], selection_path=selection_path, model_path=captures[label]
-            )
-            selected = load(selection_path, expected_sha256=selected_sha256)
+    performance_capture_evidence, performance_attestations, performance_loaders = {}, {}, {}
+    # Every label's replay is independent; they overlap in worker processes, but each is consumed
+    # below in the same label order, so a failure surfaces exactly where the serial loop raised it.
+    iteration_labels = sorted(capture_preselections)
+    performance_labels = sorted(performance_preselections)
+    # Opt-in: an issue-time attestation per label replaces that label's second sandbox replay with a
+    # complete re-read of everything the attestation binds. All labels of a roster, or none.
+    capture_attestations_issued = capture_attestations_issued or {}
+    performance_attestations_issued = performance_attestations_issued or {}
+    for issued, preselected, role in (
+        (capture_attestations_issued, capture_preselections, "iteration"),
+        (performance_attestations_issued, performance_preselections, "performance"),
+    ):
+        if issued and set(issued) != set(preselected):
+            raise ValueError(f"{role} capture attestations must cover exactly the preselected {role} roster")
+    replay_jobs = [
+        (*capture_preselections[label], captures[label], *capture_attestations_issued.get(label, ()))
+        for label in iteration_labels
+    ]
+    replay_jobs += [
+        (*performance_preselections[label], performance_captures[label], *performance_attestations_issued.get(label, ()))
+        for label in performance_labels
+    ]
+    with Replays(replay_jobs) as replays:
+        for index, label in enumerate(iteration_labels):
+            selected_capture_evidence[label], capture_attestations[label], selected = replays[index]
             loader_snapshots[label] = (
                 Path(selected["run_dir"]) / "snapshots/source/workload/loader.py",
                 selected["plan"]["loader_sha256"],
@@ -588,24 +610,11 @@ def derive(
             if capture_python is not None and capture_python != interpreter:
                 raise ValueError("iteration captures select different PyTorch interpreters")
             capture_python = interpreter
-    performance_capture_evidence, performance_attestations, performance_loaders = {}, {}, {}
-    if performance_preselections:
-        # The same pre-execution selection and sealed-replay attestation as an iteration capture; a
-        # Explicit connected policies can additionally select public source
+        # Performance captures: the same pre-execution selection and sealed-replay attestation as an
+        # iteration capture. Explicit connected policies can additionally select public source
         # members; only v3 constructs bounded functional probes from them.
-        from .capture_execution_attestation import attest_sealed_m2m
-        from .capture_selection import load, verify
-
-        for label, (selection_path, selected_sha256) in sorted(performance_preselections.items()):
-            performance_capture_evidence[label] = verify(
-                selection_path, expected_sha256=selected_sha256, model_path=performance_captures[label]
-            )
-            performance_attestations[label] = attest_sealed_m2m(
-                performance_capture_evidence[label],
-                selection_path=selection_path,
-                model_path=performance_captures[label],
-            )
-            selected_capture = load(selection_path, expected_sha256=selected_sha256)
+        for index, label in enumerate(performance_labels, start=len(iteration_labels)):
+            performance_capture_evidence[label], performance_attestations[label], selected_capture = replays[index]
             performance_loaders[label] = (
                 Path(selected_capture["run_dir"]) / "snapshots/source/workload/loader.py",
                 selected_capture["plan"]["loader_sha256"],
@@ -740,7 +749,9 @@ def derive(
     if selected_capture_evidence:
         requirement["capture_execution_preselections"] = {
             "schema": "merlin.phase0.capture_preselections.v1",
-            "status": "replay_verified_nonadmissible",
+            "status": (
+                "attestation_verified_nonadmissible" if capture_attestations_issued else "replay_verified_nonadmissible"
+            ),
             "applications": selected_capture_evidence,
             "phase0_admission": "not_granted",
         }
@@ -750,7 +761,11 @@ def derive(
     if performance_capture_evidence:
         requirement["performance_capture_preselections"] = {
             "schema": "merlin.phase0.capture_preselections.v1",
-            "status": "replay_verified_nonadmissible",
+            "status": (
+                "attestation_verified_nonadmissible"
+                if performance_attestations_issued
+                else "replay_verified_nonadmissible"
+            ),
             "applications": performance_capture_evidence,
             "attestations": performance_attestations,
             "phase0_admission": "not_granted",

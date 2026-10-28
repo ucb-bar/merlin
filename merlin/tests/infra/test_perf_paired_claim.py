@@ -562,3 +562,27 @@ def test_members_disagreeing_about_their_replicate_floor_are_refused():
     assert "disagree about the replicate floor" in _preflight_refusal(
         P.preflight_paired_claim(drifted, replicates=SCHEDULE)
     )
+
+
+def test_the_shipped_inter_layer_family_declares_its_replicate_floor():
+    """PC's band is the measured replicate dispersion, so its declaration must state a replicate floor.
+
+    Without one the family is refused at Phase 2 preflight with any replicate count: a schedule the
+    run chose would make the band whatever the run happened to do. PQ states the same floor.
+    """
+    from merlin.perf.claim_reach import replicate_contract
+
+    profile = yaml.safe_load(
+        (repo_root() / "experiments/templates/phase0/performance.yaml").read_text(encoding="utf-8")
+    )
+    (sweep,) = [s for s in profile["sweeps"] if s["id"] == "PC"]
+    performance = sweep["base"]["performance"]
+    assert performance["noise_band"]["kind"] == "measured_replicate_dispersion"
+    assert performance["noise_band"]["declared_constant"] is None
+    contract = replicate_contract(performance)
+    assert contract is not None
+    assert (contract.minimum_count, contract.exact_count, contract.source) == (
+        2,
+        None,
+        "noise_band.minimum_replicate_count",
+    )
