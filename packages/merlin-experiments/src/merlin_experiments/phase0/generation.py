@@ -652,6 +652,7 @@ def generate_target(
                 preflight_entry(entry, binding=binding)
             except ValueError as exc:
                 preallocation_denials[entry["name"]] = str(exc)
+    composition_selection = {}
     if not component_only and evidence is not None:
         from merlin.targetgen.composition_corpus import synthesize_compositions_enabled
         from .composition_generation import append_declared, selected_facts
@@ -661,6 +662,7 @@ def generate_target(
             entries = append_declared(
                 entries, evidence.software_spec, selected_facts(evidence, selected_requirement, binding),
                 budget=int(workload.get("max_synthesized_capsules", 160)),
+                selection_sink=composition_selection,
             )
     if evidence is not None and evidence.software_spec:
         screened = []
@@ -1225,6 +1227,8 @@ def generate_target(
     from .composition_generation import coverage as composition_coverage
 
     performance_record["composition_coverage"] = composition_coverage(entries)
+    if composition_selection:
+        performance_record["composition_selection"] = composition_selection
     update_provenance_manifest(
         written,
         cap_root=out_root,

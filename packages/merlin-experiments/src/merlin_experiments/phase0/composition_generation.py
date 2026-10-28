@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import copy
 
 from merlin.targetgen.composition_corpus import coverage as coverage
@@ -258,7 +259,99 @@ def _bind_validated_capsule(cap, source):
     return cap
 
 
-def append_declared(entries, software_spec, facts, *, budget):
+def _obligations(entry):
+    """What one declared composition capsule covers: its chain, scheme, shape class and their pairings."""
+    generalization = entry["generalization"]
+    instance = generalization["composition_instance"]
+    chain = generalization["composition_chain_id"]
+    scheme = generalization["quantization_scheme_id"]
+    shape = generalization["shape_class"]
+    scale = "runtime_input" if "runtime_scale_input" in instance else "static"
+    return {
+        f"chain:{chain}",
+        f"scheme:{scheme}",
+        f"shape_class:{shape}",
+        f"chain+scheme:{chain}+{scheme}",
+        f"chain+shape_class:{chain}+{shape}",
+        f"scheme+shape_class:{scheme}+{shape}",
+        f"producer:{instance['producer']}",
+        f"scale_source:{scale}",
+    }
+
+
+def sample_declared(demanded, *, budget, workload_count):
+    """Choose the declared compositions that fit the budget left by the workloads, deterministically.
+
+    The ordinary synthesis budget is never raised and the declared set is never silently cut: when every
+    declared composition fits all are kept, otherwise the shortfall is a recorded sample. Each pick covers
+    the most chain, scheme and shape-class obligations not yet covered, ties going to the chain with the
+    fewest picks and then the name, so the sample spreads across the declared chains.
+    """
+    from merlin.common.jsonio import canonical_sha256
+    from merlin.targetgen.corpus_synth import SynthesisError
+
+    remaining = budget - workload_count
+    if remaining < 1:
+        raise SynthesisError(
+            f"{workload_count} workload capsules leave no room for compositions in a budget of {budget}"
+        )
+    pool = sorted(demanded, key=lambda entry: entry["name"])
+    obligations = {entry["name"]: _obligations(entry) for entry in pool}
+    everything = set().union(*obligations.values()) if pool else set()
+    allocation = min(len(pool), remaining)
+    chosen, covered, per_chain = [], set(), {}
+    while len(chosen) < allocation:
+        options = [entry for entry in pool if entry["name"] not in {row["name"] for row in chosen}]
+        entry = min(
+            options,
+            key=lambda e: (
+                -len(obligations[e["name"]] - covered),
+                per_chain.get(e["generalization"]["composition_chain_id"], 0),
+                e["name"],
+            ),
+        )
+        gain = sorted(obligations[entry["name"]] - covered)
+        chosen.append(dict(name=entry["name"], new_obligations=gain))
+        covered |= obligations[entry["name"]]
+        chain = entry["generalization"]["composition_chain_id"]
+        per_chain[chain] = per_chain.get(chain, 0) + 1
+    picked = {row["name"] for row in chosen}
+    by_name = {entry["name"]: entry for entry in pool}
+    record = dict(
+        schema="merlin.composition_selection.v1",
+        policy="all_declared_fit" if allocation == len(pool) else "sample_to_budget",
+        budget=budget,
+        workload_count=workload_count,
+        workload_rule="capsules other than performance companions (cat '_perf') and composition programs",
+        declared_count=len(pool),
+        selected_count=len(chosen),
+        selected_plus_workload=len(chosen) + workload_count,
+        pool_sha256=canonical_sha256([[entry["name"], sorted(obligations[entry["name"]])] for entry in pool]),
+        selected=[
+            dict(
+                name=row["name"],
+                chain=by_name[row["name"]]["generalization"]["composition_chain_id"],
+                scheme=by_name[row["name"]]["generalization"]["quantization_scheme_id"],
+                shape_class=by_name[row["name"]]["generalization"]["shape_class"],
+                new_obligations=row["new_obligations"],
+            )
+            for row in sorted(chosen, key=lambda row: row["name"])
+        ],
+        unselected=sorted(entry["name"] for entry in pool if entry["name"] not in picked),
+        obligations_total=len(everything),
+        obligations_uncovered=sorted(everything - covered),
+        chains={
+            chain: dict(
+                declared=sum(1 for e in pool if e["generalization"]["composition_chain_id"] == chain),
+                selected=per_chain.get(chain, 0),
+            )
+            for chain in sorted({e["generalization"]["composition_chain_id"] for e in pool})
+        },
+    )
+    return [by_name[row["name"]] for row in sorted(chosen, key=lambda row: row["name"])], record
+
+
+def append_declared(entries, software_spec, facts, *, budget, selection_path=None, selection_sink=None):
     """Add the selected composition axis before any release source is written."""
     from merlin.targetgen.composition_corpus import entries as composition_entries
     from merlin.targetgen.corpus_synth import SynthesisError
@@ -273,11 +366,23 @@ def append_declared(entries, software_spec, facts, *, budget):
         existing = by_name.get(entry["name"])
         if existing is not None and existing != entry:
             raise ValueError("selected composition capsule differs from its deterministic derivation")
+    workload_count = sum(
+        1 for entry in entries if entry.get("cat") != "_perf" and entry.get("op") != "composition_program"
+    )
+    chosen, record = sample_declared(demanded, budget=budget, workload_count=workload_count)
+    if selection_path is not None:
+        from merlin.common.jsonio import write_canonical_json
+
+        write_canonical_json(Path(selection_path), record)
+    if selection_sink is not None:
+        selection_sink.update(record)
+    for entry in chosen:
         by_name[entry["name"]] = entry
     result = list(by_name.values())
-    if len(result) > budget:
+    perf = sum(1 for entry in result if entry.get("cat") == "_perf")
+    if len(result) - perf > budget:
         raise SynthesisError(
-            f"composition release would emit {len(result)} capsules against a budget of {budget}; never truncate"
+            f"composition release would emit {len(result) - perf} capsules against a budget of {budget}"
         )
     return prepare_entries(result)
 
