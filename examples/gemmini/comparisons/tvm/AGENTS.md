@@ -7,14 +7,16 @@ from 128 to 32 prefill tokens; final chain is 32+32, cache capacity 64. Use only
 the pinned protocol's quality policy. Earlier PPL/top-1/cosine thresholds and
 checkout-default CURRENT_RUN_POLICY are superseded for this campaign.
 
-All three models are enabled. Tune ResNet for four hours total across its chunks,
-TinyLlama and SmolVLA for one hour each, or earlier evidenced convergence. Run
-models concurrently subject to actual allocated slots. Final baseline/tuned E2E
-runs follow tuning and are outside these allowances. Search existing graph
-options and TensorIR schedules. The user approved one slot per model concurrently
-and actual tuning-occupancy accounting for now. The new simplified compiler removes automatic prepacking and bias folding.
-Begin with fusion=2/CSE off, then search stock fusion/CSE and TensorIR schedules
-within the same budgets; old graph-plan identities require regeneration. TinyLlama tuning uses published 16/1 row probes; E2E remains 32/32.
+The active next campaign is ResNet50 plus the 16 cases in
+KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md. Full-model TinyLlama and
+SmolVLA are backlogged; isolated T01–T07 kernels remain active. ResNet DSE has a
+4h allowance and each final E2E run has a 30min upper timeout. The requested
+candidate plan is 50 warmup trials plus 5 guided trials per workload, or earlier
+verified space exhaustion; see the handoff for pending grouping/budget decisions.
+Use XGB warmup=50, batch=1 and report actual learned-ranking availability and errors.
+Keep old payloads as historical evidence. Automatic prepacking/bias folding stay
+removed; stock fusion/CSE and TensorIR schedules remain. Report unequal model
+optimization effort; do not present deferred models as equally tuned.
 This agent prepares ELFs or build instructions; the remote agent owns deployment.
 
 Keep ordinary mathematical TensorIR and TensorIntrins. Derive device admission
@@ -36,8 +38,8 @@ memory map and wall-watchdog/cancellation evidence. Do not ask the user for thes
 details to finish ELF preparation. No sequential Spike preflight is selected for
 remote candidate validation; preserve guest checks and wrong-oracle controls.
 Keep baseline and tuned complete chain timing comparable; never sum operator minima into E2E cycles. No cycles
-may be supplied from estimates. Final E2E wall timeouts only are 3,600 seconds
-for ResNet and 21,600 for TinyLlama/SmolVLA per baseline/tuned run. Tuning budgets
+may be supplied from estimates. Final E2E wall timeouts only are 1,800 seconds
+for ResNet and 25,200 for TinyLlama/SmolVLA per baseline/tuned run. Tuning budgets
 remain 4h/1h/1h; candidate hang watchdogs are separate remote-runner settings.
 The user approved median-based candidate wall watchdogs in place of incumbent
 cycle cancellation. Retain completed slow cycles; do not require a live observer.
