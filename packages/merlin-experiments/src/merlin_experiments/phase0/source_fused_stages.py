@@ -350,6 +350,58 @@ def prove_chains(
     return chains
 
 
+def stage_rows(chain: dict) -> dict[int, list[dict]]:
+    """The interface stage rows each proven member of ``chain`` is observed as (not yet judged)."""
+    from merlin.runtime.commandbuffer import EPILOGUE_STAGES
+    from merlin.targetgen.interface_observations import _stage_rows
+
+    rows_by_member: dict[int, list[dict]] = {}
+    stages = chain["stages"]
+    exit_type = next((s["result"] for s in reversed(stages) if "result" in s), None)
+    exit_type = exit_type or {"dtype": "i32", "shape": chain["carrier"]["result"]}
+    gains = next((s["gains"] for s in stages if "gains" in s), None)
+    # The command attributes an interface program states for this chain: its epilogue (in the
+    # order a COMMIT applies it) and its multipliers. The logical output-column partition reads
+    # the epilogue to decide which stages a per-column gain composes with. Relu is listed after
+    # acc_scale (COMMIT order) although the source applies it first: the readout proof admits that
+    # order only for non-negative gains, where the two commute.
+    declared = {name for stage in stages for name in stage["stages"]}
+    attributes: dict = {"epilogue": [name for name in EPILOGUE_STAGES if name in declared]}
+    if gains is not None:
+        if len(set(gains)) == 1:
+            attributes["acc_scale"] = gains[0]
+        else:
+            attributes["acc_scale_by_column"] = list(gains)
+    if exit_type["dtype"] != "i32":
+        attributes["output_dtype"] = exit_type["dtype"]
+    carrier = chain["carrier"]
+    bias = next((s["bias"] for s in stages if "bias" in s), None)
+    column_source = {
+        "operation": "matmul",
+        "lhs": carrier["lhs"],
+        "rhs": carrier["rhs"],
+        "operand_names": ["lhs", "rhs"],
+        "disjoint": True,
+        "result": exit_type,
+        "bias": bias,
+    }
+    for stage in stages:
+        rows_by_member[stage["member"]] = _stage_rows(
+            index=stage["member"],
+            opcode="MATMUL",
+            stages=stage["stages"],
+            producer="contraction",
+            operand_dtype=carrier["lhs"]["dtype"],
+            result_dtype=exit_type["dtype"],
+            accumulator="i32",
+            destination_declared=True,
+            attributes=attributes,
+            column_source=column_source,
+            result_type=exit_type,
+        )
+    return rows_by_member
+
+
 def observe(
     program: Path,
     entries: list[dict],
@@ -359,7 +411,6 @@ def observe(
     dataflow: str | None = None,
 ) -> list[dict]:
     """``entries`` with each proven fused member's standalone entry replaced by its stage rows' entries."""
-    from merlin.targetgen.interface_observations import _stage_rows
     from merlin.targetgen.operation_accounting import admit_operation_row
 
     spec = getattr(evidence, "software_spec", None) or {}
@@ -376,44 +427,8 @@ def observe(
     for chain in chains:
         if chain["producer"] not in placed_producers:
             continue
-        stages = chain["stages"]
-        exit_type = next((s["result"] for s in reversed(stages) if "result" in s), None)
-        exit_type = exit_type or {"dtype": "i32", "shape": chain["carrier"]["result"]}
-        gains = next((s["gains"] for s in stages if "gains" in s), None)
-        attributes: dict = {}
-        if gains is not None:
-            if len(set(gains)) == 1:
-                attributes["acc_scale"] = gains[0]
-            else:
-                attributes["acc_scale_by_column"] = list(gains)
-        if exit_type["dtype"] != "i32":
-            attributes["output_dtype"] = exit_type["dtype"]
-        carrier = chain["carrier"]
-        bias = next((s["bias"] for s in stages if "bias" in s), None)
-        column_source = {
-            "operation": "matmul",
-            "lhs": carrier["lhs"],
-            "rhs": carrier["rhs"],
-            "operand_names": ["lhs", "rhs"],
-            "disjoint": True,
-            "result": exit_type,
-            "bias": bias,
-        }
-        for stage in stages:
-            rows = _stage_rows(
-                index=stage["member"],
-                opcode="MATMUL",
-                stages=stage["stages"],
-                producer="contraction",
-                operand_dtype=carrier["lhs"]["dtype"],
-                result_dtype=exit_type["dtype"],
-                accumulator="i32",
-                destination_declared=True,
-                attributes=attributes,
-                column_source=column_source,
-                result_type=exit_type,
-            )
-            by_member[stage["member"]] = [
+        for member, rows in stage_rows(chain).items():
+            by_member[member] = [
                 {
                     "operation": row["operation"],
                     "count": 1,

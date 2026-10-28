@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from merlin_experiments.phase0.source_fused_stages import prove_chains
+from merlin_experiments.phase0.source_fused_stages import prove_chains, stage_rows
 
 NUMERICS = {"acc_scale_rounding": "half_even", "narrowing": "saturate_to_declared_dtype"}
 GAIN = "0.1666666716337204"
@@ -185,3 +185,80 @@ def test_output_stationary_or_unknown_dataflow_is_not_observed(tmp_path, dataflo
         "relu",
         "acc_scale",
     ]
+
+
+def two_gain_chain(tmp_path, *, bias=False, relu=True, last="0.10000000149011612", first=GAIN):
+    """A chain whose readout scales columns 0..14 by ``first`` and column 15 by ``last``."""
+    text = build(bias=bias, relu=relu, gain=first)
+    one = ", ".join([first] * 16)
+    two = ", ".join([first] * 15 + [last])
+    assert text.count(one) == 1
+    path = tmp_path / "two_gain.mlir"
+    path.write_text(text.replace(one, two))
+    return prove_chains(path, numerics=NUMERICS, strategy="f32_product_rne")
+
+
+def test_rows_state_the_chain_epilogue_in_commit_order(tmp_path):
+    from merlin.runtime.commandbuffer import EPILOGUE_STAGES
+
+    (chain,) = prove(tmp_path)
+    rows = stage_rows(chain)
+    epilogue = ["bias_add", "acc_scale", "relu"]
+    assert epilogue == [name for name in EPILOGUE_STAGES if name in epilogue]
+    assert [row["operation"] for member in sorted(rows) for row in rows[member]] == ["bias_add", "relu", "acc_scale"]
+    # One scalar gain: tensor granularity, no column partition source.
+    for member_rows in rows.values():
+        for row in member_rows:
+            assert row["composed_observation"]["scale_granularity"] == "tensor"
+            assert "logical_output_column_source" not in row
+
+
+def test_two_gains_partition_into_scalar_column_components(tmp_path):
+    from merlin.targetgen.output_scale_partition import interface_components
+
+    (chain,) = two_gain_chain(tmp_path)
+    (member_rows,) = stage_rows(chain).values()
+    assert [row["operation"] for row in member_rows] == ["relu", "acc_scale"]
+    for row in member_rows:
+        assert row["composed_observation"]["scale_granularity"] == "channel"
+        source = row["logical_output_column_source"]
+        assert source["attributes"]["epilogue"] == ["acc_scale", "relu"]
+        partition = interface_components(source)
+        assert [(part["start"], part["stop"]) for part in partition["parts"]] == [(0, 15), (15, 16)]
+        assert [part["dimensions"] for part in partition["parts"]] == [
+            {"M": 16, "K": 16, "N": 15},
+            {"M": 16, "K": 16, "N": 1},
+        ]
+
+
+def test_two_gains_with_a_full_matrix_bias_have_no_column_partition(tmp_path):
+    """The partition's bias lane is one i32 value per column; a written [M, N] bias is not that."""
+    from merlin.targetgen.output_scale_partition import interface_components
+
+    (chain,) = two_gain_chain(tmp_path, bias=True)
+    for member_rows in stage_rows(chain).values():
+        for row in member_rows:
+            assert interface_components(row["logical_output_column_source"]) is None
+
+
+def test_two_gains_with_a_negative_gain_after_relu_have_no_readout_stage(tmp_path):
+    assert stage_names(two_gain_chain(tmp_path, last="-0.10000000149011612")) == []
+    assert stage_names(two_gain_chain(tmp_path, relu=False, last="-0.10000000149011612")) == ["acc_scale"]
+
+
+def test_column_partition_needs_a_stated_acc_scale_epilogue_and_disjoint_output():
+    from merlin.targetgen.output_scale_partition import interface_components
+
+    source = {
+        "operation": "matmul",
+        "lhs": {"dtype": "i8", "shape": [16, 16]},
+        "rhs": {"dtype": "i8", "shape": [16, 16]},
+        "disjoint": True,
+        "result": {"dtype": "i8", "shape": [16, 16]},
+        "bias": None,
+    }
+    gains = [0.5] * 15 + [0.25]
+    assert interface_components({**source, "attributes": {"acc_scale_by_column": gains, "output_dtype": "i8"}}) is None
+    attributes = {"acc_scale_by_column": gains, "output_dtype": "i8", "epilogue": ["acc_scale"]}
+    assert interface_components({**source, "attributes": attributes}) is not None
+    assert interface_components({**source, "disjoint": False, "attributes": attributes}) is None
