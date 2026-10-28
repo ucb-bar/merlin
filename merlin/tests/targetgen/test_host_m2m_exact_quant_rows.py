@@ -57,6 +57,8 @@ def _admit(document, frontend, mlir, operands, results, rank=2, family="elementw
     }
     if quant is not None:
         signature["quantization_parameters"] = quant
+    if frontend == "m2m_q.exact_readout.default":
+        signature.update(aliasing="disjoint_inputs_outputs", layout="row_major_contiguous", readout_dtype="f32")
     return admit_host_operation(_selection(document), row, signature)
 
 
@@ -65,8 +67,8 @@ ADMIT = [
     ("m2m_q.exact_readout.default", "linalg.generic", ["i32", "f32"], ["f32"], 2, None),
     ("quantized_decomposed.dequantize_per_tensor.default", "quant_ext.dequantize_per_tensor",
      ["i8", "f64", "i64"], ["f32"], 2, Q),
-    ("aten.native_layer_norm.default", "linalg.generic", ["f32", "f32"], ["f32", "f32"], 2, None),
 ]
+LAYER_NORM_MOMENTS = ("aten.native_layer_norm.default", "linalg.generic", ["f32", "f32"], ["f32", "f32"], 2, None)
 
 
 def test_profile_validates_and_new_rows_are_unreviewed(shipped):
@@ -80,7 +82,7 @@ def test_profile_validates_and_new_rows_are_unreviewed(shipped):
     assert "PROPOSED" in shipped["review"]["m2m_exact_quant_addendum"]
 
 
-@pytest.mark.parametrize("frontend,mlir,operands,results,rank,quant", ADMIT)
+@pytest.mark.parametrize("frontend,mlir,operands,results,rank,quant", [*ADMIT, LAYER_NORM_MOMENTS])
 def test_as_shipped_rows_do_not_admit(shipped, frontend, mlir, operands, results, rank, quant):
     assert _admit(shipped, frontend, mlir, operands, results, rank, quant=quant)["status"] != "admitted"
 
@@ -129,3 +131,10 @@ REFUSE = [
 def test_reviewed_rows_still_refuse_other_variants(shipped, frontend, mlir, operands, results, rank, quant):
     decision = _admit(_reviewed(shipped), frontend, mlir, operands, results, rank, quant=quant)
     assert decision["status"] != "admitted"
+
+
+def test_reviewed_layer_norm_moments_needs_its_parsed_source_body(shipped):
+    # The typed signature covers only the two inits; the captured data operand is screened from source.
+    decision = _admit(_reviewed(shipped), *LAYER_NORM_MOMENTS[:5])
+    assert decision["status"] == "unknown"
+    assert decision["reason"].endswith("source_body requires parsed source operations")

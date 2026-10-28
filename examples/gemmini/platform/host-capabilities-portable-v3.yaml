@@ -3236,6 +3236,16 @@ operations:
     - f32
     ranks:
     - 2
+  source_body:
+    schema: merlin.static_f32_row_moments_source_body.v1
+    operation: row_mean_biased_variance
+    data_operand:
+      dtype: f32
+      shape:
+      - 32
+      - 32
+      reduction_axis: 1
+    canonical_body_sha256: 2caf020879e81e59b013922f88747a6b65507a6056e8c1bb187bc6f1b961e3b0
   numerical_contract:
     status: unreviewed
     semantics:
@@ -3244,13 +3254,12 @@ operations:
       accumulator: f32
       reduction_order: selected_lowering
       existing_numerical_tolerance: unchanged
-      data_operand: implicit capture read by tensor.extract inside the body (zero ins, two f32 outs); not screened by this typed signature
+      data_operand: one captured static [32, 32] f32 tensor read by tensor.extract; source_body proves the single capture, its shape and dtype, the row index and that every column of the row is read exactly once (axis 1)
+      tolerance: atol 0.03125, rtol 0.02 against eager native_layer_norm mean and rstd
       fused_multiply_add: math.fma must lower to a fused llvm.fma (fmadd.s or correctly rounded fmaf)
     evidence:
       review_status: proposed; operator review required before status may be reviewed
-      basis: same f32 layer-norm decomposition as host_f32_reduction, observed as
-        one linalg.generic with two f32 results; emitted scalar-package execution
-        remains an obligation
+      basis: the digest-pinned parsed body, executed op by op in binary32 with single-rounding fma, against eager native_layer_norm mean and rstd on edge and random rows (out-of-tree /scratch/loren/hostfix-ln/evidence/ln_moments_evidence.out sha256 326b5a59db61566b4d566ece2463d5d448690bf9e3d80868ab6932566566a1c3; 1472 rows, mean and rstd bit-exact vs eager with single-rounding fma); RV64 lowering, fused-fma emission and Spike execution remain obligations
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:
