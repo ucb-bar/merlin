@@ -158,7 +158,7 @@ chunks; their source policy files remain provenance, not a replacement E2E proto
 
 | Layer | Existing choices | Boundary |
 | --- | --- | --- |
-| Graph preparation | Fusion 0/1/2/3; constant prepacking on/off; bias preload on/off; CSE on/off | Published configuration first, then legal distinct alternatives. 32 combinations before deduplication; not 32 mandatory FireSim sweeps. |
+| Graph preparation | Stock fusion 0/1/2/3 and CSE on/off | Start fusion=2/CSE off, then deduplicate the eight possible stock combinations. Automatic prepacking and bias folding are removed. |
 | Intrinsic geometry | Shape-derived legal M/N/K rectangles and interior/tail or K-padding alternatives | Hardware dimensions are 1–16, but current sketch generation uses selected divisor/tail templates, not every arbitrary triple. |
 | Reuse/loop order | Sampled M/N/K outer/reuse factors; `ij`/`ji` traversal | Stock `sample_perfect_tile` and mutators; reuse groups bounded at 64 tiles and checked against actual capacity. |
 | Dataflow | Primitive OS or WS | Preload/compute commands; hardware loop-FSM instructions remain forbidden. |
@@ -166,7 +166,7 @@ chunks; their source policy files remain provenance, not a replacement E2E proto
 | Epilogue/loops | Tile/root epilogue placement, existing unroll choices (0/16/64/512; compact space 0/16) | Only legal existing schedule alternatives; no new CPU optimization search. |
 
 Physical SRAM addresses, allocation correctness, hazard fences, final completion,
-config shadowing and compatible adjacent-DMA coalescing are fixed lowering rules.
+and config shadowing are fixed lowering rules. Adjacent-DMA coalescing was removed.
 They are not additional free optimizer dimensions. Tiling/reuse/staging decisions
 are exposed through ordinary TensorIR schedules and MetaSchedule traces. General
 cross-function SRAM residency, arbitrary DMA coalescing search and new host packing
@@ -220,7 +220,7 @@ and the selected graph flags (`--graph-fusion-level`, `--graph-cse`,
 stock JSONDatabase/MetaScheduleApplyDatabase and rejects an explicit database with
 zero structural hits. Record partially tuned coverage; do not force a mismatch.
 
-One small build was performed here: `smolvla-action-input-projection`, both ELFs
+One historical build used the prior compiler: `smolvla-action-input-projection`, both ELFs
 202,576 bytes, no forbidden instructions, 494,272 mapped bytes, 16 KiB stack.
 The positive ELF SHA256 is
 `e16f10a9ce19c93188bf54f2404e2fa97c9a95b5599532cd63ff11928cdf94b0`.
