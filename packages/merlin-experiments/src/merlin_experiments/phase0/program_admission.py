@@ -295,25 +295,68 @@ def _operand_sum_numeric_screens(program: Path, evidence) -> list[dict]:
     return _operand_sum_numeric_screens_text(program.read_text(encoding="utf-8"), evidence)
 
 
+def _operand_sum_model(evidence) -> tuple[list[dict], dict] | None:
+    """The selected i8 operand-sum facets and readout numerics; ``None`` without a fused operand-sum row."""
+    spec = getattr(evidence, "software_spec", None) or {}
+    if not any(
+        (row.get("derived_from_facts") or {}).get("form") == "fused_operand_sum" for row in spec.get("operations") or ()
+    ):
+        return None
+    facets = [
+        facet.to_dict() if hasattr(facet, "to_dict") else facet for facet in getattr(evidence, "readout_facets", ())
+    ]
+    selected = [facet for facet in facets if (facet.get("operand_sum") or {}).get("operand_dtype") in {"i8", "int8"}]
+    return selected, (spec.get("numerical_semantics") or {}).get("readout") or {}
+
+
+def per_operand_readout_witness(
+    *, lhs_scale: float, rhs_scale: float, readout_scale: float, relu: bool, evidence
+) -> dict | None:
+    """The per-operand operand-sum witness INCLUDING the readout scale, for a fused i8 operand sum.
+
+    An interface command states no readout scale for its operand sum, so its per-operand screen
+    with an ``acc_scale`` stage stays unknown (``_operand_sum_numeric_screens_text``). A source
+    program whose every parameter is a proven constant -- both operand scales, the one readout gain
+    and the relu -- supplies that separate readout-scale witness: the exhaustive audit run with that
+    gain. ``None`` when the selected spec has no fused operand-sum row (no screen is made then).
+    """
+    model = _operand_sum_model(evidence)
+    if model is None:
+        return None
+    selected, readout = model
+    if (
+        len(selected) != 1
+        or readout.get("acc_scale_rounding") != "half_even"
+        or readout.get("narrowing") != "saturate_to_declared_dtype"
+    ):
+        result = {"status": "unknown", "reason": "selected i8 operand-sum/readout numerics are incomplete or ambiguous"}
+    else:
+        from merlin.targetgen.operand_sum_numeric import audit_i8_per_operand_sum
+
+        result = audit_i8_per_operand_sum(
+            lhs_scale=lhs_scale,
+            rhs_scale=rhs_scale,
+            readout_scale=readout_scale,
+            relu=relu,
+            facet=selected[0],
+            bound_lsb=0,
+        )
+    return {"form": "fused_operand_sum", **result}
+
+
 def _operand_sum_numeric_screens_text(mlir: str, evidence) -> list[dict]:
     """Bound only a selected, fact-derived sum/readout composition.
 
     This is a deterministic software-model refusal screen, not a replacement
     for the executable capsule's target oracle. Other fused forms are untouched.
     """
-    spec = getattr(evidence, "software_spec", None) or {}
-    if not any(
-        (row.get("derived_from_facts") or {}).get("form") == "fused_operand_sum" for row in spec.get("operations") or ()
-    ):
+    model = _operand_sum_model(evidence)
+    if model is None:
         return []
+    selected, readout = model
     from merlin.targetgen.contract.interface_emit import parse_interface_mlir
     from merlin.targetgen.operand_sum_numeric import audit_i8_operand_sum, audit_i8_per_operand_sum
 
-    facets = [
-        facet.to_dict() if hasattr(facet, "to_dict") else facet for facet in getattr(evidence, "readout_facets", ())
-    ]
-    selected = [facet for facet in facets if (facet.get("operand_sum") or {}).get("operand_dtype") in {"i8", "int8"}]
-    readout = (spec.get("numerical_semantics") or {}).get("readout") or {}
     commands = parse_interface_mlir(mlir).get("commands") or ()
     screens = []
     for index, command in enumerate(commands):

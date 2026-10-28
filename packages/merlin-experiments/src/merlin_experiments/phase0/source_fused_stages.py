@@ -246,8 +246,19 @@ def bias_add(op, accumulator) -> dict | None:
     return {"bias": {"dtype": "i32", "shape": [columns]}, "bias_bound": max(map(abs, values)) if values else None}
 
 
-def readout(op, accumulator, *, numerics: dict, strategy: str | None = None, bound: int | None = None) -> dict | None:
+def readout(
+    op,
+    accumulator,
+    *,
+    numerics: dict,
+    strategy: str | None = None,
+    bound: int | None = None,
+    source_dtype: str = "i32",
+) -> dict | None:
     """The selected readout of an i32 accumulator to a narrow integer: [relu,] scale, round half even, saturate.
+
+    ``source_dtype`` names the integer type read (``i32`` for an accumulator; ``i8`` for an operand
+    load requantized by the same body, see ``operand_sum_chain``).
 
     The body computes ``f32(acc) * gain`` rounded once: that IS the readout only under the
     ``f32_product_rne`` strategy. Under any other (e.g. an exact rational readout) it is equal only
@@ -263,7 +274,7 @@ def readout(op, accumulator, *, numerics: dict, strategy: str | None = None, bou
     if op.inputs[0] is not accumulator or not _fresh_output(op):
         return None
     acc, result = _tensor(op.inputs[0]), _tensor(op.results[0])
-    if acc is None or result is None or acc[1] != "i32" or result[1] not in _NARROW or acc[0] != result[0]:
+    if acc is None or result is None or acc[1] != source_dtype or result[1] not in _NARROW or acc[0] != result[0]:
         return None
     gains = _dense_f32(op.inputs[1])
     if gains is None or len(gains) != result[0][-1]:
@@ -324,10 +335,128 @@ def readout(op, accumulator, *, numerics: dict, strategy: str | None = None, bou
     }
 
 
+def _program_input(value) -> bool:
+    """A function argument: a runtime tensor the program loads, not a value it computes."""
+    from xdsl.ir import BlockArgument
+
+    return isinstance(value, BlockArgument) and _name(value.owner.parent_op()) == "func.func"
+
+
+def _uniform(values: list[float] | None) -> float | None:
+    return values[0] if values and len(set(values)) == 1 else None
+
+
+def _elementwise_pair(op, lhs_dtype: str, result_dtype: str) -> tuple[list[int], object, object] | None:
+    """An identity-indexed two-input map over equal static shapes into a fresh destination."""
+    if not _generic(op, (_IDENTITY2,) * 3, (_PARALLEL, _PARALLEL)) or len(op.inputs) != 2 or not _fresh_output(op):
+        return None
+    lhs, rhs, result = _tensor(op.inputs[0]), _tensor(op.inputs[1]), _tensor(op.results[0])
+    if None in (lhs, rhs, result) or not (lhs[0] == rhs[0] == result[0]):
+        return None
+    if lhs[1] != lhs_dtype or rhs[1] != lhs_dtype or result[1] != result_dtype:
+        return None
+    if op.inputs[0] is op.inputs[1]:
+        return None
+    x, y, _ = op.body.block.args
+    return result[0], x, y
+
+
+def integer_operand_sum(op) -> list[int] | None:
+    """``extsi(a) + extsi(b)``: two i8 tensors summed exactly in i32 (no rounding, no saturation)."""
+    pair = _elementwise_pair(op, "i8", "i32")
+    if pair is None:
+        return None
+    shape, x, y = pair
+    body = _body(op)
+    if [_name(item) for item in body] != ["arith.extsi", "arith.extsi", "arith.addi", "linalg.yield"]:
+        return None
+    ea, eb, add, yld = body
+    if {id(ea.operands[0]), id(eb.operands[0])} != {id(x), id(y)}:
+        return None
+    if set(map(id, add.operands)) != {id(ea.results[0]), id(eb.results[0])} or yld.operands[0] is not add.results[0]:
+        return None
+    return shape
+
+
+def operand_sum_chain(op, users, *, numerics: dict, strategy: str | None) -> dict | None:
+    """An operand sum of two program inputs read out once: the fused ``residual_add`` form.
+
+    ``op`` is the i32 sum; ``users(value)`` returns a value's sole top-level user (else ``None``).
+    Only the ``per_operand`` form is proven: each of two distinct program inputs of one shape is
+    requantized ``sat_i8(RNE(f32(x) * g))`` by ONE constant gain (the readout body with an i8
+    source and no relu), each result used only by an exact ``extsi + addi``. The sum's only user
+    must be a proven readout with ONE constant gain (tensor granularity). The returned parameters
+    are exactly the source program's: they feed the operand-sum numeric witness.
+
+    A float (single-rounding) sum is not observed, not even at unit multipliers where it is exact:
+    its realization binds the single-rounding contract, whose witness carries no readout gain.
+    """
+    shape = integer_operand_sum(op)
+    if shape is None:
+        return None
+    members, scales, sources = [], [], []
+    for value in op.inputs:
+        requant = _defining_op(value)
+        if requant is None or users(value) is not op:
+            return None
+        proven = readout(
+            requant, requant.inputs[0], numerics=numerics, strategy=strategy, bound=128, source_dtype="i8"
+        )
+        if proven is None or proven["relu"] or proven["result"]["dtype"] != "i8":
+            return None
+        gain = _uniform(proven["gains"])
+        if gain is None or gain <= 0 or not _program_input(requant.inputs[0]):
+            return None
+        members.append(requant)
+        scales.append(gain)
+        sources.append(requant.inputs[0])
+    if sources[0] is sources[1]:
+        return None
+    reader = users(op.results[0])
+    if reader is None:
+        return None
+    proven = readout(reader, op.results[0], numerics=numerics, strategy=strategy, bound=256)
+    if proven is None or proven["result"]["dtype"] != "i8":
+        return None
+    gain = _uniform(proven["gains"])
+    if gain is None:
+        return None
+    return {
+        "rounding": "per_operand",
+        "requants": members,
+        "reader": reader,
+        "lhs_scale": scales[0],
+        "rhs_scale": scales[1],
+        "readout_scale": gain,
+        "relu": proven["relu"],
+        "shape": shape,
+    }
+
+
 #: Dataflows whose fused readout needs nothing beyond the program's own arithmetic. An
 #: output-stationary contraction keeps its partial sums in the mesh, whose bound Phase 0 does not
 #: prove, so its epilogue is not observed (any other or unknown dataflow likewise).
 _OBSERVED_DATAFLOWS = (None, "WS")
+
+
+def _top_level(program: Path):
+    """The single function's top-level ops, their indices and a sole-top-level-user lookup."""
+    from merlin.common import mlir_query as mq
+    from merlin.frontends.capture_normalization import normalize_capture_mlir
+
+    normalized, _ = normalize_capture_mlir(Path(program).read_text())
+    module = mq.parse(normalized)
+    functions = [op for op in module.body.block.ops if mq.op_name(op) == "func.func"]
+    if len(functions) != 1 or len(functions[0].body.blocks) != 1:
+        return None
+    top = [op for op in functions[0].body.block.ops if mq.op_name(op) != "func.return"]
+    index = {id(op): i for i, op in enumerate(top)}
+
+    def only_user(value):
+        users = _uses(value)
+        return users[0] if len(users) == 1 and id(users[0]) in index else None
+
+    return top, index, only_user
 
 
 def prove_chains(
@@ -336,21 +465,10 @@ def prove_chains(
     """Every proven contraction -> [bias_add] -> [readout] chain, by top-level source op index."""
     if dataflow not in _OBSERVED_DATAFLOWS:
         return []
-    from merlin.common import mlir_query as mq
-    from merlin.frontends.capture_normalization import normalize_capture_mlir
-
-    normalized, _ = normalize_capture_mlir(Path(program).read_text())
-    module = mq.parse(normalized)
-    functions = [op for op in module.body.block.ops if mq.op_name(op) == "func.func"]
-    if len(functions) != 1 or len(functions[0].body.blocks) != 1:
+    parsed = _top_level(program)
+    if parsed is None:
         return []
-    top = [op for op in functions[0].body.block.ops if mq.op_name(op) != "func.return"]
-    index = {id(op): i for i, op in enumerate(top)}
-
-    def only_user(value):
-        users = _uses(value)
-        return users[0] if len(users) == 1 and id(users[0]) in index else None
-
+    top, index, only_user = parsed
     chains = []
     for i, op in enumerate(top):
         carrier = contraction(op)
@@ -430,6 +548,86 @@ def stage_rows(chain: dict) -> dict[int, list[dict]]:
     return rows_by_member
 
 
+def prove_operand_sums(program: Path, *, numerics: dict, strategy: str | None = None) -> list[dict]:
+    """Every proven operand-sum -> readout chain (``operand_sum_chain``), by top-level source op index."""
+    parsed = _top_level(program)
+    if parsed is None:
+        return []
+    top, index, only_user = parsed
+    chains = []
+    for i, op in enumerate(top):
+        proven = operand_sum_chain(op, only_user, numerics=numerics, strategy=strategy)
+        if proven is None:
+            continue
+        chains.append(
+            {
+                **{key: value for key, value in proven.items() if key not in {"requants", "reader"}},
+                "sum_members": sorted([index[id(item)] for item in proven["requants"]] + [i]),
+                "readout_member": index[id(proven["reader"])],
+            }
+        )
+    return chains
+
+
+def operand_sum_rows(chain: dict, *, evidence) -> list[dict] | None:
+    """The rows an interface program states for ``chain`` as ONE fused operand-sum command.
+
+    The command is the per-operand form: both loads RNE-saturated to i8 at the proven operand
+    scales, the exact i32 sum, then the proven readout (relu, scale). Rows come from
+    ``command_rows`` (the interface observation itself), each RESIDUAL_ADD row carrying the numeric
+    witness computed from the source program's own constants, as ``account_interface_text`` attaches
+    one. ``None`` when the selected facts give no witness model.
+    """
+    from merlin.targetgen.interface_observations import command_rows
+
+    from .program_admission import per_operand_readout_witness
+
+    witness = per_operand_readout_witness(
+        lhs_scale=chain["lhs_scale"],
+        rhs_scale=chain["rhs_scale"],
+        readout_scale=chain["readout_scale"],
+        relu=chain["relu"],
+        evidence=evidence,
+    )
+    if witness is None:
+        return None
+    shape = list(chain["shape"])
+    from merlin.runtime.commandbuffer import EPILOGUE_STAGES
+
+    # Epilogue in the order a command applies it (as ``stage_rows`` states it); the proven gain is
+    # positive, so a relu before the scale commutes with it.
+    declared = {"acc_scale"} | ({"relu"} if chain["relu"] else set())
+    stages = [name for name in EPILOGUE_STAGES if name in declared]
+    command = {
+        "opcode": "RESIDUAL_ADD",
+        "operands": {"lhs": "lhs", "rhs": "rhs", "dst": "out"},
+        "attributes": {
+            "epilogue": stages,
+            "lhs_scale": chain["lhs_scale"],
+            "rhs_scale": chain["rhs_scale"],
+            "acc_scale": chain["readout_scale"],
+            "operand_sum_rounding": "per_operand",
+            "bound_lsb": 0,
+            "output_dtype": "i8",
+        },
+    }
+    tensors = {name: {"shape": shape, "dtype": "i8"} for name in ("lhs", "rhs", "out")}
+    observed = command_rows({"tensors": tensors, "commands": [command]})
+    [carrier] = [row for row in observed if not (row.get("composed_observation") or {}).get("composed_with")]
+    # A stage reads what its carrier reads: the fused command's two equal-shape operand tensors in
+    # one affine sum (proven above: identity maps, equal static shapes, two distinct inputs).
+    operands = {key: carrier[key] for key in ("tensor_operands", "expression", "broadcasting") if key in carrier}
+    if operands != {"tensor_operands": 2, "expression": "affine", "broadcasting": "none"}:
+        return None
+    rows = []
+    for row in observed:
+        if row is carrier:
+            rows.append({**row, "ordinals": chain["sum_members"]})
+        else:
+            rows.append({**row, **operands, "ordinals": [chain["readout_member"]]})
+    return [{**row, "numeric_screen": {"command_index": 0, **witness}} for row in rows]
+
+
 def observe(
     program: Path,
     entries: list[dict],
@@ -439,8 +637,6 @@ def observe(
     dataflow: str | None = None,
 ) -> list[dict]:
     """``entries`` with each proven fused member's standalone entry replaced by its stage rows' entries."""
-    from merlin.targetgen.operation_accounting import admit_operation_row
-
     spec = getattr(evidence, "software_spec", None) or {}
     numerics = (spec.get("numerical_semantics") or {}).get("readout") or {}
     chains = prove_chains(program, numerics=numerics, strategy=readout_strategy, dataflow=dataflow)
@@ -456,37 +652,66 @@ def observe(
         if chain["producer"] not in placed_producers:
             continue
         for member, rows in stage_rows(chain).items():
-            by_member[member] = [
-                {
-                    "operation": row["operation"],
-                    "count": 1,
-                    "observed_signature": {**row, "observation": "source_fused_stage"},
-                    **admit_operation_row(
-                        row,
-                        software_spec=spec or None,
-                        capability_contract=evidence.contract,
-                        host_capabilities=getattr(evidence, "host_capabilities", None),
-                    ),
-                }
-                for row in rows
-            ]
-    if not by_member:
+            by_member[member] = [_admitted(row, spec, evidence) for row in rows]
+    groups = [({member}, rows) for member, rows in by_member.items()]
+    if dataflow in _OBSERVED_DATAFLOWS:
+        for chain in prove_operand_sums(program, numerics=numerics, strategy=readout_strategy):
+            rows = operand_sum_rows(chain, evidence=evidence)
+            if rows is None:
+                continue
+            for members in (chain["sum_members"], [chain["readout_member"]]):
+                own = [row for row in rows if row["ordinals"] == members]
+                groups.append((set(members), [_admitted(row, spec, evidence) for row in own]))
+    return _replace(entries, groups)
+
+
+def _admitted(row: dict, spec: dict, evidence) -> dict:
+    from merlin.targetgen.operation_accounting import admit_operation_row
+
+    return {
+        "operation": row["operation"],
+        "count": 1,
+        "observed_signature": {**row, "observation": "source_fused_stage"},
+        **admit_operation_row(
+            row,
+            software_spec=spec or None,
+            capability_contract=evidence.contract,
+            host_capabilities=getattr(evidence, "host_capabilities", None),
+        ),
+    }
+
+
+def _replace(entries: list[dict], groups: list[tuple[set[int], list[dict]]]) -> list[dict]:
+    """``entries`` with each group's members' standalone entries replaced by the group's rows.
+
+    A group applies only when every entry naming one of its members names members of that group
+    alone (so no unproven op's identity is ever dropped). The group's identity goes on its
+    least-admitted row, so its members are placed only when EVERY row they carry is admitted on
+    the accelerator.
+    """
+    if not groups:
         return entries
     from .program_admission import _decision
 
-    result = []
+    def indices(entry):
+        return set((entry.get("observed_signature") or {}).get("source_op_indices") or [])
+
+    applied = []
+    for members, rows in groups:
+        touching = [entry for entry in entries if indices(entry) & members]
+        if rows and touching and all(indices(entry) <= members for entry in touching):
+            applied.append((members, rows))
+    result, emitted = [], set()
     for entry in entries:
-        indices = (entry.get("observed_signature") or {}).get("source_op_indices") or []
-        if len(indices) == 1 and indices[0] in by_member:
-            stage_entries = by_member.pop(indices[0])
-            # The member's identity goes on its least-admitted stage row, so the member is placed
-            # only when EVERY stage it carries is admitted on the accelerator.
-            ranked = sorted(
-                stage_entries,
-                key=lambda item: _decision(item, host_only=False).get("placement") == "accelerator",
-            )
-            ranked[0]["observed_signature"]["source_op_indices"] = list(indices)
-            result.extend(ranked)
+        group = next((i for i, (members, _) in enumerate(applied) if indices(entry) & members), None)
+        if group is None:
+            result.append(entry)
             continue
-        result.append(entry)
+        if group in emitted:
+            continue
+        emitted.add(group)
+        members, rows = applied[group]
+        ranked = sorted(rows, key=lambda item: _decision(item, host_only=False).get("placement") == "accelerator")
+        ranked[0]["observed_signature"]["source_op_indices"] = sorted(members)
+        result.extend(ranked)
     return result
