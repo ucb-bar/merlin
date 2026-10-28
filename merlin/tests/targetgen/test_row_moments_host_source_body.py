@@ -75,10 +75,9 @@ def _simulated_reviewed(document: dict, *, mutate=None) -> dict:
     """In-memory only: flip just the row-moments row (and its contract) to the reviewed form."""
     document = copy.deepcopy(document)
     row = next(r for r in document["operations"] if r["id"] == ROW_ID)
-    assert row["status"] == "unreviewed" and row["numerical_contract"]["status"] == "unreviewed"
     row["status"] = "reviewed"
     row["numerical_contract"]["status"] = "reviewed"
-    row["numerical_contract"]["evidence"].pop("review_status")
+    row["numerical_contract"]["evidence"].pop("review_status", None)
     if mutate is not None:
         mutate(row)
     return document
@@ -144,10 +143,11 @@ def test_provenance_attributes_do_not_move_the_digest(fixture_text):
 # ---------------------------------------------------------------- 2. end to end
 
 
-def test_shipped_row_is_unreviewed_and_its_declaration_is_valid(shipped):
+def test_shipped_row_records_the_operator_review_and_its_declaration_is_valid(shipped):
     validate_host_capabilities(shipped)
     row = next(r for r in shipped["operations"] if r["id"] == ROW_ID)
-    assert row["status"] == "unreviewed"
+    assert row["status"] == "reviewed" and row["numerical_contract"]["status"] == "reviewed"
+    assert "OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295" in row["numerical_contract"]["evidence"]["reviewed_by"]
     assert row["source_body"]["canonical_body_sha256"] == DIGEST
     assert row["source_body"]["data_operand"] == {"dtype": "f32", "shape": [32, 32], "reduction_axis": 1}
     assert row["signature"]["ranks"] == [2]
@@ -179,9 +179,9 @@ def test_without_parsed_source_operations_the_row_is_not_admitted(shipped):
         assert "requires parsed source operations" in result["profiles"][0]["decisions"][0]["reason"]
 
 
-def test_as_shipped_unreviewed_row_does_not_admit_even_with_the_fixture(shipped, fixture_text):
-    result = _admit(shipped, (_generic(fixture_text),))
-    assert result["status"] != "admitted"
+def test_as_shipped_reviewed_row_admits_the_fixture_only_with_its_parsed_body(shipped, fixture_text):
+    assert _admit(shipped, (_generic(fixture_text),))["status"] == "admitted"
+    assert _admit(shipped, None)["status"] != "admitted"
 
 
 def test_occurrence_roster_must_match_the_source_row(shipped, fixture_text):

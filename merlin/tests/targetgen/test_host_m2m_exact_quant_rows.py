@@ -38,7 +38,7 @@ def _reviewed(document):
         if row["id"] in NEW:
             row["status"] = "reviewed"
             row["numerical_contract"]["status"] = "reviewed"
-            row["numerical_contract"]["evidence"].pop("review_status")
+            row["numerical_contract"]["evidence"].pop("review_status", None)
     return document
 
 
@@ -71,20 +71,31 @@ ADMIT = [
 LAYER_NORM_MOMENTS = ("aten.native_layer_norm.default", "linalg.generic", ["f32", "f32"], ["f32", "f32"], 2, None)
 
 
-def test_profile_validates_and_new_rows_are_unreviewed(shipped):
+SIGNOFF = "OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68"
+
+
+def test_profile_validates_and_new_rows_record_the_operator_review(shipped):
     validate_host_capabilities(shipped)
     rows = {row["id"]: row for row in shipped["operations"]}
     assert NEW <= set(rows)
     for name in NEW:
-        assert rows[name]["status"] == "unreviewed"
-        assert rows[name]["numerical_contract"]["status"] == "unreviewed"
-        assert "Recorded operator review" not in yaml.safe_dump(rows[name])
-    assert "PROPOSED" in shipped["review"]["m2m_exact_quant_addendum"]
+        assert rows[name]["status"] == "reviewed"
+        assert rows[name]["numerical_contract"]["status"] == "reviewed"
+        evidence = rows[name]["numerical_contract"]["evidence"]
+        assert "review_status" not in evidence
+        assert SIGNOFF in evidence["reviewed_by"]
+    assert "PROPOSED" not in shipped["review"]["m2m_exact_quant_addendum"]
+    assert SIGNOFF in shipped["review"]["m2m_exact_quant_addendum"]
 
 
-@pytest.mark.parametrize("frontend,mlir,operands,results,rank,quant", [*ADMIT, LAYER_NORM_MOMENTS])
-def test_as_shipped_rows_do_not_admit(shipped, frontend, mlir, operands, results, rank, quant):
-    assert _admit(shipped, frontend, mlir, operands, results, rank, quant=quant)["status"] != "admitted"
+@pytest.mark.parametrize("frontend,mlir,operands,results,rank,quant", ADMIT)
+def test_as_shipped_rows_admit_the_observed_micro_model_signatures(shipped, frontend, mlir, operands, results, rank, quant):
+    decision = _admit(shipped, frontend, mlir, operands, results, rank, quant=quant)
+    assert decision["status"] == "admitted", decision["reason"]
+
+
+def test_as_shipped_layer_norm_moments_row_needs_its_parsed_source_body(shipped):
+    assert _admit(shipped, *LAYER_NORM_MOMENTS[:5], quant=LAYER_NORM_MOMENTS[5])["status"] != "admitted"
 
 
 @pytest.mark.parametrize("frontend,mlir,operands,results,rank,quant", ADMIT)

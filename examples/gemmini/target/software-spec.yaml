@@ -470,10 +470,10 @@ operations:
         constraints:
           eq: true
   elementwise_map_after_movement:
-    # PROPOSAL (comp-more/c3), NOT REVIEWED. The readout of an int8 tensor that a movement loads
+    # comp-more/c3; operator reviewed 2026-10-28 (reviewed_by below). The readout of an int8 tensor that a movement loads
     # into the accumulator, feeding a store-path max pool. Authored placement and signature (no
     # `hardware:`): the facts' fused elementwise_map form is composed with the contraction only.
-    status: unreviewed
+    status: reviewed
     families: [elementwise_map]
     placement: fused_accelerator
     arithmetic: readout_stages
@@ -486,7 +486,7 @@ operations:
       window and stride in 1..3, grid fields <= 255, a zero pad read only after a ReLU and only
       on the upper/left side. Not RTL qualification; no lowering emits it yet.
     numerical_contract:
-      status: unreviewed
+      status: reviewed
       semantics:
         load: "accumulator := sext_i32(x_i8); mvin scale 1.0 is exact on every int8"
         readout: "f32_product_rne: sat_i8(rne(f32(relu(acc)) * g)); g one f32 for the tensor"
@@ -494,7 +494,8 @@ operations:
       evidence:
         basis: "LoadController.scala:108; Scratchpad.scala:420-424,847; AccumulatorScale.scala:118-138; StoreController.scala:76-80,131-133; Scratchpad.scala:293-324; DMA.scala:597-605; differential test comp-more/c3/evidence/diff_window.py"
     evidence:
-      review_status: unreviewed
+      review_status: reviewed
+      reviewed_by: "Loren Hung, operator sign-off 2026-10-28 (/scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68); reviewer text /scratch/loren/comp-more/stack/c3-RESULT.md and /scratch/loren/comp-more/c3/RESULT.md (window_reduction_readout)"
       basis: "LoadController.scala:108 (is_acc && !shrink selects input width); Scratchpad.scala:420-424 (that load takes the input-type mvin scale, RNE) and :847 (withWidthOf(accType) sign-extends into the accumulator); AccumulatorScale.scala:118-138 (relu, then scale, then clippedToWidthOf); StoreController.scala:76-80,131-133 (pool tap addressing; out-of-grid taps are garbage addresses); Scratchpad.scala:293-324 (garbage taps skip scale/activation and are written as zeros); DMA.scala:597-605 (per-column maxOf across taps); GemminiISA.scala:126-129 (2-bit size, stride, upad, lpad fields)"
     composed_with: [movement]
     epilogues: [acc_scale, relu]
@@ -520,9 +521,9 @@ operations:
       load_scale: {status: instruction_audit, check: unit_mvin_scale, constraints: {eq: 1.0}}
       c_stride: {status: compiler_obligation, constraints: {eq: 1}}
   contraction_k_extension:
-    # PROPOSAL (comp-more/c3 option A), NOT REVIEWED. Valid only with the chain constraint
+    # comp-more/c3 option A; operator reviewed 2026-10-28 (reviewed_by below). Valid only with the chain constraint
     # residual_accumulates_before_readout: c*R is an accumulator term, read out once.
-    status: unreviewed
+    status: reviewed
     families: [contraction]
     placement: fused_accelerator
     arithmetic: integer_multiply_accumulate
@@ -533,14 +534,15 @@ operations:
       K' = K + n*N <= k_extension_within.max_k, weight-stationary only. Exact in i32; the
       readout after it is the ordinary contraction readout (one f32 product).
     numerical_contract:
-      status: unreviewed
+      status: reviewed
       semantics:
         identity: "acc + c*R == [A | R*n] @ [W ; d_i*I], exact in i32 for K' <= max_k"
         rounding: "none before the readout; the readout rounds once"
       evidence:
         basis: "k_extension.py:49-65; composition_facts.py:82-99 (max_k); comp-more/c3 evidence/diff_ext.py"
     evidence:
-      review_status: unreviewed
+      review_status: reviewed
+      reviewed_by: "Loren Hung, operator sign-off 2026-10-28 (/scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68); reviewer text /scratch/loren/comp-more/stack/c3-RESULT.md and /scratch/loren/comp-more/c3/RESULT.md (K-extension option A spec/oracle change and its row)"
       basis: "chain constraint residual_accumulates_before_readout; PE.scala:118-131 (WS: <= 16 products per compute, |partial| <= 262144 < 2^19); ExecuteController.scala:951 and AccumulatorMem.scala:63-70 (sign-extended, wrapping 32-bit accumulate; exact below 2^31); digits |d| <= 127 keep [d*I] an int8 weight"
     composed_with: [contraction]
     epilogues: [k_extension]
