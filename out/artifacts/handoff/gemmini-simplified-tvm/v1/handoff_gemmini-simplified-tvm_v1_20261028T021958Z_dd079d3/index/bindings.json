@@ -1,0 +1,825 @@
+{
+  "catalog": {
+    "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/catalog.json",
+    "sha256": "839fad75688a9c2a87b975842f072f217a1f0fbc0ff3ba26e9b1707600e37c2a",
+    "bytes": 91607
+  },
+  "inputs": [
+    {
+      "chunk": "resnet-classifier",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-classifier/program.json",
+        "sha256": "8d38d2816fdb4b8c2f22273276dda3f8cb55f5a2d538fca8cefc13cb46c64e15",
+        "bytes": 2844410
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-classifier/fixture.npz",
+        "sha256": "300f3965ffaad56bb2818357aa8b7ca3a57136ed1d3af5062235d686c6aeac2c",
+        "bytes": 405924
+      }
+    },
+    {
+      "chunk": "resnet-stage1-block1",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage1-block1/program.json",
+        "sha256": "7dea81d8672383ca584e755c5a1e0ce7308c65481e9f98d55ccb2e8beb350424",
+        "bytes": 582677
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage1-block1/fixture.npz",
+        "sha256": "cd2be9960a3d88f6bad223839ee70c45aa9c0126960deb29681b9aea521bb40e",
+        "bytes": 3412484
+      }
+    },
+    {
+      "chunk": "resnet-stage1-block2",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage1-block2/program.json",
+        "sha256": "f543fc8ede88a18a27bb52e181f36d646383986810f37cb4e120ce5918f2e944",
+        "bytes": 543716
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage1-block2/fixture.npz",
+        "sha256": "6131a4db8451820266a2afcf807ceb48b30781d85a7649daf3d05492727e7ad2",
+        "bytes": 6423044
+      }
+    },
+    {
+      "chunk": "resnet-stage1-block3",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage1-block3/program.json",
+        "sha256": "debf1dea49a8396e4c1dee6883b55e95cbbf175e8529f8de8146bb02aa4765f0",
+        "bytes": 543774
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage1-block3/fixture.npz",
+        "sha256": "3f75bc5f117709392949cf205e2c572ee577a9ff83b7248f1f5616a6561306b7",
+        "bytes": 6423044
+      }
+    },
+    {
+      "chunk": "resnet-stage2-block1",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage2-block1/program.json",
+        "sha256": "709344d63632f1d413dbedda4863df6785348d284131d44623e7a085091a2354",
+        "bytes": 1064116
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage2-block1/fixture.npz",
+        "sha256": "d9476ce24894d969db3d4c9a069fe03e4dc72b4e22462e8a5969df07aaa4b3e4",
+        "bytes": 4817412
+      }
+    },
+    {
+      "chunk": "resnet-stage2-block2",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage2-block2/program.json",
+        "sha256": "f8f7c765923e1ed55bec4f9ad0e26a465b1e65b1d1418f77567ee172bf4aa19f",
+        "bytes": 826446
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage2-block2/fixture.npz",
+        "sha256": "b0cc390880fba0634ce9fbb5b253d423f44872f8f9c7aac14d73bc6b540caead",
+        "bytes": 3211780
+      }
+    },
+    {
+      "chunk": "resnet-stage2-block3",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage2-block3/program.json",
+        "sha256": "31079664a820bf3547425c83074a8bb64b63fd00e99e005070e30187b22528d6",
+        "bytes": 826421
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage2-block3/fixture.npz",
+        "sha256": "427ffad868bb23d9f5f6c91777a09035caf0a8af164449dbe6dd2e2e103d2ac5",
+        "bytes": 3211780
+      }
+    },
+    {
+      "chunk": "resnet-stage2-block4",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage2-block4/program.json",
+        "sha256": "a1ff7eab917e9963ab7537d31c62ed84acbdf5462d0cf288bdd9ac62e2a32106",
+        "bytes": 826421
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage2-block4/fixture.npz",
+        "sha256": "f519224af0ee496ef30183fba8c9dc466ac2d651853c8fd10bbd947e4e0db517",
+        "bytes": 3211780
+      }
+    },
+    {
+      "chunk": "resnet-stage3-block1",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block1/program.json",
+        "sha256": "ce5b405ed3aa7bf0c59ee0afe7325c359512eaa8c00e38396921cf50e05d3462",
+        "bytes": 2585151
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block1/fixture.npz",
+        "sha256": "77562bc70fdb9d4ee165b997178fbd8ce49d3852a0ec78a65a9be440f38fafc4",
+        "bytes": 2408964
+      }
+    },
+    {
+      "chunk": "resnet-stage3-block2",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block2/program.json",
+        "sha256": "b5cc152521b3c0a58381600a6a09639f6135e4ea701e96a8ee22370cc48e2506",
+        "bytes": 1948769
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block2/fixture.npz",
+        "sha256": "f7f1a1ed6ad2e0202d73a48738f95bdb3b7e71131aa9586f34cb74f43118d590",
+        "bytes": 1606148
+      }
+    },
+    {
+      "chunk": "resnet-stage3-block3",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block3/program.json",
+        "sha256": "80fd8c068388f935000d8094415f52aa005028cac1121822fc03e2f0ec5f141f",
+        "bytes": 1948753
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block3/fixture.npz",
+        "sha256": "84b2d4b6b936a5b3fa6f21468197f4031ab0e7ced367faf6afd48ef5a2200667",
+        "bytes": 1606148
+      }
+    },
+    {
+      "chunk": "resnet-stage3-block4",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block4/program.json",
+        "sha256": "da91f7dbdd3b3d2bbb3c0d0fc264eefd237a4419d52a1add6b372fae9a0ee5ba",
+        "bytes": 1948706
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block4/fixture.npz",
+        "sha256": "90c7215e37563ab721c3513bd050d6cc3b8dbde07a491a717419945ac7406e05",
+        "bytes": 1606148
+      }
+    },
+    {
+      "chunk": "resnet-stage3-block5",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block5/program.json",
+        "sha256": "2d5061a186f1dace563ff73273440cb4e34ba0a9d8ed92cf57c19a7e59c272af",
+        "bytes": 1948744
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block5/fixture.npz",
+        "sha256": "141c8ac6552e4f925e1bb6678628746f962397d7f0942c387b5e87b65b3a640a",
+        "bytes": 1606148
+      }
+    },
+    {
+      "chunk": "resnet-stage3-block6",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block6/program.json",
+        "sha256": "3711c5d69836b040e1b6c9094753cf9fee8be2d3b1e9b3f9c6a3a71931997a35",
+        "bytes": 1948687
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage3-block6/fixture.npz",
+        "sha256": "49616d416445a4f31532f7a4d1ad54d2cc9d1a621bedfbb5c615e3214e701961",
+        "bytes": 1606148
+      }
+    },
+    {
+      "chunk": "resnet-stage4-block1",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage4-block1/program.json",
+        "sha256": "278021334ce2a19d7ccaa893023b9f7cfe3885274ac41a53adc01b2bddd70ca5",
+        "bytes": 8641705
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage4-block1/fixture.npz",
+        "sha256": "0ba166825677ed8106870bc2857ecdc5eb22faf972af4663d1d9909830b8e4ca",
+        "bytes": 1204740
+      }
+    },
+    {
+      "chunk": "resnet-stage4-block2",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage4-block2/program.json",
+        "sha256": "abd05762b51d670c10d08efe9b1e0cefd46e2a7e5eb58b51e9f2548270db4bfc",
+        "bytes": 6421423
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage4-block2/fixture.npz",
+        "sha256": "c9f69f0b71583975b005a143a82ce5651bed0503b00f64eaa6595bf04ba8dc33",
+        "bytes": 803332
+      }
+    },
+    {
+      "chunk": "resnet-stage4-block3",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage4-block3/program.json",
+        "sha256": "d9814db291d3a41cf638480400e1a3a69077b67b1d449215072f7db2373581de",
+        "bytes": 6421502
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stage4-block3/fixture.npz",
+        "sha256": "1caaa97a1f40c31b8d8c64f4d38a1c9a93d64207b9de51a70a0328c9722ab7a8",
+        "bytes": 803332
+      }
+    },
+    {
+      "chunk": "resnet-stem",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stem/program.json",
+        "sha256": "8a6b24a35837ce9f626a0afdc759351b432316346f2ffccb2a22e902563c32a9",
+        "bytes": 1125973
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/resnet-release/resnet-chunks/resnet-stem/fixture.npz",
+        "sha256": "6c75b94dab40c31942d58d0458981314902d58b5226a3723e1a7b2722e1ff446",
+        "bytes": 803332
+      }
+    },
+    {
+      "chunk": "smolvla-action-input-projection",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-action-input-projection/program.json",
+        "sha256": "83ddbbe465491af8633b5c13c7746c37d45f0477bb96a8537646bf3a6b036dba",
+        "bytes": 91817
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-action-input-projection/fixture.npz",
+        "sha256": "89edccd126cf448899967a12bbcebf5b6bec792153f1474aec434301ca6d07f1",
+        "bytes": 146116
+      }
+    },
+    {
+      "chunk": "smolvla-action-projection-update",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-action-projection-update/program.json",
+        "sha256": "515d887a9fa9787937e427128505adee54af974c2eb18c1c245deccb4b96b4fc",
+        "bytes": 121357
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-action-projection-update/fixture.npz",
+        "sha256": "7d0c23d3e20e56812ec04bb3033a186f4ea8d5c7fe3338d6393aabf1d026a293",
+        "bytes": 158072
+      }
+    },
+    {
+      "chunk": "smolvla-action-time-embedding",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-action-time-embedding/program.json",
+        "sha256": "5f046ec225c5c868aa2b7d657ac1d3d6e075a4a7e09b235d97b9398726b9c880",
+        "bytes": 2235835
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-action-time-embedding/fixture.npz",
+        "sha256": "458eaa9fe62766293836fd0670c8c001cb0650fbac36d5f7023646a71bc43994",
+        "bytes": 294828
+      }
+    },
+    {
+      "chunk": "smolvla-expert-cross-attention-core",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-expert-cross-attention-core/program.json",
+        "sha256": "d041c3806d5fdcfb2929f7f9434ebf8a07ea0318339ba974d751eb58a6048b76",
+        "bytes": 4021735
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-expert-cross-attention-core/fixture.npz",
+        "sha256": "30cd5d354d37b0b2d45a512dbde48000214cb9178eaaa2f4e5db443bbe461b69",
+        "bytes": 776430
+      }
+    },
+    {
+      "chunk": "smolvla-expert-cross-qkv",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-expert-cross-qkv/program.json",
+        "sha256": "ccb24cd3e5bc48661aa94d60ecb1bf4d9a5cfea358bbad5b0713b3b23811b275",
+        "bytes": 1396095
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-expert-cross-qkv/fixture.npz",
+        "sha256": "81cf91984fa0cd7207eeef4cca3ab59c4daa904b3d784240cdb35fc9646f6c5c",
+        "bytes": 916076
+      }
+    },
+    {
+      "chunk": "smolvla-expert-mlp",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-expert-mlp/program.json",
+        "sha256": "5e1f0cf41a1ef76add92e90cbeff15dfd71ba9ae5e38c0e6c0ccb4f1297de7cb",
+        "bytes": 6081966
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-expert-mlp/fixture.npz",
+        "sha256": "ca8c93f5174ca03270f9492ba0007213405e2cef4c42cbcdf25d6f4eb9fe15b1",
+        "bytes": 288516
+      }
+    },
+    {
+      "chunk": "smolvla-expert-self-attention-core",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-expert-self-attention-core/program.json",
+        "sha256": "07701ea573676739e4ba755ddafafa9cf41eb281ff5c77f5d8976508953d4244",
+        "bytes": 4033979
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-expert-self-attention-core/fixture.npz",
+        "sha256": "5b0a73b780f7c941ef9b8ebebb529ac227ee64fa2df92232799d623cb3d1d91d",
+        "bytes": 907422
+      }
+    },
+    {
+      "chunk": "smolvla-expert-self-qkv",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-expert-self-qkv/program.json",
+        "sha256": "ee8faaf44af685f98f567336e8706439da3267b36cfcc48ddab23f1a3b9973a0",
+        "bytes": 1682335
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/smolvla/smolvla-expert-self-qkv/fixture.npz",
+        "sha256": "716dfa6c7fb1ca7dba3b49dbcdec1c9d8e17962b5642e99e8ebadc9e574a17e9",
+        "bytes": 465024
+      }
+    },
+    {
+      "chunk": "tinyllama-k-projection-m1",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-k-projection-m1/program.json",
+        "sha256": "b47ccf7ae44daafbfc60be1a816e2ba475cee9419b295941fc723b09a36029f0",
+        "bytes": 733748
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-k-projection-m1/fixture.npz",
+        "sha256": "264e2d30d247093da3c95a752a37d88ea8de9616d9ad6086be6e8a26245c84fe",
+        "bytes": 3588
+      }
+    },
+    {
+      "chunk": "tinyllama-k-projection-m16",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-k-projection-m16/program.json",
+        "sha256": "ac0b3ec7bd1f2c869bcaf141829b6744e3cb3ec3f7e1f650d50dc5d804321861",
+        "bytes": 733753
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-k-projection-m16/fixture.npz",
+        "sha256": "07535606e6f548c108ff85e187761d81aab6eef4415da6d34f6e5d415e4b3ae1",
+        "bytes": 49668
+      }
+    },
+    {
+      "chunk": "tinyllama-mlp-5728-m1",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-mlp-5728-m1/program.json",
+        "sha256": "96ba7b6baf03d0a6deec46eaa998d5e290a5103314ce659ca21a4c6d3d9a12c4",
+        "bytes": 47160944
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-mlp-5728-m1/fixture.npz",
+        "sha256": "12c42470cdd6bf5a9e28cd441da6bf69eb61627f18ab7057c6313cace6479a7e",
+        "bytes": 16900
+      }
+    },
+    {
+      "chunk": "tinyllama-mlp-5728-m16",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-mlp-5728-m16/program.json",
+        "sha256": "8ebcdabb36f3291c7ecb0bc6bf24c59515a7f377ca3235ec202e72509dd1e1a9",
+        "bytes": 47160956
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-mlp-5728-m16/fixture.npz",
+        "sha256": "1cc98daab8204a550b628aaf9517b1705eab3192071469dd0aac8d63b04e6be7",
+        "bytes": 262660
+      }
+    },
+    {
+      "chunk": "tinyllama-mlp-6096-m1",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-mlp-6096-m1/program.json",
+        "sha256": "35aa19bd437066ace3a111880f22b5b806dc32c4080346ca96847f8f7d8ac48b",
+        "bytes": 50179516
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-mlp-6096-m1/fixture.npz",
+        "sha256": "d2f9f62dc13a58e54fb37d9046f1d861cc8795c7ff4554a34a8a6618fbe2ab09",
+        "bytes": 16900
+      }
+    },
+    {
+      "chunk": "tinyllama-mlp-6096-m16",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-mlp-6096-m16/program.json",
+        "sha256": "dabeb243345931dd90e8669858ac568765c3291bf6580af2b655c922b998cc70",
+        "bytes": 50179528
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-mlp-6096-m16/fixture.npz",
+        "sha256": "6656133e2212485eab96afe49f111f17dd7c266986e113e3942709d85c0b6347",
+        "bytes": 262660
+      }
+    },
+    {
+      "chunk": "tinyllama-q-projection-m1",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-q-projection-m1/program.json",
+        "sha256": "e30180e38bc10d204b24c5b5f54ca167d90cf544537337ebf315de6d21bb0da1",
+        "bytes": 5636664
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-q-projection-m1/fixture.npz",
+        "sha256": "30c22ec1e8e11ce8bb2400be8ff4fb4e3654c8e891c27bfd69fc9792c9cdef30",
+        "bytes": 10756
+      }
+    },
+    {
+      "chunk": "tinyllama-q-projection-m16",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-q-projection-m16/program.json",
+        "sha256": "c02ad0133168394a0c2c4691832f76706d7f46c71353279ab747f2890383ce7f",
+        "bytes": 5636669
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-q-projection-m16/fixture.npz",
+        "sha256": "7e3ef060d77cd4723df4d925a837b60f274d5089a22bc0a9e46a171207decbc0",
+        "bytes": 164356
+      }
+    },
+    {
+      "chunk": "tinyllama-v-projection-m1",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-v-projection-m1/program.json",
+        "sha256": "a1707228e3d4f07d71e57be0e02aa28d5eb10c2cf4df002137c4ca2d04c9e915",
+        "bytes": 733748
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-v-projection-m1/fixture.npz",
+        "sha256": "921508cc3fa85d0f4864b7fbfc1f06acec7f55ea8c2d9c457848e33b67b642ce",
+        "bytes": 3588
+      }
+    },
+    {
+      "chunk": "tinyllama-v-projection-m16",
+      "program": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-v-projection-m16/program.json",
+        "sha256": "d91f06faca0b85d03632f9e7b3e5e484baa17f057b809c5613e738f700d5a175",
+        "bytes": 733753
+      },
+      "fixture": {
+        "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks/chunks/tinyllama/tinyllama-v-projection-m16/fixture.npz",
+        "sha256": "2daff5977fc9a94d281294af809c78276cf621e36d97e15dc21b009ff53c715a",
+        "bytes": 49668
+      }
+    }
+  ],
+  "compiler": {
+    "path": "/scratch/grammy/blast/merlin-tvm-tuning/out/build/baselines/tvm-f2-followup/compiler-migration/libtvm.so",
+    "sha256": "3da1b289c1abb64d9a73f856a43aa46b93d137f1108833e6e1acd52c4993a361",
+    "bytes": 82131712
+  },
+  "python_sources": [
+    {
+      "path": "/scratch/grammy/merlin-tvm-firesim-ready/examples/gemmini/comparisons/tvm/firesim_job_pool.py",
+      "sha256": "5bc96fa72cf2ddff32576c6f7f76cfed41c05ea37a625942bc4c56b751ccbe04",
+      "bytes": 10615
+    },
+    {
+      "path": "/scratch/grammy/merlin-tvm-firesim-ready/examples/gemmini/comparisons/tvm/firesim_runner_seconds.py",
+      "sha256": "9752aedb449959992a07c969dfa6a878cb66ea5ec2fd26d514ef48a77d4df26f",
+      "bytes": 1331
+    },
+    {
+      "path": "/scratch/grammy/merlin-tvm-firesim-ready/examples/gemmini/comparisons/tvm/firesim_timeout.py",
+      "sha256": "5e5131c41d1803e56e74a16f37a48e07ad53f500640f0cd9ecbbf38f7b233530",
+      "bytes": 4032
+    },
+    {
+      "path": "/scratch/grammy/merlin-tvm-firesim-ready/examples/gemmini/comparisons/tvm/run_firesim_study.py",
+      "sha256": "e82a8ce738d6cf2ffba5ba0562027997b3420fe6f38d08c17dd2e7ba33e0ed09",
+      "bytes": 16223
+    },
+    {
+      "path": "/scratch/grammy/merlin-tvm-firesim-ready/examples/gemmini/comparisons/tvm/tune_firesim_chunks.py",
+      "sha256": "2982fe9e571e23e76b17b12972f9828b5ed945e086dd7f019d0c77f76f835cc6",
+      "bytes": 21615
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/audit_graph_plans.py",
+      "sha256": "537b45ef034a5c84ba946b188db3aa87fedc185d1b866ca2279459345212c465",
+      "bytes": 2491
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/baremetal.py",
+      "sha256": "67440beb49d0a1796332259c8399aeb18f2affec634422c22e2495354585d735",
+      "bytes": 37057
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/benchmark_el4.py",
+      "sha256": "bbedc7e66441f2498586de1ca83cb8db0ec37349c542b11c0da51c751f775419",
+      "bytes": 15781
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/chunk_measure.py",
+      "sha256": "e040ff3cf6f1a51cbdad0e79f8c8a1973f08e1af0447bd1ca5f5464818e47d71",
+      "bytes": 11135
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/compile_package.py",
+      "sha256": "6c3ce48d06c1d72ef1f48ae1ba4009325b996ee61d39ac0b35762c52c3a7773a",
+      "bytes": 26224
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/complete_baselines.py",
+      "sha256": "a6e0c2b6337c7d3b9a39e4e948e4961c0d65b7103703cf13aa707397938ca19e",
+      "bytes": 6963
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/cycle_watchdog.py",
+      "sha256": "0d159f9105013880ba4f51b1cfdf84b75596f413d076834a97d95d9ab77639de",
+      "bytes": 3700
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/extract_tensorir.py",
+      "sha256": "07c39a3d2cbd407e85a623d0632aa81b1c5969ea344cfb0a3c3c19ad77228931",
+      "bytes": 6536
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/graph_plans.py",
+      "sha256": "6f502128617443c54da264f2b41425acf42d452ddb6885ebd81a5106c7e4b877",
+      "bytes": 10943
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/host_execution.py",
+      "sha256": "e73dd91bb10d3aaaddafdf417daedae87983c1cac775af83e8ad5effb079f9b0",
+      "bytes": 4662
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/measure.py",
+      "sha256": "649bd282b21f42786fc4094647c26b0a109548ed28802b0c0c866fe82cd6246f",
+      "bytes": 33813
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/memory_model.py",
+      "sha256": "d9966905dcf664b37e4ff0044624cc50829ac66cc554a0ca07113aa7fbc6cad2",
+      "bytes": 6617
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/merge_comparison_records.py",
+      "sha256": "b154f2ce2a757c6934abbbe442aae8cd82e3f578af702a8b5d59beb14ca21d6e",
+      "bytes": 4388
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/model_workloads.py",
+      "sha256": "184b742ecb97c2e091665497ee826ba511fe5b86ecea4556b977e1e6001c2baa",
+      "bytes": 10862
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/operator_contracts.py",
+      "sha256": "ddf65b50aee003bb9f2ef5258524b8daf2529128a957eecf555732ea261954d8",
+      "bytes": 13277
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/operator_inputs.py",
+      "sha256": "bbba2f65d13f0ae1954640f2bad18e8b2137257de9a760b0032859ec37ad8053",
+      "bytes": 8887
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/package_audit.py",
+      "sha256": "e56d1b7c92b606eb72c56a5ec017038ce47457332f5398b48376237575613696",
+      "bytes": 3317
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/program_io.py",
+      "sha256": "4cced916bb5eeef08eebc46adde2085f6df302b517417fdf2efabe39dc64202b",
+      "bytes": 1416
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/qualify_package.py",
+      "sha256": "cda27e9851642cbfae11415a9d51d5c45e4773d99ddfc752638ad101f71e2250",
+      "bytes": 12587
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/qualify_tuning_package.py",
+      "sha256": "2e8ad2c8d41badb7223cf4960bfa356e3fc7b8d5fbcfab17fd95a78bc865e8bd",
+      "bytes": 8378
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/replay_candidate.py",
+      "sha256": "1dfa2b5490dd490d394934c1f4dee593b162af1a206516393d8cb84830aebd95",
+      "bytes": 17175
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/report_el4.py",
+      "sha256": "b038131d3a39979e88f148799c67b7890c217551eb4f4069e446fec22b4ad30b",
+      "bytes": 17777
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/report_followup.py",
+      "sha256": "576367b6f1c7da321a5831fe0dd6a5a6ba1e5def506f6b70d3d6268b5170a7e9",
+      "bytes": 10773
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/report_tuning.py",
+      "sha256": "36c9ff497a3c916ef1f12c0edf790fc36164e3b87767e740b555c01be905af8f",
+      "bytes": 9642
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/retry_capped.py",
+      "sha256": "71777e0618d6199e00372e0c4c4283e71a2b0ffa9e57b37b538c4da4f0c9fcef",
+      "bytes": 7257
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/tune_chunk.py",
+      "sha256": "9a3cf7231ac07ce1dd37e9c565df910816746529940a5244f8a8902486dfe367",
+      "bytes": 13516
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/tune_models.py",
+      "sha256": "485ce35a4b55a1dc9719c99ec8d758bae2221df6fd882b5b6037b48f1f981448",
+      "bytes": 37659
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/tune_tensorir.py",
+      "sha256": "fdaa1b3df77fe4f0c8ee211f548e9079da78debbec9f2e89dd34585ffd21013c",
+      "bytes": 1064
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/tuning_library.py",
+      "sha256": "a520e55cfa875eb056ab2cd04712f4246e13279293007531a640909709adafd4",
+      "bytes": 24836
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/tuning_preset.py",
+      "sha256": "84fddc67f50d294e4485461ac7052c7ef0f2b57e815ebed9ee05dd78d9df9441",
+      "bytes": 2445
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/verify_baremetal_cpu.py",
+      "sha256": "ba5c5c57ab11c1a1f148633080b3ece03342167f37f61e876477bf67254683da",
+      "bytes": 35612
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/verify_device_ops.py",
+      "sha256": "65fce34a428ae09dd6d334a34f2f2df341a863a8aabf13e2660f39c672e67f94",
+      "bytes": 10420
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/verify_el4.py",
+      "sha256": "4cf750b0d2621addde448a127c71abc857d3da1caa4f52fa2abc493c8ebd287e",
+      "bytes": 2708
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/verify_exported_graph.py",
+      "sha256": "71dda809658752d7beca9d662b238030b967cdc3c7a7b8e639e9815f21d206b7",
+      "bytes": 50531
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/verify_graph.py",
+      "sha256": "c3dd747531c5a353f4e4547594d41bb6ee1a09b835cb7ab0425a8ec7f15de849",
+      "bytes": 28036
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/verify_host.py",
+      "sha256": "f4ffcf79eb0982f13f0241a7a9acb018f092ae6b2cf2f4f258222b5b4dca1058",
+      "bytes": 6059
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/verify_matmul.py",
+      "sha256": "d971814355a2deddf3a07dc5e530fc863190b5f4fb3f5d2aeaab09367ed650ac",
+      "bytes": 18543
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/verify_matmul_runtime.py",
+      "sha256": "f730764b016cd506cc85029d77a11a451453348c118a28f5000e26b36d6416dc",
+      "bytes": 26152
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/verify_onnx.py",
+      "sha256": "335ef721669d49df34af962d9b44d5659c9a02929c78d58e916dc3e09de7bd6d",
+      "bytes": 28168
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/verify_tensorir.py",
+      "sha256": "b81f18c61f6551a901e79b83f8beb808fbd8b65dc9ea3064be6c11941aee2d2f",
+      "bytes": 74129
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/workload_chunks.py",
+      "sha256": "8bd9262f1cac36d8227f814db0af0a1a8ed3cc24028c55f5512a2a936475bf3d",
+      "bytes": 11714
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/workload_reference.py",
+      "sha256": "f86091fd5f71cc297eb0b4041103825e9fd02cd0761134b0d0ae7be24501f181",
+      "bytes": 13884
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/apps/gemmini/workload_tuning.py",
+      "sha256": "86d30b19abd1dc64062542ac295ea21b14fe81308688fe55d82e4a5d1397cd44",
+      "bytes": 14161
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini.py",
+      "sha256": "5ea4954becbf649dec3e73f7d9144e1e80915cbb85fe8b0ef4ed15d3f72a64ad",
+      "bytes": 17843
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_affine.py",
+      "sha256": "5d3466cebf810c34de2a67dd1910fcdcac575dceb65279191f50007ed3106141",
+      "bytes": 14024
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_bias.py",
+      "sha256": "79e9dd251a02ec702b80922dbd554189b13a5be070c9034be6d9ce47c720648d",
+      "bytes": 6817
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_bytes.py",
+      "sha256": "57f810fdd54265912a586c45dd14c5464a104d5aaad0aab79072e9cfec0f80ff",
+      "bytes": 5572
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_conv.py",
+      "sha256": "94799fe0ded364295e8a9384c66a8d179bb078612737825279b8c5ec0bbdd2a2",
+      "bytes": 7537
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_elementwise.py",
+      "sha256": "18b0563a57a8d3fb16d8fbc58c4797150d4bf96f17242fb8d6566901086a3155",
+      "bytes": 30705
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_epilogue.py",
+      "sha256": "0a4e59c30923f0c7ec1a3d25b557a3ead80b6a260e65483487901cc947bb7160",
+      "bytes": 13575
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_intrin.py",
+      "sha256": "a91df2f20582d4fb601d954d046eb510a5fd626937b9ed2321b6ebd584aa3e15",
+      "bytes": 9723
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_memory.py",
+      "sha256": "6f36ab1ce433d6aad8b2af6940aa397cfb4cc8f3872d6317a3528c46435413fc",
+      "bytes": 16309
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_meta_schedule.py",
+      "sha256": "be9cdf6bb1906ff32e08353500ae81a322faee1fe426d2e8155cb50443e040a8",
+      "bytes": 11217
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_pool.py",
+      "sha256": "38b3cee5db2d709542566d5f64c0c5f8254a4a44c1d37470f84c026c5e8ca4d5",
+      "bytes": 8725
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_reduction.py",
+      "sha256": "5da51ab36d6a724e93ff64f847aa4ed75d9aa0e02d6af08126bd06bb622d6138",
+      "bytes": 16564
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_regions.py",
+      "sha256": "7f869679fee0291b46f126f6c71266cecf425d02e921e6d9926edc8f6951dc08",
+      "bytes": 9764
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_schedule.py",
+      "sha256": "1f4912c080bb3a137c333a6e80cd000a4c7aa4ceb566646aebe8ddac0749eb7c",
+      "bytes": 15605
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_search.py",
+      "sha256": "0d5b9bb1fef7bc0f34be2f6d9fb540dead5252bddd9aa403fdb368926293bec3",
+      "bytes": 12029
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_sketch.py",
+      "sha256": "fff95d447d8a8d584128c06032a2e2ad87afbe4a27b6456fe38e7f2d7bccb754",
+      "bytes": 23976
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_target.py",
+      "sha256": "aaefd92eeedb6d2d943ad9d05467e51d78f83c4936836181cca18496206dfaec",
+      "bytes": 3479
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_tensorir.py",
+      "sha256": "c9696a7a1e9520c438c19e58bd8f2c19b59bd48b7fd5e63124f32406b7c010a8",
+      "bytes": 28603
+    },
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_tuning.py",
+      "sha256": "674638055a7578084a698385f8ec0319b147ddfc919f92641a39515a9b713d23",
+      "bytes": 24143
+    }
+  ],
+  "extractor": {
+    "path": "/scratch/grammy/merlin-tvm-firesim-ready/out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/reextract_chunks.py",
+    "sha256": "7fb52eb1ea826514d57e843e3655612cb4dbc726624a9294bdcf9b35e2db3035",
+    "bytes": 5059
+  },
+  "capabilities": "fb2281d666401792a7b5813387e82468de9832712cdcabe7d8ee47077638543d"
+}

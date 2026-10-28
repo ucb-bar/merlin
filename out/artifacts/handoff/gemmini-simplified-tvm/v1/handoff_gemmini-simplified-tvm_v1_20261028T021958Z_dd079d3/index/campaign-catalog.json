@@ -1,0 +1,366 @@
+{
+  "schema": "firesim_owner_catalog_v1",
+  "status": "extraction_only_not_execution_qualified",
+  "input_root": "/scratch/grammy/merlin-tvm-firesim-ready/out/build/firesim-preparation/shared-chunks",
+  "campaigns": [
+    {
+      "id": "resnet-classifier",
+      "program": "resnet-release/resnet-chunks/resnet-classifier/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-classifier/fixture.npz",
+      "model": "resnet",
+      "workload_keys": [
+        "ef8eb0206f946ce6"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "resnet-stage1-block1",
+      "program": "resnet-release/resnet-chunks/resnet-stage1-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage1-block1/fixture.npz",
+      "model": "resnet",
+      "workload_keys": [
+        "a55ec2d038b25363",
+        "b1513338f1b6ddae",
+        "98c415b0e6f140f4"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "resnet-stage1-block2",
+      "program": "resnet-release/resnet-chunks/resnet-stage1-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage1-block2/fixture.npz",
+      "model": "resnet",
+      "workload_keys": [
+        "e1c0bb4617343fe5"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "resnet-stage2-block1",
+      "program": "resnet-release/resnet-chunks/resnet-stage2-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage2-block1/fixture.npz",
+      "model": "resnet",
+      "workload_keys": [
+        "09bdb171695bfffa",
+        "916afde464d0c0aa",
+        "d926142637a8b39f",
+        "b13dfe5ba1a1638c"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "resnet-stage2-block2",
+      "program": "resnet-release/resnet-chunks/resnet-stage2-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage2-block2/fixture.npz",
+      "model": "resnet",
+      "workload_keys": [
+        "0d718e000c59d06c"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "resnet-stage3-block1",
+      "program": "resnet-release/resnet-chunks/resnet-stage3-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage3-block1/fixture.npz",
+      "model": "resnet",
+      "workload_keys": [
+        "2a58ce5e15eb63cc",
+        "a2935115ae425c8a",
+        "0d8e33b0035661b3",
+        "983c96900b0c24b7"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "resnet-stage3-block2",
+      "program": "resnet-release/resnet-chunks/resnet-stage3-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage3-block2/fixture.npz",
+      "model": "resnet",
+      "workload_keys": [
+        "65e28c4608e1cbb7"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "resnet-stage4-block1",
+      "program": "resnet-release/resnet-chunks/resnet-stage4-block1/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage4-block1/fixture.npz",
+      "model": "resnet",
+      "workload_keys": [
+        "1aabcd8f4b0fcd1e",
+        "a09b8184249b6b21",
+        "8180993594cb5d0c",
+        "9d00d9d6f3288874"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "resnet-stage4-block2",
+      "program": "resnet-release/resnet-chunks/resnet-stage4-block2/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stage4-block2/fixture.npz",
+      "model": "resnet",
+      "workload_keys": [
+        "374fdd6fa454b8a0"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "resnet-stem",
+      "program": "resnet-release/resnet-chunks/resnet-stem/program.json",
+      "fixture": "resnet-release/resnet-chunks/resnet-stem/fixture.npz",
+      "model": "resnet",
+      "workload_keys": [
+        "47b8ed80131eddf9"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "smolvla-action-input-projection",
+      "program": "chunks/smolvla/smolvla-action-input-projection/program.json",
+      "fixture": "chunks/smolvla/smolvla-action-input-projection/fixture.npz",
+      "model": "smolvla",
+      "workload_keys": [
+        "b7f909f335bc6f4d"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "smolvla-action-projection-update",
+      "program": "chunks/smolvla/smolvla-action-projection-update/program.json",
+      "fixture": "chunks/smolvla/smolvla-action-projection-update/fixture.npz",
+      "model": "smolvla",
+      "workload_keys": [
+        "bfc53f6224892cc7"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "smolvla-action-time-embedding",
+      "program": "chunks/smolvla/smolvla-action-time-embedding/program.json",
+      "fixture": "chunks/smolvla/smolvla-action-time-embedding/fixture.npz",
+      "model": "smolvla",
+      "workload_keys": [
+        "b379ba1dad375cb9",
+        "b8054719977a6f75"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "smolvla-expert-cross-attention-core",
+      "program": "chunks/smolvla/smolvla-expert-cross-attention-core/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-cross-attention-core/fixture.npz",
+      "model": "smolvla",
+      "workload_keys": [
+        "07cd0beb89b89ff4",
+        "59a9645f84b857d0",
+        "0f9c42e92f2a3b3e"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "smolvla-expert-cross-qkv",
+      "program": "chunks/smolvla/smolvla-expert-cross-qkv/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-cross-qkv/fixture.npz",
+      "model": "smolvla",
+      "workload_keys": [
+        "77977bbc05b0ea97",
+        "06e9f1e871093216"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "smolvla-expert-mlp",
+      "program": "chunks/smolvla/smolvla-expert-mlp/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-mlp/fixture.npz",
+      "model": "smolvla",
+      "workload_keys": [
+        "2f1f8b3168fe5744",
+        "59f47fcbfd200cdb"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "smolvla-expert-self-attention-core",
+      "program": "chunks/smolvla/smolvla-expert-self-attention-core/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-self-attention-core/fixture.npz",
+      "model": "smolvla",
+      "workload_keys": [
+        "3639e4e64574066f",
+        "c8e08a4595cd8811"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "smolvla-expert-self-qkv",
+      "program": "chunks/smolvla/smolvla-expert-self-qkv/program.json",
+      "fixture": "chunks/smolvla/smolvla-expert-self-qkv/fixture.npz",
+      "model": "smolvla",
+      "workload_keys": [
+        "5ba7606fbc93f8f3"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "tinyllama-k-projection-m1",
+      "program": "chunks/tinyllama/tinyllama-k-projection-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-k-projection-m1/fixture.npz",
+      "model": "tinyllama",
+      "workload_keys": [
+        "5aaeef4a149b9067"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "tinyllama-k-projection-m16",
+      "program": "chunks/tinyllama/tinyllama-k-projection-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-k-projection-m16/fixture.npz",
+      "model": "tinyllama",
+      "workload_keys": [
+        "fef20d5edd92a0d4"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "tinyllama-mlp-5728-m1",
+      "program": "chunks/tinyllama/tinyllama-mlp-5728-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m1/fixture.npz",
+      "model": "tinyllama",
+      "workload_keys": [
+        "2522ba15ced42c41",
+        "e1f8625c16e09b56"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "tinyllama-mlp-5728-m16",
+      "program": "chunks/tinyllama/tinyllama-mlp-5728-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m16/fixture.npz",
+      "model": "tinyllama",
+      "workload_keys": [
+        "62706a06ea988b7e",
+        "49d7ca62726f3bdb"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "tinyllama-mlp-6096-m1",
+      "program": "chunks/tinyllama/tinyllama-mlp-6096-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m1/fixture.npz",
+      "model": "tinyllama",
+      "workload_keys": [
+        "af45842dcbcd489e",
+        "3ae98f9c1a49871c"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "tinyllama-mlp-6096-m16",
+      "program": "chunks/tinyllama/tinyllama-mlp-6096-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m16/fixture.npz",
+      "model": "tinyllama",
+      "workload_keys": [
+        "688a8d6d3f37183a",
+        "89f0741061a64cbf"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "tinyllama-q-projection-m1",
+      "program": "chunks/tinyllama/tinyllama-q-projection-m1/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-q-projection-m1/fixture.npz",
+      "model": "tinyllama",
+      "workload_keys": [
+        "6db65851d76f6526"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    {
+      "id": "tinyllama-q-projection-m16",
+      "program": "chunks/tinyllama/tinyllama-q-projection-m16/program.json",
+      "fixture": "chunks/tinyllama/tinyllama-q-projection-m16/fixture.npz",
+      "model": "tinyllama",
+      "workload_keys": [
+        "0988768c53d64a58"
+      ],
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    }
+  ]
+}

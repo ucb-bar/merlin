@@ -1,0 +1,5 @@
+TENSORIR_CASE requested_mm
+TENSORIR_NUMERICAL_FAILURE
+Gemmini extension configured with:
+    dim = 16
+*** FAILED *** (tohost = 22)

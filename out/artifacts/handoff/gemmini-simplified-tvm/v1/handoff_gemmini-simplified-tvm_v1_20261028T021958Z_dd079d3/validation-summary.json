@@ -1,0 +1,69 @@
+{
+  "tvm_commit": "619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a",
+  "tvm_base": "42b3c1ef27abe878f930e48b335b24956beb0e56",
+  "runner_commit": "dd079d3a06144ae2b476b4ae2027a3b16f3dfff2",
+  "protocol": "8ec99308cb1182b9b896a6075300312266fadf6f",
+  "case_count": 71,
+  "controls": [
+    {
+      "control": "positive",
+      "status": "passed",
+      "exit_code": 0,
+      "bindings_checked": 496,
+      "elf": "23487f691f6f636e6c95de1b7a8c6b3dc1adcc25d10943b983f113a4f3be4aae",
+      "prohibited_hits": []
+    },
+    {
+      "control": "negative",
+      "status": "passed",
+      "exit_code": 22,
+      "bindings_checked": 496,
+      "elf": "ab662de9a75464379ff8b6fb73a2eb051b6564d997ceb168a79a42caa7a9434b",
+      "prohibited_hits": []
+    }
+  ],
+  "patch_tree": "6e7f980eae5a062b4b5416daa0623c3bbae8b983",
+  "index": {
+    "status": "extraction_only",
+    "graph_options": {
+      "graph_fusion_level": 2,
+      "prepack_weights": false,
+      "bias_preload": false,
+      "graph_cse": false
+    },
+    "chunks_by_model": {
+      "resnet": 18,
+      "smolvla": 8,
+      "tinyllama": 10
+    },
+    "owners_by_model": {
+      "resnet": 10,
+      "smolvla": 8,
+      "tinyllama": 8
+    },
+    "tasks_by_model": {
+      "resnet": 21,
+      "smolvla": 14,
+      "tinyllama": 12
+    },
+    "distinct_contractions": 47,
+    "owners": 26,
+    "matching_historical_keys": [],
+    "excluded_chunks": [
+      "smolvla-action-update"
+    ],
+    "limits": [
+      "No new numerical or hardware qualification",
+      "Historical key intersection is not a validated trace replay",
+      "Set input paths from input-root when constructing the remote study",
+      "No trial counts or fresh budget allocated"
+    ]
+  },
+  "hardware_qualified": false,
+  "limitations": [
+    "Diagnostic RNE Spike is not the spec-pinned oracle",
+    "No FireSim cycle result or full-model qualification",
+    "Per-program composite proof and selected hardware facts are admission requirements",
+    "Fresh task extraction is not connected-chunk execution"
+  ]
+}

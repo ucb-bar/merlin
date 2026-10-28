@@ -1,0 +1,2147 @@
+{
+  "root": 1, 
+  "nodes": [
+    {
+      "type_key": ""
+    }, 
+    {
+      "type_key": "IRModule", 
+      "attrs": {
+        "attrs": "327", 
+        "functions": "2", 
+        "global_infos": "329", 
+        "global_type_var_map_": "324", 
+        "global_var_map_": "323", 
+        "source_map": "325", 
+        "type_definitions": "322"
+      }
+    }, 
+    {
+      "type_key": "Map", 
+      "data": [3, 5]
+    }, 
+    {
+      "type_key": "GlobalVar", 
+      "attrs": {
+        "_checked_type_": "0", 
+        "name_hint": "4", 
+        "span": "0", 
+        "struct_info_": "0", 
+        "virtual_device_": "0"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "main"
+    }, 
+    {
+      "type_key": "tir.PrimFunc", 
+      "attrs": {
+        "_checked_type_": "318", 
+        "attrs": "313", 
+        "body": "16", 
+        "buffer_map": "312", 
+        "params": "6", 
+        "ret_type": "310", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [7, 10, 13]
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "handle", 
+        "name": "8", 
+        "span": "0", 
+        "type_annotation": "9"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "p_lv730"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "handle"}
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "handle", 
+        "name": "11", 
+        "span": "0", 
+        "type_annotation": "12"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "p_param_0"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "handle"}
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "handle", 
+        "name": "14", 
+        "span": "0", 
+        "type_annotation": "15"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "p_output0"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "handle"}
+    }, 
+    {
+      "type_key": "tir.BlockRealize", 
+      "attrs": {
+        "block": "19", 
+        "iter_values": "17", 
+        "predicate": "18"
+      }
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "bool", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "tir.Block", 
+      "attrs": {
+        "alloc_buffers": "307", 
+        "annotations": "309", 
+        "body": "24", 
+        "init": "0", 
+        "iter_vars": "20", 
+        "match_buffers": "308", 
+        "name_hint": "23", 
+        "reads": "21", 
+        "writes": "22"
+      }
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "root"
+    }, 
+    {
+      "type_key": "tir.SeqStmt", 
+      "attrs": {
+        "seq": "25", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [26, 145, 210, 274]
+    }, 
+    {
+      "type_key": "tir.For", 
+      "attrs": {
+        "annotations": "144", 
+        "body": "32", 
+        "extent": "31", 
+        "kind": "0", 
+        "loop_var": "27", 
+        "min": "30", 
+        "span": "0", 
+        "thread_binding": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "28", 
+        "span": "0", 
+        "type_annotation": "29"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "i0"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "50"
+      }
+    }, 
+    {
+      "type_key": "tir.For", 
+      "attrs": {
+        "annotations": "143", 
+        "body": "38", 
+        "extent": "37", 
+        "kind": "0", 
+        "loop_var": "33", 
+        "min": "36", 
+        "span": "0", 
+        "thread_binding": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "34", 
+        "span": "0", 
+        "type_annotation": "35"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "i1"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "720"
+      }
+    }, 
+    {
+      "type_key": "tir.For", 
+      "attrs": {
+        "annotations": "142", 
+        "body": "44", 
+        "extent": "43", 
+        "kind": "0", 
+        "loop_var": "39", 
+        "min": "42", 
+        "span": "0", 
+        "thread_binding": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "40", 
+        "span": "0", 
+        "type_annotation": "41"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "k"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "960"
+      }
+    }, 
+    {
+      "type_key": "tir.BlockRealize", 
+      "attrs": {
+        "block": "47", 
+        "iter_values": "45", 
+        "predicate": "46"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [27, 33, 39]
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "bool", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "tir.Block", 
+      "attrs": {
+        "alloc_buffers": "139", 
+        "annotations": "141", 
+        "body": "124", 
+        "init": "136", 
+        "iter_vars": "48", 
+        "match_buffers": "140", 
+        "name_hint": "123", 
+        "reads": "70", 
+        "writes": "105"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [49, 56, 63]
+    }, 
+    {
+      "type_key": "tir.IterVar", 
+      "attrs": {
+        "dom": "50", 
+        "iter_type": "0", 
+        "span": "0", 
+        "thread_tag": "55", 
+        "var": "52"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "31", 
+        "min": "51", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "53", 
+        "span": "0", 
+        "type_annotation": "54"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "v_i0"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "runtime.String"
+    }, 
+    {
+      "type_key": "tir.IterVar", 
+      "attrs": {
+        "dom": "57", 
+        "iter_type": "0", 
+        "span": "0", 
+        "thread_tag": "62", 
+        "var": "59"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "37", 
+        "min": "58", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "60", 
+        "span": "0", 
+        "type_annotation": "61"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "v_i1"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "runtime.String"
+    }, 
+    {
+      "type_key": "tir.IterVar", 
+      "attrs": {
+        "dom": "64", 
+        "iter_type": "2", 
+        "span": "0", 
+        "thread_tag": "69", 
+        "var": "66"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "43", 
+        "min": "65", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "67", 
+        "span": "0", 
+        "type_annotation": "68"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "v_k"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "runtime.String"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [71, 87]
+    }, 
+    {
+      "type_key": "tir.BufferRegion", 
+      "attrs": {
+        "buffer": "72", 
+        "region": "82"
+      }
+    }, 
+    {
+      "type_key": "tir.Buffer", 
+      "attrs": {
+        "axis_separators": "80", 
+        "buffer_type": "1", 
+        "data": "73", 
+        "data_alignment": "64", 
+        "dtype": "int8", 
+        "elem_offset": "81", 
+        "name": "74", 
+        "offset_factor": "1", 
+        "shape": "78", 
+        "span": "0", 
+        "strides": "79"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "handle", 
+        "name": "74", 
+        "span": "0", 
+        "type_annotation": "75"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "lv730"
+    }, 
+    {
+      "type_key": "PointerType", 
+      "attrs": {
+        "element_type": "76", 
+        "storage_scope": "77"
+      }
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int8"}
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "global"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [31, 43]
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [83, 85]
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "84", 
+        "min": "52", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "86", 
+        "min": "66", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "tir.BufferRegion", 
+      "attrs": {
+        "buffer": "88", 
+        "region": "100"
+      }
+    }, 
+    {
+      "type_key": "tir.Buffer", 
+      "attrs": {
+        "axis_separators": "98", 
+        "buffer_type": "1", 
+        "data": "89", 
+        "data_alignment": "64", 
+        "dtype": "int8", 
+        "elem_offset": "99", 
+        "name": "90", 
+        "offset_factor": "1", 
+        "shape": "94", 
+        "span": "0", 
+        "strides": "97"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "handle", 
+        "name": "90", 
+        "span": "0", 
+        "type_annotation": "91"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "param_0"
+    }, 
+    {
+      "type_key": "PointerType", 
+      "attrs": {
+        "element_type": "92", 
+        "storage_scope": "93"
+      }
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int8"}
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "global"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [95, 96]
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "960"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "720"
+      }
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [101, 103]
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "102", 
+        "min": "66", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "104", 
+        "min": "59", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [106]
+    }, 
+    {
+      "type_key": "tir.BufferRegion", 
+      "attrs": {
+        "buffer": "107", 
+        "region": "118"
+      }
+    }, 
+    {
+      "type_key": "tir.Buffer", 
+      "attrs": {
+        "axis_separators": "115", 
+        "buffer_type": "1", 
+        "data": "108", 
+        "data_alignment": "64", 
+        "dtype": "int32", 
+        "elem_offset": "116", 
+        "name": "117", 
+        "offset_factor": "1", 
+        "shape": "113", 
+        "span": "0", 
+        "strides": "114"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "handle", 
+        "name": "109", 
+        "span": "0", 
+        "type_annotation": "110"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "matmul"
+    }, 
+    {
+      "type_key": "PointerType", 
+      "attrs": {
+        "element_type": "111", 
+        "storage_scope": "112"
+      }
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int32"}
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "global"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [31, 37]
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "matmul_intermediate"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [119, 121]
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "120", 
+        "min": "52", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "122", 
+        "min": "59", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "matmul"
+    }, 
+    {
+      "type_key": "tir.BufferStore", 
+      "attrs": {
+        "buffer": "107", 
+        "indices": "135", 
+        "predicate": "0", 
+        "span": "0", 
+        "value": "125"
+      }
+    }, 
+    {
+      "type_key": "tir.Add", 
+      "attrs": {
+        "a": "126", 
+        "b": "128", 
+        "dtype": "int32", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.BufferLoad", 
+      "attrs": {
+        "buffer": "107", 
+        "dtype": "int32", 
+        "indices": "127", 
+        "predicate": "0", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [52, 59]
+    }, 
+    {
+      "type_key": "tir.Mul", 
+      "attrs": {
+        "a": "129", 
+        "b": "132", 
+        "dtype": "int32", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Cast", 
+      "attrs": {
+        "dtype": "int32", 
+        "span": "0", 
+        "value": "130"
+      }
+    }, 
+    {
+      "type_key": "tir.BufferLoad", 
+      "attrs": {
+        "buffer": "72", 
+        "dtype": "int8", 
+        "indices": "131", 
+        "predicate": "0", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [52, 66]
+    }, 
+    {
+      "type_key": "tir.Cast", 
+      "attrs": {
+        "dtype": "int32", 
+        "span": "0", 
+        "value": "133"
+      }
+    }, 
+    {
+      "type_key": "tir.BufferLoad", 
+      "attrs": {
+        "buffer": "88", 
+        "dtype": "int8", 
+        "indices": "134", 
+        "predicate": "0", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [66, 59]
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [52, 59]
+    }, 
+    {
+      "type_key": "tir.BufferStore", 
+      "attrs": {
+        "buffer": "107", 
+        "indices": "138", 
+        "predicate": "0", 
+        "span": "0", 
+        "value": "137"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int32", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [52, 59]
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "tir.For", 
+      "attrs": {
+        "annotations": "209", 
+        "body": "150", 
+        "extent": "31", 
+        "kind": "0", 
+        "loop_var": "146", 
+        "min": "149", 
+        "span": "0", 
+        "thread_binding": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "147", 
+        "span": "0", 
+        "type_annotation": "148"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "i0"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.For", 
+      "attrs": {
+        "annotations": "208", 
+        "body": "155", 
+        "extent": "37", 
+        "kind": "0", 
+        "loop_var": "151", 
+        "min": "154", 
+        "span": "0", 
+        "thread_binding": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "152", 
+        "span": "0", 
+        "type_annotation": "153"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "i1"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.BlockRealize", 
+      "attrs": {
+        "block": "158", 
+        "iter_values": "156", 
+        "predicate": "157"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [146, 151]
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "bool", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "tir.Block", 
+      "attrs": {
+        "alloc_buffers": "205", 
+        "annotations": "207", 
+        "body": "200", 
+        "init": "0", 
+        "iter_vars": "159", 
+        "match_buffers": "206", 
+        "name_hint": "199", 
+        "reads": "174", 
+        "writes": "181"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [160, 167]
+    }, 
+    {
+      "type_key": "tir.IterVar", 
+      "attrs": {
+        "dom": "161", 
+        "iter_type": "0", 
+        "span": "0", 
+        "thread_tag": "166", 
+        "var": "163"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "31", 
+        "min": "162", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "164", 
+        "span": "0", 
+        "type_annotation": "165"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "v_i0"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "runtime.String"
+    }, 
+    {
+      "type_key": "tir.IterVar", 
+      "attrs": {
+        "dom": "168", 
+        "iter_type": "0", 
+        "span": "0", 
+        "thread_tag": "173", 
+        "var": "170"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "37", 
+        "min": "169", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "171", 
+        "span": "0", 
+        "type_annotation": "172"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "v_i1"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "runtime.String"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [175]
+    }, 
+    {
+      "type_key": "tir.BufferRegion", 
+      "attrs": {
+        "buffer": "107", 
+        "region": "176"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [177, 179]
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "178", 
+        "min": "163", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "180", 
+        "min": "170", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [182]
+    }, 
+    {
+      "type_key": "tir.BufferRegion", 
+      "attrs": {
+        "buffer": "183", 
+        "region": "194"
+      }
+    }, 
+    {
+      "type_key": "tir.Buffer", 
+      "attrs": {
+        "axis_separators": "191", 
+        "buffer_type": "1", 
+        "data": "184", 
+        "data_alignment": "64", 
+        "dtype": "float32", 
+        "elem_offset": "192", 
+        "name": "193", 
+        "offset_factor": "1", 
+        "shape": "189", 
+        "span": "0", 
+        "strides": "190"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "handle", 
+        "name": "185", 
+        "span": "0", 
+        "type_annotation": "186"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "compute"
+    }, 
+    {
+      "type_key": "PointerType", 
+      "attrs": {
+        "element_type": "187", 
+        "storage_scope": "188"
+      }
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "float32"}
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "global"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [31, 37]
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "compute_intermediate"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [195, 197]
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "196", 
+        "min": "163", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "198", 
+        "min": "170", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "compute"
+    }, 
+    {
+      "type_key": "tir.BufferStore", 
+      "attrs": {
+        "buffer": "183", 
+        "indices": "204", 
+        "predicate": "0", 
+        "span": "0", 
+        "value": "201"
+      }
+    }, 
+    {
+      "type_key": "tir.Cast", 
+      "attrs": {
+        "dtype": "float32", 
+        "span": "0", 
+        "value": "202"
+      }
+    }, 
+    {
+      "type_key": "tir.BufferLoad", 
+      "attrs": {
+        "buffer": "107", 
+        "dtype": "int32", 
+        "indices": "203", 
+        "predicate": "0", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [163, 170]
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [163, 170]
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "tir.For", 
+      "attrs": {
+        "annotations": "273", 
+        "body": "215", 
+        "extent": "31", 
+        "kind": "0", 
+        "loop_var": "211", 
+        "min": "214", 
+        "span": "0", 
+        "thread_binding": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "212", 
+        "span": "0", 
+        "type_annotation": "213"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "ax0"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.For", 
+      "attrs": {
+        "annotations": "272", 
+        "body": "220", 
+        "extent": "37", 
+        "kind": "0", 
+        "loop_var": "216", 
+        "min": "219", 
+        "span": "0", 
+        "thread_binding": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "217", 
+        "span": "0", 
+        "type_annotation": "218"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "ax1"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.BlockRealize", 
+      "attrs": {
+        "block": "223", 
+        "iter_values": "221", 
+        "predicate": "222"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [211, 216]
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "bool", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "tir.Block", 
+      "attrs": {
+        "alloc_buffers": "269", 
+        "annotations": "271", 
+        "body": "265", 
+        "init": "0", 
+        "iter_vars": "224", 
+        "match_buffers": "270", 
+        "name_hint": "264", 
+        "reads": "239", 
+        "writes": "246"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [225, 232]
+    }, 
+    {
+      "type_key": "tir.IterVar", 
+      "attrs": {
+        "dom": "226", 
+        "iter_type": "0", 
+        "span": "0", 
+        "thread_tag": "231", 
+        "var": "228"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "31", 
+        "min": "227", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "229", 
+        "span": "0", 
+        "type_annotation": "230"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "v_ax0"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "runtime.String"
+    }, 
+    {
+      "type_key": "tir.IterVar", 
+      "attrs": {
+        "dom": "233", 
+        "iter_type": "0", 
+        "span": "0", 
+        "thread_tag": "238", 
+        "var": "235"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "37", 
+        "min": "234", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "236", 
+        "span": "0", 
+        "type_annotation": "237"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "v_ax1"
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "int64"}
+    }, 
+    {
+      "type_key": "runtime.String"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [240]
+    }, 
+    {
+      "type_key": "tir.BufferRegion", 
+      "attrs": {
+        "buffer": "183", 
+        "region": "241"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [242, 244]
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "243", 
+        "min": "228", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "245", 
+        "min": "235", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [247]
+    }, 
+    {
+      "type_key": "tir.BufferRegion", 
+      "attrs": {
+        "buffer": "248", 
+        "region": "259"
+      }
+    }, 
+    {
+      "type_key": "tir.Buffer", 
+      "attrs": {
+        "axis_separators": "256", 
+        "buffer_type": "1", 
+        "data": "249", 
+        "data_alignment": "64", 
+        "dtype": "float32", 
+        "elem_offset": "257", 
+        "name": "258", 
+        "offset_factor": "1", 
+        "shape": "254", 
+        "span": "0", 
+        "strides": "255"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "handle", 
+        "name": "250", 
+        "span": "0", 
+        "type_annotation": "251"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "T_multiply"
+    }, 
+    {
+      "type_key": "PointerType", 
+      "attrs": {
+        "element_type": "252", 
+        "storage_scope": "253"
+      }
+    }, 
+    {
+      "type_key": "PrimType", 
+      "attrs": {"dtype": "float32"}
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "global"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [31, 37]
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "0"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "T_multiply_intermediate"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [260, 262]
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "261", 
+        "min": "228", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "263", 
+        "min": "235", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "int64", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "T_multiply"
+    }, 
+    {
+      "type_key": "tir.BufferStore", 
+      "attrs": {
+        "buffer": "248", 
+        "indices": "268", 
+        "predicate": "0", 
+        "span": "0", 
+        "value": "266"
+      }
+    }, 
+    {
+      "type_key": "tir.BufferLoad", 
+      "attrs": {
+        "buffer": "183", 
+        "dtype": "float32", 
+        "indices": "267", 
+        "predicate": "0", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [228, 235]
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [228, 235]
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "tir.For", 
+      "attrs": {
+        "annotations": "273", 
+        "body": "276", 
+        "extent": "31", 
+        "kind": "0", 
+        "loop_var": "275", 
+        "min": "214", 
+        "span": "0", 
+        "thread_binding": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "212", 
+        "span": "0", 
+        "type_annotation": "213"
+      }
+    }, 
+    {
+      "type_key": "tir.For", 
+      "attrs": {
+        "annotations": "272", 
+        "body": "278", 
+        "extent": "37", 
+        "kind": "0", 
+        "loop_var": "277", 
+        "min": "219", 
+        "span": "0", 
+        "thread_binding": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "217", 
+        "span": "0", 
+        "type_annotation": "218"
+      }
+    }, 
+    {
+      "type_key": "tir.BlockRealize", 
+      "attrs": {
+        "block": "280", 
+        "iter_values": "279", 
+        "predicate": "222"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [275, 277]
+    }, 
+    {
+      "type_key": "tir.Block", 
+      "attrs": {
+        "alloc_buffers": "269", 
+        "annotations": "271", 
+        "body": "303", 
+        "init": "0", 
+        "iter_vars": "281", 
+        "match_buffers": "270", 
+        "name_hint": "302", 
+        "reads": "288", 
+        "writes": "293"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [282, 285]
+    }, 
+    {
+      "type_key": "tir.IterVar", 
+      "attrs": {
+        "dom": "283", 
+        "iter_type": "0", 
+        "span": "0", 
+        "thread_tag": "231", 
+        "var": "284"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "31", 
+        "min": "227", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "229", 
+        "span": "0", 
+        "type_annotation": "230"
+      }
+    }, 
+    {
+      "type_key": "tir.IterVar", 
+      "attrs": {
+        "dom": "286", 
+        "iter_type": "0", 
+        "span": "0", 
+        "thread_tag": "238", 
+        "var": "287"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "37", 
+        "min": "234", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "int64", 
+        "name": "236", 
+        "span": "0", 
+        "type_annotation": "237"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [289]
+    }, 
+    {
+      "type_key": "tir.BufferRegion", 
+      "attrs": {
+        "buffer": "248", 
+        "region": "290"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [291, 292]
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "243", 
+        "min": "284", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "245", 
+        "min": "287", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [294]
+    }, 
+    {
+      "type_key": "tir.BufferRegion", 
+      "attrs": {
+        "buffer": "295", 
+        "region": "299"
+      }
+    }, 
+    {
+      "type_key": "tir.Buffer", 
+      "attrs": {
+        "axis_separators": "256", 
+        "buffer_type": "1", 
+        "data": "296", 
+        "data_alignment": "64", 
+        "dtype": "float32", 
+        "elem_offset": "257", 
+        "name": "298", 
+        "offset_factor": "1", 
+        "shape": "297", 
+        "span": "0", 
+        "strides": "255"
+      }
+    }, 
+    {
+      "type_key": "tir.Var", 
+      "attrs": {
+        "dtype": "handle", 
+        "name": "250", 
+        "span": "0", 
+        "type_annotation": "251"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [31, 37]
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "T_multiply_intermediate_1"
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [300, 301]
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "261", 
+        "min": "284", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Range", 
+      "attrs": {
+        "extent": "263", 
+        "min": "287", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "T_multiply_1"
+    }, 
+    {
+      "type_key": "tir.BufferStore", 
+      "attrs": {
+        "buffer": "295", 
+        "indices": "306", 
+        "predicate": "0", 
+        "span": "0", 
+        "value": "304"
+      }
+    }, 
+    {
+      "type_key": "tir.BufferLoad", 
+      "attrs": {
+        "buffer": "248", 
+        "dtype": "float32", 
+        "indices": "305", 
+        "predicate": "0", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [284, 287]
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [284, 287]
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [107, 183, 248]
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "TupleType", 
+      "attrs": {
+        "fields": "311", 
+        "span": "0"
+      }
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Map", 
+      "data": [7, 72, 10, 88, 13, 295]
+    }, 
+    {
+      "type_key": "DictAttrs", 
+      "attrs": {"__dict__": "314"}
+    }, 
+    {
+      "type_key": "Map", 
+      "keys": [
+        "tir.noalias", 
+        "gemmini.workload", 
+        "global_symbol"
+      ], 
+      "data": [315, 316, 317]
+    }, 
+    {
+      "type_key": "IntImm", 
+      "attrs": {
+        "dtype": "bool", 
+        "span": "0", 
+        "value": "1"
+      }
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "07cd0beb89b89ff4"
+    }, 
+    {
+      "type_key": "runtime.String", 
+      "repr_str": "main"
+    }, 
+    {
+      "type_key": "FuncType", 
+      "attrs": {
+        "arg_types": "319", 
+        "ret_type": "310", 
+        "span": "0", 
+        "type_constraints": "321", 
+        "type_params": "320"
+      }
+    }, 
+    {
+      "type_key": "Array", 
+      "data": [9, 12, 15]
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Array"
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "Map", 
+      "keys": [
+        "main"
+      ], 
+      "data": [3]
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "SourceMap", 
+      "attrs": {"source_map": "326"}
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "DictAttrs", 
+      "attrs": {"__dict__": "328"}
+    }, 
+    {
+      "type_key": "Map"
+    }, 
+    {
+      "type_key": "Map"
+    }
+  ], 
+  "b64ndarrays": [], 
+  "attrs": {"tvm_version": "0.19.0"}
+}

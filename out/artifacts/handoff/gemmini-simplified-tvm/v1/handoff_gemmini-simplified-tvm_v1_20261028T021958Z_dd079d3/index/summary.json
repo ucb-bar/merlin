@@ -1,0 +1,36 @@
+{
+  "status": "extraction_only",
+  "graph_options": {
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "chunks_by_model": {
+    "resnet": 18,
+    "smolvla": 8,
+    "tinyllama": 10
+  },
+  "owners_by_model": {
+    "resnet": 10,
+    "smolvla": 8,
+    "tinyllama": 8
+  },
+  "tasks_by_model": {
+    "resnet": 21,
+    "smolvla": 14,
+    "tinyllama": 12
+  },
+  "distinct_contractions": 47,
+  "owners": 26,
+  "matching_historical_keys": [],
+  "excluded_chunks": [
+    "smolvla-action-update"
+  ],
+  "limits": [
+    "No new numerical or hardware qualification",
+    "Historical key intersection is not a validated trace replay",
+    "Set input paths from input-root when constructing the remote study",
+    "No trial counts or fresh budget allocated"
+  ]
+}

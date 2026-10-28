@@ -1,0 +1,21 @@
+[19:05:21] /scratch/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/tvm-f2-followup/src/target/target_kind.cc:171: Warning: Unable to detect CUDA version, default to "-arch=sm_50" instead
+.......................                    [100%]
+=============================== warnings summary ===============================
+tests/python/relax/test_backend_contrib_gemmini_device_ops.py: 9066 warnings
+  /scratch/grammy/tvm-gemmini-simple/python/tvm/script/parser/core/doc.py:296: DeprecationWarning: Attribute s is deprecated and will be removed in Python 3.14; use value instead
+    kv = {attr: self.func(getattr(node, attr, None)) for attr in self.fields}
+
+tests/python/relax/test_backend_contrib_gemmini_device_ops.py: 9066 warnings
+  /scratch/grammy/tvm-gemmini-simple/python/tvm/script/parser/core/doc.py:296: DeprecationWarning: Attribute n is deprecated and will be removed in Python 3.14; use value instead
+    kv = {attr: self.func(getattr(node, attr, None)) for attr in self.fields}
+
+tests/python/relax/test_backend_contrib_gemmini_device_ops.py: 4254 warnings
+  /scratch/grammy/tvm-gemmini-simple/python/tvm/script/parser/core/doc.py:297: DeprecationWarning: Attribute s is deprecated and will be removed in Python 3.14; use value instead
+    return self.doc_cls(**kv)
+
+tests/python/relax/test_backend_contrib_gemmini_device_ops.py: 4254 warnings
+  /scratch/grammy/tvm-gemmini-simple/python/tvm/script/parser/core/doc.py:297: DeprecationWarning: Attribute n is deprecated and will be removed in Python 3.14; use value instead
+    return self.doc_cls(**kv)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+23 passed, 26640 warnings, 30 subtests passed in 19.85s

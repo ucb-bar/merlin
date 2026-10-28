@@ -1,0 +1,981 @@
+{
+  "ef8eb0206f946ce6": {
+    "owner": "resnet-classifier",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-classifier/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-classifier/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-classifier",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "a55ec2d038b25363": {
+    "owner": "resnet-stage1-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage1-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage1-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage1-block1",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "b1513338f1b6ddae": {
+    "owner": "resnet-stage1-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage1-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage1-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage1-block1",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage1-block2",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage1-block3",
+        "task": "matmul1",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "98c415b0e6f140f4": {
+    "owner": "resnet-stage1-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage1-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage1-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage1-block1",
+        "task": "matmul2",
+        "weight": 2
+      },
+      {
+        "chunk": "resnet-stage1-block2",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage1-block3",
+        "task": "matmul2",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "e1c0bb4617343fe5": {
+    "owner": "resnet-stage1-block2",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage1-block2/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage1-block2/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage1-block2",
+        "task": "matmul",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage1-block3",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "09bdb171695bfffa": {
+    "owner": "resnet-stage2-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage2-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage2-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage2-block1",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "916afde464d0c0aa": {
+    "owner": "resnet-stage2-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage2-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage2-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage2-block1",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage2-block2",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage2-block3",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage2-block4",
+        "task": "matmul1",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "d926142637a8b39f": {
+    "owner": "resnet-stage2-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage2-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage2-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage2-block1",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage2-block2",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage2-block3",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage2-block4",
+        "task": "matmul2",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "b13dfe5ba1a1638c": {
+    "owner": "resnet-stage2-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage2-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage2-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage2-block1",
+        "task": "matmul3",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "0d718e000c59d06c": {
+    "owner": "resnet-stage2-block2",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage2-block2/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage2-block2/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage2-block2",
+        "task": "matmul",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage2-block3",
+        "task": "matmul",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage2-block4",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "2a58ce5e15eb63cc": {
+    "owner": "resnet-stage3-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage3-block1",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "a2935115ae425c8a": {
+    "owner": "resnet-stage3-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage3-block1",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block2",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block3",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block4",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block5",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block6",
+        "task": "matmul1",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "0d8e33b0035661b3": {
+    "owner": "resnet-stage3-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage3-block1",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block2",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block3",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block4",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block5",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block6",
+        "task": "matmul2",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "983c96900b0c24b7": {
+    "owner": "resnet-stage3-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage3-block1",
+        "task": "matmul3",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "65e28c4608e1cbb7": {
+    "owner": "resnet-stage3-block2",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage3-block2/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage3-block2/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage3-block2",
+        "task": "matmul",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block3",
+        "task": "matmul",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block4",
+        "task": "matmul",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block5",
+        "task": "matmul",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage3-block6",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "1aabcd8f4b0fcd1e": {
+    "owner": "resnet-stage4-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage4-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage4-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage4-block1",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "a09b8184249b6b21": {
+    "owner": "resnet-stage4-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage4-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage4-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage4-block1",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage4-block2",
+        "task": "matmul1",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage4-block3",
+        "task": "matmul1",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "8180993594cb5d0c": {
+    "owner": "resnet-stage4-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage4-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage4-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage4-block1",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage4-block2",
+        "task": "matmul2",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage4-block3",
+        "task": "matmul2",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "9d00d9d6f3288874": {
+    "owner": "resnet-stage4-block1",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage4-block1/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage4-block1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage4-block1",
+        "task": "matmul3",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "374fdd6fa454b8a0": {
+    "owner": "resnet-stage4-block2",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stage4-block2/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stage4-block2/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stage4-block2",
+        "task": "matmul",
+        "weight": 1
+      },
+      {
+        "chunk": "resnet-stage4-block3",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "47b8ed80131eddf9": {
+    "owner": "resnet-stem",
+    "model": "resnet",
+    "program": "resnet-release/resnet-chunks/resnet-stem/program.json",
+    "fixture": "resnet-release/resnet-chunks/resnet-stem/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "resnet-stem",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "b7f909f335bc6f4d": {
+    "owner": "smolvla-action-input-projection",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-action-input-projection/program.json",
+    "fixture": "chunks/smolvla/smolvla-action-input-projection/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-action-input-projection",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "bfc53f6224892cc7": {
+    "owner": "smolvla-action-projection-update",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-action-projection-update/program.json",
+    "fixture": "chunks/smolvla/smolvla-action-projection-update/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-action-projection-update",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "b379ba1dad375cb9": {
+    "owner": "smolvla-action-time-embedding",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-action-time-embedding/program.json",
+    "fixture": "chunks/smolvla/smolvla-action-time-embedding/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-action-time-embedding",
+        "task": "matmul",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "b8054719977a6f75": {
+    "owner": "smolvla-action-time-embedding",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-action-time-embedding/program.json",
+    "fixture": "chunks/smolvla/smolvla-action-time-embedding/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-action-time-embedding",
+        "task": "matmul1",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "07cd0beb89b89ff4": {
+    "owner": "smolvla-expert-cross-attention-core",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-cross-attention-core/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-cross-attention-core/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-expert-cross-attention-core",
+        "task": "fused_matmul2_cast6_multiply8_multiply8",
+        "weight": 1
+      },
+      {
+        "chunk": "smolvla-expert-self-attention-core",
+        "task": "fused_matmul2_cast6_multiply8_multiply8",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "59a9645f84b857d0": {
+    "owner": "smolvla-expert-cross-attention-core",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-cross-attention-core/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-cross-attention-core/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-expert-cross-attention-core",
+        "task": "matmul",
+        "weight": 60
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "0f9c42e92f2a3b3e": {
+    "owner": "smolvla-expert-cross-attention-core",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-cross-attention-core/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-cross-attention-core/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-expert-cross-attention-core",
+        "task": "matmul1",
+        "weight": 60
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "77977bbc05b0ea97": {
+    "owner": "smolvla-expert-cross-qkv",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-cross-qkv/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-cross-qkv/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-expert-cross-qkv",
+        "task": "fused_matmul1_cast1_multiply4_multiply4",
+        "weight": 2
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "06e9f1e871093216": {
+    "owner": "smolvla-expert-cross-qkv",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-cross-qkv/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-cross-qkv/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-expert-cross-qkv",
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 1
+      },
+      {
+        "chunk": "smolvla-expert-self-qkv",
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "2f1f8b3168fe5744": {
+    "owner": "smolvla-expert-mlp",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-mlp/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-mlp/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-expert-mlp",
+        "task": "fused_matmul1_cast1_multiply5_multiply5",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "59f47fcbfd200cdb": {
+    "owner": "smolvla-expert-mlp",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-mlp/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-mlp/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-expert-mlp",
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 2
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "3639e4e64574066f": {
+    "owner": "smolvla-expert-self-attention-core",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-self-attention-core/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-self-attention-core/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-expert-self-attention-core",
+        "task": "matmul",
+        "weight": 60
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "c8e08a4595cd8811": {
+    "owner": "smolvla-expert-self-attention-core",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-self-attention-core/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-self-attention-core/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-expert-self-attention-core",
+        "task": "matmul1",
+        "weight": 60
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "5ba7606fbc93f8f3": {
+    "owner": "smolvla-expert-self-qkv",
+    "model": "smolvla",
+    "program": "chunks/smolvla/smolvla-expert-self-qkv/program.json",
+    "fixture": "chunks/smolvla/smolvla-expert-self-qkv/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "smolvla-expert-self-qkv",
+        "task": "fused_matmul1_cast1_multiply4_multiply4",
+        "weight": 2
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "5aaeef4a149b9067": {
+    "owner": "tinyllama-k-projection-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-k-projection-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-k-projection-m1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-k-projection-m1",
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1
+      },
+      {
+        "chunk": "tinyllama-v-projection-m1",
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "fef20d5edd92a0d4": {
+    "owner": "tinyllama-k-projection-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-k-projection-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-k-projection-m16/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-k-projection-m16",
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1
+      },
+      {
+        "chunk": "tinyllama-v-projection-m16",
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "2522ba15ced42c41": {
+    "owner": "tinyllama-mlp-5728-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-5728-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-mlp-5728-m1",
+        "task": "fused_matmul1_cast1_multiply5_multiply5",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "e1f8625c16e09b56": {
+    "owner": "tinyllama-mlp-5728-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-5728-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-mlp-5728-m1",
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 2
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "62706a06ea988b7e": {
+    "owner": "tinyllama-mlp-5728-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-5728-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m16/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-mlp-5728-m16",
+        "task": "fused_matmul1_cast1_multiply5_multiply5",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "49d7ca62726f3bdb": {
+    "owner": "tinyllama-mlp-5728-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-5728-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-5728-m16/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-mlp-5728-m16",
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 2
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "af45842dcbcd489e": {
+    "owner": "tinyllama-mlp-6096-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-6096-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-mlp-6096-m1",
+        "task": "fused_matmul1_cast1_multiply5_multiply5",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "3ae98f9c1a49871c": {
+    "owner": "tinyllama-mlp-6096-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-6096-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-mlp-6096-m1",
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 2
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "688a8d6d3f37183a": {
+    "owner": "tinyllama-mlp-6096-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-6096-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m16/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-mlp-6096-m16",
+        "task": "fused_matmul1_cast1_multiply5_multiply5",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "89f0741061a64cbf": {
+    "owner": "tinyllama-mlp-6096-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-mlp-6096-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-mlp-6096-m16/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-mlp-6096-m16",
+        "task": "fused_matmul_cast_multiply2_multiply2",
+        "weight": 2
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "6db65851d76f6526": {
+    "owner": "tinyllama-q-projection-m1",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-q-projection-m1/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-q-projection-m1/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-q-projection-m1",
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  },
+  "0988768c53d64a58": {
+    "owner": "tinyllama-q-projection-m16",
+    "model": "tinyllama",
+    "program": "chunks/tinyllama/tinyllama-q-projection-m16/program.json",
+    "fixture": "chunks/tinyllama/tinyllama-q-projection-m16/fixture.npz",
+    "occurrences": [
+      {
+        "chunk": "tinyllama-q-projection-m16",
+        "task": "fused_matmul_cast_multiply_multiply",
+        "weight": 1
+      }
+    ],
+    "graph_fusion_level": 2,
+    "prepack_weights": false,
+    "bias_preload": false,
+    "graph_cse": false
+  }
+}
