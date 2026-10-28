@@ -1,0 +1,30 @@
+{
+  "kind": "source_review_signoff_not_human_approval",
+  "files": [
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/final-q-v2/F_CASE_REVIEW.json",
+      "sha256": "f7ece461fb57dc953fa4ec2953ee6432b6609212dda856163601ed7bb3dda4bf",
+      "bytes": 10048
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/final-q-v2/OUT_OF_SCOPE_HOST_CONTROLS.json",
+      "sha256": "e2f59c8ca745e91cdf090bcde87e80b41afa2648e3865f53fdc2c0218368b990",
+      "bytes": 721
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/final-q-v2/README.md",
+      "sha256": "7b669dd61027e79427f918aa3ed866fa8c40478efc92b049f24bdb6c4dd1fa8c",
+      "bytes": 4688
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/final-q-v2/REVIEW_STATUS.json",
+      "sha256": "6c9ba924566bb9fc5fbcfc42b189021d9e9c07e140a77301941ff324f71cd9af",
+      "bytes": 1521
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/final-q-v2/SOURCE_CHECK.json",
+      "sha256": "e264e911b6fd1b02416abb1e54f2163098da513a27afa2f255bad8fff2c5e9b2",
+      "bytes": 6773
+    }
+  ]
+}

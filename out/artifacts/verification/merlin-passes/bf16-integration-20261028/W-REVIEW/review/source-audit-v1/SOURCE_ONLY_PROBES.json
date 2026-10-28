@@ -1,0 +1,67 @@
+{
+  "checks": [
+    {
+      "format": "bf16",
+      "negative_zero_bits": 32768,
+      "positive_zero_bits": 0,
+      "source": {
+        "bytes": 14972,
+        "path": "src/merlin/verify/lean/export.py",
+        "sha256": "294ef32c54e8df443acc74e957740a196e1a1b31d165039388d5759a0f0ec443"
+      }
+    },
+    {
+      "format": "f16",
+      "negative_zero_bits": 32768,
+      "positive_zero_bits": 0,
+      "source": {
+        "bytes": 14972,
+        "path": "src/merlin/verify/lean/export.py",
+        "sha256": "294ef32c54e8df443acc74e957740a196e1a1b31d165039388d5759a0f0ec443"
+      }
+    },
+    {
+      "format": "f32",
+      "negative_zero_bits": 2147483648,
+      "positive_zero_bits": 0,
+      "source": {
+        "bytes": 14972,
+        "path": "src/merlin/verify/lean/export.py",
+        "sha256": "294ef32c54e8df443acc74e957740a196e1a1b31d165039388d5759a0f0ec443"
+      }
+    },
+    {
+      "format": "bf16",
+      "negative_zero_bits": 32768,
+      "positive_zero_bits": 0,
+      "source": {
+        "bytes": 11821,
+        "path": "src/merlin/verify/lean/mlir_export.py",
+        "sha256": "8a00b918597f110a806fb5bba957bd074d7dd494a5f82d54d78321df5f5633b6"
+      }
+    },
+    {
+      "format": "f16",
+      "negative_zero_bits": 32768,
+      "positive_zero_bits": 0,
+      "source": {
+        "bytes": 11821,
+        "path": "src/merlin/verify/lean/mlir_export.py",
+        "sha256": "8a00b918597f110a806fb5bba957bd074d7dd494a5f82d54d78321df5f5633b6"
+      }
+    },
+    {
+      "format": "f32",
+      "negative_zero_bits": 2147483648,
+      "positive_zero_bits": 0,
+      "source": {
+        "bytes": 11821,
+        "path": "src/merlin/verify/lean/mlir_export.py",
+        "sha256": "8a00b918597f110a806fb5bba957bd074d7dd494a5f82d54d78321df5f5633b6"
+      }
+    }
+  ],
+  "kind": "actual_extracted_helper_no_project_imports",
+  "limits": "Does not test parser, decoder, round trip, generated checker or native float fidelity",
+  "native_or_Lean_executed": false
+}

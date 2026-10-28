@@ -1,0 +1,82 @@
+{
+  "status": "CANDIDATE_EVIDENCE_HUMAN_REVIEW_PENDING",
+  "files": [
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/FINAL_STATUS.json",
+      "bytes": 2930,
+      "sha256": "d74284964c0ae1a423211a1392c3be0dd2eeafa6719ef505f3cca9860c9d3dec"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/REPORT.md",
+      "bytes": 4024,
+      "sha256": "ffa3aa4955242b9037d46e9a8bb80d4c221cbd10b3190c404c47b61b844fda1f"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/HANDOFF.md",
+      "bytes": 4145,
+      "sha256": "fb8942ba2b9cabf1787fb70855e7dd8549d906f83a74cab8f648d1c2d86be9cb"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/source-cut-v2/SOURCES.json",
+      "bytes": 1498,
+      "sha256": "93d153680eccc5fdefe9ff2521485775b9fd11a93bfbdc897552490a3bd0c937"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/source-cut-v2/owned.patch",
+      "bytes": 41886,
+      "sha256": "684553b267ce873c199307240c0f20d8e9307e002958df1ad2f3f72a63094039"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/RESULT.json",
+      "bytes": 8890,
+      "sha256": "4086d8828e441c252f2ec2fec5c30899a4278a2a31869c755c067df39239b411"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/RESULT.json",
+      "bytes": 1637,
+      "sha256": "1b2f4ef6044cda39f7c0790706545f9678806227206236032e833776048c5f1b"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/AUDIT.json",
+      "bytes": 26498,
+      "sha256": "eef446067439c7435d93117a8f914942b43afb7a657bbb171c3efe8518100439"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/REUSED-TASK-AUDIT.json",
+      "bytes": 5512,
+      "sha256": "2c3c20dc88dd63888daea1adc120fa030e4da9f72d8da2d8a9551c88aadb6b7b"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/sdk-free-v2.xml",
+      "bytes": 8180,
+      "sha256": "684832ed6f06b4155aecab4aa1201735b4c9c6dc07095b6ccff7be0b010f74c8"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/structure-v1.log",
+      "bytes": 423,
+      "sha256": "68d75711a5b0ee4a797d16e96447996e9185b906024896e660533df410cd7f7a"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/lean-lock-guard-v1.log",
+      "bytes": 59,
+      "sha256": "3c3a48bdd3a17eea7b932064bdab143aa2ddf408867a2fc497410657dd7e37ae"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_smolvla-replay.json",
+      "bytes": 7719,
+      "sha256": "bc6e679785de4be1fe43c0cb7442fc25da5859ffa80aa437742c36f0366da32c"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_smolvla-segment-replay.json",
+      "bytes": 7912,
+      "sha256": "78b5b0747e60bbbb56e76539522c4a90b2dccb426092623776d27466afeff8ce"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_tiny_llama-replay.json",
+      "bytes": 1636,
+      "sha256": "0d2537d500f1bb2bf1fad4bb94e06ba75c34db7e1161daea488f9d8a26e3131d"
+    }
+  ],
+  "sdk_binaries_included": false,
+  "live_owned_jobs": []
+}

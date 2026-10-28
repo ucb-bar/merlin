@@ -1,0 +1,62 @@
+{
+  "base": "65e44afbf4dbb6c7270e8936c4ef76b579a78492",
+  "observed_head": "4cb0f5b599b5158808c86a1b7443cb64ed3daba4",
+  "branch": "feat/bf16-f32acc-verification",
+  "status": "engineering source cut; no native qualification or policy approval asserted",
+  "sources": [
+    {
+      "path": "src/merlin/verify/bf16_policy_gate.py",
+      "sha256": "6eaed8c3fad6a6fa031f79a53adfaa8797942e09cba5b9d445e67d2b1d986341",
+      "bytes": 20500,
+      "snapshot": "sources/src/merlin/verify/bf16_policy_gate.py"
+    },
+    {
+      "path": "src/merlin/verify/gate_checks.py",
+      "sha256": "4d88523a124c0bedb950c4993d751ad0a060cec70c5ee453813da60184e86e2d",
+      "bytes": 6162,
+      "snapshot": "sources/src/merlin/verify/gate_checks.py"
+    },
+    {
+      "path": "src/merlin/verify/gate_worker.py",
+      "sha256": "b44265e06500c3c040acc0e00a18ff0e3663be21be1b2e42496f52deb356c4ba",
+      "bytes": 2967,
+      "snapshot": "sources/src/merlin/verify/gate_worker.py"
+    },
+    {
+      "path": "src/merlin/verify/pass_validation.py",
+      "sha256": "a292f2c6dffc6288d300d11330da3a68ff7e633a807aea5bbdf0c4b8581f34ef",
+      "bytes": 10636,
+      "snapshot": "sources/src/merlin/verify/pass_validation.py"
+    },
+    {
+      "path": "src/merlin/verify/lean/bf16_f32acc.py",
+      "sha256": "96cf4ec68c54eef8639e0abb62605f9c515214fc0e1a6177f7d522d7f8ba2d8e",
+      "bytes": 17683,
+      "snapshot": "sources/src/merlin/verify/lean/bf16_f32acc.py"
+    },
+    {
+      "path": "src/merlin/runtime/backends/zephyr_model.py",
+      "sha256": "847cc5579f180e271cf1d2a7c3e31e58d73fb50e45be36568c47e401ecc27e00",
+      "bytes": 194780,
+      "snapshot": "sources/src/merlin/runtime/backends/zephyr_model.py"
+    },
+    {
+      "path": "merlin/tests/ir/test_bf16_policy_handler_unit.py",
+      "sha256": "27cdae90d44bbec99c7863f9a8505f498e2f0f3f101edabe4828a6074b55f01c",
+      "bytes": 8709,
+      "snapshot": "sources/merlin/tests/ir/test_bf16_policy_handler_unit.py"
+    },
+    {
+      "path": "build_tools/scripts/prepare_bf16_review.py",
+      "sha256": "e3afe3bf62f50ff4510e55cecea273a8f5065607436ef34f83bbe6e00ad10638",
+      "bytes": 13771,
+      "snapshot": "sources/build_tools/scripts/prepare_bf16_review.py"
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_bf16_review.py",
+      "sha256": "5b8be3ff5e1c408f5d95b767fd1005542b7e1f97f4d289865e330eff8a080189",
+      "bytes": 3486,
+      "snapshot": "sources/merlin/tests/ir/test_lean_bf16_review.py"
+    }
+  ]
+}

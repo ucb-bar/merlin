@@ -1,0 +1,73 @@
+{
+  "additional_definition_freezes": [
+    "MerlinVerify/Rules/Bf16F32AccSite.lean",
+    "MerlinVerify/Check/Bf16F32AccExact.lean",
+    "MerlinVerify/Check/ParametricModule.lean",
+    "MerlinVerify/Check/PolicyParametric.lean",
+    "MerlinVerify/Check/PolicyModule.lean",
+    "MerlinVerify/Check/PolicyExact.lean",
+    "MerlinVerify/Rules/Bf16F32AccNonvacuity.lean",
+    "MerlinVerify/Rules/Bf16F32AccTensor.lean"
+  ],
+  "base": "65e44afbf4dbb6c7270e8936c4ef76b579a78492",
+  "current_guard": {
+    "bytes": 29954,
+    "path": "build_tools/scripts/check_lean_guard.py",
+    "sha256": "ca3b2b0b550a5f3bff7dbaa36d2f86e4e56ad118325563e8c0c7f5baa6dbe01b"
+  },
+  "files_to_freeze": [
+    "MerlinVerify/Rules/Bf16F32AccContract.lean",
+    "MerlinVerify/Rules/Bf16F32AccBody.lean",
+    "MerlinVerify/Rules/Bf16F32AccReference.lean",
+    "MerlinVerify/Rules/W8A8TensorTrace.lean",
+    "MerlinVerify/Rules/W8A8TensorOperands.lean",
+    "MerlinVerify/Rules/W8A8Fill.lean",
+    "MerlinVerify/Check/Bf16F32Acc.lean",
+    "MerlinVerify/Check/Bf16F32AccChain.lean",
+    "MerlinVerify/Check/Bf16F32AccSites.lean",
+    "MerlinVerify/Check/ParametricAlpha.lean",
+    "MerlinVerify/Check/Alpha.lean",
+    "MerlinVerify/Rules/Bf16F32AccSite.lean",
+    "MerlinVerify/Check/Bf16F32AccExact.lean",
+    "MerlinVerify/Check/ParametricModule.lean",
+    "MerlinVerify/Check/PolicyParametric.lean",
+    "MerlinVerify/Check/PolicyModule.lean",
+    "MerlinVerify/Check/PolicyExact.lean",
+    "MerlinVerify/Rules/Bf16F32AccNonvacuity.lean",
+    "MerlinVerify/Rules/Bf16F32AccTensor.lean"
+  ],
+  "lock_not_written": true,
+  "patch": {
+    "bytes": 22032,
+    "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/PROPOSED_AFTER_HUMAN_APPROVAL.patch",
+    "sha256": "c1d743f8dc16ee986a6cd25c494c5c792eb420daca8735308c3e8fd2b5922d3b"
+  },
+  "proposed_spec_sha256": "c2008d1357c856ae131bf69dbeb41755d9ae01e38a5b7f088d534dc213b2469f",
+  "remaining": [
+    "independent attributable human review",
+    "review closure + host admission pins",
+    "fresh authorized elaborated statement and transitive axiom audit",
+    "coordinator installs approved patch and updates lock",
+    "fresh receipts/qualification/replay"
+  ],
+  "status": "UNAPPLIED_HUMAN_APPROVAL_ABSENT",
+  "theorem_roots": {
+    "MerlinVerify.Check.Bf16F32Acc.check_sound": "MerlinVerify.Check.Bf16F32Acc",
+    "MerlinVerify.Check.Bf16F32Acc.qualify_sound": "MerlinVerify.Check.Bf16F32Acc",
+    "MerlinVerify.Check.Bf16F32AccChain.check_sound": "MerlinVerify.Check.Bf16F32AccChain",
+    "MerlinVerify.Check.Bf16F32AccChain.qualify_sound": "MerlinVerify.Check.Bf16F32AccChain",
+    "MerlinVerify.Check.Bf16F32AccExact.check_sound": "MerlinVerify.Check.Bf16F32AccExact",
+    "MerlinVerify.Check.Bf16F32AccExact.defined_execution": "MerlinVerify.Check.Bf16F32AccExact",
+    "MerlinVerify.Check.Bf16F32AccSites.check_sound": "MerlinVerify.Check.Bf16F32AccSites",
+    "MerlinVerify.Check.Bf16F32AccSites.collectOps_coverage": "MerlinVerify.Check.Bf16F32AccSites",
+    "MerlinVerify.Rules.Bf16F32AccContract.accumulate_cell": "MerlinVerify.Rules.Bf16F32AccContract",
+    "MerlinVerify.Rules.Bf16F32AccContract.contract_distinct": "MerlinVerify.Rules.Bf16F32AccContract",
+    "MerlinVerify.Rules.Bf16F32AccFusion.fused_step": "MerlinVerify.Rules.Bf16F32AccFusion",
+    "MerlinVerify.Rules.Bf16F32AccNonvacuity.operand_domain_nonempty": "MerlinVerify.Rules.Bf16F32AccNonvacuity",
+    "MerlinVerify.Rules.Bf16F32AccSite.accumulating_op_sound": "MerlinVerify.Rules.Bf16F32AccSite",
+    "MerlinVerify.Rules.Bf16F32AccSite.final_op_sound": "MerlinVerify.Rules.Bf16F32AccSite",
+    "MerlinVerify.Rules.Bf16F32AccTensor.accumulate_sound": "MerlinVerify.Rules.Bf16F32AccTensor",
+    "MerlinVerify.Rules.Bf16F32AccTensor.truncate_sound": "MerlinVerify.Rules.Bf16F32AccTensor",
+    "MerlinVerify.Rules.Bf16F32AccTensor.zero_fill_sound": "MerlinVerify.Rules.Bf16F32AccTensor"
+  }
+}

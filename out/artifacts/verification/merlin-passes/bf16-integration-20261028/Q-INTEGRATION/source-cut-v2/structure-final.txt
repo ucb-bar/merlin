@@ -1,0 +1,21 @@
+[  ok] required directories
+[  ok] AGENT.md coverage
+[  ok] experiment status
+[  ok] schema usage
+[  ok] library boundary
+[  ok] core dependency direction
+[  ok] root docs
+[  ok] schemas
+[  ok] docs
+[  ok] benchmarks
+[  ok] cli docs
+[  ok] package docs
+[  ok] schema docs
+[  ok] docs index
+[  ok] docs freshness
+[  ok] doc paths
+[  ok] test layout
+[  ok] test target marker
+[  ok] module size
+
+All structure checks passed.

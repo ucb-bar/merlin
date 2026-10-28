@@ -1,0 +1,23 @@
+{
+  "audit": "NOT_RUN_BY_W",
+  "elaboration": "NOT_RUN_BY_W",
+  "roots": {
+    "MerlinVerify.Check.Bf16F32Acc.check_sound": "MerlinVerify.Check.Bf16F32Acc",
+    "MerlinVerify.Check.Bf16F32Acc.qualify_sound": "MerlinVerify.Check.Bf16F32Acc",
+    "MerlinVerify.Check.Bf16F32AccChain.check_sound": "MerlinVerify.Check.Bf16F32AccChain",
+    "MerlinVerify.Check.Bf16F32AccChain.qualify_sound": "MerlinVerify.Check.Bf16F32AccChain",
+    "MerlinVerify.Check.Bf16F32AccExact.check_sound": "MerlinVerify.Check.Bf16F32AccExact",
+    "MerlinVerify.Check.Bf16F32AccExact.defined_execution": "MerlinVerify.Check.Bf16F32AccExact",
+    "MerlinVerify.Check.Bf16F32AccSites.check_sound": "MerlinVerify.Check.Bf16F32AccSites",
+    "MerlinVerify.Check.Bf16F32AccSites.collectOps_coverage": "MerlinVerify.Check.Bf16F32AccSites",
+    "MerlinVerify.Rules.Bf16F32AccContract.accumulate_cell": "MerlinVerify.Rules.Bf16F32AccContract",
+    "MerlinVerify.Rules.Bf16F32AccContract.contract_distinct": "MerlinVerify.Rules.Bf16F32AccContract",
+    "MerlinVerify.Rules.Bf16F32AccFusion.fused_step": "MerlinVerify.Rules.Bf16F32AccFusion",
+    "MerlinVerify.Rules.Bf16F32AccNonvacuity.operand_domain_nonempty": "MerlinVerify.Rules.Bf16F32AccNonvacuity",
+    "MerlinVerify.Rules.Bf16F32AccSite.accumulating_op_sound": "MerlinVerify.Rules.Bf16F32AccSite",
+    "MerlinVerify.Rules.Bf16F32AccSite.final_op_sound": "MerlinVerify.Rules.Bf16F32AccSite",
+    "MerlinVerify.Rules.Bf16F32AccTensor.accumulate_sound": "MerlinVerify.Rules.Bf16F32AccTensor",
+    "MerlinVerify.Rules.Bf16F32AccTensor.truncate_sound": "MerlinVerify.Rules.Bf16F32AccTensor",
+    "MerlinVerify.Rules.Bf16F32AccTensor.zero_fill_sound": "MerlinVerify.Rules.Bf16F32AccTensor"
+  }
+}

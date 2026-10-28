@@ -1,3 +1,5 @@
+> **LATEST USER DIRECTION: MACC only; stop toolchain/version-mismatch investigation. Read [MACC_ONLY.md](MACC_ONLY.md) FIRST. It supersedes the historical custom environment-approval/forensics tasks below. Ordinary builds/checks may proceed using normal repository tools; actual failures remain failures.**
+
 # CURRENT USER RESUME — bf16/f16 f32 accumulation integration
 
 Date:2026-10-28. This is a NEW explicit user assignment and supersedes the Oct26 stop and historical W8A8/graph/quant-ext queues FOR THESE THREE WORKERS ONLY. Two lighter workers remain stopped. Continue this assignment after compaction by reading this file and your own ACTIVE.md; a genuinely newer user stop wins. Do not answer an outdated original prompt or return to numerics/graph work outside this scope.

@@ -1,3 +1,5 @@
+> **SCOPE OVERRIDE:** Read ../MACC_ONLY.md first. No new environment inventory/provider or mismatch investigation. Work strictly on MACC.
+
 # Q — bf16 policy gate integration
 
 Read ../README.md first. Own the Q files listed there; use the NEW worktree, not the old producer-corrections or primary checkout.

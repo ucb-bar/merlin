@@ -1,0 +1,1812 @@
+{
+  "kind": "independent DATA review of actual F results; no new native execution",
+  "counts": {
+    "RAW_POLICY_MATCH": 17,
+    "LEAN_POLICY_REFUSAL": 19,
+    "DOMAIN_REFUSAL": 2
+  },
+  "matrix": {
+    "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v3/MATRIX.json",
+    "sha256": "1e72cf7b70ae39adc40b54c669a819d5278ee071cc0aa0521cc9720c18beb5ad",
+    "bytes": 66555
+  },
+  "cases": [
+    {
+      "name": "bf16_named",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_named/report.json",
+        "sha256": "79ffe08cf06a609c16bf35cd370b536d98993a9b62d0877dec6d968d4fb9db16",
+        "bytes": 2072
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_named/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_named/INTENT.json",
+        "sha256": "7620cc867119915eb4e614d83380b3f1900a2191e5b73418dbf70fdcaac0861e",
+        "bytes": 517
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_named/before.mlir",
+            "bytes": 1159,
+            "sha256": "ae776cd519888c8f3ce318622dc8a9a209166e14c3b08a12b9b23519bd029efc"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_named/before.json",
+            "bytes": 3914,
+            "sha256": "8d1a5dadd8e22d5d593b30c4ffe8de159d45fb8250c9b9796e2c22ff65e99641"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_named/after.mlir",
+            "bytes": 2209,
+            "sha256": "f67d7a7d4a806f81d5aec57a28b405240fb442424b0a5296deffff86ab0b40c0"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_named/after.json",
+            "bytes": 7265,
+            "sha256": "a9d05211cb35b24ba5e25e65d4ca58b0423a48c98d365952dcd53b68d00417cd"
+          }
+        }
+      }
+    },
+    {
+      "name": "bf16_generic",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_generic/report.json",
+        "sha256": "f57c5171c6f5763268f67ee59da63179d6589493b607dc0b52eb60856e0a0d15",
+        "bytes": 2072
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_generic/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_generic/INTENT.json",
+        "sha256": "192417d233df129561520c9395065dde659df909e383e825bc08587b726cce63",
+        "bytes": 521
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_generic/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_generic/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_generic/after.mlir",
+            "bytes": 2277,
+            "sha256": "d200acb230ec88f45811dff803fa39c675c1d2828e2e5a3ade566eec8fdec31c"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_generic/after.json",
+            "bytes": 7226,
+            "sha256": "562bd45b9f660ce1a5167b7fa2c6563308a8a74ce61c0ac5e80ca81c8ca02a13"
+          }
+        }
+      }
+    },
+    {
+      "name": "bf16_empty_k",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_empty_k/report.json",
+        "sha256": "f57c5171c6f5763268f67ee59da63179d6589493b607dc0b52eb60856e0a0d15",
+        "bytes": 2072
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_empty_k/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_empty_k/INTENT.json",
+        "sha256": "43dc5706071fc550f90f7175ec3bad015c181578c79cd92a2a56f5a16075dfc6",
+        "bytes": 521
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_empty_k/before.mlir",
+            "bytes": 1285,
+            "sha256": "983c59f74f5e06e069942748b5b077d65b069dba6d5aa4caca9fefda774fe3a3"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_empty_k/before.json",
+            "bytes": 4031,
+            "sha256": "066fd7ce8f3f98d19bfa85574a138f72857f3283f78ede16079af53a6cee63de"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_empty_k/after.mlir",
+            "bytes": 2277,
+            "sha256": "55b7917bc6b95ffc49d51c2118d98cb88b43df3d5df6557b3455b50f0144151e"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_empty_k/after.json",
+            "bytes": 7226,
+            "sha256": "43100cd63de57abe6358f359694a082b17f99d398ca47e1eb47be5782d58728a"
+          }
+        }
+      }
+    },
+    {
+      "name": "bf16_tiny_k",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_tiny_k/report.json",
+        "sha256": "f57c5171c6f5763268f67ee59da63179d6589493b607dc0b52eb60856e0a0d15",
+        "bytes": 2072
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_tiny_k/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_tiny_k/INTENT.json",
+        "sha256": "412fb0ac749b9f047bb86ecc6c902676d0877417758909501b2c205d2e3513c6",
+        "bytes": 519
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_tiny_k/before.mlir",
+            "bytes": 1285,
+            "sha256": "133011cc46644d242fa537d1a3b6d47b91821659d8271c24d8ce0cd98740d3c5"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_tiny_k/before.json",
+            "bytes": 4031,
+            "sha256": "88cd5ed6ca31041e4c979e5127877a8298b2625ea9d70dbc67d2d5cf3caae39b"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_tiny_k/after.mlir",
+            "bytes": 2277,
+            "sha256": "05da03acc51a01d926120eda91a3323d03c0f85e2b7c42617011a9794b2d0d79"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_tiny_k/after.json",
+            "bytes": 7226,
+            "sha256": "5bf7b5ea3d1883e25944d8afa9f1166c1922a5036dda73be42e9d7f10cac0168"
+          }
+        }
+      }
+    },
+    {
+      "name": "bf16_empty_result",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_empty_result/report.json",
+        "sha256": "f57c5171c6f5763268f67ee59da63179d6589493b607dc0b52eb60856e0a0d15",
+        "bytes": 2072
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_empty_result/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_empty_result/INTENT.json",
+        "sha256": "9d13e48c552fafdcf6c0bd769c3f8e6d7b95292f320e1ff3a6907af0e2cd6a78",
+        "bytes": 531
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_empty_result/before.mlir",
+            "bytes": 1285,
+            "sha256": "a7085320e653fe98dc8f787f81fb089494c98f5486837ddeb546f19e8e232044"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_empty_result/before.json",
+            "bytes": 4031,
+            "sha256": "43953e9900bb43f9126bcf6a5916275ec4117d37d02a4c4ea831279010159c22"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_empty_result/after.mlir",
+            "bytes": 2277,
+            "sha256": "35c9cc3995866640038fb5ccd305f37d266884116fbde08f58a7a2f8b5de8d8e"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_empty_result/after.json",
+            "bytes": 7226,
+            "sha256": "b712e346099e78f0582fd8e75a9c410304b58fe69cd76844694df5e24a40069f"
+          }
+        }
+      }
+    },
+    {
+      "name": "bf16_generic_transpose",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_generic_transpose/report.json",
+        "sha256": "f57c5171c6f5763268f67ee59da63179d6589493b607dc0b52eb60856e0a0d15",
+        "bytes": 2072
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_generic_transpose/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/bf16_generic_transpose/INTENT.json",
+        "sha256": "9472115cd7242e7f4363534971582d60ae416f27aea337ba87c22fc13ba95d82",
+        "bytes": 541
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_generic_transpose/before.mlir",
+            "bytes": 1285,
+            "sha256": "152f34c161bfda3e2ee152a2ccf0adfa7ed68d65304569e7287a033f73f4f208"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_generic_transpose/before.json",
+            "bytes": 4031,
+            "sha256": "19e95ffc54e0eee7d63dc61fb03665c91ed4ac9ad0ee5c6a9505ebd51f94400a"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_generic_transpose/after.mlir",
+            "bytes": 2277,
+            "sha256": "46c2c37e9957d459dc26e50d18abb4d6b6951bc661f25775509bf44437ffef9d"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/bf16_generic_transpose/after.json",
+            "bytes": 7226,
+            "sha256": "d4bfa2764f2d1577c0c4bae5d9141dbbf07bcdba07a1fe69647178e9f8eb0477"
+          }
+        }
+      }
+    },
+    {
+      "name": "f16_named",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_named/report.json",
+        "sha256": "0c22865680d49bc448bb2a4b9ef324be045bf3fe2a1295577d7e5a7781c7fbe4",
+        "bytes": 2071
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_named/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_named/INTENT.json",
+        "sha256": "d6933b9f7ee68f3bf3729dea0b90f9ef942329d1ebdc34515e0af253022c88e2",
+        "bytes": 515
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_named/before.mlir",
+            "bytes": 1130,
+            "sha256": "bcd96becf4eb86028128659b4b756af692b279230e9abd3c77212571e21936e1"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_named/before.json",
+            "bytes": 3897,
+            "sha256": "0182dd987c44b229fe559356a5ebab70c39280eb635d9d429bb2989ff53938ad"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_named/after.mlir",
+            "bytes": 2182,
+            "sha256": "8211475d488cf8c77aab8807dbf04c308ef803a09c27128afc0142c94b5ece07"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_named/after.json",
+            "bytes": 7248,
+            "sha256": "f75b1e2f3f207765224d15a4e936f87d5c50ac2c894e259d18c22d9257fad429"
+          }
+        }
+      }
+    },
+    {
+      "name": "f16_generic",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_generic/report.json",
+        "sha256": "75b935faa3eb18c8c62b12955f5af86df79dd98759eb91859537e47fd0316023",
+        "bytes": 2071
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_generic/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_generic/INTENT.json",
+        "sha256": "2d06d52a797bae1281c47f7720217a6bba1a5ce0affab22406249a99db8711c2",
+        "bytes": 519
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_generic/before.mlir",
+            "bytes": 1261,
+            "sha256": "f4254c5a457e827ab3cfea665795424920d02b8b7164f515af8e14644e79cb09"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_generic/before.json",
+            "bytes": 4017,
+            "sha256": "429fc84fab67905c7b7258f4de2e6773b6f8e23bb0cac9f62bde6a49b8f87afc"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_generic/after.mlir",
+            "bytes": 2255,
+            "sha256": "0cbd1f28e920086aca303af803a71bdf56476d803d4657cfb805373cc3050251"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_generic/after.json",
+            "bytes": 7212,
+            "sha256": "9299f5e81a49e7f3f5895bbe3cbb5961831c34559b9b4bae91a816edaab5c33e"
+          }
+        }
+      }
+    },
+    {
+      "name": "f16_empty_k",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_empty_k/report.json",
+        "sha256": "75b935faa3eb18c8c62b12955f5af86df79dd98759eb91859537e47fd0316023",
+        "bytes": 2071
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_empty_k/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_empty_k/INTENT.json",
+        "sha256": "d0b2b4a9ab7c26d6d4e5460b58cff1fcf168d3a8e89611542e818061c231ae6c",
+        "bytes": 519
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_empty_k/before.mlir",
+            "bytes": 1261,
+            "sha256": "9b3c245e75398314edaf3e7d9361f90ee0485a35ebd3719ad713c781a2d33982"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_empty_k/before.json",
+            "bytes": 4017,
+            "sha256": "edcf07a7a68b7a7fcebdcaf8fe5ea9a22f8c37cf8bb9494c53407d58756336f2"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_empty_k/after.mlir",
+            "bytes": 2255,
+            "sha256": "c2055fb7d9aa84740c033cb61c0511374c0c47c9ba736446d63b85b3cbcb8da4"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_empty_k/after.json",
+            "bytes": 7212,
+            "sha256": "b0ad0798a93bc96fde1a4eafb101353e4d875ddb73142ebf46d6e1d6685dbd2f"
+          }
+        }
+      }
+    },
+    {
+      "name": "f16_tiny_k",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_tiny_k/report.json",
+        "sha256": "75b935faa3eb18c8c62b12955f5af86df79dd98759eb91859537e47fd0316023",
+        "bytes": 2071
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_tiny_k/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_tiny_k/INTENT.json",
+        "sha256": "1a768977317e34ea95bdf28d32965f47599d6ca31da1347cbc09fea0b27fa183",
+        "bytes": 517
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_tiny_k/before.mlir",
+            "bytes": 1261,
+            "sha256": "2641601d96814e7b982ee1e8dfc6ceb3fa26eb3f982d37afe316097436bef2e8"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_tiny_k/before.json",
+            "bytes": 4017,
+            "sha256": "aa2b6723c2fca41c4a2815c1f42d4045bec313753d0b963a48431c200db8ecb1"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_tiny_k/after.mlir",
+            "bytes": 2255,
+            "sha256": "d0d8d422817d821460d534bb545e84098f80169b621988bb9e3851a087fdee6c"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_tiny_k/after.json",
+            "bytes": 7212,
+            "sha256": "9f72c1b26b4a38a5c77b1e90b9db58c1ddb7531ec19fa8770227a741ab3e8a79"
+          }
+        }
+      }
+    },
+    {
+      "name": "f16_empty_result",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_empty_result/report.json",
+        "sha256": "75b935faa3eb18c8c62b12955f5af86df79dd98759eb91859537e47fd0316023",
+        "bytes": 2071
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_empty_result/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_empty_result/INTENT.json",
+        "sha256": "4488bb224ae96664d5635d130acee11855765e090e55dce2f21ec730e24d62ba",
+        "bytes": 529
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_empty_result/before.mlir",
+            "bytes": 1261,
+            "sha256": "239e22aa761a6af7a7eb4db4b7b78214d746c1e07531471a4396ef473d25aca1"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_empty_result/before.json",
+            "bytes": 4017,
+            "sha256": "2a93d904310aa42b416993e2b35d76f640e1624bcb7b598748bb425e451cd71b"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_empty_result/after.mlir",
+            "bytes": 2255,
+            "sha256": "2f7c3a7fe6a4c866d170018b8307ae9144866fab7209f09d4e77f633fc113c9e"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_empty_result/after.json",
+            "bytes": 7212,
+            "sha256": "2ee7dd00d2afd0feaae91276065e39d351c4554820cde16db2a136fc5a793246"
+          }
+        }
+      }
+    },
+    {
+      "name": "f16_generic_transpose",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_generic_transpose/report.json",
+        "sha256": "75b935faa3eb18c8c62b12955f5af86df79dd98759eb91859537e47fd0316023",
+        "bytes": 2071
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_generic_transpose/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/f16_generic_transpose/INTENT.json",
+        "sha256": "279157d319f55e190bca3b5b85d6a60df0873752dd4dff16a9695bd0751591fd",
+        "bytes": 539
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_generic_transpose/before.mlir",
+            "bytes": 1261,
+            "sha256": "018cb8190c9348cbb8600244dfde21a0eeac59464306fdb3a062e25c42c2c7c2"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_generic_transpose/before.json",
+            "bytes": 4017,
+            "sha256": "43d8d45be6f9d1e53425604ac2b259dd78e27e2f46b2befb0c382fd45aa9d5b0"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_generic_transpose/after.mlir",
+            "bytes": 2255,
+            "sha256": "c62e1beae43cb07809e87126f78f562cffbba198072f0439e8b4eb279aa09dac"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/f16_generic_transpose/after.json",
+            "bytes": 7212,
+            "sha256": "7fc8a94eed5ea42fc38c0c72ef28794081986a8f4977a428924da6a04bbb07cb"
+          }
+        }
+      }
+    },
+    {
+      "name": "wrong_accumulator_f64",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_accumulator_f64/report.json",
+        "sha256": "4e581288be6ae69ae0bd94ba377e22c8674dc8b559282c4e2b44ec3708167e1e",
+        "bytes": 2086
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_accumulator_f64/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_accumulator_f64/INTENT.json",
+        "sha256": "e491690524fe257429d35652307e19c5c706076ae3406d53f19232f3a532fd2c",
+        "bytes": 539
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_accumulator_f64/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_accumulator_f64/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_accumulator_f64/after.mlir",
+            "bytes": 2277,
+            "sha256": "325137c1ac91e9c88031e48e98ffbb712ae44e3540da1705d4d836e7f288f4d8"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_accumulator_f64/after.json",
+            "bytes": 7226,
+            "sha256": "235c4f84d369be9491a243f05a479a949aa6ddf5de3bd7483da7f3ba8227df51"
+          }
+        }
+      }
+    },
+    {
+      "name": "wrong_source_operand",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_source_operand/report.json",
+        "sha256": "828b06de138733baf4e4e5dd40bc957695f456c459391e022c0cb606888ca15b",
+        "bytes": 2331
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_source_operand/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_source_operand/INTENT.json",
+        "sha256": "69dcef7499e7fa454b2cf41ed8b976d16f4873269afc948b479e4cb2531d048b",
+        "bytes": 537
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_source_operand/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_source_operand/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_source_operand/after.mlir",
+            "bytes": 2277,
+            "sha256": "8204c29dd4ee106e890fe07a1dad8a4f2383914f956260e1abf721d3370c9a55"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_source_operand/after.json",
+            "bytes": 7226,
+            "sha256": "aac7b7182631fb8fbada92e72a156fa2fc0a1659ae0eaa86c766f1c4b61b44a6"
+          }
+        }
+      }
+    },
+    {
+      "name": "wrong_positive_zero",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_positive_zero/report.json",
+        "sha256": "4e581288be6ae69ae0bd94ba377e22c8674dc8b559282c4e2b44ec3708167e1e",
+        "bytes": 2086
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_positive_zero/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_positive_zero/INTENT.json",
+        "sha256": "48fe244a46aa44609ddc3da6fb5d371c7625343ca4e902567ca6f00b7a246ffb",
+        "bytes": 535
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_positive_zero/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_positive_zero/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_positive_zero/after.mlir",
+            "bytes": 2277,
+            "sha256": "7579cedbbfd16959b06e5ecd0062a20b22896c4b95cc8681fbc19dc9898766da"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_positive_zero/after.json",
+            "bytes": 7233,
+            "sha256": "e94351df71895da5353853e675a704f3d99670cc8cd5436f65ed423c8e1d8994"
+          }
+        }
+      }
+    },
+    {
+      "name": "negative_zero",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/negative_zero/report.json",
+        "sha256": "4e581288be6ae69ae0bd94ba377e22c8674dc8b559282c4e2b44ec3708167e1e",
+        "bytes": 2086
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/negative_zero/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/negative_zero/INTENT.json",
+        "sha256": "e10e3038ccfed2885678a6b2fa5892c151eb547dfe59d0f3864c2a2d6eef6518",
+        "bytes": 523
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/negative_zero/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/negative_zero/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/negative_zero/after.mlir",
+            "bytes": 2278,
+            "sha256": "59299813a1c77465790fd71ea4e61500cd821648340cdde536a43eccdb1139bb"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/negative_zero/after.json",
+            "bytes": 7233,
+            "sha256": "7cedf8f054f32f9c5711104e653f7159b55a9430d6b5402359f7a2dfff18c0bd"
+          }
+        }
+      }
+    },
+    {
+      "name": "uninitialized_accumulator",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/uninitialized_accumulator/report.json",
+        "sha256": "828b06de138733baf4e4e5dd40bc957695f456c459391e022c0cb606888ca15b",
+        "bytes": 2331
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/uninitialized_accumulator/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/uninitialized_accumulator/INTENT.json",
+        "sha256": "c9ff2707daec700e2a780d294aa8a06daf7f92ba90dfdefe91419baeca89b13e",
+        "bytes": 547
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/uninitialized_accumulator/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/uninitialized_accumulator/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/uninitialized_accumulator/after.mlir",
+            "bytes": 2277,
+            "sha256": "7f562453a672494d4255be27f85f82cbc86eb67d8bf5513beb08a7ac84ba9f24"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/uninitialized_accumulator/after.json",
+            "bytes": 7226,
+            "sha256": "18523584aa23db62714802cb7793dcb0c3b06447deb8a2549eea6961d3a75ab0"
+          }
+        }
+      }
+    },
+    {
+      "name": "wrong_final_rounding",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_final_rounding/report.json",
+        "sha256": "514ea5cb8b8563455ffa243d2ac595386c2fa10f603d28eed7d6c896db1a3977",
+        "bytes": 2331
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_final_rounding/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_final_rounding/INTENT.json",
+        "sha256": "9b41f74c649c88b0fe311fcf255f20116837ed5caada2b1e61fd566d3851843a",
+        "bytes": 537
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_final_rounding/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_final_rounding/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_final_rounding/after.mlir",
+            "bytes": 2304,
+            "sha256": "7b546aa475a002fb6181a79eaa917e3ebbbf5ca92e798e9d401296ab3a5179f8"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_final_rounding/after.json",
+            "bytes": 7309,
+            "sha256": "a867fbe96376eab32214f479f212c4fac5fc96563aaa43da64a7dd848d452916"
+          }
+        }
+      }
+    },
+    {
+      "name": "wrong_order",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 0,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_order/report.json",
+        "sha256": "5e423b19c625cdef5e838aa937e827b534cdf136dd6b23dfc43405bd041bcd0f",
+        "bytes": 1886
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_order/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_order/INTENT.json",
+        "sha256": "f5512595f42568f10b5217224c816c9ccc05734f12a18876c068a0df740022be",
+        "bytes": 519
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_order/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_order/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_order/after.mlir",
+            "bytes": 3400,
+            "sha256": "226b2c9d6b7429eefa0bed4c82fb3308b3dff35505465ad897a282b1f8fb0f6a"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_order/after.json",
+            "bytes": 10504,
+            "sha256": "6d6c60b2dfc3963288557504575063fc16f37dd1119c53ea12efc2334ed6cf54"
+          }
+        }
+      }
+    },
+    {
+      "name": "wrong_add_order",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_add_order/report.json",
+        "sha256": "828b06de138733baf4e4e5dd40bc957695f456c459391e022c0cb606888ca15b",
+        "bytes": 2331
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_add_order/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/wrong_add_order/INTENT.json",
+        "sha256": "ec303437f626a0abc7f3f202eac982d1d3a2d6f3df3a974af9608a818ae42e6a",
+        "bytes": 527
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_add_order/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_add_order/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_add_order/after.mlir",
+            "bytes": 2277,
+            "sha256": "6b235d3abc3b2552a7412b289c692acf5ca13de9da58685635375efc687c9172"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_add_order/after.json",
+            "bytes": 7226,
+            "sha256": "0707c04be18dd4c0642ca473d7acb00011f004121b3971c42096a88380eb43a5"
+          }
+        }
+      }
+    },
+    {
+      "name": "reassoc_flag",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/reassoc_flag/report.json",
+        "sha256": "c0e8084a7c46d0513a144d5b16e65edf13d8df18949f4787025404430056b49b",
+        "bytes": 2090
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/reassoc_flag/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/reassoc_flag/INTENT.json",
+        "sha256": "d25b7e56e2dab6e2388299430e5d36c7407ec543b703d70b928dc7ac28adb604",
+        "bytes": 521
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/reassoc_flag/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/reassoc_flag/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/reassoc_flag/after.mlir",
+            "bytes": 2285,
+            "sha256": "36af56e49a94e480748e503831e1683ccc3b1916f4a8d1d437954aa46a311dcc"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/reassoc_flag/after.json",
+            "bytes": 7234,
+            "sha256": "a91cdd551ff56f1f40e97a4377a565d41ee44e740e366406eb07277756380fc8"
+          }
+        }
+      }
+    },
+    {
+      "name": "nnan_flag",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/nnan_flag/report.json",
+        "sha256": "7750469e0ed9ee29f6da4fbbaaa2e1c90768d2a1517e46d8bca5a8b428daa1ac",
+        "bytes": 2084
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/nnan_flag/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/nnan_flag/INTENT.json",
+        "sha256": "4c3666fe020ef37881badfc06570bf3daf63f52cc38c49974e97aafd5a193f96",
+        "bytes": 515
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/nnan_flag/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/nnan_flag/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/nnan_flag/after.mlir",
+            "bytes": 2282,
+            "sha256": "6f3a1fe10b357bff81e1a62532fe0435df6568954f7a6e979d41e13d71034c2b"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/nnan_flag/after.json",
+            "bytes": 7231,
+            "sha256": "1c2af6610479eb67710303da1002d256b83cb0230b230bdcb948670ad3676fdb"
+          }
+        }
+      }
+    },
+    {
+      "name": "fast_flag",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/fast_flag/report.json",
+        "sha256": "4ca02c9026ffbd8530763fb590146843eed25d0b3ccfcad9a5ebf2c6b7a29a6c",
+        "bytes": 2066
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/fast_flag/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/fast_flag/INTENT.json",
+        "sha256": "20e95d568bdf75fea41682567ab149d3d28c65f0947a8b1549573e442b97800b",
+        "bytes": 515
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/fast_flag/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/fast_flag/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/fast_flag/after.mlir",
+            "bytes": 2273,
+            "sha256": "9d128ced3acebf61867083bc478359b3a53b5b1fbc68b2892b45b3d182fe6e67"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/fast_flag/after.json",
+            "bytes": 7222,
+            "sha256": "2bc2138f8d4c044bc97f6c27b0553f4f14ad9de03becd1aaa673f5e2a202a017"
+          }
+        }
+      }
+    },
+    {
+      "name": "dropped_site",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 0,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/dropped_site/report.json",
+        "sha256": "7fa33c2693a7c0d0e3ec6199b1dfe84eb3bce9278ba63f04c5f5a40fe3171bc5",
+        "bytes": 1818
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/dropped_site/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/dropped_site/INTENT.json",
+        "sha256": "cd2ebe5da72ef1abf00817784ee028fd5ec096478c0b837eca7fd442a9cce51b",
+        "bytes": 521
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/dropped_site/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/dropped_site/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/dropped_site/after.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/dropped_site/after.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        }
+      }
+    },
+    {
+      "name": "none_flags",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/none_flags/report.json",
+        "sha256": "affc3b91c34b351a4b4556d1d6bb01a175805b97c92d33b9046fe631d6522324",
+        "bytes": 2064
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/none_flags/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/none_flags/INTENT.json",
+        "sha256": "483cfc2f1f5fbd2e2f12bfa293d9d6a782975a4d7c1a13d99511ad62c6e29828",
+        "bytes": 517
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/none_flags/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/none_flags/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/none_flags/after.mlir",
+            "bytes": 2269,
+            "sha256": "135868ad2f8caff38d38cfe96014cf3f41db41515149fedf29765c27a286fcc9"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/none_flags/after.json",
+            "bytes": 7218,
+            "sha256": "6c7eb471cc17ae7102b5c96b3c4f0cf96be1e572000f143eb974a390e14e4e7d"
+          }
+        }
+      }
+    },
+    {
+      "name": "add_only_contract",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/add_only_contract/report.json",
+        "sha256": "9570ee89e560827ff99e03446348f501dec7a63be49ee49a1b8e6619f2481e1b",
+        "bytes": 2068
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/add_only_contract/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/add_only_contract/INTENT.json",
+        "sha256": "8e2bdd5096cea0be0ba5d0b4f394c25a0c3a86b2441205db0a4ef08d2f15ab7e",
+        "bytes": 531
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/add_only_contract/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/add_only_contract/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/add_only_contract/after.mlir",
+            "bytes": 2273,
+            "sha256": "0d7c59229cbf252b3c47a1c273f519fce38ffbdfd4cbc58e50a0d56342aeb555"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/add_only_contract/after.json",
+            "bytes": 7222,
+            "sha256": "fdb7e35a80d3976bcf335f80d335bf10d2a2c02c6b82ae3de9fb8e044937c4af"
+          }
+        }
+      }
+    },
+    {
+      "name": "nonzero_source_F14",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 0,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/nonzero_source_F14/report.json",
+        "sha256": "bfe3d1e9949853b0201c9efa16cab5883a3bf031c9bc655ae08bea52ee7b568a",
+        "bytes": 1944
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/nonzero_source_F14/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/nonzero_source_F14/INTENT.json",
+        "sha256": "94ff45a4574dea95e4c440e72dc2ea153115fe7b1a0df193e55a87f891b92aa1",
+        "bytes": 533
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/nonzero_source_F14/before.mlir",
+            "bytes": 1285,
+            "sha256": "adb8263a657ed33e1c849f45bd4bb552a6050c2fac57f2266d81efe72a8a28c0"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/nonzero_source_F14/before.json",
+            "bytes": 4034,
+            "sha256": "3c425f61548ac652ed586c06211eab03e5f03a12b2edda42507f2acfaf1f24fb"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/nonzero_source_F14/after.mlir",
+            "bytes": 2277,
+            "sha256": "d0167aed3dd36688a8a35edb76c0b8e34833a7310a133c40f81aaaa846ffa346"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/nonzero_source_F14/after.json",
+            "bytes": 7229,
+            "sha256": "24f6ee666f416397766dd87c5a1b5b2623b3005dc4540a89d950b500891a1361"
+          }
+        }
+      }
+    },
+    {
+      "name": "negative_zero_source",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 0,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/negative_zero_source/report.json",
+        "sha256": "bfe3d1e9949853b0201c9efa16cab5883a3bf031c9bc655ae08bea52ee7b568a",
+        "bytes": 1944
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/negative_zero_source/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/negative_zero_source/INTENT.json",
+        "sha256": "6513b5795e110d96b2095debbd1db40bdde489cf1890bd9f87b003243f2e6e3b",
+        "bytes": 537
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/negative_zero_source/before.mlir",
+            "bytes": 1286,
+            "sha256": "4a320fabf5148b6c88beb100a4f822b55ae6edc6bf7748f1b9d30008349bbd46"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/negative_zero_source/before.json",
+            "bytes": 4034,
+            "sha256": "4f65568ad8ff13de84229f4cd4e64e2e5f0d921301eb7597770537f9f2efe14b"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/negative_zero_source/after.mlir",
+            "bytes": 2278,
+            "sha256": "eeb51a92317c053c407fb9c3269b83e7dca1d4c0fa4851b00d38bcd7359b69ae"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/negative_zero_source/after.json",
+            "bytes": 7229,
+            "sha256": "7476e3298c8f1bcd47d355439f7f3f87dc759db714ec545f494350bcf0198c46"
+          }
+        }
+      }
+    },
+    {
+      "name": "named_transpose",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/named_transpose/report.json",
+        "sha256": "6e8f7bd01ade6ee8f71c02bb0b47224382a25f667eee40e7b5444c46803759e9",
+        "bytes": 2120
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/named_transpose/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/named_transpose/INTENT.json",
+        "sha256": "ca1de7d49f26ad325000c5393e7dcdf283108ba0c297f9d6d87fee2f3b45c9d4",
+        "bytes": 527
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_transpose/before.mlir",
+            "bytes": 1159,
+            "sha256": "2f7319c9c6d5fd6c3d6898bd7b9e3b1e411b2e9c9f379aa7e8b155bbc3471a82"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_transpose/before.json",
+            "bytes": 3914,
+            "sha256": "36bc17970e4d4ebab00804b7c4095f22283639ac4bf0040a10c396504506443e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_transpose/after.mlir",
+            "bytes": 2209,
+            "sha256": "f563e418ef9f864974b2d555c87ae39587f60892ed6edaa41d553459ee9f47e3"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_transpose/after.json",
+            "bytes": 7265,
+            "sha256": "8b34030831a5e1c4a71f3e4c7d29794a0d33638c79a0835aceb74299d6df83c1"
+          }
+        }
+      }
+    },
+    {
+      "name": "source_mul_swap",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/source_mul_swap/report.json",
+        "sha256": "f57c5171c6f5763268f67ee59da63179d6589493b607dc0b52eb60856e0a0d15",
+        "bytes": 2072
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/source_mul_swap/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/source_mul_swap/INTENT.json",
+        "sha256": "c82eb67539e8ac09830be5c475c5d1838ae9e1e2ddfb02606753f8a6595b7423",
+        "bytes": 527
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/source_mul_swap/before.mlir",
+            "bytes": 1285,
+            "sha256": "7aae78735a354fce28e882af06515d02daff822d9ec8be59571358d4ea4fc4f4"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/source_mul_swap/before.json",
+            "bytes": 4031,
+            "sha256": "999a9e37c8498bb19e60068f349000dc9f0323fac6206f0ae301199d39d19068"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/source_mul_swap/after.mlir",
+            "bytes": 2277,
+            "sha256": "d200acb230ec88f45811dff803fa39c675c1d2828e2e5a3ade566eec8fdec31c"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/source_mul_swap/after.json",
+            "bytes": 7226,
+            "sha256": "562bd45b9f660ce1a5167b7fa2c6563308a8a74ce61c0ac5e80ca81c8ca02a13"
+          }
+        }
+      }
+    },
+    {
+      "name": "source_add_swap",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 1,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/source_add_swap/report.json",
+        "sha256": "f57c5171c6f5763268f67ee59da63179d6589493b607dc0b52eb60856e0a0d15",
+        "bytes": 2072
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/source_add_swap/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/source_add_swap/INTENT.json",
+        "sha256": "84f9cb7ffff91c645af394e37bb5c78c7318e40fb028aa75b674976fb7af571b",
+        "bytes": 527
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/source_add_swap/before.mlir",
+            "bytes": 1285,
+            "sha256": "c840b6e6640fca15593ea52fdf0cd6eb8f76e4fdcba4af473103cd49756d18d6"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/source_add_swap/before.json",
+            "bytes": 4031,
+            "sha256": "ecba5c6551ebf9b2710faa4c36e49eaccf08b19682cadf044db3a915de0f2672"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/source_add_swap/after.mlir",
+            "bytes": 2277,
+            "sha256": "d200acb230ec88f45811dff803fa39c675c1d2828e2e5a3ade566eec8fdec31c"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/source_add_swap/after.json",
+            "bytes": 7226,
+            "sha256": "562bd45b9f660ce1a5167b7fa2c6563308a8a74ce61c0ac5e80ca81c8ca02a13"
+          }
+        }
+      }
+    },
+    {
+      "name": "one_input_contraction",
+      "outcome": "DOMAIN_REFUSAL",
+      "sites": 0,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/one_input_contraction/report.json",
+        "sha256": "69f2501f298fc22899b7264f7ffb0b9c64f974d11ae9ead127176d2e3ba615da",
+        "bytes": 1819
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/one_input_contraction/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/one_input_contraction/INTENT.json",
+        "sha256": "47a4f3dffc7c430a42fdb505f829f299f6797ef31d97749a6e73f27f878169a9",
+        "bytes": 539
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/one_input_contraction/before.mlir",
+            "bytes": 1205,
+            "sha256": "34e09529a5e11a32ae8f850fe548d255f949d1ce22c9ce0f9b6963234cf9559d"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/one_input_contraction/before.json",
+            "bytes": 3829,
+            "sha256": "16345567cc91ead706f47ff061ed7a68b6f456be5a6397998197a0cc12e31d18"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/one_input_contraction/after.mlir",
+            "bytes": 1204,
+            "sha256": "d643f4a8ab42ea5a7e022b9c26f0ba1aad0907be4be2e9c84056e6d2b8f068d4"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/one_input_contraction/after.json",
+            "bytes": 3829,
+            "sha256": "62b29cf05c4e05dcdca7d8ed2fb3d7124d2f6bc43e8ef94515161547894e0f1b"
+          }
+        }
+      }
+    },
+    {
+      "name": "named_batch_outside_domain",
+      "outcome": "DOMAIN_REFUSAL",
+      "sites": 0,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/named_batch_outside_domain/report.json",
+        "sha256": "69f2501f298fc22899b7264f7ffb0b9c64f974d11ae9ead127176d2e3ba615da",
+        "bytes": 1819
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/named_batch_outside_domain/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/named_batch_outside_domain/INTENT.json",
+        "sha256": "ba7c138cbf991de94554f5a9fcad43e4afb1d84e7e46dc250b908c9a3629baf1",
+        "bytes": 549
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_batch_outside_domain/before.mlir",
+            "bytes": 1138,
+            "sha256": "c8447d0fa14481c4ad974d19fffea5bf584609d404fd3cd8d442645a215715cf"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_batch_outside_domain/before.json",
+            "bytes": 3644,
+            "sha256": "ab554140bbd9b5b9822087eca7cd7813083867b0453f4ff0f573083ed39869a1"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_batch_outside_domain/after.mlir",
+            "bytes": 1137,
+            "sha256": "f3632415062fb831a16b801cfc5a2f836eeb257d8235ae65fc8fd47563e80f4a"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_batch_outside_domain/after.json",
+            "bytes": 3644,
+            "sha256": "8f2e56b8e4db68b7d3937b53720fe52fed9c577a5cef31d0e963ceffbc0f033c"
+          }
+        }
+      }
+    },
+    {
+      "name": "unrelated_suffix",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 0,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/unrelated_suffix/report.json",
+        "sha256": "260289d1e506bc6147596361e99463cc0b3fd62e41d8390c08134c452d2358e6",
+        "bytes": 2181
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/unrelated_suffix/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/unrelated_suffix/INTENT.json",
+        "sha256": "232bd50c158e449ae323dbf40c97e112d143a271396f6110d17752d4fe2f09fd",
+        "bytes": 529
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/unrelated_suffix/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/unrelated_suffix/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/unrelated_suffix/after.mlir",
+            "bytes": 2338,
+            "sha256": "d1f6e9ac1c420fee3908d3f1d931f4b382196a2011cc652da8cf55a194e80e0a"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/unrelated_suffix/after.json",
+            "bytes": 7468,
+            "sha256": "536bee416d56816e8848480032574be1192eaae849fe8d77e0fe9033f20468b7"
+          }
+        }
+      }
+    },
+    {
+      "name": "duplicated_accumulation",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 0,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/duplicated_accumulation/report.json",
+        "sha256": "276e82090fcee11c2383e221a3c290e0c612eb9a62e9564dfc1e5a55b50d3668",
+        "bytes": 2181
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/duplicated_accumulation/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/duplicated_accumulation/INTENT.json",
+        "sha256": "5321d9bc2ff0dbfbd0189abadc910ba6d68e15b121bfef245339e0f39f1cf80f",
+        "bytes": 543
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/duplicated_accumulation/before.mlir",
+            "bytes": 1285,
+            "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/duplicated_accumulation/before.json",
+            "bytes": 4031,
+            "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/duplicated_accumulation/after.mlir",
+            "bytes": 3221,
+            "sha256": "2a931625827a676e27533568033accbc446d7bdc814cc0d0c5ad88fd7bd5edc9"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/duplicated_accumulation/after.json",
+            "bytes": 9825,
+            "sha256": "defd5fabc542d5a84c3ca2aad216ccf78d3d834a7e2bb43d38b8620bf1134258"
+          }
+        }
+      }
+    },
+    {
+      "name": "two_site_complete",
+      "outcome": "RAW_POLICY_MATCH",
+      "sites": 2,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/two_site_complete/report.json",
+        "sha256": "fe0f487a52d8a7784878e21134118e53341d93e52b6e36e472f9aeb82b68b292",
+        "bytes": 2466
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/two_site_complete/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/two_site_complete/INTENT.json",
+        "sha256": "d2fc99eea7a801b218ed59f61b0dc2d4fd081632841bf78227496d3713630e68",
+        "bytes": 531
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_complete/before.mlir",
+            "bytes": 2532,
+            "sha256": "24abf6a3ee1dbfc193915c9e2e2d1f0bb4c5a431734ca606879ee3509d15adab"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_complete/before.json",
+            "bytes": 7814,
+            "sha256": "2c0e4c7b2c9357dd269dc6b73568043f98a0949a02f37a6a8a91c4c18c510a49"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_complete/after.mlir",
+            "bytes": 4518,
+            "sha256": "3d612e214f1bc7366efb548b1850df8fc8aa1cb3a0e385978a1871c35c53c5da"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_complete/after.json",
+            "bytes": 14202,
+            "sha256": "a0bc96d766551702818777085044d5cdcdccade838c2174394fbc2ccfd8c36ee"
+          }
+        }
+      }
+    },
+    {
+      "name": "two_site_drop_second_rewrite",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 0,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/two_site_drop_second_rewrite/report.json",
+        "sha256": "d8bf5a987844545c34de4c330d15d53c3a33441957802eccf3917e8766c501df",
+        "bytes": 1816
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/two_site_drop_second_rewrite/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/two_site_drop_second_rewrite/INTENT.json",
+        "sha256": "837bcc7077fdc91c07e6ecc299ddc3176787558be2e609b0b2790b385f617063",
+        "bytes": 553
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_drop_second_rewrite/before.mlir",
+            "bytes": 2532,
+            "sha256": "24abf6a3ee1dbfc193915c9e2e2d1f0bb4c5a431734ca606879ee3509d15adab"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_drop_second_rewrite/before.json",
+            "bytes": 7814,
+            "sha256": "2c0e4c7b2c9357dd269dc6b73568043f98a0949a02f37a6a8a91c4c18c510a49"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_drop_second_rewrite/after.mlir",
+            "bytes": 3525,
+            "sha256": "a1e63e3c4e4dfe7ba2db2110e9ee9b85ff149b23e2f6c556e45f5ac4b1724c2b"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_drop_second_rewrite/after.json",
+            "bytes": 11009,
+            "sha256": "4d1a55a7b44f8dcce323ca5833bdea22183536d691fe9d1f26fb3e3f76b0d068"
+          }
+        }
+      }
+    },
+    {
+      "name": "two_site_duplicate_function",
+      "outcome": "LEAN_POLICY_REFUSAL",
+      "sites": 0,
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/two_site_duplicate_function/report.json",
+        "sha256": "d95d5284ddb7012c44b29a974322405a4838a2832e07e7eaab410a95d40ad42b",
+        "bytes": 2187
+      },
+      "process": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/two_site_duplicate_function/PROCESS.json",
+        "sha256": "cc36399b61e4b4a4f56dd96d205dd838670cf37f31cfa732ebafac7891e1e113",
+        "bytes": 42
+      },
+      "intent": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/compiled-checks-v1/two_site_duplicate_function/INTENT.json",
+        "sha256": "a1ea06e0c0de4251e4d5576822c5ac1ee936657b2ff5041670611f7ecd8ccbc4",
+        "bytes": 551
+      },
+      "authoritative_inputs": {
+        "before": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_duplicate_function/before.mlir",
+            "bytes": 2532,
+            "sha256": "24abf6a3ee1dbfc193915c9e2e2d1f0bb4c5a431734ca606879ee3509d15adab"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_duplicate_function/before.json",
+            "bytes": 7814,
+            "sha256": "2c0e4c7b2c9357dd269dc6b73568043f98a0949a02f37a6a8a91c4c18c510a49"
+          }
+        },
+        "after": {
+          "source": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_duplicate_function/after.mlir",
+            "bytes": 6758,
+            "sha256": "0b9477a7cc42ecbac6ea4c789e7d640cd8573e45c9213d3a923b2cbf39d67e0a"
+          },
+          "export": {
+            "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/two_site_duplicate_function/after.json",
+            "bytes": 21177,
+            "sha256": "d414ddce2b798346d5ce6cc5be37f5fe68791fefd27f6377170a8c6c94d2aab1"
+          }
+        }
+      }
+    }
+  ],
+  "audit": {
+    "ref": {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/AUDIT.json",
+      "sha256": "eef446067439c7435d93117a8f914942b43afb7a657bbb171c3efe8518100439",
+      "bytes": 26498
+    },
+    "theorems_audited": 9749,
+    "statement_roots": 15,
+    "axiom_roots": 17,
+    "std3_only": true
+  },
+  "smolvla": {
+    "receipt": {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_smolvla/receipt.json",
+      "sha256": "560c88b479a4d85df0815f82aba1e7bcbb8762fd079be15d89f170a7aa6b7d8e",
+      "bytes": 3620
+    },
+    "report": {
+      "bytes": 11313,
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_smolvla/lean/f94b822de21c49c8aae18aa3311a1593/contract-report.json",
+      "sha256": "62ad7c7fd76eea3ecc63f8c16897a7e80335b263a428d0b7c59d809c1bc12448"
+    },
+    "replay": {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_smolvla-replay.json",
+      "sha256": "bc6e679785de4be1fe43c0cb7442fc25da5859ffa80aa437742c36f0366da32c",
+      "bytes": 7719
+    },
+    "fresh": true,
+    "matches_recorded": true,
+    "covered_sites": 24,
+    "whole_capture_qualified": false,
+    "verdict": "abstracted",
+    "human_reviewed": false
+  },
+  "Qv2_source_overlap_exact": [
+    "src/merlin/verify/bf16_policy_gate.py",
+    "src/merlin/verify/gate_checks.py",
+    "src/merlin/verify/gate_worker.py",
+    "src/merlin/verify/pass_validation.py",
+    "src/merlin/verify/lean/bf16_f32acc.py",
+    "src/merlin/runtime/backends/zephyr_model.py",
+    "build_tools/scripts/prepare_bf16_review.py"
+  ],
+  "pending_at_observation": [
+    "SmolVLA segment replay",
+    "TinyLlama replay",
+    "independent human policy approval"
+  ],
+  "first_data_review_failure_retained": "FIRST-DATA-REVIEW-FAILURE.txt"
+}

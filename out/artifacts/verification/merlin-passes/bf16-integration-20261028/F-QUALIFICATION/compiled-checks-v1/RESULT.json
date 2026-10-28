@@ -1,0 +1,403 @@
+{
+  "phase": "RAW_POLICY_QUALIFICATION",
+  "cases": [
+    {
+      "name": "bf16_named",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "bf16_generic",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "bf16_empty_k",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "bf16_tiny_k",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "bf16_empty_result",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "bf16_generic_transpose",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "f16_named",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "f16_generic",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "f16_empty_k",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "f16_tiny_k",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "f16_empty_result",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "f16_generic_transpose",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "wrong_accumulator_f64",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "wrong_source_operand",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "wrong_positive_zero",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "negative_zero",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "uninitialized_accumulator",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "wrong_final_rounding",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "wrong_order",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "wrong_add_order",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "reassoc_flag",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "nnan_flag",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "fast_flag",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "dropped_site",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "none_flags",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "add_only_contract",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "nonzero_source_F14",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "negative_zero_source",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "named_transpose",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "source_mul_swap",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "source_add_swap",
+      "expected": "raw_policy_match",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 1
+    },
+    {
+      "name": "one_input_contraction",
+      "expected": "outside_policy_domain",
+      "sites": 0,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "DOMAIN_REFUSAL"
+    },
+    {
+      "name": "named_batch_outside_domain",
+      "expected": "outside_policy_domain",
+      "sites": 0,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "DOMAIN_REFUSAL"
+    },
+    {
+      "name": "unrelated_suffix",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "duplicated_accumulation",
+      "expected": "raw_policy_refusal",
+      "sites": 1,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "two_site_complete",
+      "expected": "raw_policy_match",
+      "sites": 2,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "RAW_POLICY_MATCH",
+      "covered_sites": 2
+    },
+    {
+      "name": "two_site_drop_second_rewrite",
+      "expected": "raw_policy_refusal",
+      "sites": 2,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    },
+    {
+      "name": "two_site_duplicate_function",
+      "expected": "raw_policy_refusal",
+      "sites": 2,
+      "process": {
+        "returncode": 1,
+        "timeout": false
+      },
+      "outcome": "LEAN_POLICY_REFUSAL"
+    }
+  ],
+  "human_policy_reviewed": false
+}

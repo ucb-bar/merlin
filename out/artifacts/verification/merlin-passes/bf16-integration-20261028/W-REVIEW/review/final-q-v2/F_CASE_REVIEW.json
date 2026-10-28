@@ -1,0 +1,228 @@
+{
+  "scope": "data review of F first actual results, not a rerun/expected-value refresh",
+  "cases": [
+    {
+      "name": "wrong_final_rounding",
+      "raw_modules_identical": false,
+      "export_processes": {
+        "before": {
+          "returncode": 0,
+          "timeout": false
+        },
+        "after": {
+          "returncode": 0,
+          "timeout": false
+        }
+      },
+      "bound_inputs": [
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_final_rounding/before.mlir",
+          "bytes": 1285,
+          "sha256": "f71cd45479d411679cf2d9194e1f019e83f14935d4e44452ea54fb780d618def"
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_final_rounding/before.json",
+          "bytes": 4031,
+          "sha256": "ccdeb56a3a6bcd98e04402c8c92873f368cfe75641933f2f0e95691dc13c544e"
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_final_rounding/after.mlir",
+          "bytes": 2304,
+          "sha256": "7b546aa475a002fb6181a79eaa917e3ebbbf5ca92e798e9d401296ab3a5179f8"
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_final_rounding/after.json",
+          "bytes": 7309,
+          "sha256": "a867fbe96376eab32214f479f212c4fac5fc96563aaa43da64a7dd848d452916"
+        }
+      ],
+      "first_direct_result": {
+        "name": "wrong_final_rounding",
+        "expected": "raw_policy_refusal",
+        "sites": 1,
+        "process": {
+          "returncode": 1,
+          "timeout": false
+        },
+        "outcome": "LEAN_POLICY_REFUSAL"
+      },
+      "review": "xDSL rejected initial spelling, but authoritative native exporter succeeded and Lean raw policy refusal observed; retain both facts.",
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/direct-checks-v1/wrong_final_rounding/report.json",
+        "sha256": "514ea5cb8b8563455ffa243d2ac595386c2fa10f603d28eed7d6c896db1a3977",
+        "bytes": 2331
+      },
+      "observed_report_fields": {
+        "candidates": 1,
+        "conditional_match": false,
+        "qualification_passed": false,
+        "pass_boundary": {
+          "checked": false,
+          "covered_sites": 1,
+          "expected_sites": 1,
+          "scope": "bf16 pass boundary; universal local operand domain; complete output equality under SSA-invariant semantics",
+          "semantic_match": false,
+          "semantic_match_theorem": "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+          "site_obligations": [
+            {
+              "function": "subject",
+              "qualification_passed": false,
+              "source_operation": 2,
+              "source_results": [
+                4
+              ]
+            }
+          ],
+          "site_qualification_passed": false,
+          "site_qualification_theorem": "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+          "whole_capture_claim": "separate; see function_obligations"
+        },
+        "policy_reviewed": false,
+        "verdict": "abstracted"
+      }
+    },
+    {
+      "name": "one_input_contraction",
+      "raw_modules_identical": true,
+      "export_processes": {
+        "before": {
+          "returncode": 0,
+          "timeout": false
+        },
+        "after": {
+          "returncode": 0,
+          "timeout": false
+        }
+      },
+      "bound_inputs": [
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/one_input_contraction/before.mlir",
+          "bytes": 1205,
+          "sha256": "34e09529a5e11a32ae8f850fe548d255f949d1ce22c9ce0f9b6963234cf9559d"
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/one_input_contraction/before.json",
+          "bytes": 3829,
+          "sha256": "16345567cc91ead706f47ff061ed7a68b6f456be5a6397998197a0cc12e31d18"
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/one_input_contraction/after.mlir",
+          "bytes": 1204,
+          "sha256": "d643f4a8ab42ea5a7e022b9c26f0ba1aad0907be4be2e9c84056e6d2b8f068d4"
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/one_input_contraction/after.json",
+          "bytes": 3829,
+          "sha256": "62b29cf05c4e05dcdca7d8ed2fb3d7124d2f6bc43e8ef94515161547894e0f1b"
+        }
+      ],
+      "first_direct_result": {
+        "name": "one_input_contraction",
+        "expected": "raw_policy_refusal",
+        "sites": 1,
+        "process": {
+          "returncode": 1,
+          "timeout": false
+        },
+        "outcome": "UNEXPECTED_LEAN_ACCEPTANCE"
+      },
+      "review": "Decoded module unchanged; raw zero-site identity match is expected outside MACC candidate scope. Host conservative denominator must refuse counting this as covered MACC.",
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/direct-checks-v1/one_input_contraction/report.json",
+        "sha256": "69f2501f298fc22899b7264f7ffb0b9c64f974d11ae9ead127176d2e3ba615da",
+        "bytes": 1819
+      },
+      "observed_report_fields": {
+        "candidates": 0,
+        "conditional_match": true,
+        "qualification_passed": true,
+        "pass_boundary": {
+          "checked": true,
+          "covered_sites": 0,
+          "expected_sites": 0,
+          "scope": "bf16 pass boundary; universal local operand domain; complete output equality under SSA-invariant semantics",
+          "semantic_match": true,
+          "semantic_match_theorem": "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+          "site_obligations": [],
+          "site_qualification_passed": true,
+          "site_qualification_theorem": "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+          "whole_capture_claim": "separate; see function_obligations"
+        },
+        "policy_reviewed": false,
+        "verdict": "abstracted"
+      }
+    },
+    {
+      "name": "named_batch_outside_domain",
+      "raw_modules_identical": true,
+      "export_processes": {
+        "before": {
+          "returncode": 0,
+          "timeout": false
+        },
+        "after": {
+          "returncode": 0,
+          "timeout": false
+        }
+      },
+      "bound_inputs": [
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_batch_outside_domain/before.mlir",
+          "bytes": 1138,
+          "sha256": "c8447d0fa14481c4ad974d19fffea5bf584609d404fd3cd8d442645a215715cf"
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_batch_outside_domain/before.json",
+          "bytes": 3644,
+          "sha256": "ab554140bbd9b5b9822087eca7cd7813083867b0453f4ff0f573083ed39869a1"
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_batch_outside_domain/after.mlir",
+          "bytes": 1137,
+          "sha256": "f3632415062fb831a16b801cfc5a2f836eeb257d8235ae65fc8fd47563e80f4a"
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/named_batch_outside_domain/after.json",
+          "bytes": 3644,
+          "sha256": "8f2e56b8e4db68b7d3937b53720fe52fed9c577a5cef31d0e963ceffbc0f033c"
+        }
+      ],
+      "first_direct_result": {
+        "name": "named_batch_outside_domain",
+        "expected": "outside_policy_domain",
+        "sites": 0,
+        "process": {
+          "returncode": 1,
+          "timeout": false
+        },
+        "outcome": "CHECK_OR_BINDING_FAILURE",
+        "error": "GateRejected: incomplete source-site denominator"
+      },
+      "review": "Decoded module unchanged; raw zero-site identity match is expected outside MACC candidate scope. Host conservative denominator must refuse counting this as covered MACC.",
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/direct-checks-v1/named_batch_outside_domain/report.json",
+        "sha256": "69f2501f298fc22899b7264f7ffb0b9c64f974d11ae9ead127176d2e3ba615da",
+        "bytes": 1819
+      },
+      "observed_report_fields": {
+        "candidates": 0,
+        "conditional_match": true,
+        "qualification_passed": true,
+        "pass_boundary": {
+          "checked": true,
+          "covered_sites": 0,
+          "expected_sites": 0,
+          "scope": "bf16 pass boundary; universal local operand domain; complete output equality under SSA-invariant semantics",
+          "semantic_match": true,
+          "semantic_match_theorem": "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+          "site_obligations": [],
+          "site_qualification_passed": true,
+          "site_qualification_theorem": "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+          "whole_capture_claim": "separate; see function_obligations"
+        },
+        "policy_reviewed": false,
+        "verdict": "abstracted"
+      }
+    }
+  ]
+}

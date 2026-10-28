@@ -1,0 +1,77 @@
+{
+  "after": {
+    "bytes": 3422012,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi/after.mlir",
+    "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+  },
+  "assumptions": [
+    "A1",
+    "A2",
+    "A3",
+    "A4",
+    "A5",
+    "A6",
+    "A7",
+    "A8",
+    "A9",
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6",
+    "f32-accumulation contract is a review candidate written after reading the pass (not barrier-authored)",
+    "contract-flagged multiply-add fusion: covered by Bf16F32AccFusion.fused_step only when the target fuses every contract step or none, the operand extension is injective, and the source has no licensed operations (cert fusion_premises)"
+  ],
+  "axioms": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+  ],
+  "before": {
+    "bytes": 3422012,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+    "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+  },
+  "boundary": "prepare-bf16-matmul-f32acc..prepare-fix-bool-fptosi",
+  "cert": {
+    "bytes": 8825,
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_tiny_llama/lean/94df79bed4514857aa7ae59409ac6c71/contract-report.json",
+    "sha256": "1702da79c535db2ca3c72300f0dceafaab000f8ad0b1b64d80be771fc4baf955"
+  },
+  "checker": "MerlinVerify.Check.Bf16F32AccChain.check",
+  "claim_type": "policy",
+  "domain": "nonpoison inputs of the declared argument types; contexts with 64-bit index (conditional policy refinement)",
+  "exporter": {
+    "executable_sha256": "8a00b918597f110a806fb5bba957bd074d7dd494a5f82d54d78321df5f5633b6",
+    "mlir_revision": "torch-mlir 20261001",
+    "round_trip": "identical"
+  },
+  "exports": {
+    "after": {
+      "bytes": 8944899,
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_tiny_llama/lean/94df79bed4514857aa7ae59409ac6c71/2_after.json",
+      "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3"
+    },
+    "before": {
+      "bytes": 8944899,
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_tiny_llama/lean/94df79bed4514857aa7ae59409ac6c71/0_before.json",
+      "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3"
+    }
+  },
+  "functions": [
+    "forward"
+  ],
+  "index_bits": 64,
+  "lean": {
+    "checker_sha256": "67795ef5d7771cb3dd0f56691a341db8583adef1f5a5903a0411dcbaaf2b6cb8",
+    "mathlib_rev": "56a005855ea17e0b0958f73ec801ae140b0a1679",
+    "spec_lock_sha256": "6cc97b6a0742795378cca76393642932b62cc9f8998693f3961f22a5bc44b23b",
+    "toolchain": "leanprover/lean4:v4.35.0"
+  },
+  "policy": "bf16-f32acc-contract:review-candidate",
+  "reason": "f32-accumulation contract is a review candidate: independent specification review is required; @forward: source definedness has not been established",
+  "schema": "merlin.lean.receipt.v1",
+  "theorem": "MerlinVerify.Check.Bf16F32AccChain.check_sound",
+  "verdict": "abstracted"
+}

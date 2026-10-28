@@ -1,3 +1,5 @@
+> **SCOPE OVERRIDE:** Read ../MACC_ONLY.md first. No new environment inventory/provider or mismatch investigation. Work strictly on MACC.
+
 # W — independent bf16 policy/proof-boundary review
 
 Read ../README.md first. This replaces the old W8A8/SMT/graph queues. Read-only on source/production/proofs; own review/ reports and source-only probes. You are not the human approver.

@@ -1,0 +1,94 @@
+{
+  "source_cut": {
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/SOURCE-CUT.json",
+    "bytes": 106638,
+    "sha256": "0b15c2a6f46bccadb1a4d7b2e589a7a72d10f256ded89dc14760538add408513"
+  },
+  "raw_records": [
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/closure.stdout",
+      "bytes": 58,
+      "sha256": "16d0a4713c057baa6d0aac3e64e33cf1ae13128cb5857dc1b5f18aafd48a7e31"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/statements.stdout",
+      "bytes": 24123,
+      "sha256": "582ba45e32e4c97cdec75f9ad5d348d727b842aea9e7206bfb7acfb901afc67a"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-0.stdout",
+      "bytes": 111,
+      "sha256": "7676a1c4b05a3223d6035647a62345c460a5f1e02a7e7d6668cc72be313b9d6e"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-1.stdout",
+      "bytes": 117,
+      "sha256": "99e3295bce4f2ca7f6975d137f1e1ae80bfd68a5ab4005f45b08bfb040901b83"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-2.stdout",
+      "bytes": 111,
+      "sha256": "d0f6870b42d8bc4feb83f633d3a51ad16da161a584f3caf1fa8ed7510efdfe0c"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-3.stdout",
+      "bytes": 119,
+      "sha256": "b3ec80db57140720f9315b902d66650e7f46bdbd45dfd3b6b59a8547f087b113"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-4.stdout",
+      "bytes": 109,
+      "sha256": "cbcffcf8cbaabe6248dd18970639a9501ba57fa5e168560bde088ec648315078"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-5.stdout",
+      "bytes": 117,
+      "sha256": "493b245c069b80a60ba039bc498f9c75fb9dcae4a82b354a060e2be6e48c1724"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-6.stdout",
+      "bytes": 115,
+      "sha256": "4b3371d9241941ad4c9f62e821ff466fde7419fc6d0a80202f23fff0b4457a5b"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-7.stdout",
+      "bytes": 116,
+      "sha256": "2a84d41ce777248ceba7e7c4c3570d69b7a414874cd3cc7279adb19d25b664f9"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-8.stdout",
+      "bytes": 118,
+      "sha256": "13c8b0c75b1000d33ea232dfed06ae7dd4def9b845972baace99ac223297fdf1"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-9.stdout",
+      "bytes": 120,
+      "sha256": "24d71ccf69d9fb96545000c01f33966b2f9569b32704fdd8e2cfc482a7db4b76"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-10.stdout",
+      "bytes": 120,
+      "sha256": "01150805bd7d14b95bd78dec5c67110cad1b657994d146b055a25167137df169"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-11.stdout",
+      "bytes": 113,
+      "sha256": "0ab8761467ee4c8efad5f69a35b13c58becaa02555258161a33ae72f6fd0fc32"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-12.stdout",
+      "bytes": 111,
+      "sha256": "b8e740aaa0ecd15cad2c8644c4f1cdbe3f4cacaf66c69d0c639d7217413472dc"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-13.stdout",
+      "bytes": 106,
+      "sha256": "548ec05d3b0d4dfc6ede92c033b107ed0e9deb7077f7331a32a9632eec2c9dc2"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v2/audit/root-14.stdout",
+      "bytes": 108,
+      "sha256": "037e06ff3cf837454f39711bec18adf47f56934e075b97a0a8c0d94d1d7bd243"
+    }
+  ]
+}

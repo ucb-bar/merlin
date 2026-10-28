@@ -29,5 +29,26 @@
       "thread": "01a141ba-7640-7d21-bb41-b65635302b71",
       "status": "START_ACCEPTED"
     }
-  ]
+  ],
+  "latest_scope": "MACC_ONLY.md",
+  "custom_environment_approval_queue": "SUPERSEDED_BY_USER",
+  "ordinary_repository_builds_allowed": true,
+  "communication": "Large bounded batches; no routine acknowledgments or status pings. Report actionable blocker, material correctness issue, or completed batch only. Use current scoped docs; avoid rereading historical context or repeating unchanged tests.",
+  "models": {
+    "Q-INTEGRATION": {
+      "model": "gpt-6.1-sol",
+      "effort": "xhigh",
+      "state": "active"
+    },
+    "F-QUALIFICATION": {
+      "model": "gpt-6.1-sol",
+      "effort": "xhigh",
+      "state": "active"
+    },
+    "W-REVIEW": {
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "state": "active"
+    }
+  }
 }

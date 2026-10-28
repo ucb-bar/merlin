@@ -1,0 +1,90 @@
+{
+  "scope": "zero-init bf16/f16 f32 MACC only",
+  "human_reviewed": false,
+  "items": [
+    {
+      "id": "A-MACC-POLICY",
+      "status": "human_decision_pending",
+      "statement": "Replacing half accumulation with zero-init ordered f32 accumulation is intended policy, not original-source equivalence.",
+      "anchor": "Rules/Bf16F32AccContract.lean"
+    },
+    {
+      "id": "A-MACC-FLOAT",
+      "status": "parametric_model_fidelity",
+      "statement": "FloatModel supplies total keyed operations/conversions; concrete IEEE/native correspondence, NaN payloads, denormals and rounding are not proved.",
+      "anchor": "Sem/Float.lean"
+    },
+    {
+      "id": "A-MACC-ORDER",
+      "status": "modeled_choice_and_lowering_premise",
+      "statement": "Per-cell fold follows allPoints lexicographic order; all backend reorderings are not established.",
+      "anchor": "LEDGER A5"
+    },
+    {
+      "id": "A-MACC-ZERO",
+      "status": "checked_source_condition",
+      "statement": "Literal positive-zero of same format through splat or empty/fill; no nonzero/negative-zero/dynamic initializer claim.",
+      "anchor": "Rules/Bf16F32AccReference.lean; Check/Bf16F32AccSites.lean"
+    },
+    {
+      "id": "A-MACC-MAPS",
+      "status": "checked_geometry",
+      "statement": "Actual maps, iterators, arity, static formats and bounds are checked locally; structuredRanges geometry is not supplied as an unrelated input assumption.",
+      "anchor": "Check/RulesLinalg.lean"
+    },
+    {
+      "id": "A-MACC-TYPED",
+      "status": "theorem_domain",
+      "statement": "Local tensor operands are typed and initialized at index64; this is not a proof all enclosing model values satisfy that domain.",
+      "anchor": "Check/Bf16F32Acc.lean"
+    },
+    {
+      "id": "A-MACC-NONVACUITY",
+      "status": "proved_candidate_domain",
+      "statement": "operand_domain_nonempty constructs zero operands for arbitrary shapes including zero extents; not a model-run witness.",
+      "anchor": "Rules/Bf16F32AccNonvacuity.lean"
+    },
+    {
+      "id": "A-MACC-SSA",
+      "status": "explicit_laws",
+      "statement": "Complete reference/output equality requires operation-head/arity/region invariance and call locality for the common operation interpretation.",
+      "anchor": "Check/ParametricAlpha.lean"
+    },
+    {
+      "id": "A-MACC-CALLS",
+      "status": "modeled_semantics_limit",
+      "statement": "Function-count+1 fuel and common external context; no native recursive divergence, effectful ABI or exception preservation claim.",
+      "anchor": "Sem/Program.lean"
+    },
+    {
+      "id": "A-MACC-FUSION",
+      "status": "extra_premises_for_uniform_fused_instance",
+      "statement": "One operand format; injective widening; only contract-step uses of licensed keys; uniform fusion or no fusion. Actual mixed fusion is not covered.",
+      "anchor": "Rules/Bf16F32AccFusion.lean"
+    },
+    {
+      "id": "A-MACC-EXPORT",
+      "status": "trusted_bridge",
+      "statement": "Authoritative parser, serializer, round-trip and byte binding are trusted/regression-tested; W helper controls do not prove parser fidelity.",
+      "anchor": "src/merlin/verify/lean/mlir_export.py"
+    },
+    {
+      "id": "A-MACC-KERNEL",
+      "status": "standard_tcb",
+      "statement": "Lean kernel and ordinary compiled checker correctness per ledger; fresh audit/build outcomes supplied by F, no W native result.",
+      "anchor": "LEDGER T1"
+    },
+    {
+      "id": "A-MACC-NATIVE",
+      "status": "excluded_adjacent_stage",
+      "statement": "Upstream lowering, OOT/hardware, linker/runtime and whole-model definedness not established by this MACC boundary.",
+      "anchor": "LEDGER T4-T6"
+    },
+    {
+      "id": "A-MACC-GATE",
+      "status": "trusted_host_orchestration",
+      "statement": "Host connects fresh actual pairs to proved checks and separately authenticated-by-governance human policy review; raw report does not approve itself.",
+      "anchor": "src/merlin/verify/bf16_policy_gate.py"
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+> **SCOPE OVERRIDE:** Read ../MACC_ONLY.md first. No new environment inventory/provider or mismatch investigation. Work strictly on MACC.
+
 # F — bf16 qualification and sole environment owner
 
 Read ../README.md first. Own F tests/runner/qualification only, not Q handler/registries or W review.

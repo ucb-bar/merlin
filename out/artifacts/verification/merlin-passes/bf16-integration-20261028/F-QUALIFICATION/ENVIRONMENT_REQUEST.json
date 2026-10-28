@@ -1,0 +1,239 @@
+{
+  "status": "PROPOSED_COORDINATOR_REVIEW_REQUIRED",
+  "phase1": "ONE_NEW_OFFICIAL_SDK_DATA_INTAKE_ONLY",
+  "parent_request": {
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/environment-v1/PARENT-REVIEW-REQUEST.json",
+    "bytes": 3840,
+    "sha256": "b4d859f6f3677f7a9b43b719080af9f6e6d6c908dad26bb7ba11f61603d51d77"
+  },
+  "child_request": {
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/environment-v1/CHILD-REVIEW-REQUEST.json",
+    "bytes": 3149,
+    "sha256": "8dad48949f345bab54043dc5904d1f4c7ac8e2349b372a502156ba228221fba0"
+  },
+  "original_source_cut": {
+    "manifest": {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/MANIFEST.json",
+      "bytes": 12907,
+      "sha256": "9391c61bf2b3a22ad0506275633e9f101a0bfe6a66c60fe46c2a2fcd57c2f999"
+    },
+    "source_refs": [
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/policy.py",
+        "bytes": 4550,
+        "sha256": "efea82f860bee8fde5e6d228fc9df892248d4c05fd2152c0779cbc7a23423c1a"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/fdio.py",
+        "bytes": 3419,
+        "sha256": "512ced3092f7df792d9533fb0ddfb9ff16c058cd0f7434da8e7a69554b7ad98f"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/http_fetch.py",
+        "bytes": 4561,
+        "sha256": "20678771d5bf71ac20f4013b838ea778e86421e9c7ed53b21d3c903723b93aa8"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/zip_intake.py",
+        "bytes": 10746,
+        "sha256": "6ca539f64f06f19250b5ca7d3ff044c16f22f53c18e35dd1b8d7dfc884146f4c"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/outer_deadline.py",
+        "bytes": 2731,
+        "sha256": "bf2956eaf29f0098c2815b4056d720aea599de03966c0f16013fc6e8ce482716"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/intake.py",
+        "bytes": 2947,
+        "sha256": "7f3121bdb4e9e0cc5948c0470335cb57d91cdbd43bd905b905ae38cf60c5db64"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/run_intake.py",
+        "bytes": 3615,
+        "sha256": "85a1e388813847358bdb9bf17fe47c8cdfdef48eff191e22e048bde82dae2cb8"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/watchdog.py",
+        "bytes": 5795,
+        "sha256": "82c16ee1477997eb82bcba69464086f39bc1ec730cf33e71eec23f8f10e9f70d"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/watchdog_runner.py",
+        "bytes": 4232,
+        "sha256": "d710102cb49800f03109af85040cbadacfb5ed2e8763ef49bf3e0097f48a2513"
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/child_bootstrap.py",
+        "bytes": 1934,
+        "sha256": "ae0b12dce1704f634e679ed7789ac31468c12f3a0bdd07eadea6281a2fb962fd"
+      }
+    ]
+  },
+  "source_bytes_unchanged": true,
+  "new_output_root": "/home/jeremy/Projects/merlin-bf16-verification/out/build/bf16-integration-20261028/fresh-sdk-v1",
+  "old_held_sdk_or_objects_used": false,
+  "native_commands_authorized": 0,
+  "build_source_inventory": {
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/BASELINE_INPUTS.json",
+    "bytes": 188580,
+    "sha256": "9a0683022adf9ece49a481ddfff0771d5fabd067d6a19fe3fe80daa2356a3fd0"
+  },
+  "later_build_plan": {
+    "outputs": "/home/jeremy/Projects/merlin-bf16-verification/out/build/lean",
+    "sdk": "/home/jeremy/Projects/merlin-bf16-verification/out/build/bf16-integration-20261028/fresh-sdk-v1/data/lean-4.35.0-linux",
+    "packages": {
+      "version": "1.3.0",
+      "packagesDir": "../../out/build/lean/packages",
+      "packages": [
+        {
+          "url": "https://github.com/leanprover-community/mathlib4.git",
+          "type": "git",
+          "subDir": null,
+          "scope": "",
+          "rev": "56a005855ea17e0b0958f73ec801ae140b0a1679",
+          "name": "mathlib",
+          "manifestFile": "lake-manifest.json",
+          "inputRev": "v4.35.0",
+          "inherited": false,
+          "configFile": "lakefile.lean"
+        },
+        {
+          "url": "https://github.com/leanprover-community/plausible",
+          "type": "git",
+          "subDir": null,
+          "scope": "leanprover-community",
+          "rev": "dfa4f38190d07c37e315953e08b90fe2d95b3c24",
+          "name": "plausible",
+          "manifestFile": "lake-manifest.json",
+          "inputRev": "main",
+          "inherited": true,
+          "configFile": "lakefile.toml"
+        },
+        {
+          "url": "https://github.com/leanprover-community/LeanSearchClient",
+          "type": "git",
+          "subDir": null,
+          "scope": "leanprover-community",
+          "rev": "d6b4c7be5be75ec4917c873ac50c756dc1436372",
+          "name": "LeanSearchClient",
+          "manifestFile": "lake-manifest.json",
+          "inputRev": "main",
+          "inherited": true,
+          "configFile": "lakefile.toml"
+        },
+        {
+          "url": "https://github.com/leanprover-community/import-graph",
+          "type": "git",
+          "subDir": null,
+          "scope": "leanprover-community",
+          "rev": "a41f0e9a4dea23188ea9cc1c41ac9f8bbafe0b93",
+          "name": "importGraph",
+          "manifestFile": "lake-manifest.json",
+          "inputRev": "main",
+          "inherited": true,
+          "configFile": "lakefile.toml"
+        },
+        {
+          "url": "https://github.com/leanprover-community/ProofWidgets4",
+          "type": "git",
+          "subDir": null,
+          "scope": "leanprover-community",
+          "rev": "df72b022e558978a1c50264cfc4d7fec86fa8e04",
+          "name": "proofwidgets",
+          "manifestFile": "lake-manifest.json",
+          "inputRev": "main",
+          "inherited": true,
+          "configFile": "lakefile.lean"
+        },
+        {
+          "url": "https://github.com/leanprover-community/aesop",
+          "type": "git",
+          "subDir": null,
+          "scope": "leanprover-community",
+          "rev": "4a174c490d8707121c4a9290800489f105d85e07",
+          "name": "aesop",
+          "manifestFile": "lake-manifest.json",
+          "inputRev": "master",
+          "inherited": true,
+          "configFile": "lakefile.toml"
+        },
+        {
+          "url": "https://github.com/leanprover-community/quote4",
+          "type": "git",
+          "subDir": null,
+          "scope": "leanprover-community",
+          "rev": "dce0ad79c486cb1fb504af04f953c3466b0c6db8",
+          "name": "Qq",
+          "manifestFile": "lake-manifest.json",
+          "inputRev": "master",
+          "inherited": true,
+          "configFile": "lakefile.toml"
+        },
+        {
+          "url": "https://github.com/leanprover-community/batteries",
+          "type": "git",
+          "subDir": null,
+          "scope": "leanprover-community",
+          "rev": "66e469188fe07963e5cf666c7d4433f45b8131c5",
+          "name": "batteries",
+          "manifestFile": "lake-manifest.json",
+          "inputRev": "main",
+          "inherited": true,
+          "configFile": "lakefile.toml"
+        },
+        {
+          "url": "https://github.com/leanprover/lean4-cli",
+          "type": "git",
+          "subDir": null,
+          "scope": "leanprover",
+          "rev": "c24fe6078c630e89b489bffe59b3e20ac30d12c8",
+          "name": "Cli",
+          "manifestFile": "lake-manifest.json",
+          "inputRev": "v4.35.0",
+          "inherited": true,
+          "configFile": "lakefile.toml"
+        }
+      ],
+      "name": "MerlinVerify",
+      "lakeDir": ".lake",
+      "fixedToolchain": false
+    },
+    "project_modules": 292,
+    "external_imports": [
+      "Init",
+      "Lean",
+      "Lean.Data.Json",
+      "Mathlib.Data.List.Forall2",
+      "Mathlib.Data.List.Nodup",
+      "Std.Tactic"
+    ],
+    "commands_not_authorized": [
+      "<new-sdk>/bin/lake build MerlinVerify merlin-lean merlin-lean-audit",
+      "<new-sdk>/bin/lake env lean --deps <exact source>",
+      "exact pinned merlin-lean bf16 driver and fresh receipts/replay"
+    ],
+    "own_job_bounds": {
+      "one_parent_budget_seconds": 1800,
+      "terminate_grace_seconds": 2,
+      "kill_reap_seconds": 3,
+      "retry": false
+    },
+    "audit_route": "Q exact selected-lake theorem_auditor; never historical ~/.elan/bin fallback",
+    "required_before_native": [
+      "actual authenticated SDK member manifest with complete .ir/.ir.sig families",
+      "separate fresh host runtime/loader binding and approval",
+      "fresh exact-mathlib package source/cache acquisition review; no reuse old oleans",
+      "pinned torch-mlir wheel and host Python/runtime binding review",
+      "coordinator approval of exact build/runtime request and runner"
+    ]
+  },
+  "compiler_wheel_metadata": {
+    "url": "https://github.com/llvm/torch-mlir-release/releases/download/dev-wheels/torch_mlir-20260531.828-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+    "sha256": "a233633de4dde184f97cc4ae54e8673b0eacefe55bdab555eb7eba3cfb65c2f7",
+    "numpy_pin": "2.4.6, wheel digest unresolved; no installation approval"
+  },
+  "human_policy_review_remains_separate": true,
+  "all_old_runtime_incidents": "UNKNOWN/HELD",
+  "first_failure": "Preserve partial data and original error; stop entire one-shot. No retries or policy relaxation."
+}

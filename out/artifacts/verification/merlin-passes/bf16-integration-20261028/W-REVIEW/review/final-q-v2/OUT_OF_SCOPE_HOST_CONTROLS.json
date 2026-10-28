@@ -1,0 +1,24 @@
+{
+  "source_sha256": "6eaed8c3fad6a6fa031f79a53adfaa8797942e09cba5b9d445e67d2b1d986341",
+  "method": "actual extracted source validator, stdlib only, no native execution",
+  "cases": [
+    {
+      "case": "one_input_contraction",
+      "host_outcome": {
+        "result": "GateRejected",
+        "reason": "incomplete source-site denominator"
+      },
+      "Lean_outcome": "raw zero-site identity match",
+      "approved_acceptance": false
+    },
+    {
+      "case": "named_batch_outside_domain",
+      "host_outcome": {
+        "result": "GateRejected",
+        "reason": "incomplete source-site denominator"
+      },
+      "Lean_outcome": "raw zero-site identity match",
+      "approved_acceptance": false
+    }
+  ]
+}
