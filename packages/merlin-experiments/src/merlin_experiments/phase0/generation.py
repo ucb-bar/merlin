@@ -767,6 +767,7 @@ def generate_target(
     # name, and re-raised at the end -- the run still fails, it just fails after doing the work it could.
     written, failures, unbuilt_roster, unprovable_forbids, omitted, admission = [], [], [], [], [], []
     host_placed: list[dict] = []
+    source_gaps: list[dict] = []
     refused_generated: list[Path] = []
     from .parallel_capture import ordered_jobs, worker_limit
 
@@ -904,6 +905,13 @@ def generate_target(
                     )
                     print(f"  [roster] {e.get('name')}: NOT BUILT — {why}")
                     continue
+                gap = withhold_source_gap(
+                    e, out_root / str(e.get("cat") or "") / str(e.get("name") or ""), exc=exc, detail=detail
+                )
+                if gap is not None:
+                    source_gaps.append(gap)
+                    print(f"  [source-gap] {e.get('name')}: NOT BUILT — {gap['reason']}", flush=True)
+                    continue
                 failures.append((e.get("name", "?"), detail))
                 print(f"  [failure] {e.get('name', '?')}: {detail}", flush=True)
                 if family:
@@ -999,6 +1007,11 @@ def generate_target(
                         if withheld is not None:
                             host_placed.append(withheld)
                             print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}", flush=True)
+                            continue
+                        gap = withhold_source_gap(e, Path(w), observed=observed, must_refuse=must_refuse)
+                        if gap is not None:
+                            source_gaps.append(gap)
+                            print(f"  [source-gap] {e.get('name')}: NOT PUBLISHED — {gap['reason']}", flush=True)
                             continue
                         failures.append((e.get("name", "?"), "emitted SW operation admission: " + observed["reason"]))
                         print(
@@ -1334,6 +1347,7 @@ def generate_target(
             "operation_admission": admission,
             "unprovable_forbids": unprovable_forbids,
             "host_placement_not_published": host_placed,
+            "disclosed_source_gaps": source_gaps,
             "failures": [{"capsule": n, "reason": why} for n, why in failures],
             "performance_materialization_errors": len(_performance_errors),
             "qualification": "not_established",
@@ -1536,6 +1550,58 @@ def withhold_unadmitted_member(entry: dict, observed: dict, directory: Path, *, 
     record = withhold_unadmitted_micro_model(entry, observed, must_refuse=must_refuse)
     if record is not None:
         shutil.rmtree(directory)
+    return record
+
+
+def disclosed_source_gap(
+    entry: dict, *, exc: BaseException | None = None, detail: str | None = None, observed: dict | None = None,
+    must_refuse: bool = False,
+) -> dict | None:
+    """Name a source-backed model capsule that the selected inputs cannot produce, with its verbatim reason.
+
+    A model captured from an application can be refused for reasons that belong to the inputs rather than the
+    corpus: its writer raises a typed refusal (the capture cannot be described by one numerical policy, or has
+    no device group whose arithmetic can be verified) or its emitted program needs host operations the selected
+    host lane does not declare. Such a capsule is disclosed with the exact reason and its digest and is not
+    published. Only a typed refusal or an ``unsupported`` screen of a materialized source capsule qualifies; a
+    roster model, a must-refuse member and every other exception (a bug) stay fatal. Whether a given capsule
+    and reason are EXPECTED is decided by the release review, which holds the reviewed table.
+    """
+    if (
+        must_refuse
+        or _is_roster_capsule(entry)
+        or str(entry.get("kind")) != "model"
+        or entry.get("source_role") != "materialized_iteration_capture"
+    ):
+        return None
+    if exc is not None:
+        from merlin.targetgen.capture_refusals import M2MUnavailable
+
+        from .model_qualification import QualificationMissing
+
+        typed = isinstance(exc, M2MUnavailable) or (
+            isinstance(exc, ValueError) and isinstance(exc.__cause__, QualificationMissing)
+        )
+        if not typed:
+            return None
+        kind, reason = "writer_refusal", str(detail if detail is not None else exc)
+    elif observed is not None and observed.get("status") == "unsupported":
+        kind, reason = "host_lane_admission", "emitted SW operation admission: " + str(observed.get("reason", ""))
+    else:
+        return None
+    return {
+        "capsule": str(entry.get("name", "?")),
+        "kind": kind,
+        "reason": reason,
+        "reason_sha256": hashlib.sha256(reason.encode()).hexdigest(),
+    }
+
+
+def withhold_source_gap(entry: dict, directory: Path, **evidence) -> dict | None:
+    """Record a disclosed source gap and remove whatever was written for it, so no glob or commitment sees it."""
+    record = disclosed_source_gap(entry, **evidence)
+    if record is not None:
+        shutil.rmtree(directory, ignore_errors=True)
     return record
 
 
