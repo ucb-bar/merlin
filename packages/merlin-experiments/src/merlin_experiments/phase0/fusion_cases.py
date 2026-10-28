@@ -89,7 +89,9 @@ def chain_for_node(node, dataflow):
         chain["constraints"].append(dict(os_dataflow_requires="mesh_partial_sum_bound_from_constant_operands"))
     if node["residual"]:
         chain["extension"] = "constant_integer_operand"
-        chain["constraints"].extend(["coefficient_integer_exact", dict(k_extension_within="from_facts")])
+        chain["constraints"].extend(
+            ["coefficient_integer_exact", "residual_accumulates_before_readout", dict(k_extension_within="from_facts")]
+        )
     if producer == "operand_sum":
         chain["constraints"].extend([dict(operand_multiplier_in="(0, 1]"), "load_minimum_not_negated"])
     if node["realization"] == "mean":
@@ -355,15 +357,8 @@ def _compile_source(cap, source):
         case["producer"] == "operand_sum" and "pool" in case["readout_stages"]
     )
     if split and case["exit"] == "requant":
-        if "coefficient" in case:
-            extension = next(
-                op
-                for op in block.ops
-                if getattr(op.attributes.get("prov.composition_stage"), "data", "") == "extension"
-            )
-            cap["_residual_argument"] = extension.operands[1].index
-            extension.results[0].replace_all_uses_with(extension.operands[0])
-            block.erase_op(extension)
+        # A residual stays the integer accumulator term the chain declares
+        # (residual_accumulates_before_readout); only the readout is split into source f32 ops.
         reader = next(
             op for op in block.ops if getattr(op.attributes.get("prov.composition_stage"), "data", "") == "readout"
         )
@@ -494,35 +489,6 @@ def _split_readout(cap, reader):
         ["%p = arith.mulf %x0, %x1 : f32", "linalg.yield %p : f32"],
         maps=["affine_map<(d0,d1)->(d0,d1)>", "affine_map<(d0,d1)->(d1)>", "affine_map<(d0,d1)->(d0,d1)>"],
     )
-    if "coefficient" in case:
-        source.input("residual", [m, n], "i8")
-        scales = [float(np.float32(case["coefficient"] * gain)) for gain in gains]
-        if len(set(scales)) == 1:
-            source.lines.extend(
-                [
-                    f"%rs = arith.constant dense<{scales[0]}> : tensor<f32>",
-                    "%rz = arith.constant dense<0> : tensor<i64>",
-                    f'%rd = "quant_ext.dequantize_per_tensor"(%residual, %rs, %rz) '
-                    f"<{{quant_min=-128:i64, quant_max=127:i64}}> : "
-                    f"(tensor<{m}x{n}xi8>, tensor<f32>, tensor<i64>) -> tensor<{m}x{n}xf32>",
-                ]
-            )
-        else:
-            source.constant("rs", [n], "f32", scales)
-            source.constant("rz", [n], "i64", [0] * n)
-            source.lines.append(
-                f'%rd = "quant_ext.dequantize_per_channel"(%residual, %rs, %rz) '
-                f"<{{axis=1:i64, quant_min=-128:i64, quant_max=127:i64}}> : "
-                f"(tensor<{m}x{n}xi8>, tensor<{n}xf32>, tensor<{n}xi64>) -> tensor<{m}x{n}xf32>"
-            )
-        source.types["rd"] = f"tensor<{m}x{n}xf32>"
-        value = source.generic(
-            "extension",
-            [value, "rd"],
-            [m, n],
-            "f32",
-            ["%v = arith.addf %x0, %x1 : f32", "linalg.yield %v : f32"],
-        )
     if "activation" in case["readout_stages"]:
         value = source.generic(
             "activation",
@@ -544,8 +510,6 @@ def _split_readout(cap, reader):
     result = "readout"
     function = next(op for op in mq.parse(source.render([result])).body.block.ops if op.name == "func.func")
     mapper = {function.body.block.args[0]: reader.operands[0]}
-    if "coefficient" in case:
-        mapper[function.body.block.args[1]] = reader.parent.args[cap.pop("_residual_argument")]
     old_pool = next(
         (op for op in reader.parent.ops if getattr(op.attributes.get("prov.composition_stage"), "data", "") == "pool"),
         None,

@@ -586,7 +586,7 @@ def _composition_spec():
                 "id": "extension",
                 "producer": "contraction",
                 "extension": "constant_integer_operand",
-                "constraints": ["coefficient_integer_exact", {"k_extension_within": "from_facts"}],
+                "constraints": ["coefficient_integer_exact", "residual_accumulates_before_readout", {"k_extension_within": "from_facts"}],
             },
             {
                 "id": "siblings",

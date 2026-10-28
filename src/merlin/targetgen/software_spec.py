@@ -300,6 +300,8 @@ def _validate_composition_constraints(chain: dict) -> None:
         raise ValueError("dataflows require a constant-operand mesh partial-sum bound")
     if chain.get("extension") and not {"coefficient_integer_exact", "k_extension_within"} <= names:
         raise ValueError("constant integer operand extension requires coefficient and extended-K bounds")
+    if chain.get("extension") and "residual_accumulates_before_readout" not in names:
+        raise ValueError("constant integer operand extension must declare its residual an accumulator term")
     if chain.get("multiplicity") and not {"per_output_readout_independent", "shared_input_resident"} <= names:
         raise ValueError("shared-input multiplicity requires independent readouts and residency bounds")
     if (

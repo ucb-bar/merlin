@@ -520,9 +520,8 @@ operations:
       load_scale: {status: instruction_audit, check: unit_mvin_scale, constraints: {eq: 1.0}}
       c_stride: {status: compiler_obligation, constraints: {eq: 1}}
   contraction_k_extension:
-    # PROPOSAL (comp-more/c3), NOT REVIEWED, BLOCKED: the frozen composition oracle reads this
-    # chain out as f32(acc*g) + f32(R*f32(c*g)) (two roundings), which this execution does not
-    # compute. Apply only after the operator settles the chain's readout semantics.
+    # PROPOSAL (comp-more/c3 option A), NOT REVIEWED. Valid only with the chain constraint
+    # residual_accumulates_before_readout: c*R is an accumulator term, read out once.
     status: unreviewed
     families: [contraction]
     placement: fused_accelerator
@@ -542,7 +541,7 @@ operations:
         basis: "k_extension.py:49-65; composition_facts.py:82-99 (max_k); comp-more/c3 evidence/diff_ext.py"
     evidence:
       review_status: unreviewed
-      basis: "PE.scala:118-131 (WS: <= 16 products per compute, |partial| <= 262144 < 2^19); ExecuteController.scala:951 and AccumulatorMem.scala:63-70 (sign-extended, wrapping 32-bit accumulate; exact below 2^31); digits |d| <= 127 keep [d*I] an int8 weight"
+      basis: "chain constraint residual_accumulates_before_readout; PE.scala:118-131 (WS: <= 16 products per compute, |partial| <= 262144 < 2^19); ExecuteController.scala:951 and AccumulatorMem.scala:63-70 (sign-extended, wrapping 32-bit accumulate; exact below 2^31); digits |d| <= 127 keep [d*I] an int8 weight"
     composed_with: [contraction]
     epilogues: [k_extension]
     operand_dtypes: [int8]
@@ -1238,8 +1237,6 @@ quantization:
       reason: exact integer constructions, not quantization schemes; numerics live in component_linear/component_bilinear numerical_contract
     - subject: runtime x runtime contractions (activation_contraction, dynamic attention planes)
       reason: model_variants dynamic recipes are not declared schemes; no per-scheme conversion order exists for them
-    - subject: residual_coefficient integer_constant (constant-operand K extension)
-      reason: coefficient digits and max K extension resolve from facts and are currently unresolved; no scheme selects the axis
     - subject: readout_exit accumulator_full crossings
       reason: crossed per composition, not per scheme; full-width exits apply no readout stage and carry the accumulator conversion only
     - subject: one-column weight scales (weight_scale_granularity column)
@@ -1318,6 +1315,9 @@ compositions:
       primary: [q_f32_tensor]
     constraints:
     - coefficient_integer_exact
+    # c*R joins the i32 accumulator before the chain's one readout rounding (f32_product_rne of
+    # the extended accumulator), for every exit.
+    - residual_accumulates_before_readout
     - {k_extension_within: from_facts}
   - id: shared_input_contractions
     producer: contraction
