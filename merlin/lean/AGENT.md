@@ -59,6 +59,10 @@ frozen definitions go in a file you own, never in the frozen file.
 
 ## Gotchas
 
+- `Check/AlphaFast.lean` installs a proved equality with `@[csimp]`, so compiled
+  `alphaOps` calls use persistent indexes while the original definitions and
+  theorem statements remain unchanged. Import it through `Check/Step.lean` or
+  directly in a caller; `implemented_by` remains forbidden.
 - `Float32.round` rounds half away from zero; MLIR `math.roundeven` rounds half to even.
 - `/out/**` un-ignores nested `README.md`/`AGENT.md`; `/out/build/lean/**` is re-ignored so Mathlib's
   own docs are never swept into a commit.

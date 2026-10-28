@@ -7,6 +7,7 @@ unused destination value. They do not establish tensor indexing or a C1 site rul
 import MerlinVerify.Sem.Ops
 import MerlinVerify.Spec.Dequant
 import MerlinVerify.Check.Alpha
+import MerlinVerify.Check.AlphaFast
 
 namespace MerlinVerify.Rules.DequantScalar
 

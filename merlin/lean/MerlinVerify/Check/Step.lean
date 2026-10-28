@@ -2,6 +2,7 @@
 One-op simulation step, used to interleave alpha-equivalent ops with rewrite sites (C1).
 -/
 import MerlinVerify.Check.Alpha
+import MerlinVerify.Check.AlphaFast
 
 namespace MerlinVerify.Check
 

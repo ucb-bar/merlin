@@ -2,6 +2,7 @@
 region is checked separately from its name; no numerical property of the literal is used. -/
 import MerlinVerify.Rules.ParallelFusion
 import MerlinVerify.Check.Alpha
+import MerlinVerify.Check.AlphaFast
 import MerlinVerify.Check.Step
 import MerlinVerify.Sem.Ops
 
