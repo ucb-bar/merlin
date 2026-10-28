@@ -517,3 +517,81 @@ def test_namespaced_ops_never_reach_the_shared_table_by_their_bare_name(inputs):
         assert rows[overload]["evidence_state"] == "unmodeled", overload
         assert rows[overload]["test_identity"]["family_capsules"] == []
     assert "m2m_q.int_mm_seeded" in L.PENDING_ALIAS_REVIEW
+
+
+# --- direct credit from structured application provenance -------------------------------------
+
+
+def _int_mm_layer(inputs, name="SY_int_mm_m1_k8_n8", **overrides):
+    import hashlib
+
+    capture = hashlib.sha256(inputs["captures"]["mlp"].read_bytes()).hexdigest()
+    entry = {
+        "name": name,
+        "op": "matmul",
+        "kind": "layer",
+        "source_role": "derived_sweep",
+        "generalization": {"semantic_family": "contraction"},
+        "application_signature_match": {"status": "verified_capture_match", "sources": [{"capture_sha256": capture}]},
+        "software_screen": {
+            "status": "admitted",
+            "decisions": [
+                {"operation": "aten._int_mm.default", "frontend_op": "aten._int_mm.default", "status": "admitted"}
+            ],
+        },
+    }
+    entry.update(overrides)
+    return entry
+
+
+def test_verified_application_provenance_credits_its_overload(inputs):
+    _lite(inputs, ["aten._int_mm.default", "aten.bmm.default"])
+    inputs["capsules"].append(_int_mm_layer(inputs))
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    rows = _rows(document)
+    assert rows["_int_mm.default"]["test_identity"]["capsules"] == ["SY_int_mm_m1_k8_n8"]
+    assert rows["_int_mm.default"]["test_identity"]["capsule_sources"] == ["mlp"]
+    assert rows["_int_mm.default"]["evidence_state"] == "generated"
+    # the same capsule is only family credit for bmm, which its provenance does not name
+    assert rows["bmm.default"]["test_identity"]["capsules"] == []
+    assert "SY_int_mm_m1_k8_n8" in rows["bmm.default"]["test_identity"]["family_capsules"]
+    assert "capsule_sources" not in rows["bmm.default"]["test_identity"]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"kind": "model_slice"},
+        {"application_signature_match": {"status": "unverified", "sources": []}},
+        {"application_signature_match": {"status": "verified_capture_match", "sources": [{"capture_sha256": "0" * 64}]}},
+        {"software_screen": {"decisions": [{"operation": "aten.mm.default", "frontend_op": "aten._int_mm.default",
+                                            "status": "admitted"}]}},
+        {"software_screen": {"decisions": [{"operation": "aten._int_mm.default", "frontend_op": "aten._int_mm.default",
+                                            "status": "host"}]}},
+        {"software_screen": {"decisions": [{"operation": "aten._int_mm.default"}]}},
+    ],
+    ids=["perf_companion", "unverified", "foreign_capture", "frontend_disagrees", "not_admitted", "no_frontend_op"],
+)
+def test_unbacked_provenance_earns_no_direct_credit(inputs, overrides):
+    _lite(inputs, ["aten._int_mm.default"])
+    inputs["capsules"].append(_int_mm_layer(inputs, **overrides))
+    row = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())["_int_mm.default"]
+    assert row["test_identity"]["capsules"] == []
+
+
+def test_provenance_for_an_overload_the_capture_lacks_earns_nothing(inputs):
+    _lite(inputs, ["aten.bmm.default"])
+    inputs["capsules"].append(_int_mm_layer(inputs))
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    assert "_int_mm.default" not in _rows(document)
+    capsules = {row["name"]: row for row in document["capsules"]}
+    assert capsules["SY_int_mm_m1_k8_n8"]["covers"] == ["family:contraction"]
+
+
+def test_provenance_never_bypasses_the_declaration(inputs, monkeypatch):
+    _lite(inputs, ["aten._int_mm.default"])
+    inputs["capsules"].append(_int_mm_layer(inputs))
+    monkeypatch.setattr(L, "_LEDGER_FAMILY_ALIASES", {})
+    row = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())["_int_mm.default"]
+    assert row["test_identity"]["capsules"] == ["SY_int_mm_m1_k8_n8"]
+    assert row["evidence_state"] == "unmodeled"

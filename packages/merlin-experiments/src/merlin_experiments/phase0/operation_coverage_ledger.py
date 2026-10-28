@@ -257,8 +257,42 @@ def _capsule_engine(entry):
     return "accelerator" if "on_mesh" in (lanes.get("require") or ()) else "unspecified"
 
 
-def _capsule_coverage(entries, *, traces, chains):
-    """What each capsule exercises: overloads (whole programs), families (cells) or a composition."""
+def _provenance_overloads(entry, *, traces, capture_labels):
+    """Overloads a capsule's verified application provenance names, with the captures that witness them.
+
+    Only a functional capsule (not a ``model_slice`` performance companion) whose
+    ``application_signature_match.status`` is ``verified_capture_match`` qualifies. Each admitted
+    ``software_screen`` decision must name the same overload as ``frontend_op`` and ``operation``, and the
+    overload must occur in a capture of this ledger whose sha256 one of the match's sources records.
+    Anything else earns no direct credit (fail closed): the result maps overload -> capture labels.
+    """
+    if entry.get("kind") == "model_slice":
+        return {}
+    match = entry.get("application_signature_match") or {}
+    if match.get("status") != "verified_capture_match":
+        return {}
+    labels = {capture_labels[source.get("capture_sha256")] for source in match.get("sources") or ()
+              if isinstance(source, dict) and source.get("capture_sha256") in capture_labels}
+    found = {}
+    for decision in (entry.get("software_screen") or {}).get("decisions") or ():
+        if not isinstance(decision, dict) or not decision.get("frontend_op"):
+            continue
+        overload = overload_name(decision["frontend_op"])
+        if decision.get("status") != "admitted" or overload_name(decision.get("operation") or "") != overload:
+            continue
+        witnesses = sorted(label for label in labels if overload in traces.get(label, ()))
+        if witnesses:
+            found.setdefault(overload, set()).update(witnesses)
+    return found
+
+
+def _capsule_coverage(entries, *, traces, chains, capture_labels=None, sources=None):
+    """What each capsule exercises: overloads (whole programs or verified provenance), families or a composition.
+
+    ``sources`` (optional dict) receives ``(capsule, overload) -> capture labels`` for direct credit.
+    """
+    capture_labels = capture_labels or {}
+    sources = {} if sources is None else sources
     covered = {}
     for entry in entries:
         name = str(entry.get("name") or "")
@@ -270,6 +304,8 @@ def _capsule_coverage(entries, *, traces, chains):
         model = entry.get("model")
         if entry.get("op") == "model" and model in traces:
             keys |= {f"overload:{op}" for op in traces[model]}
+            for op in traces[model]:
+                sources.setdefault((name, op), set()).add(model)
         elif entry.get("op") == "composition_program":
             semantic = entry.get("generalization") or {}
             validation = semantic.get("fusion_validation")
@@ -284,6 +320,9 @@ def _capsule_coverage(entries, *, traces, chains):
             if family:
                 keys.add(f"family:{family}")
             keys |= {f"composed:{composed}" for composed in _composed_families(entry)}
+            for op, labels in _provenance_overloads(entry, traces=traces, capture_labels=capture_labels).items():
+                keys.add(f"overload:{op}")
+                sources.setdefault((name, op), set()).update(labels)
         covered[name] = keys
     return covered
 
@@ -429,7 +468,14 @@ def prepare(
         [entry for entry in entries if str(entry.get("name")) not in refusal_twins],
         excluded_spec=spec if not synthesize_compositions_enabled(workload_spec) else None
     )
-    covered = _capsule_coverage(entries, traces=traces, chains=chains)
+    direct_sources = {}
+    covered = _capsule_coverage(
+        entries,
+        traces=traces,
+        chains=chains,
+        capture_labels={pin["sha256"]: label for label, pin in capture_pins.items()},
+        sources=direct_sources,
+    )
     capsule_rows = _capsule_rows(entries, covered)
     by_key = {}
     for name, keys in covered.items():
@@ -512,6 +558,11 @@ def prepare(
                     "validation_verdicts": verdicts,
                     "capsules": direct,
                     "family_capsules": family_capsules,
+                    **(
+                        {"capsule_sources": sorted({label for name in direct for label in direct_sources[(name, overload)]})}
+                        if direct
+                        else {}
+                    ),
                 },
                 "required_engine": engine,
                 "evidence_state": state,
