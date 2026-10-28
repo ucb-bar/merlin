@@ -34,6 +34,7 @@ from ...llvmlower.lower import lower_model_file
 from ...llvmlower.masked_contraction import MaskEffectContract
 from ...llvmlower.source_expression_interval import IntervalEffectContract
 from ...llvmlower.source_scalar_carrier_binding import host_admitted
+from ...verify import pass_validation as _validation
 from . import spike as _spike
 from .firesim_runner import FireSimRunner, select_runner
 
@@ -585,7 +586,7 @@ def _prepare_model_mlir(
                     if k.startswith(("prequant_gather_mode_", "prequant_gather_refused_"))
                 )
             )
-    lower_quant_ext(module)
+    _validation.observe("lower_quant_ext", module, lower_quant_ext)
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
     # The other half of the bool-cast repair, and the one that erases models rather than skewing
@@ -922,6 +923,7 @@ def parallel_arms(work: Path) -> list | None:
     return [(op, tuple(int(t) for t in tiles)) for op, tiles in rec.get("arms", ())]
 
 
+@_validation.validated("work")
 def prepare_for_lowering(
     mlir_path: Path,
     work: Path,

@@ -16,8 +16,10 @@ The ``merlin-lean`` checker must already be built from ``merlin/lean`` (``lake b
 
 from __future__ import annotations
 
+import functools
+import inspect
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -25,7 +27,10 @@ from pathlib import Path
 from typing import Any
 
 #: Validated pass -> the gate check that proves its before/after pair.
-CHECKS = {"prune_dead_pure_tensor_ops": "tensor_refinement"}
+CHECKS = {
+    "prune_dead_pure_tensor_ops": "tensor_refinement",
+    "lower_quant_ext": "tensor_refinement",
+}
 ENV_PASSES = "MERLIN_VALIDATE_PASSES"
 ENV_SDK_BIN = "MERLIN_LEAN_SDK_BIN"
 ENV_COMPILER_PYTHON = "MERLIN_COMPILER_PYTHON"
@@ -129,6 +134,64 @@ def validating(validation: PassValidation) -> Iterator[PassValidation]:
             yield validation
         finally:
             _ACTIVE.reset(token)
+
+
+def current() -> PassValidation | None:
+    """The validation active for this compile, if any."""
+    return _ACTIVE.get()
+
+
+def validated(workdir_argument: str, *, index_bits_argument: str | None = None, on_failure=None):
+    """Run the decorated compile step under pass validation, from its ``pass_validation`` argument
+    or the environment.
+
+    Nesting: inside an active validation the step joins it (one gate, one guard, owned by the outer
+    step); an explicit ``pass_validation`` that is not the active one is refused. ``on_failure(work)``
+    runs when a check fails, before the failure propagates.
+    """
+
+    def decorate(function: Callable) -> Callable:
+        signature = inspect.signature(function)
+
+        @functools.wraps(function)
+        def invoke(*args, **kwargs):
+            arguments = signature.bind(*args, **kwargs).arguments
+            explicit = arguments.get("pass_validation")
+            active = _ACTIVE.get()
+            if active is not None:
+                if explicit is not None and explicit is not active:
+                    raise ValueError("a different pass validation is already active for this compile")
+                return function(*args, **kwargs)
+            work = Path(arguments[workdir_argument])
+            bits = arguments.get(index_bits_argument) if index_bits_argument else None
+            validation = explicit or from_environment(work, index_bits=bits)
+            if validation is None:
+                return function(*args, **kwargs)
+            from .speculative_gate import GateFailure
+
+            try:
+                with validating(validation):
+                    return function(*args, **kwargs)
+            except GateFailure:
+                if on_failure is not None:
+                    on_failure(work)
+                raise
+
+        return invoke
+
+    return decorate
+
+
+def observe(pass_name: str, module, transform: Callable):
+    """Run ``transform(module)`` and, when ``pass_name`` is validated, submit its exact before/after IR."""
+    if not selected(pass_name):
+        return transform(module)
+    from merlin.xdsl_dialects._common import text
+
+    before = text(module, generic=True)
+    result = transform(module)
+    submit(pass_name, before, text(module, generic=True))
+    return result
 
 
 def selected(pass_name: str) -> bool:

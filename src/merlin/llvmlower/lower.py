@@ -8,8 +8,6 @@ linalg-on-tensors text
 
 from __future__ import annotations
 
-import functools
-import inspect
 import os as _os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +18,7 @@ if TYPE_CHECKING:
 
 from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit, audit_mode
+from merlin.verify import pass_validation as _validation
 
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
@@ -79,32 +78,6 @@ class LowerResult:
     audit_index: Path | None = None
 
 
-def _validated_passes(function):
-    """Run the lowering inside the selected pass validation's guard, from the argument or environment."""
-    signature = inspect.signature(function)
-
-    @functools.wraps(function)
-    def invoke(*args, **kwargs):
-        from merlin.verify import pass_validation as validation_module
-
-        arguments = signature.bind(*args, **kwargs).arguments
-        validation = arguments.get("pass_validation") or validation_module.from_environment(
-            Path(arguments["workdir"]), index_bits=arguments.get("index_bits")
-        )
-        if validation is None:
-            return function(*args, **kwargs)
-        from merlin.verify.speculative_gate import GateFailure
-
-        try:
-            with validation_module.validating(validation):
-                return function(*args, **kwargs)
-        except GateFailure:
-            _reject_artifacts(Path(arguments["workdir"]))
-            raise
-
-    return invoke
-
-
 #: Products a lowering leaves in its workdir; a failed pass validation must not leave them usable.
 _ARTIFACTS = ("model.ll", "model_host.so", "model_rv64gcv.o")
 
@@ -118,7 +91,7 @@ def _reject_artifacts(work: Path) -> None:
 
 
 @host_admitted
-@_validated_passes
+@_validation.validated("workdir", index_bits_argument="index_bits", on_failure=lambda w: _reject_artifacts(w))
 def lower_model(
     mlir_text: str,
     workdir: str | Path,

@@ -1,4 +1,4 @@
-"""Merlin's dead-tensor pruning is checked against MerlinVerify's refinement theorems while lowering.
+"""Merlin's preprocessing passes are checked against MerlinVerify's refinement theorems while lowering.
 
 Real-tool tests need the built checker (``lake build`` in ``merlin/lean``), ``MERLIN_LEAN_SDK_BIN`` and
 ``MERLIN_COMPILER_PYTHON``; they skip without them, or fail when ``MERLIN_LEAN_REQUIRED`` is set.
@@ -20,7 +20,14 @@ from merlin.verify.speculative_gate import GateFailure, SpeculativeGate
 
 SDK_BIN = os.environ.get("MERLIN_LEAN_SDK_BIN")
 COMPILER_PYTHON = os.environ.get("MERLIN_COMPILER_PYTHON")
-CAPTURES = Path(os.environ.get("MERLIN_RECAPTURES", "/scratch/grammy/blast/merlin/out/artifacts/recaptures"))
+
+
+def _captures() -> Path:
+    from merlin.common.artifacts import recaptures_dir
+
+    return Path(os.environ.get("MERLIN_RECAPTURES") or recaptures_dir())
+
+
 T = "tensor<4xf32>"
 
 
@@ -51,7 +58,7 @@ def validation(tmp_path, tools):
 
 
 def capture(name: str) -> str:
-    path = CAPTURES / name / "model.mlir"
+    path = _captures() / name / "model.mlir"
     if not path.is_file():
         if os.environ.get("MERLIN_LEAN_REQUIRED"):
             pytest.fail(f"captured model {name} is not present")
@@ -73,13 +80,18 @@ def job(tmp_path, before: str, after: str, tools) -> dict:
     }
 
 
-def test_real_lowering_proves_the_prune_pass(tmp_path, validation):
+def test_real_lowering_proves_both_preprocessing_passes(tmp_path, validation):
     result = lower.lower_model(
         capture("small_llama_int8_consistent"), tmp_path / "lower", targets=(), pass_validation=validation
     )
     assert result.ll_path.is_file() and result.stats["dead_tensor_ops_pruned"] > 0
-    (verdict,) = validation.gate.verdicts
-    assert (verdict["label"], verdict["verdict"]) == ("prune_dead_pure_tensor_ops", "accepted")
+    assert result.stats["quant_ext_lowered"] > 0
+    verdicts = {v["label"]: v for v in validation.gate.verdicts}
+    assert {label: v["verdict"] for label, v in verdicts.items()} == {
+        "prune_dead_pure_tensor_ops": "accepted",
+        "lower_quant_ext": "accepted",
+    }
+    verdict = verdicts["prune_dead_pure_tensor_ops"]
     assert verdict["detail"]["theorems"] == list(gate_checks.THEOREMS)
     assert set(verdict["detail"]["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"}
     chain = json.loads(Path(verdict["detail"]["chains"]["forward"]).read_text())
@@ -242,3 +254,43 @@ def test_a_failed_check_leaves_no_usable_artifact(tmp_path, tools, monkeypatch):
         gate.close()
     assert not (work / "model.ll").exists()
     assert (work / "model.ll.rejected").is_file()
+
+
+def test_an_injected_dequantization_bug_stops_real_lowering(tmp_path, validation, monkeypatch):
+    from xdsl.dialects import arith
+    from xdsl.rewriter import Rewriter
+
+    real = passes_xdsl.lower_quant_ext
+
+    def buggy(module, **kwargs):
+        count = real(module, **kwargs)
+        for op in module.walk():
+            if isinstance(op, arith.SubiOp):  # (w - zp) becomes (w + zp) in one dequantization body
+                Rewriter.replace_op(op, arith.AddiOp(op.lhs, op.rhs))
+                break
+        return count
+
+    monkeypatch.setattr(passes_xdsl, "lower_quant_ext", buggy)
+    with pytest.raises(GateFailure) as raised:
+        lower.lower_model(
+            capture("small_llama_int8_consistent"), tmp_path / "lower", targets=(), pass_validation=validation
+        )
+    assert raised.value.report["label"] == "lower_quant_ext"
+    assert raised.value.report["verdict"] == "not_established"
+
+
+def test_a_nested_lowering_joins_the_active_validation(tmp_path, validation):
+    with pass_validation.validating(validation):
+        lower.lower_model(capture("tiny_llama_fp32_consistent"), tmp_path / "lower", targets=())
+        assert pass_validation.current() is validation
+    assert not (tmp_path / "lower" / "pass-validation").exists()
+
+
+def test_a_conflicting_validation_is_refused(tmp_path, validation, tools):
+    other = pass_validation.PassValidation(SpeculativeGate(tmp_path / "other"), tools)
+    try:
+        with pass_validation.validating(validation):
+            with pytest.raises(ValueError, match="already active"):
+                lower.lower_model(LIVE, tmp_path / "lower", targets=(), pass_validation=other)
+    finally:
+        other.gate.close()
