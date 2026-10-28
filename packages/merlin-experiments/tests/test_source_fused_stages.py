@@ -24,7 +24,7 @@ _CONTRACTION = """\
 """
 _BIAS = """\
     %bias_empty = tensor.empty() : tensor<16x16xi32>
-    %bias = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%mac0, %Bias : tensor<16x16xi32>, tensor<16x16xi32>) outs(%bias_empty : tensor<16x16xi32>) attrs = {prov.composition_stage = "bias"} {
+    %bias = linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, BIAS_MAP, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = ["parallel", "parallel"]} ins(%mac0, %Bias : tensor<16x16xi32>, BIAS_TYPE) outs(%bias_empty : tensor<16x16xi32>) attrs = {prov.composition_stage = "bias"} {
     ^bb0(%x0: i32, %x1: i32, %dest: i32):
       %v = arith.addi BIAS_OPERANDS : i32
       linalg.yield %v : i32
@@ -49,17 +49,33 @@ RELU_OPS      %p = arith.mulf %SCALED, %x1 FASTMATH : f32
 _RELU = "      %zero = arith.constant ZERO : f32\n      %act = arith.maximumf %f, %zero : f32\n"
 
 
-def build(*, bias=True, relu=True, ext="extsi", bias_operands="%x0, %x1", gain=GAIN, gain_arg=False,
+#: Written bias forms: (indexing map, type, constant rows or None for a runtime argument).
+_ROW = list(range(-8, 8))
+BIAS_FORMS = {
+    "column": ("affine_map<(d0, d1) -> (d1)>", "tensor<16xi32>", None),
+    "matrix": ("affine_map<(d0, d1) -> (d0, d1)>", "tensor<16x16xi32>", None),
+    "rows_equal": ("affine_map<(d0, d1) -> (d0, d1)>", "tensor<16x16xi32>", [_ROW] * 16),
+    "rows_distinct": ("affine_map<(d0, d1) -> (d0, d1)>", "tensor<16x16xi32>", [_ROW] * 15 + [_ROW[::-1]]),
+}
+
+
+def build(*, bias=True, bias_form="column", relu=True, ext="extsi", bias_operands="%x0, %x1", gain=GAIN, gain_arg=False,
           fastmath="", rend="roundeven", lo="-128.0", hi="127.0", out="i8", zero="0.0", second_use=False):
     """The contraction -> bias -> readout template (a composition capsule's Linalg), with substitutions."""
     ret_type = "tensor<16x16xOUT>, tensor<16x16xi32>" if second_use else "tensor<16x16xOUT>"
-    args = "%A: tensor<16x16xi8>, %W0: tensor<16x16xi8>, %Bias: tensor<16x16xi32>"
+    bias_map, bias_type, bias_rows = BIAS_FORMS[bias_form]
+    args = "%A: tensor<16x16xi8>, %W0: tensor<16x16xi8>"
+    if bias_rows is None:
+        args += ", %Bias: " + bias_type
     if gain_arg:
         args += ", %readout_gains: tensor<16xf32>"
     gains = "" if gain_arg else _GAINS.replace("GAINS", ", ".join([gain] * 16))
     text = "builtin.module {\n  func.func @forward(" + args + ") -> (" + ret_type + ") {\n"
     text += _CONTRACTION.replace("EXT", ext)
-    text += _BIAS.replace("BIAS_OPERANDS", bias_operands) if bias else ""
+    if bias and bias_rows is not None:
+        dense = "[" + ", ".join("[" + ", ".join(map(str, row)) + "]" for row in bias_rows) + "]"
+        text += f"    %Bias = arith.constant dense<{dense}> : {bias_type}\n"
+    text += _BIAS.replace("BIAS_OPERANDS", bias_operands).replace("BIAS_MAP", bias_map).replace("BIAS_TYPE", bias_type) if bias else ""
     text += gains + _READOUT
     ret = "%readout, %mac0 : " if second_use else "%readout : "
     text += "    func.return " + ret + ret_type + "\n  }\n}\n"
@@ -231,14 +247,40 @@ def test_two_gains_partition_into_scalar_column_components(tmp_path):
         ]
 
 
-def test_two_gains_with_a_full_matrix_bias_have_no_column_partition(tmp_path):
-    """The partition's bias lane is one i32 value per column; a written [M, N] bias is not that."""
+def test_two_gains_with_a_column_bias_partition_with_its_bias_lane(tmp_path):
     from merlin.targetgen.output_scale_partition import interface_components
 
     (chain,) = two_gain_chain(tmp_path, bias=True)
     for member_rows in stage_rows(chain).values():
         for row in member_rows:
-            assert interface_components(row["logical_output_column_source"]) is None
+            source = row["logical_output_column_source"]
+            assert source["bias"] == {"dtype": "i32", "shape": [16]}
+            assert interface_components(source) is not None
+
+
+@pytest.mark.parametrize("form", ["matrix", "rows_distinct"])
+def test_bias_not_constant_along_rows_leaves_no_chain(tmp_path, form):
+    """The fused bias stage adds one value per column; a runtime or row-varying [M, N] bias is not that."""
+    assert prove(tmp_path, bias_form=form) == []
+
+
+@pytest.mark.parametrize("form", ["column", "rows_equal"])
+def test_per_column_bias_is_proven_as_a_column_vector(tmp_path, form):
+    chains = prove(tmp_path, bias_form=form)
+    assert members(chains) == [(5 if form == "column" else 6, ["bias_add"]), (8 if form == "column" else 9, ["relu", "acc_scale"])]
+    bias = next(stage for stage in chains[0]["stages"] if "bias" in stage)
+    assert bias["bias"] == {"dtype": "i32", "shape": [16]}
+
+
+def test_row_constant_bias_bounds_the_accumulator(tmp_path):
+    (chain,) = prove(tmp_path, bias_form="rows_equal")
+    assert chain["carrier"]["bound"] == 128 * 128 * 16
+    # The bias bound (8) is added to the exact-strategy accumulator bound, so the readout still proves.
+    assert stage_names(prove(tmp_path, bias_form="rows_equal", strategy="exact_rational_host", gain="0.0625")) == [
+        "bias_add",
+        "relu",
+        "acc_scale",
+    ]
 
 
 def test_two_gains_with_a_negative_gain_after_relu_have_no_readout_stage(tmp_path):

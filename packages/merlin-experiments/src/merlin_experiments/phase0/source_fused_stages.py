@@ -196,15 +196,44 @@ def contraction(op) -> dict | None:
     }
 
 
-def bias_add(op, accumulator) -> dict | None:
-    """``accumulator + bias`` elementwise in i32, bias a same-shape i32 tensor."""
-    if not _generic(op, (_IDENTITY2,) * 3, (_PARALLEL, _PARALLEL)) or len(op.inputs) != 2:
+def _column_values(values: list[int] | None, rows: int, columns: int) -> list[int] | None:
+    """One value per column when every row of a row-major ``rows x columns`` constant is the same row."""
+    if values is None or len(values) != rows * columns:
         return None
-    if op.inputs[0] is not accumulator or not _fresh_output(op):
+    first = values[:columns]
+    return first if all(values[r * columns : (r + 1) * columns] == first for r in range(rows)) else None
+
+
+def bias_add(op, accumulator) -> dict | None:
+    """``accumulator + bias`` elementwise in i32, where the bias is ONE i32 value per output column.
+
+    The fused bias stage adds a per-column bias, so the written bias must be exactly that: an
+    ``[N]`` vector broadcast along M (map ``(d0, d1) -> (d1)``), or an ``[M, N]`` tensor that is
+    provably constant along M (``M == 1``, or a constant whose rows are all equal). A runtime or
+    row-varying ``[M, N]`` bias is a different computation and stays unobserved.
+    """
+    if len(op.inputs) != 2 or op.inputs[0] is not accumulator or not _fresh_output(op):
+        return None
+    if _generic(op, (_IDENTITY2,) * 3, (_PARALLEL, _PARALLEL)):
+        broadcast = False
+    elif _generic(op, (_IDENTITY2, _COLUMN2, _IDENTITY2), (_PARALLEL, _PARALLEL)):
+        broadcast = True
+    else:
         return None
     acc, bias, result = _tensor(op.inputs[0]), _tensor(op.inputs[1]), _tensor(op.results[0])
-    if None in (acc, bias, result) or not (acc == bias == result) or acc[1] != "i32":
+    if None in (acc, bias, result) or acc != result or acc[1] != "i32" or bias[1] != "i32" or len(acc[0]) != 2:
         return None
+    rows, columns = acc[0]
+    values = _dense_int(op.inputs[1])
+    if broadcast:
+        if bias[0] != [columns]:
+            return None
+    elif bias[0] != acc[0]:
+        return None
+    elif rows != 1:
+        values = _column_values(values, rows, columns)
+        if values is None:
+            return None
     x, y, _ = op.body.block.args
     body = _body(op)
     if [_name(item) for item in body] != ["arith.addi", "linalg.yield"]:
@@ -214,8 +243,7 @@ def bias_add(op, accumulator) -> dict | None:
         return None
     if yld.operands[0] is not add.results[0]:
         return None
-    values = _dense_int(op.inputs[1])
-    return {"bias": {"dtype": "i32", "shape": bias[0]}, "bias_bound": max(map(abs, values)) if values else None}
+    return {"bias": {"dtype": "i32", "shape": [columns]}, "bias_bound": max(map(abs, values)) if values else None}
 
 
 def readout(op, accumulator, *, numerics: dict, strategy: str | None = None, bound: int | None = None) -> dict | None:
