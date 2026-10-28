@@ -3,7 +3,7 @@
 The installed manager adapter is supplied explicitly; see REMOTE_TUNING_README.
 This driver reuses TensorIR extraction/build and remote guest correctness checks.
 It does not run a sequential Spike preflight for each candidate.
-TVM owns the gradient scheduler, EvolutionarySearch, XGB, traces and database.
+TVM owns round-robin allocation, ReplayTrace, traces and database. No ML path is used.
 """
 
 import argparse
@@ -151,7 +151,6 @@ def build_request(path):
 
 
 def tune(args):
-    import xgboost  # Check before baseline jobs consume any FireSim time.
     import measure
     import tvm
     from firesim_runner_seconds import SecondsRunner, cycles_to_seconds
@@ -329,9 +328,8 @@ def tune(args):
         num_trials_per_iter=args.batch,
         include_cpu=False,
         compact=True,
-        warmup=args.cost_model_warmup,
-        eps_greedy=0.0,
-        max_trials_per_task=55,
+        strategy="replay",
+        max_trials_per_task=args.trials,
         log=root / "trials.jsonl",
         describe=describe,
     )
@@ -394,11 +392,11 @@ def tune(args):
             fixture=identity(args.fixture),
             bindings=binding_identity,
             proposal_budget=args.trials,
+            campaign_kind=args.campaign_kind,
             batch=args.batch,
-            cost_model_warmup=args.cost_model_warmup,
-            xgboost_version=xgboost.__version__,
-            max_trials_per_task=55,
-            eps_greedy=0.0,
+            search_strategy="ReplayTrace",
+            ml_enabled=False,
+            trial_scope="total across selected tasks in this chunk/case",
             builders=args.builders,
             slots=len(pool.slots),
             validated_records=len(validated.get_all_tuning_records()),
@@ -416,7 +414,7 @@ def tune(args):
             validated_database_sources=[
                 identity(path) for path in sorted((root / "validated-database").glob("*.json"))
             ],
-            optimizer="stock TVM gradient scheduler / EvolutionarySearch / XGB / JSONDatabase",
+            optimizer="stock TVM round-robin / ReplayTrace / JSONDatabase; no learned cost model",
             qualification="Operator experiments; independently confirm whole chunks and full shapes before deployment",
         ),
     )
@@ -435,7 +433,8 @@ def main():
         required=True,
         help="Shared absolute deadline across all chunk studies; never renewed per process",
     )
-    parser.add_argument("--trials", type=int, default=55)
+    parser.add_argument("--campaign-kind", choices=("resnet", "kernel"), default="resnet")
+    parser.add_argument("--trials", type=int, default=25)
     parser.add_argument(
         "--workload-key", action="append", help="Tune only these exact structural keys; repeat as needed"
     )
@@ -446,7 +445,6 @@ def main():
         help="Documented frequency of the target cycle counter; never substitute FPGA host or emulation frequency",
     )
     parser.add_argument("--batch", type=int, default=1)
-    parser.add_argument("--cost-model-warmup", type=int, default=50)
     parser.add_argument("--builders", type=int, default=2)
     parser.add_argument("--finish-active-runs", action="store_true", default=True,
                         help="Stop new slot admissions at the deadline; drain active measurements")
@@ -475,10 +473,10 @@ def main():
             raise ValueError("Bootstrap watchdog exceeds the hard ceiling")
     except ValueError as error:
         parser.error(str(error))
-    if not (args.builders >= 1 and args.batch >= 1 and args.trials >= 1 and args.cost_model_warmup >= 1):
-        parser.error("Use positive builder/batch counts and positive proposal and XGB warmup counts")
-    if not time.time() < args.deadline_epoch <= time.time() + 4 * 3600:
-        parser.error("Supply a future shared deadline at most four hours away")
+    if not (args.builders >= 1 and args.batch >= 1 and 1 <= args.trials <= 25):
+        parser.error("Use positive builder/batch counts and 1..25 total ReplayTrace proposals")
+    if not time.time() < args.deadline_epoch <= time.time() + (4 if args.campaign_kind == "resnet" else 24) * 3600:
+        parser.error("Supply a future shared deadline within 4h for ResNet or 24h for kernels")
     tune(args)
 
 

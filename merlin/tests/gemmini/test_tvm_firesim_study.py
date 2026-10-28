@@ -131,7 +131,7 @@ def test_graph_options_reach_inner_campaign(study, tmp_path):
                graph_cse=True, prepack_weights=False, bias_preload=False)
     command = study.command(row, tmp_path, args, tmp_path / "output", 1000)
     assert command[command.index("--graph-fusion-level") + 1] == "0"
-    assert command[command.index("--cost-model-warmup") + 1] == "50"
+    assert "--cost-model-warmup" not in command
     assert command[command.index("--batch") + 1] == "1"
     assert {"--graph-cse", "--no-prepack-weights", "--no-bias-preload"}.issubset(command)
 
@@ -167,13 +167,32 @@ def test_default_study_uses_only_stock_graph_options(study):
                                           bias_preload=False, graph_cse=False)
 
 
-def test_continuation_cannot_change_xgb_warmup(study, tmp_path):
+def test_continuation_rejects_obsolete_xgb_warmup(study, tmp_path):
     (tmp_path / "p").write_text("program")
     (tmp_path / "f").write_text("fixture")
     (tmp_path / "pool").write_text("{}")
-    row = dict(id="one", program="p", fixture="f", trials=55)
-    options = dict(deadline=100, clock_hz=30_000_000, pool=tmp_path / "pool", cap=55,
+    row = dict(id="one", program="p", fixture="f", trials=25)
+    options = dict(deadline=100, clock_hz=30_000_000, pool=tmp_path / "pool", cap=25,
                    bootstrap_seconds=10, ceiling_seconds=60)
     study.reserve_campaigns(tmp_path / "ledger", [row], tmp_path, **options)
-    with pytest.raises(ValueError, match="identity"):
+    with pytest.raises(ValueError, match="ReplayTrace"):
         study.reserve_campaigns(tmp_path / "ledger", [dict(row, cost_model_warmup=4)], tmp_path, **options)
+
+
+@pytest.mark.parametrize("trials", [0, 26, 55, True])
+def test_replay_total_budget_is_bounded(study, trials):
+    with pytest.raises(ValueError, match="25"):
+        study.replay_trials(dict(trials=trials))
+
+
+def test_graph_variants_share_chunk_trial_budget(study, tmp_path):
+    (tmp_path / "p").write_text("program")
+    (tmp_path / "f").write_text("fixture")
+    (tmp_path / "pool").write_text("{}")
+    opts = dict(deadline=100, clock_hz=30_000_000, pool=tmp_path / "pool", cap=100,
+                bootstrap_seconds=10, ceiling_seconds=60)
+    row = dict(id="first", program="p", fixture="f", trials=20)
+    study.reserve_campaigns(tmp_path / "ledger", [row], tmp_path, **opts)
+    with pytest.raises(ValueError, match="across graph plans"):
+        study.reserve_campaigns(tmp_path / "ledger", [dict(row, id="second", trials=6, graph_cse=True)], tmp_path, **opts)
+    assert len(json.loads((tmp_path / "ledger").read_text())["campaigns"]) == 1
