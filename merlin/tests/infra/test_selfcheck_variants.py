@@ -385,7 +385,12 @@ def test_the_queued_note_states_the_graders_real_concurrency(tmp_path):
     )
     note = shim._capacity_note(ch)
     assert "up to 18 self-check request(s) at once" in note and "at most 9 of them variants" in note
-    assert "18 running now" in note
+    assert "18 running now" in note and "more while" not in note
+    (ch / "broker_health.json").write_text(
+        json.dumps({"ordinary_capacity": 18, "overflow_capacity": 18, "active_handlers": 30})
+    )
+    note = shim._capacity_note(ch)
+    assert "up to 18 more while the reserved CPUs have room for author work" in note and "30 running now" in note
 
 
 def _job(*, diagnostic=False, variant=False):

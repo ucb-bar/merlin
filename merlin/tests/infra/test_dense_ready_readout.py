@@ -14,6 +14,7 @@ from xdsl.dialects.builtin import ModuleOp, i64
 from merlin.compile.scheduling.block_schedule import Compute, Load, Preload, Store
 from merlin.compile.scheduling.dense_panel_pipeline import (
     DRAIN,
+    DenseReadoutConfigurationSnapshot,
     DenseReadyReadoutAdmission,
     _verify_dense_epochs,
 )
@@ -34,6 +35,22 @@ def setup(shape=(3, 4, 25)):
         disjoint.store_qualification_identity, disjoint.max_issued_readouts, disjoint.pending_readouts,
     )
     return p, r, s, b, original, causal
+
+
+def retained_setup(shape=(9, 14, 25)):
+    from test_dense_retained_reduction import chosen, inputs
+
+    from merlin.compile.scheduling.dense_panel_readout import batch_dense_panel_readouts
+
+    p, r, s, b, admission = inputs(shape)
+    original = chosen(p, r, s, b, admission, role="weight", order=("n", "m"), compute_order=("k", "n", "m"))
+    admission = replace(admission, max_issued_readouts=b.m * b.n, pending_readouts=2,
+                        readout_configuration="ordered_snapshot_before_store_issue")
+    original = batch_dense_panel_readouts(original, p, b, r, s, ADAPTER, admission)
+    law = DenseReadyReadoutAdmission(admission.hardware_identity, admission.numerical_policy_identity,
+                                    "TEST-ONLY-original-ACC-producer-RAW-retirement",
+                                    "TEST-ONLY-original-store-snapshot", b.m * b.n, 2)
+    return p, r, s, b, original, law
 
 
 def check(actual, p, r, s, original, causal, **kwargs):
@@ -195,7 +212,68 @@ def test_strict_original_transform_transport_and_owner_revalidation():
     assert prod(p.tiles) == sum(c.instr == "compute" for c, _ in instances(result.kernel))
 
 
-def test_final_wide_bands_keep_causal_order_original_source_and_strict_owner():
+@pytest.mark.parametrize("shape", [(21, 14, 25), (24, 12, 24), (17, 13, 17)])
+def test_advancing_inputs_use_two_lhs_slots_one_rhs_and_original_accumulator(shape):
+    p, r, s, b, original, law = retained_setup(shape)
+    separate = schedule_dense_ready_readout(original, p, b, r, s, ADAPTER, law)
+    law = replace(law, disjoint_load_qualification_identity="TEST-ONLY-disjoint-load-compute-ready-store")
+    result = schedule_dense_ready_readout(original, p, b, r, s, ADAPTER, law,
+        input_pipeline_row_offset=b.m * b.k * p.tile_m, static_budget=256)
+    execute(result.kernel, p)
+    assert result.realization["dynamic_epoch_drains"] < separate.realization["dynamic_epoch_drains"]
+    assert all(row["rhs_slots"] == 1 and row["live_lhs_generations"] == 2
+               for row in result.realization["input_pipeline"])
+    def operands(kernel):
+        return [ADAPTER.project(replace(c, args=tuple((k, evaluate(v, env)) for k, v in c.args)))
+                for c, env in instances(kernel) if c != Call(DRAIN, ())]
+    before, after = operands(separate.kernel), operands(result.kernel)
+    assert [o for o in before if type(o) is Load and o.role == "weight"] == [
+        o for o in after if type(o) is Load and o.role == "weight"]
+    assert [o.accumulator_row for o in before if type(o) is Preload] == [
+        o.accumulator_row for o in after if type(o) is Preload]
+    assert sorted((o.dram_row, o.dram_col, o.rows, o.cols) for o in before if type(o) is Load) == sorted(
+        (o.dram_row, o.dram_col, o.rows, o.cols) for o in after if type(o) is Load)
+    result.revalidate()
+    result.materialize_scf().verify()
+
+
+def test_input_pipeline_refuses_missing_conjunction_alias_and_escaped_slot():
+    p, r, s, b, original, law = retained_setup((21, 14, 25))
+    offset = b.m * b.k * p.tile_m
+    with pytest.raises(ValueError, match="separately selected"):
+        schedule_dense_ready_readout(original, p, b, r, s, ADAPTER, law,
+                                     input_pipeline_row_offset=offset)
+    law = replace(law, disjoint_load_qualification_identity="TEST-ONLY-load-ready-conjunction")
+    with pytest.raises(ValueError, match="overlapping in-flight"):
+        schedule_dense_ready_readout(original, p, b, r, s, ADAPTER, law,
+                                     input_pipeline_row_offset=1, static_budget=256)
+    with pytest.raises(ValueError, match="assigned private view"):
+        schedule_dense_ready_readout(original, p, b, r, s, ADAPTER, law,
+                                     input_pipeline_row_offset=s.lhs.capacity, static_budget=256)
+
+
+def test_single_pipeline_entry_consumes_input_slot_and_rejects_unused_routes():
+    from merlin.compile.scheduling.dense_ready_readout import schedule_dense_pipeline
+    from merlin.compile.scheduling.schedule_ir import parse_dense_schedule_plan
+
+    p, r, s, b, original, law = retained_setup((21, 14, 25))
+    law = replace(law, disjoint_load_qualification_identity="TEST-ONLY-load-ready-conjunction")
+    options = dict(name="retained", dtypes=("i8", "i8", "i32"),
+        source_identity=original.source_identity, external_buffers_disjoint=True, static_budget=128,
+        schedule_plan=parse_dense_schedule_plan(original.realization["schedule_ir"]["text"]),
+        pipeline_admission=original.admission, input_pipeline_row_offset=b.m * b.k * p.tile_m)
+    result = schedule_dense_pipeline(p, r, s, ADAPTER, readout_mode="ready", readout_admission=law, **options)
+    execute(result.kernel, p)
+    assert result.input_pipeline_row_offset == options["input_pipeline_row_offset"]
+    with pytest.raises(ValueError, match="explicit retained full-K ready"):
+        schedule_dense_pipeline(p, r, s, ADAPTER, **options)
+    with pytest.raises(ValueError, match="explicit retained full-K ready"):
+        schedule_dense_pipeline(p, r, s, ADAPTER, **{**options, "schedule_plan": None})
+
+
+@pytest.mark.parametrize("retained", [False, True])
+@pytest.mark.parametrize("external", [False, True])
+def test_final_wide_bands_keep_causal_order_original_source_and_strict_owner(retained, external):
     from merlin.compile.scheduling.dense_ready_readout import admit_ready_readout_tile_loads
     from merlin.compile.scheduling.panel_tile_loads import admit_panel_tile_loads
     from merlin.compile.scheduling.tile_load_coalescing import (
@@ -205,19 +283,25 @@ def test_final_wide_bands_keep_causal_order_original_source_and_strict_owner():
         propose_tile_load_coalescing,
     )
 
-    p, r, s, b, original, law = setup((4, 6, 24))
+    p, r, s, b, original, law = retained_setup((4, 6, 24)) if retained else setup((4, 6, 24))
     ready = schedule_dense_ready_readout(original, p, b, r, s, ADAPTER, law)
+    from merlin.compile.scheduling.panel_transfers import AffineMatrixSource
+
+    external_sources = ({"weight": AffineMatrixSource(
+        "weight", (p.k, p.n), 1, 5, 3 * p.n, 1, 0, 5 + (p.k - 1) * 3 * p.n + p.n,
+    )} if external else None)
     laws = {role: TileLoadAddressLaw(tile, rows, 4 * tile, 1, pitch, stride, "TEST-ONLY-exact-band-addressing")
             for role, tile, rows, pitch, stride in (
                 ("lhs", p.tile_k, p.tile_m, p.k, p.tile_m),
-                ("weight", p.tile_n, p.tile_k, p.n, p.tile_k))}
+                ("weight", p.tile_n, p.tile_k, 3 * p.n if external else p.n, p.tile_k))}
     def project(call):
         if call.instr not in ("lhs_load", "weight_load"):
             return None
         op = ADAPTER.project(call)
         view = s.lhs if op.role == "lhs" else s.rhs
         law = laws[op.role]
-        return TileLoadMapping(op.role, view.backing, op.dram_row * law.source_pitch_bytes + op.dram_col,
+        offset = 5 if external and op.role == "weight" else 0
+        return TileLoadMapping(op.role, view.backing, offset + op.dram_row * law.source_pitch_bytes + op.dram_col,
                                op.row, op.rows, op.cols, law)
     def encode(call, columns):
         return replace(call, args=tuple((k, Const(columns) if k == "cols" else v) for k, v in call.args))
@@ -231,7 +315,11 @@ def test_final_wide_bands_keep_causal_order_original_source_and_strict_owner():
                                         else v + columns // mapping.law.tile_columns if k == "b" else v)
                                        for k, v in call.args))
     proposal, _ = propose_tile_load_coalescing(ready.kernel, project=project, encode=encode, max_tiles=4)
-    result = admit_ready_readout_tile_loads(ready, proposal, p, b, r, s, ADAPTER, project=project, encode_band=band)
+    if external:
+        with pytest.raises(ValueError, match="source layout"):
+            admit_ready_readout_tile_loads(ready, proposal, p, b, r, s, ADAPTER, project=project, encode_band=band)
+    result = admit_ready_readout_tile_loads(ready, proposal, p, b, r, s, ADAPTER,
+                                          project=project, encode_band=band, external_sources=external_sources)
     assert result.realization["tile_load_projection"]["expanded_logical_tile_bands"] > (
         result.realization["tile_load_projection"]["physical_load_commands"])
     assert result.realization["dynamic_epoch_drains"] == ready.realization["dynamic_epoch_drains"]
@@ -252,3 +340,155 @@ def test_final_wide_bands_keep_causal_order_original_source_and_strict_owner():
         return None if m is None else replace(m, law=replace(m.law, source_pitch_bytes=m.law.source_pitch_bytes + 1))
     with pytest.raises(ValueError, match="source layout"):
         admit_ready_readout_tile_loads(ready, proposal, p, b, r, s, ADAPTER, project=wrong_pitch, encode_band=band)
+
+
+@pytest.mark.parametrize('shape', [(9, 14, 25), (8, 12, 24)])
+def test_retained_full_k_frontier_preserves_every_product_and_minimal_rhs_loads(shape):
+    p, r, s, b, original, law = retained_setup(shape)
+    actual = schedule_dense_ready_readout(original, p, b, r, s, ADAPTER, law)
+    np.testing.assert_array_equal(execute(actual.kernel, p), execute(original.kernel, p))
+    assert actual.realization['dynamic_epoch_drains'] < original.realization['dynamic_epoch_drains']
+    for role in ('lhs_loads', 'rhs_loads', 'output_tiles'):
+        assert actual.realization['source'][role] == original.realization['source'][role]
+    assert any(e['causal_ready_readout_compute'] for e in actual.realization['epochs'])
+    assert actual.original is original
+    actual.materialize_scf().verify()
+    with pytest.raises(ValueError, match='full-K'):
+        schedule_dense_ready_readout(original, p, replace(b, k=b.k-1), r, s, ADAPTER, law)
+
+
+@pytest.mark.parametrize('uniform', [False, True])
+@pytest.mark.parametrize('snapshot', [False, True])
+def test_retained_tiled_readout_requires_original_coefficients_and_selected_snapshot(uniform, snapshot):
+    from test_dense_retained_reduction import inputs
+
+    from merlin.compile.scheduling.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
+    from merlin.compile.scheduling.dense_ready_readout import schedule_dense_pipeline
+    from merlin.compile.scheduling.schedule_ir import make_dense_schedule_plan
+
+    p, r, s, b, admission = inputs()
+    coefficients = [0.5] * p.n
+    if not uniform:
+        coefficients[-1] = 0.25
+    readout = DenseTiledIntegerReadout.from_column_scales(coefficients, tile_columns=p.tile_n)
+    def encode(op):
+        if type(op) is TiledIntegerStore:
+            raw = ADAPTER.encode(Store(op.dram_row, op.dram_col, op.rows, op.cols, op.accumulator_row))
+            return replace(raw, instr=readout.instruction_name, args=(*raw.args, ('readout_tile', op.readout_tile)))
+        return ADAPTER.encode(op)
+    def project(call):
+        if call.instr == readout.instruction_name:
+            raw = ADAPTER.project(replace(call, instr='store',
+                args=tuple((k, v) for k, v in call.args if k != 'readout_tile')))
+            return TiledIntegerStore(raw.dram_row, raw.dram_col, raw.rows, raw.cols, raw.accumulator_row,
+                                     readout.identity, call.arg('readout_tile'))
+        return ADAPTER.project(call)
+    adapter = replace(ADAPTER, encode=encode, project=project)
+    plan = make_dense_schedule_plan(p, r, s, adapter, source_identity='a'*64, name='uniform_ready',
+        dtypes=('i8', 'i8', 'i32'), static_budget=128, block_tiles=(b.m, b.k, b.n),
+        output_readout=readout, pipeline_kind='retained_full_k', pipeline_prefetch=False)
+    admission = replace(admission, max_issued_readouts=b.m*b.n, pending_readouts=2,
+                        readout_configuration='ordered_snapshot_before_store_issue')
+    law = DenseReadyReadoutAdmission(admission.hardware_identity, admission.numerical_policy_identity,
+                                    'TEST-ONLY-producer', 'TEST-ONLY-store', b.m*b.n, 2)
+    if snapshot:
+        law = replace(law, configuration_snapshot=DenseReadoutConfigurationSnapshot(
+            adapter.configuration_identity, adapter.numerical_policy_identity,
+            'TEST-ONLY-configuration-consumed-in-order-and-captured-through-completion', readout.identity))
+    options = dict(name='uniform_ready', dtypes=('i8', 'i8', 'i32'), source_identity='a'*64,
+        external_buffers_disjoint=True, schedule_plan=plan, pipeline_admission=admission,
+        batch_readouts=False, output_readout=readout, readout_qualification_identity='TEST-ONLY-original-readout')
+    if not uniform and not snapshot:
+        with pytest.raises(ValueError, match='mixed per-tile'):
+            schedule_dense_pipeline(p, r, s, adapter, readout_mode='ready', readout_admission=law, **options)
+        return
+    original = schedule_dense_pipeline(p, r, s, adapter, **options)
+    # The ordinary public pipeline service composes original full-K+uniform
+    # readout+causal frontier; no unchecked reconstructed result is accepted.
+    actual = schedule_dense_pipeline(p, r, s, adapter, readout_mode='ready', readout_admission=law, **options)
+    assert actual.output_readout is readout
+    assert actual.realization['source']['output_tiles'] == p.tiles[0]*p.tiles[2]
+    original_stores = sorted(tuple(evaluate(v, env) for _, v in c.args)
+        for c, env in instances(original.kernel) if c.instr == readout.instruction_name)
+    actual_stores = sorted(tuple(evaluate(v, env) for _, v in c.args)
+        for c, env in instances(actual.kernel) if c.instr == readout.instruction_name)
+    assert actual_stores == original_stores
+    _execute_tiled_with_deferred_readouts(actual.kernel, p, adapter, readout)
+    actual.materialize_scf().verify()
+    assert any(epoch['causal_ready_readout_compute'] for epoch in actual.realization['epochs'])
+    if snapshot:
+        for field in ('hardware_identity', 'numerical_policy_identity', 'readout_identity', 'execution'):
+            changed = replace(law.configuration_snapshot, **{field: 'different'})
+            with pytest.raises(ValueError, match='configuration snapshot'):
+                schedule_dense_pipeline(p, r, s, adapter, readout_mode='ready',
+                    readout_admission=replace(law, configuration_snapshot=changed), **options)
+    actual.revalidate()
+
+
+def _execute_tiled_with_deferred_readouts(kernel, problem, adapter, readout):
+    """Independent scalar execution with a finite queue and delayed ACC reads.
+
+    Each pending request captures its actual selected scale word. Completion
+    deliberately happens after later configuration changes and reverses the
+    pending requests at each real drain. Only real drains allow ACC reuse.
+    """
+    import struct
+
+    from merlin.compile.scheduling.dense_contracts import TiledIntegerStore
+
+    lhs = (np.arange(problem.m * problem.k) % 7 - 3).reshape(problem.m, problem.k)
+    rhs = (np.arange(problem.k * problem.n) % 5 - 2).reshape(problem.k, problem.n)
+    memory = {name: {} for name in ('lhs', 'weight', 'acc')}
+    output = np.zeros((problem.m, problem.n), dtype=np.int8)
+    written = np.zeros(output.shape, dtype=np.int8)
+    descriptor, pending, configured = None, [], None
+
+    def finish(request):
+        operation, scale_word = request
+        scale = np.float32(struct.unpack('<f', struct.pack('<I', scale_word))[0])
+        for i in range(operation.rows):
+            for j in range(operation.cols):
+                raw = memory['acc'][operation.accumulator_row + i, j]
+                raw = max(0, raw) if readout.relu else raw
+                value = np.clip(np.rint(np.float32(raw) * scale), -128, 127).astype(np.int8)
+                y, x = operation.dram_row + i, operation.dram_col + j
+                output[y, x] = value
+                written[y, x] += 1
+
+    for call, environment in instances(kernel):
+        if call == Call(DRAIN, ()):
+            while pending:
+                finish(pending.pop())
+            continue
+        concrete = replace(call, args=tuple((key, evaluate(value, environment)) for key, value in call.args))
+        operation = adapter.project(concrete)
+        if type(operation) is Load:
+            source = lhs if operation.role == 'lhs' else rhs
+            for i in range(operation.rows):
+                for j in range(operation.cols):
+                    memory[operation.role][operation.row + i, j] = int(
+                        source[operation.dram_row + i, operation.dram_col + j])
+        elif type(operation) is Preload:
+            descriptor = operation
+        elif type(operation) is Compute:
+            for i in range(operation.rows):
+                for j in range(descriptor.cols):
+                    key = descriptor.accumulator_row + i, j
+                    total = memory['acc'][key] if descriptor.accumulate else 0
+                    total += sum(memory['lhs'][operation.input_row + i, k]
+                                 * memory['weight'][descriptor.weight_row + k, j]
+                                 for k in range(operation.cols))
+                    memory['acc'][key] = total
+        else:
+            assert type(operation) is TiledIntegerStore
+            configured = readout.table_words[operation.readout_tile]
+            if len(pending) == 2:
+                finish(pending.pop(0))
+            pending.append((operation, configured))
+    assert not pending
+    expected = lhs @ rhs
+    np.testing.assert_array_equal(written, 1)
+    np.testing.assert_array_equal(output, np.array([
+        [readout.evaluate(int(expected[y, x]), x) for x in range(problem.n)]
+        for y in range(problem.m)
+    ], dtype=np.int8))

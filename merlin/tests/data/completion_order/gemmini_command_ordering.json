@@ -66,6 +66,17 @@
    "queue": "load",
    "width": 32
   },
+  "MVIN3.spad_addr": {
+   "class": "MVIN3",
+   "code": null,
+   "direction": "write",
+   "field": "spad_addr",
+   "funct": 14,
+   "offset": 0,
+   "operand": "rs2",
+   "queue": "load",
+   "width": 32
+  },
   "MVOUT.acc_addr": {
    "class": "MVOUT",
    "code": null,
@@ -104,6 +115,7 @@
   "by_funct": {
    "0": "CONFIG",
    "1": "MVIN2",
+   "14": "MVIN3",
    "15": "LOOP_CONV",
    "2": "MVIN",
    "3": "MVOUT",
@@ -383,6 +395,118 @@
    "younger": "COMPUTE_PRELOADED.bd"
   },
   {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "MVOUT.acc_addr"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "MVOUT.acc_addr"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "PRELOAD.weight_spad"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "PRELOAD.weight_spad"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "PRELOAD.c_addr"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "PRELOAD.c_addr"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "COMPUTE_ACCUMULATE.a_spad"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "COMPUTE_ACCUMULATE.a_spad"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "COMPUTE_ACCUMULATE.bd"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "COMPUTE_ACCUMULATE.bd"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "COMPUTE_PRELOADED.a_spad"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "COMPUTE_PRELOADED.a_spad"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "COMPUTE_PRELOADED.bd"
+  },
+  {
+   "disjoint": "issue",
+   "older": "MVIN3.spad_addr",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "COMPUTE_PRELOADED.bd"
+  },
+  {
    "disjoint": "none",
    "older": "MVOUT.acc_addr",
    "overlap": "completion",
@@ -413,6 +537,22 @@
    "space": "accumulator",
    "tracked": true,
    "younger": "MVIN2.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "MVOUT.acc_addr",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "MVOUT.acc_addr",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
   },
   {
    "disjoint": "issue",
@@ -545,6 +685,22 @@
   {
    "disjoint": "none",
    "older": "PRELOAD.weight_spad",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "PRELOAD.weight_spad",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "PRELOAD.weight_spad",
    "overlap": "none",
    "space": "scratchpad",
    "tracked": false,
@@ -596,6 +752,22 @@
    "overlap": "completion",
    "space": "scratchpad",
    "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "PRELOAD.c_addr",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "PRELOAD.c_addr",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
    "younger": "MVOUT.acc_addr"
   },
   {
@@ -641,6 +813,22 @@
   {
    "disjoint": "none",
    "older": "COMPUTE_ACCUMULATE.a_spad",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "COMPUTE_ACCUMULATE.a_spad",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "COMPUTE_ACCUMULATE.a_spad",
    "overlap": "none",
    "space": "scratchpad",
    "tracked": false,
@@ -689,6 +877,22 @@
   {
    "disjoint": "none",
    "older": "COMPUTE_ACCUMULATE.bd",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "COMPUTE_ACCUMULATE.bd",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "COMPUTE_ACCUMULATE.bd",
    "overlap": "none",
    "space": "scratchpad",
    "tracked": false,
@@ -737,6 +941,22 @@
   {
    "disjoint": "none",
    "older": "COMPUTE_PRELOADED.a_spad",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "COMPUTE_PRELOADED.a_spad",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "COMPUTE_PRELOADED.a_spad",
    "overlap": "none",
    "space": "scratchpad",
    "tracked": false,
@@ -781,6 +1001,22 @@
    "space": "accumulator",
    "tracked": true,
    "younger": "MVIN2.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "COMPUTE_PRELOADED.bd",
+   "overlap": "completion",
+   "space": "scratchpad",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
+  },
+  {
+   "disjoint": "none",
+   "older": "COMPUTE_PRELOADED.bd",
+   "overlap": "completion",
+   "space": "accumulator",
+   "tracked": true,
+   "younger": "MVIN3.spad_addr"
   },
   {
    "disjoint": "none",
@@ -1131,6 +1367,68 @@
     ]
    ]
   },
+  "MVIN3.spad_addr": {
+   "blocks": {
+    "block": 16,
+    "cols": {
+     "name": "num_cols",
+     "offset": 32,
+     "operand": "rs2",
+     "width": 16
+    },
+    "stride": {
+     "code": 1,
+     "offset": 16,
+     "operand": "rs1",
+     "reset": 0,
+     "state": {
+      "offset": 3,
+      "operand": "rs1",
+      "value": 2,
+      "width": 2
+     },
+     "width": 16
+    }
+   },
+   "conditions": [],
+   "partner": "MVOUT.acc_addr",
+   "rows": {
+    "name": "num_rows",
+    "offset": 48,
+    "operand": "rs2",
+    "width": 16
+   },
+   "scale": null,
+   "space": "scratchpad",
+   "status": "derived",
+   "verified": [
+    [
+     1,
+     null,
+     1
+    ],
+    [
+     4,
+     null,
+     4
+    ],
+    [
+     7,
+     null,
+     7
+    ],
+    [
+     "blocks",
+     2,
+     10
+    ],
+    [
+     "blocks",
+     3,
+     17
+    ]
+   ]
+  },
   "MVOUT.acc_addr": {
    "blocks": {
     "block": 16,
@@ -1387,7 +1685,7 @@
   "dispatch ports the ordering declaration does not name are held at zero",
   "a probe observes the dispatch unit alone; memory-path reordering comes from completion_order"
  ],
- "probe_cycles": 17023,
+ "probe_cycles": 18095,
  "same_queue": {
   "execute": {
    "by_class": {
@@ -1400,7 +1698,8 @@
   "load": {
    "by_class": {
     "MVIN": "issue",
-    "MVIN2": "issue"
+    "MVIN2": "issue",
+    "MVIN3": "issue"
    },
    "release": "issue"
   },
@@ -1412,8 +1711,6 @@
   }
  },
  "schema": "merlin.rtl_command_ordering.v1",
- "status": "partial",
- "unknown": [
-  "MVIN3: no funct code names this class, so its accesses cannot be probed"
- ]
+ "status": "derived",
+ "unknown": []
 }

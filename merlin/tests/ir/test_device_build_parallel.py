@@ -540,3 +540,47 @@ def test_transient_artifact_swap_refuses_before_translation(synthetic_build, mon
     with pytest.raises(ValueError, match="device LLVM changed"):
         build(names=("a",))
     assert not any(command == "translate" for command, _, _ in calls)
+
+
+@pytest.mark.parametrize("generic,arity,name,accepted", [
+    (True, 3, "kernel", True),
+    (False, 3, "kernel", True),
+    (True, 2, "kernel", False),
+    (True, 3, "other", False),
+])
+def test_exact_interface_reads_real_entry_not_assembly_spelling(
+    synthetic_build, monkeypatch, generic, arity, name, accepted,
+):
+    from xdsl.dialects import llvm
+    from xdsl.dialects.builtin import ModuleOp
+    from xdsl.ir import Block, Region
+
+    from merlin.common.digest import sha256_text
+    from merlin.targetgen.contract.interface_emit import emit_interface_mlir
+    from merlin.xdsl_dialects._common import text
+
+    build, _tool, _emitted, _calls, artifacts, _owner = synthetic_build
+    interface = emit_interface_mlir({
+        "abi_version": "0.1", "target": "synthetic",
+        "tensors": {"W": {"shape": [2, 2], "dtype": "i8", "role": "weight"},
+                    "A": {"shape": [2, 2], "dtype": "i8", "role": "input"}},
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "r"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A", "rhs": "r", "dst": "s"}},
+            {"opcode": "COMMIT", "operands": {"src": "s", "dst": "Y"},
+             "attributes": {"output_dtype": "i32", "epilogue": []}},
+        ],
+    })
+    types = [llvm.LLVMPointerType()] * arity
+    body = Block(arg_types=types)
+    body.add_op(llvm.ReturnOp())
+    artifact = ModuleOp([llvm.FuncOp(name, llvm.LLVMFunctionType(types, llvm.LLVMVoidType()), body=Region(body))])
+    artifacts[interface] = text(artifact, generic=generic)
+    monkeypatch.setattr("merlin.llvmlower.exact_offload._package_sha256", lambda _path: "f" * 64)
+    result = build(names=("selected",), expected_interfaces={
+        "selected": {"mlir": interface, "sha256": sha256_text(interface)},
+    }, package_sha256="f" * 64)
+    assert result.ok is accepted
+    if not accepted:
+        assert "kernel entry" in result.skipped[0][1]

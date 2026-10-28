@@ -12,6 +12,42 @@ from merlin.llvmlower.device_offload import load_sidecar
 from merlin.xdsl_dialects._common import text
 
 
+def original_logical_effects(source, built):
+    raise AssertionError('routing must not invoke the independent effects factory')
+
+
+def test_owned_logical_descriptor_selection_preserves_actual_storage_and_view_flags(tmp_path, monkeypatch):
+    from merlin.compile import baremetal_model, route_before_build
+    from merlin.llvmlower.device_build import DeviceRouting
+    from merlin.runtime.device_descriptor_results import DeviceDescriptorResults
+
+    host,candidate,capture=(tmp_path/name for name in ('host','candidate','capture'))
+    for path in (host,candidate,capture):path.mkdir()
+    (host/'original.txt').write_text('original host provider')
+    (capture/'model.mlir').write_text('module {}')
+    original=DeviceRouting('neutral',candidate,'i8','i32',granularity='group')
+    monkeypatch.setattr(route_before_build,'plan_before_build',
+        lambda *a,**kw:{'device_routing':original,'offload':{'groups':2}})
+    service=OwnedHostModelCompiler.select(host_package=host,target='neutral',
+        board_catalog=tmp_path/'board.yaml',board='board',dts=tmp_path/'board.dts')
+    def build(**kwargs):
+        selected=kwargs['device']
+        assert selected.descriptor_results is True
+        assert selected.descriptor_effects is original_logical_effects
+        assert selected.intermediate_storage is None
+        assert kwargs['prepack_weights'] is True and kwargs['dense_input_views'] is True
+        assert kwargs['share_exact_tensor_preparations'] is True
+        assert DeviceDescriptorResults(selected).selected is True
+        return {'status':'selected actual logical route'}
+    monkeypatch.setattr(baremetal_model,'compile_saved_model',build)
+    result=service.compile(capture=capture,candidate_package=candidate,datapath='int8',
+        linked_elf_admission=object(),output=tmp_path/'build',arena_mb=1,
+        require_all_accelerator_groups=True,prepack_weights=True,dense_input_views=True,
+        share_exact_tensor_preparations=True,descriptor_results=True,descriptor_effects=original_logical_effects)
+    assert result['status']=='selected actual logical route'
+    assert original.descriptor_results is False and original.descriptor_effects is None
+
+
 def test_owned_model_selected_route_reaches_actual_original_host_preparation(tmp_path, monkeypatch):
     from merlin.compile import baremetal_model, route_before_build
 

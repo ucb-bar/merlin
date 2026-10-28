@@ -491,6 +491,8 @@ def test_lower_model_does_not_touch_the_ll_unless_the_flag_is_set(tmp_path, monk
     monkeypatch.setattr(L, "preprocess_text", lambda text: (text, {}))
     monkeypatch.setattr(L, "lower_to_llvm_ir", lambda *a, **k: OVERLAPPING)
     monkeypatch.delenv("MERLIN_STATIC_ARENA", raising=False)
+    # This fixture replaces the native pipeline, including its copy reports.
+    monkeypatch.setenv("MERLIN_AUTOMATIC_HOST_COPIES", "0")
 
     off = L.lower_model("ignored", tmp_path / "off", targets=())
     assert off.ll_path.read_text() == OVERLAPPING

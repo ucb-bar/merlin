@@ -77,7 +77,7 @@ def test_v22_roster_and_catalog_are_v21_under_a_new_inventory_name():
     assert v22["inventory_version"] == 22 and v21["inventory_version"] == 21
     assert v22["capabilities"] == v21["capabilities"]
     assert sdk_support_sources(21) == () and sdk_support_sources(22)
-    for invalid in (23, True, "22"):
+    for invalid in (24, True, "22"):
         with pytest.raises(ValueError):
             library_modules(invalid)
         with pytest.raises(ValueError):

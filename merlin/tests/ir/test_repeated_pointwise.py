@@ -192,18 +192,24 @@ def test_unselected_preparation_never_opens_a_bundle(tmp_path, monkeypatch):
     assert not (tmp_path / "out").exists()
 
 
-@pytest.mark.parametrize("kind, rewrites", [("buffer", 1), ("input", 0)])
-def test_normal_stored_constant_binding_requires_explicit_immutable_manifest(tmp_path, monkeypatch, kind, rewrites):
+@pytest.mark.parametrize("kind, updates, rewrites", [
+    ("buffer", None, 1), ("input", None, 0), ("buffer", "states", 0), ("buffer", "streams", 0),
+])
+def test_normal_stored_constant_binding_requires_explicit_immutable_manifest(
+    tmp_path, monkeypatch, kind, updates, rewrites
+):
     from merlin.llvmlower.repeated_pointwise import prepare_repeated_pointwise
 
     monkeypatch.setenv("MERLIN_PREPARE_REPEATED_POINTWISE", "1")
-    source = tmp_path / "source.mlir"
+    source = tmp_path / "model.mlir"
     source.write_text(fixture())
     raw = struct.pack("<8f", *([2] * 4 + [3] * 4))
     header = json.dumps({"scale": {"dtype": "F32", "shape": [8, 1], "data_offsets": [0, len(raw)]}}).encode()
     (tmp_path / "weights.safetensors").write_bytes(struct.pack("<Q", len(header)) + header + raw)
     manifest = {"1": {"kind": kind, "weight": "scale", "dtype": "float32", "shape": [8, 1]}}
     (tmp_path / "weights.safetensors.manifest.json").write_text(json.dumps(manifest))
+    if updates is not None:
+        (tmp_path / "session_contract.yaml").write_text(f"version: 1\n{updates}:\n- input_arg: 1\n")
     selected = prepare_repeated_pointwise(source, tmp_path / "prepared", bundle_dir=tmp_path)
     report = json.loads((tmp_path / "prepared/report.json").read_text())
     assert report["rewrites"] == rewrites
@@ -214,6 +220,30 @@ def test_normal_stored_constant_binding_requires_explicit_immutable_manifest(tmp
     else:
         assert selected == source
         assert report["immutable_argument_sources"] == []
+
+
+def test_stored_preparation_rechecks_generated_caller_updates_before_publication(tmp_path, monkeypatch):
+    from merlin.llvmlower import repeated_pointwise
+
+    monkeypatch.setenv("MERLIN_PREPARE_REPEATED_POINTWISE", "1")
+    source = tmp_path / "model.mlir"
+    source.write_text(fixture())
+    raw = struct.pack("<8f", *([2] * 4 + [3] * 4))
+    header = json.dumps({"scale": {"dtype": "F32", "shape": [8, 1], "data_offsets": [0, len(raw)]}}).encode()
+    (tmp_path / "weights.safetensors").write_bytes(struct.pack("<Q", len(header)) + header + raw)
+    manifest = {"1": {"kind": "buffer", "weight": "scale", "dtype": "float32", "shape": [8, 1]}}
+    (tmp_path / "weights.safetensors.manifest.json").write_text(json.dumps(manifest))
+    original = repeated_pointwise.hoist_repeated_pointwise
+
+    def change(*args, **kwargs):
+        selected = original(*args, **kwargs)
+        (tmp_path / "session_contract.yaml").write_text("version: 1\nstates:\n- input_arg: 1\n")
+        return selected
+
+    monkeypatch.setattr(repeated_pointwise, "hoist_repeated_pointwise", change)
+    with pytest.raises(ValueError, match="generated-caller binding"):
+        repeated_pointwise.prepare_repeated_pointwise(source, tmp_path / "prepared", bundle_dir=tmp_path)
+    assert not (tmp_path / "prepared").exists()
 
 
 @pytest.mark.parametrize("transpose", [False, True])

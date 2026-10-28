@@ -271,3 +271,25 @@ def test_new_bundle_can_pin_external_llvm_without_changing_legacy_default(tmp_pa
     assert "third_party/llvm-install/" not in selected_paths
     assert str(llvm) + "/" in selected_paths
     assert default_paths - {"third_party/llvm-install/"} == selected_paths - {str(llvm) + "/"}
+
+
+
+@pytest.mark.parametrize("version", (16, 17))
+def test_new_common_substrate_attaches_once_after_source_selection(monkeypatch, version):
+    from merlin.targetgen import tool_profile
+    from merlin.targetgen.sandbox.bwrap import _host_input_paths
+
+    calls = []
+    def attach(bundle, **kwargs):
+        calls.append(kwargs)
+        bundle['host_inputs'].append({'path': '/selected/host-owned-formal.py', 'note': 'host-owned'})
+    monkeypatch.setattr(tool_profile, 'attach_common_substrate', attach)
+    generated = generate_bundles(_te(), arms=('merlin_rtlchecks',), python_source_root=repo_root() / 'src',
+                                 common_substrate=getattr(tool_profile, f"COMMON_SUBSTRATE_V{version}"),
+                                 host_index_bits=64)
+    assert len(calls) == 1
+    assert calls[0]['software_spec_path'] is not None
+    assert calls[0]['target'] == _te().target
+    [manifest] = generated.values()
+    paths = _host_input_paths(manifest)  # actual strict reader, no duplicate waiver
+    assert paths.count('/selected/host-owned-formal.py') == 1

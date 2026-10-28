@@ -299,11 +299,11 @@ def test_lease_class_resolution_and_validation(monkeypatch):
         return C.lease_priority()
 
     assert decorated() == C.AUTHOR and C.lease_priority() == C.PREPARATION
-    for bad in ("0", "5", "first", "1.0"):
+    for bad in ("0", "6", "first", "1.0"):
         monkeypatch.setenv(C.PRIORITY_ENV, bad)
         with pytest.raises(ValueError, match=C.PRIORITY_ENV):
             C.lease_priority()
-    for bad in (0, 5, True, "x"):
+    for bad in (0, 6, True, "x"):
         with pytest.raises(ValueError):
             with C.cpu_priority(bad):
                 pass
@@ -425,3 +425,57 @@ def test_preparation_folds_into_the_pool_without_deadlock(pool):
     assert all(worker.returncode == 0 for worker in workers)
     assert [json.loads(output) for output in outputs] == [[C.PREPARATION, [cpu]]] * 3
     assert graded and set(graded) == {C.GRADE}
+
+
+def test_a_worker_never_leases_above_the_class_its_environment_names(pool):
+    """An author broker that launches operator or background work names a lower class for that worker.
+
+    The launcher used to prefix the caller's own class whenever the environment named another one, so a
+    worker the broker had lowered to AUXILIARY or GRADE ran at AUTHOR, ahead of every grade.
+    """
+    cpu, _ = pool
+    environment = _child_environment()
+    command = [sys.executable, "-c", _LEASING_CHILD]
+    with C.cpu_priority(C.AUTHOR):
+        for lowered in (C.GRADE, C.AUXILIARY):
+            named = dict(environment, **{C.PRIORITY_ENV: str(lowered)})
+            assert "env" not in C.worker_pool_command(command, named)
+            assert C.child_environment(named)[C.PRIORITY_ENV] == str(lowered)
+        launched = C.worker_pool_command(command, dict(environment, **{C.PRIORITY_ENV: str(C.GRADE)}))
+        level, affinity = json.loads(
+            subprocess.check_output(
+                launched, env=dict(environment, **{C.PRIORITY_ENV: str(C.GRADE)}), text=True, timeout=60
+            )
+        )
+        assert level == C.GRADE and affinity == [cpu]
+    with C.cpu_priority(C.GRADE):
+        # An inherited, more urgent class (the broker's exported AUTHOR) is still lowered to the caller's.
+        inherited = dict(environment, **{C.PRIORITY_ENV: str(C.AUTHOR)})
+        assert C.worker_pool_command(command, inherited)[3:5] == ["env", f"{C.PRIORITY_ENV}={C.GRADE}"]
+        assert C.child_environment(inherited)[C.PRIORITY_ENV] == str(C.GRADE)
+
+
+def test_queued_waiters_count_live_entries_at_or_above_a_class(pool, monkeypatch):
+    _, root = pool
+    assert C.queued_waiters(C.AUTHOR) == 0  # no queue directory yet
+    directory = root / "waiters"
+    directory.mkdir(parents=True)
+    owners = []
+    for number, level in enumerate((C.AUTHOR, C.GRADE, C.AUXILIARY, C.AUTHOR), start=1):
+        entry = directory / f"{level}-{time.monotonic_ns():020d}-1-{number}-live{C._WAITER_SUFFIX}"
+        owner = open(entry, "w")
+        fcntl.flock(owner, fcntl.LOCK_EX)  # a live waiter, still polling
+        owners.append(owner)
+    dead = directory / f"{C.AUTHOR}-{time.monotonic_ns():020d}-1-99-gone{C._WAITER_SUFFIX}"
+    dead.write_text("")  # its owner died: nobody holds its lock
+    try:
+        assert C.queued_waiters(C.AUTHOR) == 2
+        assert C.queued_waiters(C.GRADE) == 3
+        assert C.queued_waiters(C.VERIFICATION) == 4
+        assert not dead.exists()
+    finally:
+        for owner in owners:
+            owner.close()
+    monkeypatch.delenv("MERLIN_COMPUTE_CPUS")
+    monkeypatch.delenv("MERLIN_COMPUTE_CPU_SLOTS")
+    assert C.queued_waiters(C.AUTHOR) is None  # no shared pool selected

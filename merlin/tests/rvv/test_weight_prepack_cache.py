@@ -23,6 +23,51 @@ def endorse_cache_file(destination, name):
     path.write_text(json.dumps(identity))
 
 
+def test_repeated_validation_reuses_only_successful_exact_content(tmp_path, monkeypatch):
+    from merlin.capture import rewrite
+
+    source = _bundle(tmp_path / "source")
+    original = rewrite.verify_hoisted_bundle
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(args)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(rewrite, "verify_hoisted_bundle", counted)
+    destination, _ = wp.prepacked_bundle(source, cache_root=tmp_path / "cache")
+    wp.prepacked_bundle(source, cache_root=tmp_path / "cache")
+    assert len(calls) == 1
+
+    # Neither a new cache-owned hash nor a failed check becomes an authority.
+    changed = destination / "weights.safetensors"
+    contents = changed.read_bytes()
+    changed.write_bytes(contents[:-1] + bytes([contents[-1] ^ 1]))
+    endorse_cache_file(destination, changed.name)
+    for _ in range(2):
+        with pytest.raises(wp.PrepackRefused):
+            wp.prepacked_bundle(source, cache_root=tmp_path / "cache")
+    assert len(calls) == 3
+
+
+def test_changes_during_semantic_validation_are_not_remembered(tmp_path, monkeypatch):
+    from merlin.capture import rewrite
+
+    source = _bundle(tmp_path / "source")
+    original = rewrite.verify_hoisted_bundle
+
+    def changed_after_check(src, dst, *args, **kwargs):
+        result = original(src, dst, *args, **kwargs)
+        path = dst / "weights.safetensors"
+        contents = path.read_bytes()
+        path.write_bytes(contents[:-1] + bytes([contents[-1] ^ 1]))
+        return result
+
+    monkeypatch.setattr(rewrite, "verify_hoisted_bundle", changed_after_check)
+    with pytest.raises(wp.PrepackRefused, match="changed during semantic validation"):
+        wp.prepacked_bundle(source, cache_root=tmp_path / "cache")
+
+
 @pytest.mark.parametrize(
     "name", ["session_contract.yaml", "inputs.npz", "extra.npz", "input_order.json", "goldens.npz"]
 )

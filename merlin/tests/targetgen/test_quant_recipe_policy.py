@@ -103,6 +103,41 @@ def test_selected_policy_retains_explicit_native_context_readout():
     assert selected["recipe_sha256"] == Q.digest(selected)
 
 
+def test_preserved_quality_and_weight_policy_do_not_require_a_speed_first_numeric_waiver():
+    source, method, path, policy = inputs()
+    policy.update(weight_granularity="preserve", float_quality="preserve")
+    selected = P.select(source, method, path, policy=policy, model="tiny_llama")
+    assert selected["weight"] == source["weight"]
+    assert Q.site_agreement_of(selected) == Q.site_agreement_of(source)
+    assert selected["recipe_sha256"] == Q.digest(selected)
+    assert selected["numerical_selection"]["policy"]["float_quality"] == "preserve"
+
+
+def test_shared_grid_residual_selection_uses_the_ordinary_closed_recipe_constructor():
+    source, method, path, policy = inputs("resnet50")
+    source.pop("accumulator_residual")
+    source["recipe_sha256"] = Q.digest(source)
+    policy.update(weight_granularity="preserve", float_quality="preserve")
+    policy["integer_extensions"].pop("accumulator_residual")
+    policy["integer_extensions"]["operand_sum_grid"] = {"schema": "shared_grid_operand_sum_v1"}
+    selected = P.select(source, method, path, policy=policy, model="resnet50")
+    assert selected["operand_sum_grid"] == {"schema": "shared_grid_operand_sum_v1"}
+    assert selected["weight"] == source["weight"]
+    assert Q.OPERAND_SUM in selected["families"]
+    assert "accumulator_residual" not in selected
+    assert selected["recipe_sha256"] == Q.digest(selected)
+    policy["integer_extensions"]["operand_sum_grid"]["unproved"] = True
+    with pytest.raises(ValueError, match="closed shared-grid"):
+        P.select(source, method, path, policy=policy, model="resnet50")
+
+
+def test_shared_and_accumulator_residuals_cannot_acquire_the_same_graph():
+    source, method, path, policy = inputs("resnet50")
+    policy["integer_extensions"]["operand_sum_grid"] = {"schema": "shared_grid_operand_sum_v1"}
+    with pytest.raises(ValueError, match="distinct graph ownership"):
+        P.select(source, method, path, policy=policy, model="resnet50")
+
+
 def test_successor_reporting_config_preserves_geometry_and_exact_quantized_comparison():
     from merlin.model_check.models import load, selected_float_policy, selected_host_math_policy
 

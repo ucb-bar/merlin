@@ -282,6 +282,7 @@ def test_build_entry_points_share_prepacked_ir_and_runtime_bundle(tmp_path, monk
         llvm.write_text("; fixture lowering output\n")
         return SimpleNamespace(
             ll_path=llvm,
+            workdir=Path(work),
             stats={
                 "index_lowering": {
                     "index_bits": kwargs.get("index_bits"),
@@ -330,10 +331,10 @@ def test_build_entry_points_share_prepacked_ir_and_runtime_bundle(tmp_path, monk
     if backend == "baremetal":
         assert seen["sysroot_query"] == [str(tmp_path / "riscv64-unknown-elf-gcc"), "-print-sysroot"]
         recipe = json.loads((work / "compilation_recipe.json").read_text())
-        assert recipe["commands"][0]["argv"] == seen["compile"]
-        assert recipe["commands"][0]["status"] == "returned"
-        assert recipe["commands"][0]["output"]["path"] == str((work / "model.o").resolve())
-        assert (work / "model.o").read_bytes() == b"fixture compiled model object"
+        # Driver generation now precedes model-object compilation. This seam
+        # deliberately stops at that ABI boundary, before invoking a compiler.
+        assert recipe["commands"] == []
+        assert "compile" not in seen
     if enabled:
         assert seen["vlen"] == 512
         assert seen["prepare"] == seen["abi"] != src

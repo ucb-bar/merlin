@@ -16,7 +16,7 @@ from merlin.transforms.evaluated_exploration import (
     ExplorationIdentity,
     exploration_context_identity,
 )
-from merlin.transforms.pass_exploration import EmittedProgram, ExplorationGeometry, ValidationPartition
+from merlin.transforms.pass_exploration import EmittedProgram, ExplorationGeometry, ObservedMetrics, ValidationPartition
 from merlin.transforms.pipeline_policy import PipelineVariant, PolicyFacts, ResourcePredicate, ShapePredicate
 from merlin.transforms.pipeline_state import PipelineContext, PipelineSession
 from merlin.transforms.shape_policy import (
@@ -171,3 +171,66 @@ def test_source_and_implementation_mutations_cannot_reuse_prior_class_feedback()
     assert policy(cases).selected[0][1] == 'original'
     # A numerical-pass label for an unadmitted target path is not performance support.
     assert policy((case(3), case(4), case(5, resources=None))).selected[0][1] == 'original'
+
+
+def diagnostic_case(m, *, cycles=80, unknown=False):
+    current = case(m, cycles=cycles, unknown=unknown)
+    metrics = tuple((name, ObservedMetrics(observed.identity.basis, observed.identity.digest(), (
+        ('cycles', observed.cycles),
+        ('device_requested_read_bytes', 1024 if name == 'original' else 256),
+        ('modeled_compute_ceiling_attainment', 0.25 if name == 'original' else 0.75),
+        ('host_instruction_count', 100 if name == 'original' else 25),
+        ('host_preparation_cycles', None),
+        ('physical_engine_occupancy', None),
+    ))) for name, observed in current.observations)
+    return replace(current, diagnostics=metrics)
+
+
+def test_compact_same_window_diagnostics_preserve_unknown_and_actual_pass_execution():
+    # Synthetic timing/diagnostic fixtures, never physical measurements.
+    assessed = policy(tuple(diagnostic_case(m) for m in (3, 4, 5)))
+    assert assessed.selected[0][1] == 'fold'
+    assert execute(assessed).receipt['selected_variant'] == 'fold'
+    assert assessed.report['decision_metric'] == 'complete_same_roi_cycles'
+    observation = assessed.report['exact_source_winners'][1]['observations'][1]
+    metrics = observation['diagnostics']
+    assert metrics['values']['device_requested_read_bytes'] == 256
+    assert metrics['values']['modeled_compute_ceiling_attainment'] == 0.75
+    assert metrics['values']['host_instruction_count'] == 25
+    assert metrics['values']['host_preparation_cycles'] is None
+    assert set(metrics['unknown']) == {'host_preparation_cycles', 'physical_engine_occupancy'}
+    assert metrics['use'].startswith('explanation_only')
+
+
+@pytest.mark.parametrize('unknown', (False, True))
+def test_better_diagnostic_costs_cannot_override_slow_or_unknown_cycles(unknown):
+    rows = tuple(diagnostic_case(m, cycles=110, unknown=unknown) for m in (3, 4, 5))
+    assessed = policy(rows)
+    assert assessed.selected[0][1:] == ('original', None)
+    assert execute(assessed).receipt['selected_variant'] == 'original'
+    for item in assessed.report['exact_source_winners']:
+        assert item['winner'] == 'original'
+        changed = item['observations'][1]
+        assert changed['diagnostics']['values']['device_requested_read_bytes'] == 256
+        assert changed['cycles'] == (None if unknown else 110)
+        assert changed['eligible'] is (not unknown)
+
+
+@pytest.mark.parametrize('change', (
+    {'domain': '9' * 64},  # other source/input/scope/provider
+    {'basis': 'measured_roi'},  # modeled booking data is not a hardware measurement
+    {'values': (('cycles', 1),)},  # cannot replace the original cycle observation
+))
+def test_shape_diagnostic_identity_cannot_change_the_performance_domain(change):
+    current = diagnostic_case(4)
+    name, metrics = current.diagnostics[1]
+    with pytest.raises(ValueError, match='diagnostic'):
+        replace(current, diagnostics=((name, replace(metrics, **change)),))
+
+
+def test_shape_diagnostic_rows_require_existing_distinct_observed_alternatives():
+    current = diagnostic_case(4)
+    with pytest.raises(ValueError, match='distinct observed alternatives'):
+        replace(current, diagnostics=(current.diagnostics[0], current.diagnostics[0]))
+    with pytest.raises(ValueError, match='distinct observed alternatives'):
+        replace(current, diagnostics=(('unobserved', current.diagnostics[0][1]),))

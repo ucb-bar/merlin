@@ -298,6 +298,33 @@ def test_a_dispatch_without_the_declared_ports_is_refused():
         CO._ports(broken)
 
 
+# ---------------------------------------------------------------------- funct 14 is MVIN3, by the RTL
+def test_funct_14_is_the_third_load_state_by_the_rtl():
+    """The contract's ``14: MVIN3`` is checked against what the elaborated dispatch module does with
+    funct 14 (recorded in the derived Gemmini ordering facts): it enters the load queue, writes the
+    scratchpad span of a load, and its block stride is latched per load state, at state 2 (MVIN 0,
+    MVIN2 1) -- the third load state, as LoadController selects for LOAD3_CMD."""
+    import json
+
+    import yaml
+
+    from merlin.common.paths import merlin_dir, repo_root
+
+    contract = yaml.safe_load(
+        (Path(repo_root()) / "examples/gemmini/target/contracts/target_contract.yaml").read_text()
+    )
+    assert contract["encoding"]["semantic_class"][14] == "MVIN3"
+    record = json.loads((merlin_dir() / "tests/data/completion_order/gemmini_command_ordering.json").read_text())
+    queues = {row["funct"]: row.get("queue") for row in record["funct_queue"]}
+    assert queues[14] == queues[2] == queues[1] == "load"
+    assert record["accesses"]["MVIN3.spad_addr"]["funct"] == 14
+    assert record["accesses"]["MVIN3.spad_addr"]["direction"] == "write"
+    states = {cls: record["extents"][f"{cls}.spad_addr"]["blocks"]["stride"] for cls in ("MVIN", "MVIN2", "MVIN3")}
+    assert {cls: s["state"]["value"] for cls, s in states.items()} == {"MVIN": 0, "MVIN2": 1, "MVIN3": 2}
+    assert len({(s["operand"], s["offset"], s["width"], s["code"]) for s in states.values()}) == 1
+    assert record["same_queue"]["load"]["by_class"]["MVIN3"] == "issue"
+
+
 # ---------------------------------------------------------------------- the pinned elaboration
 _HW = Path(
     "/work/merlin/tasks/phase1-harness-v2/merlin/out/artifacts/probes/gemmini/fire-aligned-30mhz/"

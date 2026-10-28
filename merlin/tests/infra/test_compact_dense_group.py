@@ -583,3 +583,23 @@ def test_repeated_single_assignments_decline_without_selected_owner_callbacks(tm
             selected_contracts=selected,
         )
     assert calls == []
+
+
+@pytest.mark.parametrize("width", [1, 2])
+def test_explicit_shared_block_choice_preserves_all_original_products(width):
+    model = fixture(width)
+    depth = model[0][0].tiles[1]
+    requested = tuple((1, depth, min(2, p.tiles[2])) for p in model[0])
+    chosen = schedule(model, block_tiles=requested)
+    assert chosen is not None
+    assert tuple((b.m, b.k, b.n) for b in chosen.choice.blocks) == requested
+    assert run(chosen.kernel, model) == model[0][0].m * model[0][0].k * width
+    chosen.revalidate()
+    # An explicit unsupported block cannot silently turn into the default.
+    assert schedule(model, block_tiles=((1, depth, 64), (1, depth, 64))) is None
+
+
+@pytest.mark.parametrize("blocks", [((1, 2, 2),), ((1, 2, True), (1, 2, 2)), ((1, 0, 2), (1, 2, 2))])
+def test_shared_block_selection_requires_exact_original_member_roster(blocks):
+    with pytest.raises(ValueError, match="one positive"):
+        schedule(fixture(), block_tiles=blocks)

@@ -124,6 +124,35 @@ class TestRepoProvenance:
         assert any((root / p).exists() for p in pins), pins
 
 
+class TestExportRevision:
+    def test_nested_export_keeps_its_revision_when_enclosing_head_moves(self, tiny_repo, monkeypatch):
+        root = tiny_repo / "out" / "framework"
+        root.mkdir(parents=True)
+        revision = prov.git_provenance(tiny_repo)["head"]
+        prov.write_source_record(root, revision)
+        monkeypatch.setattr(prov, "repo_root", lambda: root)
+        monkeypatch.setattr(prov, "declared_pins", lambda target: {})
+        (tiny_repo / "Consts.scala").write_text("unrelated edit\n")
+        _git(tiny_repo, "add", "Consts.scala")
+        _git(tiny_repo, "commit", "-q", "-m", "unrelated change")
+        assert prov.git_provenance(tiny_repo)["head"] != revision
+        assert prov.toolchain_shas()["merlin"] == revision
+        assert prov.repo_provenance()["head"] == revision
+
+    @pytest.mark.parametrize("record", [None, "broken JSON", '{}'])
+    def test_missing_or_broken_export_record_never_inherits_enclosing_head(self, tiny_repo, record):
+        from merlin.common.provenance import UNKNOWN
+
+        root = tiny_repo / "export"
+        root.mkdir()
+        if record is not None:
+            (root / prov.SOURCE_RECORD).write_text(record)
+        assert prov.source_revision(root) == UNKNOWN
+
+    def test_real_checkout_still_uses_its_own_head(self, tiny_repo):
+        assert prov.source_revision(tiny_repo) == prov.git_provenance(tiny_repo)["head"]
+
+
 class TestRecord:
     def test_never_raises_and_always_carries_its_own_hash(self):
         rec = prov.record("no_such_target_xyz")

@@ -4,11 +4,14 @@ A strict receipt pins thousands of toolchain, emitter and harness files, and one
 reverifies it dozens of times (engine selection, every pre/post-launch identity check). These tests
 pin what the reuse may and may not do: unchanged pins are not re-read, a duplicated path is read once,
 and every way of changing a pinned file is detected exactly as the frozen-input lease cache detects it.
+A lost lease only stops the cached digests being reused: the check is repeated from full reads, so a
+changed pin is reported from its current bytes, an unchanged one still verifies, and nothing raises.
 Real Linux read leases on the test's own temporary files; no simulator, compiler or target is involved.
 """
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import hashlib
 import json
@@ -149,7 +152,7 @@ def _rewrite_same_size_same_mtime(path: Path, data: bytes) -> None:
 
 
 @pytest.mark.parametrize("same_bytes", [False, True])
-def test_in_place_rewrite_with_restored_mtime_refuses(tmp_path, leases, reads, same_bytes):
+def test_in_place_rewrite_with_restored_mtime_is_re_read(tmp_path, leases, reads, same_bytes, capsys):
     doc = _receipt(tmp_path)
     _warm(doc, reads)
     target = Path(doc["inputs"][1]["path"])
@@ -157,15 +160,19 @@ def test_in_place_rewrite_with_restored_mtime_refuses(tmp_path, leases, reads, s
     swapped = original if same_bytes else bytes(reversed(original))
     assert same_bytes or swapped != original
     _rewrite_same_size_same_mtime(target, swapped)
-    with pytest.raises(RuntimeError, match="lease custody changed"):
-        GE._strict_receipt_error(doc)
-    # The refused process cache never turns into new hits; later checks are full reads again.
+    # The lost lease is a cache miss: the current bytes decide, never the cached digest.
     expected = None if same_bytes else f"v3 receipt input pin changed: {target}"
     assert GE._strict_receipt_error(doc) == expected
-    assert target in reads and len(reads) == len(set(reads))  # full reads, each pin at most once
+    assert target in reads
+    assert capsys.readouterr().err.count("no longer reusable") == 1
+    # The refused process cache never turns into new hits; later checks are full reads of it again.
+    reads.clear()
+    assert GE._strict_receipt_error(doc) == expected
+    assert target in reads and len(reads) == len(set(reads))  # each pin at most once per check
+    assert "no longer reusable" not in capsys.readouterr().err  # one line per custody change
 
 
-def test_truncation_refuses(tmp_path, leases, reads):
+def test_truncation_is_reported_as_a_changed_pin(tmp_path, leases, reads):
     doc = _receipt(tmp_path)
     _warm(doc, reads)
     target = Path(doc["artifacts"]["binary"]["path"])
@@ -173,21 +180,20 @@ def test_truncation_refuses(tmp_path, leases, reads):
         os.close(os.open(target, os.O_WRONLY | os.O_TRUNC | os.O_NONBLOCK))
     except OSError as error:  # The custodian may not have released yet; the break is already pending.
         assert error.errno in (errno.EAGAIN, errno.EWOULDBLOCK)
-    with pytest.raises(RuntimeError, match="lease custody changed"):
-        GE._strict_receipt_error(doc)
+    os.close(os.open(target, os.O_WRONLY | os.O_TRUNC))  # Blocks only until the custodian releases.
+    assert GE._strict_receipt_error(doc) == f"v3 receipt artifact pin changed: {target}"
 
 
 @pytest.mark.parametrize("same_bytes", [False, True])
-def test_path_replaced_by_another_inode_refuses(tmp_path, leases, reads, same_bytes):
+def test_path_replaced_by_another_inode_is_re_read(tmp_path, leases, reads, same_bytes):
     doc = _receipt(tmp_path)
     _warm(doc, reads)
     target = Path(doc["tools"]["cxx_compiler"]["path"])
     replacement = tmp_path / "replacement"
     replacement.write_bytes(target.read_bytes() if same_bytes else b"other compiler" * 70)
     os.replace(replacement, target)
-    with pytest.raises(RuntimeError, match="lease custody changed"):
-        GE._strict_receipt_error(doc)
     expected = None if same_bytes else f"v3 receipt tool pin changed: {target}"
+    assert GE._strict_receipt_error(doc) == expected
     assert GE._strict_receipt_error(doc) == expected
 
 
@@ -202,13 +208,14 @@ def test_symlink_replacement_keeps_the_original_refusal(tmp_path, leases, reads)
     assert GE._strict_receipt_error(doc) == f"v3 receipt input pin is absent, relative, or a symlink: {target}"
 
 
-def test_custodian_loss_refuses(tmp_path, leases, reads):
+def test_custodian_loss_falls_back_to_full_reads(tmp_path, leases, reads):
     doc = _receipt(tmp_path)
     _warm(doc, reads)
     L._CACHE.process.kill()
     L._CACHE.process.wait(timeout=3)
-    with pytest.raises(RuntimeError, match="lease custody changed"):
-        GE._strict_receipt_error(doc)
+    assert GE._strict_receipt_error(doc) is None
+    assert sorted(reads) == sorted(_unique_pins(doc))  # every pin re-read; no cached digest kept
+    reads.clear()
     assert GE._strict_receipt_error(doc) is None
     assert sorted(reads) == sorted(_unique_pins(doc))
 
@@ -245,8 +252,12 @@ def test_partial_capacity_rechecks_reused_pins_after_slower_reads(tmp_path, leas
         return full(path)
 
     monkeypatch.setattr(provenance, "file_digest", writer_during_slow_read)
-    with pytest.raises(RuntimeError, match="lease custody changed"):
-        GE._strict_receipt_error(doc)
+    # The reused pins' recheck fails, so the whole check is repeated from full reads of every pin.
+    reads.clear()
+    assert GE._strict_receipt_error(doc) is None
+    monkeypatch.setattr(provenance, "file_digest", full)
+    victim.write_bytes(b"changed while unwatched")
+    assert GE._strict_receipt_error(doc).endswith(f"pin changed: {victim}")
 
 
 def test_repeated_engine_resolution_reuses_pins(tmp_path, leases, reads):
@@ -263,3 +274,81 @@ def test_repeated_engine_resolution_reuses_pins(tmp_path, leases, reads):
     for _ in range(13):
         assert GE._validate_receipt("fixture_np", binary, doc["binary_sha256"], receipt)[0] == "bound"
     assert not set(reads) & _unique_pins(doc)
+
+
+class _FakeLeases:
+    """A lease cache that holds STALE digests for every pin except one and then loses custody."""
+
+    def __init__(self, stale: dict[Path, str], uncached: Path):
+        self.stale, self.uncached, self.required = stale, uncached, 0
+
+    def reuse(self, paths, *, required=False):
+        if required:
+            self.required += 1
+            raise L.CustodyChanged("original snapshot read lease custody changed")
+        return {Path(path): self.stale[Path(path)] for path in paths if Path(path) != self.uncached}
+
+    def digest(self, path, *, minimum_bytes=None):
+        return None  # the one uncached pin takes the ordinary full read
+
+
+def _fake_leases(monkeypatch, doc: dict, *, uncached: Path) -> _FakeLeases:
+    rows = [*doc["artifacts"].values(), *doc["tools"].values(), *doc["inputs"]]
+    fake = _FakeLeases({Path(row["path"]): row["sha256"] for row in rows}, uncached)
+    monkeypatch.setattr(L, "enabled", lambda: True)
+    monkeypatch.setattr(L, "reuse", fake.reuse)
+    monkeypatch.setattr(L, "digest", fake.digest)
+    monkeypatch.setattr(L, "verification", contextlib.nullcontext)
+    return fake
+
+
+def test_lost_custody_on_reused_pins_never_reports_the_cached_digest(tmp_path, monkeypatch, reads, capsys):
+    """The cached digests are the receipt's own (stale); the file behind one of them changed."""
+    doc = _receipt(tmp_path)
+    changed = Path(doc["inputs"][0]["path"])
+    changed.write_bytes(b"// edited after the receipt\n")
+    fake = _fake_leases(monkeypatch, doc, uncached=Path(doc["artifacts"]["binary"]["path"]))
+    assert GE._strict_receipt_error(doc, receipt=tmp_path / GE.RECEIPT_NAME) == (
+        f"v3 receipt input pin changed: {changed}"
+    )
+    assert fake.required == 1 and changed in reads  # re-read, not answered from the stale cache
+    err = capsys.readouterr().err
+    assert err.count("no longer reusable") == 1 and str(tmp_path / GE.RECEIPT_NAME) in err
+
+
+def test_lost_custody_on_unchanged_pins_still_binds(tmp_path, monkeypatch, reads):
+    doc = _receipt(tmp_path)
+    receipt = tmp_path / GE.RECEIPT_NAME
+    receipt.write_text(json.dumps(doc), encoding="utf-8")
+    binary = Path(doc["artifacts"]["binary"]["path"])
+    _fake_leases(monkeypatch, doc, uncached=binary)
+    status, _, block = GE._validate_receipt("fixture_np", binary, doc["binary_sha256"], receipt)
+    assert status == "bound" and block["binary_sha256"] == doc["binary_sha256"]
+    assert _unique_pins(doc) <= set(reads)  # every pin re-measured by a full read
+
+
+def test_lost_custody_on_a_changed_pin_refuses_the_engine_without_raising(tmp_path, monkeypatch, reads):
+    doc = _receipt(tmp_path)
+    receipt = tmp_path / GE.RECEIPT_NAME
+    receipt.write_text(json.dumps(doc), encoding="utf-8")
+    binary = Path(doc["artifacts"]["binary"]["path"])
+    Path(doc["artifacts"]["firrtl"]["path"]).write_bytes(b"circuit Other :\n")
+    _fake_leases(monkeypatch, doc, uncached=binary)
+    status, reason, block = GE._validate_receipt("fixture_np", binary, doc["binary_sha256"], receipt)
+    assert status == "invalid" and block is None and "artifact pin changed" in reason
+
+
+def test_lost_custody_of_the_engine_bytes_is_a_full_read(tmp_path, monkeypatch, reads, capsys):
+    path = tmp_path / "emulator"
+    path.write_bytes(b"engine bytes")
+
+    @contextlib.contextmanager
+    def losing_scope():
+        yield
+        raise L.CustodyChanged("original snapshot read lease custody changed")
+
+    monkeypatch.setattr(L, "enabled", lambda: True)
+    monkeypatch.setattr(L, "digest", lambda *_a, **_k: "0" * 64)  # a stale cached digest
+    monkeypatch.setattr(L, "verification", losing_scope)
+    assert GE._digest(path) == hashlib.sha256(b"engine bytes").hexdigest()
+    assert reads == [path] and "no longer reusable" in capsys.readouterr().err

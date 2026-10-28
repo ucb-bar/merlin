@@ -66,7 +66,8 @@ def test_empty_notes_prompts_creation(tmp_path):
     run_dir, ws = tmp_path / "run", tmp_path / "ws"
     _write_round(run_dir, 0, _verdict(0, {"schema": 1}, []))
     brief = RB.build(run_dir, ws, 0)
-    assert "iteration_notes.md is EMPTY" in brief
+    assert "ITERATION_NOTES.md is EMPTY" in brief
+    assert "outside submission/" in brief
 
     # never leaks a golden value: the brief only ever contains counts/planes, never expected outputs
     assert "golden" not in brief.lower() or "no goldens" in brief.lower()
@@ -94,7 +95,7 @@ def test_prelaunch_refresh_delivers_late_erratum_and_preserves_resume_note(tmp_p
     assert first.startswith("> ## RESUME")
     assert first.count("> ## RESUME") == 1
     assert first.count(erratum) == 1
-    assert first.index(erratum) < first.index("Your iteration_notes.md")
+    assert first.index(erratum) < first.index("Your ITERATION_NOTES.md")
     assert "old advice: use logical packed stride" in first
 
     # Relaunch retries can call the refresh repeatedly without accumulating either injected section.
@@ -106,13 +107,13 @@ def test_fresh_prelaunch_refresh_builds_brief_with_erratum_before_notes(tmp_path
     run_dir, ws = tmp_path / "run", tmp_path / "ws"
     run_dir.mkdir(parents=True)
     (run_dir / "ERRATA.md").write_text("## RETRACTION — re-derive\n", encoding="utf-8")
-    notes = ws / "submission" / "docs" / "iteration_notes.md"
-    notes.parent.mkdir(parents=True)
+    notes = ws / "ITERATION_NOTES.md"
+    notes.parent.mkdir(parents=True, exist_ok=True)
     notes.write_text("prior finding\n", encoding="utf-8")
 
     RB.refresh_before_launch(run_dir, ws, 0)
     brief = (ws / "qa" / "round_brief.md").read_text(encoding="utf-8")
-    assert brief.index("## RETRACTION") < brief.index("Your iteration_notes.md")
+    assert brief.index("## RETRACTION") < brief.index("Your ITERATION_NOTES.md")
 
 
 def test_every_qa_loop_agent_launch_refreshes_the_brief_first():
@@ -160,3 +161,25 @@ def test_completed_round_publishes_through_canonical_brief_owner():
             assert [ast.unparse(arg) for arg in statement.value.args] == ["run_dir", "ws", "rnd"]
             publications.append(statement)
     assert len(publications) == 1
+
+
+def test_root_notes_win_and_editing_them_never_changes_the_graded_source(tmp_path):
+    """Notes live at the workspace root: echoed by the brief, preferred over the legacy file, and outside
+    the submission digest, so a note edit never turns a finished grade into an older version's result."""
+    from merlin_experiments.phase1.feedback.promotion import submission_digests
+    from merlin_experiments.phase1.iteration_notes import NOTES_NAME, existing_notes, read_notes
+
+    run, ws = tmp_path / "run", tmp_path / "ws"
+    _write_round(run, 0, _verdict(0, {"schema": 1}, []))
+    legacy = ws / "submission" / "docs" / "iteration_notes.md"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text("legacy finding\n")
+    assert existing_notes(ws) == legacy and read_notes(ws) == "legacy finding\n"
+    (ws / "submission" / "kernel.py").write_text("x = 1\n")
+
+    before = submission_digests(ws)[0]
+    (ws / NOTES_NAME).write_text("root finding\n")
+    assert existing_notes(ws) == ws / NOTES_NAME
+    assert "root finding" in RB.build(run, ws, 0)
+    (ws / NOTES_NAME).write_text("root finding\nsecond edit\n")
+    assert submission_digests(ws)[0] == before

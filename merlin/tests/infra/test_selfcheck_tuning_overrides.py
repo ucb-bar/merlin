@@ -34,7 +34,11 @@ tree = pathlib.Path(a.submission)
 from merlin.common.cpu_pool import PRIORITY_ENV
 pathlib.Path(a.out).write_text(json.dumps({
     "all_pass": True,
-    "per_capsule": [{"capsule": "c1", "pass": True}],
+    "per_capsule": [{"capsule": "c1", "pass": True,
+        "performance": {"estimated_whole_soc_cycles": 75 if json.loads((tree / "tuning.json").read_text())["ready_readout"] else 100,
+                        "model_sha256": "model-one", "timing_mode": "untuned", "timing_epoch": 0,
+                        "scope_sha256": "case-one", "comparison_domain_sha256": "domain-one",
+                        "elf_sha256": "stand-in-elf-" + str(json.loads((tree / "tuning.json").read_text())["ready_readout"])}}],
     "performance_brief": {"largest_headroom": [{"test_case": "c1"}]},
     "graded_tree": sorted(f"{x.relative_to(tree)}={x.read_text()}" for x in tree.rglob("*") if x.is_file()),
     "promotion_env": sorted(k for k in os.environ if k.startswith("MERLIN_SELFCHECK_PROMOTION_")),
@@ -120,20 +124,51 @@ def test_a_knob_override_grades_a_private_copy_and_never_promotes(tmp_path, monk
         assert seen["frozen"] == []
 
 
-def test_a_submission_response_carries_only_experiments_of_its_own_digest(tmp_path, monkeypatch):
+def test_a_submission_response_carries_experiments_whose_baseline_still_describes_the_case(tmp_path, monkeypatch):
     ws = _workspace(tmp_path)
     ch = ws / ".qa_channel"
     official = broker._submission_digest(ws / "submission")
-    record = {"test_case": "c1", "source_sha256": official, "delta_pct": -12.5, "mechanism": "readout"}
+    record = {"test_case": "c1", "source_sha256": official, "delta_pct": -12.5, "mechanism": "readout",
+              "baseline_status": "current", "baseline": {"sha256": official, "age_s": 60, "status": "current"},
+              "baseline_model": {"model_sha256": "model-one", "timing_mode": "untuned", "timing_epoch": 0,
+                                 "scope_sha256": "case-one", "comparison_domain_sha256": "domain-one"},
+              "candidate": {"label": "variants/alt"}}
     (ws / "qa").mkdir()
     (ws / idle_tuning.LEDGER).write_text(json.dumps({"source_sha256": official, "experiments": [record]}))
     with _broker(tmp_path, ws, monkeypatch):
         rid = idle_performance.submit(ch, ["c1"], official, origin="author", prefix="3_1_", timeout=30,
                                       extra={"suite": "core", "sim": None})
         brief = _wait(ch, rid)["performance_brief"]
-        assert brief["idle_tuning"]["experiments"] == [record] and brief["idle_tuning"]["advisory_only"] is True
+        (shown,) = brief["idle_tuning"]["experiments"]
+        assert shown["delta_pct"] == -12.5 and shown["candidate"] == "variants/alt" and "current" in shown["baseline"]
+        assert brief["idle_tuning"]["advisory_only"] is True
         assert brief["largest_headroom"][0]["idle_tuning_experiments"][0]["delta_pct"] == -12.5
-        (ws / idle_tuning.LEDGER).write_text(json.dumps({"source_sha256": "f" * 64, "experiments": [record]}))
+        # A result whose baseline no longer describes the case (its emission changed) stays in the ledger only.
+        stale = {**record, "baseline_status": "superseded"}
+        (ws / idle_tuning.LEDGER).write_text(json.dumps({"source_sha256": "f" * 64, "experiments": [stale]}))
         rid = idle_performance.submit(ch, ["c1"], official, origin="author", prefix="3_2_", timeout=30,
                                       extra={"suite": "core", "sim": None})
         assert _wait(ch, rid)["performance_brief"]["idle_tuning"]["experiments"] == []
+
+
+def test_standalone_knob_sweep_uses_real_broker_private_snapshots(tmp_path, monkeypatch, capsys):
+    import importlib.util
+
+    from merlin_experiments.phase1.feedback import public_scalability
+    from merlin_experiments.phase1.tools import selfcheck as client
+
+    ws = _workspace(tmp_path)
+    deployed = ws / "agent_selfcheck.py"
+    deployed.write_bytes(Path(client.__file__).read_bytes())
+    spec = importlib.util.spec_from_file_location("sweep_client", deployed)
+    shim = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shim)
+    monkeypatch.setattr(public_scalability, "selected", lambda context: object())
+    with _broker(tmp_path, ws, monkeypatch) as seen:
+        rc = shim.main(["--sweep", "--knob", "ready_readout=true", "--capsules", "c1", "--wait-budget", "15"])
+    report = json.loads(capsys.readouterr().out)
+    assert rc == 0 and report["status"] == "complete"
+    assert report["ranked_candidates"][0]["geomean_ratio"] == 0.75
+    assert report["comparisons"][0]["delta_pct"] == -25
+    assert (ws / "submission" / "tuning.json").read_text() == SETTINGS
+    assert seen["promoted"] == [] and seen["frozen"] == []

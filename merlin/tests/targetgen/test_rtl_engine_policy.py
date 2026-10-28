@@ -13,6 +13,7 @@ import multiprocessing
 import os
 import select
 import signal
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -103,6 +104,11 @@ def _held_by_processes(root, count):
 
 def _stub_native_count(monkeypatch, count, matchable=()):
     monkeypatch.setattr(P, "_native_gsim_census", lambda **_kwargs: P._NativeCensus(count, matchable))
+
+
+def _name_slot_owner(root, index, pid, starttime):
+    """Rewrite a held slot's owner line to match a fixture process (the holder clears it on release)."""
+    (root / f"slot_{index}.lock").write_text(f"{pid} {starttime}\n")
 
 
 def _fake_proc_member(proc, pid, ppid, starttime, argv):
@@ -346,11 +352,12 @@ def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_pat
     with _held_by_processes(root, 2):
         slots = P._locked_slot_census(root, own_index=4)
         assert slots.count == 3 and len(slots.held) == 2
-        owners = P._lock_owners(Path("/proc/locks").read_bytes(), slots.held)
+        owners = {slot: pid for slot, (pid, _) in P._slot_owners(root, slots.held).items()}
         assert len(owners) == 2 and len(set(owners.values())) == 2
         children = []
         for number, (slot, pid) in enumerate(owners.items()):
             owner = _fake_proc_member(proc, pid, 1, 100 + number, [b"/neutral/owner"])
+            _name_slot_owner(root, slot.index, pid, 100 + number)
             (owner / "fd").mkdir()
             (owner / "fd" / "7").symlink_to(root / f"slot_{slot.index}.lock")
             child = _fake_proc_member(
@@ -428,16 +435,18 @@ def test_kernel_owner_fd_and_direct_children_close_cross_process_overlap(tmp_pat
         assert P._admitted_load(root, own_index=4, proc_root=proc) == 6
 
 
-def test_ambiguous_kernel_lock_owner_cannot_discount(tmp_path):
-    slot = P._HeldSlot(0, os.stat(tmp_path).st_dev, 1234)
-    key = f"{os.major(slot.device):02x}:{os.minor(slot.device):02x}:{slot.inode}"
-    line = f"1: FLOCK ADVISORY WRITE 123 {key} 0 EOF\n".encode()
-    assert P._lock_owners(line, (slot,)) == {slot: 123}
-    assert P._lock_owners(line + line, (slot,)) == {}
-    other = P._HeldSlot(1, slot.device, 5678)
-    other_key = f"{os.major(other.device):02x}:{os.minor(other.device):02x}:{other.inode}"
-    other_line = f"2: FLOCK ADVISORY WRITE 456 {other_key} 0 EOF\n".encode()
-    assert P._lock_owners(line + line + other_line, (slot, other)) == {other: 456}
+def test_only_a_well_formed_owner_line_on_the_held_inode_names_a_holder(tmp_path):
+    held = []
+    for index, line in enumerate((b"123 456\n", b"", b"123\n", b"-1 4\n", b"12 34 56\n", b"x 1\n")):
+        path = tmp_path / f"slot_{index}.lock"
+        path.write_bytes(line)
+        info = path.stat()
+        held.append(P._HeldSlot(index, info.st_dev, info.st_ino))
+    assert P._slot_owners(tmp_path, tuple(held)) == {held[0]: (123, 456)}
+    replaced = P._HeldSlot(0, held[0].device, held[0].inode + 10_000_000)
+    assert P._slot_owners(tmp_path, (replaced,)) == {}
+    # Hardlinked slot names have no independent ownership proof.
+    assert P._slot_owners(tmp_path, (held[0], P._HeldSlot(1, held[0].device, held[0].inode))) == {}
 
 
 def test_one_owner_of_multiple_slots_has_no_unproven_child_pairing(tmp_path, monkeypatch):
@@ -449,7 +458,7 @@ def test_one_owner_of_multiple_slots_has_no_unproven_child_pairing(tmp_path, mon
         P._ProcessIdentity(201, 100, 20, (b"/native", b"+loadmem=/a", b"+max-cycles=1")),
         P._ProcessIdentity(202, 100, 21, (b"/native", b"+loadmem=/b", b"+max-cycles=1")),
     )
-    monkeypatch.setattr(P, "_lock_owners", lambda *_args: {slot: 100 for slot in slots.held})
+    monkeypatch.setattr(P, "_slot_owners", lambda *_args: {slot: (100, 10) for slot in slots.held})
     lock_file = tmp_path / "locks"
     lock_file.write_bytes(b"")
     assert P._verified_native_slot_overlap(tmp_path, slots, P._NativeCensus(2, children), locks_path=lock_file) == 0
@@ -1070,7 +1079,8 @@ def test_threaded_owner_pairs_only_stable_distinct_native_cpu_slots(tmp_path, mo
     identities = tuple(P._fresh_identity(child, uid=os.getuid(), native=True) for child in children)
     assert all(identity is not None for identity in identities)
     natives = P._NativeCensus(len(children), identities)
-    monkeypatch.setattr(P, "_lock_owners", lambda *_args: {slot: 100 for slot in held})
+    monkeypatch.setattr(P, "_slot_owners", lambda *_args: {slot: (100, 10) for slot in held})
+    monkeypatch.setattr(P, "_slot_still_held", lambda *_args: True)
     if fault == "changed_cpu":
         original = P._native_cpu_matches
         reads = 0
@@ -1092,3 +1102,75 @@ def test_threaded_owner_pairs_only_stable_distinct_native_cpu_slots(tmp_path, mo
         monkeypatch.setattr(P, "_native_gsim_census", lambda **_: natives)
         monkeypatch.setattr(P, "_locked_slot_census", lambda *_, **__: slots)
         assert P._admitted_load(root, own_index=2, proc_root=proc, locks_path=lock_file) == 5
+
+
+_OPENED: list[str] = []
+_WATCHED: set[str] = set()
+
+
+def _watch_opens(event, args):
+    if event == "open" and _WATCHED and args and not isinstance(args[0], int):
+        name = os.path.normpath(os.fsdecode(args[0]))
+        if name in _WATCHED:
+            _OPENED.append(name)
+
+
+sys.addaudithook(_watch_opens)
+
+
+def test_admission_never_opens_a_lock_table_and_keeps_its_decisions(tmp_path):
+    # ~10^5 read leases made every read of the kernel lock table stall each lease operation on
+    # the host. Admission decides from the holders' own lines, whatever lock table it is handed.
+    table = tmp_path / "locks"
+    with table.open("w") as stream:
+        for number in range(200_000):
+            stream.write(f"{number + 1}: LEASE  ACTIVE    READ  4242 08:01:{number + 10} 0 EOF\n")
+    _OPENED.clear()
+    _WATCHED.add(os.path.normpath(str(table)))
+    root, proc = tmp_path / "slots", tmp_path / "proc"
+    proc.mkdir()
+    image = [b"/neutral/native", b"+loadmem=/neutral/program", b"+max-cycles=100"]
+    try:
+        with _held_by_processes(root, 2):
+            slots = P._locked_slot_census(root, own_index=4)
+            owners = {slot: pid for slot, (pid, _) in P._slot_owners(root, slots.held).items()}
+            assert len(owners) == 2  # Each holder named itself on acquiring its slot.
+            for number, (slot, pid) in enumerate(owners.items()):
+                owner = _fake_proc_member(proc, pid, 1, 100 + number, [b"/neutral/owner"])
+                (owner / "fd").mkdir()
+                (owner / "fd" / "7").symlink_to(root / f"slot_{slot.index}.lock")
+                _name_slot_owner(root, slot.index, pid, 100 + number)
+                _fake_proc_member(proc, pid + 1_000_000, pid, 200 + number, image)
+            for number in range(2):
+                _fake_proc_member(proc, 4_000_000 + number, 42, 300 + number, image)
+            census = P._native_gsim_census(proc_root=proc)
+            with P._admission_mutex(root, None):
+                # 4 natives + 2 held + pending - 2 proven owner/child pairs.
+                assert P._admitted_load(root, own_index=4, proc_root=proc, locks_path=table) == 5
+                assert P._verified_native_slot_overlap(root, slots, census, proc_root=proc, locks_path=table) == 2
+                # A line naming another birth of the same pid is not that holder: no discount.
+                first = slots.held[0]
+                _name_slot_owner(root, first.index, owners[first], 999)
+                assert P._admitted_load(root, own_index=4, proc_root=proc, locks_path=table) == 6
+                # No line at all (holder still writing, or a legacy holder): no discount.
+                (root / f"slot_{first.index}.lock").write_bytes(b"")
+                assert P._admitted_load(root, own_index=4, proc_root=proc, locks_path=table) == 6
+        # Once released, a stale line that still names a live owner earns no discount.
+        _name_slot_owner(root, first.index, owners[first], 100)
+        assert P._verified_native_slot_overlap(root, slots, census, proc_root=proc, locks_path=table) == 0
+    finally:
+        _WATCHED.clear()
+    assert _OPENED == []
+
+
+def test_a_holder_names_itself_while_held_and_clears_the_line_before_release(tmp_path, monkeypatch):
+    _stub_native_count(monkeypatch, 0)
+    root = tmp_path / "slots"
+    with P.gsim_runtime_slot(wait_timeout_s=0, slot_root=root):
+        named = [path for path in sorted(root.glob("slot_*.lock")) if path.read_bytes()]
+        assert [path.read_bytes() for path in named] == [f"{os.getpid()} {P._own_starttime()}\n".encode()]
+        info = named[0].stat()
+        slot = P._HeldSlot(int(named[0].stem.removeprefix("slot_")), info.st_dev, info.st_ino)
+        assert P._slot_still_held(root, slot)
+    assert all(not path.read_bytes() for path in root.glob("slot_*.lock"))
+    assert not P._slot_still_held(root, slot)

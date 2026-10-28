@@ -17,6 +17,64 @@ from test_shared_input_schedule import fixture as shared_fixture, execute
 OPTIONS = dict(capability_contract={}, numerical_policy_sha256='a' * 64)
 
 
+@pytest.mark.parametrize('width,shape', [(8, (3, 5)), (16, (3, 5)), (32, (7, 2))])
+def test_fusion_materialization_counts_payload_and_retains_external_observers(width, shape):
+    module, operations = source_program(width=width, shape=shape)
+    before = ir_digest(module)
+    report = F.discover(module, **OPTIONS)
+    full = next(row for row in report['candidates'] if row['route'] == 'multioutput')
+    payload = shape[0] * shape[1] * width // 8
+    assert full['materialization']['potential_saved_logical_bytes'] == payload * 3
+    frontier = report['materialization_frontier']
+    assert frontier['selected_candidate_indices'] == [full['candidate_index']]
+    assert frontier['potential_saved_logical_bytes'] == payload * 3
+    assert not frontier['rewrite_authority'] and not frontier['performance_ranking']
+    assert ir_digest(module) == before
+    # Returning the original producer makes its materialization externally
+    # observable. It must not be treated as an eliminated private tensor.
+    ret = next(op for op in module.walk() if isinstance(op, func.ReturnOp))
+    ret.operands = [*ret.operands, operations[0].results[0]]
+    ret.parent_op().update_function_type()
+    observed = F.discover(module, **OPTIONS)
+    assert all(row['materialization']['potential_saved_logical_bytes'] == 0 for row in observed['candidates'])
+    assert observed['materialization_frontier']['selected_candidate_indices'] == []
+
+
+def test_materialization_conflicts_compare_combinations_and_bound_large_search():
+    def row(index, operations, benefit):
+        return dict(candidate_index=index, operation_ordinals=operations, status='unknown',
+                    materialization=dict(potential_saved_logical_bytes=benefit))
+    report = dict(schema='merlin.fusion_workflow.v1', binding_sha256='a' * 64,
+                  candidates=[row(0, [1, 2], 100), row(1, [1], 60), row(2, [2], 60), row(3, [3], 20)])
+    selected = F.plan_materialization_frontier(report)
+    assert selected['selected_candidate_indices'] == [1, 2, 3]
+    assert selected['potential_saved_logical_bytes'] == 140
+    bounded = F.plan_materialization_frontier(report, exact_cluster_limit=1)
+    assert bounded['selected_candidate_indices'] == [0, 3]
+    assert 'greedy' in bounded['conflict_cluster_methods']
+    unknown = row(4, [4], None)
+    report['candidates'].append(unknown)
+    extended = F.plan_materialization_frontier(report)
+    assert extended['selected_candidate_indices'] == [1, 2, 3]
+    assert extended['excluded_from_byte_selection'][-1]['candidate_index'] == 4
+    assert extended['evaluation_order'][-1] == 4  # Retained for other benefits/native analysis.
+
+
+def test_materialization_selected_fanout_reaches_actual_emission(tmp_path):
+    from test_multioutput_fusion import model, execute_actual_bytes
+
+    module, operations, selection = model(tmp_path, shape=(3, 5))
+    report = F.discover(module, **OPTIONS)
+    indices = report['materialization_frontier']['selected_candidate_indices']
+    row = next(row for row in report['candidates'] if row['candidate_index'] in indices)
+    emitted = F.realize_candidate(module, row, **selection, **OPTIONS)
+    assert emitted.receipt['status'] == 'applied'
+    # Replay the actual emitted bytes with an independent scalar byte machine,
+    # including saturation/overflow and output guards. This is a neutral target
+    # fixture, not Gemmini hardware qualification.
+    execute_actual_bytes(emitted.artifact, 16, False, tmp_path)
+
+
 def test_pagination_is_lossless_bound_and_nonfatal():
     module, _ = source_program()
     before = ir_digest(module)

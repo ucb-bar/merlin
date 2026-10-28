@@ -230,7 +230,7 @@ def selected_files(tmp_path, monkeypatch):
         C.ET,
         "trace_invocation",
         lambda target, path: (
-            [str(tool), "--extlib=" + str(extension), "--extension=synthetic", "-l", "--log-commits", str(path)],
+            [str(tool), "--extlib=" + str(extension), "--extension=synthetic", "--log-commits", str(path)],
             {"LD_LIBRARY_PATH": str(tmp_path), "PRIVATE_TOKEN": "withheld"},
         ),
     )
@@ -286,7 +286,7 @@ def test_original_default_extension_selection_needs_no_new_contract_metadata(sel
         C.ET,
         "trace_invocation",
         lambda target, path: (
-            [str(f.tool), *flags, "-l", "--log-commits", str(path)],
+            [str(f.tool), *flags, "--log-commits", str(path)],
             {"LD_LIBRARY_PATH": str(f.tmp_path)},
         ),
     )

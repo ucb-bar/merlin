@@ -25,6 +25,7 @@ import pytest
 from merlin_experiments.phase2 import measurement_support as MS
 
 from merlin.common.paths import merlin_dir, module_source_path
+from merlin.perf import command_buffer_store as STORE
 from merlin.perf import work_volume as WV
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen import provenance as PROV
@@ -147,11 +148,19 @@ def test_a_countable_member_reports_the_counter_s_own_total(tmp_path, monkeypatc
 
 
 def test_the_receipt_is_the_bytes_the_total_was_counted_from(tmp_path, monkeypatch):
-    """The reader re-digests the embedded buffer; both digests must be the one the counter used."""
+    """The reader re-digests the stored buffer; both digests must be the one the counter used.
+
+    The raw buffer is stored once beside the result (``merlin.perf.command_buffer_store``), never
+    embedded in it: an expanded buffer carries every canonical input tensor."""
     cb = _countable_buffer()
     grade = _grade(tmp_path, monkeypatch, cb)
     artifact, work = grade["command_buffer_artifact"], grade["work_volume"]
-    embedded = artifact["command_buffer"]
+    assert "command_buffer" not in artifact
+    reference = artifact[STORE.REFERENCE_KEY]
+    stored = Path(reference["path"])
+    assert (stored.parent / "capsule_result.json").is_file(), "the buffer is not beside its result"
+    assert stored.is_relative_to(tmp_path) and stored.name == reference["name"]
+    embedded = STORE.load_command_buffer(artifact)
     assert MS.canonical_sha256(embedded) == work["artifact_sha256"]
     assert artifact["artifact_sha256"] == work["artifact_sha256"]
     assert WV.work_from_command_buffer(embedded).exact_macs == work["exact_macs"]
@@ -199,7 +208,7 @@ def test_an_uncountable_member_produces_an_explicit_unknown_not_a_zero(tmp_path,
     assert any("SOME_UNMODELLED_COMPUTE" in reason for reason in work["refusals"]), work["refusals"]
     # the key is still THERE: an absent key reads as "no compute axis applies", which is a lie
     assert "command_buffer_artifact" in grade
-    assert grade["command_buffer_artifact"]["command_buffer"] is not None
+    assert STORE.has_command_buffer(grade["command_buffer_artifact"])
 
 
 def test_the_reader_refuses_a_compute_axis_for_an_uncountable_member(tmp_path, monkeypatch):
@@ -236,6 +245,11 @@ def test_a_run_that_produced_no_buffer_still_says_so(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------------------------
 # NON-VACUITY: the reader's acceptance above is not something it does for any input at all
 # ---------------------------------------------------------------------------------------------
+def _change_stored_buffer(row):
+    path = Path(row["command_buffer_artifact"][STORE.REFERENCE_KEY]["path"])
+    path.write_bytes(path.read_bytes().replace(b'"commands":[', b'"commands": [', 1))
+
+
 @pytest.mark.parametrize(
     "corrupt",
     [
@@ -247,9 +261,8 @@ def test_a_run_that_produced_no_buffer_still_says_so(tmp_path, monkeypatch):
             lambda row: row["command_buffer_artifact"].__setitem__("artifact_sha256", "0" * 64),
             id="raw_buffer_digest_disagrees",
         ),
-        pytest.param(
-            lambda row: row["command_buffer_artifact"].__setitem__("command_buffer", None), id="raw_buffer_withheld"
-        ),
+        pytest.param(lambda row: row["command_buffer_artifact"].pop(STORE.REFERENCE_KEY), id="raw_buffer_withheld"),
+        pytest.param(_change_stored_buffer, id="stored_raw_buffer_changed"),
         pytest.param(
             lambda row: row["work_volume"].__setitem__("exact_macs", _M * _K * _N + 1),
             id="total_disagrees_with_the_program",

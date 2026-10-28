@@ -59,6 +59,9 @@ def neutral_validate_original():
 
 @pytest.fixture
 def issued(synthetic_build, tmp_path, monkeypatch):  # noqa: F811
+    # Keep ordinary lowering's imported tool resolvers independent of the
+    # diagnostic device runner below, including when this file runs alone.
+    from merlin.llvmlower import lower  # noqa: F401
     build, _, _, _, _, _ = synthetic_build
     monkeypatch.setattr(D, "emit_translation_unit", emit_translation_unit)
     monkeypatch.setattr(D, "kernel_abi_for", lambda _: D.KernelAbi("kernel", version=1))
@@ -125,7 +128,7 @@ def test_repeated_role_binding_deduplicates_same_file_and_rejects_conflicting_id
 
 @pytest.mark.parametrize(
     "options",
-    [{"granularity": "group"}, {"catalog_manifest": "catalog.json"}, {"post_offload_transform": lambda *_: None}],
+    [{"granularity": "other"}, {"catalog_manifest": "catalog.json"}, {"post_offload_transform": lambda *_: None}],
 )
 def test_unsupported_original_abi_route_refuses_before_emission(tmp_path, options):
     route = B.DeviceRouting("neutral", tmp_path, "i8", "i32", descriptor_results=True, **options)

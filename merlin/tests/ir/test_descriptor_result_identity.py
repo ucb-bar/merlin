@@ -97,6 +97,43 @@ def test_missing_borrowed_effects_retains_original_call_without_new_ownership():
     assert text(module) == before
 
 
+@pytest.mark.parametrize("rank", [0, 1, 4])
+def test_logical_group_uses_exact_mixed_ranks_arity_output_position_and_dense_view(rank):
+    from xdsl.dialects.builtin import NoneAttr, StridedLayoutAttr
+    from merlin.llvmlower.descriptor_result_identity import argument_buffer_types
+
+    varied = "tensor<" + "2x" * rank + "i8>"
+    program = f'''module {{
+      func.func private @writer(%a:{varied} {{bufferization.access="read"}},
+       %out:tensor<3x4xi32> {{bufferization.access="write"}},
+       %w:tensor<4x5xi8> {{bufferization.access="read",bufferization.buffer_layout=strided<[5,1],offset:?>}},
+       %b:tensor<4xi32> {{bufferization.access="read"}})->tensor<3x4xi32>
+      func.func @forward(%a:{varied},%w:tensor<4x5xi8>,%b:tensor<4xi32>)->tensor<3x4xi32> {{
+       %e=tensor.empty():tensor<3x4xi32>
+       %r=func.call @writer(%a,%e,%w,%b):({varied},tensor<3x4xi32>,tensor<4x5xi8>,tensor<4xi32>)->tensor<3x4xi32>
+       return %r:tensor<3x4xi32>
+      }}
+    }}'''
+    module = parse_mlir_text(program)
+    declaration = module.body.block.first_op
+    identity = DescriptorResultIdentity("writer", "borrowed", "identity", 1,
+        tuple(declaration.function_type.inputs), ("read", "write", "read", "read"),
+        BorrowedBufferEffects("independent synchronous neutral group", True, True, True),
+        (NoneAttr(), NoneAttr(), StridedLayoutAttr([5, 1], None), NoneAttr()))
+    expected = argument_buffer_types(identity)
+    assert rewrite_descriptor_result_identities(module, (identity,))[0]["calls"] == 1
+    module.verify()
+    external = next(op for op in module.body.block.ops if op.sym_name.data == "borrowed")
+    assert tuple(external.function_type.inputs) == expected
+    for changed in (replace(identity, result_argument=2),
+                    replace(identity, argument_layouts=(NoneAttr(),) * 4),
+                    replace(identity, argument_access=("read", "write", "read-write", "read"))):
+        fresh = parse_mlir_text(program)
+        with pytest.raises(ValueError):
+            rewrite_descriptor_result_identities(fresh, (changed,))
+        assert text(fresh) == text(parse_mlir_text(program))
+
+
 @pytest.mark.parametrize("field", ["no_retained_aliases", "no_releases", "complete_before_return"])
 def test_false_original_effect_premise_refuses_before_any_source_edit(field):
     module = parse_mlir_text(source())

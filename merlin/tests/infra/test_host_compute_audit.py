@@ -270,6 +270,18 @@ def test_pointer_only_target_commands_are_orchestration_but_unknown_asm_is_not(m
     assert accepted["arithmetic_basis"] == "pointer_only_target_commands_v1"
     refused = judge(text.replace(".insn r 0x7b", ".insn r 0x0b"))
     assert refused["verdict"] == HA.HOST_COMPUTE
+    # A command with literal x0 sources (a flush) takes no operands and is still orchestration.
+    flush = '"llvm.inline_asm"() <{asm_string = ".insn r 0x7b, 0x3, 0x2, x0, x0, x0", constraints = "~{memory}", has_side_effects}> : () -> ()\n        llvm.return'
+    assert judge(text.replace("llvm.return", flush, 1))["verdict"] == HA.CLEAN
+    # A source register that is neither x0 nor one of the asm's operands is refused.
+    stray = flush.replace("x0, x0, x0", "x0, x5, x0")
+    assert judge(text.replace("llvm.return", stray, 1))["verdict"] == HA.HOST_COMPUTE
+    # An unused stack slot is not host computation; a store into it still is.
+    scratch = "%count = llvm.mlir.constant(4 : i32) : i32\n        %slot = llvm.alloca %count x i32 : (i32) -> !llvm.ptr\n        "
+    with_slot = text.replace("%base = llvm.ptrtoint", scratch + "%base = llvm.ptrtoint")
+    assert judge(with_slot)["verdict"] == HA.CLEAN
+    stored = with_slot.replace("llvm.return", "llvm.store %count, %slot : i32, !llvm.ptr\n        llvm.return")
+    assert judge(stored)["verdict"] == HA.HOST_COMPUTE
 
 
 def _graded_run(tmp_path, name: str, artifact: str, buffer: dict):
@@ -331,6 +343,43 @@ def test_a_pass_that_does_the_units_work_on_the_host_fails_the_grade(tmp_path, m
     again = [{"capsule": "does_it_on_the_host", "kind": "layer", "status": "pass"}]
     assert OC.apply_host_compute_veto(again, tmp_path) and again[0]["status"] == "pass"
     assert again[0]["host_compute"]["veto_suppressed_by"] == OC.VETO_ENV
+
+
+def test_the_veto_is_evaluated_by_a_fresh_child_with_identical_results(tmp_path, monkeypatch) -> None:
+    """A long-lived grader must apply the audit on disk, not the one it imported at launch."""
+    import json
+
+    from merlin.targetgen import host_compute_veto_process
+    from merlin.targetgen import offload_census as OC
+
+    buffer = {
+        "tensors": {"acc": {"shape": [32, 32], "dtype": "i32"}, "y": {"shape": [32, 32], "dtype": "i8"}},
+        "kernel_abi": {"kind": "whole_program", "args": [], "outputs": ["y"]},
+        "commands": [{"opcode": "COMMIT", "operands": {"src": "acc", "dst": "y"}}],
+    }
+    host_loop = '"builtin.module"() ({' + _loop("entry", _ELEMENTS, _REQUANT) + "\n}) : () -> ()"
+    graded = {}
+    for mode in ("child", "here"):
+        _graded_run(tmp_path / mode, "on_host", host_loop, buffer)
+        rows = [{"capsule": "on_host", "kind": "layer", "status": "pass"}]
+        monkeypatch.setenv(host_compute_veto_process.ENV, "1" if mode == "child" else "0")
+        vetoed = OC.apply_host_compute_veto(rows, tmp_path / mode)
+        stored = json.loads((tmp_path / mode / "on_host" / "capsule_result.json").read_text())
+        graded[mode] = (vetoed, rows, stored)
+    assert graded["child"] == graded["here"] and graded["child"][1][0]["status"] == "fail"
+
+    # The audit this process holds does not decide: a stale (here, stubbed) module in the grader
+    # changes nothing, because the child imports the module again.
+    def stale(site, function, budget=HA.Budget(), **kwargs):
+        return {"group": site.group, "placement": site.placement, "symbol": site.symbol, "verdict": HA.CLEAN}
+
+    monkeypatch.setattr(HA, "audit_group", stale)
+    for mode, expected in (("child", "fail"), ("here", "pass")):
+        _graded_run(tmp_path / ("stale_" + mode), "on_host", host_loop, buffer)
+        rows = [{"capsule": "on_host", "kind": "layer", "status": "pass"}]
+        monkeypatch.setenv(host_compute_veto_process.ENV, "1" if mode == "child" else "0")
+        OC.apply_host_compute_veto(rows, tmp_path / ("stale_" + mode))
+        assert rows[0]["status"] == expected, mode
 
 
 def test_the_grade_is_where_the_veto_is_applied() -> None:

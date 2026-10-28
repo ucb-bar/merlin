@@ -9,6 +9,7 @@ import pytest
 def test_normal_model_build_links_selected_rounding_and_completes_recipe(tmp_path):
     from merlin.common.digest import sha256_file
     from merlin.llvmlower import toolchain
+    from merlin.llvmlower.impr_features import FUSE_AFTER_GENERALIZE_NAME
     from merlin.llvmlower.compilation_recipe import verify_completed_recipe
     from merlin.runtime import host_rounding
     from merlin.runtime.backends import spike, spike_model
@@ -40,6 +41,7 @@ def test_normal_model_build_links_selected_rounding_and_completes_recipe(tmp_pat
         backend="scalar",
         arena_mb=1,
         host_roundeven=True,
+        features=frozenset({FUSE_AFTER_GENERALIZE_NAME}),
         cflags_override=["-march=rv64gc", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"],
     )
     recipe_path = work / "compilation_recipe.json"
@@ -50,6 +52,11 @@ def test_normal_model_build_links_selected_rounding_and_completes_recipe(tmp_pat
     assert recipe["preparation"]["host_roundeven_implementation"]["sha256"] == sha256_file(Path(host_rounding.__file__))
     assert any(Path(row["path"]).name == "host_roundeven.o" for row in recipe["commands"][-1]["inputs"])
     assert any("-DMERLIN_EXTERNAL_ROUNDEVEN_F32" in row["argv"] for row in recipe["commands"])
+    fusion_pin = recipe["preparation"]["host_elementwise_fusion"]
+    import json
+    fusion = json.loads(Path(fusion_pin["path"]).read_bytes())
+    assert fusion["effective_pipeline"] == built["index_lowering"]["effective_pipeline"]
+    assert fusion["rewritten_work"] == "unmeasured"
     result = spike_model.run(built["elf"], mem_bytes=built["mem_bytes"])
     assert result["metrics"]["memref_rank_mismatch"] == 0
     np.testing.assert_array_equal(result["outputs"].view(np.uint32), np.rint(values).view(np.uint32))

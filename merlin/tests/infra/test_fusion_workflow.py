@@ -89,6 +89,12 @@ def test_costs_require_complete_correct_same_scope_and_qualified_model():
     model_a = dict(a, method="model", model_sha256="0"*64, model_qualification="provisional")
     model_b = dict(b, method="model", model_sha256="0"*64, model_qualification="provisional")
     assert F.compare_region_costs(model_a, model_b)["status"] == "unknown"
+    exploratory = F.compare_region_costs(model_a, model_b, allow_provisional=True)
+    assert exploratory["saved_cycles"] == 30 and exploratory["provisional"]
+    assert exploratory["basis"] == "modeled_roi" and not exploratory["placement_authority"]
+    for mutation in ({"model_sha256": "9"*64}, {"model_qualification": "unknown"},
+                     {"model_qualification": "qualified"}, {"complete": False}, {"correctness": "fail"}):
+        assert F.compare_region_costs(model_a, dict(model_b, **mutation), allow_provisional=True)["status"] == "unknown"
     assert F.compare_region_costs(dict(model_a,model_qualification="qualified"),
                                   dict(model_b,model_qualification="qualified"))["saved_cycles"] == 30
 

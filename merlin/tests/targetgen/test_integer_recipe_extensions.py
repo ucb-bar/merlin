@@ -41,6 +41,18 @@ def test_closed_extension_is_content_bound_and_does_not_mutate_defaults(key):
             Q.with_integer_extension(recipe, key=key, policy=POLICIES[key])
 
 
+def test_residual_policies_refuse_conflicting_ownership_in_both_selection_orders():
+    original = _recipe()
+    accumulator = Q.with_integer_extension(
+        original, key="accumulator_residual", policy=POLICIES["accumulator_residual"]
+    )
+    with pytest.raises(ValueError, match="cannot own the same graph"):
+        Q.with_shared_grid_operand_sums(accumulator)
+    shared = Q.with_shared_grid_operand_sums(original)
+    with pytest.raises(ValueError, match="cannot own the same graph"):
+        Q.with_integer_extension(shared, key="accumulator_residual", policy=POLICIES["accumulator_residual"])
+
+
 _SCRIPT = r"""
 import copy,json,sys
 sys.path.insert(0,sys.argv[1]);sys.path.insert(0,sys.argv[2])

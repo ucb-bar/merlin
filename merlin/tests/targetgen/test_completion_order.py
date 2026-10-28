@@ -156,6 +156,17 @@ def test_fresh4_fixed_variants_raise_no_hazard(model, variant):
     assert result["hazard_pairs"] == 0
 
 
+@pytest.mark.parametrize("variant", ["fence", "elide"])
+def test_fresh4_streams_using_the_third_load_state_are_decided(model, variant):
+    """funct 14 (the bias loads) maps to MVIN3, whose span the facts derive (load state 2), so a
+    fresh4 stream is judged CLEAR rather than UNKNOWN: no opaque command, nothing uncertain."""
+    stream = _head(variant)
+    assert sum(1 for item in stream if item is not None and item[0] == 14) == 64
+    result = C.check_commands(stream, model)
+    assert result["verdict"] == "clear" and result["uncertain"] == {}
+    assert result["by_class"].get("MVIN3") == 64
+
+
 def test_explicit_fsm_library_style_conv_with_disjoint_rows_is_clear(model):
     """Each input row is moved in once (padding from address 0, the zero source), so no two loads
     write one row before the compute that reads them; the next block's loads wait on that compute."""

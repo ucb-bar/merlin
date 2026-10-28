@@ -192,3 +192,23 @@ circuit Array:
     fields = observed["interfaces"][1]["bundles"]["Extent"]["fields"]
     assert fields["local_addr"]["width"] == 8 and fields["rows"]["width"] == 5
     assert {p["path"] for p in files} >= {str(source), str(isa), str(facts_file), str(selection_file)}
+
+
+def test_command_line_readers_match_the_imported_module(monkeypatch):
+    """A selection prepared with ``python -m`` must verify under the grader's ordinary import."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    # What ``python -m`` runs: the module source as ``__main__``, its spec keeping the import name.
+    source = Path(S.__file__)
+    namespace = {
+        "__name__": "__main__",
+        "__spec__": importlib.util.find_spec(S.__name__),
+        "__file__": str(source),
+        "__package__": S.__package__,
+    }
+    monkeypatch.setattr(sys, "argv", ["prepare", "--help"])
+    with pytest.raises(SystemExit):
+        exec(compile(source.read_text(), str(source), "exec"), namespace)
+    assert namespace["_readers"]() == S._readers()

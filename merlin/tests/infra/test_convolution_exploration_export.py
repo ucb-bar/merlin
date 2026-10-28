@@ -18,7 +18,8 @@ def test_v22_normal_preparation_and_isolated_real_registry(tmp_path):
     additions = ('merlin.compile.logical_abi', 'merlin.compile.scheduling.convolution_exploration',
                  'merlin.compile.scheduling.dense_rhs_residency',
                  'merlin.transforms.pipeline_policy', 'merlin.transforms.pass_exploration',
-                 'merlin.transforms.evaluated_exploration', 'merlin.transforms.shape_policy')
+                 'merlin.transforms.evaluated_exploration', 'merlin.transforms.shape_policy',
+                 'merlin.compile.scheduling.dense_panel_epochs')
     assert library_modules(22) == (*library_modules(21), *additions)
     assert _SHARED_SUBSTRATES[COMMON_SUBSTRATE_V14] == 21
     assert _SHARED_SUBSTRATES[COMMON_SUBSTRATE_V15] == 22
@@ -46,6 +47,11 @@ def test_v22_normal_preparation_and_isolated_real_registry(tmp_path):
         f'sys.path.append({str(Path(__file__).parents[1]/"ir")!r})',
         'import test_shape_policy as shape',
         'shape.test_registered_convolution_policy_emits_current_geometry_not_training_bytes()',
+        'import test_shape_policy_proposals as proposals',
+        'proposals.test_propose_validate_and_execute_unseen_current_ir_without_repeating_complete_panel()',
+        'proposals.test_explicit_rational_feature_assessment_keeps_exact_boundary_not_integer_truncation()',
+        'import test_evaluated_exploration as observations',
+        'observations.test_real_registered_transform_dedup_and_exact_evaluated_product_selected()',
         'import test_convolution_exploration as check',
         'check.test_registry_realizes_only_source_bound_programs_and_deduplicates_equivalent_capacity()',
         'import test_convolution_rhs_residency as rhs',

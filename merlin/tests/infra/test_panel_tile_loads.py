@@ -241,6 +241,63 @@ def test_wrong_actual_source_pitch_and_wrong_band_encoder_refuse():
         expand_panel_tile_loads(proposal, project=project, encode_band=lambda c, m: c)
 
 
+def test_explicit_affine_external_view_preserves_original_bands_and_live_address_checks():
+    from merlin.compile.scheduling.panel_transfers import AffineMatrixSource
+
+    p, r, s, b, original, proposal, logical_project, _, band = setup()
+    source = AffineMatrixSource("weight", (p.k, p.n), 1, 7, 21, 1, 0, 7 + (p.k - 1) * 21 + p.n)
+    declaration = {"weight": source}
+    actual_pitch = [21]
+
+    def physical_project(call):
+        mapping = logical_project(call)
+        if mapping is None or mapping.source != "weight":
+            return mapping
+        operation = ADAPTER.project(call)
+        return replace(mapping, source_byte=7 + operation.dram_row * actual_pitch[0] + operation.dram_col,
+                       law=replace(mapping.law, source_pitch_bytes=actual_pitch[0]))
+
+    def physical_band(call, mapping):
+        offset, terms = _linear(mapping.source_byte)
+        base, base_terms = _linear(physical_project(call).source_byte)
+        assert terms == base_terms
+        columns = offset - base
+        return replace(call, args=tuple((k, mapping.local_row if k == "dst" else mapping.columns if k == "cols"
+                                         else v + columns if k == "src_col"
+                                         else v + columns // mapping.law.tile_columns if k == "b" else v)
+                                        for k, v in call.args))
+
+    with pytest.raises(ValueError, match="source layout"):
+        admit_panel_tile_loads(original, proposal, p, b, r, s, ADAPTER,
+                              project=physical_project, encode_band=physical_band)
+    result = admit_panel_tile_loads(original, proposal, p, b, r, s, ADAPTER,
+                                   project=physical_project, encode_band=physical_band, external_sources=declaration)
+    assert result.realization["source"] == original.realization["source"]
+    assert result.realization["dynamic_epoch_drains"] == original.realization["dynamic_epoch_drains"]
+    result.revalidate()
+    # Caller dictionary changes cannot alter the captured declaration. Actual
+    # decoder changes remain visible and are refused during every revalidation.
+    declaration.clear()
+    result.revalidate()
+    actual_pitch[0] = 22
+    with pytest.raises(ValueError, match="source layout"):
+        result.revalidate()
+
+
+@pytest.mark.parametrize("mutation", ["shape", "columns", "offset"])
+def test_changed_affine_binding_cannot_hide_different_source_effects(mutation):
+    from merlin.compile.scheduling.panel_transfers import AffineMatrixSource
+
+    p, r, s, b, original, proposal, project, _, band = setup()
+    source = AffineMatrixSource("weight", (p.k, p.n), 1, 0, p.n, 1, 0, 128)
+    changed = {"shape": replace(source, shape=(p.k + 1, p.n)),
+               "columns": replace(source, column_stride_bytes=2),
+               "offset": replace(source, first_byte=1)}[mutation]
+    with pytest.raises(ValueError, match="external view|actual wide mapping"):
+        admit_panel_tile_loads(original, proposal, p, b, r, s, ADAPTER,
+                              project=project, encode_band=band, external_sources={"weight": changed})
+
+
 def test_actual_wide_payload_or_completion_change_cannot_use_retained_proof():
     p, r, s, b, original, proposal, project, _, band = setup()
     result = admit_panel_tile_loads(original, proposal, p, b, r, s, ADAPTER, project=project, encode_band=band)

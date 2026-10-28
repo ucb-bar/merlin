@@ -97,6 +97,42 @@ def test_stronger_epoch_premises_are_independent_and_checked_before_emission(fie
             retention_law=retention_law(), issue_law=issue_law())
 
 
+def test_issued_epoch_can_exceed_unchanged_finite_pending_capacity_with_pair_progress():
+    selected = replace(epoch_law(), max_compute_pairs=16, pending_compute_pairs=2)
+    actual = plan_convolution_schedule(source(), ConvolutionScheduleChoice(3, True, 16),
+        retention_law=retention_law(), issue_law=issue_law(), epoch_law=selected)
+    pending, maximum, executed, drains = [], 0, [], []
+
+    def issue(kind, fields):
+        nonlocal maximum
+        # This neutral test device backpressures and consumes an older complete
+        # pair. Acceptance never allocates beyond its original two pending slots.
+        if kind == 'compute':
+            if len(pending) == selected.pending_compute_pairs:
+                executed.append(pending.pop(0))
+            pending.append(dict(fields))
+            maximum = max(maximum, len(pending))
+
+    def complete(kind, fields):
+        executed.extend(pending)
+        pending.clear()
+        drains.append(kind)
+
+    emit_convolution_schedule(actual, Integers(), issue, complete=complete)
+    assert maximum == 2 and not pending and executed
+    assert drains.count('compute') == len(executed)//36*2
+    assert drains.count('store') > 0
+    assert actual.epoch_law.pending_compute_pairs == 2
+    with pytest.raises(ValueError, match='dependency/progress'):
+        replace(selected, finite_queue_pair_progress=False).require(16)
+
+
+@pytest.mark.parametrize('pending', [0, -1, True, 1.5])
+def test_pending_capacity_is_a_separate_positive_selected_quantity(pending):
+    with pytest.raises(ValueError, match='bounded typed'):
+        replace(epoch_law(), pending_compute_pairs=pending)
+
+
 def test_epoch_registry_is_optional_and_realized_programs_are_bound_and_deduplicated():
     s = source()
     space = convolution_pass_space(s, verify_source=lambda _: None,

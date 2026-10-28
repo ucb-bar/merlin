@@ -16,6 +16,7 @@ from merlin.compile.scheduling.schedule_ir import (
     parse_dense_schedule_plan,
 )
 from merlin.sched.ir import Loop, evaluate, instances
+from merlin.sched.primitives import NotApplicable
 
 
 def consume(p, r, s, b, admission, requests):
@@ -60,6 +61,32 @@ def test_segmented_stripe_decisions_change_actual_commands_preserving_epochs_and
     assert actual.realization["loop_transforms"]["requests"]
     assert "loop_transforms" in actual.realization["schedule_ir"]["decisions_consumed"]
     actual.materialize_scf().verify()
+
+
+def test_optin_short_tail_keeps_original_mixed_epoch_while_complete_stripes_transform():
+    p, r, s, b, admission = inputs((3, 14, 17), 2)
+    original = chosen(p, r, s, b, admission, issue_order="prefetch_rhs_between_columns")
+    with pytest.raises(NotApplicable, match="complete factor"):
+        dense_panel_rhs_stripes(original.kernel, ADAPTER, factor=2)
+    requests = dense_panel_rhs_stripes(original.kernel, ADAPTER, factor=2, retain_short_tails=True)
+    assert requests
+    actual = consume(p, r, s, b, admission, requests)
+    before, after = epochs(original.kernel), epochs(actual.kernel)
+    assert len(before) == len(after)
+    assert [Counter(group) for group in before] == [Counter(group) for group in after]
+    assert any(left != right for left, right in zip(before, after, strict=True))
+    assert any(left == right and any(c[0] == "compute" for c in left)
+               and any(c[0] == "weight_load" for c in left)
+               for left, right in zip(before, after, strict=True))
+    actual.materialize_scf().verify()
+    actual.revalidate()
+
+
+def test_optin_all_short_mixed_loops_return_no_requested_transform():
+    p, r, s, b, admission = inputs((3, 14, 7), 2)
+    original = chosen(p, r, s, b, admission, issue_order="prefetch_rhs_between_columns")
+    assert dense_panel_rhs_stripes(original.kernel, ADAPTER, factor=64, retain_short_tails=True) == ()
+    assert original.kernel.digest() == original.checked_kernel_sha256
 
 
 def test_segmented_typed_fission_cannot_separate_preload_from_compute():

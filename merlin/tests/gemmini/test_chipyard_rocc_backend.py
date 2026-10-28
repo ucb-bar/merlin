@@ -256,7 +256,7 @@ def test_the_console_write_is_generated_from_data_and_linked(tmp_path, monkeypat
 
 
 def test_the_functional_trace_invocation_is_the_spike_command_with_a_commit_log(backend, monkeypatch, tmp_path):
-    """The executed-command profile runs the same functional model run_elf does, plus -l --log-commits."""
+    """The executed-command profile runs the same functional model run_elf does, plus --log-commits."""
     seen = {}
 
     class _Proc:
@@ -275,7 +275,7 @@ def test_the_functional_trace_invocation_is_the_spike_command_with_a_commit_log(
     elf.write_bytes(b"\x7fELF")
     backend.run_elf(elf, simulator="spike", timeout=5)
     argv, env = backend.functional_trace_invocation(elf)
-    assert argv == [*seen["cmd"][:-1], "-l", "--log-commits", str(elf)]
+    assert argv == [*seen["cmd"][:-1], "--log-commits", str(elf)]
     assert env["LD_LIBRARY_PATH"] == seen["env"]["LD_LIBRARY_PATH"]
     assert f"--extension={backend.SPIKE_EXTENSION_NAME}" in argv
 

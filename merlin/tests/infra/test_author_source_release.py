@@ -75,3 +75,38 @@ def test_symlink_manifest_refuses_refresh(prepare, tmp_path):
     link.symlink_to(path)
     with pytest.raises(ValueError, match="manifest changed"):
         prepare.selected_lean_manifest(bundle(link))
+
+
+
+def test_reviewed_v16_refresh_forwards_selected_substrate(prepare, tmp_path, monkeypatch):
+    import json
+
+    previous = tmp_path / 'previous'
+    preparation = previous / 'private/preparation.json'
+    preparation.parent.mkdir(parents=True)
+    preparation.write_text(json.dumps({
+        'assembly': {'mode': 'generated_only', 'baseline': None, 'retirements': {'members': []},
+                     'capsule_scope': {'kind': 'all'},
+                     'public_supplement': {'selection': {'path': 'supplement.json'}}},
+        'scaffolding': {'operand_protocol': {'path': 'operands.json', 'sha256': 'a' * 64},
+                        'operand_revision': {'path': 'revision.json', 'sha256': 'b' * 64},
+                        'public_reference_sources': {'path': 'references.json'}},
+        'source_run': 'source-run', 'phase1_policy': {'source_path': 'policy.yaml'}}))
+    scale = previous / 'payload/corpus/_public_scalability/selection.json'
+    scale.parent.mkdir(parents=True)
+    scale.write_text(json.dumps({'source': {'selection': {'path': 'scale.json'}}}))
+    manifest = tmp_path / 'formal.json'
+    manifest.write_text('{}')
+    selected = (previous / 'payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0'
+                / 'input_bundle_manifest.yaml')
+    selected.parent.mkdir(parents=True)
+    selected.write_text(json.dumps(bundle(manifest)))
+    calls = []
+    monkeypatch.setattr(prepare.release, 'prepare', lambda *args, **kwargs: calls.append(kwargs))
+    prepare.prepare(previous, tmp_path / 'output', tmp_path / 'sdk',
+                    common_substrate='merlin.common_compiler_substrate.v16')
+    assert calls[0]['common_substrate'] == 'merlin.common_compiler_substrate.v16'
+    assert calls[0]['generated_only'] is True
+    with pytest.raises(ValueError, match='explicitly supported'):
+        prepare.prepare(previous, tmp_path / 'other', tmp_path / 'sdk',
+                        common_substrate='merlin.common_compiler_substrate.v999')

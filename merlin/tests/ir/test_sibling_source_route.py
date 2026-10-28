@@ -433,3 +433,55 @@ def test_composition_preserves_original_node_order_after_canonical_eligibility_j
         frozen.sibling_host.rewrite.to_sidecar(), roster, module=module, target=device.device,
     )
     assert joined["members"][0]["source_node_ids"] == ["node_z", "node_a"]
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_readonly_dense_offsets_compose_with_exact_original_borrowed_wrapper(tmp_path, monkeypatch, dense):
+    from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, StridedLayoutAttr
+
+    from merlin.llvmlower.sibling_input_views import bind
+
+    module = sibling_source()
+    if not dense:
+        function = module.body.block.first_op
+        function.properties["arg_attrs"] = ArrayAttr([
+            DictionaryAttr({"bufferization.buffer_layout": StridedLayoutAttr([3, 1], 0)}),
+            DictionaryAttr({}), DictionaryAttr({}),
+        ])
+    _, source, selected, device, work = route(tmp_path, monkeypatch, module=module)
+    frozen = device_preparation.freeze_device_offload_selection(device)
+    device_preparation.prepare_sibling_device_host(device, source, work, frozen)
+    host = frozen.sibling_host
+    buffers, _ = device_shim.logical_buffers(host.interface)
+    actual = host.module.clone()
+    chosen, retained, _ = bind(actual, host, selected,
+                              {host.device_symbol: (buffers, host.rewrite.call_buffers[host.device_symbol])})
+    name = host.writer.symbol
+    assert (0 in chosen.get(name, [])) is dense
+    assert (0 in retained.get(name, [])) is not dense
+    wrapper = next(o for o in actual.body.block.ops if getattr(o, "sym_name", None) and o.sym_name.data == name)
+    assert all("bufferization.buffer_layout" not in tuple(wrapper.arg_attrs)[i].data
+               for i in host.writer.result_arguments)
+    actual.verify()
+    require_host(host, selected)  # Binding changed only the independently parsed input, never frozen custody.
+
+
+@pytest.mark.parametrize("damage", ["writer_access", "borrowed_access"])
+def test_dense_wrapper_offsets_refuse_changed_original_access(tmp_path, monkeypatch, damage):
+    from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, StringAttr
+
+    from merlin.llvmlower.sibling_input_views import bind
+
+    _, source, selected, device, work = route(tmp_path, monkeypatch)
+    frozen = device_preparation.freeze_device_offload_selection(device)
+    device_preparation.prepare_sibling_device_host(device, source, work, frozen)
+    host = frozen.sibling_host
+    buffers, _ = device_shim.logical_buffers(host.interface)
+    actual = host.module.clone()
+    name = host.writer.symbol if damage == "writer_access" else host.writer.borrowed_symbol
+    function = next(op for op in actual.body.block.ops if getattr(op, "sym_name", None) and op.sym_name.data == name)
+    attrs = list(function.arg_attrs)
+    attrs[0] = DictionaryAttr({"bufferization.access": StringAttr("write")})
+    function.properties["arg_attrs"] = ArrayAttr(attrs)
+    with pytest.raises(ValueError, match="exact original borrowed writer"):
+        bind(actual, host, selected, {host.device_symbol: (buffers, host.rewrite.call_buffers[host.device_symbol])})

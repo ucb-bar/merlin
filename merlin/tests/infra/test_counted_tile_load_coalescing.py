@@ -4,9 +4,11 @@ from dataclasses import replace
 import pytest
 
 from merlin.compile.scheduling.tile_load_coalescing import (
-    TileLoadLaw, TileLoadMapping, coalesce_tile_load_loops,
+    TileLoadLaw,
+    TileLoadMapping,
+    coalesce_tile_load_loops,
 )
-from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var, instances, concretize
+from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var, concretize, instances
 
 
 def example(*, tiles=9, tile=8, rows=3, stride=11, max_columns=32):
@@ -63,7 +65,9 @@ def test_actual_encoder_mutations_are_rejected(bad_field):
 
 def test_dependencies_other_effects_partial_tiles_and_unknown_mapping_keep_original():
     original, law, project, encode = example()
-    outer = original.body[0]; loop = outer.body[0]; load = loop.body[0]
+    outer = original.body[0]
+    loop = outer.body[0]
+    load = loop.body[0]
     variants = [replace(loop, body=(replace(load, unit="dma"),)),
                 replace(loop, body=(load, Call("wait", ()))),
                 replace(loop, body=(replace(load, args=tuple(
@@ -97,3 +101,34 @@ def test_final_actual_wide_access_expands_every_local_tile_band_for_hazards():
     assert report["changes"][0]["actual_access"]["columns"] == 32
     with pytest.raises(ValueError, match="column bound"):
         expand_tile_load_mapping(replace(project(wide), columns=Const(law.max_columns+1)))
+
+
+@pytest.mark.parametrize("tiles", [5, 6, 17, 32])
+def test_optin_shorter_tail_preserves_every_byte_and_actual_band(tiles):
+    from merlin.compile.scheduling.tile_load_coalescing import expand_tile_load_mapping
+
+    original, law, project, encode = example(tiles=tiles, tile=16, rows=16, stride=16, max_columns=127)
+    control, _ = coalesce_tile_load_loops(original, project=project, encode=encode, max_tiles=7)
+    actual, report = coalesce_tile_load_loops(original, project=project, encode=encode,
+                                             max_tiles=7, coalesce_tail=True)
+    assert bytes_moved(actual, law) == bytes_moved(original, law)
+    assert len(tuple(instances(actual))) <= len(tuple(instances(control)))
+    for call, _ in instances(actual):
+        assert len(expand_tile_load_mapping(project(call))) == call.arg("cols").value // 16
+    change = report["changes"][0]
+    assert change["actual_commands"] == (tiles+6)//7
+    if tiles % 7 > 1 and tiles > 7:
+        assert change["tail_commands"] == 1 and change["coalesced_tail_tiles"] == tiles % 7
+
+
+def test_tail_encoder_is_checked_separately_from_valid_full_width():
+    original, _, project, encode = example(tiles=8)
+
+    def corrupt_only_tail(call, columns):
+        encoded = encode(call, columns)
+        return encoded if columns == 24 else replace(encoded, args=tuple(
+            (key, value+1 if key == "row" else value) for key, value in encoded.args))
+
+    with pytest.raises(ValueError, match="tail actual target operands"):
+        coalesce_tile_load_loops(original, project=project, encode=corrupt_only_tail,
+                                 max_tiles=3, coalesce_tail=True)
