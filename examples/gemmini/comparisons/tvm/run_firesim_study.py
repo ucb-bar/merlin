@@ -95,6 +95,8 @@ def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap,
                 trials=row["trials"],
                 workload_keys=row.get("workload_keys", []),
                 graph_options=options,
+                cost_model_warmup=row.get("cost_model_warmup", 50),
+                batch=row.get("batch", 1),
             )
             old = state["campaigns"].get(row["id"])
             if old is not None:
@@ -133,12 +135,13 @@ def command(row, root, args, output, deadline):
         "--trials",
         str(row["trials"]),
         "--batch",
-        str(row.get("batch", 4)),
+        str(row.get("batch", 1)),
         "--builders",
         "1",
         "--graph-fusion-level",
         str(options["graph_fusion_level"]),
     ]
+    argv.extend(["--cost-model-warmup", str(row.get("cost_model_warmup", 50))])
     argv.extend(["--finish-active-runs", "--candidate-bootstrap-seconds",
                  str(args.candidate_bootstrap_seconds), "--candidate-timeout-ceiling-seconds",
                  str(args.candidate_timeout_ceiling_seconds)])

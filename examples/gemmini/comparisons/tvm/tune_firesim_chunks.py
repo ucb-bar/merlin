@@ -151,6 +151,7 @@ def build_request(path):
 
 
 def tune(args):
+    import xgboost  # Check before baseline jobs consume any FireSim time.
     import measure
     import tvm
     from firesim_runner_seconds import SecondsRunner, cycles_to_seconds
@@ -328,6 +329,9 @@ def tune(args):
         num_trials_per_iter=args.batch,
         include_cpu=False,
         compact=True,
+        warmup=args.cost_model_warmup,
+        eps_greedy=0.0,
+        max_trials_per_task=55,
         log=root / "trials.jsonl",
         describe=describe,
     )
@@ -391,6 +395,10 @@ def tune(args):
             bindings=binding_identity,
             proposal_budget=args.trials,
             batch=args.batch,
+            cost_model_warmup=args.cost_model_warmup,
+            xgboost_version=xgboost.__version__,
+            max_trials_per_task=55,
+            eps_greedy=0.0,
             builders=args.builders,
             slots=len(pool.slots),
             validated_records=len(validated.get_all_tuning_records()),
@@ -427,7 +435,7 @@ def main():
         required=True,
         help="Shared absolute deadline across all chunk studies; never renewed per process",
     )
-    parser.add_argument("--trials", type=int, default=12)
+    parser.add_argument("--trials", type=int, default=55)
     parser.add_argument(
         "--workload-key", action="append", help="Tune only these exact structural keys; repeat as needed"
     )
@@ -437,7 +445,8 @@ def main():
         required=True,
         help="Documented frequency of the target cycle counter; never substitute FPGA host or emulation frequency",
     )
-    parser.add_argument("--batch", type=int, default=4)
+    parser.add_argument("--batch", type=int, default=1)
+    parser.add_argument("--cost-model-warmup", type=int, default=50)
     parser.add_argument("--builders", type=int, default=2)
     parser.add_argument("--finish-active-runs", action="store_true", default=True,
                         help="Stop new slot admissions at the deadline; drain active measurements")
@@ -466,8 +475,8 @@ def main():
             raise ValueError("Bootstrap watchdog exceeds the hard ceiling")
     except ValueError as error:
         parser.error(str(error))
-    if not (args.builders >= 1 and args.batch >= 1 and args.trials >= 4):
-        parser.error("Use positive builder/batch counts and at least four proposals to bootstrap ML ranking")
+    if not (args.builders >= 1 and args.batch >= 1 and args.trials >= 1 and args.cost_model_warmup >= 1):
+        parser.error("Use positive builder/batch counts and positive proposal and XGB warmup counts")
     if not time.time() < args.deadline_epoch <= time.time() + 4 * 3600:
         parser.error("Supply a future shared deadline at most four hours away")
     tune(args)

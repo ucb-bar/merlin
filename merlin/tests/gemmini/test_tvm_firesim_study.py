@@ -131,6 +131,8 @@ def test_graph_options_reach_inner_campaign(study, tmp_path):
                graph_cse=True, prepack_weights=False, bias_preload=False)
     command = study.command(row, tmp_path, args, tmp_path / "output", 1000)
     assert command[command.index("--graph-fusion-level") + 1] == "0"
+    assert command[command.index("--cost-model-warmup") + 1] == "50"
+    assert command[command.index("--batch") + 1] == "1"
     assert {"--graph-cse", "--no-prepack-weights", "--no-bias-preload"}.issubset(command)
 
 
@@ -163,3 +165,15 @@ def test_removed_graph_preparation_is_refused_before_launch(study, tmp_path, opt
 def test_default_study_uses_only_stock_graph_options(study):
     assert study.graph_options({}) == dict(graph_fusion_level=2, prepack_weights=False,
                                           bias_preload=False, graph_cse=False)
+
+
+def test_continuation_cannot_change_xgb_warmup(study, tmp_path):
+    (tmp_path / "p").write_text("program")
+    (tmp_path / "f").write_text("fixture")
+    (tmp_path / "pool").write_text("{}")
+    row = dict(id="one", program="p", fixture="f", trials=55)
+    options = dict(deadline=100, clock_hz=30_000_000, pool=tmp_path / "pool", cap=55,
+                   bootstrap_seconds=10, ceiling_seconds=60)
+    study.reserve_campaigns(tmp_path / "ledger", [row], tmp_path, **options)
+    with pytest.raises(ValueError, match="identity"):
+        study.reserve_campaigns(tmp_path / "ledger", [dict(row, cost_model_warmup=4)], tmp_path, **options)
