@@ -21,6 +21,8 @@ code_refs:
   - merlin/tests/ir/test_lean_pass_gate.py
   - merlin/tests/ir/test_lean_pass_gate_fuzz.py
   - merlin/tests/rvv/test_lean_pass_gate_spike.py
+  - merlin/tests/ir/test_lean_dequant_contract.py
+  - merlin/lean/MerlinVerify/Spec/Dequant.lean
 ---
 
 # Gate compiler passes on Merlin's Lean proofs
@@ -88,10 +90,17 @@ and T3, fidelity of the op semantics to MLIR). Only the 64-bit index width is ad
 the model and the native pipeline disagree on a retained example (LEDGER S6).
 
 `quant_ext` dequantization is proved against `MerlinVerify.Spec.Dequant`, a narrow contract written
-from PyTorch v2.10.0 (`_decomposed.py`): per-tensor converts then subtracts; per-channel promotes to
-i32, subtracts, converts once, then multiplies — the order lowering implements since 03a22c5fd ("match PyTorch per-channel dequantization order").
-Signed i8 input, i32 zero points and f32 scale only. The contract still needs human specification
-review and capture-route binding; draft policy, native and capture premises remain;
+from PyTorch v2.10.0 (`_decomposed.py`): per-tensor converts then subtracts (line 289); per-channel
+promotes to i32, subtracts, converts once, then multiplies (lines 734–738) — the order lowering
+implements since 03a22c5fd ("match PyTorch per-channel dequantization order"). Signed i8 input and
+f32 scale; per-tensor with an i32 or i64 zero point, per-channel with i32. `quant_min`/`quant_max`
+follow PyTorch: ignored per-tensor, checked against the i8 range per-channel, never clamped. Every
+per-tensor dequantization in the tracked capsules (627 ops, i64 zero points, ranges [-128, 127] and
+[-127, 127]) is proved (`test_lean_dequant_contract.py`); a whole capsule still is not, because its
+`quant_ext.quantize_per_tensor` ops have no contract. f64 scales and per-channel i64 zero points are
+excluded (`LEDGER.md`). Deleting a dead dequantization relies on ledger assumption A9 (both modeled
+dequantizations are effect-free). The contract still needs human specification review and
+capture-route binding; draft policy, native and capture premises remain;
 an unexplained SmolVLA complete-output comparison failure is recorded upstream. With `int8_compute`
 the W8A8 passes do most of the quantization before `lower_quant_ext` and are not gated here.
 
