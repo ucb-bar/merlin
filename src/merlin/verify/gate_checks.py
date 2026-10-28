@@ -24,9 +24,9 @@ def _text(path: str | None, what: str) -> str:
     return Path(path).read_text()
 
 
-def _stage(directory: Path, label: str, before: str, after: str) -> Path:
+def _stage(directory: Path, label: str, before: str, after: str, name: str = "stage") -> Path:
     """Write one boundary in the recorder's layout (``merlin.lean.stage.v1``)."""
-    stage = directory / "stage"
+    stage = directory / name
     stage.mkdir()
     (stage / "before.mlir").write_text(before)
     (stage / "after.mlir").write_text(after)
@@ -48,7 +48,9 @@ def tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
 
     The boundary must verify under ``MerlinVerify.Check.TypedModule.check_sound``, every function of
     the input must verify under ``supportCheck_sound`` (so the refinement is strict, not conditional),
-    and ``compose_chain`` must replay both. Definedness (no UB or poison) is not claimed.
+    and ``compose_chain`` must replay both. Two optional strengthenings are attempted and reported,
+    never required: the universal boundary theorem (``moduleCheck_sound``, for all inputs) and
+    source definedness (no UB or poison), which ``compose_chain`` then folds into its verdict.
     """
     params = job["params"]
     sdk_bin, python = Path(params["sdk_bin"]), Path(params["compiler_python"])
@@ -73,6 +75,19 @@ def tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
         if typed.get("exporter", {}).get("round_trip") == "different":
             raise GateUnsupported(f"the authoritative MLIR exporter refused the IR: {reason}")
         raise GateRejected(f"{THEOREMS[0]} did not verify the pass: {reason}")
+    strengthenings = {"universal_boundary": "not attempted", "definedness": "not attempted"}
+    universal = check.check_stage(
+        _stage(
+            directory,
+            job.get("label") or "pass",
+            (stage / "before.mlir").read_text(),
+            (stage / "after.mlir").read_text(),
+            name="universal",
+        ),
+        m2m_python=python,
+    )
+    strengthenings["universal_boundary"] = universal["verdict"]
+    defined_everywhere = True
     chains = {}
     for function in typed["functions"]:
         support = check.check_support(
@@ -80,18 +95,31 @@ def tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
         )
         if support["verdict"] != "verified":
             raise GateUnsupported(f"source support of @{function} is not established: {support.get('reason')}")
+        defined = check.check_definedness(
+            stage / "before.mlir", function, directory / f"defined-{function}", m2m_python=python, index_bits=bits
+        )
         chain = check.compose_chain(
             [stage],
             directory / f"support-{function}" / "receipt.json",
             function,
             directory / f"chain-{function}.json",
             m2m_python=python,
+            definedness=directory / f"defined-{function}" / "receipt.json"
+            if defined["verdict"] == "verified"
+            else None,
         )
         if chain.get("refinement_verdict") != "verified":
             raise GateRejected(f"the refinement of @{function} did not compose: {chain.get('reason')}")
+        defined_everywhere = defined_everywhere and chain.get("verdict") == "verified"
         chains[function] = str(directory / f"chain-{function}.json")
+    strengthenings["definedness"] = "verified" if defined_everywhere else "abstracted"
+    established = [name for name, verdict in strengthenings.items() if verdict == "verified"]
+    domain = "for all inputs" if "universal_boundary" in established else "on inputs of the declared types"
     return {
-        "claim": "strict refinement on inputs of the declared types; definedness not established",
+        "claim": f"strict refinement {domain}; "
+        + ("defined (no UB or poison)" if "definedness" in established else "definedness not established"),
+        "established": established,
+        "strengthenings": strengthenings,
         "theorems": THEOREMS,
         "functions": typed["functions"],
         "axioms": typed["axioms"],

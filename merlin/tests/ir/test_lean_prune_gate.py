@@ -84,6 +84,11 @@ def test_real_lowering_proves_the_prune_pass(tmp_path, validation):
     assert set(verdict["detail"]["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"}
     chain = json.loads(Path(verdict["detail"]["chains"]["forward"]).read_text())
     assert chain["refinement_verdict"] == "verified"
+    # The claim says exactly which optional strengthenings were established.
+    assert verdict["detail"]["claim"].startswith("strict refinement")
+    assert set(verdict["detail"]["established"]) == {"universal_boundary", "definedness"} & set(
+        k for k, v in verdict["detail"]["strengthenings"].items() if v == "verified"
+    )
 
 
 def test_an_injected_prune_bug_stops_real_lowering(tmp_path, validation, monkeypatch):
