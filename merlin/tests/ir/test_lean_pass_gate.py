@@ -32,22 +32,8 @@ T = "tensor<4xf32>"
 
 
 @pytest.fixture
-def tools():
-    missing = [
-        name
-        for name, ok in (
-            ("MERLIN_LEAN_SDK_BIN", SDK_BIN and (Path(SDK_BIN) / "lake").is_file()),
-            ("MERLIN_COMPILER_PYTHON", COMPILER_PYTHON and Path(COMPILER_PYTHON).is_file()),
-            ("built merlin-lean", check.lean_exe().is_file()),
-        )
-        if not ok
-    ]
-    if missing:
-        reason = "Lean pass-validation tools unavailable: " + ", ".join(missing)
-        if os.environ.get("MERLIN_LEAN_REQUIRED"):
-            pytest.fail(reason)
-        pytest.skip(reason)
-    return pass_validation.CheckerTools(Path(SDK_BIN), Path(COMPILER_PYTHON))
+def tools(pass_gate_tools):
+    return pass_gate_tools
 
 
 @pytest.fixture
