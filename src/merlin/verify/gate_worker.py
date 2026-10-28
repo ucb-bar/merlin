@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import signal
 import sys
 import traceback
 from pathlib import Path
@@ -48,7 +49,15 @@ def write_verdict(directory: Path, verdict: dict) -> None:
     os.replace(temporary, directory / "verdict.json")
 
 
+def _stop_group(signum, frame) -> None:
+    """A stop request (from the gate, or the parent-death signal when the compile dies) ends the
+    whole check: the worker leads its own group, and the checker processes it runs are in it."""
+    os.killpg(os.getpgid(0), signal.SIGKILL)
+
+
 def main(argv: list[str]) -> int:
+    if os.getpgid(0) == os.getpid():  # only as the leader of its own group (how the gate starts it)
+        signal.signal(signal.SIGTERM, _stop_group)
     directory = Path(argv[1])
     request = json.loads((directory / "request.json").read_text())
     try:

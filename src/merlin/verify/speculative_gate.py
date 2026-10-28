@@ -293,6 +293,10 @@ class SpeculativeGate:
         command = [sys.executable, "-m", WORKER_MODULE, str(job.directory)]
         if self._nice and shutil.which("nice"):
             command = ["nice", "-n", str(self._nice), *command]
+        if shutil.which("setpriv"):
+            # A compile killed by a signal runs no cleanup; the worker must not outlive it. The
+            # worker turns this SIGTERM into a kill of its own group, checker processes included.
+            command = ["setpriv", "--pdeathsig", "TERM", "--", *command]
         verdict_path = job.directory / "verdict.json"
         with (job.directory / "worker.log").open("wb") as log:
             process = start_owned(command, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)

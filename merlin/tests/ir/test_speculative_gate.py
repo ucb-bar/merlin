@@ -8,6 +8,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import signal
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -48,6 +52,14 @@ def slow(job):
 
 def forever(job):
     Path(job["directory"], "pid").write_text(str(os.getpid()))
+    time.sleep(120)
+
+
+def forever_with_child(job):
+    import subprocess
+
+    child = subprocess.Popen(["sleep", "300"])  # stands in for the checker process a worker runs
+    Path(job["directory"], "pids").write_text(json.dumps([os.getpid(), child.pid]))
     time.sleep(120)
 
 
@@ -314,3 +326,48 @@ def test_a_guard_in_a_worker_thread_never_interrupts_the_main_thread(gate_factor
     except KeyboardInterrupt:
         pytest.fail("a failure in a worker thread's guard interrupted the main thread")
     assert "failure" in outcome
+
+
+COMPILE = """
+import sys, time
+from pathlib import Path
+from merlin.verify.speculative_gate import SpeculativeGate
+gate = SpeculativeGate(Path(sys.argv[1]), worker_path=[Path(sys.argv[2])])
+gate.submit("fake_checks:forever_with_child", before="a", after="a")
+time.sleep(120)
+"""
+
+
+@pytest.mark.skipif(not shutil.which("setpriv"), reason="parent-death signals need util-linux setpriv")
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGKILL])
+def test_a_killed_compile_leaves_no_check_running(tmp_path, sig):
+    """A compile stopped by a signal runs no cleanup; its worker and the worker's checker processes
+    must still go with it rather than run on for the rest of a long check."""
+    (tmp_path / "fake_checks.py").write_text(FAKE_CHECKS)
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([*sys.path])}
+    compile_ = subprocess.Popen([sys.executable, "-c", COMPILE, str(tmp_path / "gate"), str(tmp_path)], env=env)
+    deadline = time.monotonic() + 30
+    found = []
+    while not found and time.monotonic() < deadline:
+        found = list((tmp_path / "gate").glob("*/pids"))
+        time.sleep(0.05)
+    assert found, "the check never started"
+    time.sleep(0.2)
+    pids = json.loads(found[0].read_text())
+    compile_.send_signal(sig)
+    compile_.wait(timeout=10)
+    deadline = time.monotonic() + 10
+    alive = pids
+    while alive and time.monotonic() < deadline:
+        alive = [pid for pid in pids if _alive(pid)]
+        time.sleep(0.05)
+    assert not alive, f"left running after the compile died: {alive}"
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    stat = Path(f"/proc/{pid}/stat")
+    return not (stat.is_file() and stat.read_text().split()[2] == "Z")  # a zombie has exited
