@@ -40,6 +40,7 @@ selfcheck_out/
 /out/build/*-install-check/**
 /out/build/upstreams/**
 /out/build/worktrees/**
+/out/build/lean/**
 /out/**/cmake-out/**
 /out/**/third-party/**
 /out/**/third_party/**
@@ -366,3 +367,6 @@ merlin/tests/data/lit/.lit_test_times.txt
 /merlin/experiments/voyager_h2h/LESSONS.md
 /merlin/experiments/voyager_h2h/STATUS.md
 /merlin/experiments/voyager_h2h/PLANE_B.md
+
+# Lake workspace state of the Lean checker project (packages/build live under out/build/lean)
+/merlin/lean/.lake/
