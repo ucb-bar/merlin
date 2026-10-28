@@ -19,7 +19,7 @@ FAKE_CHECKS = """
 import json, os, time
 from pathlib import Path
 
-from merlin.verify.lean_cse_dce_gate import GateRejected, GateUnsupported
+from merlin.verify.gate_errors import GateRejected, GateUnsupported
 
 
 def accept(job):

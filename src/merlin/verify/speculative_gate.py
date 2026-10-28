@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.common.owned_process import close_owned_pipes, start_owned, stop_owned
+from merlin.common.owned_group import close_owned_pipes, start_owned, stop_owned
 
 from . import gate_worker
 

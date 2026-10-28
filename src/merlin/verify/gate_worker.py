@@ -15,7 +15,7 @@ import sys
 import traceback
 from pathlib import Path
 
-BUILTIN_CHECKS = ("scalar_cse_dce", "pure_graph")
+BUILTIN_CHECKS = ("tensor_refinement",)
 
 
 def resolve(name: str):
@@ -31,7 +31,7 @@ def resolve(name: str):
 
 def classify(error: BaseException) -> str:
     """Map a check's exception onto the four verdict kinds; anything unknown is unavailable."""
-    from .lean_cse_dce_gate import GateRejected, GateUnavailable, GateUnsupported
+    from .gate_errors import GateRejected, GateUnavailable, GateUnsupported
 
     if isinstance(error, GateUnsupported):
         return "unsupported"
