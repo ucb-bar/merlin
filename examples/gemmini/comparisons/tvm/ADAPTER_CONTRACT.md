@@ -1,69 +1,98 @@
-# FireSim active-cycle limit contract
+# FireSim measurement and wall-watchdog contract
 
-Use the pinned hardware's existing capabilities. Unsupported hardware operations
-remain unsupported; do not invent support, alter the image or hide an eligible
-device contraction in CPU code. A frontend's unsupported Torch spelling is an
-import-coverage issue, separate from device support. Record permitted host
-operations and bind E2E claims to the exact source and ELF that ran.
+The user approved a per-workload median wall watchdog **in place of incumbent
+active-cycle cancellation**. A live active-cycle observer is no longer required
+for this campaign. Completed correct slow runs remain useful MetaSchedule data.
+This policy does not change the measured cycle window or numerical contract.
 
-`firesim_job_pool.py` sends `gemmini_firesim_probe_request_v3`. The supplied
-bitstream already sets memory; DDR3 is expected. The adapter loads the exact
-ELF, preserves boot evidence, compares every output and returns the guest's
-complete measured second `model_run` interval, including the final fence.
+## Measurement and timeout
 
-Active mcycle is the latency objective and includes memory stalls, command
-backpressure and completion waits. It is not CPU retirement, Gemmini array
-activity or a compute/memory bottleneck classification. Additional diagnostic
-counters do not replace or automatically qualify the live-cutoff observer.
+`tune_firesim_chunks.py` uses three actual successful baseline jobs per workload.
+Their median cycle count is the baseline cost; their median occupied wall duration
+is `m0`. Subsequent watchdogs use:
 
-For a request with `measured_cycle_limit`, the result must declare:
-
-```json
-{
-  "measured_limit_enforced": true,
-  "cycle_limit_scope": "active_measured",
-  "moving_limit_enforced": true,
-  "limit_refresh_scope": "in_flight"
-}
+```text
+timeout = min(hard_ceiling, max(3*m0, 3*m))
 ```
 
-The moving fields are required when `live_limit` is supplied. These declarations
-must describe a qualified implementation: observe the measured window during
-execution, abort at `active_cycles >= incumbent`, and tighten the bound while
-the job is running. Exclude loading, initialization and warmup. Preserve positive
-and wrong-oracle controls, a same-ELF unpruned comparison and an in-flight
-tightening/abort test. Fields alone do not prove hardware capability.
+`m` is the median of the latest nine successful, uncached candidate wall durations;
+until nine exist, use `m0`. Freeze the timeout at physical-slot admission. Histories
+are workload-specific and bound to program, fixture, graph plan, compiler,
+toolchain and pool identities. A changed context/policy cannot reuse history.
+Bootstrap and hard ceiling are explicit remote-pilot settings, never inferred
+from final E2E limits. Refuse `hard_ceiling < 3*m0` instead of clipping the baseline.
 
-An image without a host-visible active-cycle observer cannot satisfy this by
-using `+max-cycles` on total target cycles, refreshing the incumbent only at
-launch, or rejecting a completed slow result. Report those modes honestly as
-`total_target`, `at_launch` or `completion_only`; the current DSE pool refuses
-them for an incumbent-limited request. Do not launch another paid DSE campaign
-under the user's live-cutoff policy until that capability is demonstrated.
-Standalone baseline execution remains possible with the existing ELF launcher.
+Wall duration includes startup, loading, warmup, execution, collection and cleanup;
+it excludes build/queue time. The pool records occupied duration with a monotonic
+clock. Failed/cached jobs are not successful-duration samples. All admitted jobs,
+including failures and the three baseline jobs, consume the model's tuning budget.
+A high timeout rate requires review; it is not evidence of search convergence.
 
-The supplied October 26 F2 adapter used a 200M startup allowance plus four times
-the incumbent as a total-cycle cap. All 813 task jobs completed; none hit it.
-Its old enforcement booleans overstated the implementation. This does not
-invalidate the completed guest intervals, but it did not save the compute
-promised by the active-cycle cutoff. Keep those historical receipts unchanged.
+The cost label remains the complete second, warm `model_run`, including host
+work, DMA and final fence. Exclude startup/initialization/warmup from that cycle
+window. Store raw cycles, then convert by the documented target counter frequency
+for TVM `run_secs`. Never use wall duration, a timeout threshold or failure sentinel
+as measured target cycles. Stock TVM's failed-result handling remains explicit;
+it is not a censoring-aware cost model.
 
-## Tuning admission and finishing active runs
+## Adapter request and completion
 
-The current campaign stops new submissions after four tuning hours for ResNet
-and one hour each for TinyLlama and SmolVLA. Already active measurements finish;
-queued jobs do not start during completion. Record extra completion time separately.
-This policy does not remove incumbent cycle pruning, correctness checks, explicit
-cancellation or per-job hang safeguards.
+The pool sends `gemmini_firesim_probe_request_v4`, an exact ELF identity, bound
+hardware identity, slot, fixed-warm/all-output requirements, `wall_seconds` and
+an absolute execution deadline. `incumbent_cycle_pruning` is false. No incumbent
+or live-limit file is sent. The installed adapter must understand v4; old v3
+observer receipts do not qualify it.
 
-With `--finish-active-runs`, the pool rejects new slot admissions at
-`admission_deadline_epoch`. An admitted request's `deadline_epoch` and
-`wall_seconds` describe its separate per-job watchdog, supplied explicitly through
-`--active-run-timeout-seconds` by the remote worker. Do not shorten that watchdog
-back to the admission deadline or treat it as new tuning time. The supervisor
-waits for active campaigns at the admission cutoff; it can still stop its own
-processes on explicit cancellation or critical memory pressure. `occupancy.json`
-records each admitted slot lease and its post-budget duration, including failures.
-The remote worker retains the aggregate per-model occupancy ledger across chunks,
-graph options and restarts; the local elapsed-deadline launcher does not implement
-that aggregate meter by itself.
+For success, return matching ELF/hardware identities, `guest_exit: 0`,
+`status: passed`, `wall_limit_enforced: true`, `remote_stopped: true`, and hashed
+boot evidence/transcript. The transcript must have one positive
+`DSE_CYCLES first=... second=...` pair and `DSE_PASS`, which is emitted only after
+all guest checks. Preserve the wrong-oracle ELF for independent runner qualification;
+there is no sequential Spike preflight per tuning candidate.
+
+The watchdog must stop the actual remote job. Killing only SSH/local transport is
+insufficient. On timeout, the adapter must retain matching cancellation evidence
+and `remote_stopped: true`. If termination is unconfirmed, the pool writes
+`SLOT_LOCK.quarantine` and refuses reuse. The remote operator may clear quarantine
+only after independently confirming that physical-slot execution has stopped.
+This is a conservative recovery state, not a mechanism for killing unrelated jobs.
+
+## Required remote qualification
+
+Pool configuration points to `runner_qualification` using path/SHA256. That proof
+uses schema `gemmini_firesim_runner_qualification_v1`, `timeout_scope:
+wall_execution`, `cycle_scope: fixed_warm_model_run`, matching adapter source
+hashes/deployment ID and hashed passing controls named:
+
+- `startup_exclusion`: startup/warmup do not become the warm cost label.
+- `same_elf_repeat_agreement`: repeated correct execution uses the same window;
+  report actual cycle variability rather than assuming determinism.
+- `wrong_oracle_rejection`: the guest rejects deliberately wrong expected output.
+- `wall_timeout`: a bounded attempt is stopped by the configured wall deadline.
+- `remote_cancellation`: execution has actually stopped, and the slot is safe to reuse.
+
+Local unit tests establish client behavior only. The remote agent binds the actual
+image/driver/manager/loader/memory map and produces those controls. Resolve the
+selected U250 versus reported F2 identity; this contract does not authorize an
+image substitution or require a new live-observer bitstream.
+
+## Budgets and final runs
+
+Tuning allowances remain ResNet 4h, TinyLlama 1h, SmolVLA 1h across chunks/graph
+plans. The remote aggregate occupancy ledger is authoritative; the local shared
+absolute deadline is an additional admission bound, not a substitute for that
+ledger. Stop new admissions at budget, finish active jobs under their frozen
+watchdogs, and report completion overrun. Do not renew a continuation's allowance.
+CPU preparation and final E2E are excluded from tuning occupancy.
+
+Final baseline/tuned E2E wall timeouts are separate: ResNet 3600s and TinyLlama/
+SmolVLA 21600s per run. Do not use those values as candidate bootstrap/ceiling values.
+
+## Prior evidence
+
+The October 26 F2 adapter used 200M startup cycles plus four times the incumbent
+as a total-cycle cap; all 813 jobs completed. That did not demonstrate in-flight
+active-window cancellation. The old delivery recorded `live_observer: NOT_QUALIFIED`;
+the local CSR observer was Verilator-only. Preserve those receipts unchanged.
+They explain the superseded policy's gap, not a requirement to implement that
+observer under the newly approved wall-watchdog policy.

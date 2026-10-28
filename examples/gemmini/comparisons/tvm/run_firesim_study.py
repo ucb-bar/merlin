@@ -1,7 +1,7 @@
 """Plan or run independent stock-TVM campaigns against one shared FireSim pool.
 
-Dry-run is the default. The installation owns active-cycle observation and
-remote cancellation; this launcher never provisions hardware or changes memory.
+Dry-run is the default. The installation owns guest cycle measurement and
+remote wall-watchdog cancellation; this launcher never provisions hardware or changes memory.
 """
 
 import argparse
@@ -16,29 +16,33 @@ import time
 from pathlib import Path
 
 from firesim_job_pool import checked, identity
+from firesim_timeout import positive_seconds
 
 
 def qualification(path):
     pool = json.loads(Path(path).read_text())
-    if not pool.get("observer_qualification"):
-        raise ValueError("Missing live observer qualification; total-cycle caps do not qualify")
-    proof = json.loads(checked(pool["observer_qualification"]).read_text())
-    if proof.get("cycle_limit_scope") != "active_measured" or proof.get("limit_refresh_scope") != "in_flight":
-        raise ValueError("Installed observer does not qualify live active-cycle pruning")
+    if not pool.get("runner_qualification"):
+        raise ValueError("Missing wall-watchdog and guest-correctness runner qualification")
+    proof = json.loads(checked(pool["runner_qualification"]).read_text())
+    if proof.get("schema") != "gemmini_firesim_runner_qualification_v1":
+        raise ValueError("Runner qualification has the wrong contract")
+    if proof.get("timeout_scope") != "wall_execution" or proof.get("cycle_scope") != "fixed_warm_model_run":
+        raise ValueError("Runner must separate wall cancellation from completed model cycle measurements")
     sources = {identity(checked(s))["sha256"] for s in pool["adapter_sources"]}
     if sources != set(proof.get("adapter_source_sha256", [])):
-        raise ValueError("Observer tests belong to different installed adapter sources")
+        raise ValueError("Runner tests belong to different installed adapter sources")
     if pool.get("deployment_id") != proof.get("deployment_id"):
-        raise ValueError("Observer qualification belongs to another deployment")
+        raise ValueError("Runner qualification belongs to another deployment")
     for name in (
         "startup_exclusion",
-        "same_elf_uncapped_agreement",
-        "inflight_tightening_abort",
+        "same_elf_repeat_agreement",
+        "wrong_oracle_rejection",
+        "wall_timeout",
         "remote_cancellation",
     ):
         result = json.loads(checked(proof["tests"][name]).read_text())
         if result.get("test") != name or result.get("status") != "pass":
-            raise ValueError("Missing actual observer control: " + name)
+            raise ValueError("Missing actual runner control: " + name)
     return pool
 
 
@@ -49,8 +53,23 @@ def memory_available():
     raise RuntimeError("Linux MemAvailable is required for build admission")
 
 
+def graph_options(row):
+    """Reject obsolete preparation instead of changing a saved study's meaning."""
+    options = {key: row.get(key, default) for key, default in
+               (("graph_fusion_level", 2), ("prepack_weights", False),
+                ("bias_preload", False), ("graph_cse", False))}
+    if type(options["graph_fusion_level"]) is not int or options["graph_fusion_level"] not in range(4):
+        raise ValueError("Study graph fusion level must be an integer from 0 to 3")
+    for key in ("prepack_weights", "bias_preload", "graph_cse"):
+        if type(options[key]) is not bool:
+            raise ValueError("Study graph option must be boolean: " + key)
+    if options["prepack_weights"] or options["bias_preload"]:
+        raise ValueError("Removed graph preparation requested; re-extract with the simplified compiler and create a new study identity")
+    return options
+
+
 def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap,
-                      finish_active_runs=False, active_run_timeout_seconds=None):
+                      bootstrap_seconds, ceiling_seconds, finish_active_runs=True):
     """Persist one deadline/proposal budget across launcher invocations."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.with_suffix(path.suffix + ".lock").open("a+") as lock:
@@ -61,21 +80,21 @@ def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap,
             pool_sha256=identity(pool)["sha256"],
             proposal_cap=cap,
             finish_active_runs=finish_active_runs,
-            active_run_timeout_seconds=active_run_timeout_seconds,
+            candidate_bootstrap_seconds=positive_seconds(bootstrap_seconds),
+            candidate_timeout_ceiling_seconds=positive_seconds(ceiling_seconds),
         )
         state = json.loads(path.read_text()) if path.exists() else dict(binding=binding, campaigns={})
         if state["binding"] != binding:
             raise ValueError("Shared study deadline, target clock, pool, cap or completion policy changed; do not reset a continuation")
         fresh = []
         for row in rows:
+            options = graph_options(row)
             record = dict(
                 program_sha256=identity(root / row["program"])["sha256"],
                 fixture_sha256=identity(root / row["fixture"])["sha256"],
                 trials=row["trials"],
                 workload_keys=row.get("workload_keys", []),
-                graph_options={key: row.get(key, default) for key, default in
-                               (("graph_fusion_level", 2), ("prepack_weights", True),
-                                ("bias_preload", True), ("graph_cse", False))},
+                graph_options=options,
             )
             old = state["campaigns"].get(row["id"])
             if old is not None:
@@ -93,6 +112,7 @@ def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap,
 
 
 def command(row, root, args, output, deadline):
+    options = graph_options(row)
     argv = [
         sys.executable,
         str(Path(__file__).with_name("tune_firesim_chunks.py")),
@@ -117,16 +137,16 @@ def command(row, root, args, output, deadline):
         "--builders",
         "1",
         "--graph-fusion-level",
-        str(row.get("graph_fusion_level", 2)),
+        str(options["graph_fusion_level"]),
     ]
-    if getattr(args, "finish_active_runs", False):
-        argv.extend(["--finish-active-runs", "--active-run-timeout-seconds",
-                     str(args.active_run_timeout_seconds)])
-    if row.get("graph_cse", False):
+    argv.extend(["--finish-active-runs", "--candidate-bootstrap-seconds",
+                 str(args.candidate_bootstrap_seconds), "--candidate-timeout-ceiling-seconds",
+                 str(args.candidate_timeout_ceiling_seconds)])
+    if options["graph_cse"]:
         argv.append("--graph-cse")
-    if not row.get("prepack_weights", True):
+    if not options["prepack_weights"]:
         argv.append("--no-prepack-weights")
-    if not row.get("bias_preload", True):
+    if not options["bias_preload"]:
         argv.append("--no-bias-preload")
     for key in row.get("workload_keys", []):
         argv.extend(["--workload-key", key])
@@ -137,7 +157,7 @@ def stop_owned(process):
     """Terminate this campaign and descendant adapter groups, including setsid children.
 
     Remote cancellation on these signals must be covered by the installed
-    observer's qualified cancellation test; killing SSH alone is insufficient.
+    runner's qualified cancellation test; killing SSH alone is insufficient.
     """
     if process.poll() is not None:
         return
@@ -184,18 +204,21 @@ def main():
     parser.add_argument("--jobs", type=int)
     parser.add_argument("--memory-reserve-gib", type=float, default=4)
     parser.add_argument("--execute", action="store_true")
-    parser.add_argument("--finish-active-runs", action="store_true")
-    parser.add_argument("--active-run-timeout-seconds", type=float,
-                        help="Per-run hang watchdog supplied by the remote worker; separate from tuning budget")
+    parser.add_argument("--finish-active-runs", action="store_true", default=True)
+    parser.add_argument("--candidate-bootstrap-seconds", type=float, required=True)
+    parser.add_argument("--candidate-timeout-ceiling-seconds", type=float, required=True)
     parser.add_argument("--phase", choices=("initial", "continuation", "all"), default="initial")
     parser.add_argument("--ledger", type=Path, help="Same ledger path for all study phases and restarts")
     args = parser.parse_args()
     if not math.isfinite(args.target_clock_hz) or args.target_clock_hz <= 0:
         parser.error("Provide the documented target cycle-counter frequency, not FPGA/emulation frequency")
-    if args.finish_active_runs and (args.active_run_timeout_seconds is None
-                                   or not math.isfinite(args.active_run_timeout_seconds)
-                                   or args.active_run_timeout_seconds <= 0):
-        parser.error("Finish-active mode requires a separate positive per-run watchdog")
+    try:
+        positive_seconds(args.candidate_bootstrap_seconds)
+        positive_seconds(args.candidate_timeout_ceiling_seconds)
+        if args.candidate_bootstrap_seconds > args.candidate_timeout_ceiling_seconds:
+            raise ValueError("Bootstrap watchdog exceeds hard ceiling")
+    except ValueError as error:
+        parser.error(str(error))
     manifest = json.loads(args.study.read_text())
     root = args.study.resolve().parent
     rows = [
@@ -250,7 +273,8 @@ def main():
         pool=args.pool,
         cap=manifest["global_proposal_cap"],
         finish_active_runs=args.finish_active_runs,
-        active_run_timeout_seconds=args.active_run_timeout_seconds,
+        bootstrap_seconds=args.candidate_bootstrap_seconds,
+        ceiling_seconds=args.candidate_timeout_ceiling_seconds,
     )
     fresh_ids = {r["id"] for r in fresh}
     plan = [p for p in plan if p["id"] in fresh_ids]
