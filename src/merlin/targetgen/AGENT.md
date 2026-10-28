@@ -77,6 +77,18 @@ that exact schema string is graded this way; `per_output.v1` still refuses any n
 and the writer's default still refuses a non-finite golden. The two policy versions are never
 inferred from the data.
 
+A materialized application capsule (`SY_source_*`) is held to the DERIVE-TIME whole-program admission
+sidecar (`whole-program-admission.json`, `program_admission._check_saved_inventory`), not only to the live
+screen of its written program. A sidecar derived before a host row was reviewed keeps the capsule withheld
+as `host_lane_admission` even though the live screen admits every compute operation; only a fresh derive
+(`program_admission.derive_inventory` over `application_demand_inventory` with the current host
+declarations) clears it. Operations classified `structural`, `nested_component` or
+`support_lowering_required` (for example `tensor.empty`) are not compute, never enter this screen, and
+need no host row. A `source_body requires parsed source operations` result belongs to a pre-screen
+without parsed source operations and is re-screened with them by `_join_source_admissions`.
+Do not add a host contraction row for `m2m_q.int_mm_seeded`: the accelerator lane already admits it, and a
+second admitting lane makes the placement ambiguous.
+
 Explicit `component_program` v2 adds signed integer casts and true kept-axis
 sum reductions to closed rank-two DAGs. Legacy source bytes retain their original
 meaning. Logical copies, fanout, aliases and state epochs are source semantics;
