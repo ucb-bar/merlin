@@ -154,3 +154,11 @@ correctness of arbitrary matched programs. Resolve the listed proofs and inspect
 actual placement before admitting benchmark ELFs; eligible device work must not
 silently become an unreported CPU baseline. See [FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md)
 for remaining complete-call builders and remote qualification requirements.
+
+## Current baseline Spike evidence
+
+[SPIKE_HANDOFF_EVIDENCE.md](SPIKE_HANDOFF_EVIDENCE.md) records the fresh 74-case
+operator suite (51 original, 20 device controls and three reuse/tail controls),
+all 16 complete kernel cases and ResNet checks. The repaired diagnostic oracle
+is distinct from the missing spec-pinned provider. Passing finite fixtures does
+not turn candidate families into a fully proved hardware whitelist.

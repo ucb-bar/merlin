@@ -42,8 +42,9 @@ details to finish ELF preparation. No sequential Spike preflight is selected for
 remote candidate validation; preserve guest checks and wrong-oracle controls.
 Keep baseline and tuned complete chain timing comparable; never sum operator minima into E2E cycles. No cycles
 may be supplied from estimates. Final E2E wall timeouts only are 1,800 seconds
-for ResNet and 25,200 for TinyLlama/SmolVLA per baseline/tuned run. Tuning budgets
-remain 4h/1h/1h; candidate hang watchdogs are separate remote-runner settings.
+for ResNet and 25,200 for TinyLlama/SmolVLA per baseline/tuned run. Active tuning budgets are 4h for ResNet and 24 aggregate slot-hours for the
+16-kernel TVM study; full TinyLlama/SmolVLA remain backlogged. Candidate hang
+watchdogs are separate remote-runner settings.
 The user approved median-based candidate wall watchdogs in place of incumbent
 cycle cancellation. Retain completed slow cycles; do not require a live observer.
 Before tuning, the remote runner must qualify guest correctness, wall cancellation

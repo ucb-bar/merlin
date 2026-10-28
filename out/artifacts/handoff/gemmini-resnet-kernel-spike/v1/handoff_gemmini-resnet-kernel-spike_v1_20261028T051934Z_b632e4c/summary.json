@@ -1,0 +1,2790 @@
+{
+  "schema": "gemmini_resnet_kernel_spike_handoff_v1",
+  "status": "local_functional_checks_passed",
+  "performance_qualified": false,
+  "spec_pinned_oracle": false,
+  "source": {
+    "merlin_builders": "b632e4c97bcc5e1d05881db41aa5e22360740601",
+    "tvm": "bb4ad9f8dbd21dd96a4dc63121dfebc24742f260",
+    "original_verification_product": "out/artifacts/verification/gemmini-resnet-kernel-spike/v1/verification_gemmini-resnet-kernel-spike_v1_20261028T045208Z_b22bea1",
+    "elf_receipt_bindings_authoritative": true
+  },
+  "scope": {
+    "operator_cases": 74,
+    "kernel_cases": 16,
+    "resnet_chunks": 18,
+    "resnet_connected_parent": 1,
+    "full_tinyllama_smolvla_excluded": true
+  },
+  "results": [
+    {
+      "id": "G01",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "6ec735dc55dd73b07f66a0bbb53c48c78aed987e41e88d9ca0609ad21aae1234",
+      "program_sha256": "3857d23825ab7cc37e3c63ba26e05fab6b7b7367154e85e25a789b3bb02fcee6",
+      "elfs": {
+        "valid": {
+          "sha256": "a10e97fc146e88f838225e09302c2c0ef84fe33507ab99abdb0172b91969061b",
+          "bytes": 809016
+        },
+        "bad-oracle": {
+          "sha256": "c7231cb1b97e97113fc8bf4e54619dc4b815fd3f21c0c2ac3dde4bccb0a39d5c",
+          "bytes": 809016
+        }
+      },
+      "receipt_sha256": "a78db820022ea1b6ee01b278f88c786a007c927f7a478815866a74d63f7f292c",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 32768,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "G02",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "696b08c2921dd506b40cecbf56ca50af18d2f43188520dcac5acf9ce4427a84e",
+      "program_sha256": "ccaf3a81722dae13e06ba748b2d82a1aa934b7f73dce601d57d243c9cbe55371",
+      "elfs": {
+        "valid": {
+          "sha256": "f54c06076a4a3102001a13395782b5328f1508dcaa5f46a9de7ef4782c77f8c6",
+          "bytes": 4052664
+        },
+        "bad-oracle": {
+          "sha256": "56cf5d7c06809efb7575a60720eb69f8125987094b10e94f8be533b3d61ea69b",
+          "bytes": 4052664
+        }
+      },
+      "receipt_sha256": "fca144c277aedefafd57ab34a2c7764cfadba9db4089eb6feaf9fbe9b502360a",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 16384,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "G03",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "98169817b8aea2fe57fec017d1e7d0f6c784599cb1c43ccdf0f877d665cb41eb",
+      "program_sha256": "708930328d48427586636c50c01c4376ed7f5e3bf104a2e9279b016b7d1c9eea",
+      "elfs": {
+        "valid": {
+          "sha256": "bf37efda7ca69246cd2c6115d38e0893061fd12096d2547fc9a697692b77d305",
+          "bytes": 4052576
+        },
+        "bad-oracle": {
+          "sha256": "19d24f7b6000ad19e1ae1d801ddcd6968ac65c535be7ce53cab85e7d1f40e0df",
+          "bytes": 4052576
+        }
+      },
+      "receipt_sha256": "c6844f06b51da7279961bfeba8229e32ac59e3148a283291bc383feb926d999e",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 4096,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "G04",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "536db6b70345c1f6ce4c39e8d976b8c22bcda27433e39f5c67c0d30f46a171a8",
+      "program_sha256": "548ab2e2e357b1356d1c25b4ad17079069a787e9c6bd258f0a6f5138adfc6a3b",
+      "elfs": {
+        "valid": {
+          "sha256": "745aad5ca87b0b98492b9415e193c30e998dd76a5b1768a22979f0b4088455be",
+          "bytes": 2095776
+        },
+        "bad-oracle": {
+          "sha256": "10304d3d74406066440fe5fa7d9a5fee13f04de807c87ad6e5238fe96a723c1b",
+          "bytes": 2095776
+        }
+      },
+      "receipt_sha256": "e47c1a363468be0b4f06531112e28f97e09228bbe398bcdb741bcdc6748366a5",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 32768,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "G05",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "98aee85bc1b590c1b32a83d30339d83590d24245c10c1814a30921692727578e",
+      "program_sha256": "39573c3278d53510dded2bccb823643fac7ffbad8ee8b0faa3d4dbd3b3ae20f9",
+      "elfs": {
+        "valid": {
+          "sha256": "f05198b8ed5c99c8be1e7e20b8956a7d0ca7e6fafa41e6c2e9ae86d699a9a69f",
+          "bytes": 2095736
+        },
+        "bad-oracle": {
+          "sha256": "bbbddef20d9651ace84833734c0ab3244d0e13bd62a1571fc07f6abe129584cc",
+          "bytes": 2095736
+        }
+      },
+      "receipt_sha256": "f786c511ae3c5dbd0e92b055b543ccba19a4028e1427c362c0671ef6f64a26af",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 8192,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "G06",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "a49e12f81a98fe8af7649ec03ca7de98d72f599169004769a1c6a4b6df68445c",
+      "program_sha256": "60f37b7b96b6500531617c90722b563e5f9f035aca603a05edb7a0d7f09e0ad8",
+      "elfs": {
+        "valid": {
+          "sha256": "31c17b0ff395aa60242e8aa114a96f00504efb8607112124be1b2d6be48dd5e6",
+          "bytes": 1289016
+        },
+        "bad-oracle": {
+          "sha256": "f448db69fa3f4b5158f3d65edba7df1d1fa5e13525037e173e16032f52df213a",
+          "bytes": 1289016
+        }
+      },
+      "receipt_sha256": "f115c83d2900ba1e4444f6d7985fd191137aba27a1885c7e2cb966533a5fb615",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 16384,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "C01",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "45e48a043c4457619a852c847d450676fed7c1ee6242ca8e836db333bfc60496",
+      "program_sha256": "75512bcc630cdca3e70db8854b24e2695c711b8226d0b0c4c8069085786d0e66",
+      "elfs": {
+        "valid": {
+          "sha256": "8a7b917bcf3c3de44ecd5b34d7338eab32ac999c7d0a9d2d80132ba65e2cc85e",
+          "bytes": 1725512
+        },
+        "bad-oracle": {
+          "sha256": "4ebd73190edeb4cf4bd435b1e1ab2cc2a033cafcb25cbb583b400a1acf3e8740",
+          "bytes": 1725576
+        }
+      },
+      "receipt_sha256": "ba672fde0e809697d30156a32f8d9c8de05c589bbf2d618165b86f2b48162f20",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 37888,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "C02",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "b27ec525d4478be2ca4d47f11d5c71a4b33bcb7f7125696e95853e978bfed18d",
+      "program_sha256": "e079a189e82fd0dbd0ed5451ec3558af3bb566a4cc76625b6b630c96a37b84d2",
+      "elfs": {
+        "valid": {
+          "sha256": "f506c5a79eb0393c282fe9b6b5a4d036e4cda6c699c1ef27d5b54cdfb2137b13",
+          "bytes": 1034392
+        },
+        "bad-oracle": {
+          "sha256": "9a691e12b68a112d5e63b550bd6305f65af698974a19d8220ae78ea3e6b1ad61",
+          "bytes": 1034392
+        }
+      },
+      "receipt_sha256": "0a3fe97b45e289ac24cf2694f34261ca0160b09e5a9be6c0ad73199e748660d6",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 74752,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "C03",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "516b129733228ccdd4526afd41503ab16816a4b1853987aff672f42d0919bb9d",
+      "program_sha256": "3101fd2ea51f7e7c565fea010bf8f527ffdf87ff7dca79374c7bb9cebf399d33",
+      "elfs": {
+        "valid": {
+          "sha256": "19c70b2df97edbb2f4534098777b04004e6087960c4c5e80eb3fd52a8093ea3d",
+          "bytes": 1077832
+        },
+        "bad-oracle": {
+          "sha256": "43670e95cfef5c369d0d0bb1f7cf9dd1282fa0ca4d044b1df20988b7ef2daee5",
+          "bytes": 1077832
+        }
+      },
+      "receipt_sha256": "e210e1005f03ea6adec4579b1642d476d7bedd0179564ff1e463612b7c69ac1e",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 148480,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "T01",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "db2a1c64355aadeb3146fde2c549e2781fc3ffb48689c161b0712b4dce4b1056",
+      "program_sha256": "20619c0ad1be2e45ab260cbc649fe6680ec00a11cba541e961189ca40533fca4",
+      "elfs": {
+        "valid": {
+          "sha256": "a5c9dfdb4a58ce42700e28bd82a7e169e91c1856a53d34e5b298bd51337e8b6f",
+          "bytes": 217856
+        },
+        "bad-oracle": {
+          "sha256": "7b4cc03d80611f2ae5f33f4aebebd3ac7a19fe44a180be1290cb903ab8b2ff2b",
+          "bytes": 217920
+        }
+      },
+      "receipt_sha256": "2265bf9763babbe67cd1b797c1f83915933cb2a4e136f6a9f96320d1ca20049e",
+      "outputs": 32,
+      "fixture_absolute_partial_bound": 4096,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "T02",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "74d53e90f606e9449a5072d19e23754049d9a1cf2c4d94bb282ac868ee45dd23",
+      "program_sha256": "b31f3a79b0b2c85f46f85348d702161c546136b231f2c99421a6ce303f23701f",
+      "elfs": {
+        "valid": {
+          "sha256": "6e886004e49a934243f06880931f6b09dad5171122b5f5d0d4892ef71a1128bf",
+          "bytes": 193304
+        },
+        "bad-oracle": {
+          "sha256": "24ba8e8e6ab5ce6d1c3b9a1c5d09aa711e124544c13a6950568259c03c0d8cad",
+          "bytes": 193304
+        }
+      },
+      "receipt_sha256": "4c95fdebb025077d40f382c88e525e2fd2055d5c78e3e219b6882a1d6b6de774",
+      "outputs": 32,
+      "fixture_absolute_partial_bound": 1024,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "T03",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "1820e84d202ad59ed154e6f9ab5509ae4abc2e5dd38d0a6f664669b41cef70b4",
+      "program_sha256": "e157a6b3d5912a05ff625e56c68f86537ebecf4df06f6797bbbc7ea48406c187",
+      "elfs": {
+        "valid": {
+          "sha256": "eab8bcf341c36e67cee6cf2b9b21bc80927de7f4123336d4d22dfa9220777c47",
+          "bytes": 11778112
+        },
+        "bad-oracle": {
+          "sha256": "d31172b05edb14c3f0addd44a84e140b20341e422fcf392a8d285d4f66c7b070",
+          "bytes": 11778112
+        }
+      },
+      "receipt_sha256": "5405c66e4fdde85da1d619e367b3f6397a90b7313644988ee67751fbadddf9f6",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 360448,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "T04",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "e38a526b77bf77e23545874e299d03468e117df48f7c6df544db90282f25fe26",
+      "program_sha256": "e5f1f93b0c943aed0839f174003934cc9419d00ecdd037fee8618bf5f6902db8",
+      "elfs": {
+        "valid": {
+          "sha256": "0e25c441bf292e33dbfb1e49e88816e1a2c35f754604e66b0b2b506a278f6291",
+          "bytes": 23305480
+        },
+        "bad-oracle": {
+          "sha256": "758b2b237499f9d1cde9406daefa76364be96b80fc1c466a8003ec0fb660de55",
+          "bytes": 23305544
+        }
+      },
+      "receipt_sha256": "f019763423f827af16dbb80fbdc6c8a52c54ec34cbdc9f1634eaaa422483eaba",
+      "outputs": 2,
+      "fixture_absolute_partial_bound": 131072,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "T05",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "d1265b8ccdcb808e0be8f2d842f39275321e5773dfa1f7760eb277145af7be7c",
+      "program_sha256": "7051cde4619d5da4eeff7e5605e71de2ed8db69900c75bb2d4793022ac199b7b",
+      "elfs": {
+        "valid": {
+          "sha256": "0d45e352f547b450f110d1e4cf0e08500fc293b9b4c0603a4ca402ff14ce7592",
+          "bytes": 4380200
+        },
+        "bad-oracle": {
+          "sha256": "515a73968795c167ad3bc635231d5eb6c58af51e5ed01eac284efa7bd6e6cfbc",
+          "bytes": 4380200
+        }
+      },
+      "receipt_sha256": "46a70241f965545b3f244cbb5c6c1e9e6c2c5ff8e22bb1db036fb7865de959d9",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 131072,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "T06",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 2
+      },
+      "fixture_sha256": "0f79d9121653daa522177a9df7232b3a265ce8f589bf33a2069348ad3c65c7aa",
+      "program_sha256": "e0646b6023436fc3787e3672f0ff58807a94f5eed27b548f3080b15cc5a62151",
+      "elfs": {
+        "valid": {
+          "sha256": "fa56fe104f021792414ae0b7b6e8f407feaf90a38ba2793b5780d869ffaf9628",
+          "bytes": 5342760
+        },
+        "bad-oracle": {
+          "sha256": "b1254d33b015b31f5d7d22bf0fd5972272dc16c2dec588da0536afb6c3c9ffcb",
+          "bytes": 5342824
+        }
+      },
+      "receipt_sha256": "66c4e1cdc6792d357279261950f61e4a7084dbd535523f7ce103c95bce0f74f5",
+      "outputs": 3,
+      "fixture_absolute_partial_bound": 131072,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "T07",
+      "kind": "kernel",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "gemmini": 1
+      },
+      "fixture_sha256": "53c049e4c5318cdb21587f248f89de9dbed9084127719464532654df520cf1fc",
+      "program_sha256": "25c9355a05571d12e36f869fe30ff08b527562d6274dfe998439b4c87aad7d75",
+      "elfs": {
+        "valid": {
+          "sha256": "7bf00de3d12256447f9ff2d201175be1b27ed00f5b08d5fb56d9a6b78dd0fd99",
+          "bytes": 65690536
+        },
+        "bad-oracle": {
+          "sha256": "48d706ee8fc8493ea260b1d8a6b4839012dc08325cfeed3d67962ba151a0c4dc",
+          "bytes": 65690536
+        }
+      },
+      "receipt_sha256": "37bb6a0a2b1684fbf1066b83ba4b7f85ced86ad7144f677089dce5935a3f6ee1",
+      "outputs": 1,
+      "fixture_absolute_partial_bound": 131072,
+      "bound_scope": "Conservative absolute bound for fixed signed-nibble operands plus declared bias; not a general domain admission proof"
+    },
+    {
+      "id": "resnet-classifier",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 3,
+        "gemmini": 1
+      },
+      "fixture_sha256": "300f3965ffaad56bb2818357aa8b7ca3a57136ed1d3af5062235d686c6aeac2c",
+      "program_sha256": "8d38d2816fdb4b8c2f22273276dda3f8cb55f5a2d538fca8cefc13cb46c64e15",
+      "elfs": {
+        "valid": {
+          "sha256": "6df81841956eace232f44e1a8ce53a54d472899a728022629023ffa91c7b8f18",
+          "bytes": 2489072
+        },
+        "bad-oracle": {
+          "sha256": "50476a2f331905cdd36029dd95dffda153c1b5aead797603162a781687a7eda5",
+          "bytes": 2489072
+        }
+      },
+      "receipt_sha256": "c6f33537803887ba23bc77bf26ca0b95a3bbb800881c1eb63378e78581cd3964"
+    },
+    {
+      "id": "resnet-stage1-block1",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "cd2be9960a3d88f6bad223839ee70c45aa9c0126960deb29681b9aea521bb40e",
+      "program_sha256": "7dea81d8672383ca584e755c5a1e0ce7308c65481e9f98d55ccb2e8beb350424",
+      "elfs": {
+        "valid": {
+          "sha256": "9cd0fcd56bf8cec742cf6a269a17631d6ab1ddb357e30d6e878f3483223d99fb",
+          "bytes": 3531408
+        },
+        "bad-oracle": {
+          "sha256": "5e4ea2ef58109fc7a922feadc4ac5a20c8f575b23d7634eada5eda6282547701",
+          "bytes": 3531472
+        }
+      },
+      "receipt_sha256": "1070a24a8aeea65ae3fdf66059f12ede65f1939ca365b4b11cae3e828d6ef07e"
+    },
+    {
+      "id": "resnet-stage1-block2",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "6131a4db8451820266a2afcf807ceb48b30781d85a7649daf3d05492727e7ad2",
+      "program_sha256": "f543fc8ede88a18a27bb52e181f36d646383986810f37cb4e120ce5918f2e944",
+      "elfs": {
+        "valid": {
+          "sha256": "a4ebd18970b9ef92491a56cf72a2cf27400d31521986060bdc5678d4380a1125",
+          "bytes": 6535672
+        },
+        "bad-oracle": {
+          "sha256": "2dd5687c03a9b3ce40eba863f271a2978dd74dd632c9618cd7acc289b397cbcd",
+          "bytes": 6535672
+        }
+      },
+      "receipt_sha256": "365d29de2c06ca2c1896f3dc2a069ace29bd3839bafd0e7ffce886fe8b4a78e6"
+    },
+    {
+      "id": "resnet-stage1-block3",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "3f75bc5f117709392949cf205e2c572ee577a9ff83b7248f1f5616a6561306b7",
+      "program_sha256": "debf1dea49a8396e4c1dee6883b55e95cbbf175e8529f8de8146bb02aa4765f0",
+      "elfs": {
+        "valid": {
+          "sha256": "98c6f994735ada7cd60d96566664a52731e60f525754c910c02cbb24737951bc",
+          "bytes": 6535672
+        },
+        "bad-oracle": {
+          "sha256": "e1966fcae63774638ca1ae53c622df105517650b4cad5806ddf5501774b36d92",
+          "bytes": 6535672
+        }
+      },
+      "receipt_sha256": "4f1da280990620aae9150087fd948514ca6a351930c28026aa2adebb2b42967e"
+    },
+    {
+      "id": "resnet-stage2-block1",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 6,
+        "gemmini": 4
+      },
+      "fixture_sha256": "d9476ce24894d969db3d4c9a069fe03e4dc72b4e22462e8a5969df07aaa4b3e4",
+      "program_sha256": "709344d63632f1d413dbedda4863df6785348d284131d44623e7a085091a2354",
+      "elfs": {
+        "valid": {
+          "sha256": "e3ec18ecadd2881d0580c604b6f52785d51be6c1e3bfd631208aaf63c1c087f9",
+          "bytes": 5249920
+        },
+        "bad-oracle": {
+          "sha256": "e652b9c904f58fa95aa889f74100c7a1bd086d33e485c00e82ca17d13bc94350",
+          "bytes": 5249920
+        }
+      },
+      "receipt_sha256": "b8a84d38b5dca212c748991d73a73360e44c9e540df99cf5b4263c23ffb08cbf"
+    },
+    {
+      "id": "resnet-stage2-block2",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "b0cc390880fba0634ce9fbb5b253d423f44872f8f9c7aac14d73bc6b540caead",
+      "program_sha256": "f8f7c765923e1ed55bec4f9ad0e26a465b1e65b1d1418f77567ee172bf4aa19f",
+      "elfs": {
+        "valid": {
+          "sha256": "7bc7c6ae5c32d0575cfae1f9224e32ede636e457b1b65cc31e658df61b24754c",
+          "bytes": 3536296
+        },
+        "bad-oracle": {
+          "sha256": "abbd384450dcf2a31e881c607d1dcd00c7c64b653806aad4c4a04911976aa509",
+          "bytes": 3536296
+        }
+      },
+      "receipt_sha256": "7d5bbecfda2ecb76e196b631bc674cccb03a513cd03abd12d94ed29b61157634"
+    },
+    {
+      "id": "resnet-stage2-block3",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "427ffad868bb23d9f5f6c91777a09035caf0a8af164449dbe6dd2e2e103d2ac5",
+      "program_sha256": "31079664a820bf3547425c83074a8bb64b63fd00e99e005070e30187b22528d6",
+      "elfs": {
+        "valid": {
+          "sha256": "f0e52fd7dfc81d38cda23709fdc12a29ab7569d364629929b7e24c7c49b5c9ba",
+          "bytes": 3536296
+        },
+        "bad-oracle": {
+          "sha256": "00ceb73a17c3fbec381eb3ce6390d9f1ddccf4957dbc4e8a78dc1ae97d147823",
+          "bytes": 3536296
+        }
+      },
+      "receipt_sha256": "33d1779f3ca9f93c2004a95ff9030d2f29374036042d43b3b9ee33a357c7b85f"
+    },
+    {
+      "id": "resnet-stage2-block4",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "f519224af0ee496ef30183fba8c9dc466ac2d651853c8fd10bbd947e4e0db517",
+      "program_sha256": "a1ff7eab917e9963ab7537d31c62ed84acbdf5462d0cf288bdd9ac62e2a32106",
+      "elfs": {
+        "valid": {
+          "sha256": "b3aede746e0870533e7709fc229bc69c6e96cf8b50c346e7cf54b756f19a2202",
+          "bytes": 3536296
+        },
+        "bad-oracle": {
+          "sha256": "b94fa718710b3a84c95ce35e57af12c26d1023a03d1d0abc902efdd594dffdc7",
+          "bytes": 3536296
+        }
+      },
+      "receipt_sha256": "3766388b88a73c28c7f46aa382c2e454f0965daba001098bf3ed34c680418926"
+    },
+    {
+      "id": "resnet-stage3-block1",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 6,
+        "gemmini": 4
+      },
+      "fixture_sha256": "77562bc70fdb9d4ee165b997178fbd8ce49d3852a0ec78a65a9be440f38fafc4",
+      "program_sha256": "ce5b405ed3aa7bf0c59ee0afe7325c359512eaa8c00e38396921cf50e05d3462",
+      "elfs": {
+        "valid": {
+          "sha256": "33706d88b6426f0f259eee5e61dd1980b6187e9e4a854b706ef01009abdea872",
+          "bytes": 3983992
+        },
+        "bad-oracle": {
+          "sha256": "dbbefbde8fde7bc6ed89c2a11c99b33d51f6db34442cd0024375eb08f38b868d",
+          "bytes": 3983992
+        }
+      },
+      "receipt_sha256": "bc557be09ce13d2361b0067bee1ead23242f0d1a4292276449eed57e3d8f35dc"
+    },
+    {
+      "id": "resnet-stage3-block2",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "f7f1a1ed6ad2e0202d73a48738f95bdb3b7e71131aa9586f34cb74f43118d590",
+      "program_sha256": "b5cc152521b3c0a58381600a6a09639f6135e4ea701e96a8ee22370cc48e2506",
+      "elfs": {
+        "valid": {
+          "sha256": "82b008c1a8273282b6ee1bd11dbd3942ef0447d0c2f857d0859326f3a861fe25",
+          "bytes": 2773136
+        },
+        "bad-oracle": {
+          "sha256": "bec5ce6ce0cf076a1249400a8e0f479386b1dd83ac961d0674140e64815eb9a0",
+          "bytes": 2773136
+        }
+      },
+      "receipt_sha256": "b2184721c33885830f977d5ef1fb8d98b149dde724e201b76301d164251c7462"
+    },
+    {
+      "id": "resnet-stage3-block3",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "84b2d4b6b936a5b3fa6f21468197f4031ab0e7ced367faf6afd48ef5a2200667",
+      "program_sha256": "80fd8c068388f935000d8094415f52aa005028cac1121822fc03e2f0ec5f141f",
+      "elfs": {
+        "valid": {
+          "sha256": "93a60bf476beeac6b21d77c41f6b497eaa395fac92156fb1a2336d0db258fb43",
+          "bytes": 2773136
+        },
+        "bad-oracle": {
+          "sha256": "c202bce876f3974e1e98e4b9472f022aaceec10681c78f90b12ca794746de478",
+          "bytes": 2773136
+        }
+      },
+      "receipt_sha256": "61c52f8466546c17ad374f49ae01421ba623e5b5090f29118893263e86db3425"
+    },
+    {
+      "id": "resnet-stage3-block4",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "90c7215e37563ab721c3513bd050d6cc3b8dbde07a491a717419945ac7406e05",
+      "program_sha256": "da91f7dbdd3b3d2bbb3c0d0fc264eefd237a4419d52a1add6b372fae9a0ee5ba",
+      "elfs": {
+        "valid": {
+          "sha256": "6fbd7ab420dccb4809857838a6e34c6c0ee70f36ecf4de740b2dc7f1ac433f61",
+          "bytes": 2773136
+        },
+        "bad-oracle": {
+          "sha256": "f5a27d2bc2a3d0d31283b5616f0fd5a4d84c143505723f0abc6f2309ba05d04e",
+          "bytes": 2773136
+        }
+      },
+      "receipt_sha256": "1d5112a87ec8988e6f35a9df40528f84c0f064747d095f52da4fd868580bcd4d"
+    },
+    {
+      "id": "resnet-stage3-block5",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "141c8ac6552e4f925e1bb6678628746f962397d7f0942c387b5e87b65b3a640a",
+      "program_sha256": "2d5061a186f1dace563ff73273440cb4e34ba0a9d8ed92cf57c19a7e59c272af",
+      "elfs": {
+        "valid": {
+          "sha256": "64b5f81f150d9524bf387080c840dbe4dfd541bf60957aca3662c9d8461a279e",
+          "bytes": 2773136
+        },
+        "bad-oracle": {
+          "sha256": "f67466eb56ea24c936bfda5f22e6b537fb63581c0cc619a273ac7a98945919ff",
+          "bytes": 2773136
+        }
+      },
+      "receipt_sha256": "ce5b1b1a3a734449ae8c7784d0e900a02f5235cae5f1b81dd14a52ef824edcda"
+    },
+    {
+      "id": "resnet-stage3-block6",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "49616d416445a4f31532f7a4d1ad54d2cc9d1a621bedfbb5c615e3214e701961",
+      "program_sha256": "3711c5d69836b040e1b6c9094753cf9fee8be2d3b1e9b3f9c6a3a71931997a35",
+      "elfs": {
+        "valid": {
+          "sha256": "f6f2dee8aee49fbe6e81a4fd1e23cab345b66e918eb54c13f259ffc2c166c1c9",
+          "bytes": 2773136
+        },
+        "bad-oracle": {
+          "sha256": "71bfacf1cdc67fb0455ecac7d1020864c77e41eea28d765cf485da93c70a7090",
+          "bytes": 2773136
+        }
+      },
+      "receipt_sha256": "8c8404b3a8878ab287f9193c40abe4d9f09f83c37c7d808f22a0fe406ea117e2"
+    },
+    {
+      "id": "resnet-stage4-block1",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 6,
+        "gemmini": 4
+      },
+      "fixture_sha256": "0ba166825677ed8106870bc2857ecdc5eb22faf972af4663d1d9909830b8e4ca",
+      "program_sha256": "278021334ce2a19d7ccaa893023b9f7cfe3885274ac41a53adc01b2bddd70ca5",
+      "elfs": {
+        "valid": {
+          "sha256": "16f8fc0758e59fda563fbfb15a669d68e55f07276b45e913cb82d1a67924dd6b",
+          "bytes": 7321600
+        },
+        "bad-oracle": {
+          "sha256": "922122aafad80c816aa699e4da2b972e75214e90cd9730471d4e5c87fd6f6d28",
+          "bytes": 7321600
+        }
+      },
+      "receipt_sha256": "0b9cb335635fc02998067d22cb75db7689a2cd0c7a80d31b5efc78200dffe0ba"
+    },
+    {
+      "id": "resnet-stage4-block2",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "c9f69f0b71583975b005a143a82ce5651bed0503b00f64eaa6595bf04ba8dc33",
+      "program_sha256": "abd05762b51d670c10d08efe9b1e0cefd46e2a7e5eb58b51e9f2548270db4bfc",
+      "elfs": {
+        "valid": {
+          "sha256": "0c267a03e5984d7b016c68b72f8f48bef98d0e78ea2cf75b4677ab2f4c456806",
+          "bytes": 5324208
+        },
+        "bad-oracle": {
+          "sha256": "b503bd361c508be15cc182419e48a77f6c4dbf6eeac5d26a3b7e28f87da754aa",
+          "bytes": 5324272
+        }
+      },
+      "receipt_sha256": "c030cf82068e42fa4ecdd96176967525b302d14b93595ffaad5c06376a5a00be"
+    },
+    {
+      "id": "resnet-stage4-block3",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 4,
+        "gemmini": 3
+      },
+      "fixture_sha256": "1caaa97a1f40c31b8d8c64f4d38a1c9a93d64207b9de51a70a0328c9722ab7a8",
+      "program_sha256": "d9814db291d3a41cf638480400e1a3a69077b67b1d449215072f7db2373581de",
+      "elfs": {
+        "valid": {
+          "sha256": "e6bfe7caf526e0b95990d1ec9c839e656d4dcd3d4ac403b345fed0e3479a32eb",
+          "bytes": 5324208
+        },
+        "bad-oracle": {
+          "sha256": "2f37dcfea3cc0324651a0c4c35c371ac83e5e3cbc09b18a1e0e43ee0b7c7c03e",
+          "bytes": 5324272
+        }
+      },
+      "receipt_sha256": "2793f3c35dc05ebe1fb040bafb4963c2d90bae687270716206cd3169998853c6"
+    },
+    {
+      "id": "resnet-stem",
+      "kind": "resnet_chunk",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 3,
+        "gemmini": 1
+      },
+      "fixture_sha256": "6c75b94dab40c31942d58d0458981314902d58b5226a3723e1a7b2722e1ff446",
+      "program_sha256": "8a6b24a35837ce9f626a0afdc759351b432316346f2ffccb2a22e902563c32a9",
+      "elfs": {
+        "valid": {
+          "sha256": "37da4fd0595bbb8e041c5e91510d25689d138e5a2cb50dff0d46f2c79bc92b64",
+          "bytes": 876384
+        },
+        "bad-oracle": {
+          "sha256": "17e9f1cb34c1ac7e1367d026f2d6932abd3472f3d2d6d65f57872dd33cc445ec",
+          "bytes": 876384
+        }
+      },
+      "receipt_sha256": "270c38a0d6e54e4f097f8762de7dd67a204fdbc5a3a7c2ea7663081144733235"
+    },
+    {
+      "id": "full-resnet",
+      "kind": "resnet_parent",
+      "status": "passed",
+      "positive_returncode": 0,
+      "negative_returncode": 22,
+      "placement_functions": {
+        "cpu": 47,
+        "gemmini": 21
+      },
+      "fixture_sha256": "838ff3349454d6018290456aa0623eb9dbdb96f30aa83b315c9df84e0184e472",
+      "program_sha256": "fb067b3ec5ba147fe03c93b3056820a2fe2ab0929ae73cbec67a58d86b18ee7d",
+      "elfs": {
+        "valid": {
+          "sha256": "9460c821d2ae538c8d5e8b87fcfe08052c3315d05445b25d5205fb63c463307d",
+          "bytes": 26552160
+        },
+        "bad-oracle": {
+          "sha256": "5900689f6b231c4dd87f70f91d14e60d2c15b4fe6b7fb18a4b320aa2b05e8e6c",
+          "bytes": 26552160
+        }
+      },
+      "receipt_sha256": "9b2b5237ebaef99a6e15a891071c00382c6cee3338c90f0d2ad5474b5df4af6c"
+    }
+  ],
+  "extraction": {
+    "resnet": {
+      "chunks": 18,
+      "owners": 10,
+      "tasks": 21,
+      "proposal_cap": 250
+    },
+    "kernel": {
+      "cases": 16,
+      "owners": 16,
+      "tasks": 17,
+      "proposal_cap": 400
+    }
+  },
+  "host_tests": {
+    "passed": 36
+  },
+  "repository_gates": {
+    "structure_inherited_failures": 9,
+    "no_target_name": "passed",
+    "no_regex_inherited_callsite_failures": 8,
+    "staged_no_regex": "passed"
+  },
+  "limitations": [
+    "Diagnostic repaired Spike is not the missing spec-pinned oracle or deployed RTL",
+    "No FireSim cycle or speedup result",
+    "Full ResNet source numerical-policy admission remains REVIEW_REQUIRED pending exact selected-protocol binding",
+    "Contraction placement checked; full spec arithmetic/composition/hardware admission is separate",
+    "Warm-repeat harness does not implement historical 2 MiB cache eviction",
+    "Prebuilt ELFs remain local; tracked sources plus committed ResNet archive reproduce the build"
+  ],
+  "excluded_attempt": {
+    "case": "C01",
+    "reason": "First 4D output definition numerically passed on CPU; excluded. Flat output definition now passes with Gemmini placement and unchanged mathematical inputs/references."
+  },
+  "payload": [
+    {
+      "path": "G01/guest/artifact.json",
+      "sha256": "9bae8be662cf7786fde409429cee49ac06c070ee563c6b9a54ce5408543584a3",
+      "bytes": 8496
+    },
+    {
+      "path": "G01/guest/spike-results.json",
+      "sha256": "a78db820022ea1b6ee01b278f88c786a007c927f7a478815866a74d63f7f292c",
+      "bytes": 5048
+    },
+    {
+      "path": "G01/guest/spike-valid.log",
+      "sha256": "d9ec6eaca08ef98f50292104d9e2a356da01da45080482842966893f18c7ff37",
+      "bytes": 97
+    },
+    {
+      "path": "G01/guest/spike-bad-oracle.log",
+      "sha256": "3d848d885079f891b7d359a2353d90f984748b4cc20e996f00acab029b59c9c1",
+      "bytes": 144
+    },
+    {
+      "path": "G01/package/package.json",
+      "sha256": "75d731d6159ea24f905c7c2eb8db4a7b54bf1b9a67403c4a29f62e91c62f2ae8",
+      "bytes": 7819
+    },
+    {
+      "path": "G01/package/build.json",
+      "sha256": "92c3b7210c36fd94cdd119f45fa0feb20314d8c4db54d4804cab78522e2045ec",
+      "bytes": 42991
+    },
+    {
+      "path": "G01/package/memory-audit.json",
+      "sha256": "b2318ea311b9da9e914d50ed4b93308821a248a99b0f50d260eccb60d2de9b62",
+      "bytes": 1979
+    },
+    {
+      "path": "G01/package/placement.json",
+      "sha256": "066fbdfc0addf2f072679c0a6ad8daba20e38dfe8125f7c41da942073f33b803",
+      "bytes": 23902
+    },
+    {
+      "path": "G01/compile-command.json",
+      "sha256": "b62460333a54bba9f5357ed4f6a82574a58e4b5d5f0fcb6c2078cbb87d741252",
+      "bytes": 918
+    },
+    {
+      "path": "G01/reference.json",
+      "sha256": "0b5b1b72929bbfc65d1a9dc0d50fe789f949d0f18c362c5157c57b88c7fae8a1",
+      "bytes": 2020
+    },
+    {
+      "path": "G02/guest/artifact.json",
+      "sha256": "7e1d57f59eea7543380fdf3a33cadd7ba68bfbdb08507a753dee7873f36c1f33",
+      "bytes": 8501
+    },
+    {
+      "path": "G02/guest/spike-results.json",
+      "sha256": "fca144c277aedefafd57ab34a2c7764cfadba9db4089eb6feaf9fbe9b502360a",
+      "bytes": 5052
+    },
+    {
+      "path": "G02/guest/spike-valid.log",
+      "sha256": "9205760981e4604d194615e0ecb7643c0015b8def77147f3fdf6e8d314784e11",
+      "bytes": 97
+    },
+    {
+      "path": "G02/guest/spike-bad-oracle.log",
+      "sha256": "692c972dba3b4046c30785465b16c989354eac95e67fc020810e9767bf0b8a61",
+      "bytes": 144
+    },
+    {
+      "path": "G02/package/package.json",
+      "sha256": "93294d95970afebe7f08c8ddb74e3d65c7dfd32472f21b963cf1e9164f4f7077",
+      "bytes": 7823
+    },
+    {
+      "path": "G02/package/build.json",
+      "sha256": "b1e1c259c78b52167dc14880d95d4a1203092fc3fed9fb2e183b0e73a5187094",
+      "bytes": 42991
+    },
+    {
+      "path": "G02/package/memory-audit.json",
+      "sha256": "54b001d967c386ed3a34048be5af34398f31b78b8ff2b9898c13f55b49412eae",
+      "bytes": 1982
+    },
+    {
+      "path": "G02/package/placement.json",
+      "sha256": "453458b9300fcf1b4041993b003894bac0f42161093665bcd61369b1ac4ff600",
+      "bytes": 23904
+    },
+    {
+      "path": "G02/compile-command.json",
+      "sha256": "d2646f51e392238e69f5b4ca1fa77d264b8e035c3ede9d6323b45575853dcaa1",
+      "bytes": 918
+    },
+    {
+      "path": "G02/reference.json",
+      "sha256": "7a8d91ce8e873b4f314c0b8c5d95f3970aca522f1adcd30bc0ea2c3c0508c63a",
+      "bytes": 2023
+    },
+    {
+      "path": "G03/guest/artifact.json",
+      "sha256": "583290824d6ede9a98f86ceafbf9dbd386eece217115b18a7b3b21bb295cd661",
+      "bytes": 8501
+    },
+    {
+      "path": "G03/guest/spike-results.json",
+      "sha256": "c6844f06b51da7279961bfeba8229e32ac59e3148a283291bc383feb926d999e",
+      "bytes": 5052
+    },
+    {
+      "path": "G03/guest/spike-valid.log",
+      "sha256": "28aa0d71acb31cc0261da8cf153f4714bb2ccba1527ed2c21d7ff40de726f146",
+      "bytes": 97
+    },
+    {
+      "path": "G03/guest/spike-bad-oracle.log",
+      "sha256": "1a22be208363746c170ef5d9b750fde9a14a9d30cf15d97e5ebf763995cb4683",
+      "bytes": 144
+    },
+    {
+      "path": "G03/package/package.json",
+      "sha256": "a07d53b7dee89c816710b4ba2fd352065ae424c76319c309bf8fe8e625575e71",
+      "bytes": 7824
+    },
+    {
+      "path": "G03/package/build.json",
+      "sha256": "7d09681d9126f6d54a77f486051f2480d4df8ff803c3e0e95e6eca8eea31bf06",
+      "bytes": 42991
+    },
+    {
+      "path": "G03/package/memory-audit.json",
+      "sha256": "c8ef3d6e873507750187ab1012b274f781c9e018dad5582af14b3a4cdff01f8f",
+      "bytes": 1983
+    },
+    {
+      "path": "G03/package/placement.json",
+      "sha256": "5cb0da2ba743c28bed591e5195610473243f469d75ee4d5a28c2685c4726e686",
+      "bytes": 23899
+    },
+    {
+      "path": "G03/compile-command.json",
+      "sha256": "51b3a5537699060670307a849c7697cadc912eed09827f1d48e2243bf1d2b41c",
+      "bytes": 918
+    },
+    {
+      "path": "G03/reference.json",
+      "sha256": "30b2f16465ff0ff1d640e6ed3d839c3fa861f36c5083315465d8fe92d896aae7",
+      "bytes": 2022
+    },
+    {
+      "path": "G04/guest/artifact.json",
+      "sha256": "5f6f93c39227642c85c97e65f99c64b2ae410f2dd10ca74c9c1e07169faf94b0",
+      "bytes": 8501
+    },
+    {
+      "path": "G04/guest/spike-results.json",
+      "sha256": "e47c1a363468be0b4f06531112e28f97e09228bbe398bcdb741bcdc6748366a5",
+      "bytes": 5052
+    },
+    {
+      "path": "G04/guest/spike-valid.log",
+      "sha256": "d67c8fbb2654f9865ab4deacfed952ed6704ca2e48cfff8cd5a7e2c44b282d5a",
+      "bytes": 97
+    },
+    {
+      "path": "G04/guest/spike-bad-oracle.log",
+      "sha256": "6c00e26425d3ad973df2fa7c3f7f02caf5270b4e4b8cae0904756ccd800179bf",
+      "bytes": 144
+    },
+    {
+      "path": "G04/package/package.json",
+      "sha256": "babc67bba5027eb49c7d5ee291d41ea425c0836a6bc34a50fe2043d2d163d6fe",
+      "bytes": 7824
+    },
+    {
+      "path": "G04/package/build.json",
+      "sha256": "7155f3ae87d9b6bf4bf48b3d98ad4f2ac4c3bb9fa610f285beb91273f1fc50af",
+      "bytes": 42991
+    },
+    {
+      "path": "G04/package/memory-audit.json",
+      "sha256": "99ef9af91e37cc3aa007f52ea730026d0d97bafb829e42eea0e158e1790c740c",
+      "bytes": 1983
+    },
+    {
+      "path": "G04/package/placement.json",
+      "sha256": "c83db3d4af79d745f9f92689bfc9d70c26de1cc1a371fbc6d460c536c6aa6bfb",
+      "bytes": 23901
+    },
+    {
+      "path": "G04/compile-command.json",
+      "sha256": "cc8bce5ca1bd48e6a3650f73d8995d6817eae312cd9b7c9a3bc14d1da1d365f4",
+      "bytes": 918
+    },
+    {
+      "path": "G04/reference.json",
+      "sha256": "18637d4d4efbd9bc8ab91091b83ff26a78bd10729c11797fd565e1af596b0156",
+      "bytes": 2023
+    },
+    {
+      "path": "G05/guest/artifact.json",
+      "sha256": "f7350d71822e6a33edc98a364646c9d72b5bbfa4557c502b1049ee8280452233",
+      "bytes": 8501
+    },
+    {
+      "path": "G05/guest/spike-results.json",
+      "sha256": "f786c511ae3c5dbd0e92b055b543ccba19a4028e1427c362c0671ef6f64a26af",
+      "bytes": 5052
+    },
+    {
+      "path": "G05/guest/spike-valid.log",
+      "sha256": "889da4bcc2a314961f47d04d659a9970d6948fc3b729c24fec760793df407eab",
+      "bytes": 97
+    },
+    {
+      "path": "G05/guest/spike-bad-oracle.log",
+      "sha256": "074210a1d20a7833b6d49594496a816b729f9924bf21418eaaec1a26cde6d9cb",
+      "bytes": 144
+    },
+    {
+      "path": "G05/package/package.json",
+      "sha256": "e61c860029f49eef864a7401e9b001d4889c4dcb81be499228046ee7311c9d3a",
+      "bytes": 7825
+    },
+    {
+      "path": "G05/package/build.json",
+      "sha256": "6e052b597fe1929770ea41ccdb7ce8e26f2808289e6a8ea9d1c88430100545bd",
+      "bytes": 42991
+    },
+    {
+      "path": "G05/package/memory-audit.json",
+      "sha256": "10ec62d6cf1df3c80f983dcc2d145b051c1f51a65c96a3eca6353c9ec6beb0d7",
+      "bytes": 1983
+    },
+    {
+      "path": "G05/package/placement.json",
+      "sha256": "470b5c11d319232557924102909b48cfd4860b3de9d3fa09acbcd09592e77290",
+      "bytes": 23898
+    },
+    {
+      "path": "G05/compile-command.json",
+      "sha256": "d3c25c882db49483c85498745c00719056fcd5e7d64e57fddefbe2d2c7b115b8",
+      "bytes": 918
+    },
+    {
+      "path": "G05/reference.json",
+      "sha256": "3242f77737ca1e90f2f30a883a082f9a6f9975ee3c32c0b2b6fc680b2e8bb2b7",
+      "bytes": 2023
+    },
+    {
+      "path": "G06/guest/artifact.json",
+      "sha256": "04404c987033174720215fb4b214ff12f18e098d83e093db2b555fcfe821a8e6",
+      "bytes": 8501
+    },
+    {
+      "path": "G06/guest/spike-results.json",
+      "sha256": "f115c83d2900ba1e4444f6d7985fd191137aba27a1885c7e2cb966533a5fb615",
+      "bytes": 5052
+    },
+    {
+      "path": "G06/guest/spike-valid.log",
+      "sha256": "79b12c0b30d0fa7b429ff35c65931705bb85b6a7d363d75152f91f4fe79aa966",
+      "bytes": 97
+    },
+    {
+      "path": "G06/guest/spike-bad-oracle.log",
+      "sha256": "98bfed7084f813db617aced5ab0eb55cec8b67ae819db2ad8c021db08116c1c3",
+      "bytes": 144
+    },
+    {
+      "path": "G06/package/package.json",
+      "sha256": "74bb0a8f66c710b176c885de2be357de0850ad15be2e4b5c9a1c93c55db9f958",
+      "bytes": 7823
+    },
+    {
+      "path": "G06/package/build.json",
+      "sha256": "8028974e2303bc9c99fe7409f4e67f79771add5c959f9c2a19a41727a128a751",
+      "bytes": 42991
+    },
+    {
+      "path": "G06/package/memory-audit.json",
+      "sha256": "3d3f9632ff3e5955440946a869f494bb1849ccd988b0a359af5168ded596ba8e",
+      "bytes": 1981
+    },
+    {
+      "path": "G06/package/placement.json",
+      "sha256": "ab37b6265f45a323011ff27e261cd40d78edf441afd67da959cb88724d21a3d8",
+      "bytes": 23901
+    },
+    {
+      "path": "G06/compile-command.json",
+      "sha256": "8eb1be65417ccfdb9aa35df7230ef7ed5f266833a8edea4d92b5f6b2d92e87aa",
+      "bytes": 918
+    },
+    {
+      "path": "G06/reference.json",
+      "sha256": "2bef7ed04c429562cfaaa462cb3fe92c094bdb4f4ac02c7d32d6c9ee0dd90c38",
+      "bytes": 2023
+    },
+    {
+      "path": "C01/guest/artifact.json",
+      "sha256": "42de024cb83bb1cb552c4da048cb74cf978ba55f52c8aee62f8828b51a35cf50",
+      "bytes": 8570
+    },
+    {
+      "path": "C01/guest/spike-results.json",
+      "sha256": "ba672fde0e809697d30156a32f8d9c8de05c589bbf2d618165b86f2b48162f20",
+      "bytes": 5058
+    },
+    {
+      "path": "C01/guest/spike-valid.log",
+      "sha256": "e7566af7e8b6ea91f2a89d0628c0233b3cf696d3942acbd1e7474c3836d17ca2",
+      "bytes": 101
+    },
+    {
+      "path": "C01/guest/spike-bad-oracle.log",
+      "sha256": "009058568212392d1f628149ae4a1ea37f94eceaf4701c331fee99f4f8a1b3b5",
+      "bytes": 148
+    },
+    {
+      "path": "C01/package/package.json",
+      "sha256": "ad7666a6f19f27424226370021f7e70229f75c26336b8e5bddb2b56c61b7ce21",
+      "bytes": 7878
+    },
+    {
+      "path": "C01/package/build.json",
+      "sha256": "96f5dc5759f8179d98d98fed4e28ce4be4dcc1dead633b7d84c7c87e696a2f00",
+      "bytes": 43048
+    },
+    {
+      "path": "C01/package/memory-audit.json",
+      "sha256": "898b29e0fffc879addd16e0c4252c85e0086684d358821839129288e5c90e815",
+      "bytes": 2041
+    },
+    {
+      "path": "C01/package/placement.json",
+      "sha256": "a0f8d206150cfc75668fabb8065b14f3687c2e1837842135adee77b406d901e9",
+      "bytes": 30944
+    },
+    {
+      "path": "C01/compile-command.json",
+      "sha256": "2b7d6660c410d6cf56112c68ada536558dac2cbd3240a0a3c62e21f032eb6ef5",
+      "bytes": 924
+    },
+    {
+      "path": "C01/reference.json",
+      "sha256": "048c30961fb104de14d3fbd816fc4805bfe89ef2d1f1b0de900bee68b16e11dc",
+      "bytes": 2186
+    },
+    {
+      "path": "C02/guest/artifact.json",
+      "sha256": "054b0108fcd7b7555de03928e807b7bd941941005e7af3537ade4ab293bbec64",
+      "bytes": 8501
+    },
+    {
+      "path": "C02/guest/spike-results.json",
+      "sha256": "0a3fe97b45e289ac24cf2694f34261ca0160b09e5a9be6c0ad73199e748660d6",
+      "bytes": 5052
+    },
+    {
+      "path": "C02/guest/spike-valid.log",
+      "sha256": "8626e04c3d82d83ac0196bed51f1dfc4bd84ef3fc4bf68043b44952f6f4647d4",
+      "bytes": 101
+    },
+    {
+      "path": "C02/guest/spike-bad-oracle.log",
+      "sha256": "631e86e1178c29bb8cc58559c4457ba582d9954e7d125876585bc1c518c6ecf4",
+      "bytes": 148
+    },
+    {
+      "path": "C02/package/package.json",
+      "sha256": "5ab85d89940cc80f1e9f9507063f22a0d37a2e994a4bb65f867125d6730844af",
+      "bytes": 7872
+    },
+    {
+      "path": "C02/package/build.json",
+      "sha256": "a0662ee476d7d8957f8684a54239c893ecf42218a5af353d9755593b1f64378a",
+      "bytes": 42991
+    },
+    {
+      "path": "C02/package/memory-audit.json",
+      "sha256": "4b775259ef3a7aa52921b4039987fa41389390c943859d7f80338f566a97bab4",
+      "bytes": 2035
+    },
+    {
+      "path": "C02/package/placement.json",
+      "sha256": "2f458f939d8c144b3d674e6d0e01075775cc0f82266c33c8324b8bda66ff2565",
+      "bytes": 30942
+    },
+    {
+      "path": "C02/compile-command.json",
+      "sha256": "f7a711a5e67237f7d570c3672ade41147c9b35dcd73566d4c2cc706cab3518de",
+      "bytes": 918
+    },
+    {
+      "path": "C02/reference.json",
+      "sha256": "6545a50123c1fcdd792f83c90ef5699255f1822874c12c6909e0c1767f786749",
+      "bytes": 2190
+    },
+    {
+      "path": "C03/guest/artifact.json",
+      "sha256": "da73dcd36853b0a5493c83e077b7bba1293e142f587d75ab3c5ef501feedd409",
+      "bytes": 8793
+    },
+    {
+      "path": "C03/guest/spike-results.json",
+      "sha256": "e210e1005f03ea6adec4579b1642d476d7bedd0179564ff1e463612b7c69ac1e",
+      "bytes": 5368
+    },
+    {
+      "path": "C03/guest/spike-valid.log",
+      "sha256": "d72b94b1ccdb02afba3ffbc76c6aa94b210401629d585699e7ca5a09ec20bb90",
+      "bytes": 99
+    },
+    {
+      "path": "C03/guest/spike-bad-oracle.log",
+      "sha256": "e2b9a009e5d7d61e23d418eafa558996f20452af07069af71017267eee124429",
+      "bytes": 146
+    },
+    {
+      "path": "C03/package/package.json",
+      "sha256": "eacb3783dc0a7bbab361232e6aab94fd4b2b283588d039ff967f5933b844aba2",
+      "bytes": 7872
+    },
+    {
+      "path": "C03/package/build.json",
+      "sha256": "9ceeb655a8a5bcfa9c101f96aa284c7c76fd45433bf3eeee7fb6d253fa826190",
+      "bytes": 42991
+    },
+    {
+      "path": "C03/package/memory-audit.json",
+      "sha256": "0aeddc9fae7af0f140944d379a7753a3e277662f3ae19d62bf4cccfcab9c3cfe",
+      "bytes": 2035
+    },
+    {
+      "path": "C03/package/placement.json",
+      "sha256": "f26bbfc3ca918fa7290f12e4a6702a8cdf539ba7b29fa9539af220e15398c25b",
+      "bytes": 30942
+    },
+    {
+      "path": "C03/compile-command.json",
+      "sha256": "5e8699af81884aa4fc8505de77e03763d0c3ca6862bf4405731ecdd4ce378e7c",
+      "bytes": 918
+    },
+    {
+      "path": "C03/reference.json",
+      "sha256": "3562d1c76762fb7b5d8b20a548aaa9d7f3bf25c0005e8ad782ed3514d9e52c7c",
+      "bytes": 2189
+    },
+    {
+      "path": "T01/guest/artifact.json",
+      "sha256": "abe266df0da3c696e813c59730bc9d247873dfb1470a652410ccfe8a740f0a14",
+      "bytes": 8497
+    },
+    {
+      "path": "T01/guest/spike-results.json",
+      "sha256": "2265bf9763babbe67cd1b797c1f83915933cb2a4e136f6a9f96320d1ca20049e",
+      "bytes": 5048
+    },
+    {
+      "path": "T01/guest/spike-valid.log",
+      "sha256": "a927454901c127b470d4a52fca58a8a528eee6799d9f0f7cce9a1a2f9381c6e6",
+      "bytes": 93
+    },
+    {
+      "path": "T01/guest/spike-bad-oracle.log",
+      "sha256": "0dcb9459b316b027516d6999a6929397265cf7bd10e4a3deffe64e2114fc3d41",
+      "bytes": 140
+    },
+    {
+      "path": "T01/package/package.json",
+      "sha256": "605a8438df336c0979ed8732811ee5d6603b2514060cdbf358ce793b434c31a6",
+      "bytes": 46622
+    },
+    {
+      "path": "T01/package/build.json",
+      "sha256": "316acbb58e20ecedd81cac34b8d32802f5555a0a721471362afe6820d754eeea",
+      "bytes": 42992
+    },
+    {
+      "path": "T01/package/memory-audit.json",
+      "sha256": "37d151896de71806540339d6708b0d113408c918241b907f8a2eacf9415b42c0",
+      "bytes": 49286
+    },
+    {
+      "path": "T01/package/placement.json",
+      "sha256": "668214b09b4a41a759bc7d82ea087fbe3a4e2983252a136ea03d8c195f2f91ed",
+      "bytes": 21657
+    },
+    {
+      "path": "T01/compile-command.json",
+      "sha256": "c3fc8bf7c45e9f76e58ee1b4a3c4d27045093b3d30087bf979607d84924b096e",
+      "bytes": 918
+    },
+    {
+      "path": "T01/reference.json",
+      "sha256": "e002a5177a17ad08218f2eb73419bad33fb2efb3e9b49e6f3b3b880100ea626c",
+      "bytes": 18826
+    },
+    {
+      "path": "T02/guest/artifact.json",
+      "sha256": "c32c13fd6ac1e0e8c3617d4d4f0cfd2c2626281551ddad8e98c7bb4680115424",
+      "bytes": 8497
+    },
+    {
+      "path": "T02/guest/spike-results.json",
+      "sha256": "4c95fdebb025077d40f382c88e525e2fd2055d5c78e3e219b6882a1d6b6de774",
+      "bytes": 5048
+    },
+    {
+      "path": "T02/guest/spike-valid.log",
+      "sha256": "e76e297ddd3c08308d2ceaa77f3ec2e096a661742a97edb5d7b73346e4d27b3c",
+      "bytes": 93
+    },
+    {
+      "path": "T02/guest/spike-bad-oracle.log",
+      "sha256": "81e8dfdc38b2833bdca4ed0026ba5190fb9b8c1f79fc32bdfbbc2ea9a3371553",
+      "bytes": 140
+    },
+    {
+      "path": "T02/package/package.json",
+      "sha256": "5ba03374cbf8ac39ca966931d5ebdc403493507ba0faf6e770c9217c9a737a5d",
+      "bytes": 46622
+    },
+    {
+      "path": "T02/package/build.json",
+      "sha256": "e7e9429085b8613f2e4d2f7d93cd2d1a62a45172fcf8a7e595bd6aa19658ae4b",
+      "bytes": 42992
+    },
+    {
+      "path": "T02/package/memory-audit.json",
+      "sha256": "821366480d859dda843362c9a06ff0010ca7a2382a729e8abdf96eb3c4546f64",
+      "bytes": 49286
+    },
+    {
+      "path": "T02/package/placement.json",
+      "sha256": "caca1e7c2d786b426d895f9ae4f6f8f6b1efc20d4ad3af99dba7cbf4dff4b2df",
+      "bytes": 23883
+    },
+    {
+      "path": "T02/compile-command.json",
+      "sha256": "43da4404a8ef10552a20744b737bf867573afd69cb66174e7c3cf3bb9ab1f333",
+      "bytes": 918
+    },
+    {
+      "path": "T02/reference.json",
+      "sha256": "6acb85c4f62a7e2798a435ec44e1be6bbbf0ce7f6f25ee154bd066fdf570544e",
+      "bytes": 18799
+    },
+    {
+      "path": "T03/guest/artifact.json",
+      "sha256": "5e30988dd17c87eef7365d075161a3a60a97ba9388c0e3f64f1755d67a6ba17f",
+      "bytes": 8508
+    },
+    {
+      "path": "T03/guest/spike-results.json",
+      "sha256": "5405c66e4fdde85da1d619e367b3f6397a90b7313644988ee67751fbadddf9f6",
+      "bytes": 5058
+    },
+    {
+      "path": "T03/guest/spike-valid.log",
+      "sha256": "3adc7de83774f9151d38db5bd7ace55af21a3e9ac89e088f2b5709d4f95fc812",
+      "bytes": 97
+    },
+    {
+      "path": "T03/guest/spike-bad-oracle.log",
+      "sha256": "86a35be55735d1e96efb4ab798a9ef3a3c9df9034f852458c25aa29dc8ec358d",
+      "bytes": 144
+    },
+    {
+      "path": "T03/package/package.json",
+      "sha256": "22500ce06ac37645cfb9c92c318d8af5958fdb173d6237782411e232e2db3faa",
+      "bytes": 7827
+    },
+    {
+      "path": "T03/package/build.json",
+      "sha256": "057b8f2d296b75a02574059910c8339058c61b2ba0b42a0aed9baa4a5dac5b6d",
+      "bytes": 42991
+    },
+    {
+      "path": "T03/package/memory-audit.json",
+      "sha256": "f7c999cb1d1cca399bb1edb4a3928281481eababb58336e6d20761c51471cec6",
+      "bytes": 1987
+    },
+    {
+      "path": "T03/package/placement.json",
+      "sha256": "c5aae31a66bf5f1165eccb1ed16ed5ba03592a4064b08392e43577d7d3ba42fe",
+      "bytes": 21677
+    },
+    {
+      "path": "T03/compile-command.json",
+      "sha256": "630d7b2dd50c595227463fb023ad05b197de79df8910c990a40f1cae635ce30e",
+      "bytes": 918
+    },
+    {
+      "path": "T03/reference.json",
+      "sha256": "3434ccefdde3b2728c195de313c92a586340f9177036fc533fcd7de523d82daa",
+      "bytes": 2026
+    },
+    {
+      "path": "T04/guest/artifact.json",
+      "sha256": "d82b3b48bb1b6cdb814744971038cd6824bc259e848ede4721051764d468920c",
+      "bytes": 8508
+    },
+    {
+      "path": "T04/guest/spike-results.json",
+      "sha256": "f019763423f827af16dbb80fbdc6c8a52c54ec34cbdc9f1634eaaa422483eaba",
+      "bytes": 5058
+    },
+    {
+      "path": "T04/guest/spike-valid.log",
+      "sha256": "8a47718a627327c3f405a7c8d5b228b5cb51748fac067b18eecc74744354c6e8",
+      "bytes": 97
+    },
+    {
+      "path": "T04/guest/spike-bad-oracle.log",
+      "sha256": "7520034945c547052f4013da449d60b3384c31db61cad43c08f19d6edb5fabd9",
+      "bytes": 144
+    },
+    {
+      "path": "T04/package/package.json",
+      "sha256": "ae0536d43bd061f6467b3c0aab483043247dee9410783dc19878df2188e4c354",
+      "bytes": 8377
+    },
+    {
+      "path": "T04/package/build.json",
+      "sha256": "a2dd5803989d06c9880dac7a19f4ae1f8f33aad0ace7acac5f17d3a099cf115b",
+      "bytes": 42991
+    },
+    {
+      "path": "T04/package/memory-audit.json",
+      "sha256": "2c11d15b0abded8d91f80abe56d5cd657b8509da9acc138c6c0ef33e2b130b6c",
+      "bytes": 2813
+    },
+    {
+      "path": "T04/package/placement.json",
+      "sha256": "2699e950cce0ddf59e3fdbf11da75ad3379537192e35ff1202d6b4aa57b58676",
+      "bytes": 23901
+    },
+    {
+      "path": "T04/compile-command.json",
+      "sha256": "9dd0f3f2469088a2e8396835c91c35aeffbb03885d6ffc844a2b190410584a58",
+      "bytes": 918
+    },
+    {
+      "path": "T04/reference.json",
+      "sha256": "a64c505d484f6e2e5dbb506ff17e229108bf6f4ce1aa2376bf94835497f82b89",
+      "bytes": 2555
+    },
+    {
+      "path": "T05/guest/artifact.json",
+      "sha256": "c42ea4f88619f7df55973cc1515aee1dafb29fefaede8a02738a514a1514f119",
+      "bytes": 8501
+    },
+    {
+      "path": "T05/guest/spike-results.json",
+      "sha256": "46a70241f965545b3f244cbb5c6c1e9e6c2c5ff8e22bb1db036fb7865de959d9",
+      "bytes": 5052
+    },
+    {
+      "path": "T05/guest/spike-valid.log",
+      "sha256": "963ac124fdbcddedb0a3a3adc2b48c553f11126e1830a2b9383e92cd6510d9b6",
+      "bytes": 97
+    },
+    {
+      "path": "T05/guest/spike-bad-oracle.log",
+      "sha256": "77895d69d746c000477f67cb27fd817a1f3ffee8f7d93c1c8f5685b2ac2b5690",
+      "bytes": 144
+    },
+    {
+      "path": "T05/package/package.json",
+      "sha256": "5ba8858e67b73aac033df61ed68e58bfb0a3264c08a54380ab8cdf9f3184fcc2",
+      "bytes": 7823
+    },
+    {
+      "path": "T05/package/build.json",
+      "sha256": "530562293f83a1e8e942c30a6d63c627599466f4da5e2f72a44152a5d0f2e2b6",
+      "bytes": 42991
+    },
+    {
+      "path": "T05/package/memory-audit.json",
+      "sha256": "53bb7fa91213d77bd0955106322bd5bf94371bf7dacaeef4adf7b536aca40a46",
+      "bytes": 1983
+    },
+    {
+      "path": "T05/package/placement.json",
+      "sha256": "d5af22dc0a10c5b59bcc17e104e3eccd45fbcbef4ed101b97c5367de0fba311e",
+      "bytes": 21674
+    },
+    {
+      "path": "T05/compile-command.json",
+      "sha256": "03ca78f5363b7192ac81a36a7d59422ba423a51e369c066501cecb94f525659e",
+      "bytes": 918
+    },
+    {
+      "path": "T05/reference.json",
+      "sha256": "12d202ef0419e1743dede616b0d8e3034357a9831ed7de9009e2f08dd3b958f2",
+      "bytes": 2026
+    },
+    {
+      "path": "T06/guest/artifact.json",
+      "sha256": "3f0efaac5993dcd2762ebc68dc24eef3be2639e7d1af68cf56c4ba597e1ad1ca",
+      "bytes": 8501
+    },
+    {
+      "path": "T06/guest/spike-results.json",
+      "sha256": "66c4e1cdc6792d357279261950f61e4a7084dbd535523f7ce103c95bce0f74f5",
+      "bytes": 5052
+    },
+    {
+      "path": "T06/guest/spike-valid.log",
+      "sha256": "53763e02b1a00397fb70417f98a83a55837381e2f2a5f1b5c619f79cbdfc9fb8",
+      "bytes": 97
+    },
+    {
+      "path": "T06/guest/spike-bad-oracle.log",
+      "sha256": "917a1111e674a7a0ec0d97c17b6c1100d2baeacec74cd61d64ce11e9706e2627",
+      "bytes": 144
+    },
+    {
+      "path": "T06/package/package.json",
+      "sha256": "7de4242b942236d596ef84ca5fff29cb8442b2630ce8cfa393f84b18d3351183",
+      "bytes": 8964
+    },
+    {
+      "path": "T06/package/build.json",
+      "sha256": "eeeade8669ab30f5b9bed6ddd1435fb1dd8a2cf9a5c215cb45811a27a4438053",
+      "bytes": 42991
+    },
+    {
+      "path": "T06/package/memory-audit.json",
+      "sha256": "cba1449b1f15b4f349e2863ea591b0c2d1bebf9f0551c456c1a3d4bbbf5d2205",
+      "bytes": 3677
+    },
+    {
+      "path": "T06/package/placement.json",
+      "sha256": "327a353c092b6ab32867559edc9b3b19d3d03196486edcff720d2f2ea02488ed",
+      "bytes": 47797
+    },
+    {
+      "path": "T06/compile-command.json",
+      "sha256": "650290e27e8b3f5769ac4c16727b840097331a1e22567d2469db73d20b19d19f",
+      "bytes": 918
+    },
+    {
+      "path": "T06/reference.json",
+      "sha256": "0fd6ad3f760a70cf8733d42bf1f414436c41cf06cd34dd34828937759871285b",
+      "bytes": 3071
+    },
+    {
+      "path": "T07/guest/artifact.json",
+      "sha256": "669d42440fa08f2513783860cf517dc87968c78e19cd0fa0e8d93e46a3d13124",
+      "bytes": 8508
+    },
+    {
+      "path": "T07/guest/spike-results.json",
+      "sha256": "37bb6a0a2b1684fbf1066b83ba4b7f85ced86ad7144f677089dce5935a3f6ee1",
+      "bytes": 5058
+    },
+    {
+      "path": "T07/guest/spike-valid.log",
+      "sha256": "f196d2a35731bdfbfad627313f2c5670ff51ec55d90210ed3b32fde4e2d3b390",
+      "bytes": 99
+    },
+    {
+      "path": "T07/guest/spike-bad-oracle.log",
+      "sha256": "c3f5e632462b4e5b46287fcbed8835341d6e7dbe68111fe49b53a8a5033e7383",
+      "bytes": 146
+    },
+    {
+      "path": "T07/package/package.json",
+      "sha256": "1b2fcf913ddcd6ce54a4249480f9d00243a334968d0234739c4bd9e291cc29a9",
+      "bytes": 7828
+    },
+    {
+      "path": "T07/package/build.json",
+      "sha256": "bffdec50e2de75a3bc9c3d94f6ea6ddf8178df09e750baffcee299ba8a92d84c",
+      "bytes": 42991
+    },
+    {
+      "path": "T07/package/memory-audit.json",
+      "sha256": "d3c5c98fa7825607822b4798b0e70268053262defc4cf4ef3518dfb8aa1a175a",
+      "bytes": 1986
+    },
+    {
+      "path": "T07/package/placement.json",
+      "sha256": "f66a36dd02c5a2cefa29743688953c48384133397c18eecb51294a14803c6f32",
+      "bytes": 20563
+    },
+    {
+      "path": "T07/compile-command.json",
+      "sha256": "588846dda950c0df2450bc42f26514960d7065b14001dd216fa3dae31f58d00d",
+      "bytes": 918
+    },
+    {
+      "path": "T07/reference.json",
+      "sha256": "3da8fdd367acdfcc688ddf95bfe369b9db2799ebac390d9c56beb90ad4f45961",
+      "bytes": 2026
+    },
+    {
+      "path": "resnet-classifier/guest/artifact.json",
+      "sha256": "0524ba5f7d26fc81b2cf8a99dda2c8e8f4b819dba0b68ab4dececdff69e6fb10",
+      "bytes": 8959
+    },
+    {
+      "path": "resnet-classifier/guest/spike-results.json",
+      "sha256": "c6f33537803887ba23bc77bf26ca0b95a3bbb800881c1eb63378e78581cd3964",
+      "bytes": 5082
+    },
+    {
+      "path": "resnet-classifier/guest/spike-valid.log",
+      "sha256": "48630f4b1788aa9d7b2f9caea6851dda474684ad0f792e204e268d053868bf6e",
+      "bytes": 97
+    },
+    {
+      "path": "resnet-classifier/guest/spike-bad-oracle.log",
+      "sha256": "c5b6e7a5dd465d5efc183adbb007b531a38f6c3e0d4abce36817f728076e9579",
+      "bytes": 144
+    },
+    {
+      "path": "resnet-classifier/package/package.json",
+      "sha256": "ee881e9d968864ca2fb57965b83ca84e81716f8c180efcc787730ad4c0259400",
+      "bytes": 9875
+    },
+    {
+      "path": "resnet-classifier/package/build.json",
+      "sha256": "c18e250baeb87855dab4bdd774a9091021a16a3b60f4170347108f8fb77c2dfd",
+      "bytes": 43190
+    },
+    {
+      "path": "resnet-classifier/package/memory-audit.json",
+      "sha256": "e55fdddfcda973f978efd61980c653ebea1d935919587ce5f51b4cf8c1d74887",
+      "bytes": 5356
+    },
+    {
+      "path": "resnet-classifier/package/placement.json",
+      "sha256": "bf4a115a725b7b1754896ce979eac515212f422fdbfe44c06233f426bfa6a5ee",
+      "bytes": 21096
+    },
+    {
+      "path": "resnet-classifier/compile-command.json",
+      "sha256": "2fd7d88639bf544f42c75244c4b42f575056829edd0ae86f1169b84153066e46",
+      "bytes": 877
+    },
+    {
+      "path": "resnet-classifier/reference.json",
+      "sha256": "e3d7b4682096654287fd4fb1b934ee5ca0ec0bd9f32e18540b643a6adc16a6b5",
+      "bytes": 2615
+    },
+    {
+      "path": "resnet-stage1-block1/guest/artifact.json",
+      "sha256": "ee4009d605f24b3d85fd275ac84039cfdbab121c3a2b743234388855a75b86d8",
+      "bytes": 9035
+    },
+    {
+      "path": "resnet-stage1-block1/guest/spike-results.json",
+      "sha256": "1070a24a8aeea65ae3fdf66059f12ede65f1939ca365b4b11cae3e828d6ef07e",
+      "bytes": 5090
+    },
+    {
+      "path": "resnet-stage1-block1/guest/spike-valid.log",
+      "sha256": "d98ff30fbca1d8b52084abf81e3c98e22d0c68a98e0bbe56d3f0ef3375022bd1",
+      "bytes": 101
+    },
+    {
+      "path": "resnet-stage1-block1/guest/spike-bad-oracle.log",
+      "sha256": "4997d7bde194004f85037c72838a51a38d010e36c0dc64349aba9cbc47b76e45",
+      "bytes": 148
+    },
+    {
+      "path": "resnet-stage1-block1/package/package.json",
+      "sha256": "65b8efffd46c8d1c5a262ca966b53feec9e5fabf6d400ac4801156db4548511b",
+      "bytes": 15117
+    },
+    {
+      "path": "resnet-stage1-block1/package/build.json",
+      "sha256": "0764e183449806bfcfcfbd746cb81b08529c2693aea4e5b059446e224e611b5e",
+      "bytes": 43246
+    },
+    {
+      "path": "resnet-stage1-block1/package/memory-audit.json",
+      "sha256": "61c653cc88a1d32330dbeeb6ecf23ad738b5e4869aafa386335b2130d2affcea",
+      "bytes": 13444
+    },
+    {
+      "path": "resnet-stage1-block1/package/placement.json",
+      "sha256": "ea20d1824fac1189aee223d96236ff4ed2cad570dbd28afbe1ac0ec6aea7ab88",
+      "bytes": 66370
+    },
+    {
+      "path": "resnet-stage1-block1/compile-command.json",
+      "sha256": "8a89625be9fe3d44384171311d51e6b1088fc9babfc24b23025634bab52b4a5b",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage1-block1/reference.json",
+      "sha256": "f8d515e63cc0f3553f312cc66bfbaefb7e4caa85eee7afa5617ccff67c75a714",
+      "bytes": 2640
+    },
+    {
+      "path": "resnet-stage1-block2/guest/artifact.json",
+      "sha256": "6f07d35cb302a5079e35962ce5420d05f16e15700b81a7cd3dd9782a2849da3f",
+      "bytes": 9035
+    },
+    {
+      "path": "resnet-stage1-block2/guest/spike-results.json",
+      "sha256": "365d29de2c06ca2c1896f3dc2a069ace29bd3839bafd0e7ffce886fe8b4a78e6",
+      "bytes": 5090
+    },
+    {
+      "path": "resnet-stage1-block2/guest/spike-valid.log",
+      "sha256": "16f55316c2cbc556e10aee99a530bb1fa3d055c47462cd1ee468aae104b428e8",
+      "bytes": 101
+    },
+    {
+      "path": "resnet-stage1-block2/guest/spike-bad-oracle.log",
+      "sha256": "dc2ad364bbefb0023a8e6a76fb7bf7d25ca56e00c51bd7619e320d6910bde49f",
+      "bytes": 148
+    },
+    {
+      "path": "resnet-stage1-block2/package/package.json",
+      "sha256": "2888fce9f10c79f2bef8d6ded27a6c3ffd3b8f62083426f202f0015e4c2bad7e",
+      "bytes": 13159
+    },
+    {
+      "path": "resnet-stage1-block2/package/build.json",
+      "sha256": "9a124bfbd4a5b7b26ca515b26f3c79cb9bdb89c3fb7b6ea0e96e2a152bb4b415",
+      "bytes": 43246
+    },
+    {
+      "path": "resnet-stage1-block2/package/memory-audit.json",
+      "sha256": "715871161abbd81ae96ab562f7406ca257ffce147e9427dc59287778782d222e",
+      "bytes": 10603
+    },
+    {
+      "path": "resnet-stage1-block2/package/placement.json",
+      "sha256": "e60fe73133c96e8e4ea53288a7583cd01bf9f0ee64db0da52978e5b7d184ba00",
+      "bytes": 66370
+    },
+    {
+      "path": "resnet-stage1-block2/compile-command.json",
+      "sha256": "353b4bedded5760545889336512d1cb850e0c7ee0d1de8048ffab09a11312ed5",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage1-block2/reference.json",
+      "sha256": "ba09a0732f2cfad16c88072cbf5d94c9cbefd748fb290e46a415a183e07cddd4",
+      "bytes": 2640
+    },
+    {
+      "path": "resnet-stage1-block3/guest/artifact.json",
+      "sha256": "c532cc48cf32001e7c50fa26ba3e3d3bf973f35ca96025a30623331aff75d74b",
+      "bytes": 9035
+    },
+    {
+      "path": "resnet-stage1-block3/guest/spike-results.json",
+      "sha256": "4f1da280990620aae9150087fd948514ca6a351930c28026aa2adebb2b42967e",
+      "bytes": 5090
+    },
+    {
+      "path": "resnet-stage1-block3/guest/spike-valid.log",
+      "sha256": "16f55316c2cbc556e10aee99a530bb1fa3d055c47462cd1ee468aae104b428e8",
+      "bytes": 101
+    },
+    {
+      "path": "resnet-stage1-block3/guest/spike-bad-oracle.log",
+      "sha256": "dc2ad364bbefb0023a8e6a76fb7bf7d25ca56e00c51bd7619e320d6910bde49f",
+      "bytes": 148
+    },
+    {
+      "path": "resnet-stage1-block3/package/package.json",
+      "sha256": "f8872df937da0192fcbfc5a3425c8b87c03d5780177d3c7b5adf514806eb6ca3",
+      "bytes": 13159
+    },
+    {
+      "path": "resnet-stage1-block3/package/build.json",
+      "sha256": "ce82f260ff4bb973b33624d7644e2a1cfd35a286a8aa52d3591cb53737105b1e",
+      "bytes": 43246
+    },
+    {
+      "path": "resnet-stage1-block3/package/memory-audit.json",
+      "sha256": "715871161abbd81ae96ab562f7406ca257ffce147e9427dc59287778782d222e",
+      "bytes": 10603
+    },
+    {
+      "path": "resnet-stage1-block3/package/placement.json",
+      "sha256": "e60fe73133c96e8e4ea53288a7583cd01bf9f0ee64db0da52978e5b7d184ba00",
+      "bytes": 66370
+    },
+    {
+      "path": "resnet-stage1-block3/compile-command.json",
+      "sha256": "5d77767b2ffed32bc8cef801416d7d8fb5eb366df47b76307c812a041707f867",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage1-block3/reference.json",
+      "sha256": "9b6bf036b20e2f4afc975c238d11a813175607c20285bb5e8a988bf53ed7529e",
+      "bytes": 2640
+    },
+    {
+      "path": "resnet-stage2-block1/guest/artifact.json",
+      "sha256": "acb31e6d85614af474b5efc406b5a9beb180ca811a388c1870be075858821fdb",
+      "bytes": 9035
+    },
+    {
+      "path": "resnet-stage2-block1/guest/spike-results.json",
+      "sha256": "b8a84d38b5dca212c748991d73a73360e44c9e540df99cf5b4263c23ffb08cbf",
+      "bytes": 5090
+    },
+    {
+      "path": "resnet-stage2-block1/guest/spike-valid.log",
+      "sha256": "1f1eab56cd8cd24b923fec55f02182bef4e6cac6bbf8706f44daf02104763186",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage2-block1/guest/spike-bad-oracle.log",
+      "sha256": "9eb747e4f17b382c692ff542aa734fb38ef8aa976fd46eb71c7eaf108589b6ab",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage2-block1/package/package.json",
+      "sha256": "2d6cae85226c25f3fc5742ac261fe03387125ebdb73753c1a6c4660f99bceebe",
+      "bytes": 16068
+    },
+    {
+      "path": "resnet-stage2-block1/package/build.json",
+      "sha256": "3b6850f3d2795982efd0e74e63b7741b8d3501b99b0e0d798ce701e43d2f9a6a",
+      "bytes": 43247
+    },
+    {
+      "path": "resnet-stage2-block1/package/memory-audit.json",
+      "sha256": "abe93866e757029d3407819c7897926c04b7f3787edf273657bb5a30022b5e0c",
+      "bytes": 14995
+    },
+    {
+      "path": "resnet-stage2-block1/package/placement.json",
+      "sha256": "2c6eb2fbdff51e6e7b95728a41107475905b1d3c127bc0f298c013d17c8adaaf",
+      "bytes": 88450
+    },
+    {
+      "path": "resnet-stage2-block1/compile-command.json",
+      "sha256": "c87e95cb571637e95d34fd5c8c50b1a1722a113ede7cd31c0550026f5645df78",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage2-block1/reference.json",
+      "sha256": "60b9ae4140f7cecdf2b0a75874f53254c2501225126d0e722afc6c1c3b8385c1",
+      "bytes": 2641
+    },
+    {
+      "path": "resnet-stage2-block2/guest/artifact.json",
+      "sha256": "741efe5fa4bc67a600d55265711786f4c9c72fb1bfb6ed104800e1e711ab652b",
+      "bytes": 9033
+    },
+    {
+      "path": "resnet-stage2-block2/guest/spike-results.json",
+      "sha256": "7d5bbecfda2ecb76e196b631bc674cccb03a513cd03abd12d94ed29b61157634",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage2-block2/guest/spike-valid.log",
+      "sha256": "0cfcf65aaf1172300620ef6e273b5f6ad9d200b7377916b13c0bf8afb3a03b94",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage2-block2/guest/spike-bad-oracle.log",
+      "sha256": "44aacf2ce702163cf6317cbdf11e71beeb258fd200820fa6867b5f54cce3712c",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage2-block2/package/package.json",
+      "sha256": "3de93d42b96614394421bcbadedc1b2d468ae6d0ae2fc6264e581022a770fffa",
+      "bytes": 13153
+    },
+    {
+      "path": "resnet-stage2-block2/package/build.json",
+      "sha256": "30c0fbbcc3b80ec6511fac875a319f54e86c46f1bfec9f9ea1d2cfc23befed8e",
+      "bytes": 43246
+    },
+    {
+      "path": "resnet-stage2-block2/package/memory-audit.json",
+      "sha256": "c61369fef1cabd8a625246752ce48a077fa28fbbc5241cdad9933e442f9c23ba",
+      "bytes": 10595
+    },
+    {
+      "path": "resnet-stage2-block2/package/placement.json",
+      "sha256": "582cec42c50541e895d258185d3948f545b672bd915b3d8ab73224dba6e84868",
+      "bytes": 66367
+    },
+    {
+      "path": "resnet-stage2-block2/compile-command.json",
+      "sha256": "4fc314ca87865fd29374183c5f6ecad68ddf124f38fa429b1957dd7ca1391da2",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage2-block2/reference.json",
+      "sha256": "d7843493e27c6ccac5d5b615b561834b80a692c85c220e1e69a7f88fae237e0e",
+      "bytes": 2640
+    },
+    {
+      "path": "resnet-stage2-block3/guest/artifact.json",
+      "sha256": "c5bcd54f9d2c802c89438a46325f9e492aa16ae5f98baacf4c21ed9585135e7e",
+      "bytes": 9033
+    },
+    {
+      "path": "resnet-stage2-block3/guest/spike-results.json",
+      "sha256": "33d1779f3ca9f93c2004a95ff9030d2f29374036042d43b3b9ee33a357c7b85f",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage2-block3/guest/spike-valid.log",
+      "sha256": "0cfcf65aaf1172300620ef6e273b5f6ad9d200b7377916b13c0bf8afb3a03b94",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage2-block3/guest/spike-bad-oracle.log",
+      "sha256": "44aacf2ce702163cf6317cbdf11e71beeb258fd200820fa6867b5f54cce3712c",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage2-block3/package/package.json",
+      "sha256": "07c3548dc0a7a9ccaf7238c5c2e1b1d09cad0c2097494125290fb9b15d559faf",
+      "bytes": 13153
+    },
+    {
+      "path": "resnet-stage2-block3/package/build.json",
+      "sha256": "384f2a9998ac39e25199927bedb7921bdba6e6fdcd3a557f49835a43ac81674c",
+      "bytes": 43246
+    },
+    {
+      "path": "resnet-stage2-block3/package/memory-audit.json",
+      "sha256": "c61369fef1cabd8a625246752ce48a077fa28fbbc5241cdad9933e442f9c23ba",
+      "bytes": 10595
+    },
+    {
+      "path": "resnet-stage2-block3/package/placement.json",
+      "sha256": "582cec42c50541e895d258185d3948f545b672bd915b3d8ab73224dba6e84868",
+      "bytes": 66367
+    },
+    {
+      "path": "resnet-stage2-block3/compile-command.json",
+      "sha256": "b557328cf0b2462a7b67cc11bd6955aba646e550fdd9066a73090097d5c18680",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage2-block3/reference.json",
+      "sha256": "a1ebf53c42533fb67613b2a0fe6edf759b1972f59112359e6e29b2a1a2da11d0",
+      "bytes": 2640
+    },
+    {
+      "path": "resnet-stage2-block4/guest/artifact.json",
+      "sha256": "9e72fb440e2060e6a171cbf263518874b66981af0aa84bfba445d71364becbf7",
+      "bytes": 9033
+    },
+    {
+      "path": "resnet-stage2-block4/guest/spike-results.json",
+      "sha256": "3766388b88a73c28c7f46aa382c2e454f0965daba001098bf3ed34c680418926",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage2-block4/guest/spike-valid.log",
+      "sha256": "0cfcf65aaf1172300620ef6e273b5f6ad9d200b7377916b13c0bf8afb3a03b94",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage2-block4/guest/spike-bad-oracle.log",
+      "sha256": "44aacf2ce702163cf6317cbdf11e71beeb258fd200820fa6867b5f54cce3712c",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage2-block4/package/package.json",
+      "sha256": "40a6d57086852631b1865774e35dbf5b954226a9b896cf644da4393cfa47c51a",
+      "bytes": 13153
+    },
+    {
+      "path": "resnet-stage2-block4/package/build.json",
+      "sha256": "c6407636f99aecfe61c4b659ad892b98fa12dd2bcec782d51da44b814bbd435a",
+      "bytes": 43246
+    },
+    {
+      "path": "resnet-stage2-block4/package/memory-audit.json",
+      "sha256": "c61369fef1cabd8a625246752ce48a077fa28fbbc5241cdad9933e442f9c23ba",
+      "bytes": 10595
+    },
+    {
+      "path": "resnet-stage2-block4/package/placement.json",
+      "sha256": "582cec42c50541e895d258185d3948f545b672bd915b3d8ab73224dba6e84868",
+      "bytes": 66367
+    },
+    {
+      "path": "resnet-stage2-block4/compile-command.json",
+      "sha256": "a47ce9ddf70496c5296e1bc6f7d9ddc74baf6687fdc21847fbfc29813a913e85",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage2-block4/reference.json",
+      "sha256": "322ea6cd7918d9278f671500c36a20ad8c548be91f6452ccf50236508ac07650",
+      "bytes": 2640
+    },
+    {
+      "path": "resnet-stage3-block1/guest/artifact.json",
+      "sha256": "54e4b396973fa1cf2172a760e2854ab88a6f13b9330c7a5b676e1efeb942c9d2",
+      "bytes": 9033
+    },
+    {
+      "path": "resnet-stage3-block1/guest/spike-results.json",
+      "sha256": "bc557be09ce13d2361b0067bee1ead23242f0d1a4292276449eed57e3d8f35dc",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage3-block1/guest/spike-valid.log",
+      "sha256": "c32e5cd29b38261564dc2c40d078de0cba3b3a98fd55dd17ea90f976504e006f",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage3-block1/guest/spike-bad-oracle.log",
+      "sha256": "5a233d5db29b155e5f63a11c385e6eb91e1ad57f7e1bcd5af234346988f6d95b",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage3-block1/package/package.json",
+      "sha256": "3c9477c753259bdb7ed48f800def3efe5a59e7754ae6895d143dba0a2f761b56",
+      "bytes": 16060
+    },
+    {
+      "path": "resnet-stage3-block1/package/build.json",
+      "sha256": "448ff6a9a371d4295e5868ff76fb45878c9cdcb10de0ff1d982debcb3db818ce",
+      "bytes": 43247
+    },
+    {
+      "path": "resnet-stage3-block1/package/memory-audit.json",
+      "sha256": "ec8fcdb60b91fccad0131e73dc8ea94d08175b92d508d662b0176935a30525e5",
+      "bytes": 14980
+    },
+    {
+      "path": "resnet-stage3-block1/package/placement.json",
+      "sha256": "ddc4641ea073fb44dd4de3e0ec00005008b809b8bea61554a327238465bb8ee8",
+      "bytes": 88457
+    },
+    {
+      "path": "resnet-stage3-block1/compile-command.json",
+      "sha256": "df65fc7b40922a86e484d2ee1ad7c08615213ce6a8218910660a7aaebfd15a58",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage3-block1/reference.json",
+      "sha256": "7bfb5a66205821a29587e7dbe265c44ac53f46bbff7110c8af93dcae3a867465",
+      "bytes": 2642
+    },
+    {
+      "path": "resnet-stage3-block2/guest/artifact.json",
+      "sha256": "ee0fe0d6753be5dbbb7a91da6fe0af32ee8d779db71ff0342c9b02a9044107e2",
+      "bytes": 9033
+    },
+    {
+      "path": "resnet-stage3-block2/guest/spike-results.json",
+      "sha256": "b2184721c33885830f977d5ef1fb8d98b149dde724e201b76301d164251c7462",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage3-block2/guest/spike-valid.log",
+      "sha256": "7a22339fac923f935508ea801c5772f3904bb2b6cdc922b7e759734a99fa8e1e",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage3-block2/guest/spike-bad-oracle.log",
+      "sha256": "c4cc0f95b75f1830191bbca7572a6f20a8e162dfbb51f7e3f12d771fc2b66234",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage3-block2/package/package.json",
+      "sha256": "7820410a58f35fa3c5501ad6d45101de8dedab818fb0e0c13972ee13fd740bd1",
+      "bytes": 13145
+    },
+    {
+      "path": "resnet-stage3-block2/package/build.json",
+      "sha256": "1a71382a758b84865c97405b1192155937930fd858cd7239013f63f831c34ec2",
+      "bytes": 43247
+    },
+    {
+      "path": "resnet-stage3-block2/package/memory-audit.json",
+      "sha256": "4bf93fc6a1f08a655cfaf434d66de839bd3060e293c62822dff7af2894fe62f2",
+      "bytes": 10580
+    },
+    {
+      "path": "resnet-stage3-block2/package/placement.json",
+      "sha256": "4ebcc9c92bf8244236c46948bb218d481af6d6db2452b265b57df6577714fc0c",
+      "bytes": 66377
+    },
+    {
+      "path": "resnet-stage3-block2/compile-command.json",
+      "sha256": "3b8072df16a476a279f7e8fc5f2ab76bf8ca1e9b8ca606478e5c5d794c48aea6",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage3-block2/reference.json",
+      "sha256": "551357ded5c6e2935951d318281262f5ea6e593dc18ac55f913f905fffa07d1b",
+      "bytes": 2642
+    },
+    {
+      "path": "resnet-stage3-block3/guest/artifact.json",
+      "sha256": "db783e435629edf4e60111f91deafd74d296371085baa1e7dfb02ed98e8b393c",
+      "bytes": 9033
+    },
+    {
+      "path": "resnet-stage3-block3/guest/spike-results.json",
+      "sha256": "61c52f8466546c17ad374f49ae01421ba623e5b5090f29118893263e86db3425",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage3-block3/guest/spike-valid.log",
+      "sha256": "7a22339fac923f935508ea801c5772f3904bb2b6cdc922b7e759734a99fa8e1e",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage3-block3/guest/spike-bad-oracle.log",
+      "sha256": "c4cc0f95b75f1830191bbca7572a6f20a8e162dfbb51f7e3f12d771fc2b66234",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage3-block3/package/package.json",
+      "sha256": "f745524595d47e9593324ac2971a223c615f409f6181f2f9827c4164b3270aa0",
+      "bytes": 13145
+    },
+    {
+      "path": "resnet-stage3-block3/package/build.json",
+      "sha256": "7a55416f0a01a280712d877e87c8bf45c15bb3d9f6fd7b81bc3f87adbcb53841",
+      "bytes": 43247
+    },
+    {
+      "path": "resnet-stage3-block3/package/memory-audit.json",
+      "sha256": "4bf93fc6a1f08a655cfaf434d66de839bd3060e293c62822dff7af2894fe62f2",
+      "bytes": 10580
+    },
+    {
+      "path": "resnet-stage3-block3/package/placement.json",
+      "sha256": "4ebcc9c92bf8244236c46948bb218d481af6d6db2452b265b57df6577714fc0c",
+      "bytes": 66377
+    },
+    {
+      "path": "resnet-stage3-block3/compile-command.json",
+      "sha256": "c0a84f70447df66c8190daa3542fe1e77234ad2c701e1a0263794848a0912705",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage3-block3/reference.json",
+      "sha256": "4ababbb69da084f043dd25b120066b48240133a26e0132d885e836f8a79ab9c5",
+      "bytes": 2642
+    },
+    {
+      "path": "resnet-stage3-block4/guest/artifact.json",
+      "sha256": "f609170c9df79eb18179fe55090babacfc9387b636e3b2d7b935e6ffcda9b314",
+      "bytes": 9033
+    },
+    {
+      "path": "resnet-stage3-block4/guest/spike-results.json",
+      "sha256": "1d5112a87ec8988e6f35a9df40528f84c0f064747d095f52da4fd868580bcd4d",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage3-block4/guest/spike-valid.log",
+      "sha256": "7a22339fac923f935508ea801c5772f3904bb2b6cdc922b7e759734a99fa8e1e",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage3-block4/guest/spike-bad-oracle.log",
+      "sha256": "c4cc0f95b75f1830191bbca7572a6f20a8e162dfbb51f7e3f12d771fc2b66234",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage3-block4/package/package.json",
+      "sha256": "67f2520d83402a3db1a7ce84bd38888d74f3db7bc3cbc0951406f266bf209ac2",
+      "bytes": 13145
+    },
+    {
+      "path": "resnet-stage3-block4/package/build.json",
+      "sha256": "6226c595a5f09b630b3132f3a209b48c52b2385f3808966d35141b520d6736ac",
+      "bytes": 43247
+    },
+    {
+      "path": "resnet-stage3-block4/package/memory-audit.json",
+      "sha256": "4bf93fc6a1f08a655cfaf434d66de839bd3060e293c62822dff7af2894fe62f2",
+      "bytes": 10580
+    },
+    {
+      "path": "resnet-stage3-block4/package/placement.json",
+      "sha256": "4ebcc9c92bf8244236c46948bb218d481af6d6db2452b265b57df6577714fc0c",
+      "bytes": 66377
+    },
+    {
+      "path": "resnet-stage3-block4/compile-command.json",
+      "sha256": "fa5dee0e6336ed22f262f3c907341c41368bb2906fe0c1dc1b19b098ada97e5f",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage3-block4/reference.json",
+      "sha256": "8253b285b0b4d1871e9dfc8831530b777c6824f25c2b90a353aa3327124dc603",
+      "bytes": 2642
+    },
+    {
+      "path": "resnet-stage3-block5/guest/artifact.json",
+      "sha256": "735c3db4ef7abef9de3dcd289169e86b519b45c4836cbd1c062383168b13f92a",
+      "bytes": 9033
+    },
+    {
+      "path": "resnet-stage3-block5/guest/spike-results.json",
+      "sha256": "ce5b1b1a3a734449ae8c7784d0e900a02f5235cae5f1b81dd14a52ef824edcda",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage3-block5/guest/spike-valid.log",
+      "sha256": "7a22339fac923f935508ea801c5772f3904bb2b6cdc922b7e759734a99fa8e1e",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage3-block5/guest/spike-bad-oracle.log",
+      "sha256": "c4cc0f95b75f1830191bbca7572a6f20a8e162dfbb51f7e3f12d771fc2b66234",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage3-block5/package/package.json",
+      "sha256": "74bb59b0c01afb4ee6f65354c5646b0b315b6a584154561c190f5a0c6bc5772c",
+      "bytes": 13145
+    },
+    {
+      "path": "resnet-stage3-block5/package/build.json",
+      "sha256": "faae425d56274627978279526928b393cce8bc27e0bca3dcdcd683756905500b",
+      "bytes": 43247
+    },
+    {
+      "path": "resnet-stage3-block5/package/memory-audit.json",
+      "sha256": "4bf93fc6a1f08a655cfaf434d66de839bd3060e293c62822dff7af2894fe62f2",
+      "bytes": 10580
+    },
+    {
+      "path": "resnet-stage3-block5/package/placement.json",
+      "sha256": "4ebcc9c92bf8244236c46948bb218d481af6d6db2452b265b57df6577714fc0c",
+      "bytes": 66377
+    },
+    {
+      "path": "resnet-stage3-block5/compile-command.json",
+      "sha256": "df4cbae8b8d9271889b7db0142905a703247ff0a66fe365276d4dd8446142b32",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage3-block5/reference.json",
+      "sha256": "8d97b35035db8f4728f56d8e880651fa75c644816fc479ea520b32e49f5380a6",
+      "bytes": 2642
+    },
+    {
+      "path": "resnet-stage3-block6/guest/artifact.json",
+      "sha256": "e76b4aed203590085c6f9bd2e504857b000e91475e9d2a35f19e993ee2f546ee",
+      "bytes": 9033
+    },
+    {
+      "path": "resnet-stage3-block6/guest/spike-results.json",
+      "sha256": "8c8404b3a8878ab287f9193c40abe4d9f09f83c37c7d808f22a0fe406ea117e2",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage3-block6/guest/spike-valid.log",
+      "sha256": "7a22339fac923f935508ea801c5772f3904bb2b6cdc922b7e759734a99fa8e1e",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage3-block6/guest/spike-bad-oracle.log",
+      "sha256": "c4cc0f95b75f1830191bbca7572a6f20a8e162dfbb51f7e3f12d771fc2b66234",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage3-block6/package/package.json",
+      "sha256": "57ad8416db4d2b8d0cf9edc5c72c2f370c2d229b92d08bfe14c5bd458aa9b81b",
+      "bytes": 13145
+    },
+    {
+      "path": "resnet-stage3-block6/package/build.json",
+      "sha256": "49c09f028faf2c06377279e6dfb0c9abf0dd41425ab1094d20f5526719b6eec2",
+      "bytes": 43247
+    },
+    {
+      "path": "resnet-stage3-block6/package/memory-audit.json",
+      "sha256": "4bf93fc6a1f08a655cfaf434d66de839bd3060e293c62822dff7af2894fe62f2",
+      "bytes": 10580
+    },
+    {
+      "path": "resnet-stage3-block6/package/placement.json",
+      "sha256": "4ebcc9c92bf8244236c46948bb218d481af6d6db2452b265b57df6577714fc0c",
+      "bytes": 66377
+    },
+    {
+      "path": "resnet-stage3-block6/compile-command.json",
+      "sha256": "afe225c7eeed7d66cdde11db18c64698c4fb31f05aae947e0811bd62d9707b29",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage3-block6/reference.json",
+      "sha256": "f0babeba6721bffbde3ec165daf07aa1eb541e3c3bcb2ef705f2ba93dc96fa92",
+      "bytes": 2642
+    },
+    {
+      "path": "resnet-stage4-block1/guest/artifact.json",
+      "sha256": "b377e5f7e9200b9a055cc31d7b34afc30657c76ccb1882c49bb0892531e1a4d9",
+      "bytes": 9033
+    },
+    {
+      "path": "resnet-stage4-block1/guest/spike-results.json",
+      "sha256": "0b9cb335635fc02998067d22cb75db7689a2cd0c7a80d31b5efc78200dffe0ba",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage4-block1/guest/spike-valid.log",
+      "sha256": "c92a6f8a504dd0a5f8c35b65c3c47c836e993afcc00dc45ef0576c65f48d0787",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage4-block1/guest/spike-bad-oracle.log",
+      "sha256": "13f17139c4bc257f2979261a5be64b46061624ea773fcfb02ef0734c8973c85d",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage4-block1/package/package.json",
+      "sha256": "cbf6763659ad56b4d6a510f58569bf150dd95eef971efe32728654cde341068f",
+      "bytes": 16038
+    },
+    {
+      "path": "resnet-stage4-block1/package/build.json",
+      "sha256": "6df9ee1a39fa462b7bb60f68e1acc39c66a78ed3512ed92c1ece57f7c80f7a07",
+      "bytes": 43247
+    },
+    {
+      "path": "resnet-stage4-block1/package/memory-audit.json",
+      "sha256": "53393fe3efd0377c3c4ce78d7c72174a901f4a65c5fcb5c861ae58bd0e0f3a82",
+      "bytes": 14958
+    },
+    {
+      "path": "resnet-stage4-block1/package/placement.json",
+      "sha256": "a3505d339f17ce461070de9fdffe0eb5ad069e69184f8f331be34d846a1c5073",
+      "bytes": 88416
+    },
+    {
+      "path": "resnet-stage4-block1/compile-command.json",
+      "sha256": "9f204bc89d69cabc8aedf5e146de65127b4f33c681d97b56932fb09bef296dca",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage4-block1/reference.json",
+      "sha256": "bd2e4a0c8018f8c86b2f5c1690edd8b26a6b905d683a52518ec595e0ed1a78b7",
+      "bytes": 2640
+    },
+    {
+      "path": "resnet-stage4-block2/guest/artifact.json",
+      "sha256": "898a72ca4e891499a8bf422403b397d3c84c9b7076d2689d4a79f4cf6febb77e",
+      "bytes": 9032
+    },
+    {
+      "path": "resnet-stage4-block2/guest/spike-results.json",
+      "sha256": "c030cf82068e42fa4ecdd96176967525b302d14b93595ffaad5c06376a5a00be",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage4-block2/guest/spike-valid.log",
+      "sha256": "8d1b54a5e043dca958e9e658a8b1390adb9feacea6efece24e4744bb1b0d4d6e",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage4-block2/guest/spike-bad-oracle.log",
+      "sha256": "ac80a799664212560b6d45929516a983b7f0d279ce4aeef2b110faa2a11dcd61",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage4-block2/package/package.json",
+      "sha256": "7a419d543afc4b2f566826390c0ecd3ec26ea8a7e4a92af1b9835f6d868fdcad",
+      "bytes": 13138
+    },
+    {
+      "path": "resnet-stage4-block2/package/build.json",
+      "sha256": "345d02ab004e06b5071ef00af570297ff06c2e35750cc7dbb369fc543907a886",
+      "bytes": 43247
+    },
+    {
+      "path": "resnet-stage4-block2/package/memory-audit.json",
+      "sha256": "9e02817472bb8489109d80b55741d04ad6ad08e37586bac536e06ec8e85cbac7",
+      "bytes": 10573
+    },
+    {
+      "path": "resnet-stage4-block2/package/placement.json",
+      "sha256": "b67fafdbd140e5ff232da2d9805e08ceb0803c7f7465805db16cf4ad25e8ede3",
+      "bytes": 66332
+    },
+    {
+      "path": "resnet-stage4-block2/compile-command.json",
+      "sha256": "7caa51fb1dbb5729ec07afca57f59f893013d1d27e262a98bd16f4ed2ac3cfad",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage4-block2/reference.json",
+      "sha256": "0d2e2916a87d7f8772887759d5c4930dde66fbb29b0d787f8d31033cafda9b6b",
+      "bytes": 2640
+    },
+    {
+      "path": "resnet-stage4-block3/guest/artifact.json",
+      "sha256": "3ca75eb8c269d8b14b2489376fb241055c7dfeda487f8c7d27ba354a056769e6",
+      "bytes": 9032
+    },
+    {
+      "path": "resnet-stage4-block3/guest/spike-results.json",
+      "sha256": "2793f3c35dc05ebe1fb040bafb4963c2d90bae687270716206cd3169998853c6",
+      "bytes": 5088
+    },
+    {
+      "path": "resnet-stage4-block3/guest/spike-valid.log",
+      "sha256": "8d1b54a5e043dca958e9e658a8b1390adb9feacea6efece24e4744bb1b0d4d6e",
+      "bytes": 99
+    },
+    {
+      "path": "resnet-stage4-block3/guest/spike-bad-oracle.log",
+      "sha256": "ac80a799664212560b6d45929516a983b7f0d279ce4aeef2b110faa2a11dcd61",
+      "bytes": 146
+    },
+    {
+      "path": "resnet-stage4-block3/package/package.json",
+      "sha256": "5a28b18cde4067f96660683a8e538d26ccc161714170e32fc18d788a9d82a75f",
+      "bytes": 13138
+    },
+    {
+      "path": "resnet-stage4-block3/package/build.json",
+      "sha256": "1b7cee12bb9e6da7188be5b920a7c6820f6d25acf8f16d2cd085afa295f2e621",
+      "bytes": 43247
+    },
+    {
+      "path": "resnet-stage4-block3/package/memory-audit.json",
+      "sha256": "9e02817472bb8489109d80b55741d04ad6ad08e37586bac536e06ec8e85cbac7",
+      "bytes": 10573
+    },
+    {
+      "path": "resnet-stage4-block3/package/placement.json",
+      "sha256": "b67fafdbd140e5ff232da2d9805e08ceb0803c7f7465805db16cf4ad25e8ede3",
+      "bytes": 66332
+    },
+    {
+      "path": "resnet-stage4-block3/compile-command.json",
+      "sha256": "00aa154323d52e8e7f7d90815fc5559afdb2008d5160bc31af4e7e60245fab3a",
+      "bytes": 883
+    },
+    {
+      "path": "resnet-stage4-block3/reference.json",
+      "sha256": "4603e32f3ca686a3a284fd4a994bcaf745bf6fab0ca8ed2907bbe185b08dbe93",
+      "bytes": 2640
+    },
+    {
+      "path": "resnet-stem/guest/artifact.json",
+      "sha256": "009487c662d403f7b642c0aa355f9b41defee15d492391b0af860213e92a469e",
+      "bytes": 8814
+    },
+    {
+      "path": "resnet-stem/guest/spike-results.json",
+      "sha256": "270c38a0d6e54e4f097f8762de7dd67a204fdbc5a3a7c2ea7663081144733235",
+      "bytes": 5068
+    },
+    {
+      "path": "resnet-stem/guest/spike-valid.log",
+      "sha256": "d8a8356291ac1add86d3ba4b647e340d211d988efa5c94a316003feb0625774b",
+      "bytes": 101
+    },
+    {
+      "path": "resnet-stem/guest/spike-bad-oracle.log",
+      "sha256": "cb23dcf44ab2fafdf4c04bd840740c2a9a9e427eab2ccc857715134a7afaa882",
+      "bytes": 148
+    },
+    {
+      "path": "resnet-stem/package/package.json",
+      "sha256": "7bdd9e39049559da4a114aaee5f293f18dc865950c7d9a7ce2907b5a197ebc2e",
+      "bytes": 12265
+    },
+    {
+      "path": "resnet-stem/package/build.json",
+      "sha256": "6b812be2d0a28a70046afdc3fafa675c8db5fa2802868777abac5d70677aad7b",
+      "bytes": 43076
+    },
+    {
+      "path": "resnet-stem/package/memory-audit.json",
+      "sha256": "aebb687e294c8c5cb2b0c8aac0bd8f5cb0e686d138b8c5636a62ce0e9c719557",
+      "bytes": 10171
+    },
+    {
+      "path": "resnet-stem/package/placement.json",
+      "sha256": "f3e4acd54d3ce9e22ae22e277e685b2b6e0883cf5ff23b7a0a72de95865b2bb8",
+      "bytes": 24583
+    },
+    {
+      "path": "resnet-stem/compile-command.json",
+      "sha256": "5cb94aa318a95ecb0a43157f8975bd4fe8e392123652d66a6e44e13889c71d6d",
+      "bytes": 865
+    },
+    {
+      "path": "resnet-stem/reference.json",
+      "sha256": "d7b6558fdb31b36f52171eda0136972e8df8325afd61b3a4aa4546fd5e272fee",
+      "bytes": 2628
+    },
+    {
+      "path": "full-resnet/guest/artifact.json",
+      "sha256": "c4909dffbad25de54a9571a4fed4da73c0caf80570803d40338e59bb0b8aff70",
+      "bytes": 8811
+    },
+    {
+      "path": "full-resnet/guest/spike-results.json",
+      "sha256": "9b2b5237ebaef99a6e15a891071c00382c6cee3338c90f0d2ad5474b5df4af6c",
+      "bytes": 5078
+    },
+    {
+      "path": "full-resnet/guest/spike-valid.log",
+      "sha256": "c9a1409243ee84936546f1ee2fa30e0049887c2dc79a771ead793883c9963f13",
+      "bytes": 103
+    },
+    {
+      "path": "full-resnet/guest/spike-bad-oracle.log",
+      "sha256": "242f2337dd18dbe454d02471819211ee1e1e567722673da4ec2e8899801f001e",
+      "bytes": 150
+    },
+    {
+      "path": "full-resnet/package/package.json",
+      "sha256": "bc5f4220724081a79f28a14f2997b97b172154b44ac078cedf2134b9f69a4fd3",
+      "bytes": 339739
+    },
+    {
+      "path": "full-resnet/package/build.json",
+      "sha256": "1be0762742926e828f72209ff7b0c09edda3c784f583074e6b0db305fd22a66d",
+      "bytes": 43063
+    },
+    {
+      "path": "full-resnet/package/memory-audit.json",
+      "sha256": "1d68f69ee593fb357b8f64f098864a81e3aad164f0404d00cdea44bd41cd5778",
+      "bytes": 406089
+    },
+    {
+      "path": "full-resnet/package/placement.json",
+      "sha256": "e1e34018a9de3e6dc89c1333dea741c5d64e87858731d3d2a90c337f8dea4c74",
+      "bytes": 470091
+    },
+    {
+      "path": "full-resnet/compile-command.json",
+      "sha256": "891accc5259973554ab5f38525819a0ec88774c87b57e45376442e977192f640",
+      "bytes": 851
+    },
+    {
+      "path": "full-resnet/reference.json",
+      "sha256": "3b0bc234e3f851542e5c12bb7e7a678840bbe3eb87dff89a3464090b697625af",
+      "bytes": 2998
+    },
+    {
+      "path": "operators/bundle.json",
+      "sha256": "2a27abdc01e1c460c5808ff163bc520813fc4d74166efe60c35ee7b071f40b51",
+      "bytes": 1048470
+    },
+    {
+      "path": "operators/positive-result.json",
+      "sha256": "431521bf7b19351ed8e3ce9434ecf7d383924d025648b7447b0eaef6df82fc4f",
+      "bytes": 174597
+    },
+    {
+      "path": "operators/negative-result.json",
+      "sha256": "200eae69fc90ca26697881947b2b6a105604b5134cdb791ca493041a0430785b",
+      "bytes": 174612
+    },
+    {
+      "path": "operators/positive.log",
+      "sha256": "b458a0c201b32a340d9fc06de0c85e1404bdefc88fd47e5ca9c71fe869297227",
+      "bytes": 2600
+    },
+    {
+      "path": "operators/negative.log",
+      "sha256": "fd4dc5eecb755c2d40ae10dfafa6b381783abe85487545fcdc612716ba3af63f",
+      "bytes": 131
+    },
+    {
+      "path": "extraction/resnet-study-original-paths.json",
+      "sha256": "c48ba73f0da3ade06f4e34f953df50ce292c454a6ac2660c199a4049895a7ac9",
+      "bytes": 73416
+    },
+    {
+      "path": "extraction/kernel-study-original-paths.json",
+      "sha256": "8798ef8004727366b4c48e4811658bb5e0d11048616d77921ee9c2da3cf2f63d",
+      "bytes": 31310
+    },
+    {
+      "path": "checks/active-handoff-tests.log",
+      "sha256": "db6da147bc4268ff4eb4ee3f0499333583d80ec1970af7aa5efee97578c611be",
+      "bytes": 2177
+    },
+    {
+      "path": "checks/active-handoff-structure.log",
+      "sha256": "a2c5bea4fd7d4a9856bd7badb2f4af1918d35d95e394adb99bc7cfb2f3ca9b82",
+      "bytes": 1394
+    },
+    {
+      "path": "checks/active-source-check.log",
+      "sha256": "fc130f4f75981bf2dc5f2edc163d996a8cf0ffaff7658b1f4b9971fa63dfd186",
+      "bytes": 2153
+    },
+    {
+      "path": "checks/active-staged-source-check.log",
+      "sha256": "201f56e7b6c31349affde50a6ba297bb6eee883e50d71b2c900f62eb0f756814",
+      "bytes": 65
+    },
+    {
+      "path": "checks/resnet-restore.log",
+      "sha256": "7d3d39de1f93c47943031241c9f0f993adfa5b487ff86c33c8da694ec0365993",
+      "bytes": 347
+    },
+    {
+      "path": "checks/active-resnet-extraction.log",
+      "sha256": "98ec8bfb3ded46a85c0382c28b39c262aab4b5f2b72c97e43a6d2d6e07261eaa",
+      "bytes": 1103
+    },
+    {
+      "path": "checks/active-kernel-extraction.log",
+      "sha256": "423cc6134cfbb1fe3a1fdb4adb1e2d6840db5362f90df79028747a8fb6df8a0f",
+      "bytes": 735
+    },
+    {
+      "path": "excluded-C01-first-form/placement.json",
+      "sha256": "ad1c9d141af421c9d9d71dc25fb2ed0bf90f1286303437821cd52f1b3da511b1",
+      "bytes": 15865
+    },
+    {
+      "path": "published-build-sources/kernel_benchmark_data.py",
+      "sha256": "2ece855c1438b0aceacb58313ee7f45430f6547d5ecef90f1ba76ebc089587b2",
+      "bytes": 4997
+    },
+    {
+      "path": "published-build-sources/prepare_kernel_benchmarks.py",
+      "sha256": "ad8475a66eb8ed0cbd2bbf6378aa7eed92d90ce18092c3a608d37e8348ae56d7",
+      "bytes": 8741
+    },
+    {
+      "path": "published-build-sources/prepare_active_study.py",
+      "sha256": "b8deddae65da85b4c3ce1179ce721e28a19242d40c62d5c14c542cf3572a70fe",
+      "bytes": 4786
+    },
+    {
+      "path": "published-build-sources/build_shared_chunk_elf.py",
+      "sha256": "4899254ab7a14e099f1d54bfec7d66ab9e5e63da0f6e972c27c23f149aa3b9a2",
+      "bytes": 5927
+    },
+    {
+      "path": "published-build-sources/check_kernel_spike.py",
+      "sha256": "eacf6e7e68971ab29ed5066e0fb754018a0953912184546796c780fe10c801b8",
+      "bytes": 2717
+    },
+    {
+      "path": "published-build-sources/prepare_operator_checks.py",
+      "sha256": "896ed8adbf0b8857416a3712b5a17bc9070ee74104d6fede08ebaa38266d41d6",
+      "bytes": 1907
+    },
+    {
+      "path": "published-build-sources/restore_resnet_inputs.py",
+      "sha256": "cb7476c6049e8eaf86a4caec5fbbca06c0574a8876d10b902fa100f09601ee2e",
+      "bytes": 1862
+    }
+  ]
+}

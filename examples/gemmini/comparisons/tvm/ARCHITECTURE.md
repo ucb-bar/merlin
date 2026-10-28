@@ -133,14 +133,14 @@ work that is required to run on Gemmini.
 | --- | --- |
 | Exact spec compliance | Bind every evaluated program's PE/accumulator bounds, scales, layouts and permitted compositions. Until then say implemented candidates, not complete spec support. The source-default software-spec.yaml differs from the requested pin; use exact 8ec99308 bytes. |
 | Hardware and oracle identity | Match capability/header/runtime facts to deployed hardware. ResNet's selected U250 and reported F2 kernel setup are not interchangeable. Repaired diagnostic Spike is not the missing spec-pinned oracle. |
-| Final-source execution | Current evidence is local correctness/replay/control tests. The older 71-case Spike release used older scheduling source; it does not qualify the new reuse default. No new FireSim speedup is established by this audit. |
-| Complete workloads | The current runner measures extracted contractions. All-head/all-output kernel builders and connected ResNet checks remain required. Never sum isolated minima into complete-call/E2E cycles. |
+| Final-source execution | The current 74-case operator suite and 16 complete kernels pass diagnostic Spike with the current reuse default; see SPIKE_HANDOFF_EVIDENCE.md for ResNet checks and source hashes. Older releases retain their own identities. No FireSim speedup follows from Spike correctness. |
+| Complete workloads | The tuning runner measures extracted contractions. Complete all-head/all-output kernel builders and ResNet chunk/parent builders now exist. Final FireSim confirmation is still required; never sum isolated minima into complete-call/E2E cycles. |
 | Fair comparison | Match shapes, input bytes, dtypes, exits, cache/warm policy, placement and host packing across systems. Include runtime config/WS reuse and any timed preparation; report precomputed preparation separately. |
 | Tuning strength | This is a small, seeded random trace search with an engineered default, not an ML-tuned or converged optimum. Publish seeds, unique valid candidates, errors, per-task allocation, timeouts and actual occupancy. A four-hour cap may leave chunks undertuned. |
 | Baseline attribution | Report the default heuristic as an optimization itself. Compare default versus selected schedules; an ablation is needed to attribute gains specifically to search, reuse, fusion or a runtime change. |
 | Coverage and effort | Full TinyLlama/SmolVLA are deferred as too expensive. Their isolated kernels do not establish model quality, full decode coverage or equal optimization effort. |
 | Reproducibility | Publish exact source pins, inputs/references/checksums, traces, compile options, placement, ELFs and measurement receipts. Frozen historical releases cannot acquire new source labels. |
-| Repository gates | Nine inherited module-size failures remain unrelated code-organization debt. They are not runtime failures, but the repository-wide structure check is not clean. |
+| Repository gates | Nine inherited module-size failures and eight existing no-regex call sites in unchanged files remain repository lint debt. They are not runtime failures; staged no-regex passes. |
 
 A justified description is **a target-specific TensorIR backend using stock TVM
 scheduling/tensorization and bounded ReplayTrace search, with custom resource
@@ -149,7 +149,7 @@ lowering, a primitive runtime and external FireSim measurement**. Avoid “only
 memory handling optimized by MetaSchedule,” or “optimal/ML-guided schedules.”
 
 For an implementation freeze, keep the architecture and current experimental
-policy; resolve the admission, full-call building and remote qualification work
+policy; resolve the remaining admission and remote qualification work
 above before calling the artifact a final measured implementation. Additional
 compiler changes should address demonstrated correctness/coverage failures and
 receive new source/measurement identities, not silently extend the benchmark.
