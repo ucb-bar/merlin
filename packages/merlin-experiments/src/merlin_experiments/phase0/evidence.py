@@ -921,7 +921,7 @@ def select_evidence(
     # the authored bytes stay the selected source identity.
     software_derivation = None
     if software_spec is not None:
-        from merlin.targetgen import spec_fact_drift
+        from merlin.targetgen.software_spec_resolution import resolve_selected_spec
 
         # Some capability helpers still resolve by target name. Their reads
         # must use this selection too, never extract from an ambient provider.
@@ -929,17 +929,18 @@ def select_evidence(
             target_registry.observed_contract(target, contract),
             rtl_facts.observed_facts(target, refreshed_facts, selected_path),
         ):
-            fact_view = spec_fact_drift.fact_capabilities(
+            software_doc, software_derivation = resolve_selected_spec(
+                software_doc,
                 target=target,
                 contract=contract,
-                raw_facts=loaded_facts,
+                facts=loaded_facts,
                 readout_facets=[facet.to_dict() for facet in facets],
                 quantization_candidates=quantization_candidates,
                 taxonomy=taxonomy,
                 prohibited_roles=prohibited_roles,
-                **({"data_only": True} if data_only else {}),
+                data_only=data_only,
+                composition_validation=(descriptor_doc.get("workload_spec") or {}).get("fusion_validation"),
             )
-        software_doc, software_derivation = spec_fact_drift.resolve_spec(software_doc, fact_view)
         software_derivation["prohibited_instruction_roles"] = sorted(set(prohibited_roles))
         for row in software_derivation["unresolved"]:
             diagnostics.append(
