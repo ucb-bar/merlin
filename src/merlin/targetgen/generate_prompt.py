@@ -609,8 +609,10 @@ submission/
                   # integrity_exempt: false; (cpp) a build block; 4 required command argv templates
   mlir_oot/       # your OOT sources: input dialect + {target} target dialect + passes + {tool_stem}
   REPORT.md       # what you built + honest scope/limitations + a final status line (see end)
-  docs/           # PLAN.md (first-round design plan) + public_facts_used.md (facts used + source) + iteration_notes.md
+  docs/           # PLAN.md (first-round design plan) + public_facts_used.md (facts used + source)
 ```
+Your running notes go in `ITERATION_NOTES.md` at the workspace root, NOT in `submission/`: everything under
+`submission/` is the graded compiler, so a note edited there marks every finished grade as an older version.
 
 ## The 4 CLI entrypoints (your package is invoked ONLY via these)
 - `parse`: `{{tool}} --verify-diagnostics {{input_mlir}}` — parse + verify the `merlin_iface` interface MLIR
@@ -750,7 +752,8 @@ It is your design contract with yourself — short and honest; update it only wh
 ## Durable run memory
 The certified schedule keeps one continuing session, but the process can still resume after a timeout,
 quota boundary, or operator restart. Do not rely on conversational memory alone. The harness writes
-`qa/round_brief.md` with graded progress, and your own durable notes live in `docs/iteration_notes.md`.
+`qa/round_brief.md` with graded progress, and your own durable notes live in `ITERATION_NOTES.md` (workspace
+root, outside `submission/`).
 Read both before changing an existing submission. After every substantive change, append what changed,
 what the verdict showed, and the next hypothesis; do not undo a change that improved an earlier grade.
 

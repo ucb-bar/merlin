@@ -113,7 +113,8 @@ def _selection(elf, target, limits):
     if invocation is None:
         raise CensusUnavailable("original backend has no functional trace invocation")
     argv, environment = invocation
-    if argv.count(str(elf)) != 1 or argv.count("-l") != 1 or argv.count("--log-commits") != 1:
+    # The commit log alone (no "-l" execution/disassembly lines): every retirement is one commit line.
+    if argv.count(str(elf)) != 1 or "-l" in argv or argv.count("--log-commits") != 1:
         raise CensusUnavailable("original functional invocation has unsupported trace or ELF operands")
     extensions = [Path(token.partition("=")[2]).resolve(strict=True) for token in argv if token.startswith("--extlib=")]
     declared = spike_extension.declared_extension(target)

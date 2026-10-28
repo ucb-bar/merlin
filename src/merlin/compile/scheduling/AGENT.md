@@ -242,5 +242,26 @@ keeps its own incumbent on missing/UNKNOWN cycles,
 regression or changed provider/facts/library/scope. `AssessedShapePolicy.execute`
 runs real passes against the current IR; it never returns a training kernel.
 This optional policy does not certify unseen shapes or impose an authoring gate.
+`propose_shape_policies` can construct bounded dimension cutoffs and two-axis
+conjunctions from paired **training** cycles. Keep the design's heldout geometries
+separate. A proposal's `requests` identifies missing feedback and boundary-source
+constraints; `freeze_boundaries` records additional geometries before evaluating
+them. `assess` validates the fixed candidate, then the returned ordinary policy
+executes real passes on the current source. Changing a rule after inspecting a
+holdout consumes that holdout as development evidence.
+
+`pipeline_policy` also provides `DimensionRef`, `ResourceRef`, `RatioFeature`,
+`TileFeature` and `FeaturePredicate`: exact rational aspect/resource ratios,
+tile counts and tail fractions, without target/model names. Zero or missing
+denominators and unselected resources yield unknown. These are performance
+features, not hardware effects or legality proofs. The current proposal learner
+discovers dimension cutoffs; these richer predicates can be supplied explicitly.
+
+`explore_evaluated(..., incumbent=...)` accepts an exact existing observation,
+reuses identical emitted bytes in that same domain, and exposes compact `outcomes`
+and `summary()` with construction, emission, numerical and timing failures kept
+distinct. `ExplorationRefused` denotes an explicit known construction/emission
+refusal; other adapter/infrastructure exceptions must not be hidden as poor
+performance. A missing cycle estimate never becomes an instruction-count score.
 Normal author-library preparation accepts explicit inventory22 with individually
 reviewed new modules; prior default inventory21 and frozen selections stay intact.

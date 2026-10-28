@@ -39,6 +39,15 @@ _CHANGED_MESSAGE = "original snapshot read lease custody changed"
 _VERIFICATION = contextvars.ContextVar("read_lease_digest_verification", default=None)
 
 
+class CustodyChanged(RuntimeError):
+    """A leased member (or the custodian holding it) lost custody; the cached digest is not reusable.
+
+    Still a ``RuntimeError`` for existing refusals. A caller that can re-measure the same bytes with
+    an ordinary full read may catch exactly this and treat it as a cache miss; callers whose earlier
+    use of the digest is already consumed keep refusing.
+    """
+
+
 def _bounded_setting(name, default, maximum):
     raw = os.environ.get(name)
     if raw is None:
@@ -136,7 +145,7 @@ class _Cache:
     def refuse(self):
         self.disabled = True
         self.close()
-        raise RuntimeError(_CHANGED_MESSAGE)
+        raise CustodyChanged(_CHANGED_MESSAGE)
 
     def forget(self, keys):
         """Refuse the current verification and exactly these members; callers hold _LOCK.
@@ -156,7 +165,7 @@ class _Cache:
             del self.paths[path]
             if len(self.refused_paths) < maximum_files() * 16:
                 self.refused_paths.add(path)
-        raise RuntimeError(_CHANGED_MESSAGE)
+        raise CustodyChanged(_CHANGED_MESSAGE)
 
     def failed(self, members):
         """The members of a failed batch that individually fail ``valid``; readers held."""
@@ -371,26 +380,26 @@ def reuse(paths, *, required: bool = False):
     changed = _CHANGED_MESSAGE
     if not enabled():
         if required:
-            raise RuntimeError(changed)
+            raise CustodyChanged(changed)
         return None
     with _LOCK:
         cache = _CACHE
         if cache is None or cache.owner != os.getpid() or cache.disabled or cache.retiring:
             if required:
-                raise RuntimeError(changed)
+                raise CustodyChanged(changed)
             return None
         members = []
         for path in paths:
             if path in cache.refused_paths:
                 if required:
-                    raise RuntimeError(changed)
+                    raise CustodyChanged(changed)
                 return None
             key = cache.paths.get(path)
             entry = None if key is None else cache.entries.get(key)
             if entry is not None:
                 members.append((path, entry))
             elif required:
-                raise RuntimeError(changed)
+                raise CustodyChanged(changed)
         if not members:
             return {}
         cache.readers += 1
@@ -421,9 +430,9 @@ def reuse(paths, *, required: bool = False):
 def _borrow(cache):
     # Only a short registry check/counter update holds the process-wide mutex.
     if cache is not _CACHE or cache.owner != os.getpid():
-        raise RuntimeError("original snapshot read lease owner changed")
+        raise CustodyChanged("original snapshot read lease owner changed")
     if cache.retiring or cache.disabled:
-        raise RuntimeError(_CHANGED_MESSAGE)
+        raise CustodyChanged(_CHANGED_MESSAGE)
     cache.readers += 1
 
 
@@ -472,7 +481,7 @@ def validate(owner):
     cache = records[0][1][0]
     with _LOCK:
         if owner[:2] != (os.getpid(), threading.current_thread()) or any(row[1][0] is not cache for row in records):
-            raise RuntimeError("original snapshot read lease owner changed")
+            raise CustodyChanged("original snapshot read lease owner changed")
         _borrow(cache)
     good, failed = False, set()
     members = [(path, entry) for path, (_, entry) in records]

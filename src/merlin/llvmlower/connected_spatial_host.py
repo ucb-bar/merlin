@@ -34,6 +34,7 @@ def _check_source(plan, entry):
     """Check every source geometry, observer and ordered coefficient boundary."""
     from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
     from merlin.compile.scheduling.spatial_producer import PackedSpatialProducerPlan, SpatialProducerPlan
+    from merlin.compile.scheduling.spatial_readout import prove_spatial_readout
     from merlin.compile.scheduling.window_transfer import Window2D
     from merlin.llvmlower.requantization import f32
 
@@ -55,9 +56,9 @@ def _check_source(plan, entry):
         or not p.bias
         or producer.get("output_dtype") != "i8"
         or pool.get("output_dtype") != "i8"
-        or plan.readout_mode != "staged_readouts"
+        or plan.readout_mode not in ("staged_readouts", "single_readout")
     ):
-        raise ValueError("host spatial route must retain both original rounded signed-i8 stages")
+        raise ValueError("host spatial route requires the original rounded signed-i8 stages")
     window = Window2D(
         (producer.get("batch", 1), producer["Himg"], producer["Wimg"], producer["ci"]),
         (producer["kh"], producer["kw"]),
@@ -85,6 +86,7 @@ def _check_source(plan, entry):
     scales = producer.get("acc_scale_by_column", [producer.get("acc_scale")] * p.output_channels)
     if len(scales) != p.output_channels:
         raise ValueError("source producer coefficients do not cover every output channel")
+    readout_proofs = []
     for index, chain in enumerate(plan.readouts):
         group = tuple(f32(v) for v in scales[index * p.column_tile : (index + 1) * p.column_tile])
         if (
@@ -95,9 +97,17 @@ def _check_source(plan, entry):
             or chain.producer.relu != ("relu" in pe)
             or chain.pool.scales != (f32(pool["acc_scale"]),)
             or chain.pool.relu
-            or chain.replacement is not None
         ):
             raise ValueError("private spatial plan changes an original ordered Q1/Q2 boundary")
+        if plan.readout_mode == "staged_readouts":
+            if chain.replacement is not None:
+                raise ValueError("staged spatial route cannot replace an original Q1/Q2 boundary")
+        else:
+            # The original Q1/Q2 coefficients above remain source-bound. Only
+            # the existing complete signed-i32 transition proof may justify
+            # consuming one replacement readout; no scalar samples suffice.
+            readout_proofs.append(prove_spatial_readout(chain))
+    return readout_proofs
 
 
 def prepare_connected_spatial_host(
@@ -131,7 +141,7 @@ def prepare_connected_spatial_host(
     if len(selected.receipt["groups"]) != 1:
         raise ValueError("each private spatial preparation explicitly selects its complete grouped source set")
     entry = selected.rewrite.entries[contract.symbol]
-    _check_source(plan, entry)
+    readout_proofs = _check_source(plan, entry)
     # Reattach only ordinary source-derived declaration effects that text export
     # drops. Generic printing retains them for normal upstream bufferization.
     for declaration in selected.module.body.block.ops:
@@ -165,6 +175,7 @@ def prepare_connected_spatial_host(
             "schema": "connected_spatial_host_owner_v1",
             "source": selected.receipt,
             "source_entry_sha256": _digest(entry),
+            "source_readout_proofs": readout_proofs,
             "host_owner": artifact.owner_symbol,
             "logical_buffers": spatial_logical_buffers(plan),
             "private_helper_pointer_count": len(pointer_alignments) + 1,

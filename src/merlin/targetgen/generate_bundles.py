@@ -498,6 +498,8 @@ def generate_bundles(
                 COMMON_SUBSTRATE_V13,
                 COMMON_SUBSTRATE_V14,
                 COMMON_SUBSTRATE_V15,
+                COMMON_SUBSTRATE_V16,
+                COMMON_SUBSTRATE_V17,
             )
 
             if common_substrate not in {
@@ -514,6 +516,8 @@ def generate_bundles(
                 COMMON_SUBSTRATE_V13,
                 COMMON_SUBSTRATE_V14,
                 COMMON_SUBSTRATE_V15,
+                COMMON_SUBSTRATE_V16,
+                COMMON_SUBSTRATE_V17,
             }:
                 attach_common_substrate(
                     out[bid],
@@ -545,6 +549,8 @@ def generate_bundles(
             "merlin.common_compiler_substrate.v13",
             "merlin.common_compiler_substrate.v14",
             "merlin.common_compiler_substrate.v15",
+            "merlin.common_compiler_substrate.v16",
+            "merlin.common_compiler_substrate.v17",
         }:
             # The common generated task is the sole authoring instruction owner.
             # Legacy target task directories remain operator inputs, not grants.

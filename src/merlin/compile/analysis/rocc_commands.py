@@ -32,7 +32,7 @@ from merlin.common.facts_view import interface as _facts_interface
 from merlin.compile.analysis import instruction_roles as _roles
 from merlin.compile.analysis.disassembly import UNKNOWN_MNEMONIC, word_of
 
-__all__ = ["RoccAudit", "RoccInsn", "audit", "decode_stream", "digest", "fields_of", "funct_table_for"]
+__all__ = ["RoccAudit", "RoccInsn", "audit", "audit_decoded", "decode_stream", "digest", "fields_of", "funct_table_for"]
 
 #: RISC-V R-type field positions — the instruction FORMAT, not a property of any target. RoCC lays a
 #: command over it as funct7[31:25] rs2[24:20] rs1[19:15] xd[14] xs1[13] xs2[12] rd[11:7] opcode[6:0].
@@ -228,6 +228,11 @@ def audit(insns: Sequence[Any], target: str, endpoint=None) -> RoccAudit:
     table = funct_table_for(target)
     roles_of = endpoint.roles_of if endpoint is not None else None
     decoded = decode_stream(insns, table, roles_of)
+    return audit_decoded(decoded, table=table, endpoint=endpoint)
+
+
+def audit_decoded(decoded: Sequence[RoccInsn], *, table: Mapping[str, Any], endpoint=None) -> RoccAudit:
+    """Audit already-decoded instructions using their explicitly selected source table."""
     counts: dict[str, int] = {n: 0 for n in (table.get("names") or {}).values()}
     role_counts: dict[str, int] = {}
     unaccounted: list[dict[str, Any]] = []

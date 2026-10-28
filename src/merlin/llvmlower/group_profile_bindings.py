@@ -14,7 +14,7 @@ from pathlib import Path
 from xdsl.dialects import bufferization, func, memref
 from xdsl.dialects.builtin import MemRefType, NoneAttr, StringAttr, TensorType, UnitAttr
 
-from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.frontends.linalg_mlir import layout_to_buffer_type, parse_mlir_text
 from merlin.runtime.whole_model_readback import ReadbackError
 
 
@@ -66,7 +66,7 @@ def _borrowed(wrapper, declaration, functions):
     for index, (typ, access, op) in enumerate(zip(types, accesses, operations)):
         if access == "read":
             if (
-                type(op) is not bufferization.ToBufferOp
+                type(op) not in (bufferization.ToBufferOp, layout_to_buffer_type())
                 or tuple(op.operands) != (block.args[index],)
                 or op.properties.get("read_only") != UnitAttr()
             ):

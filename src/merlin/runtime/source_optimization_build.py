@@ -130,6 +130,12 @@ class SourceOptimizationBuild:
         return {} if self.selection is None else {"source_optimizations": self._bound_selection or self.selection}
 
     def consumed(self, compilation, workdir):
+        # The independent exact-preparation flag shares this ordinary lowering
+        # boundary. Retain its actual effects even without a pass-policy request.
+        report = Path(workdir) / "tensor-preparation-cse.json"
+        if report.is_file():
+            compilation.bind_preparation("tensor_preparation_sharing", report)
+            compilation.bind_preparation("tensor_preparation_shared_source", Path(workdir) / "model.tensor-preparations.mlir")
         if self.selection is None:
             return
         if self._guard is None:

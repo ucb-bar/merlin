@@ -603,6 +603,8 @@ class BindReport:
     naive_total_bytes: int
     reuse_factor: float
     symbol: str
+    borrowed_lifetime: dict | None = None
+    placements: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -613,15 +615,28 @@ class BindReport:
             "naive_total_bytes": self.naive_total_bytes,
             "reuse_factor": self.reuse_factor,
             "symbol": self.symbol,
+            **({"borrowed_lifetime": self.borrowed_lifetime} if self.borrowed_lifetime is not None else {}),
+            **({"placements": self.placements} if self.placements else {}),
         }
 
 
-def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forward") -> tuple[str, BindReport]:
+def bind_arena(
+    ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forward", borrowed_lifetime=None,
+) -> tuple[str, BindReport]:
     """Rewrite the provable heap allocations of ``@entry`` into one arena. Returns ``(ll, report)``.
 
     With no bindable allocation the text is returned UNCHANGED (not merely equivalent), so a module
     the analysis cannot help is byte-identical to the input and no arena global is emitted.
+    ``borrowed_lifetime`` supplies original effects only for its exact native-checked
+    LLVM. The same allocation/free, alias escape and loop-generation checks apply.
     """
+    borrowed_symbols, borrowed_record = frozenset(), None
+    if borrowed_lifetime is not None:
+        from .borrowed_arena import BorrowedArenaLifetime
+
+        if type(borrowed_lifetime) is not BorrowedArenaLifetime:
+            raise TypeError("arena borrowed effects require the original live native binding")
+        borrowed_symbols, borrowed_record = borrowed_lifetime.checked(ll_text)
     lines = ll_text.split("\n")
     start, end = _split_function(lines, entry)
     define = lines[start]
@@ -681,8 +696,12 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
     # Does any callee in this function possibly retain or free a pointer it is handed? If so the
     # descriptor relaxation is off for the WHOLE function -- an unknown callee is not evidence of
     # safety, and deciding per-allocation would mean deciding which arguments it captures.
-    unknown = sorted(c for c in _callees(lines, blocks) if not _is_non_capturing(c))
+    unknown = sorted(c for c in _callees(lines, blocks)
+                     if not _is_non_capturing(c) and c.removeprefix("@") not in borrowed_symbols)
     allowed_uses = _ALLOWED_RAW_USES if not unknown else ("ptrtoint",)
+    # An unknown call could also observe a derived aligned pointer. Do not use
+    # the new raw-call relaxation in an entry with an unqualified callee.
+    borrowed_uses = borrowed_symbols if not unknown else frozenset()
 
     cyclic = _cyclic_blocks(succs)
     allocs: list[_Alloc] = []
@@ -697,6 +716,7 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
             for li in uses.get(name, [])
             if li != fline
             and not lines[li].strip().partition(" = ")[2].startswith(tuple(op + " " for op in allowed_uses))
+            and _call_target(lines[li].strip()) not in borrowed_uses
         ]
         if bad:
             refuse("raw_pointer_escapes")
@@ -731,6 +751,7 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
             naive_total_bytes=0,
             reuse_factor=0.0,
             symbol=symbol,
+            borrowed_lifetime=borrowed_record,
         )
 
     reachable = _reachable(succs)
@@ -747,6 +768,7 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
             naive_total_bytes=0,
             reuse_factor=0.0,
             symbol=symbol,
+            borrowed_lifetime=borrowed_record,
         )
 
     window = {a.name: _window_blocks(a, succs) for a in allocs}
@@ -802,6 +824,10 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forwar
         naive_total_bytes=naive,
         reuse_factor=round(naive / arena_bytes, 2) if arena_bytes else 0.0,
         symbol=symbol,
+        borrowed_lifetime=borrowed_record,
+        placements=[dict(allocation=a.name, offset=offsets[a.name], bytes=sizes[a.name],
+                         allocation_line=a.malloc_line + 1, release_line=a.free_line + 1)
+                    for a in allocs],
     )
     return "\n".join(out), report
 

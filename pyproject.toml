@@ -117,6 +117,7 @@ exclude = ["merlin._data", "merlin._data.*"]
 # canonical merlin/{schemas,prompts} instead.
 [tool.setuptools.package-data]
 merlin = [
+    "perf/spike_command_recorder.cc",
     "runtime/portable_trig.c",
     "runtime/portable_trig.LICENSE",
     "runtime/portable_exp.c",

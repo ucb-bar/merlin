@@ -179,8 +179,8 @@ def prepare_spatial_scratch_abi(
         raise ValueError("spatial scratch requires current typed source and producer plan")
     plan.__post_init__()
     source_plan = plan.source if type(plan) is PackedSpatialProducerPlan else plan
-    if source_plan.readout_mode != "staged_readouts" or source_plan.intermediate is None:
-        raise ValueError("spatial scratch ABI retains both original staged readouts")
+    if source_plan.readout_mode not in ("staged_readouts", "single_readout"):
+        raise ValueError("spatial scratch ABI requires a checked original readout realization")
     if (
         type(contract) is not FreshTensorWriterContract
         or contract.private_workspaces
@@ -190,11 +190,15 @@ def prepare_spatial_scratch_abi(
         raise ValueError("spatial writer needs a separate ranked borrowed contract and complete effects")
     contract.borrowed_effects.__post_init__()
     validate_private_workspaces((workspace,))
-    required = (
-        plan.workspace.start + plan.required_bytes
-        if type(plan) is PackedSpatialProducerPlan
-        else plan.intermediate.start + plan.temporary_rows * plan.producer.column_tile
-    )
+    if type(plan) is PackedSpatialProducerPlan:
+        required = plan.workspace.start + plan.required_bytes
+    elif source_plan.readout_mode == "staged_readouts":
+        required = plan.intermediate.start + plan.temporary_rows * plan.producer.column_tile
+    else:
+        # Keep the existing private pointer ABI even when a complete numerical
+        # proof eliminates the byte stripe. The caller still supplies checked
+        # positive storage (which may be a one-byte bounded stack workspace).
+        required = 0
     if type(workspace) is not PrivateWorkspaceContract or workspace.bytes < required:
         raise ValueError("private workspace does not cover the complete staged stripe and byte origin")
     if type(plan) is PackedSpatialProducerPlan and workspace.bytes < plan.workspace.start + plan.workspace.size:

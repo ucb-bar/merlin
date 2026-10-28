@@ -41,9 +41,12 @@ __all__ = [
     "repo_provenance",
     "record",
     "rtl_provenance",
+    "SOURCE_RECORD",
     "simulator_provenance",
+    "source_revision",
     "toolchain_provenance",
     "toolchain_shas",
+    "write_source_record",
 ]
 
 _SHA_LEN = 12
@@ -122,9 +125,90 @@ def _submodule_pins(root: Path) -> dict[str, str]:
     return pins
 
 
+# --- merlin's own revision ---------------------------------------------------------------------------
+#: The file a source export (``git archive`` of one commit, e.g. ``fresh_campaign export``) writes at its
+#: root to say which commit it is. An export has no ``.git`` of its own.
+SOURCE_RECORD = ".merlin-source-revision.json"
+SOURCE_RECORD_SCHEMA = "merlin.source_revision.v1"
+
+
+def _full_sha(value: object) -> bool:
+    return isinstance(value, str) and len(value) in (40, 64) and all(c in "0123456789abcdef" for c in value)
+
+
+def write_source_record(root: str | Path, revision: str) -> Path:
+    """Record at ``root`` (an export of ``revision``) which commit its bytes are. Returns the file."""
+    if not _full_sha(revision):
+        raise ValueError(f"not a full commit sha: {revision!r}")
+    path = Path(root) / SOURCE_RECORD
+    path.write_text(json.dumps({"schema": SOURCE_RECORD_SCHEMA, "revision": revision}, sort_keys=True) + "\n")
+    return path
+
+
+def _recorded_revision(root: Path) -> tuple[bool, str | None]:
+    """``(record present, revision or None)`` from ``root``'s own source record."""
+    path = root / SOURCE_RECORD
+    if not path.is_file():
+        return False, None
+    try:
+        doc = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return True, None
+    revision = doc.get("revision") if isinstance(doc, dict) and doc.get("schema") == SOURCE_RECORD_SCHEMA else None
+    return True, (revision if _full_sha(revision) else None)
+
+
+def _own_checkout(root: Path) -> bool:
+    """Whether ``root`` is itself the top of a git checkout, not a directory inside someone else's.
+
+    ``git -C <dir>`` walks up to the nearest enclosing ``.git``. For a frozen export placed under a live
+    worktree that is the WRONG repository: its HEAD moves with every commit on the enclosing branch while
+    the export's bytes do not, so a revision read that way describes a tree nobody ran.
+    """
+    top = _git(root, "rev-parse", "--show-toplevel")
+    if top is None:
+        return False
+    try:
+        return Path(top).resolve() == root.resolve()
+    except OSError:
+        return False
+
+
+def source_revision(root: str | Path | None = None) -> str:
+    """The commit merlin's own code at ``root`` (default: :func:`repo_root`) was taken from, or UNKNOWN.
+
+    An export's own :data:`SOURCE_RECORD` first; else ``HEAD`` of a checkout whose top IS ``root``;
+    else UNKNOWN. Never an enclosing repository's ``HEAD`` (see :func:`_own_checkout`), and a malformed
+    record is UNKNOWN rather than a fallback to git -- a record that cannot be read is not evidence that
+    some other tree is the right one.
+    """
+    from ..common import provenance as PROV
+
+    root = Path(root) if root is not None else repo_root()
+    present, revision = _recorded_revision(root)
+    if present:
+        return revision or PROV.UNKNOWN
+    if _own_checkout(root):
+        return git_provenance(root).get("head") or PROV.UNKNOWN
+    return PROV.UNKNOWN
+
+
 def repo_provenance() -> dict[str, Any]:
-    """Merlin's own state: head, branch, dirty, and every submodule pin."""
+    """Merlin's own state: head, branch, dirty, and every submodule pin.
+
+    An export (no ``.git`` of its own) is described by its source record, never by the checkout that
+    happens to enclose it.
+    """
     root = repo_root()
+    present, revision = _recorded_revision(root)
+    if present:
+        if revision is None:
+            return {"available": False, "reason": f"unreadable source record: {root / SOURCE_RECORD}"}
+        # `git archive` of a committed tree; the exporter refuses uncommitted edits.
+        return {"available": True, "path": str(root), "head": revision, "branch": None, "dirty": False,
+                "source": SOURCE_RECORD}
+    if not _own_checkout(root):
+        return {"available": False, "reason": f"not a git checkout of its own and no {SOURCE_RECORD}: {root}"}
     rec = git_provenance(root)
     if rec.get("available"):
         rec["submodules"] = _submodule_pins(root)
@@ -352,7 +436,9 @@ def toolchain_shas(target: str | None = None) -> dict[str, str]:
     """
     from ..common import provenance as PROV
 
-    shas = {"merlin": (git_provenance(repo_root()).get("head") or PROV.UNKNOWN)}
+    # merlin's entry is the revision its OWN code was taken from (:func:`source_revision`): a frozen export
+    # carries a source record, and an enclosing worktree's moving HEAD is never read in its place.
+    shas = {"merlin": source_revision()}
     for name in declared_pins(target):
         try:
             shas[name] = PROV.verify(name).observed.commit or PROV.UNKNOWN

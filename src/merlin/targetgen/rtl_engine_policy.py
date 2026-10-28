@@ -386,33 +386,76 @@ def _locked_slot_census(root: Path, *, own_index: int) -> _SlotCensus:
     return _SlotCensus(count, tuple(held))
 
 
-def _lock_owners(locks: bytes, held: tuple[_HeldSlot, ...]) -> dict[_HeldSlot, int]:
-    """Return only exact held inodes with one unambiguous kernel FLOCK owner."""
-    owners: dict[_HeldSlot, list[int]] = {slot: [] for slot in held}
-    by_inode = {(os.major(slot.device), os.minor(slot.device), slot.inode): slot for slot in held}
-    if len(by_inode) != len(held):
+def _own_starttime() -> int:
+    stat_bytes = Path(f"/proc/{os.getpid()}/stat").read_bytes()
+    return int(stat_bytes.rpartition(b") ")[2].split()[19])
+
+
+def _write_slot_owner(fd: int) -> None:
+    """Name this process (pid, starttime) in the slot file it just locked.
+
+    ``/proc/locks`` is never read: walking it takes the kernel's global file-lock rwsem for
+    write, and with ~10^5 read leases on the host every lease operation stalled behind it.
+    The holder truncates the line before unlocking, so a line naming a live process (same
+    starttime) whose slot is still held names that holder. A failed write only loses a discount.
+    """
+    try:
+        line = f"{os.getpid()} {_own_starttime()}\n".encode("ascii")
+        os.ftruncate(fd, 0)
+        os.pwrite(fd, line, 0)
+    except (OSError, ValueError, IndexError):
+        pass
+
+
+def _clear_slot_owner(fd: int) -> None:
+    try:
+        os.ftruncate(fd, 0)
+    except OSError:
+        pass
+
+
+def _slot_owners(root: Path, held: tuple[_HeldSlot, ...]) -> dict[_HeldSlot, tuple[int, int]]:
+    """``{slot: (pid, starttime)}`` from the holders' own lines; unreadable or odd lines are omitted."""
+    if len({(slot.device, slot.inode) for slot in held}) != len(held):
         return {}  # Hardlinked slot names have no independent ownership proof.
-    invalid: set[_HeldSlot] = set()
-    for line in locks.splitlines():
-        fields = line.split()
-        if len(fields) < 6 or fields[1] != b"FLOCK":
+    owners = {}
+    for slot in held:
+        try:
+            fd = os.open(root / f"slot_{slot.index}.lock", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        except OSError:
             continue
         try:
-            major, minor, inode = fields[5].split(b":")
-            key = (int(major, 16), int(minor, 16), int(inode))
-            slot = by_inode.get(key)
-            if slot is None:
+            info = os.fstat(fd)
+            if (info.st_dev, info.st_ino) != (slot.device, slot.inode) or info.st_size > 64:
                 continue
-            if len(fields) != 8 or fields[2:4] != [b"ADVISORY", b"WRITE"]:
-                invalid.add(slot)
-                continue
-            if fields[6:] != [b"0", b"EOF"] or int(fields[4]) <= 0:
-                invalid.add(slot)
-                continue
-            owners[slot].append(int(fields[4]))
-        except (ValueError, IndexError):
-            return {}  # A malformed lock record cannot prove any overlap.
-    return {slot: matched[0] for slot, matched in owners.items() if len(matched) == 1 and slot not in invalid}
+            fields = os.read(fd, 64).split()
+            if len(fields) == 2 and all(field.isdigit() for field in fields) and int(fields[0]) > 0:
+                owners[slot] = (int(fields[0]), int(fields[1]))
+        except OSError:
+            continue
+        finally:
+            os.close(fd)
+    return owners
+
+
+def _slot_still_held(root: Path, slot: _HeldSlot) -> bool:
+    """A non-blocking exclusive probe: EWOULDBLOCK means some process still holds the slot."""
+    try:
+        fd = _verified_slot_file(root / f"slot_{slot.index}.lock")
+    except (OSError, RuntimeError):
+        return False
+    try:
+        info = os.fstat(fd)
+        if (info.st_dev, info.st_ino) != (slot.device, slot.inode):
+            return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        _close_gsim_fd(fd)
 
 
 def _matching_owner_fd(member: Path, slot: _HeldSlot) -> bool:
@@ -450,34 +493,36 @@ def _verified_native_slot_overlap(
     natives: _NativeCensus,
     *,
     proc_root: Path = Path("/proc"),
-    locks_path: Path = Path("/proc/locks"),
+    locks_path: Path | None = None,
 ) -> int:
     """Discount only independently proven, stable direct-child native/slot pairs.
 
-    This is not a trust decision from a lock-file payload. The kernel FLOCK
-    owner, open FD inode, process UID/PPid/starttime and complete native argv
-    must agree before *and* after the join. Unknown evidence means zero
-    discount for that slot, including old holders with no independently proven
-    child. With an explicit distinct CPU roster, a stable singleton native
-    affinity independently associates a child with its reserved slot. Without
-    that evidence, a same-PID multi-slot holder receives no discount.
+    The holder's own (pid, starttime) line names a candidate; it is accepted only
+    when the live process has that starttime, keeps an open FD on the slot inode,
+    and its UID/PPid/starttime and complete native child argv agree before *and*
+    after the join, and a final non-blocking probe finds the slot still held with
+    the same line. Unknown evidence means zero discount for that slot, including
+    old holders with no independently proven child. With an explicit distinct CPU
+    roster, a stable singleton native affinity independently associates a child
+    with its reserved slot. Without that evidence, a same-PID multi-slot holder
+    receives no discount. ``locks_path`` is accepted for compatibility and never
+    opened: the kernel lock table is not read (see :func:`_write_slot_owner`).
     """
+    del locks_path
     if not slots.held or not natives.matchable:
         return 0
-    try:
-        first = _lock_owners(locks_path.read_bytes(), slots.held)
-    except OSError:
-        return 0
+    first = _slot_owners(root, slots.held)
     uid = os.getuid()
     cpus = _gsim_cpu_roster()
     proven: list[tuple[_HeldSlot, _ProcessIdentity, _ProcessIdentity, int | None]] = []
-    for slot, owner_pid in first.items():
+    owner_pids = [pid for pid, _ in first.values()]
+    for slot, (owner_pid, owner_start) in first.items():
         # Shared process FDs alone do not associate a threaded native with a slot.
-        if list(first.values()).count(owner_pid) != 1 and cpus is None:
+        if owner_pids.count(owner_pid) != 1 and cpus is None:
             continue
         owner_member = proc_root / str(owner_pid)
         owner = _fresh_identity(owner_member, uid=uid, native=False)
-        if owner is None or not _matching_owner_fd(owner_member, slot):
+        if owner is None or owner.starttime != owner_start or not _matching_owner_fd(owner_member, slot):
             continue
         children = [
             child for child in natives.matchable if child.ppid == owner_pid and child.starttime > owner.starttime
@@ -488,14 +533,11 @@ def _verified_native_slot_overlap(
         if len(children) != 1:
             continue
         proven.append((slot, owner, children[0], cpu))
-    try:
-        last = _lock_owners(locks_path.read_bytes(), slots.held)
-    except OSError:
-        return 0
+    last = _slot_owners(root, slots.held)
     matched_children: set[tuple[int, int]] = set()
-    accepted: list[tuple[_HeldSlot, int]] = []
+    accepted: list[tuple[_HeldSlot, _ProcessIdentity]] = []
     for slot, owner, child, cpu in proven:
-        if last.get(slot) != owner.pid or (child.pid, child.starttime) in matched_children:
+        if last.get(slot) != (owner.pid, owner.starttime) or (child.pid, child.starttime) in matched_children:
             continue
         try:
             current = (root / f"slot_{slot.index}.lock").lstat()
@@ -514,16 +556,20 @@ def _verified_native_slot_overlap(
         if _fresh_identity(child_member, uid=uid, native=True) != child:
             continue
         matched_children.add((child.pid, child.starttime))
-        accepted.append((slot, owner.pid))
+        accepted.append((slot, owner))
     # The owner may have released/replaced a slot during the post-identity
-    # checks; never discount it using only the earlier lock snapshot.
-    try:
-        final = _lock_owners(locks_path.read_bytes(), slots.held)
-    except OSError:
-        return 0
+    # checks. It clears its line before unlocking, so a slot held at the probe
+    # whose line still names the same live owner afterwards was held by it.
+    still_held = {slot for slot, _ in accepted if _slot_still_held(root, slot)}
+    final = _slot_owners(root, slots.held)
     if _gsim_cpu_roster() != cpus:
         return 0
-    return sum(final.get(slot) == owner_pid for slot, owner_pid in accepted)
+    return sum(
+        slot in still_held
+        and final.get(slot) == (owner.pid, owner.starttime)
+        and _fresh_identity(proc_root / str(owner.pid), uid=uid, native=False) == owner
+        for slot, owner in accepted
+    )
 
 
 def _admitted_load(
@@ -531,7 +577,7 @@ def _admitted_load(
     *,
     own_index: int,
     proc_root: Path = Path("/proc"),
-    locks_path: Path = Path("/proc/locks"),
+    locks_path: Path | None = None,
 ) -> int:
     """Conservative union of natives and reservations, including our pending slot."""
     natives = _native_gsim_census(proc_root=proc_root)
@@ -710,6 +756,7 @@ def _gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path |
                         admitted_load = _admitted_load(root, own_index=index)
                         if admitted_load <= CAPSULE_WORKER_CAP["gsim"]:
                             fd = opened
+                            _write_slot_owner(fd)
                             break
                     finally:
                         if fd is None:
@@ -728,6 +775,7 @@ def _gsim_runtime_slot(*, wait_timeout_s: float | None = None, slot_root: Path |
     finally:
         if fd is not None and os.getpid() == owner_pid:
             held.pop(key, None)
+            _clear_slot_owner(fd)
             fcntl.flock(fd, fcntl.LOCK_UN)
             _close_gsim_fd(fd)
 

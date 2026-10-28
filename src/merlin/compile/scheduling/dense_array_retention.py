@@ -203,6 +203,7 @@ def verify_dense_array_retention(
 def verify_dense_array_tile_loads(
     proposal, problem, block, resources, storage, adapter, base_admission, *, project, encode_band,
     static_budget, timeout_ms=5000, max_static_nodes=4096, output_readout=None, bias_source=None,
+    external_sources=None,
 ):
     """Conjoin final wide addressing, exact array reuse, source and epochs.
 
@@ -220,11 +221,11 @@ def verify_dense_array_tile_loads(
     proposal.revalidate(adapter, proposal.admission)
     actual, actual_mapping = expand_dense_panel_tile_loads(
         proposal.kernel, problem, storage, adapter, project=project, encode_band=encode_band,
-        max_static_nodes=max_static_nodes,
+        max_static_nodes=max_static_nodes, external_sources=external_sources,
     )
     checking, checking_mapping = expand_dense_panel_tile_loads(
         proposal.checking_kernel, problem, storage, adapter, project=project, encode_band=encode_band,
-        max_static_nodes=max_static_nodes,
+        max_static_nodes=max_static_nodes, external_sources=external_sources,
     )
     if (actual_mapping["actual_mapping_sha256"] != checking_mapping["actual_mapping_sha256"]
             or actual_mapping["physical_load_commands"] != checking_mapping["physical_load_commands"]

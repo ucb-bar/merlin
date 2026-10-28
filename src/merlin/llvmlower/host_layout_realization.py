@@ -258,6 +258,7 @@ def rewrite_module(module, *, islands, maximum_added_operations):
         for operation in island.operations:
             owner = operation_names[operation]
             option = options[owner]
+            declaration = next(row for row in graph.ops if row.name == owner)
             native = layout_from_id(option.encoding_id)
             port_layouts = dict(option.port_encodings)
             inputs = []
@@ -267,7 +268,8 @@ def rewrite_module(module, *, islands, maximum_added_operations):
                     inputs.append(replacements.get(value, value))  # Rank-zero tensor or scalar capture.
                     continue
                 name = names[value]
-                required = layout_from_id(port_layouts.get(name, option.encoding_id))
+                required = (assignments[name] if name in declaration.flexible_inputs else
+                            layout_from_id(port_layouts.get(name, option.encoding_id)))
                 inputs.append(
                     convert(
                         source_value(value, operation), assignments[name], required, owner, "input", name, operation
@@ -276,7 +278,7 @@ def rewrite_module(module, *, islands, maximum_added_operations):
             out = operation.results[0]
             shape = out.type.get_shape()
             typ = TensorType(out.type.get_element_type(), [shape[i] for i in native])
-            if next(row for row in graph.ops if row.name == owner).kind == "transpose":
+            if declaration.kind == "transpose":
                 produced = inputs[0]
                 if produced.type != typ:
                     raise ValueError("host layout transpose relation changed its physical type")
@@ -287,23 +289,38 @@ def rewrite_module(module, *, islands, maximum_added_operations):
                     raise GraphOptimizationUnavailable(
                         "host layout exceeds its explicit compilation-space cost contract"
                     )
+                reduction = declaration.kind == "ordered_reduction"
                 inverse = tuple(native.index(i) for i in range(len(native)))
-                dimensions = [AffineExpr.dimension(inverse[i]) for i in range(len(native))]
+                loop_rank = len(operation.iterator_types)
+                dimensions = [AffineExpr.dimension(inverse[i] if i < len(native) else i)
+                              for i in range(loop_rank)]
                 maps = []
                 for index, (value, mapping) in enumerate(
                     zip(operands[operation], operation.indexing_maps, strict=True)
                 ):
-                    transformed = mapping.data.replace_dims_and_symbols(dimensions, [], len(native), 0)
-                    required = (
-                        native
-                        if index == count
-                        else layout_from_id(port_layouts.get(names[value], option.encoding_id))
-                        if value in names
-                        else tuple(range(len(value.type.get_shape())))
-                    )
-                    transformed = AffineMap(len(native), 0, tuple(transformed.results[i] for i in required))
+                    transformed = mapping.data.replace_dims_and_symbols(dimensions, [], loop_rank, 0)
+                    if index == count:
+                        required = native
+                    elif value in names:
+                        name = names[value]
+                        required = (assignments[name] if name in declaration.flexible_inputs else
+                                    layout_from_id(port_layouts.get(name, option.encoding_id)))
+                    else:
+                        required = tuple(range(len(value.type.get_shape())))
+                    transformed = AffineMap(loop_rank, 0, tuple(transformed.results[i] for i in required))
                     maps.append(AffineMapAttr(transformed))
-                empty = insert(EmptyOp([], typ), operation)
+                if reduction:
+                    original_init = operands[operation][count]
+                    if original_init in names:
+                        init_name = names[original_init]
+                        empty = convert(source_value(original_init, operation), assignments[init_name], native,
+                                        owner, "input", init_name, operation)
+                    else:
+                        empty = replacements.get(original_init, original_init)
+                    if empty.type != typ:
+                        raise ValueError("connected layout changed the initialized reduction destination")
+                else:
+                    empty = insert(EmptyOp([], typ), operation)
                 properties = {**operation.properties, "indexing_maps": ArrayAttr(maps)}
                 produced = insert(
                     type(operation).create(

@@ -309,9 +309,12 @@ launching, capsule grading, golden generation, sandboxing and certification. The
   reused pins are rechecked after any slower reads in the same call.
 - `rtl_engine_policy.gsim_runtime_slot` admits synchronous native runs under one per-user
   mutex from the union of kernel slot reservations and an upper bound on same-user native
-  plusarg processes. It discounts a duplicate only when a unique kernel FLOCK owner has a
-  matching open slot FD and one stable same-UID direct native child with complete plusargs,
-  verified before and after the join; ambiguous or legacy holders without that proof count
+  plusarg processes. It discounts a duplicate only when the `pid starttime` line a holder
+  writes into its locked slot file names a live process with that starttime, a matching open
+  slot FD and one stable same-UID direct native child with complete plusargs, verified before
+  and after the join and by a final non-blocking probe that the slot is still held. It never
+  reads `/proc/locks` (walking it takes the kernel's global file-lock rwsem for write and
+  stalls every lease operation on the host); ambiguous or legacy holders without that proof count
   separately. A single PID holding multiple slots lacks a child-to-slot pairing proof and may
   therefore use fewer than five workers. The caller's pending reservation always counts. A
   verified same-user live PID whose argv remains empty after bounded stabilization counts
@@ -616,3 +619,6 @@ and internal i8/i32/i8 storage edges. Every component still needs ordinary
 software and unchanged hardware admission. This source observation grants no
 new software declaration, physical pool lowering, numerical or execution
 authority; old source epochs and frozen release refusals remain unchanged.
+# Frozen source exports carry their own `.merlin-source-revision.json`; provenance
+# must never inherit the HEAD of an enclosing checkout. Missing or malformed export
+# identity remains UNKNOWN. The revision records ancestry, not executable custody.

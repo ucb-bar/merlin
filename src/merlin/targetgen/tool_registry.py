@@ -158,6 +158,7 @@ COMMON_CLIENTS = (
     ("merlin_experiments.phase1.tools.simjob", "simjob.py"),
     ("merlin_experiments.phase1.tools.await_verdict", "await_verdict.py"),
     ("merlin_experiments.phase1.tools.model_check", "agent_model_check.py"),
+    ("merlin_experiments.phase1.tools.result_details", "qa_result_details.py"),
 )
 
 # Common feedback is not an ablatable tool treatment. Its host owners share the

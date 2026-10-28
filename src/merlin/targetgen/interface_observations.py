@@ -284,6 +284,10 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
     resident: dict[str, str] = {}
     produced_by: dict[str, tuple[str | None, str | None]] = {}
     column_sources: dict[str, dict] = {}
+    # Accumulator handles' extents, so a commit's tensor is typed like a declared one: its readout
+    # dtype over its producer's extent. A later command reading that tensor (a residual add of two
+    # committed readouts, a contraction over a committed tensor) is then observed with its operand.
+    handle_shapes: dict[str, list] = {}
     rows: list[dict] = []
     for index, command in enumerate(cb.get("commands") or []):
         components = _pool_components(index, command, tensors, accumulator)
@@ -305,6 +309,10 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             continue
         if opcode == "COMMIT":
             stages = [str(stage) for stage in attributes.get("epilogue") or []]
+            source_shape = handle_shapes.get(str(operands.get("src")))
+            if destination is not None and _typed(tensors, destination) is None and source_shape is not None:
+                tensors[str(destination)] = {"dtype": attributes.get("output_dtype") or accumulator,
+                                             "shape": list(source_shape), "role": "committed"}
             producer, producer_dtype = produced_by.get(str(operands.get("src")), (None, None))
             rows.append(_row(index, opcode, operation, None, disposition="support_required"))
             rows.extend(
@@ -341,6 +349,8 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             lhs, rhs = (typed_sources + [None, None])[:2]
             if lhs is not None and rhs is not None and len(lhs["shape"]) >= 2 and len(rhs["shape"]) >= 2:
                 result = {"dtype": accumulator, "shape": [*lhs["shape"][:-1], rhs["shape"][-1]]}
+        if result is not None and destination is not None:
+            handle_shapes[str(destination)] = list(result["shape"])
         operand_dtype = next((item["dtype"] for item in typed_sources if item is not None and item["dtype"]), None)
         # A standalone operand sum is an elementwise operation, but its readout is not attached
         # to every possible elementwise map. Preserve its specific carrier so a SW declaration

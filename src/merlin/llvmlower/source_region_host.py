@@ -29,7 +29,6 @@ def outline_source_siblings(module):
     from xdsl.dialects import func
 
     from merlin.compile.scheduling.dense_source import read_zero_seeded_integer_matmul
-    from merlin.llvmlower.passes_xdsl import lower_quant_ext
     from merlin.llvmlower.source_region import outline_sibling_contractions
     from merlin.transforms.tensor_views import canonicalize_tensor_views
     from merlin.xdsl_dialects._common import text
@@ -38,7 +37,6 @@ def outline_source_siblings(module):
     before = text(module, generic=True)
     normalized = module.clone()
     view_report = canonicalize_tensor_views(normalized)
-    lower_quant_ext(normalized)
     functions = [op for op in normalized.body.block.ops if isinstance(op, func.FuncOp)]
     if len(functions) != 1 or len(functions[0].body.blocks) != 1 or functions[0].sym_name.data != "forward":
         raise ValueError("shared source owner requires one original closed forward block")
@@ -65,26 +63,61 @@ def outline_source_siblings(module):
 def prepare_sibling_source_host(module, *, effects):
     """Outline every exact sibling signed-i8/i32 source root, keeping all observers.
 
-    Original immutable view CSE and quant_ext lowering run before the ordinary
-    sibling proof. Every remaining tensor computation stays in the source owner.
+    Original immutable view CSE runs before the ordinary sibling proof. Source
+    quantization frontiers stay available for subsequent output-path decisions. Every remaining tensor computation stays in the source owner.
     No root, epilogue or input is reconstructed from shapes or workload names.
+    """
+    outlined, view_report = outline_source_siblings(module)
+    return bind_sibling_source_outline(module, outlined, effects=effects, view_report=view_report)
+
+
+def bind_sibling_source_outline(module, outlined, *, effects, view_report=(), symbol="source_shared_core"):
+    """Bind one checked outline to the existing explicit borrowed writer ABI."""
+    from merlin.llvmlower.fresh_tensor_writer import rewrite_fresh_tensor_writers
+    from merlin.xdsl_dialects._common import text
+
+    before = text(module, generic=True)
+    host, core = outlined.module, outlined.core
+    writer = _prepare_sibling_writer(host, effects=effects, symbol=symbol)
+    rewritten = rewrite_fresh_tensor_writers(host, (writer,))
+    host.verify()
+    if text(module, generic=True) != before:
+        raise ValueError("shared source owner changed the original module")
+    return SiblingSourceHost(
+        module,
+        host,
+        core,
+        writer,
+        tuple(rewritten),
+        {
+            "schema": "merlin.original_sibling_source_host.v1",
+            "view_cse": [asdict(witness) for witness in view_report],
+            "outline": outlined.receipt,
+            "source_unchanged": True,
+            "original_epilogues_and_all_live_outputs_preserved": True,
+            "physical_effects_and_target_execution_established": False,
+        },
+    )
+
+
+def _prepare_sibling_writer(host, *, effects, symbol):
+    """Prepare a declaration on an owned graph for one checked source core.
+
+    A batch owner can then check and rewrite all borrowed writers together.
+    This helper grants no target effects or source custody on its own.
     """
     from xdsl.dialects import func, tensor
     from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, StringAttr, UnitAttr
     from xdsl.ir import Region
 
     from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
-    from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract, rewrite_fresh_tensor_writers
-    from merlin.xdsl_dialects._common import text
+    from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract
 
     if type(effects) is not BorrowedBufferEffects:
         raise ValueError("original independently selected borrowed effects required")
     effects.__post_init__()
-    before = text(module, generic=True)
-    outlined, view_report = outline_source_siblings(module)
-    host, core = outlined.module, outlined.core
     callee = next(
-        op for op in host.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "source_shared_core"
+        op for op in host.body.block.ops if isinstance(op, func.FuncOp) and op.sym_name.data == symbol
     )
     calls = [
         op
@@ -115,33 +148,14 @@ def prepare_sibling_source_host(module, *, effects):
     host.body.block.insert_op_before(declaration, callee)
     host.body.block.erase_op(callee)
     result_args = tuple(range(len(ins), len(types)))
-    writer = FreshTensorWriterContract(
+    return FreshTensorWriterContract(
         callee.sym_name.data,
         result_args[0],
         result_args,
-        "source_shared_core_borrowed",
+        symbol + "_borrowed",
         64,
         result_arguments=result_args,
         borrowed_effects=effects,
-    )
-    rewritten = rewrite_fresh_tensor_writers(host, (writer,))
-    host.verify()
-    if text(module, generic=True) != before:
-        raise ValueError("shared source owner changed the original module")
-    return SiblingSourceHost(
-        module,
-        host,
-        core,
-        writer,
-        tuple(rewritten),
-        {
-            "schema": "merlin.original_sibling_source_host.v1",
-            "view_cse": [asdict(witness) for witness in view_report],
-            "outline": outlined.receipt,
-            "source_unchanged": True,
-            "original_epilogues_and_all_live_outputs_preserved": True,
-            "physical_effects_and_target_execution_established": False,
-        },
     )
 
 

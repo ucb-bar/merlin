@@ -147,9 +147,16 @@ def _identity(measurement: Mapping[str, Any], source: str,
 def _command_buffer(row: Mapping[str, Any], measurement: Mapping[str, Any],
                     identity: Mapping[str, Any], source: str,
                     issues: list[dict[str, str]]) -> tuple[Mapping[str, Any], str]:
+    from merlin.perf.command_buffer_store import CommandBufferIntegrityError, load_command_buffer
+
     evidence = row.get("command_buffer_artifact", measurement.get("command_buffer_artifact"))
     evidence = evidence if isinstance(evidence, Mapping) else {}
-    command = evidence.get("command_buffer")
+    try:
+        command = load_command_buffer(evidence)
+    except CommandBufferIntegrityError as exc:
+        issues.append(_issue(source, f"stored raw command buffer refused: {exc}",
+                             "COMMAND_BUFFER_RECEIPT_MISMATCH"))
+        return {}, ""
     provenance = evidence.get("compiler_provenance")
     program = identity.get("program") if isinstance(identity, Mapping) else None
     expected = program.get("sha256") if isinstance(program, Mapping) else None

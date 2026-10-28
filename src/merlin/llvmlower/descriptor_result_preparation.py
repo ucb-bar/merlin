@@ -9,7 +9,7 @@ from __future__ import annotations
 import inspect
 import io
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from xdsl.context import Context
@@ -23,6 +23,7 @@ from merlin.common.jsonio import write_pretty_json
 from merlin.frontends import linalg_mlir
 
 from . import descriptor_result_identity as D
+from . import borrowed_buffer_calls as K
 from .lowering_recipe import _identity
 
 
@@ -47,10 +48,38 @@ def _records(identities):
                 "result_argument": identity.result_argument,
                 "argument_types": [str(typ) for typ in identity.argument_types],
                 "argument_access": list(identity.argument_access),
+                **({"argument_layouts": [str(v) for v in identity.argument_layouts]} if identity.argument_layouts else {}),
                 "borrowed_effects": None if identity.borrowed_effects is None else asdict(identity.borrowed_effects),
             }
         )
     return json.dumps(rows, sort_keys=True, allow_nan=False)
+
+
+def _effects_state(owner):
+    if owner is None:
+        return None
+    if type(owner) is not K.BorrowedBufferCalls:
+        raise ValueError("descriptor lifetime requires the original live borrowed-call owner")
+    callbacks = tuple(K._callback_binding(callback) for callback in (owner.validate_original, owner.observe_native))
+    return json.dumps(owner.record(), sort_keys=True), tuple((id(c), c) for c in owner.calls), callbacks
+
+
+def _join_effects(identities, owner):
+    """Bind exact original effects, never infer them from returned descriptors."""
+    if owner is None:
+        return
+    if (type(owner) is not K.BorrowedBufferCalls or len(owner.calls) != len(identities)
+            or any(type(call) is not K.BorrowedBufferCall for call in owner.calls)):
+        raise ValueError("descriptor effects differ from the complete original identity roster")
+    calls = {(call.wrapper_symbol, call.borrowed_symbol): call for call in owner.calls}
+    if len(calls) != len(identities):
+        raise ValueError("descriptor effects have ambiguous original calls")
+    for identity in identities:
+        call = calls.get((identity.wrapper_symbol, identity.borrowed_symbol))
+        expected = tuple(str(t) for t in D.argument_buffer_types(identity))
+        if (call is None or call.argument_types != expected or call.result_argument != identity.result_argument
+                or call.effects is not identity.borrowed_effects):
+            raise ValueError("descriptor effects differ from the exact original ABI or effect owner")
 
 
 def implementation_paths():
@@ -62,6 +91,7 @@ def implementation_paths():
         dict.fromkeys(
             (
                 Path(__file__),
+                Path(K.__file__),
                 Path(__file__).with_name("lower.py"),
                 Path(lowering_recipe.__file__),
                 Path(linalg_mlir.__file__),
@@ -81,10 +111,14 @@ def implementation_paths():
 class DescriptorResultPreparation:
     """Freeze originals before callbacks; no cross-invocation cache or grant."""
 
-    def __init__(self, identities):
+    def __init__(self, identities, *, effects=None):
         self.identities = identities
         self._original = tuple(identities)
         self._selection = _records(identities)
+        self.effects = effects
+        self._original_effects = effects
+        _join_effects(identities, effects)
+        self._effects_state = _effects_state(effects)
         self._function_reader = self._fixed_functions
         self._functions = tuple((function, function.__code__) for function in self._function_reader())
         self._owners = tuple(_identity(path) for path in implementation_paths())
@@ -104,18 +138,28 @@ class DescriptorResultPreparation:
             DescriptorResultPreparation._feature_values,
             DescriptorResultPreparation.selected_feature,
             DescriptorResultPreparation.prepare,
+            DescriptorResultPreparation.native_calls,
             DescriptorResultPreparation.retain_upstream,
             DescriptorResultPreparation.bind_recipe,
             DescriptorResultPreparation.record,
             _records,
+            _effects_state,
+            _join_effects,
             implementation_paths,
             _identity,
             D.rewrite_descriptor_result_identities,
+            D.argument_buffer_types,
             D.edit_pipeline,
             D.ensure_registered,
             D.validate_effects,
             D.BorrowedBufferEffects.__post_init__,
+            K.BorrowedBufferCalls.revalidate,
+            K.BorrowedBufferCalls.record,
+            K.BorrowedBufferCalls.after_preprocessing,
+            K._callback_binding,
             linalg_mlir.parse_mlir_text,
+            linalg_mlir.layout_to_buffer_type,
+            linalg_mlir.layout_to_buffer_type().verify_,
         )
 
     def revalidate(self):
@@ -125,6 +169,8 @@ class DescriptorResultPreparation:
                 for function, (original, code) in zip(self._function_reader(), self._functions, strict=True)
             )
             or _records(self.identities) != self._selection
+            or self.effects is not self._original_effects
+            or _effects_state(self.effects) != self._effects_state
             or any(actual is not original for actual, original in zip(self.identities, self._original, strict=True))
             or tuple(_identity(Path(pin["path"])) for pin in self._owners) != self._owners
             or any(_identity(Path(pin["path"])) != pin for pin in self._products)
@@ -132,6 +178,11 @@ class DescriptorResultPreparation:
             or (self._feature is not None and self._feature_values() != self._feature)
         ):
             raise ValueError("original descriptor identity selection, source or retained product changed")
+        _join_effects(self.identities, self.effects)
+        if self.effects is not None:
+            self.effects.revalidate()
+            if _effects_state(self.effects) != self._effects_state:
+                raise ValueError("original descriptor effects changed during validation")
 
     @staticmethod
     def _feature_values():
@@ -181,6 +232,7 @@ class DescriptorResultPreparation:
             "schema": "merlin.descriptor_result_preparation.v1",
             "binding_stage": "after_automatic_source_passes_before_preprocessing",
             "selection": json.loads(self._selection),
+            "borrowed_calls": None if self.effects is None else self.effects.record(),
             "rewrites": self.rewrites,
             "calls": rows,
             "original_source": _identity(original_path),
@@ -197,6 +249,26 @@ class DescriptorResultPreparation:
         self._products = (record["original_source"], record["selected_source"], self._report)
         self.revalidate()
         return selected
+
+    def native_calls(self):
+        """Transport only actually rewritten calls with the original live owner.
+
+        Ineligible calls retain their descriptor-return route and remain opaque
+        to the native ownership checker. This selection is freshly derived from
+        the actual sealed preparation, never from a supplied report dictionary.
+        """
+        self.revalidate()
+        if self.effects is None or not self.rewrites:
+            return None
+        record = json.loads(Path(self._report["path"]).read_text())
+        selected = {row["wrapper_symbol"] for row in record["calls"] if row["calls"]}
+        calls = tuple(call for call in self.effects.calls if call.wrapper_symbol in selected)
+        if len(calls) != len(selected):
+            raise ValueError("actual descriptor rewrite lost its original effect owner")
+        pins = tuple((Path(pin["path"]), pin["sha256"]) for pin in self._products)
+        result = replace(self.effects, calls=calls, pins=(*self.effects.pins, *pins), validate_original=self.revalidate)
+        result.revalidate()
+        return result
 
     def retain_upstream(self, path):
         self.revalidate()

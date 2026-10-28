@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+from math import prod
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
@@ -76,11 +77,19 @@ def validate_selection(enabled, *, backend, device, unsupported=()):
         backend != "scalar" or device is None or getattr(device, "granularity", None) != "group"
         or any(unsupported)
         or any(getattr(device, name, None) for name in (
-            "descriptor_results", "connected_spatial", "sibling_source", "catalog_manifest",
+            "connected_spatial", "catalog_manifest",
             "catalog_builder", "post_offload_transform", "prepared_transform",
         ))
     ):
         raise ValueError("dense input views require the ordinary scalar logical group route")
+    sibling = getattr(device, "sibling_source", None)
+    if enabled and sibling is not None:
+        from .head_source_route import HeadBatchSourceRoute
+        from .sibling_source_route import SiblingSourceRoute
+
+        if type(sibling) not in (SiblingSourceRoute, HeadBatchSourceRoute):
+            raise ValueError("dense sibling inputs require original typed source custody")
+        sibling.record()
 
 
 def rewrite_readonly_dense_offsets(module, selected):
@@ -114,11 +123,13 @@ def rewrite_readonly_dense_offsets(module, selected):
             typ = types[index]
             if (attrs[index].data != {"bufferization.access": builtin.StringAttr("read")}
                     or not isinstance(typ, builtin.TensorType) or typ.encoding != builtin.NoneAttr()
-                    or len(typ.get_shape()) != 2 or any(n <= 0 for n in typ.get_shape())):
-                raise ValueError("dense input views require static unencoded readonly rank-two tensors")
+                    or len(typ.get_shape()) not in (2, 3) or any(n <= 0 for n in typ.get_shape())):
+                raise ValueError("dense input views require static unencoded readonly matrix or batched tensors")
+            shape = typ.get_shape()
             attrs[index] = builtin.DictionaryAttr({
                 **attrs[index].data,
-                "bufferization.buffer_layout": builtin.StridedLayoutAttr([typ.get_shape()[1], 1], None),
+                "bufferization.buffer_layout": builtin.StridedLayoutAttr(
+                    [prod(shape[axis + 1:]) for axis in range(len(shape))], None),
             })
         plans.append((declaration, attrs))
     for declaration, attrs in plans:
@@ -127,7 +138,7 @@ def rewrite_readonly_dense_offsets(module, selected):
     return {symbol: list(indices) for symbol, indices in selected.items()}
 
 
-def prepare(source, sidecar, built, work, compilation):
+def prepare(source, sidecar, built, work, compilation, *, sibling_source=None):
     """Join actual compiled shim custody before selecting any declaration view.
 
     Re-emission must reproduce the complete logical C shim byte-for-byte from
@@ -174,17 +185,37 @@ def prepare(source, sidecar, built, work, compilation):
         groups[symbol] = (buffers, call)
         by_role = {buf.role: buf for buf in buffers}
         positions = tuple(i for i, (buf, mode) in enumerate(zip(call, access, strict=True))
-                          if mode == "read" and len(buf["shape"]) == 2
+                          if mode == "read" and len(buf["shape"]) in (2, 3)
                           and by_role[buf["role"]].kind != "output")
         if positions:
             selected[symbol] = positions
         paths.append(interface)
-    reopened = S.emit_logical_translation_unit(built.device, groups, kernel_symbol_for=built.kernels.get)
+    reopened = S.emit_logical_translation_unit(built.device, groups, kernel_symbol_for=built.kernels.get,
+                                              descriptor_results=bool(unit.result_identities))
+    if sibling_source is not None:
+        from .sibling_source_route import with_borrowed_bridges
+
+        original_selection, sibling_host = sibling_source
+        reopened = with_borrowed_bridges(reopened, original_selection, sibling_host)
     if reopened != unit or reopened.skipped:
         raise ValueError("dense input views differ from the actual original logical shim emitter")
     pins = [(path.resolve(), sha256_file(path)) for path in paths]
     module = parse_mlir_text(source.read_text())
     declarations = {op.sym_name.data: op for op in module.body.block.ops if op.name == "func.func"}
+    sibling_arguments, retained_sibling_arguments = {}, {}
+    if sibling_source is not None:
+        from . import sibling_input_views
+
+        sibling_arguments, retained_sibling_arguments, component_symbols = sibling_input_views.bind(
+            module, sibling_host, original_selection, groups)
+        groups = {symbol: value for symbol, value in groups.items() if symbol not in component_symbols}
+        selected = {symbol: value for symbol, value in selected.items() if symbol not in component_symbols}
+        from merlin.frontends import linalg_mlir
+
+        for owner in (sibling_input_views, linalg_mlir):
+            helper = Path(owner.__file__).resolve()
+            paths.append(helper)
+            pins.append((helper, sha256_file(helper)))
     from xdsl.dialects import func
 
     calls = {}
@@ -215,6 +246,8 @@ def prepare(source, sidecar, built, work, compilation):
         "schema": "merlin.device_readonly_dense_offsets.v1",
         "original_source_sha256": sha256_file(source), "selected_source_sha256": sha256_file(destination),
         "arguments": report, "shim_source_sha256": sha256_file(shim),
+        **({"sibling_arguments": sibling_arguments, "retained_sibling_arguments": retained_sibling_arguments}
+           if sibling_source is not None else {}),
         "layout": "fixed dense row strides; dynamic nonnegative element offset; original output and alias guards",
         "fallback": "noncontiguous views retain upstream layout-conversion copies",
         "numerical_qualification": False, "performance_cycles": None,

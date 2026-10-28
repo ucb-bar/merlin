@@ -66,6 +66,10 @@ class ComputeFacet:
     # raised. The measured case is a decode step at M=1 on a wide tile: correct, busy, and using one
     # row of the block.
     mr_adapts_to_m: bool | None = None
+    # Ordered reduction depths for one complete output block. The selected
+    # source/operand adapter must establish that boundary; instruction presence
+    # alone cannot supply it. Applicable to vector, array and threaded engines.
+    reduction_partition: tuple[int, ...] | None = None
 
 
 @dataclass
@@ -126,6 +130,9 @@ class DispatchFacet:
     double_buffered_banks: int | None = None  # distinct on-chip banks alternated across tiles
     dma_overlap: bool | None = None  # bulk movement issued to overlap with compute
     dma_issue_to_wait: int | None = None  # METRIC: instructions between a DMA issue and its wait
+    # Explicit host/endpoint fence instructions in the selected issue boundary.
+    # Their number does not establish necessity, completion latency or overlap.
+    n_fences: int | None = None
 
 
 @dataclass

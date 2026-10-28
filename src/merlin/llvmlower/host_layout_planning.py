@@ -1,9 +1,11 @@
-"""Bind the existing layout planner to exact static pointwise tensor islands.
+"""Bind the existing layout planner to exact static tensor permutation regions.
 
 This helper selects compiler-owned host permutations, not device layouts. It
 supplies no numerical permission, allocator capacity or execution qualification.
 The caller must realize the selected graph and independently check its output.
 Unknown operations split islands; boundary tensors retain their canonical ABI.
+Opt-in connected regions also admit checked ordered generic reductions with
+fixed outputs and independently indexed inputs. No reduction order changes.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ from merlin.perf.physical_layout import (
     plan_physical_layout,
 )
 
-from .layout_conformance import pointwise_kind
+from .layout_conformance import connected_kind, ordered_reduction_bounds, pointwise_kind
 from .layout_propagation import _permutation
 
 
@@ -83,9 +85,9 @@ def _tensor(value):
     return typ
 
 
-def _supported(operation):
-    kind = pointwise_kind(operation)
-    if kind not in {"generic", "transpose"}:
+def _supported(operation, *, connected=False):
+    kind = connected_kind(operation) if connected else pointwise_kind(operation)
+    if kind not in {"generic", "transpose", "reduction"}:
         return False
     result = _tensor(operation.results[0])
     if result is None or not result.get_shape():
@@ -93,6 +95,8 @@ def _supported(operation):
     rank = len(result.get_shape())
     if kind == "transpose":
         return _tensor(operation.operands[0]) is not None
+    if kind == "reduction":
+        return all(_tensor(value) is not None for value in operation.operands)
     if operation.body.block.args[-1].uses:
         return False  # The destination is uninitialized, not an implicit input.
     if len(tuple(operation.body.block.ops)) == 1 and _permutation(operation) is None:
@@ -114,6 +118,9 @@ def _supported(operation):
 
 def _inputs(operation):
     values = operation.inputs if type(operation) is GenericOp else operation.operands[:1]
+    if (type(operation) is GenericOp and ordered_reduction_bounds(operation) is not None
+            and operation.body.block.args[-1].uses):
+        values = (*values, *operation.outputs)
     return tuple(value for value in values if value.type.get_shape())
 
 
@@ -209,6 +216,18 @@ def _island(operations, max_assignments, max_permutations):
     for operation, name in operation_names:
         inputs = tuple(names[value] for value in _inputs(operation))
         output = names[operation.results[0]]
+        if ordered_reduction_bounds(operation) is not None:
+            identity = layout_id(tuple(range(rank)))
+            initializer = operation.outputs[0]
+            flexible = tuple(dict.fromkeys(names[value] for value in operation.inputs
+                                           if value in names and value is not initializer))
+            rows.append(LayoutOp(
+                name, "ordered_reduction", inputs, (output,), False,
+                (OperatorEncoding("canonical", identity,
+                    provenance=("unchanged output layout, destination, scalar program and reduction order",)),),
+                ("exact registered static projected-index reduction",), flexible_inputs=flexible,
+            ))
+            continue
         permutation = _permutation(operation)
         transpose = permutation is not None
         fixed_inputs = _fixed_inputs(operation, rank)
@@ -300,14 +319,19 @@ def _island(operations, max_assignments, max_permutations):
     return PermutationIsland(operations, values, tuple(names.items()), operation_names, layouts, graph, result)
 
 
-def plan_islands(module, *, max_assignments=100_000, max_permutations=16) -> tuple[PermutationIsland, ...]:
-    """Plan pure same-block/same-rank islands, preserving every opaque boundary.
+def plan_islands(module, *, max_assignments=100_000, max_permutations=16,
+                 connected=False) -> tuple[PermutationIsland, ...]:
+    """Plan pure same-block/same-rank regions, preserving every opaque boundary.
 
     Only actual SSA, exact registered schemas and source permutations determine
     candidates. Scalar constants and unused empty initializers are transparent.
     No source is modified; a no-plan result requires the original legal route.
+    ``connected=True`` includes only the strict initialized ordered-reduction
+    family. Its fixed original outputs and exact input maps remain ordinary
+    tensor IR, not declarations of a target's supported physical layouts.
     """
-    if any(type(value) is not int or value <= 0 for value in (max_assignments, max_permutations)):
+    if (any(type(value) is not int or value <= 0 for value in (max_assignments, max_permutations))
+            or type(connected) is not bool):
         raise ValueError("host layout planning requires positive explicit search/domain budgets")
     module.verify()
     islands = []
@@ -323,13 +347,13 @@ def plan_islands(module, *, max_assignments=100_000, max_permutations=16) -> tup
                     operations, rank = [], None
 
                 for operation in block.ops:
-                    if _supported(operation):
+                    if _supported(operation, connected=connected):
                         following_rank = len(operation.results[0].type.get_shape())
                         if following_rank != rank:
                             flush()
                         rank = following_rank
                         operations.append(operation)
-                    elif pointwise_kind(operation) not in {"constant", "empty"}:
+                    elif (connected_kind(operation) if connected else pointwise_kind(operation)) not in {"constant", "empty"}:
                         flush()
                 flush()
     return tuple(islands)

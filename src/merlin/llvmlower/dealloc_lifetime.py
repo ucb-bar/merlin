@@ -92,12 +92,18 @@ def _obl_borrowed_calls(module):
             wrapper = functions.get(wrapper_name)
             if wrapper is not None:
                 typ = ir.FunctionType(ir.TypeAttr(wrapper.attributes['function_type']).value)
-                if (tuple(typ.inputs) != (*types, *(types[i] for i in result_indices)) or typ.results
+                # A body-derived equivalent descriptor result is removed by
+                # upstream drop-equivalent-buffer-results. Its exact void
+                # forwarder keeps all original arguments, with no duplicate
+                # output. The original effects above remain independently
+                # required; matching descriptor fields never supplies them.
+                equivalent = not plural and tuple(typ.inputs) == types
+                if ((not equivalent and tuple(typ.inputs) != (*types, *(types[i] for i in result_indices))) or typ.results
                         or len(wrapper.regions) != 1 or len(wrapper.regions[0].blocks) != 1):
                     raise ValueError('current fresh-writer wrapper ABI differs: ' + wrapper_name)
                 block = wrapper.regions[0].blocks[0]
                 body = tuple(op.operation for op in block.operations)
-                replacements = {index: len(types) + position for position, index in enumerate(result_indices)}
+                replacements = {} if equivalent else {index: len(types) + position for position, index in enumerate(result_indices)}
                 expected = tuple(block.arguments[replacements.get(i, i)] for i in range(len(types)))
                 if (len(body) != 2 or _obl_callee(body[0]) != borrowed
                         or tuple(body[0].operands) != expected

@@ -20,6 +20,7 @@ from merlin.xdsl_dialects.rolling_window import (
     AwaitOp,
     BeginOp,
     CompleteOp,
+    ConsumeGroupOp,
     ConsumeOp,
     ConsumerType,
     ResidentType,
@@ -31,6 +32,7 @@ from .program_limits import AddressWindow
 from .window_transfer import Window2D
 
 SCHEMA = "merlin.rolling_window.v1"
+GROUP_SCHEMA = "merlin.grouped_rolling_window.v1"
 
 
 @dataclass(frozen=True)
@@ -179,6 +181,15 @@ def rolling_window_text(module):
 
 def read_rolling_window(text, plan):
     """Parse editable typed SCF transport, then check its original source plan."""
+    return _read_rolling_window(text, plan, None)
+
+
+def read_grouped_rolling_window(text, plan, *, output_rows):
+    """Parse and independently check actual grouped transport and consumers."""
+    return _read_rolling_window(text, plan, output_rows)
+
+
+def _read_rolling_window(text, plan, output_rows):
     from xdsl.context import Context
     from xdsl.parser import Parser
 
@@ -188,7 +199,7 @@ def read_rolling_window(text, plan):
     for dialect in (builtin.Builtin, arith.Arith, func.Func, scf.Scf, RollingWindow):
         context.load_dialect(dialect)
     module = Parser(context, text).parse_module()
-    verify_rolling_window(module, plan)
+    _verify_rolling_window(module, plan, output_rows)
     return module
 
 
@@ -200,6 +211,41 @@ def _constant(out, value):
 
 def materialize_rolling_window(plan):
     """Emit actual counted SCF and typed, linearly ordered effect tokens."""
+    return _materialize_rolling_window(plan, None)
+
+
+def _group_horizon(plan, output_rows):
+    if type(plan) is not RollingWindowPlan:
+        raise ValueError("grouped transport requires its original rolling-window plan")
+    plan.__post_init__()
+    if type(output_rows) is not int or not 1 <= output_rows <= 16:
+        raise ValueError("grouped transport needs an explicit output-row bound 1..16")
+    # Preserve precisely the original contiguous initial/frontier row transfers.
+    # A strided window with gaps needs a different checked union representation.
+    if plan.window.stride[0] > plan.span_rows:
+        raise ValueError("grouped transport requires overlapping or adjacent source-row windows")
+    horizon = plan.span_rows + (min(output_rows, plan.output_y_count) - 1) * plan.window.stride[0]
+    if horizon > plan.slots:
+        raise ValueError("grouped source-row union exceeds the actual ring slots")
+    return horizon
+
+
+def _group_identity(plan, output_rows):
+    return hashlib.sha256(json.dumps((plan.identity, output_rows)).encode()).hexdigest()
+
+
+def materialize_grouped_rolling_window(plan, *, output_rows):
+    """Stage original row unions, await once, consume, and complete before reuse.
+
+    The caller separately binds original independent consumer semantics and
+    bounded target issue/progress laws. A source-row bound is not queue capacity.
+    The existing one-row materializer and its completion contract are unchanged.
+    """
+    _group_horizon(plan, output_rows)
+    return _materialize_rolling_window(plan, output_rows)
+
+
+def _materialize_rolling_window(plan, output_rows):
     if type(plan) is not RollingWindowPlan:
         raise ValueError("original typed rolling-window proposal required")
     plan.__post_init__()
@@ -221,7 +267,7 @@ def materialize_rolling_window(plan):
         inner.add_op(scf.YieldOp())
         out.add_op(scf.ForOp(lb, ub, step, [], Region(inner)))
 
-    def epoch(out, image, y, first, count):
+    def epoch(out, image, y, first, count, consumers=1):
         if type(y) is int:
             y = _constant(out, y)
         begin = BeginOp.create(result_types=[TransferType()])
@@ -261,10 +307,31 @@ def materialize_rolling_window(plan):
 
         loop(out, 0, count, stage)
         ready = AwaitOp.create(operands=[begin.transfer], result_types=[ResidentType()])
-        consume = ConsumeOp.create(operands=[ready.resident, image, y], result_types=[ConsumerType()])
+        consume = (
+            ConsumeOp.create(operands=[ready.resident, image, y], result_types=[ConsumerType()])
+            if output_rows is None else
+            ConsumeGroupOp.create(operands=[ready.resident, image, y], result_types=[ConsumerType()],
+                properties={"output_rows": builtin.IntegerAttr(consumers, 64)})
+        )
         out.add_ops((ready, consume, CompleteOp.create(operands=[consume.consumer])))
 
     def image_body(out, image):
+        if output_rows is not None:
+            full, tail = divmod(plan.output_y_count, output_rows)
+            first_count = output_rows if full else tail
+            advance = w.stride[0]
+            epoch(out, image, plan.output_y_first, 0,
+                  plan.span_rows + (first_count - 1) * advance, first_count)
+            if full > 1:
+                def group(inner, index):
+                    y = binary(inner, arith.AddiOp, plan.output_y_first,
+                               binary(inner, arith.MuliOp, index, output_rows))
+                    epoch(inner, image, y, plan.span_rows - advance, output_rows * advance, output_rows)
+                loop(out, 1, full, group)
+            if full and tail:
+                epoch(out, image, plan.output_y_first + full * output_rows,
+                      plan.span_rows - advance, tail * advance, tail)
+            return
         epoch(out, image, plan.output_y_first, 0, plan.span_rows)
         if plan.output_y_count > 1:
             loop(
@@ -277,9 +344,11 @@ def materialize_rolling_window(plan):
     loop(block, 0, b, image_body)
     block.add_op(func.ReturnOp())
     module = builtin.ModuleOp(
-        [func.FuncOp("rolling_window", ([], []), Region(block))], attributes={SCHEMA: builtin.StringAttr(plan.identity)}
+        [func.FuncOp("rolling_window", ([], []), Region(block))],
+        attributes={SCHEMA: builtin.StringAttr(plan.identity)} if output_rows is None else
+                   {GROUP_SCHEMA: builtin.StringAttr(_group_identity(plan, output_rows))},
     )
-    verify_rolling_window(module, plan)
+    _verify_rolling_window(module, plan, output_rows)
     return module
 
 
@@ -290,6 +359,16 @@ def verify_rolling_window(module, plan):
     inferred. A consumer must use the original checked lookup and complete at
     its explicit token boundary; a transport binding must copy/zero exactly.
     """
+    return _verify_rolling_window(module, plan, None)
+
+
+def verify_grouped_rolling_window(module, plan, *, output_rows):
+    """Check actual grouped SCF, exact row effects, union residency and custody."""
+    _group_horizon(plan, output_rows)
+    return _verify_rolling_window(module, plan, output_rows)
+
+
+def _verify_rolling_window(module, plan, output_rows):
     import z3
 
     if type(plan) is not RollingWindowPlan:
@@ -301,10 +380,13 @@ def verify_rolling_window(module, plan):
         if not condition:
             raise ValueError("rolling-window check: " + reason)
 
+    horizon = plan.span_rows if output_rows is None else _group_horizon(plan, output_rows)
+    schema = SCHEMA if output_rows is None else GROUP_SCHEMA
+    identity = plan.identity if output_rows is None else _group_identity(plan, output_rows)
     require(
         type(module) is builtin.ModuleOp
-        and set(module.attributes) == {SCHEMA}
-        and module.attributes[SCHEMA] == builtin.StringAttr(plan.identity),
+        and set(module.attributes) == {schema}
+        and module.attributes[schema] == builtin.StringAttr(identity),
         "original source/layout identity changed",
     )
     functions = tuple(module.body.block.ops)
@@ -319,7 +401,8 @@ def verify_rolling_window(module, plan):
         "entry cannot introduce a payload ABI or hidden function semantics",
     )
     arithmetic = (arith.ConstantOp, arith.AddiOp, arith.SubiOp, arith.MuliOp, arith.RemUIOp, arith.CmpiOp)
-    effects = (BeginOp, StageRowOp, AwaitOp, ConsumeOp, CompleteOp)
+    consumer_class = ConsumeOp if output_rows is None else ConsumeGroupOp
+    effects = (BeginOp, StageRowOp, AwaitOp, consumer_class, CompleteOp)
     allowed = (*arithmetic, *effects, scf.ForOp, scf.YieldOp, func.ReturnOp)
     for op in function.body.walk():
         require(type(op) in allowed and not op.attributes, "unknown operation or semantic attribute")
@@ -409,14 +492,16 @@ def verify_rolling_window(module, plan):
     env = {outer[0].body.block.args[0]: image}
     image_domain = [image >= 0, image < b]
 
-    def epoch(block, expected_y, env, domain, first, count):
+    def epoch(block, expected_y, env, domain, first, count, consumers=1):
         commands = effect_list(block)
         require(
             len(commands) == 5
-            and tuple(type(op) for op in commands) == (BeginOp, scf.ForOp, AwaitOp, ConsumeOp, CompleteOp),
+            and tuple(type(op) for op in commands) == (BeginOp, scf.ForOp, AwaitOp, consumer_class, CompleteOp),
             "transport/await/consume/complete order changed",
         )
         begin, loop, ready, consume, complete = commands
+        if output_rows is not None:
+            require(consume.output_rows == builtin.IntegerAttr(consumers, 64), "original grouped consumer rows changed")
         bounds(loop, (0, count, 1))
         require(
             ready.transfer == begin.transfer
@@ -464,15 +549,38 @@ def verify_rolling_window(module, plan):
     body = outer[0].body.block
     operations = effect_list(body)
     initial = operations[:5]
-    require(len(operations) == 5 + int(plan.output_y_count > 1), "missing or extra input/consumer epochs")
+    if output_rows is None:
+        require(len(operations) == 5 + int(plan.output_y_count > 1), "missing or extra input/consumer epochs")
 
     # Inspect the initial epoch through a block view without cloning or trusting
     # the emitter's requested address list.
     class View:
         ops = initial
 
-    epoch(View(), z3.IntVal(plan.output_y_first), env, image_domain, 0, plan.span_rows)
-    if plan.output_y_count > 1:
+    if output_rows is not None:
+        full, tail = divmod(plan.output_y_count, output_rows)
+        first_count = output_rows if full else tail
+        advance = w.stride[0]
+        require(len(operations) == 5 + int(full > 1) + 5 * int(bool(full and tail)),
+                "missing or extra grouped transport/consumer epochs")
+        epoch(View(), z3.IntVal(plan.output_y_first), env, image_domain, 0,
+              plan.span_rows + (first_count - 1) * advance, first_count)
+        if full > 1:
+            loop = operations[5]
+            bounds(loop, (1, full, 1))
+            group = z3.Int("rolling_output_group")
+            epoch(loop.body.block, plan.output_y_first + group * output_rows,
+                  {**env, loop.body.block.args[0]: group},
+                  [*image_domain, group >= 1, group < full],
+                  plan.span_rows - advance, output_rows * advance, output_rows)
+        if full and tail:
+            class TailView:
+                ops = operations[-5:]
+            epoch(TailView(), z3.IntVal(plan.output_y_first + full * output_rows), env, image_domain,
+                  plan.span_rows - advance, tail * advance, tail)
+    else:
+        epoch(View(), z3.IntVal(plan.output_y_first), env, image_domain, 0, plan.span_rows)
+    if output_rows is None and plan.output_y_count > 1:
         loop = operations[-1]
         low, high = plan.output_y_first + 1, plan.output_y_first + plan.output_y_count
         bounds(loop, (low, high, 1))
@@ -494,9 +602,28 @@ def verify_rolling_window(module, plan):
     # Independent inductive laws: injective live rows, retained row identity,
     # complete original dilated taps, and horizontal cropped-row coverage.
     a, c, base = z3.Ints("rolling_live_a rolling_live_c rolling_base_residue")
-    domain = [a >= 0, a < plan.span_rows, c >= 0, c < plan.span_rows, base >= 0, base < plan.slots]
+    domain = [a >= 0, a < horizon, c >= 0, c < horizon, base >= 0, base < plan.slots]
     prove(z3.Implies((base + a) % plan.slots == (base + c) % plan.slots, a == c), domain, "live cache rows alias")
     advance = w.stride[0]
+    if output_rows is not None:
+        member, tap = z3.Ints("rolling_group_member rolling_group_tap")
+        prove(z3.And(member * advance + tap * w.dilation[0] >= 0,
+                     member * advance + tap * w.dilation[0] < horizon),
+              [member >= 0, member < min(output_rows, plan.output_y_count), tap >= 0, tap < w.kernel[0]],
+              "group union misses an original consumer row tap")
+        # The previous complete group's union contains exactly the retained
+        # prefix of the next group. Every other current-union row is written
+        # once by the actual checked frontier loop; injectivity above prevents
+        # those writes from destroying the retained prefix before consumption.
+        group, retained = z3.Ints("rolling_group_inductive rolling_group_retained")
+        old = (group - output_rows) * advance + output_rows * advance + retained
+        current = group * advance + retained
+        prove(z3.And(old == current, old % plan.slots == current % plan.slots,
+                     output_rows * advance + retained < horizon),
+              [group >= plan.output_y_first + output_rows,
+               group < plan.output_y_first + plan.output_y_count,
+               retained >= 0, retained < plan.span_rows - advance],
+              "previous group does not preserve the current retained source rows")
     if advance < plan.span_rows:
         y = z3.Int("rolling_inductive_y")
         old = (y - 1) * advance + (advance + a)
@@ -517,7 +644,7 @@ def verify_rolling_window(module, plan):
                 a >= 0,
                 a < plan.span_rows - advance,
                 c >= plan.span_rows - advance,
-                c < plan.span_rows,
+                c < horizon,
                 base >= 0,
                 base < plan.slots,
             ],
@@ -540,7 +667,7 @@ def verify_rolling_window(module, plan):
     )
     staged = b * (plan.span_rows + (plan.output_y_count - 1) * plan.frontier_rows)
     return dict(
-        schema=SCHEMA,
+        schema=schema,
         plan_sha256=plan.identity,
         actual_ir_sha256=hashlib.sha256(rolling_window_text(module).encode()).hexdigest(),
         symbolic_queries=queries,
@@ -558,6 +685,13 @@ def verify_rolling_window(module, plan):
             "original consumer reads only checked window view and completes at complete",
         ],
         target_qualification=False,
+        **({} if output_rows is None else dict(
+            output_rows_per_group=output_rows,
+            consumer_groups=b * ((plan.output_y_count + output_rows - 1) // output_rows),
+            source_row_union=horizon,
+            max_staged_rows_per_epoch=horizon,
+            completion="await all actual group transports before consumer; full consumer completion before any reuse",
+        )),
     )
 
 
@@ -570,7 +704,22 @@ def emit_rolling_window(module, plan, builder, lower):
     consumer completion before returning. Those payload/effect contracts are
     separate from this address/lifetime proof, with no inferred target grant.
     """
-    before = verify_rolling_window(module, plan)
+    return _emit_rolling_window(module, plan, builder, lower, None)
+
+
+def emit_grouped_rolling_window(module, plan, builder, lower, *, output_rows):
+    """Emit actual grouped SCF with consume_group(output_y, output_rows).
+
+    Each binding must complete every stage at await and the complete original
+    consumer interval at complete. Target issue/progress bounds and arithmetic
+    independence require their separate admissions; this proof grants neither.
+    """
+    _group_horizon(plan, output_rows)
+    return _emit_rolling_window(module, plan, builder, lower, output_rows)
+
+
+def _emit_rolling_window(module, plan, builder, lower, output_rows):
+    before = _verify_rolling_window(module, plan, output_rows)
     if not callable(lower) or any(not callable(getattr(builder, n, None)) for n in ("op", "cmp", "loop")):
         raise ValueError("rolling cache emission needs an ordinary integer builder and effect binding")
 
@@ -609,11 +758,15 @@ def emit_rolling_window(module, plan, builder, lower):
             elif type(op) is ConsumeOp:
                 fields = {name: env[getattr(op, name)] for name in ("resident", "image", "output_y")}
                 env[op.consumer] = produced(lower("consume", fields), "consume")
+            elif type(op) is ConsumeGroupOp:
+                fields = {name: env[getattr(op, name)] for name in ("resident", "image", "output_y")}
+                fields["output_rows"] = op.output_rows.value.data
+                env[op.consumer] = produced(lower("consume_group", fields), "consume_group")
             elif type(op) is CompleteOp:
                 lower("complete", {"consumer": env[op.consumer]})
 
     emit(tuple(module.body.block.ops)[0].body.block, {})
-    if verify_rolling_window(module, plan) != before:
+    if _verify_rolling_window(module, plan, output_rows) != before:
         raise ValueError("rolling-window source/effect IR changed during actual emission")
     return {**before, "emission": "actual counted SCF with explicit bound transport/consumer handles"}
 

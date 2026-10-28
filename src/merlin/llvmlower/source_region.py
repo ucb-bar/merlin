@@ -302,15 +302,7 @@ def outline_sibling_contractions(module, roots, *, symbol="source_shared_core", 
     source callee. A separate target/ownership admission must replace it before
     any device executable can be claimed.
     """
-    from xdsl.dialects import arith, func, tensor
-    from xdsl.dialects.builtin import ModuleOp
-    from xdsl.ir import Block, Region
-
-    from merlin.compile.scheduling.dense_source import read_zero_seeded_integer_matmul
     from merlin.xdsl_dialects._common import text
-    from merlin.xdsl_dialects.lowering.outline import _free_values
-
-    from .passes_xdsl import _dead_tensor_operation_is_pure
 
     module.verify()
     if type(roots) is not tuple or not 2 <= len(roots) <= 8 or len(set(roots)) != len(roots):
@@ -324,6 +316,107 @@ def outline_sibling_contractions(module, roots, *, symbol="source_shared_core", 
     host = module.clone()
     cloned_walk = tuple(host.walk())
     selected = tuple(cloned_walk[walked.index(op)] for op in roots)
+    plan = _plan_sibling_contractions(host, selected, symbol=symbol, max_source_elements=max_source_elements)
+    _apply_sibling_contractions(plan)
+    host.verify()
+    if text(module, generic=True) != before:
+        raise ValueError("source sibling outlining changed the original input module")
+    return SiblingContractionOutline(
+        host,
+        plan.core,
+        {
+            "schema": "merlin.source_sibling_contraction_outline.v1",
+            "source_ir_sha256": hashlib.sha256(before.encode()).hexdigest(),
+            "host_ir_sha256": hashlib.sha256(text(host, generic=True).encode()).hexdigest(),
+            "core_ir_sha256": hashlib.sha256(text(plan.core, generic=True).encode()).hexdigest(),
+            **plan.receipt,
+            "same_lhs_ssa": True,
+            "original_epilogues_and_observers_preserved": True,
+            "original_full_source_unchanged": True,
+            "host_still_defines_original_integer_core": True,
+            "target_implementation_or_effect_admission": False,
+            "target_execution": False,
+        },
+    )
+
+
+@dataclass(frozen=True)
+class _SiblingContractionPlan:
+    """An uncommitted rewrite of one caller-owned graph; no source admission."""
+
+    host: object
+    block: object
+    selected: tuple
+    inputs: tuple
+    outputs: tuple
+    hoisted: tuple
+    callee: object
+    core: object
+    receipt: dict
+    erased: tuple = ()
+    relayouts: tuple = ()
+    prepared_inputs: tuple = ()
+
+
+
+def _sibling_tensor_operation_is_pure(op):
+    """Keep source quantization markers while checking their typed lowering.
+
+    The existing quant_ext lowering owns these exact software semantics. A
+    detached local shadow establishes the same closed value-only operations;
+    no marker, original use list or unrelated source group is rewritten here.
+    Unknown fields/effects still refuse. This is not target readout permission.
+    """
+    from xdsl.dialects.builtin import ModuleOp, UnregisteredOp
+    from .passes_xdsl import _DEQUANT_KINDS, _QUANT_KINDS, _dead_tensor_operation_is_pure, lower_quant_ext
+    if _dead_tensor_operation_is_pure(op):
+        return True
+    name = getattr(getattr(op, "op_name", None), "data", None)
+    allowed = {"quant_min", "quant_max", "output_dtype"}
+    if name in _DEQUANT_KINDS:
+        allowed |= {"axis", "group_size"}
+    if (not isinstance(op, UnregisteredOp) or name not in (*_DEQUANT_KINDS, *_QUANT_KINDS)
+            or op.regions or op.successors
+            or any(key != "op_name__" and not key.startswith("prov.") for key in op.attributes)
+            or set(op.properties) - allowed):
+        return False
+    cloned = op.clone()
+    shadow = ModuleOp([cloned])
+    try:
+        if lower_quant_ext(shadow) != 1:
+            return False
+        return all(_dead_tensor_operation_is_pure(child) for child in shadow.body.block.ops)
+    except (ValueError, TypeError, KeyError, IndexError):
+        return False
+    finally:
+        shadow.drop_all_references()
+        cloned.drop_all_references()
+
+
+def _plan_sibling_contractions(host, selected, *, symbol, max_source_elements=64 << 20):
+    """Check every refusal before editing an owned graph.
+
+    The public single-outline and component-batch owners snapshot and verify
+    their original source. Keeping this plan local avoids cloning and printing
+    a full model for each disjoint component of that same transaction.
+    """
+    from xdsl.dialects import arith, func, tensor
+    from xdsl.dialects.builtin import ModuleOp
+    from xdsl.ir import Block, Region
+
+    from merlin.compile.scheduling.dense_source import read_zero_seeded_integer_matmul
+    from merlin.xdsl_dialects.lowering.outline import _free_values
+
+    if type(selected) is not tuple or not 2 <= len(selected) <= 8 or len(set(selected)) != len(selected):
+        raise ValueError("source siblings require two to eight distinct current roots")
+    if type(symbol) is not str or not symbol.isascii() or not symbol.isidentifier():
+        raise ValueError("source siblings require an explicit source symbol")
+    for root in selected:
+        owner = root
+        while owner is not None and owner is not host:
+            owner = owner.parent_op()
+        if owner is not host:
+            raise ValueError("source sibling root is absent from the current module")
     if any(getattr(op, "sym_name", None) is not None and op.sym_name.data == symbol for op in host.body.block.ops):
         raise ValueError("source sibling callee symbol already exists")
     block = selected[0].parent
@@ -353,7 +446,7 @@ def outline_sibling_contractions(module, roots, *, symbol="source_shared_core", 
             raise ValueError("source sibling preparation depends on a selected result or cycle")
         if op in hoisted:
             return
-        if not _dead_tensor_operation_is_pure(op):
+        if not _sibling_tensor_operation_is_pure(op):
             raise ValueError("source sibling preparation has no closed immutable tensor semantics")
         pending.add(op)
         for operand in _free_values((op,)):
@@ -367,7 +460,7 @@ def outline_sibling_contractions(module, roots, *, symbol="source_shared_core", 
     # Check the entire crossed range as well: an unknown effect cannot be
     # crossed merely because the moved operands are immutable tensors.
     for op in current[positions[anchor] : positions[selected[-1]] + 1]:
-        if op not in selected and not _dead_tensor_operation_is_pure(op):
+        if op not in selected and not _sibling_tensor_operation_is_pure(op):
             raise ValueError("source sibling outline crosses an unproved operation effect")
     core_ops = []
     for op in selected:
@@ -392,35 +485,37 @@ def outline_sibling_contractions(module, roots, *, symbol="source_shared_core", 
     callee = func.FuncOp(symbol, ([v.type for v in inputs], [v.type for v in outputs]), Region(body))
     core = ModuleOp([callee.clone()])
     core.verify()
-    for op in sorted(hoisted, key=positions.get):
-        block.detach_op(op)
-        block.insert_op_before(op, anchor)
-    call = func.CallOp(symbol, list(inputs), [value.type for value in outputs])
-    block.insert_op_before(call, anchor)
-    for original, result in zip(outputs, call.results, strict=True):
-        original.replace_all_uses_with(result)
-    for op in selected:
-        block.erase_op(op)
-    host.body.block.add_op(callee)
-    host.verify()
-    if text(module, generic=True) != before:
-        raise ValueError("source sibling outlining changed the original input module")
-    return SiblingContractionOutline(
-        host,
-        core,
+    return _SiblingContractionPlan(
+        host, block, selected, inputs, outputs, tuple(sorted(hoisted, key=positions.get)), callee, core,
         {
-            "schema": "merlin.source_sibling_contraction_outline.v1",
-            "source_ir_sha256": hashlib.sha256(before.encode()).hexdigest(),
-            "host_ir_sha256": hashlib.sha256(text(host, generic=True).encode()).hexdigest(),
-            "core_ir_sha256": hashlib.sha256(text(core, generic=True).encode()).hexdigest(),
             "source_root_ordinals": [positions[op] for op in selected],
             "source_geometries": [list(shape) for shape in geometries],
             "source_hoisted_preparation_ordinals": sorted(positions[op] for op in hoisted),
-            "same_lhs_ssa": True,
-            "original_epilogues_and_observers_preserved": True,
-            "original_full_source_unchanged": True,
-            "host_still_defines_original_integer_core": True,
-            "target_implementation_or_effect_admission": False,
-            "target_execution": False,
         },
     )
+
+
+def _apply_sibling_contractions(plan):
+    """Commit a checked local plan; the owning transaction verifies the graph."""
+    from xdsl.dialects import func
+
+    host, block = plan.host, plan.block
+    anchor = plan.selected[0]
+    for op in plan.hoisted:
+        block.detach_op(op)
+        block.insert_op_before(op, anchor)
+    for op in plan.prepared_inputs:
+        block.insert_op_before(op, anchor)
+    call = func.CallOp(plan.callee.sym_name.data, list(plan.inputs), list(plan.callee.function_type.outputs))
+    block.insert_op_before(call, anchor)
+    after = call
+    for index, (original, result) in enumerate(zip(plan.outputs, call.results, strict=True)):
+        relayout = plan.relayouts[index] if plan.relayouts else None
+        for view in relayout(result) if relayout is not None else ():
+            block.insert_op_after(view, after)
+            after = view
+            result = view.results[0]
+        original.replace_all_uses_with(result)
+    for op in reversed(plan.erased or plan.selected):
+        block.erase_op(op)
+    host.body.block.add_op(plan.callee)

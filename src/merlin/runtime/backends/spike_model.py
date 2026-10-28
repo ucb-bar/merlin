@@ -29,6 +29,7 @@ import numpy as np
 
 from merlin.common import proc as _proc
 from merlin.common.digest import sha256_file
+from merlin.common.mlir_query import parse_scope
 from merlin.common.paths import runtime_dir
 
 from ...llvmlower import c_runtime, toolchain
@@ -325,6 +326,7 @@ def _model_memory_reservations(
     return tuple(reservations)
 
 
+@parse_scope()
 @host_admitted
 def build(
     model_dir: str | Path,
@@ -706,6 +708,10 @@ def build(
 
         if repeated_pointwise_selected():
             compilation.bind_preparation("repeated_pointwise", work / "repeated_pointwise" / "report.json")
+        from ...llvmlower.contraction_row_slice import selected as contraction_row_slice_selected
+
+        if contraction_row_slice_selected():
+            compilation.bind_preparation("contraction_row_slice", work / "contraction-row-slice.json")
         if getattr(device, "post_offload_transform", None) is not None:
             receipt = work / "device_host_abi" / "post_offload_transform.json"
             compilation.bind_preparation("post_offload_transform", receipt)
@@ -755,6 +761,9 @@ def build(
             descriptor_check()
             return result
 
+        from ...llvmlower.host_graph_policy import bind_group_layout_artifacts
+
+        bind_group_layout_artifacts(device, work, compilation)
         retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
         source_choices.bind(prepared_path)
 
@@ -780,7 +789,6 @@ def build(
                 **({"op_profile": True} if op_profile else {}),
                 **source_choices.options(),
             )
-
         recomputation_options = None
         if recomputation_check is not None:
             recomputation_check()
@@ -810,15 +818,20 @@ def build(
             if descriptor_results.selected:
                 descriptor_results.bind_input(prepared_path, work / SIDECAR_NAME, compilation)
             early_device_objects = build_routed_objects()
-            if descriptor_results.selected and early_device_objects[2] is not None:
-                descriptor_results.bind_shim(early_device_objects[2], compilation)
             if dense_input_views:
                 from ...llvmlower.device_input_views import prepare as prepare_dense_input_views
 
-                prepared_path = prepare_dense_input_views(
-                    prepared_path, work / SIDECAR_NAME, early_device_objects[2], work / "dense_input_views", compilation
-                )
+                if descriptor_results.selected:
+                    prepared_path = descriptor_results.prepare_dense_input_views(
+                        early_device_objects[2], work / "dense_input_views", compilation)
+                else:
+                    prepared_path = prepare_dense_input_views(
+                        prepared_path, work / SIDECAR_NAME, early_device_objects[2], work / "dense_input_views", compilation,
+                        sibling_source=(device.sibling_source, offload_selection.sibling_host) if getattr(device, "sibling_source", None) else None,
+                    )
                 retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
+            if descriptor_results.selected and early_device_objects[2] is not None:
+                descriptor_results.bind_shim(early_device_objects[2], compilation)
         res = lower_model_file(
             prepared_path,
             work / "lower",
@@ -859,6 +872,18 @@ def build(
     ):
         raise SpikeModelError("selected index width was not bound by the effective lowering pipeline")
     index_lowering = {**index_observation, "effective_pipeline": lowered_index["effective_pipeline"]}
+    from ...llvmlower import impr_features
+
+    if impr_features.FUSE_AFTER_GENERALIZE_NAME in (features or ()):
+        fusion_record = work / "host-elementwise-fusion.json"
+        fusion_record.write_text(json.dumps({
+            "schema": "merlin.host_elementwise_fusion.v1",
+            "feature": impr_features.FUSE_AFTER_GENERALIZE_NAME,
+            "effective_pipeline": index_lowering["effective_pipeline"],
+            "rewritten_work": "unmeasured",
+        }, indent=2) + "\n")
+        compilation.bind_preparation("host_elementwise_fusion", fusion_record)
+        compilation.bind_preparation("host_elementwise_fusion_implementation", Path(impr_features.__file__))
     if source_observation_effects is not None:
         from ...llvmlower.source_observation_stage import REPORT
 
@@ -914,6 +939,16 @@ def build(
     setup_readback(cgen, model_dir, info, compilation, full_readback, readonly_input_indices, max_readonly_input_bytes)
     if output_sha256 and info.get("out_dt") != "f32":
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
+    storage_policy = getattr(device, "intermediate_storage", None)
+    if storage_policy is not None:
+        from ...llvmlower.host_storage_policy import prepare as prepare_intermediate_storage
+
+        blocked = ("source_recomputation_selected" if recomputation_check is not None else
+                   "descriptor_results_selected" if descriptor_results.selected
+                   and getattr(res, "borrowed_arena_lifetime", None) is None else None)
+        model_ir = prepare_intermediate_storage(
+            model_ir, storage_policy, work / "intermediate_storage", compilation, blocked_reason=blocked,
+            borrowed_lifetime=getattr(res, "borrowed_arena_lifetime", None))
     compiler_input = model_ir
     bitcode_receipt = None
     if host_llvm_bitcode:
@@ -1320,7 +1355,10 @@ def build(
         recomputation_check(callbacks=False)
         source_recomputation.finish(compilation, elf)
         recomputation_check()
-    return {
+    from ...llvmlower.borrowed_arena import retain_borrowed_lifetime
+
+    return retain_borrowed_lifetime({
+        **({"descriptor_results": descriptor_results.record()} if descriptor_results.selected else {}),
         "elf": elf,
         "mem_bytes": lay["mem_bytes"],
         "build_hash": build_hash,
@@ -1358,7 +1396,7 @@ def build(
         **({"execution_memory_admission": memory_admission} if memory_admission is not None else {}),
         **({"linked_elf_admission": linked_admission} if linked_admission is not None else {}),
         **info,
-    }
+    }, getattr(res, "borrowed_arena_lifetime", None) if storage_policy is not None else None)
 
 
 def run(

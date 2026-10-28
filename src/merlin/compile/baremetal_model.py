@@ -498,6 +498,20 @@ def compile_saved_model(
             graph_optimizations.revalidate()
             if graph_optimizations.target != target:
                 raise BaremetalModelError("host graph software target differs from the selected model target")
+    early_layout_policy = getattr(device, "pre_group_layout", None)
+    if early_layout_policy is not None:
+        from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+
+        if type(early_layout_policy) is not HostGraphPolicy or early_layout_policy.target != target:
+            raise BaremetalModelError("pre-group layout requires original software for this target")
+        early_layout_policy.revalidate()
+    storage_policy = getattr(device, "intermediate_storage", None)
+    if storage_policy is not None:
+        from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+
+        if type(storage_policy) is not HostGraphPolicy or storage_policy.target != target:
+            raise BaremetalModelError("intermediate storage requires original software for this target")
+        storage_policy.revalidate()
     if shared_source_lowerings:
         from merlin.llvmlower.source_dense import SourceDenseLowering
         from merlin.llvmlower.source_pointwise import SourcePointwiseLowering
@@ -641,6 +655,12 @@ def compile_saved_model(
                 "package": str(device.package_dir),
                 "package_tree": device_tree,
             }
+            if getattr(device, "pre_group_layout", None) is not None:
+                receipt["inputs"]["device"]["pre_group_layout"] = device.pre_group_layout.record()
+            if storage_policy is not None:
+                receipt["inputs"]["device"]["intermediate_storage"] = storage_policy.record()
+            if getattr(device, "descriptor_results", False):
+                receipt["inputs"]["device"]["descriptor_results"] = True
         else:
             device_tree = None
         native = run in {"gsim", "verilator"}
@@ -814,11 +834,29 @@ def compile_saved_model(
             if not isinstance(built.get("host_llvm_transform"), dict):
                 raise BaremetalModelError("selected host bounded RNE returned no pre-object transform record")
             receipt["output"]["host_llvm_transform"] = built["host_llvm_transform"]
+        if getattr(device, "descriptor_results", False):
+            if built.get("descriptor_results", {}).get("selected") is not True:
+                raise BaremetalModelError("selected descriptor bridge returned no actual selection receipt")
+            receipt["output"]["descriptor_results"] = built["descriptor_results"]
         if graph_optimizations is not None:
             from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
 
             graph_artifacts = recheck_host_graph_artifacts(output_path / "build" / "lower", graph_optimizations)
             receipt["output"]["host_graph_optimization"] = graph_artifacts
+        if early_layout_policy is not None:
+            from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
+
+            early_layout_artifacts = recheck_host_graph_artifacts(
+                output_path / "build" / "pre_group_layout", early_layout_policy)
+            receipt["output"]["pre_group_layout"] = early_layout_artifacts
+        if storage_policy is not None:
+            from merlin.llvmlower.borrowed_arena import receipt_borrowed_lifetime
+            from merlin.llvmlower.host_storage_policy import recheck as recheck_storage
+
+            storage_artifacts = recheck_storage(
+                output_path / "build" / "intermediate_storage", storage_policy,
+                borrowed_lifetime=receipt_borrowed_lifetime(built))
+            receipt["output"]["intermediate_storage"] = storage_artifacts
         if shared_source_lowerings:
             from merlin.llvmlower.prepared_model_transform import RECEIPT as PREPARATION_RECEIPT
             from merlin.runtime.host_provider import revalidate_host_provider
@@ -1044,6 +1082,17 @@ def compile_saved_model(
         if graph_optimizations is not None:
             if recheck_host_graph_artifacts(output_path / "build" / "lower", graph_optimizations) != graph_artifacts:
                 raise BaremetalModelError("host graph optimization artifacts changed during execution")
+        if early_layout_policy is not None:
+            if (getattr(device, "pre_group_layout", None) is not early_layout_policy
+                    or recheck_host_graph_artifacts(output_path / "build" / "pre_group_layout",
+                                                    early_layout_policy) != early_layout_artifacts):
+                raise BaremetalModelError("pre-group layout selection or artifacts changed during execution")
+        if storage_policy is not None:
+            if (getattr(device, "intermediate_storage", None) is not storage_policy
+                    or recheck_storage(output_path / "build" / "intermediate_storage",
+                                       storage_policy,
+                                       borrowed_lifetime=receipt_borrowed_lifetime(built)) != storage_artifacts):
+                raise BaremetalModelError("intermediate storage selection or artifacts changed during execution")
         if shared_source_lowerings:
             for value in shared_source_lowerings:
                 value.selected_contracts.revalidate()
@@ -1068,4 +1117,8 @@ def compile_saved_model(
         (output_path / "baremetal_model.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
         raise
     (output_path / "baremetal_model.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+    if storage_policy is not None:
+        from merlin.llvmlower.borrowed_arena import retain_borrowed_lifetime
+
+        return retain_borrowed_lifetime(receipt, receipt_borrowed_lifetime(built))
     return receipt

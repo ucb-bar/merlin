@@ -781,6 +781,14 @@ def verify_compact_dense(
         "requested_bias_load_bytes": sum(
             _requested_elements(site, site.operation.cols) * problem.accumulator_bytes for site in initializers
         ),
+        "requested_lhs_bytes": sum(
+            _requested_elements(site, site.operation.rows, site.operation.cols) * problem.lhs_bytes
+            for site in loads if site.operation.role == "lhs"
+        ),
+        "requested_rhs_bytes": sum(
+            _requested_elements(site, site.operation.rows, site.operation.cols) * problem.rhs_bytes
+            for site in loads if site.operation.role == "weight"
+        ),
         "requested_load_bytes": sum(
             _requested_elements(site, site.operation.rows, site.operation.cols)
             * (problem.lhs_bytes if site.operation.role == "lhs" else problem.rhs_bytes)

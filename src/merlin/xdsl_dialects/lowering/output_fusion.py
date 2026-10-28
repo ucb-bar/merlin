@@ -328,8 +328,9 @@ def _threshold(fn, q, lo, hi, channels):
     """Per channel, the least integer in ``[lo, hi + 1]`` where ``fn`` reaches ``q`` (``hi + 1``: never)."""
     import numpy as np
 
-    left = np.full(channels, lo, dtype=np.int64)
-    right = np.full(channels, hi + 1, dtype=np.int64)
+    shape = np.broadcast_shapes((channels,), np.shape(q))
+    left = np.full(shape, lo, dtype=np.int64)
+    right = np.full(shape, hi + 1, dtype=np.int64)
     for _ in range(int(hi - lo + 1).bit_length() + 1):
         active = left < right
         if not active.any():
@@ -341,26 +342,40 @@ def _threshold(fn, q, lo, hi, channels):
     return left
 
 
-def offset_interval(source, target, channels, lo, hi, levels, target_range):
+def offset_interval(source, target, channels, lo, hi, levels, target_range, *, level_batch=1):
     """``(lower, upper, conflict)``: the integer offsets ``b`` with ``source(x) == target(x + b)`` on
     ``[lo, hi]``, per channel, for monotone step functions over the output ``levels``.
 
     ``target`` is evaluated on ``target_range`` (the accumulator's own range). ``conflict`` is the first
-    level at which a channel's interval became empty, or ``None``.
+    level at which a channel's interval became empty, or ``None``. ``level_batch`` greater than one
+    requires elementwise callbacks that broadcast over leading level dimensions, as the exact source
+    and device evaluators do. Batching changes no searched thresholds or accumulator bounds.
     """
+    from itertools import islice
+
     import numpy as np
 
+    if type(level_batch) is not int or level_batch < 1:
+        raise ValueError("level_batch must be a positive integer")
+    # Keep proof temporaries bounded for wide output tensors. There is no persistent proof cache:
+    # every group's actual values, declared arithmetic and accumulator bound are evaluated anew.
+    level_batch = max(1, min(level_batch, 262144 // max(channels, 1)))
+    remaining = iter(levels)
     ylo, yhi = target_range
     lower = np.full(channels, ylo - lo, dtype=np.int64)
     upper = np.full(channels, yhi - hi, dtype=np.int64)
     conflict = np.full(channels, np.iinfo(np.int64).min, dtype=np.int64)
-    for q in levels:
-        s = _threshold(source, q, lo, hi, channels)
-        t = _threshold(target, q, ylo, yhi, channels)
-        interior = (s > lo) & (s <= hi)
-        lower = np.maximum(lower, np.where(s == lo, t - lo, np.where(interior, t - s, lower)))
-        upper = np.minimum(upper, np.where(s == hi + 1, t - hi - 1, np.where(interior, t - s, upper)))
-        conflict = np.where((conflict == np.iinfo(np.int64).min) & (lower > upper), q, conflict)
+    while block := tuple(islice(remaining, level_batch)):
+        q = np.asarray(block, dtype=np.int64)[:, None] if len(block) > 1 else block[0]
+        source_thresholds = _threshold(source, q, lo, hi, channels)
+        target_thresholds = _threshold(target, q, ylo, yhi, channels)
+        if len(block) == 1:
+            source_thresholds, target_thresholds = [source_thresholds], [target_thresholds]
+        for q, s, t in zip(block, source_thresholds, target_thresholds):
+            interior = (s > lo) & (s <= hi)
+            lower = np.maximum(lower, np.where(s == lo, t - lo, np.where(interior, t - s, lower)))
+            upper = np.minimum(upper, np.where(s == hi + 1, t - hi - 1, np.where(interior, t - s, upper)))
+            conflict = np.where((conflict == np.iinfo(np.int64).min) & (lower > upper), q, conflict)
     return lower, upper, conflict
 
 
@@ -564,7 +579,9 @@ def _prove(chain: Chain, path, target, bound, *, residual_values=None, residual_
         def device(y, shift=shift, host_residual=host_residual):
             return target(y + shift, host_residual)
 
-        found_lo, found_hi, found_conflict = offset_interval(source, device, channels, lo, hi, levels, acc)
+        found_lo, found_hi, found_conflict = offset_interval(
+            source, device, channels, lo, hi, levels, acc, level_batch=16
+        )
         if shift:
             found_hi = np.minimum(found_hi, acc[1] - hi - max(shift, 0))
             found_lo = np.maximum(found_lo, acc[0] - lo - min(shift, 0))

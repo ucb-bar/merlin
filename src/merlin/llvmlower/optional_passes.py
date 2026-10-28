@@ -74,6 +74,15 @@ _INTEGER_DATAPATH = "on in the integer (int8 compute) datapath"
 
 REGISTRY: tuple[OptionalPass, ...] = (
     OptionalPass(
+        name="contraction-row-slice",
+        summary="restrict a zero-seeded integer product to its sole static row observer",
+        changes="push contiguous row slices through fixed pure epilogues and views before device group binding",
+        exactness=EXACT,
+        default="off; explicit source choice before constructing a device/source owner",
+        stage="lowering",
+        switch="MERLIN_CONTRACTION_ROW_SLICE",
+    ),
+    OptionalPass(
         name="automatic-host-gathers",
         summary="pack static windows directly from a logically zero-padded image",
         changes="replace a private padded image with bounds-guarded source reads; retain complete gather and call ABI",

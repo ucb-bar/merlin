@@ -341,6 +341,17 @@ class DenseReadoutOverlapResult:
         self.revalidate()
         return result
 
+    def emit_index_program(self, control, lower_effect, *, complete_epoch):
+        """Emit actual checked effects with the same encoder and full-drain callback."""
+        from .dense_panel_pipeline import DRAIN
+        from .llvm_program import emit_index_effect_program
+
+        self.revalidate()
+        report = emit_index_effect_program(self.kernel, control, lower_effect,
+            complete_epoch=complete_epoch, completion_instruction=DRAIN)
+        self.revalidate()
+        return report
+
     def emit_llvm(self, builder, lower_call):
         from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter, emit_index_program
 

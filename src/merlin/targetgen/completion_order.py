@@ -708,6 +708,12 @@ def check_elf(
     """Run ``elf`` once on the target's functional engine with a commit log, streaming the executed
     command stream into :func:`check_commands`. Nothing is stored; the log is consumed as it is printed.
 
+    When an operator-built command recorder is selected for this engine
+    (:mod:`merlin.perf.command_recorder`), the same run records only the commands and fences with
+    their operand values, which is the stream the commit log yields, and the log is not printed; the
+    record then carries ``command_stream``. Any run whose record is not that exact equivalent reads the
+    commit log instead.
+
     Returns the check result, or ``{"verdict": "unknown", "detail": why}`` when the stream could not be
     observed (no trace engine, no derived opcode, a run that did not finish): never a pass by omission.
     """
@@ -722,6 +728,10 @@ def check_elf(
     def unknown(why: str) -> dict[str, Any]:
         return {"schema": SCHEMA, "verdict": "unknown", "detail": why}
 
+    budget_s = float(timeout_s)
+    # Structured, so a caller can tell "the budget ran out" (a fixed outcome of these bytes under this
+    # budget) from a crash or an unavailable engine, without reading the sentence.
+    exhausted = {"budget_exhausted": {"timeout_s": budget_s}}
     if model is None:
         try:
             model = OrderingModel.for_target(target)
@@ -736,6 +746,15 @@ def check_elf(
         return unknown("the target's functional engine exposes no commit-log run")
     argv, env = invocation
     started = time.perf_counter()
+    recorded = _recorded_check(argv, env, opcode, model, timeout_s=timeout_s, max_examples=max_examples)
+    if recorded is not None:
+        recorded["wall_s"] = round(time.perf_counter() - started, 3)
+        recorded["engine_argv"] = [str(a) for a in argv]
+        return recorded
+    # A refused recorder can fall back, but both observations share the original engine deadline.
+    timeout_s = timeout_s - (time.perf_counter() - started)
+    if timeout_s <= 0:
+        return {**unknown("the functional observation exhausted its deadline before commit-log fallback"), **exhausted}
     try:
         process = subprocess.Popen(  # noqa: S603 - the target backend's own declared engine invocation
             argv,
@@ -748,7 +767,13 @@ def check_elf(
         )
     except OSError as exc:
         return unknown(f"the functional engine did not start ({exc})")
-    timer = threading.Timer(timeout_s, process.kill)
+    killed = threading.Event()
+
+    def expire():
+        killed.set()
+        process.kill()
+
+    timer = threading.Timer(timeout_s, expire)
     timer.start()
     try:
         assert process.stderr is not None
@@ -764,6 +789,33 @@ def check_elf(
     if process.returncode != 0 and result.get("verdict") != "hazard":
         # a hazard already observed in the stream stands; anything else needs the complete stream
         result = unknown(f"the functional run exited {process.returncode} (timeout {timeout_s:g}s)")
+        if killed.is_set():
+            result.update(exhausted)
     result["wall_s"] = round(time.perf_counter() - started, 3)
     result["engine_argv"] = [str(a) for a in argv]
+    return result
+
+
+def _recorded_check(argv, env, opcode, model, *, timeout_s, max_examples):
+    """:func:`check_commands` over the command recorder's stream of this run, or ``None`` to read the log."""
+    import tempfile
+    from pathlib import Path
+
+    from merlin.perf import command_recorder as CR
+    from merlin.perf.streamed_executed_trace import DEFAULT_MAX_RETIRED, iter_recorded_commands
+
+    if CR.selected() is None:
+        return None
+    with tempfile.TemporaryDirectory(prefix="command-recorder-") as scratch:
+        observed = CR.observe(argv, env, scratch=Path(scratch), timeout_s=timeout_s, max_retired=DEFAULT_MAX_RETIRED)
+    if observed is None:
+        return None
+    records, manifest = observed
+    try:
+        result = check_commands(
+            iter_recorded_commands(records, isa={"CUSTOM_OPCODE": opcode}), model, max_examples=max_examples
+        )
+    except ValueError as exc:
+        result = {"schema": SCHEMA, "verdict": "unknown", "detail": f"the executed stream could not be read completely ({exc})"}
+    result["command_stream"] = {"source": CR.EXTENSION, "manifest_sha256": manifest["pin"]["sha256"]}
     return result

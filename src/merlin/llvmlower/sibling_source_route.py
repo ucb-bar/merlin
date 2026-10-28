@@ -29,12 +29,14 @@ def _text(module):
 class SiblingSourceRoute:
     source_ir_sha256: str
     effects: BorrowedBufferEffects
+    partial: bool = False
 
     def record(self):
         if (
             type(self.source_ir_sha256) is not str
             or len(self.source_ir_sha256) != 64
             or any(c not in "0123456789abcdef" for c in self.source_ir_sha256)
+            or type(self.partial) is not bool
             or type(self.effects) is not BorrowedBufferEffects
         ):
             raise ValueError("sibling route needs original source identity and typed borrowed effects")
@@ -59,7 +61,9 @@ def freeze_route(device):
     selected = getattr(device, "sibling_source", None)
     if selected is None:
         return None
-    if type(selected) is not SiblingSourceRoute:
+    from .head_source_route import HeadBatchSourceRoute
+
+    if type(selected) not in (SiblingSourceRoute, HeadBatchSourceRoute):
         raise ValueError("sibling route requires its original typed selection")
     if getattr(device, "granularity", None) != "group" or any(
         getattr(device, key, None) is not None for key in (
@@ -83,23 +87,49 @@ def require_route(device, frozen):
     return selected
 
 
-def _snapshot(host):
+def _snapshot(host, *, source_sha256=None, host_sha256=None):
+    # A component owner can serialize its shared graph once per validation.
+    # These are invocation-local values, never cached across source mutations.
     return {
-        "source": _sha(_text(host.source)), "host": _sha(_text(host.module)), "core": _sha(_text(host.core)),
+        "source": _sha(_text(host.source)) if source_sha256 is None else source_sha256,
+        "host": _sha(_text(host.module)) if host_sha256 is None else host_sha256,
+        "core": _sha(_text(host.core)),
         "writer": asdict(host.writer), "device_symbol": host.device_symbol, "interface": _sha(host.interface),
         "rewrite": host.rewrite.to_sidecar(), "receipt": host.receipt,
     }
 
 
 def require_host(host, selected):
+    from .head_source_route import HeadBatchSourceRoute, RoutedHeads, component_selection
+    from .head_source_route import require_host as require_heads
+
+    if type(selected) is HeadBatchSourceRoute:
+        if type(host) is RoutedHeads:
+            return require_heads(host, selected)
+        return require_host(host, component_selection(selected))
+    from .sibling_component_route import RoutedSiblingComponents, require_components
+
+    if type(host) is RoutedSiblingComponents:
+        return require_components(host, selected)
+    if type(host) is not RoutedSiblingHost:
+        raise ValueError("original sibling source, host, interface or effects changed")
+    _require_host_integrity(host, selected, source_sha256=_sha(_text(host.source)),
+                            host_sha256=_sha(_text(host.module)))
+
+
+def _require_host_integrity(host, selected, *, source_sha256, host_sha256, verify_graphs=True,
+                            checked_preparations=None):
+    """Check one component against freshly read shared source/host identities."""
     if type(host) is not RoutedSiblingHost or (
-        _sha(_text(host.source)) != selected.source_ir_sha256
+        source_sha256 != selected.source_ir_sha256
         or host.writer.borrowed_effects != selected.effects
-        or _sha(json.dumps(_snapshot(host), sort_keys=True, allow_nan=False)) != host.integrity_sha256
+        or _sha(json.dumps(_snapshot(host, source_sha256=source_sha256, host_sha256=host_sha256),
+                           sort_keys=True, allow_nan=False)) != host.integrity_sha256
     ):
         raise ValueError("original sibling source, host, interface or effects changed")
-    host.source.verify()
-    host.module.verify()
+    if verify_graphs:
+        host.source.verify()
+        host.module.verify()
     host.core.verify()
     preparation = host.receipt.get('weight_preparation')
     if preparation is not None:
@@ -110,10 +140,18 @@ def require_host(host, selected):
         for pin in (preparation, preparation['capture_binding']):
             if sha256_file(pin['path']) != pin['sha256']:
                 raise ValueError('sibling original weight preparation changed')
-        revalidate_build_preparation(preparation['path'])
+        # Disjoint components often share one exact model/weight preparation.
+        # Their receipt pins are still read above; the expensive source/weight
+        # proof need run only once inside this callback-free validation batch.
+        # A new require_components invocation starts with a fresh set.
+        key = json.dumps(preparation, sort_keys=True, allow_nan=False)
+        if checked_preparations is None or key not in checked_preparations:
+            revalidate_build_preparation(preparation['path'])
+            if checked_preparations is not None:
+                checked_preparations.add(key)
 
 
-def _command_buffer(core, target):
+def _command_buffer(core, target, *, readouts=None):
     """Restate every independently checked original product, in source order."""
     from xdsl.dialects import func
 
@@ -129,8 +167,13 @@ def _command_buffer(core, target):
     fn = next(op for op in core.body.block.ops if isinstance(op, func.FuncOp))
     operations = tuple(fn.body.block.ops)
     contractions = tuple(operations[i] for i in group.contraction_ordinals)
+    # A literal zero can be shared by several original splats. The group
+    # recognizer omits that shared producer from its per-seed interval, while
+    # the exact zero-seeded reader already checked every root's initializer.
+    # Account for only those actual literal dependencies, never arbitrary ops.
+    zero_literals = {operations.index(op.operands[-1].owner.operands[0].owner) for op in contractions}
     if (
-        set(group.source_op_indices) != set(range(len(operations) - 1))
+        set(group.source_op_indices) | zero_literals != set(range(len(operations) - 1))
         or not isinstance(operations[-1], func.ReturnOp)
         or tuple(operations[-1].arguments) != tuple(op.results[0] for op in contractions)
     ):
@@ -146,6 +189,9 @@ def _command_buffer(core, target):
                      "role": "input" if index == 0 else "weight"}
         for index, arg in enumerate(args)
     }
+    from .sibling_readout_commands import source_readout_commands
+
+    member_readouts = source_readout_commands(group, readouts, tensors)
     commands = []
     for index, weight in enumerate(weights):
         resident, accumulator, output = (prefix + str(index) for prefix in ("resident_", "acc_", "out_"))
@@ -154,7 +200,7 @@ def _command_buffer(core, target):
              "attributes": {"layout": "packed_rhs"}},
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": names[lhs], "rhs": resident, "dst": accumulator}},
             {"opcode": "COMMIT", "operands": {"src": accumulator, "dst": output},
-             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+             "attributes": member_readouts[index]},
             {"opcode": "EVICT", "operands": {"handle": resident}},
         ))
         if provenance:
@@ -163,6 +209,15 @@ def _command_buffer(core, target):
 
 
 def prepare_host(device, selected, source, directory):
+    from .head_source_route import HeadBatchSourceRoute
+    from .head_source_route import prepare_host as prepare_heads
+
+    if type(selected) is HeadBatchSourceRoute:
+        return prepare_heads(device, selected, source, directory)
+    if selected.partial:
+        from .sibling_component_route import prepare_components
+
+        return prepare_components(device, selected, source, directory)
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.targetgen.contract.interface_emit import emit_interface_mlir
 
@@ -252,23 +307,63 @@ def borrowed_bridge_source(symbol, borrowed_symbol, call, result_arguments):
 def with_borrowed_bridge(unit, selected, host):
     """Discard returned identity descriptors without changing any buffer or call."""
     require_host(host, selected)
+    return replace(unit, text=unit.text + "\n" + _borrowed_bridge(unit, host))
+
+
+def _borrowed_bridge(unit, host):
     if host.device_symbol not in unit.symbols:
         raise ValueError("sibling descriptor bridge lost its ordinary logical shim")
-    bridge = borrowed_bridge_source(
+    return borrowed_bridge_source(
         host.device_symbol, host.writer.borrowed_symbol,
         host.rewrite.call_buffers[host.device_symbol], host.writer.result_arguments,
     )
-    return replace(unit, text=unit.text + "\n" + bridge)
+
+
+def with_borrowed_bridges(unit, selected, host, *, symbols=None):
+    """Assemble original sibling bridges under one fresh complete-owner check.
+
+    The invocation is read-only and contains no external callbacks. It validates
+    the complete routed owner, then derives every bridge from its original
+    component roster. ``symbols`` may select an immutable subset of successfully
+    built original components; it cannot add or reorder that roster. No proof
+    or cache escapes this function, and the single-bridge API remains fresh on
+    every call. This does not authorize reuse across package emission callbacks.
+    """
+    from .device_shim import ShimUnit
+
+    if (type(unit) is not ShimUnit or type(unit.text) is not str
+        or type(unit.symbols) is not tuple
+        or any(type(symbol) is not str for symbol in unit.symbols)
+        or symbols is not None and (type(symbols) is not tuple
+            or any(type(symbol) is not str for symbol in symbols)
+            or len(set(symbols)) != len(symbols))):
+        raise ValueError("sibling bridge batch needs a logical shim and distinct original symbols")
+    require_host(host, selected)
+    components = component_hosts(host)
+    original_symbols = tuple(component.device_symbol for component in components)
+    if (len(set(original_symbols)) != len(original_symbols)
+        or symbols is not None and not set(symbols) <= set(original_symbols)):
+        raise ValueError("sibling bridge batch changed its original component roster")
+    wanted = set(original_symbols if symbols is None else symbols)
+    bridges = tuple(_borrowed_bridge(unit, component) for component in components
+                    if component.device_symbol in wanted)
+    return replace(unit, text=unit.text + "".join("\n" + bridge for bridge in bridges))
 
 
 def require_emission(artifact, selected, host, *, entry_symbol):
     """Read the real LLVM entry in either supported textual spelling."""
+    require_host(host, selected)
+    require_logical_emission(artifact, entry_symbol=entry_symbol,
+                             arity=len(host.rewrite.call_buffers[host.device_symbol]))
+
+
+def require_logical_emission(artifact, *, entry_symbol, arity):
+    """Read either actual LLVM spelling without a textual entry-name guess."""
     from xdsl.dialects import llvm
     from xdsl.parser import Parser
 
     from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
-    require_host(host, selected)
     module = Parser(make_llvm_context(), artifact).parse_module()
     module.verify()
     entries = [op for op in module.body.block.ops
@@ -277,9 +372,22 @@ def require_emission(artifact, selected, host, *, entry_symbol):
         raise ValueError("sibling artifact has no unique contract-named LLVM kernel entry")
     entry = entries[0]
     if (
-        len(entry.function_type.inputs) != len(host.rewrite.call_buffers[host.device_symbol])
+        len(entry.function_type.inputs) != arity
         or any(not isinstance(t, llvm.LLVMPointerType) for t in entry.function_type.inputs)
         or not isinstance(entry.function_type.output, llvm.LLVMVoidType)
         or not entry.body.blocks
     ):
         raise ValueError("sibling artifact kernel entry differs from its original complete pointer ABI")
+
+
+def component_hosts(host):
+    """The exact independently checked logical writers of either route."""
+    from .head_source_route import RoutedHeads
+    from .sibling_component_route import RoutedSiblingComponents
+
+    if type(host) is RoutedHeads:
+        # The ordinary rank-three descriptor shim already owns the head loop.
+        # It needs no sibling-specific borrowed multioutput bridge.
+        return () if host.component_host is None else host.component_host.components
+
+    return host.components if type(host) is RoutedSiblingComponents else (host,)

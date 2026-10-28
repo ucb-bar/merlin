@@ -284,13 +284,16 @@ class Trace:
         }
 
 
-def decode_module(module, *, target: str, source: str | None = None) -> dict:
+def decode_module(module, *, target: str, source: str | None = None, semantics=None) -> dict:
     """Decode a parsed MLIR module's RoCC instruction stream into a structured trace, using ``target``'s
     RTL-derived ISA facts. Walks the IR in program order; each ``llvm.inline_asm`` op is classified by its
     ``.insn`` template (func7 -> class) with operands resolved structurally from the SSA graph. Fail-
     closed: an inline-asm whose template is neither a custom-opcode ``.insn`` nor ``fence`` is recorded
     UNKNOWN, never dropped."""
-    semantics = _semantics(target)
+    # Diagnostics may bind the original contract/facts directly, without
+    # registering or importing a compiler-bearing runtime backend. This is
+    # decoding only; supplying a capability grants no execution authority.
+    semantics = _semantics(target) if semantics is None else semantics
     isa = semantics.isa_constants(target)
     trace = Trace(source=source, custom_opcode=isa["CUSTOM_OPCODE"], funct3=isa["FUNCT3"])
     word_bits = getattr(semantics, "word_bits", getattr(semantics, "_width", None))

@@ -13,6 +13,7 @@ Target-agnostic analyses that derive facts from IR, shapes and a target's own de
 - `instruction_roles.py` — The closed ROLE vocabulary — what an instruction DOES to a compute endpoint.
 - `intrinsics_header.py` — Derive a custom-instruction table from the target's OWN intrinsics header.
 - `rocc_commands.py` — Decode a RoCC command stream against the target's OWN derived funct table.
+- `schedule_structure.py` — Inspect normalized effects, counted payload loops and scheduling dialect decisions without assigning target semantics or timing.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->

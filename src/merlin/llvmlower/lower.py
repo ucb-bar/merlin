@@ -71,6 +71,7 @@ STAGES = compile_trace.declare(
         "host-destination-reused",
         "host-rounding-selected",
         "host-permutation-forwarded",
+        "host-pointwise-fused",
         "host-tensor-preparations-shared",
         "operation-profiled",
         *PREPROCESS_STAGES,
@@ -94,6 +95,8 @@ class LowerResult:
     host_so: Path | None = None
     riscv_obj: Path | None = None
     audit_index: Path | None = None
+    # Invocation-local original effects, never reconstructed from stats/JSON.
+    borrowed_arena_lifetime: Any = field(default=None, repr=False)
 
 
 @host_admitted
@@ -124,6 +127,7 @@ def lower_model(
     shared_source_lowerings: tuple = (),
     source_optimizations: SourceOptimizationSelection | None = None,
     descriptor_result_identities: tuple = (),
+    descriptor_result_effects=None,
     source_recomputation: SourceRecomputationSelection | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
@@ -150,6 +154,9 @@ def lower_model(
 
     ``descriptor_result_identities`` conditionally exposes an original checked
     descriptor-return law after automatic source passes, before preprocessing.
+    ``descriptor_result_effects`` optionally joins that exact roster to its live
+    original borrowed-call owner. Only the actual post-deallocation native
+    observation can then supply the existing late host-storage lifetime binding.
     It accepts only immutable typed original selections under scalar serial
     64-bit lowering. The original emitter/C/object proof remains caller-owned;
     this supplies no effects, full-write, runtime or authoring qualification.
@@ -224,10 +231,12 @@ def lower_model(
     descriptor_check = None
     if type(descriptor_result_identities) is not tuple:
         raise ValueError("descriptor_result_identities requires an immutable original tuple")
+    if descriptor_result_effects is not None and not descriptor_result_identities:
+        raise ValueError("descriptor effects require their original descriptor identities")
     if descriptor_result_identities:
         from .descriptor_result_preparation import DescriptorResultPreparation
 
-        descriptor_preparation = DescriptorResultPreparation(descriptor_result_identities)
+        descriptor_preparation = DescriptorResultPreparation(descriptor_result_identities, effects=descriptor_result_effects)
         descriptor_check = descriptor_preparation.revalidate
         if (
             borrowed_buffer_calls is not None
@@ -247,6 +256,9 @@ def lower_model(
             or source_scalar_carrier is not None
         ):
             raise ValueError("descriptor result identity requires its uninstrumented scalar serial 64-bit route")
+        # Only this exact descriptor-only join can carry the original owner
+        # through the checked rewrite and native alias/completion observation.
+        borrowed_buffer_calls = descriptor_preparation.effects
     source_choices = None
     if source_optimizations is not None:
         from .source_optimization_selection import SourceCompilationOptimization
@@ -398,12 +410,24 @@ def lower_model(
         if permutation_report["rewrites"]:
             audit.stage("host-permutation-forwarded", mlir_text)
         write_pretty_json(work / "automatic-host-permutations.json", permutation_report)
+        from .host_pointwise_fusion import prepare_host_pointwise_fusion
+        from .impr_features import FUSE_AFTER_GENERALIZE_NAME
+
+        mlir_text, pointwise_fusion_report = prepare_host_pointwise_fusion(
+            mlir_text,
+            enabled=FUSE_AFTER_GENERALIZE_NAME in (features or ()),
+            serial=serial_rows,
+        )
+        if pointwise_fusion_report["rewrites"]:
+            audit.stage("host-pointwise-fused", mlir_text)
+        write_pretty_json(work / "host-pointwise-fusion.json", pointwise_fusion_report)
         if descriptor_preparation is not None:
             if not serial_rows or _env("MERLIN_COMPILER_DRIVER", "python") != "python":
                 raise ValueError("descriptor result identity requires scalar serial Python lowering")
             descriptor_check()
             mlir_text = descriptor_preparation.prepare(mlir_text, work)
             descriptor_check()
+            borrowed_buffer_calls = descriptor_preparation.native_calls()
             if descriptor_preparation.rewrites:
                 from .impr_features import normalize
 
@@ -557,6 +581,7 @@ def lower_model(
         stats["automatic_host_destinations"] = destination_report
         stats["automatic_host_permutations"] = permutation_report
         stats["automatic_host_rounding"] = rounding_report
+        stats["host_pointwise_fusion"] = pointwise_fusion_report
         if source_choices is not None:
             stats["source_optimizations"] = source_choices.report(gather=gather_report, packing=permutation_report)
             write_pretty_json(work / "source-optimization-selection.json", stats["source_optimizations"])
@@ -573,6 +598,7 @@ def lower_model(
 
         audit.stage("upstream", upstream_text)
         lowering_selection: dict[str, Any] = {}
+        borrowed_arena_lifetimes = []
         try:
             if descriptor_preparation is not None:
                 descriptor_check()
@@ -599,6 +625,7 @@ def lower_model(
                     if borrowed_buffer_calls is not None
                     else None
                 ),
+                borrowed_arena_lifetimes=borrowed_arena_lifetimes,
             )
         except Exception as exc:
             # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
@@ -658,7 +685,9 @@ def lower_model(
             # and the `.ll` is byte-identical to the frozen baseline.
             from .arena_bind import bind_arena
 
-            ll_text, arena_report = bind_arena(ll_text)
+            ll_text, arena_report = bind_arena(
+                ll_text, borrowed_lifetime=next(iter(borrowed_arena_lifetimes), None)
+            )
             stats["static_arena"] = arena_report.to_dict()
         # MLIR's C wrapper expands each memref pointer into the implementation's flattened descriptor
         # ABI.  An external call can make LLVM decline to inline a hundreds-of-arguments boundary,
@@ -667,7 +696,13 @@ def lower_model(
         # and preserves both public symbols; see llvmlower.ciface_inline.
         from .ciface_inline import inline_wide_ciface_implementations
 
+        before_ciface_inline = ll_text
         ll_text, ciface_inline_report = inline_wide_ciface_implementations(ll_text)
+        borrowed_arena_lifetime = next(iter(borrowed_arena_lifetimes), None)
+        if borrowed_arena_lifetime is not None:
+            borrowed_arena_lifetime = borrowed_arena_lifetime.after_ciface_annotation(
+                before_ciface_inline, ll_text, ciface_inline_report
+            )
         stats["ciface_boundary_inline"] = ciface_inline_report
         audit.stage("llvm-final", ll_text, format="llvm-ir")
         ll_path = work / "model.ll"
@@ -678,6 +713,7 @@ def lower_model(
             ll_path=ll_path,
             stats=stats,
             audit_index=audit.directory / "index.json" if audit.directory is not None else None,
+            borrowed_arena_lifetime=borrowed_arena_lifetime,
         )
         if descriptor_preparation is not None:
             descriptor_check()
@@ -731,6 +767,7 @@ def lower_model_file(
     shared_source_lowerings: tuple = (),
     source_optimizations: SourceOptimizationSelection | None = None,
     descriptor_result_identities: tuple = (),
+    descriptor_result_effects=None,
     source_recomputation: SourceRecomputationSelection | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
@@ -744,6 +781,7 @@ def lower_model_file(
         shared_source_lowerings=shared_source_lowerings,
         source_optimizations=source_optimizations,
         **({"descriptor_result_identities": descriptor_result_identities} if descriptor_result_identities else {}),
+        **({"descriptor_result_effects": descriptor_result_effects} if descriptor_result_effects is not None else {}),
         **({"source_recomputation": source_recomputation} if source_recomputation is not None else {}),
         textual=textual,
         vectorize=vectorize,

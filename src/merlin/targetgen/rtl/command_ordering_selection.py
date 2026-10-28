@@ -144,7 +144,9 @@ def _readers():
         selected_operand_protocol,
         semantics,
     )
-    return {m.__name__: _sha(m.__file__) for m in modules} | {__name__: _sha(__file__)}
+    # Under ``python -m`` this module is ``__main__``; key it by its import name so the grader matches.
+    own = __spec__.name if __spec__ is not None else __name__
+    return {m.__name__: _sha(m.__file__) for m in modules} | {own: _sha(__file__)}
 
 
 def prepare(*, target: str, facts: Path, contract: Path, declarations: Path, output: Path):

@@ -395,5 +395,96 @@ def main(argv=None) -> int:
         return 2
 
 
+@dataclass(frozen=True)
+class KnobSettings:
+    """One immutable setting or existing option bundle, with no evaluation.
+
+    Representation admits the full declaration size. The search generator's
+    independent one/two-change limit does not constrain already authored bundles.
+    """
+
+    settings_json: str
+    changes: tuple[tuple[str, object], ...] = ()
+
+    def __post_init__(self):
+        try:
+            document = json.loads(self.settings_json)
+            canonical = json.dumps(document, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError):
+            raise KnobError("tuning settings need finite canonical JSON") from None
+        if (type(document) is not dict or self.settings_json != canonical
+                or len(canonical.encode()) > MAX_BYTES or type(self.changes) is not tuple
+                or len(self.changes) > MAX_KNOBS or any(type(row) is not tuple or len(row) != 2 for row in self.changes)
+                or any(type(name) is not str or not name or name not in document or not scalar(value)
+                       or not same_value(document[name], value) for name, value in self.changes)
+                or len({name for name, _ in self.changes}) != len(self.changes)):
+            raise KnobError(f"tuning settings need complete immutable values and at most {MAX_KNOBS} distinct changes")
+
+    @property
+    def values(self):
+        return json.loads(self.settings_json)
+
+    @property
+    def baseline(self):
+        return not self.changes
+
+    @property
+    def identity(self):
+        import hashlib
+
+        return hashlib.sha256(self.settings_json.encode()).hexdigest()
+
+
+def bounded_settings(root, *, knob_names=None, max_candidates=16, max_changed_knobs=1):
+    """Baseline, declared single changes, then optional pairs; never writes files.
+
+    ``knob_names`` filters in declaration order, regardless of subset ordering.
+    Baseline absence stays absent, retaining the compiler's call-site defaults;
+    all declared values remain alternatives for an absent selected knob. Actual
+    emission dedup handles equivalent defaults without guessing them. Unrelated
+    settings remain intact. This finite prefix makes no exhaustiveness claim.
+    Apply choices only in ordinary caller-owned isolated invocations, then emit
+    and recheck current programs before using their actual cycle observations.
+    """
+    from itertools import combinations
+
+    if (type(max_candidates) is not int or not 1 <= max_candidates <= 256
+            or type(max_changed_knobs) is not int or max_changed_knobs not in (1, 2)):
+        raise KnobError("tuning needs 1 to 256 candidates and one or two changed knobs")
+    declared = declaration(root)
+    if declared is None:
+        raise KnobError("bounded tuning requires an existing knob declaration")
+    current = settings(root, declared)
+    if any(name in current and not _member(current[name], spec["values"])
+           for name, spec in declared["knobs"].items()):
+        raise KnobError("present baseline knob settings must be declared values")
+    if (knob_names is not None and (type(knob_names) is not tuple
+            or any(type(name) is not str or name not in declared["knobs"] for name in knob_names)
+            or len(set(knob_names)) != len(knob_names))):
+        raise KnobError("knob subset must name distinct declared knobs")
+    selected = set(declared["knobs"] if knob_names is None else knob_names)
+
+    def choice(changes=()):
+        document = {**current, **dict(changes)}
+        return KnobSettings(json.dumps(document, sort_keys=True, separators=(",", ":"), allow_nan=False), changes)
+
+    found = [choice()]
+    if max_candidates == 1:
+        return tuple(found)
+    singles = [row for row in alternatives(root) if row["knob"] in selected]
+    for row in singles:
+        found.append(choice(((row["knob"], row["value"]),)))
+        if len(found) >= max_candidates:
+            return tuple(found)
+    if max_changed_knobs == 2:
+        for first, second in combinations(singles, 2):
+            if first["knob"] == second["knob"]:
+                continue
+            found.append(choice(((first["knob"], first["value"]), (second["knob"], second["value"]))))
+            if len(found) >= max_candidates:
+                break
+    return tuple(found)
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

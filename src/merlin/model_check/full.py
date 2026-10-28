@@ -495,7 +495,9 @@ def check(args, report: dict, *, models, bundle: B.Bundle, admission=None, build
     settings = FB.BuildSettings.of(models, model, args.host_package)
     if getattr(args, "host_elementwise_fusion", None) is not None:
         settings = replace(settings, host_elementwise_fusion=args.host_elementwise_fusion)
-    stages = {p.name: B.stage_dir(captures, model, p.name) for p in model.programs}
+    # The sealed operator bundle may link its capture directories to where they were recorded; build
+    # inputs are identified by content and refuse symlinked paths, so name the recorded directories.
+    stages = {p.name: B.stage_dir(captures, model, p.name).resolve() for p in model.programs}
     specs = {name: _out_specs(stage / "model.mlir") for name, stage in stages.items()}
     report["bundle"] = {"path": str(bundle.root), "merlin_commit": manifest.get("merlin_commit")}
     timing: dict[str, Any] = {"build_seconds": 0.0, "reference_seconds": 0.0, "chain_seconds": {}}

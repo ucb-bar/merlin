@@ -41,6 +41,7 @@ class GraphOptimizationContract:
     physical_layout: bool = False
     maximum_layout_assignments: int = 100_000
     maximum_layout_permutations: int = 16
+    connected_layout: bool = False
 
     def validate(self, source: str):
         if self.source_sha256 != hashlib.sha256(source.encode()).hexdigest():
@@ -52,9 +53,12 @@ class GraphOptimizationContract:
             "independent_element_order_unobserved",
             "floating_environment_unobserved_nontrapping",
             "physical_layout",
+            "connected_layout",
         ):
             if type(getattr(self, field)) is not bool:
                 raise ValueError("graph permissions must be explicit booleans")
+        if self.connected_layout and not self.physical_layout:
+            raise ValueError("connected layouts require the existing physical layout planner")
         for field in (
             "minimum_transpose_bytes_saved",
             "minimum_dispatches_saved",
@@ -111,7 +115,7 @@ def _transpose_bytes(module):
     return total
 
 
-def _check_layout_output(original, modified, bodies):
+def _check_layout_output(original, modified, bodies, *, connected=False):
     before = _functions(original)
     after = _functions(modified)
     if set(before) != set(after) or any(before[name].function_type != after[name].function_type for name in before):
@@ -126,8 +130,8 @@ def _check_layout_output(original, modified, bodies):
     modified.verify()
     from .layout_conformance import layout_expression
 
-    before, before_work = layout_expression(original, include_work=True)
-    after, after_work = layout_expression(modified, include_work=True)
+    before, before_work = layout_expression(original, include_work=True, connected=connected)
+    after, after_work = layout_expression(modified, include_work=True, connected=connected)
     if before != after:
         raise ValueError("layout propagation changed complete logical output coordinates or scalar expressions")
     if any(count > before_work[key] for key, count in after_work.items()):
@@ -140,10 +144,10 @@ def _check_layout_output(original, modified, bodies):
     }
 
 
-def _layout_expression(module):
+def _layout_expression(module, *, connected=False):
     from .layout_conformance import layout_expression
 
-    return layout_expression(module)
+    return layout_expression(module, connected=connected)
 
 
 def _check_fusion_growth(outlined, plan, entry, original_count, maximum_added):
@@ -202,6 +206,7 @@ def _implementation_sources():
     from merlin.common import dense_float_ir
     from merlin.perf import physical_layout
     from merlin.transforms import pipeline_state
+    from merlin.xdsl_dialects.lowering import arena_plan
 
     # Trusted host observations, not an SDK/export grant or imported dependency lock.
     return {
@@ -215,6 +220,8 @@ def _implementation_sources():
                     "layout_conformance",
                     "quant_round_check",
                     "host_graph_policy",
+                    "host_storage_policy",
+                    "arena_bind",
                     "host_optimization_request",
                     "host_layout_planning",
                     "host_layout_realization",
@@ -223,6 +230,7 @@ def _implementation_sources():
             ("physical_layout", Path(physical_layout.__file__)),
             ("pipeline_state", Path(pipeline_state.__file__)),
             ("dense_float_ir", Path(dense_float_ir.__file__)),
+            ("arena_plan", Path(arena_plan.__file__)),
         )
     }
 
@@ -264,7 +272,9 @@ def recheck_host_graph_artifacts(directory: Path, contract: GraphOptimizationCon
 def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostGraphPolicy) -> tuple[str, dict]:
     """Select the existing layout/fusion mechanisms before host preprocessing.
 
-    The admitted source-check domain is static pointwise tensors/permutations.
+    The default source-check domain is static pointwise tensors/permutations.
+    Connected layout selection adds strict ordered generic reductions while
+    preserving initialized destinations, output layouts and iteration order.
     Fusion concerns logical host tensor SSA only. Physical representations,
     device residency and target conversion emitters require separate OOT APIs.
     Lowering/LLVM conformance and independent numerical execution remain required.
@@ -369,7 +379,7 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
                 ),
             )
         validate_pass_order(specs)
-        session.run(specs[0], lambda: {"coordinates": _layout_expression(module)})
+        session.run(specs[0], lambda: {"coordinates": _layout_expression(module, connected=contract.connected_layout)})
         if contract.physical_layout:
             session.run(
                 specs[1],
@@ -378,6 +388,7 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
                         module,
                         max_assignments=contract.maximum_layout_assignments,
                         max_permutations=contract.maximum_layout_permutations,
+                        connected=contract.connected_layout,
                     )
                 },
             )
@@ -406,7 +417,7 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
         layout = session.analysis("rewrite")
 
         def conformance():
-            checked = _check_layout_output(original, module, bodies)
+            checked = _check_layout_output(original, module, bodies, connected=contract.connected_layout)
             if contract.physical_layout:
                 checked["physical_layout"] = layout.verify(module)
             return {"conformance": checked}

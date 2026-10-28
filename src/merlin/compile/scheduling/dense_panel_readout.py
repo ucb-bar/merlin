@@ -10,7 +10,7 @@ from dataclasses import asdict, replace
 
 from merlin.sched.ir import Call, Loop
 
-from .block_schedule import Store
+from .block_schedule import InitializeAccumulator, Store
 from .compact_dense import _digest
 from .dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
 from .dense_panel_pipeline import (
@@ -30,7 +30,9 @@ def batch_dense_panel_readouts(result, problem, block, resources, storage, adapt
     Complete loops stay counted. A group contains at most the selected issued
     readout budget; its pending queue can be smaller because the selected target
     must apply backpressure. No movement, initialization or compute is crossed.
-    Per-tile varying numerical configuration remains unsupported here.
+    Per-tile varying numerical configuration remains unsupported here. An
+    original tiled readout with identical coefficient bits at every source
+    column retains those exact calls under the same ordered snapshot premise.
     """
     from .panel_tile_loads import PanelTileLoadResult
 
@@ -50,7 +52,8 @@ def batch_dense_panel_readouts(result, problem, block, resources, storage, adapt
                pending_readouts=result.admission.pending_readouts,
                readout_configuration=result.admission.readout_configuration) != result.admission:
         raise ValueError("readout batching cannot change original operand/compute execution premises")
-    if type(result.output_readout) is DenseTiledIntegerReadout:
+    if (type(result.output_readout) is DenseTiledIntegerReadout
+            and len(set(result.output_readout.column_scale_bits)) != 1):
         raise ValueError("varying per-tile readout configuration needs an independent snapshot mapping")
     kernel, groups = _propose(result.kernel, adapter, admission.max_issued_readouts)
     verifier = (verify_dense_retained_reduction if type(admission) is DenseRetainedReductionAdmission
@@ -69,6 +72,8 @@ def batch_dense_panel_readouts(result, problem, block, resources, storage, adapt
         "removed_dynamic_drains": (result.realization["dynamic_epoch_drains"] - report["dynamic_epoch_drains"]),
         "target_execution": "not_established",
     }
+    if type(result.output_readout) is DenseTiledIntegerReadout:
+        report["readout_batching"]["uniform_original_scale_bits"] = result.output_readout.column_scale_bits[0]
     rewritten = replace(result, kernel=kernel, realization=report, admission=admission,
                         checked_kernel_sha256=kernel.digest(), checked_admission_sha256=_digest(asdict(admission)))
     result.revalidate()
@@ -128,7 +133,7 @@ def _batch_wide_panel_readouts(result, problem, block, resources, storage, adapt
     return rewritten
 
 
-def _propose(original, adapter, max_readouts):
+def _propose(original, adapter, max_readouts, *, operations=(Store, TiledIntegerStore), prefix="batched_readout_epoch"):
     names = set()
 
     def collect(body):
@@ -144,7 +149,7 @@ def _propose(original, adapter, max_readouts):
         if type(statement) is Call:
             if statement == Call(DRAIN, ()):
                 return (), 0
-            if type(adapter.project(statement)) not in (Store, TiledIntegerStore):
+            if type(adapter.project(statement)) not in operations:
                 return None
             return (statement,), 1
         if type(statement) is not Loop:
@@ -165,7 +170,7 @@ def _propose(original, adapter, max_readouts):
             proposed = strip(statement)
             if proposed is not None and 1 < proposed[1] <= max_readouts:
                 index = len(groups)
-                name = f"batched_readout_epoch_{index}"
+                name = f"{prefix}_{index}"
                 while name in names:
                     name += "_"
                 names.add(name)
@@ -198,3 +203,44 @@ def _propose(original, adapter, max_readouts):
     if data(original.body) != data(kernel.body):
         raise ValueError("readout batching changed original symbolic data calls or source order")
     return kernel, groups
+
+
+def batch_dense_panel_initializers(result, problem, block, resources, storage, adapter, admission,
+                                   *, static_budget=128, timeout_ms=5000):
+    """Batch pure bias loads into proven pairwise-disjoint private ACC rows.
+
+    The selected retained admission must explicitly cover ordered load-state
+    capture and bounded initializer issue. No staging, compute or readout is
+    crossed; every original initializer/data call and numerical operand stays
+    in order. The final actual epoch checker proves all simultaneous ACC write
+    intervals disjoint and retains a real full drain before any consumer.
+    """
+    if (type(result) is not DensePanelPipelineResult
+            or type(result.admission) is not DenseRetainedReductionAdmission
+            or type(admission) is not DenseRetainedReductionAdmission):
+        raise ValueError("initializer batching requires the original checked retained result and admission")
+    result.revalidate()
+    admission.__post_init__()
+    if replace(admission,
+            max_issued_initializations=result.admission.max_issued_initializations,
+            initialization_configuration=result.admission.initialization_configuration) != result.admission:
+        raise ValueError("initializer batching cannot change original operand/compute/readout premises")
+    kernel, groups = _propose(result.kernel, adapter, admission.max_issued_initializations,
+                              operations=(InitializeAccumulator,), prefix="batched_initializer_epoch")
+    report = verify_dense_retained_reduction(kernel, problem, block, resources, storage, adapter, admission,
+        static_budget=static_budget, timeout_ms=timeout_ms,
+        output_readout=result.output_readout, bias_source=result.bias_source)
+    report["input_schedule"] = result.realization
+    report["schedule_ir"] = result.realization["schedule_ir"]
+    report["initializer_batching"] = {
+        "source_kernel_sha256": result.kernel.digest(), "actual_kernel_sha256": kernel.digest(),
+        "groups": [{"initializations_per_epoch": g["readouts_per_epoch"], "dynamic_epochs": g["dynamic_epochs"]}
+                   for g in groups],
+        "removed_dynamic_drains": result.realization["dynamic_epoch_drains"]-report["dynamic_epoch_drains"],
+        "target_execution": "not_established",
+    }
+    rewritten = replace(result, kernel=kernel, realization=report, admission=admission,
+                        checked_kernel_sha256=kernel.digest(), checked_admission_sha256=_digest(asdict(admission)))
+    result.revalidate()
+    rewritten.revalidate()
+    return rewritten

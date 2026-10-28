@@ -81,6 +81,35 @@ class DensePanelOverlapAdmission:
 
 
 @dataclass(frozen=True)
+class DenseReadoutConfigurationSnapshot:
+    """Target-owned capture of each exact tiled readout's numerical state.
+
+    The selected implementation must consume configuration in store order and
+    retain that store's scale/activation through backpressure and completion.
+    This does not permit combining differently configured stores, changing
+    coefficients, or issuing a readout before its accumulator producer.
+    """
+
+    hardware_identity: str
+    numerical_policy_identity: str
+    qualification_identity: str
+    readout_identity: str
+    execution: str = "ordered_per_store_snapshot_until_completion"
+
+    def validate_for(self, adapter, readout):
+        if (any(type(value) is not str or not value.strip() for value in (
+                self.hardware_identity, self.numerical_policy_identity,
+                self.qualification_identity, self.readout_identity))
+                or self.hardware_identity != adapter.configuration_identity
+                or self.numerical_policy_identity != adapter.numerical_policy_identity
+                or type(readout) is not DenseTiledIntegerReadout
+                or self.readout_identity != readout.identity
+                or self.execution != "ordered_per_store_snapshot_until_completion"):
+            raise ValueError("varying readout requires its exact selected configuration snapshot mapping")
+        readout.__post_init__()
+
+
+@dataclass(frozen=True)
 class DenseReadoutComputeAdmission:
     """Additional target conjunction; pure readout/reduction laws do not imply it.
 
@@ -97,6 +126,7 @@ class DenseReadoutComputeAdmission:
     max_issued_readouts: int
     pending_readouts: int
     execution: str = "disjoint_accumulator_readout_compute_full_drain"
+    configuration_snapshot: DenseReadoutConfigurationSnapshot | None = None
 
     def validate_for(self, adapter, original):
         if (any(type(value) is not str or not value.strip() for value in
@@ -123,6 +153,11 @@ class DenseReadyReadoutAdmission:
     overlapping stores dependent on producer completion and pending ACC writes,
     snapshot each readout, apply finite-queue backpressure, and fully drain before
     ownership reuse. No compiler-chosen cycle spacing is part of this contract.
+    Varying tiled numerical state additionally needs ``configuration_snapshot``
+    bound to that complete original readout; uniform-only callers grant none.
+    Concurrent disjoint input loads additionally require the separately selected
+    ``disjoint_load_qualification_identity`` for the complete LD/compute/readout
+    conjunction. Its absence keeps the original refusal of mixed load epochs.
     """
 
     hardware_identity: str
@@ -132,14 +167,21 @@ class DenseReadyReadoutAdmission:
     max_issued_readouts: int
     pending_readouts: int
     execution: str = "ordered_accumulator_raw_readout_full_drain"
+    configuration_snapshot: DenseReadoutConfigurationSnapshot | None = None
+    disjoint_load_qualification_identity: str | None = None
 
     def validate_for(self, adapter, original):
         if self.execution != "ordered_accumulator_raw_readout_full_drain":
             raise ValueError("causal readout requires the separate producer completion execution law")
+        if (self.disjoint_load_qualification_identity is not None
+                and (type(self.disjoint_load_qualification_identity) is not str
+                     or not self.disjoint_load_qualification_identity.strip())):
+            raise ValueError("ready readout/load overlap needs its separate selected execution conjunction")
         DenseReadoutComputeAdmission(
             self.hardware_identity, self.numerical_policy_identity,
             self.qualification_identity, self.store_qualification_identity,
-            self.max_issued_readouts, self.pending_readouts).validate_for(adapter, original)
+            self.max_issued_readouts, self.pending_readouts,
+            configuration_snapshot=self.configuration_snapshot).validate_for(adapter, original)
 
 
 def _calls(body):
@@ -465,7 +507,7 @@ def _loops(body):
             yield from _loops(statement.body)
 
 
-def dense_panel_rhs_stripes(kernel, adapter, *, factor):
+def dense_panel_rhs_stripes(kernel, adapter, *, factor, retain_short_tails=False):
     """Propose typed split/fission of actual mixed compute/RHS column loops.
 
     A stripe retains each physical preload/compute pair, executes its current
@@ -474,12 +516,16 @@ def dense_panel_rhs_stripes(kernel, adapter, *, factor):
     ordinary coalescer; the final expanded-band/source checker owns legality.
     Serialized per-column epochs and compute-only/grouped streams refuse: the
     helper never crosses a completion or substitutes a different issue policy.
+    With explicit ``retain_short_tails``, mixed loops shorter than one factor
+    keep their original paired compute/load order. Only complete stripes receive
+    split/fission requests; the final actual owner must still verify all tails.
     """
     from .loop_schedule import striped_fission_transforms
 
-    if type(kernel) is not Kernel or check_structure(kernel) or type(factor) is not int or not 2 <= factor <= 64:
+    if (type(kernel) is not Kernel or check_structure(kernel) or type(factor) is not int or not 2 <= factor <= 64
+            or type(retain_short_tails) is not bool):
         raise ValueError("panel stripes require actual checked loop structure and an explicit factor 2..64")
-    paths = []
+    paths, short_paths = [], []
 
     def walk(body, prefix=(), inside_epoch=False):
         for statement in body:
@@ -499,11 +545,13 @@ def dense_panel_rhs_stripes(kernel, adapter, *, factor):
                     and type(operation := adapter.project(load)) is Load
                     and operation.role == "weight"
                 ):
-                    paths.append(path)
+                    (short_paths if retain_short_tails and statement.extent < factor else paths).append(path)
             walk(statement.body, path, inside_epoch or drained)
 
     walk(kernel.body)
     if not paths:
+        if short_paths:
+            return ()
         raise ValueError("panel stripes require a mixed current-compute/future-RHS loop inside one drained epoch")
     return striped_fission_transforms(kernel, tuple(paths), factor=factor, cut=1)
 
@@ -737,8 +785,15 @@ def _verify_dense_epochs(
         if type(readout_compute_admission) not in (DenseReadoutComputeAdmission, DenseReadyReadoutAdmission):
             raise ValueError("typed additional readout/compute conjunction required")
         readout_compute_admission.validate_for(adapter, admission)
-        if type(output_readout) is DenseTiledIntegerReadout:
+        snapshot = readout_compute_admission.configuration_snapshot
+        varying = (type(output_readout) is DenseTiledIntegerReadout
+                   and len(set(output_readout.column_scale_bits)) != 1)
+        if varying and snapshot is None:
             raise ValueError("mixed per-tile readout configuration has no selected conjunction")
+        if snapshot is not None:
+            if type(snapshot) is not DenseReadoutConfigurationSnapshot:
+                raise ValueError("typed exact readout configuration snapshot required")
+            snapshot.validate_for(adapter, output_readout)
 
     from .compact_verification import _project, verify_compact_dense
 
@@ -861,6 +916,21 @@ def _verify_dense_epochs(
         if solver.check() != z3.unsat:
             raise ValueError("overlapping ACC producer must precede readout; later writes/reuse are unqualified")
 
+    def prove_assigned(access):
+        site, view, row, rows = access
+        env, constraints = domain(site, "assigned")
+        _, low, high = interval(view, row, rows, env)
+        solver = z3.Solver()
+        remaining = int((deadline - time.monotonic()) * 1000)
+        if remaining <= 0:
+            raise ValueError("panel assigned-access checking budget exhausted")
+        solver.set(timeout=remaining)
+        solver.add(*constraints, z3.Or(low < view.base * view.unit_bytes,
+                                      high > (view.base + view.capacity) * view.unit_bytes,
+                                      high <= low))
+        if solver.check() != z3.unsat:
+            raise ValueError("actual panel access escapes its original assigned private view")
+
     summaries = []
     for outer in epochs:
         marker = outer[-1][0]
@@ -917,8 +987,12 @@ def _verify_dense_epochs(
         if stores and (loads or writes):
             if not writes or initializations or stores > readout_compute_admission.max_issued_readouts:
                 raise ValueError("mixed readout epoch needs disjoint compute and its explicit issued store bound")
-            if type(readout_compute_admission) is DenseReadyReadoutAdmission and loads:
+            if (type(readout_compute_admission) is DenseReadyReadoutAdmission and loads
+                    and readout_compute_admission.disjoint_load_qualification_identity is None):
                 raise ValueError("causal-ready readout has no mixed DMA-load execution conjunction")
+            for read in store_reads:
+                for load in loads:
+                    prove_disjoint(read, load, outer)
             for read in store_reads:
                 for write in writes:
                     if type(readout_compute_admission) is DenseReadyReadoutAdmission:
@@ -927,6 +1001,8 @@ def _verify_dense_epochs(
                         prove_disjoint(read, write, outer)
         if pairs > admission.max_issued_compute_pairs or load_count > admission.max_issued_loads:
             raise ValueError("panel epoch exceeds original selected in-flight command bounds")
+        for access in (*loads, *reads, *writes, *store_reads):
+            prove_assigned(access)
         for i, a in enumerate(loads):
             for b in loads[i:]:
                 prove_disjoint(a, b, outer, exclude_same=True)
@@ -1081,6 +1157,24 @@ class DensePanelPipelineResult:
 
         self.revalidate()
         receipt = emit_index_program(self.kernel, FnBuilderIndexAdapter(builder), lower_call)
+        self.revalidate()
+        return receipt
+
+    def emit_index_program(self, control, lower_effect, *, complete_epoch):
+        """Lower checked effects and explicit full-completion boundaries separately.
+
+        ``lower_effect`` issues the actual instruction represented by each call;
+        it must preserve the selected operand/configuration mapping. Only the
+        schedule's explicit drains invoke ``complete_epoch``. That callback must
+        emit a real full device completion, never a delay or an issue ticket.
+        Both callbacks and target execution premises remain caller obligations.
+        This entry neither chooses a schedule nor removes completion boundaries.
+        """
+        from .llvm_program import emit_index_effect_program
+
+        self.revalidate()
+        receipt = emit_index_effect_program(self.kernel, control, lower_effect,
+            complete_epoch=complete_epoch, completion_instruction=DRAIN)
         self.revalidate()
         return receipt
 
@@ -1410,6 +1504,8 @@ class DenseRetainedReductionAdmission:
     The selected implementation must preserve each overlapping accumulator
     update in issue order, including initialization and continuation. No operand
     overwrite, load/compute overlap, or generic RAW/WAR scoreboard is admitted.
+    Initializers retain individual drains unless an explicit ordered load
+    configuration snapshot and pairwise-disjoint ACC write admission is selected.
     Issued counts are compiler cost bounds, not invented physical capacities.
     """
 
@@ -1426,6 +1522,8 @@ class DenseRetainedReductionAdmission:
     max_issued_readouts: int = 1
     pending_readouts: int = 1
     readout_configuration: str = "separate_drained_readout"
+    max_issued_initializations: int = 1
+    initialization_configuration: str = "separate_drained_initialization"
 
     def __post_init__(self):
         if (
@@ -1442,11 +1540,16 @@ class DenseRetainedReductionAdmission:
                     self.pending_loads,
                     self.max_issued_readouts,
                     self.pending_readouts,
+                    self.max_issued_initializations,
                 )
             )
             or self.execution != "ordered_accumulator_commits_read_only_operands_full_drain"
             or self.load_configuration != "ordered_snapshot_before_data_issue"
             or self.descriptor != "preload_immediately_paired_with_compute"
+            or self.initialization_configuration not in ("separate_drained_initialization",
+                "ordered_snapshot_before_disjoint_accumulator_issue")
+            or self.max_issued_initializations > 1
+            and self.initialization_configuration != "ordered_snapshot_before_disjoint_accumulator_issue"
             or self.readout_configuration not in ("separate_drained_readout", "ordered_snapshot_before_store_issue")
             or self.max_issued_readouts > 1
             and self.readout_configuration != "ordered_snapshot_before_store_issue"
@@ -1773,8 +1876,11 @@ def verify_dense_retained_reduction(
         raise ValueError("unknown retained address expression")
 
     def disjoint(a, b, outer):
-        va = storage.lhs if a.operation.role == "lhs" else storage.rhs
-        vb = storage.lhs if b.operation.role == "lhs" else storage.rhs
+        def view(site):
+            if type(site.operation) is InitializeAccumulator:
+                return storage.accumulator
+            return storage.lhs if site.operation.role == "lhs" else storage.rhs
+        va, vb = view(a), view(b)
         if va.backing != vb.backing:
             return
         ae = {name: z3.Int(f"retained-a:{scope}:{name}") for scope, name, _ in a.scopes}
@@ -1801,7 +1907,7 @@ def verify_dense_retained_reduction(
         solver.set(timeout=remaining)
         solver.add(*constraints, al < bh, bl < ah)
         if solver.check() != z3.unsat:
-            raise ValueError("retained staging has overlapping in-flight load destinations")
+            raise ValueError("retained staging or initialization has overlapping in-flight destinations")
 
     summaries = []
     for outer in epochs:
@@ -1814,7 +1920,7 @@ def verify_dense_retained_reduction(
             {Store},
             {TiledIntegerStore},
         ):
-            raise ValueError("retained epoch must contain only staging, paired computation, one init or one readout")
+            raise ValueError("retained epoch must contain only staging, paired computation, initialization or readout")
 
         def count(site):
             return prod(extent for scope, _, extent in site.scopes if scope not in {s[0] for s in outer})
@@ -1835,13 +1941,18 @@ def verify_dense_retained_reduction(
                 for a, b in zip(selected[::2], selected[1::2], strict=True)
             ):
                 raise ValueError("retained reduction must not split or overwrite a physical preload/compute pair")
-        elif kinds == {InitializeAccumulator} and sum(count(s) for s in selected) != 1:
-            raise ValueError("retained initializer must preserve its individual completion boundary")
+        elif kinds == {InitializeAccumulator}:
+            if sum(count(s) for s in selected) > admission.max_issued_initializations:
+                raise ValueError("retained initializer exceeds its selected completion budget")
+            for index, a in enumerate(selected):
+                for b in selected[index:]:
+                    disjoint(a, b, outer)
         elif kinds & {Store, TiledIntegerStore}:
             readouts = sum(count(s) for s in selected)
             if readouts > admission.max_issued_readouts:
                 raise ValueError("retained readout exceeds selected store completion budget")
-            if readouts > 1 and type(output_readout) is DenseTiledIntegerReadout:
+            if (readouts > 1 and type(output_readout) is DenseTiledIntegerReadout
+                    and len(set(output_readout.column_scale_bits)) != 1):
                 raise ValueError("varying per-tile readout needs an independent configuration snapshot mapping")
         summaries.append(
             dict(

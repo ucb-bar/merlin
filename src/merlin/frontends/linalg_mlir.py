@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -71,11 +72,53 @@ def strip_paren_results(text: str) -> str:
         i = close + 1
 
 
+def layout_to_buffer_type():
+    """The explicit ranked/unranked tensor-to-buffer type relation.
+
+    MLIR permits memref layouts here: shape and element type must match the
+    tensor, while access and aliasing remain independent bufferization promises.
+    xDSL's inverse tensor constraint currently infers an identity memref layout.
+    This owned definition retains type verification without that inference.
+    """
+    return next(op for op in layout_bufferization_dialect().operations if op.name == "bufferization.to_buffer")
+
+
+@cache
+def layout_bufferization_dialect():
+    """Return upstream bufferization with one layout-capable checked operation."""
+    from xdsl.dialects import bufferization, builtin
+    from xdsl.ir import Dialect
+    from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, opt_prop_def, result_def
+    from xdsl.utils.exceptions import VerifyException
+
+    @irdl_op_definition
+    class LayoutToBufferOp(IRDLOperation):
+        name = "bufferization.to_buffer"
+        tensor = operand_def(builtin.TensorType | builtin.UnrankedTensorType)
+        memref = result_def(builtin.MemRefType | builtin.UnrankedMemRefType)
+        read_only = opt_prop_def(builtin.UnitAttr)
+        assembly_format = "$tensor (`read_only` $read_only^)? `:` attr-dict type($tensor) `to` type($memref)"
+
+        def verify_(self):
+            source, result = self.tensor.type, self.memref.type
+            if (isinstance(source, builtin.TensorType) != isinstance(result, builtin.MemRefType)
+                    or source.element_type != result.element_type):
+                raise VerifyException("to_buffer requires matching tensor/buffer rank and element type")
+            if isinstance(source, builtin.TensorType) and source.get_shape() != result.get_shape():
+                raise VerifyException("to_buffer requires identical tensor/buffer shapes")
+            if (isinstance(result, builtin.MemRefType) and isinstance(result.layout, builtin.StridedLayoutAttr)
+                    and len(result.layout.strides) != len(result.get_shape())):
+                raise VerifyException("to_buffer strided layout must retain every ranked dimension")
+
+    return Dialect("bufferization", [LayoutToBufferOp if op is bufferization.ToBufferOp else op
+                                     for op in bufferization.Bufferization.operations],
+                   list(bufferization.Bufferization.attributes))
+
+
 def make_context():
     """A permissive context for tensor sources and prepared bufferized writers."""
     from xdsl.context import Context
     from xdsl.dialects.arith import Arith
-    from xdsl.dialects.bufferization import Bufferization
     from xdsl.dialects.builtin import Builtin
     from xdsl.dialects.cf import Cf
     from xdsl.dialects.func import Func
@@ -95,7 +138,7 @@ def make_context():
     register_fp8_float_constraints()
 
     ctx = Context(allow_unregistered=True)
-    for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf, MemRef, Bufferization):
+    for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf, MemRef, layout_bufferization_dialect()):
         ctx.load_dialect(d)
     return ctx
 

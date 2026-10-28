@@ -23,6 +23,7 @@ from merlin.targetgen.capsule_dram import dtype_bits
 
 from .capsule_intent import _semantic_block as _semantic_block
 from .corpus_pool import build as build_maxpool2d
+from .corpus_sibling_feed import build as _build_sibling_feed
 
 # canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
 # on a target — a target selects its dtypes via its compute-unit contract.
@@ -2442,6 +2443,7 @@ def build_spatial_producer_pool(entry: dict, binding: CorpusBinding) -> tuple[di
 
 
 BUILDERS["spatial_producer_pool"] = build_spatial_producer_pool
+BUILDERS["sibling_feed"] = _build_sibling_feed  # sibling contractions, merged, feeding a contraction
 
 
 def activation_matmul_program(entry: dict, binding: CorpusBinding) -> dict:

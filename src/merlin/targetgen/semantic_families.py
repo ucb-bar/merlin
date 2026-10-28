@@ -227,6 +227,7 @@ _OP_FAMILY: dict[str, str] = {
     # the capsule exists to test whether the two are joined, so claiming the add as its own family here
     # would count the seam as evidence for a standalone elementwise capability nobody claimed.
     "residual_seam": "contraction",
+    "sibling_feed": "contraction",
     "linear": "contraction",
     "fused_matmul_bias": "contraction",
     "gemv_batched": "contraction",
@@ -253,6 +254,8 @@ _OP_FAMILY: dict[str, str] = {
     # The hardware was never the constraint: gemmini's contraction capability already declares
     # `transpose: True`. The taxonomy was.
     "sdpa": "attention",
+    # The ATen spelling of the same fused pattern, as a captured frontend graph names it.
+    "scaled_dot_product_attention": "attention",
     "attention": "attention",
     "attention_full": "attention",
     # the same fused pattern with the score scale supplied as a full elementwise tensor (a mask/scale
@@ -394,6 +397,8 @@ _OP_FAMILY: dict[str, str] = {
     "permute": "movement",
     "reshape": "movement",
     "expand": "movement",
+    # Repeats each slice along one axis: a broadcast copy, like ``expand`` materialized.
+    "repeat_interleave": "movement",
     "pack": "movement",
     "copy": "movement",
     # ...captured-model movement spellings. A constant fill writes a value per element with no arithmetic

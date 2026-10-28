@@ -43,6 +43,7 @@ _NAMESPACE_MODULES_V8 = (*_NAMESPACE_MODULES_V6,)
 _NAMESPACE_MODULES_V16 = (*_NAMESPACE_MODULES_V8, "merlin.xdsl_dialects", "merlin.sched.primitives")
 _NAMESPACE_MODULES_V20 = (*_NAMESPACE_MODULES_V16, "merlin.frontends", "merlin.integrations", "merlin.runtime",
                           "merlin.xdsl_dialects.lowering")
+_NAMESPACE_MODULES_V24 = (*_NAMESPACE_MODULES_V20, "merlin.capture")
 
 
 def _namespace_modules(version):
@@ -58,6 +59,8 @@ def _namespace_modules(version):
         20: _NAMESPACE_MODULES_V20,
         21: _NAMESPACE_MODULES_V20,
         22: _NAMESPACE_MODULES_V20,
+        23: _NAMESPACE_MODULES_V20,
+        24: _NAMESPACE_MODULES_V24,
     }[version]
 
 
@@ -131,7 +134,7 @@ def _manifest_version(document, version):
         return "inventory_version" not in document and schema == (
             "merlin.shared_scheduling_library.v2" if binding else "merlin.shared_scheduling_library.v1"
         )
-    if version in (16, 17, 18, 19, 20, 21, 22):
+    if version in (16, 17, 18, 19, 20, 21, 22, 23, 24):
         schemas = {
             16: "merlin.shared_scheduling_library.v10",
             17: "merlin.shared_scheduling_library.v11",
@@ -140,6 +143,8 @@ def _manifest_version(document, version):
             20: "merlin.shared_scheduling_library.v14",
             21: "merlin.shared_scheduling_library.v15",
             22: "merlin.shared_scheduling_library.v16",
+            23: "merlin.shared_scheduling_library.v17",
+            24: "merlin.shared_scheduling_library.v18",
         }
         return (
             schema == schemas[version]
@@ -789,7 +794,7 @@ def main(argv=None):
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--python-source-root", required=True, type=Path)
     parser.add_argument("--license-directory", required=True, type=Path)
-    parser.add_argument("--library-version", type=int, choices=(6, 7, 8, 16, 17, 18, 19, 20, 21, 22), default=6)
+    parser.add_argument("--library-version", type=int, choices=(6, 7, 8, 16, 17, 18, 19, 20, 21, 22, 23, 24), default=6)
     parser.add_argument("--tool", action="append", default=[], help="existing tool registry name to stage, not grant")
     parser.add_argument("--source-binding", action="store_true", help="explicit version-8 typed-source/LLVM lexer APIs")
     args = parser.parse_args(argv)

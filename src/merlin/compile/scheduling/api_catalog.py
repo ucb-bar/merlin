@@ -9,8 +9,8 @@ from __future__ import annotations
 
 def scheduling_capabilities(version=16):
     """Return fresh usage metadata; the selected library contract grants access."""
-    if type(version) is not int or version not in (16, 17, 18, 19, 20, 21, 22):
-        raise ValueError("scheduling discovery requires explicit inventory 16, 17, 18, 19, 20, 21 or 22")
+    if type(version) is not int or version not in (16, 17, 18, 19, 20, 21, 22, 23, 24):
+        raise ValueError("scheduling discovery requires explicit inventory 16 through 24")
     prefix = "merlin.compile.scheduling."
     catalog = {
         "schema": "merlin.scheduling_api_catalog.v1",
@@ -24,6 +24,7 @@ def scheduling_capabilities(version=16):
                     prefix + name
                     for name in (
                         "dense_segmented_pipeline.DenseSegmentedAdmission",
+                        "dense_segmented_pipeline.dense_segmented_blocks",
                         "dense_segmented_pipeline.schedule_dense_segmented_pipeline",
                         "dense_segmented_pipeline.build_dense_segmented_pipeline",
                         "dense_segmented_pipeline.verify_dense_segmented_pipeline",
@@ -33,6 +34,7 @@ def scheduling_capabilities(version=16):
                     )
                 ],
                 "usage": [
+                    "Use dense_segmented_blocks for full-LHS/two-RHS capacity and alignment bounds.",
                     "Create a typed schedule plan with pipeline_kind='retained_lhs_segmented_k'.",
                     "Choose a supported pipeline_issue_order and capacity-legal block_tiles.",
                     "Call schedule_dense_segmented_pipeline with original source identity, storage, adapter and law.",
@@ -197,6 +199,7 @@ def scheduling_capabilities(version=16):
                     prefix + name
                     for name in (
                         "dense_panel_pipeline.DenseReadyReadoutAdmission",
+                        "dense_panel_pipeline.DenseReadoutConfigurationSnapshot",
                         "dense_ready_readout.propose_dense_ready_readout",
                         "dense_ready_readout.schedule_dense_ready_readout",
                         "dense_ready_readout.schedule_dense_pipeline",
@@ -207,6 +210,8 @@ def scheduling_capabilities(version=16):
                     "Start with the exact original checked segmented schedule and a separate causal target capability.",
                     "Reorder final pure compute through typed M/N/K transforms and append each original output store.",
                     "Revalidate actual producer-before-readout hazards and original source, then emit actual SCF/LLVM.",
+                    "Varying tiled coefficients require an independently selected per-store snapshot contract bound "
+                    "to the exact original readout identity; incompatible stores remain distinct.",
                     "Use the typed final-wide consumer to decode every physical band before source transport.",
                 ],
                 "requires": [
@@ -257,6 +262,98 @@ def scheduling_capabilities(version=16):
                 "fact-derived storage bounds and independent target completion implementation",
             ],
         })
+    if version >= 23:
+        catalog["capabilities"].append({
+            "name": "capacity_phased_convolution_rhs_residency",
+            "symbols": [prefix + "convolution_exploration." + name for name in (
+                "ConvolutionRhsPhaseLaw", "ConvolutionRhsPhases", "plan_convolution_rhs_phases",
+                "emit_convolution_schedule", "convolution_pass_space",
+                "ConvolutionStorageAlternative", "plan_convolution_storage_alternative",
+                "convolution_storage_pass_space",
+            )],
+            "usage": [
+                "Keep full-fit RHS residency, else derive complete-K output-column phases from assigned capacity.",
+                "Pass the complete owner and exact resident input_rows to emit_convolution_schedule; never emit "
+                "phases alone.",
+                "The registered rhs_modes=(False, True, 'phased') route retains original column tails and actual-byte"
+                " dedup.",
+                "Check phase_emissions against the requested owner, retaining real preparation and phase-last-use "
+                "drains.",
+                "Jointly explore caller-qualified resident input maps and output group bounds before freezing RHS "
+                "phase capacity; rank actual emitted complete-call cycles.",
+                "Supply rhs_column_limits=(None, ...) to convolution_storage_pass_space for explicit narrower "
+                "RHS phases; None retains the maximal-capacity default. plan_convolution_rhs_phases uses "
+                "max_column_blocks and plan_convolution_storage_alternative uses rhs_column_blocks.",
+                "Derive a useful finite column bound from actual ACC rows divided by requested live spatial "
+                "tiles times primitive rows; keep the real operand capacity and exact RHS/input placements.",
+                "Retain structured spatial coordinates outside K/N loops; resident input emit_row_coordinates "
+                "maps them directly without repeated flattened-coordinate decoding.",
+            ],
+            "requires": [
+                "original independent output columns, immutable inputs and no intermediate output observers",
+                "exclusive assigned RHS rows disjoint from the actual resident input footprint",
+                "separate RHS preservation and ConvolutionRhsPhaseLaw; capacity alone grants no reordering",
+                "real full completion before private RHS replacement; source/effect/numerical checks remain required",
+            ],
+        })
+    if version >= 23:
+        catalog["capabilities"].append({
+            "name": "source_qualified_convolution_readout_epochs",
+            "symbols": [prefix + "window_transfer.ConvolutionReadoutEpochLaw",
+                        prefix + "convolution_exploration.emit_convolution_schedule"],
+            "usage": [
+                "Bind a separate selected source readout law; compute-epoch or dense readout laws do not imply it.",
+                "Pass readout_law explicitly to the convolution consumer with original source/target callbacks.",
+                "Verify the returned readout_epoch, source/schedule and final block drain match the requested law.",
+                "Keep intermediate compute, rolling input-ready/last-use and whole-call completion drains.",
+                "Inspect actual emitted effects, full outputs and same-domain complete-call cycles; UNKNOWN keeps the"
+                " default.",
+            ],
+            "requires": [
+                "counted convolution with issued compute epochs and disjoint original output/ACC intervals",
+                "selected ACC RAW/result visibility, ordered store-configuration snapshots and finite queue progress",
+                "separate finite pending store capacity and bounded compiler-issued readouts; no extra hardware slots",
+                "private ownership and a real final drain before input/ACC/RHS reuse",
+                "target effect/completion adapter; consumer receipts do not independently prove emitted instruction "
+                "semantics",
+            ],
+        })
+    if version >= 23:
+        catalog["capabilities"].append({
+            "name": "parallel_emitted_variant_shape_evaluation",
+            "symbols": ["merlin.transforms.evaluated_exploration." + name for name in (
+                "EvaluationRequest", "EvaluationCompletion", "evaluate_emitted", "explore_evaluated",
+            )],
+            "usage": [
+                "Apply real registered passes and emit distinct alternatives with explore_candidates.",
+                "Interleave requests from representative shapes; each retains its original source and timing domain.",
+                "Use one caller-owned executor and ordinary resource-leased evaluator, with bounded max_in_flight.",
+                "Keep completion publication compact; verification runs in the evaluator and cleanup off the hot path.",
+                "Consume each completed result immediately; identical programs reuse only exact-domain evidence.",
+                "Rank complete same-ROI cycles within each shape; UNKNOWN never becomes an instruction-count score.",
+                "Promote measured shape/resource rules through shape_policy while retaining unaffected incumbents.",
+            ],
+            "requires": [
+                "target-owned emitted-program execution adapter and original numerical/provider/ROI identities",
+                "existing shared resource admission; this library creates no CPU pool or simulator",
+                "input lifetime covering all evaluation workers and the completion callback",
+            ],
+        })
+    if version >= 23:
+        catalog["capabilities"].append({
+            "name": "pointwise_convolution_dense_view",
+            "symbols": [prefix + "pointwise_convolution.pointwise_dense_view"],
+            "usage": [
+                "Derive a zero-copy matrix view from actual unit-stride unpadded 1x1 NHWC source geometry.",
+                "Pass the returned dimensions to shared dense planning, retention and scheduling.",
+                "Use the existing target encoder and preserve bias, quantization and all output observers.",
+                "Retain spatial lowering when geometry or storage is incompatible; "
+                "compare emitted alternatives by cycles.",
+            ],
+            "requires": ["original Window2D geometry and exact result shape",
+                         "physical operand layout and ABI agreement; "
+                         "target effects and numerical checks remain required"],
+        })
     if version >= 22:
         catalog["capabilities"].append({
             "name": "registered_source_convolution_exploration",
@@ -301,14 +398,29 @@ def scheduling_capabilities(version=16):
             "name": "shape_resource_schedule_selection",
             "symbols": ["merlin.transforms.shape_policy." + name for name in (
                 "PerformanceDomain", "ShapeScheduleClass", "ShapeCaseFeedback", "assess_shape_policy",
-                "AssessedShapePolicy.execute",
-            )] + ["merlin.transforms.evaluated_exploration.explore_evaluated"],
+                "AssessedShapePolicy.execute", "ShapePolicyProposal", "propose_shape_policies",
+            )] + ["merlin.transforms.pipeline_policy." + name for name in (
+                "DimensionRef", "ResourceRef", "RatioFeature", "TileFeature", "FeaturePredicate",
+            )] + ["merlin.transforms.evaluated_exploration.explore_evaluated",
+                  "merlin.transforms.pass_exploration.ExplorationRefused",
+                  "merlin.transforms.pass_exploration.MappingProposalKey",
+                  "merlin.transforms.pass_exploration.MappingProposalCache"],
             "usage": [
                 "Register bounded real pass paths and an original fallback, with separate legality predicates.",
                 "Freeze distinct training/heldout geometries and supply exact paired completed observations.",
                 "Declare shape/resource performance guards; include exact cutoffs and adjacent outside cases.",
+                "Propose bounded dimension cutoffs and two-axis regions from paired TRAINING cycles only.",
+                "Use proposal.requests for missing pairs/boundaries; freeze new boundary geometries before timing.",
+                "Express exact ratios, tile counts and tails from current shape/resource facts; unknown stays unknown.",
                 "Training selects; heldout and boundary cases veto. UNKNOWN/regression keeps each class incumbent.",
                 "Execute on current IR with its selected performance domain; no cached training kernel is reused.",
+                "Reuse only option-search proposals in an explicit bounded MappingProposalCache keyed by "
+                "semantics/shapes/layouts/dtypes/epilogue and hardware/library/numerics; current factories, "
+                "legality and emission still run.",
+                "Use existing evaluate_variants(prefix=...) for preparation shared by every alternative; "
+                "it discards prefix analyses before current-source branch checks.",
+                "Exploration outcomes distinguish duplicates, construction refusals, "
+                "pending/UNKNOWN timing and regressions.",
             ],
             "requires": [
                 "complete numerical-pass same-source/input/reference/provider/ROI cycle observations",
@@ -332,6 +444,412 @@ def scheduling_capabilities(version=16):
                 "original source-bound plan, actual allocated windows, exact numerical/alias/effect boundaries",
                 "independently selected finite issue/backpressure/snapshot/completion laws; capacity is insufficient",
                 "lower every actual completion; an explicit unsupported decision refuses rather than changing family",
+            ],
+        })
+    if version >= 22:
+        catalog["capabilities"].append({
+            "name": "checked_dense_completion_epoch_emission",
+            "symbols": [prefix + name for name in (
+                "dense_panel_pipeline.DensePanelPipelineResult",
+                "dense_segmented_pipeline.DenseSegmentedPipelineResult",
+                "dense_ready_readout.DenseReadyReadoutResult",
+                "dense_readout_overlap.DenseReadoutOverlapResult",
+                "llvm_program.emit_index_effect_program",
+            )],
+            "usage": [
+                "Consume result.emit_index_program(control, lower_effect, complete_epoch=real_full_completion).",
+                "Map each actual checked data effect separately from the original full epoch drain.",
+                "Reuse one target encoder for panel, segmented, ready and disjoint schedules "
+                "and real pass alternatives.",
+                "Keep counted control; explicit event/state annotations still require their supported SCF consumer.",
+                "The ordinary checked Kernel and every emitted epoch are revalidated before callbacks.",
+            ],
+            "requires": [
+                "separate selected RAW/WAR/WAW, storage, operand/result retirement and finite-progress laws",
+                "a real full completion callback; no primitive-by-primitive synthetic fence substitution",
+                "original complete outputs and numerical policies; source emission grants no performance claim",
+            ],
+        })
+    if version >= 22:
+        catalog["capabilities"].append({
+            "name": "fact_backed_dense_panel_epochs",
+            "symbols": [prefix + name for name in (
+                "dense_panel_epochs.DensePanelEpochLaw",
+                "dense_panel_epochs.propose_dense_panel_epochs",
+                "dense_panel_epochs.schedule_dense_panel_epochs",
+                "dense_panel_epochs.DensePanelEpochResult",
+                "dense_ready_readout.schedule_dense_pipeline",
+            )],
+            "usage": [
+                "Pass epoch_law=DensePanelEpochLaw(...) to schedule_dense_pipeline with a two-window decision.",
+                "Set each flag from the target's command-ordering facts; a False flag is UNKNOWN and keeps its drains.",
+                "Drains inside one output block's K stream go (and before its readout under result visibility).",
+                "Emit the returned result: emit_llvm/emit_index_program invoke completion only for remaining drains.",
+                "Time the epochs against the drained incumbent before keeping them.",
+            ],
+            "requires": [
+                "selected RAW (compute waits for older load) and WAR (load waits for older reader) ordering",
+                "in-order accumulator updates; readout waiting for its producer to merge the readout epoch",
+                "every load of a K step read by the next step (proved); merged epochs within the issued budgets",
+                "a real full completion callback for every remaining drain",
+            ],
+        })
+    if version >= 23:
+        catalog["capabilities"].extend([
+            {
+                "name": "bounded_declared_settings_cycle_selection",
+                "symbols": [
+                    "merlin.compile.tuning_knobs.KnobSettings",
+                    "merlin.compile.tuning_knobs.bounded_settings",
+                    "merlin.transforms.tuning_selection.KnobTrial",
+                    "merlin.transforms.tuning_selection.unique_emissions",
+                    "merlin.transforms.tuning_selection.select_settings",
+                ],
+                "usage": [
+                    "Enumerate a declared knob subset: exact baseline, single changes and optional bounded pairs.",
+                    "Emit and revalidate current choices; unique_emissions deduplicates exact same-domain bytes.",
+                    "Use the caller-owned ordinary evaluator and identity-bound CompletedObservation cycle feedback.",
+                    "select_settings returns an exact-shape proposal; use shape_policy for validated range rules.",
+                ],
+                "requires": [
+                    "original declaration, complete settings and semantic/shape/layout/dtype/numerical/hardware pins",
+                    "same-source/input/reference/provider/ROI observations; complete passing cycles alone rank",
+                    "UNKNOWN, failure, conflicts or no demonstrated improvement retain the unchanged baseline",
+                ],
+            },
+            {
+                "name": "checked_disjoint_loaded_sum_epochs",
+                "symbols": [prefix + "loaded_sum_epochs." + name for name in (
+                    "LoadedSumEpochLaw", "LoadedSumEpochPlan", "plan_loaded_sum_epochs", "emit_loaded_sum_epochs",
+                )],
+                "usage": [
+                    "Consume the original complete compact_loaded_sum source/scalar proof and ACC byte layout.",
+                    "Plan bounded disjoint tiles; emit initialize, accumulate and store phases with real drains.",
+                    "The caller-owned target encoder lowers every effect and complete_phase before private reuse.",
+                ],
+                "requires": [
+                    "independent target pending-operation/configuration capture/progress/drain/ownership premises",
+                    "original exact parameters, complete outputs, tails and disjoint live private byte windows",
+                    "source/storage construction grants no target execution or performance qualification",
+                ],
+            },
+            {
+                "name": "checked_initialization_and_uniform_readout_batches",
+                "symbols": [prefix + name for name in (
+                    "dense_panel_pipeline.DenseRetainedReductionAdmission",
+                    "dense_contracts.DenseTiledIntegerReadout",
+                    "dense_panel_readout.batch_dense_panel_initializers",
+                    "dense_panel_readout.batch_dense_panel_readouts",
+                    "dense_panel_pipeline.verify_dense_retained_reduction",
+                )],
+                "usage": [
+                    "Start with an original checked retained result and its actual source/effect adapter.",
+                    "Select bounded initializer issue only with ordered configuration capture and disjoint ACC writes.",
+                    "Batch initializers through the final checker; keep the real completion before computation.",
+                    "Normalize an original scalar/vector with DenseTiledIntegerReadout.from_source_scales; never "
+                    "average gains.",
+                    "Uniform original tiled integer scales may batch stores under the selected snapshot/store law.",
+                    "Emit the returned kernel and compare complete cycles; fewer drains alone prove no speedup.",
+                ],
+                "requires": [
+                    "original symbolic data-call equality, source numerics, aliases, capacities and completion proofs",
+                    "varying-scale readouts retain their original boundaries or require a separate supported law",
+                ],
+            },
+            {
+                "name": "source_exact_spatial_matrix_gathers",
+                "symbols": [prefix + "affine_gather_runs." + name for name in (
+                    "ConvolutionGatherRuns", "emit_convolution_gather_runs", "emit_convolution_matrix_gather",
+                )],
+                "usage": [
+                    "Map logical contraction rows and reduction tiles to original valid-window NHWC addresses.",
+                    "Use reduction tiles dividing the source channel dimension; preserve source tap/channel order.",
+                    "Pass exact fragments to the ordinary target consumer without allocating host im2col payloads.",
+                ],
+                "requires": [
+                    "original checked window geometry and independent dtype, storage, alias and completion admission",
+                    "fragment construction supplies no permission to overlap transfers or change arithmetic",
+                ],
+            },
+            {
+                "name": "source_bound_rolling_convolution_rows",
+                "symbols": [prefix + name for name in (
+                    "window_transfer.ConvolutionResidentInputRows",
+                    "convolution_exploration.emit_convolution_schedule",
+                    "rolling_window.materialize_rolling_window",
+                    "rolling_window.emit_rolling_window",
+                    "rolling_window.materialize_grouped_rolling_window",
+                    "rolling_window.verify_grouped_rolling_window",
+                    "rolling_window.emit_grouped_rolling_window",
+                )],
+                "usage": [
+                    "Bind original NHWC source cells to caller-owned tiled operand rows and a checked ring lifetime.",
+                    "Pass input_rows to the ordinary convolution schedule emitter; consume all staging effects.",
+                    "Derive transfer widths, row pitch and private storage from selected hardware/source contracts.",
+                    "Padded integer convolution requires explicit original zero halos, not a host padded tensor.",
+                    "Keep real input-ready and last-use completion; compare whole-call cycles and resource traffic.",
+                ],
+                "requires": [
+                    "exact original source identity, source stride and disjoint live operand storage",
+                    "nonunit compute row steps require an explicitly selected source/target row-step contract",
+                    "target implementations of actual stage/fill effects and completion; mapping grants no overlap",
+                    "nonzero affine padding values require a separately supported source and lowering contract",
+                ],
+            },
+            {
+                "name": "checked_cross_spatial_array_reuse",
+                "symbols": [prefix + name for name in (
+                    "convolution_output_groups.plan_rolling_convolution_output_group",
+                    "convolution_output_groups.emit_rolling_convolution_output_group",
+                    "dense_array_retention.DenseArrayRetentionAdmission",
+                    "convolution_exploration.emit_convolution_schedule",
+                )],
+                "usage": [
+                    "Derive source-row/M bounds from the original schedule, resident RHS or complete phase owner, and"
+                    " live ring.",
+                    "Pass the group or phase-aligned tuple and separate array_law to emit_convolution_schedule; None "
+                    "retains an ordinary phase.",
+                    "Consume actual fresh_weights through the same target encoder; preserve each original N readout.",
+                    "Verify spatial_output_group and its source/law hashes; keep the incumbent when planning declines.",
+                    "With a checked multirow ring union, grouped_transport=True completes staging once before the "
+                    "actual consumer group and drains before reuse.",
+                ],
+                "requires": [
+                    "resident full-K RHS per active original phase, checked source-row union in actual ring slots and"
+                    " disjoint M/N ACC cells",
+                    "separate independent-output-row/no-intermediate-observer source permissions",
+                    "selected fresh/stay/output-descriptor behavior and actual bounded compute/readout completion",
+                    "default one-row path retained; real group/ring drains and full phase-last-use before RHS "
+                    "replacement",
+                    "grouped transport separately checks actual row/halo/channel command count against the selected "
+                    "issue bound",
+                ],
+            },
+            {
+                "name": "source_exact_convolution_readout_transfers",
+                "symbols": [prefix + name for name in (
+                    "window_transfer.ConvolutionReadoutTransferLaw",
+                    "window_transfer.plan_convolution_readout_transfers",
+                    "convolution_exploration.emit_convolution_schedule",
+                )],
+                "usage": [
+                    "Bind a separate selected narrow block-column/row-stride map and original numerical states.",
+                    "Pass readout_transfer_law with the independent producer/readout law to the original consumer.",
+                    "Only compatible original adjacent stores merge; inspect actual emitted stores and complete "
+                    "outputs.",
+                    "Compose with checked spatial groups using each spatial slot's actual ACC block map, including "
+                    "short source rows and RHS phases.",
+                ],
+                "requires": [
+                    "scaled INT8 source exits; exact controller map, output columns and private physical ACC spacing",
+                    "identical original numerical state within each combined run; full ACC and pooling excluded",
+                    "separate producer visibility/store snapshot law and real final private-block drain",
+                    "missing target/model support remains UNKNOWN, not an inferred speedup or qualification",
+                ],
+            },
+            {
+                "name": "checked_shared_input_group_blocks",
+                "symbols": [prefix + "compact_dense_group." + name for name in (
+                    "CompactDenseGroupResult", "schedule_compact_dense_group",
+                )],
+                "usage": [
+                    "Select explicit per-member block_tiles while retaining the original shared input producer.",
+                    "Keep independent output scales and complete storage/numerical/source checks for every member.",
+                    "Unsupported requested geometry declines; compare whole-group cycles with independent execution.",
+                ],
+                "requires": [
+                    "true original operand identity; similar values or fewer transfers establish no reuse law",
+                ],
+            },
+        ])
+    if version >= 24:
+        catalog["capabilities"].append({
+            "name": "source_checked_integer_observers",
+            "symbols": [
+                "merlin.llvmlower.late_quant_rne.rewrite",
+                "merlin.llvmlower.source_expression_interval.close_scalar_i8_observer",
+                "merlin.llvmlower.source_expression_interval.build_source_interval_table",
+                "merlin.llvmlower.source_expression_interval.emit_source_interval_i8_lookup",
+                "merlin.llvmlower.source_expression_interval_llvm.rewrite_source_interval_i8_lookup",
+                "merlin.llvmlower.bounded_rne_word_cells.prepare_bounded_rne_word_cells",
+                "merlin.llvmlower.scaled_integer_finite.prove_broadcast_scaled_integer_finite",
+                "merlin.llvmlower.scaled_integer_finite_llvm.bind_finite_scale_helpers",
+            ],
+            "usage": [
+                "Bind exact typed scalar arithmetic and complete saturated signed-byte observations.",
+                "Retain ordinary bounded roundeven representation and the existing late host legalizer.",
+                "Derive finite broadcast-scale scans and immutable tables from the current source only.",
+                "Consume returned LLVM/C in the ordinary compiler before object identity; validate the complete output.",
+            ],
+            "requires": [
+                "explicit RNE, gradual underflow, nontrapping and unobserved floating effects",
+                "original source fallback, actual incoming-mode guard and exact original coefficients/order",
+                "immutable input scales and fresh disjoint outputs for finite preparation",
+                "unknown source operations such as exp require their own numerical contract; no approximation granted",
+                "no target/provider, reference output, protected evaluator or timing authority is exported",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "counted_projection_pointer_binding",
+            "symbols": [prefix + "projection_dense." + name for name in (
+                "ProjectionDenseBinding", "bind_dense_projection",
+            )],
+            "usage": [
+                "Keep original sibling projection_views, independent pointers and exact scalar readouts.",
+                "Retain the common input with the existing dense scheduler; choose panels dividing every member.",
+                "Partition complete virtual-N panel loops with ordinary ordered loop transforms.",
+                "Bind actual member/local-column/row-width operands to original target ABI pointers and pitches.",
+            ],
+            "requires": [
+                "current typed source group and an independently checked original dense schedule",
+                "complete original per-column readout words; physical rectangles cannot cross members",
+                "original source aliases, private storage, actual target effects and real completion",
+                "no tensor concatenation, dynamic command expansion or execution grant follows from the mapping",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "completion_bound_operand_slots",
+            "symbols": [prefix + "operand_slots." + name for name in (
+                "PipelineOperand", "PipelineSlotResult", "allocate_pipeline_operand_slots",
+                "verify_pipeline_operand_slots",
+            )],
+            "usage": [
+                "Group original immutable TemporaryObject generations by operand, retaining actual views.",
+                "Supply StorageAdapter projections for initialization, reads, launches and real waits.",
+                "Use the returned Kernel: existing allocation chooses bases and checked phase loops rotate them.",
+                "Materialize/emit the actual returned SCF and compare whole-call timing independently.",
+            ],
+            "requires": [
+                "one bounded source counted loop with integer-decoded completion operands and owned byte banks",
+                "complete original effects, aliases, reservations, alignments and external source/output windows",
+                "already legal issue order; no new overlap permission or hardware slots follow from allocation",
+                "nested or SSA-carried asynchronous boundaries and irregular rotations currently refuse",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "disjoint_future_row_transport",
+            "symbols": [prefix + "rolling_lookahead." + name for name in (
+                "RollingLookaheadAdmission", "materialize_lookahead_rolling_window",
+                "verify_lookahead_rolling_window", "emit_lookahead_rolling_window",
+            )] + [prefix + "convolution_output_groups.ConvolutionGroupContinuation"],
+            "usage": [
+                "Keep the original rolling source, row ownership, and current consumer unchanged.",
+                "Use actual ring capacity for the union of current and future live rows.",
+                "Emit counted SCF with carried resident handles and real transport/consumer completion.",
+                "Optionally derive consumer_runs = kernel_y * kernel_x * ceil(input_channels/channel_tile) "
+                "from the original consumer; pass it unchanged to materialize, verify and emit.",
+                "Bind start_consumer to initialization and a retained continuation; advance_consumer "
+                "emits first_run/run_count complete reductions; finish_consumer performs final readout.",
+                "For rolling convolution use emit_rolling_convolution_output_group(..., defer_consumer=True); "
+                "its returned continuation checks advance(first, count) coverage before finish().",
+                "Compare complete-call cycles; earlier issue alone does not establish hidden latency.",
+            ],
+            "requires": [
+                "disjoint current/future writes and an immutable original input",
+                "independently bound ordered configuration, finite queue progress, and completion callbacks",
+                "split consumers additionally require retained_consumer_continuations=True, live ACC/input "
+                "storage, complete fresh/stay runs and exactly one original initialization/readout",
+                "no arbitrary nested asynchronous schedule or fixed-cycle completion is implied",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "last_use_rhs_phase_transport",
+            "symbols": [prefix + "rolling_lookahead." + name for name in (
+                "RollingRhsFrontierAdmission", "RollingRhsFrontier",
+            )] + [prefix + "convolution_exploration.emit_convolution_schedule"],
+            "usage": [
+                "Plan complete original RHS phases and their checked rolling output groups using actual SP/ACC capacity.",
+                "Supply rhs_phase_prefetch_law=RollingRhsFrontierAdmission(...) to emit_convolution_schedule "
+                "with grouped_transport=True and the original phase-aligned output_group tuple.",
+                "The emitter derives the original reduction run count and stages each next-phase tile after "
+                "the complete current K/N/M run in only the final source batch and spatial group.",
+                "The next phase uses the same assigned RHS prefix; its column-block count must not grow. "
+                "All original preparation, group, phase and final drains remain.",
+                "Compare exact outputs and complete-call cycles with the same placement and numerical source.",
+            ],
+            "requires": [
+                "separate selected target law covering exact-range scratchpad WAR/RAW until real source completion",
+                "original immutable weights, ordered configuration, finite queue progress and full consumer/transport drain",
+                "complete original batch/spatial domain and original channel tails; no second ACC or RHS window",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "sole_observer_contraction_rows",
+            "symbols": [
+                "merlin.llvmlower.contraction_row_slice.pushback_contraction_row_slices",
+                "merlin.llvmlower.contraction_row_slice.prepare_contraction_row_slices",
+            ],
+            "usage": [
+                "Before source/device binding, push back a sole static contiguous row observer.",
+                "Supply original immutable argument bytes for stored epilogue coefficients when needed.",
+                "Retain the original ordered integer dot and each selected scalar epilogue instruction.",
+            ],
+            "requires": [
+                "closed zero-seeded signed integer product; complete reduction and output columns",
+                "static row-major views, fixed coefficients, pure parallel single-observer epilogue",
+                "new ordinary source/interface/target qualification; no old device-ABI transfer",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "bounded_horizontal_convolution_panels",
+            "symbols": [prefix + "horizontal_convolution." + name for name in (
+                "HorizontalConvolutionPanels", "plan_horizontal_convolution_panels",
+                "emit_horizontal_convolution_panels",
+            )],
+            "usage": [
+                "Bind the original CountedConvolutionPlan and explicit private operand/accumulator capacities.",
+                "Plan bounded contiguous horizontal reductions and complete output-column intervals.",
+                "Materialize the original zero halo; emit counted effects with actual completion before reuse.",
+            ],
+            "requires": [
+                "unchanged source reduction order, output precision, bias and every tail output",
+                "separate multiblock transport and fresh/stay array laws; private ownership is not a target grant",
+                "complete-call cycles including halo/preparation cost; no speedup follows from transfer counts",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "source_proven_shared_rhs_row_views",
+            "symbols": [
+                "merlin.llvmlower.weight_prepack_runtime.fixed_arguments",
+                "merlin.llvmlower.repeated_pointwise.hoist_repeated_pointwise",
+                "merlin.llvmlower.repeated_pointwise.prepare_repeated_pointwise",
+                "merlin.transforms.shared_rhs_views.plan_shared_rhs_row_views",
+                "merlin.transforms.dense_row_batching.DenseRowBatchingBudgets",
+                "merlin.transforms.dense_row_batching.plan_source_dense_row_batching",
+            ],
+            "usage": [
+                "Before device grouping, use exact broadcast/view/scalar source to prepare repeated pointwise work.",
+                "Stored coefficients require fixed_arguments from the original generated caller "
+                "plus exact bound bytes.",
+                "Expose complete matrix groups with plan_shared_rhs_row_views, then use checked dense row batching.",
+                "Retain every original result and dense observer; "
+                "revalidate actual source/SSA before consuming output.",
+            ],
+            "requires": [
+                "source-proven coordinates and unchanged scalar programs; equal runtime values grant no sharing",
+                "fresh source/session/manifest ownership for immutable specialization; literals need no loader",
+                "new ordinary source/interface/target/effects and execution qualification after regrouping",
+                "late host preparation after device grouping cannot revise an already selected device ABI",
+            ],
+        })
+        catalog["capabilities"].append({
+            "name": "shared_rhs_epochs",
+            "symbols": [prefix + "dense_shared_rhs." + name for name in (
+                "schedule_dense_shared_rhs", "DenseRHSReuseLaw",
+                "make_shared_rhs_schedule_plan", "read_shared_rhs_schedule_plan",
+            )],
+            "usage": [
+                "Bind original sibling products sharing one immutable RHS, every member pointer and every live output.",
+                "Consume a schedule dialect plan; use capacity-derived blocks and full-K LHS residency.",
+                "Preserve original readout contracts, including scaled narrow outputs and qualification identities.",
+                "Select dependency epochs from explicit target laws; UNKNOWN premises retain their drains.",
+                "Register an A/B alternative through shared_rhs_epoch_recipe.py:prepare and emit the checked result.",
+                "Reanalyze operands, transfers, configuration and completions; retain measured correct improvements.",
+            ],
+            "requires": [
+                "original source-product equality, complete output roster and independent storage/alias admission",
+                "selected immutable-RHS reuse, ordering and readout laws; no name-based applicability",
+                "actual emitted-effect/source checks and a real final completion; command counts establish no speedup",
             ],
         })
     return catalog

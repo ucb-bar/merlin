@@ -325,6 +325,7 @@ class PanelTileLoadResult:
 def admit_panel_tile_loads(
     original, proposal, problem, block, resources, storage, adapter, *,
     project, encode_band, static_budget=128, timeout_ms=5000, max_static_nodes=4096,
+    external_sources=None,
 ):
     """Check the actual final wide command's complete effects before emission.
 
@@ -349,12 +350,14 @@ def admit_panel_tile_loads(
         original, proposal, problem, block, resources, storage, adapter,
         verifier=verifier, project=project, encode_band=encode_band,
         static_budget=static_budget, timeout_ms=timeout_ms, max_static_nodes=max_static_nodes,
+        external_sources=external_sources,
     )
 
 
 def _admit_dense_tile_loads(
     original, proposal, problem, block, resources, storage, adapter, *,
     verifier, project, encode_band, static_budget, timeout_ms, max_static_nodes,
+    external_sources=None,
 ):
     """Shared exact address projection; each typed owner selects its verifier.
 
@@ -364,7 +367,7 @@ def _admit_dense_tile_loads(
     original.revalidate()
     expanded, projection = expand_dense_panel_tile_loads(
         proposal, problem, storage, adapter, project=project, encode_band=encode_band,
-        max_static_nodes=max_static_nodes,
+        max_static_nodes=max_static_nodes, external_sources=external_sources,
     )
     report = verifier(
         expanded, problem, block, resources, storage, adapter, original.admission,
@@ -385,15 +388,32 @@ def _admit_dense_tile_loads(
     )
     result = PanelTileLoadResult(
         proposal, original, report, proposal.digest(), _digest(projection),
-        _checked_dense_tile_project(problem, storage, adapter, project), encode_band, max_static_nodes
+        _checked_dense_tile_project(problem, storage, adapter, project, external_sources=external_sources),
+        encode_band, max_static_nodes
     )
     result.revalidate()
     return result
 
 
-def _checked_dense_tile_project(problem, storage, adapter, project):
+def _checked_dense_tile_project(problem, storage, adapter, project, *, external_sources=None):
     from merlin.compile.scheduling.block_schedule import Load
     from merlin.compile.scheduling.dense_panel_pipeline import DRAIN
+    from merlin.compile.scheduling.panel_transfers import AffineMatrixSource
+
+    if external_sources is None:
+        sources = {}
+    elif type(external_sources) is not dict or set(external_sources) - {"lhs", "weight"}:
+        raise ValueError("dense external sources must name original operand roles")
+    else:
+        sources = dict(external_sources)
+    for role, source in sources.items():
+        left = role == "lhs"
+        expected_shape = (problem.m, problem.k) if left else (problem.k, problem.n)
+        width = problem.lhs_bytes if left else problem.rhs_bytes
+        if (type(source) is not AffineMatrixSource or source.shape != expected_shape
+                or source.element_bytes != width or source.column_stride_bytes != width):
+            raise ValueError("dense external view must preserve original shape, width and adjacent columns")
+        source.__post_init__()
 
     def checked_project(call):
         mapping = project(call)
@@ -409,14 +429,17 @@ def _checked_dense_tile_project(problem, storage, adapter, project):
         left = operation.role == "lhs"
         width = problem.lhs_bytes if left else problem.rhs_bytes
         pitch = problem.k if left else problem.n
+        source = sources.get(operation.role)
+        source_pitch = pitch * width if source is None else source.row_stride_bytes
         tile = problem.tile_k if left else problem.tile_n
         view = storage.lhs if left else storage.rhs
-        if (mapping.law.element_bytes != width or mapping.law.source_pitch_bytes != pitch * width
+        if (mapping.law.element_bytes != width or mapping.law.source_pitch_bytes != source_pitch
                 or mapping.law.tile_columns != tile or operation.step != Const(1)):
             raise ValueError("wide mapping differs from original contiguous dense source layout")
         expected = TileLoadMapping(
-            operation.role, view.backing,
-            (operation.dram_row * pitch + operation.dram_col) * width,
+            operation.role if source is None else source.backing, view.backing,
+            ((operation.dram_row * pitch + operation.dram_col) * width if source is None else
+             source.first_byte + operation.dram_row * source.row_stride_bytes + operation.dram_col * width),
             operation.row, operation.rows, operation.cols, mapping.law,
         )
         if not _same_mapping(mapping, expected):
@@ -428,14 +451,19 @@ def _checked_dense_tile_project(problem, storage, adapter, project):
 
 def expand_dense_panel_tile_loads(
     kernel, problem, storage, adapter, *, project, encode_band, max_static_nodes=4096,
+    external_sources=None,
 ):
     """Expand every final wide band after checking its original dense layout.
 
     This is address projection only. Callers must independently check the
     complete expanded source and execution effects under their own typed law.
+    Optional existing ``AffineMatrixSource`` declarations bind exact external
+    strides/offsets; their source ownership and target effects remain caller
+    obligations. Omitting them retains the original contiguous layout check.
     No target capability or numerical/completion obligation is supplied here.
     """
     return expand_panel_tile_loads(
-        kernel, project=_checked_dense_tile_project(problem, storage, adapter, project),
+        kernel, project=_checked_dense_tile_project(problem, storage, adapter, project,
+                                                   external_sources=external_sources),
         encode_band=encode_band, max_static_nodes=max_static_nodes,
     )

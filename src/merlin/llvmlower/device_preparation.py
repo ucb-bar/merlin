@@ -6,6 +6,7 @@ callbacks; it supplies no numerical, ABI, completion or timing authority.
 """
 
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +23,28 @@ class _DeviceOffloadInvocation:
     spatial_host: object | None = None
     sibling_source: tuple | None = None
     sibling_host: object | None = None
+    pre_group_layout: tuple | None = None
+    intermediate_storage: tuple | None = None
+
+
+def _layout_policy(device, field="pre_group_layout"):
+    selected = getattr(device, field, None)
+    if selected is None:
+        return None
+    from .host_graph_policy import HostGraphPolicy
+
+    if type(selected) is not HostGraphPolicy or selected.target != getattr(device, "device", None):
+        raise ValueError("pre-group layout needs original software for the selected device")
+    selected.revalidate()
+    return selected, json.dumps(selected.record(), sort_keys=True)
+
+
+def _require_layout_policy(device, frozen, field="pre_group_layout"):
+    actual = _layout_policy(device, field)
+    original = getattr(frozen, field) if type(frozen) is _DeviceOffloadInvocation else None
+    if ((actual is None) != (original is None)
+            or actual is not None and (actual[0] is not original[0] or actual[1] != original[1])):
+        raise ValueError(f"{field} selection changed after original admission")
 
 
 def device_route_requested(device):
@@ -40,14 +63,27 @@ def require_device_offload_artifacts(invocation):
         return
     pins = (*invocation.sources, *((invocation.sidecar,) if invocation.sidecar is not None else ()))
     for path, digest in pins:
-        if hashlib.sha256(_artifact_payload(path)).hexdigest() != digest:
+        if _artifact_digest(path) != digest:
             raise ValueError("device offload original realized source or sidecar changed")
 
 
-def _artifact_payload(path):
+def _artifact_file(path):
     if path.resolve() != path or path.is_symlink() or any(p.is_symlink() for p in path.parents) or not path.is_file():
         raise ValueError("device offload artifact needs its original direct regular file")
-    maximum = 16 << 20
+    return path
+
+
+def _artifact_digest(path):
+    from merlin.common.digest import sha256_file
+
+    return sha256_file(_artifact_file(path))
+
+
+def _artifact_payload(path):
+    from merlin.common.strict_json import MAX_RECORD_BYTES
+
+    path = _artifact_file(path)
+    maximum = MAX_RECORD_BYTES
     with path.open("rb") as stream:
         payload = stream.read(maximum + 1)
     if len(payload) > maximum:
@@ -65,7 +101,7 @@ def retain_device_offload_source(frozen, path, *, compilation=None):
         return
     require_device_offload_artifacts(frozen)
     path = Path(path).absolute()
-    pin = (path, hashlib.sha256(_artifact_payload(path)).hexdigest())
+    pin = (path, _artifact_digest(path))
     if pin not in frozen.sources:
         frozen.sources = (*frozen.sources, pin)
     if compilation is not None:
@@ -197,6 +233,8 @@ def freeze_device_offload_selection(device):
     from .connected_spatial_route import freeze_route
 
     spatial = freeze_route(device)
+    layout = _layout_policy(device)
+    storage = _layout_policy(device, "intermediate_storage")
     from .sibling_source_route import freeze_route as freeze_sibling
 
     sibling = freeze_sibling(device)
@@ -215,10 +253,10 @@ def freeze_device_offload_selection(device):
     if selected is None:
         result = (
             None
-            if transform is None and schedule is None and spatial is None and sibling is None
+            if all(value is None for value in (transform, schedule, spatial, sibling, layout, storage))
             else _DeviceOffloadInvocation(
                 None, None, llvm_transform=transform, target_schedule=schedule, connected_spatial=spatial,
-                sibling_source=sibling
+                sibling_source=sibling, pre_group_layout=layout, intermediate_storage=storage
             )
         )
         _require_device_target_schedule(device, result)
@@ -232,13 +270,16 @@ def freeze_device_offload_selection(device):
     record = selected.record(routing=device)
     if getattr(device, "offload_selection", None) is not selected:
         raise ValueError("device offload selection changed during original verification")
-    result = _DeviceOffloadInvocation(selected, record, llvm_transform=transform, target_schedule=schedule)
+    result = _DeviceOffloadInvocation(selected, record, llvm_transform=transform, target_schedule=schedule,
+                                     pre_group_layout=layout, intermediate_storage=storage)
     _require_device_llvm_transform(device, result)
     _require_device_target_schedule(device, result)
     return result
 
 
 def require_device_offload_selection(device, frozen):
+    _require_layout_policy(device, frozen)
+    _require_layout_policy(device, frozen, "intermediate_storage")
     from .connected_spatial_route import require_host, require_route
     from .sibling_source_route import require_host as require_sibling_host
     from .sibling_source_route import require_route as require_sibling

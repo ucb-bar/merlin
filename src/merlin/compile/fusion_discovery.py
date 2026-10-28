@@ -3,10 +3,136 @@ from __future__ import annotations
 
 from collections import Counter
 from itertools import islice
+from math import prod
 
 from merlin.common.digest import is_sha256
 from merlin.transforms.certificates import ir_digest
 from merlin.verify.lean_contract import document_digest
+
+
+def _materialization(operations, ordinals):
+    """Logical unfused tensor payloads, without inferring physical storage.
+
+    One producer write and one read per distinct consumer describe a source
+    screening model. Only a value with every observer inside the proposal can
+    disappear entirely. Views, initializers, scalar SSA and target padding are
+    not charged as materialized compute results here.
+    """
+    from xdsl.dialects.builtin import TensorType
+
+    members = {child for op in operations for child in op.walk()}
+    rows, unknown, saved, live = [], [], 0, 0
+    for op in operations:
+        if _structural_family(op) is None:
+            continue
+        for index, value in enumerate(op.results):
+            ty = value.type
+            if not isinstance(ty, TensorType):
+                continue
+            shape, width = tuple(ty.get_shape()), getattr(ty.element_type, 'bitwidth', None)
+            if any(d < 0 for d in shape) or type(width) is not int or width < 1:
+                unknown.append({'producer_ordinal': ordinals[op], 'result': index, 'type': str(ty)})
+                continue
+            size = (prod(shape) * width + 7) // 8
+            users = {use.operation for use in value.uses}
+            external = users - members
+            removable = bool(users) and not external
+            benefit = size * (1 + len(users)) if removable else 0
+            saved += benefit
+            live += size if external else 0
+            rows.append({'producer_ordinal': ordinals[op], 'result': index,
+                         'payload_bytes': size, 'distinct_consumers': len(users),
+                         'external_consumer_ordinals': sorted(ordinals[u] for u in external),
+                         'all_observers_inside': removable, 'potential_saved_logical_bytes': benefit})
+    return {'basis': 'static_logical_tensor_materialization',
+            'potential_saved_logical_bytes': None if unknown else saved,
+            'known_potential_saved_logical_bytes': saved,
+            'live_output_payload_bytes': None if unknown else live,
+            'known_live_output_payload_bytes': live,
+            'values': rows, 'unknown_values': unknown,
+            'physical_savings_claimed': False,
+            'limitations': 'source screening only; excludes target padding, views, packing, operand reuse, storage pressure and execution costs'}
+
+
+def plan_materialization_frontier(report, *, exact_cluster_limit=8):
+    """Prioritize nonoverlapping source proposals for actual realization.
+
+    Small conflict clusters use bounded subset search; larger ones use a
+    deterministic greedy choice. All original candidates remain available.
+    Neither this source-byte objective nor a chosen group authorizes a rewrite
+    or promotes a performance winner. Current native legality and same-region
+    cycle comparisons remain the execution/selection path.
+    """
+    if (type(report) is not dict or report.get('schema') != 'merlin.fusion_workflow.v1'
+            or type(exact_cluster_limit) is not int or not 1 <= exact_cluster_limit <= 10
+            or not isinstance(report.get('candidates'), (list, tuple))
+            or len(report['candidates']) > 1024):
+        raise ValueError('fusion screening requires bounded current discovery and conflict search')
+    rows, excluded = [], []
+    for row in report['candidates']:
+        cost = row.get('materialization', {}).get('potential_saved_logical_bytes')
+        if (row.get('source_legality') or {}).get('status') == 'declined' or row.get('status') == 'unsupported':
+            excluded.append({'candidate_index': row['candidate_index'], 'reason': 'native source reader declined'})
+        elif type(cost) is not int:
+            excluded.append({'candidate_index': row['candidate_index'], 'reason': 'unknown materialization payload'})
+        elif cost > 0 and row['operation_ordinals']:
+            rows.append(row)
+    if len({row['candidate_index'] for row in rows}) != len(rows):
+        raise ValueError('fusion screening requires distinct discovery candidates')
+    clusters, positions = [], {}
+    for row in rows:
+        touched = {positions[op] for op in row['operation_ordinals'] if op in positions}
+        combined = [row]
+        for index in sorted(touched):
+            combined.extend(clusters[index])
+            clusters[index] = []
+        index = len(clusters)
+        clusters.append(combined)
+        for member in combined:
+            for op in member['operation_ordinals']:
+                positions[op] = index
+    selected, methods = [], []
+    for cluster in filter(None, clusters):
+        cluster.sort(key=lambda row: row['candidate_index'])
+        if len(cluster) <= exact_cluster_limit:
+            best, best_score = (), (-1, -1)
+            for bits in range(1 << len(cluster)):
+                choice, occupied, score, source_checked = [], set(), 0, 0
+                for index, row in enumerate(cluster):
+                    if bits & (1 << index):
+                        region = set(row['operation_ordinals'])
+                        if occupied & region:
+                            break
+                        occupied.update(region)
+                        choice.append(row)
+                        score += row['materialization']['potential_saved_logical_bytes']
+                        source_checked += (row.get('source_legality') or {}).get('status') == 'source_eligible'
+                else:
+                    if (score, source_checked) > best_score:
+                        best, best_score = tuple(choice), (score, source_checked)
+            selected.extend(best)
+            methods.append('bounded_subset')
+        else:
+            occupied = set()
+            for row in sorted(cluster, key=lambda r: (-r['materialization']['potential_saved_logical_bytes'],
+                    (r.get('source_legality') or {}).get('status') != 'source_eligible', r['candidate_index'])):
+                if not occupied.intersection(row['operation_ordinals']):
+                    selected.append(row)
+                    occupied.update(row['operation_ordinals'])
+            methods.append('greedy')
+    order = sorted(rows, key=lambda r: (-r['materialization']['potential_saved_logical_bytes'],
+                   (r.get('source_legality') or {}).get('status') != 'source_eligible', r['candidate_index']))
+    ordered_indices = {row['candidate_index'] for row in order}
+    selected_indices = {row['candidate_index'] for row in selected}
+    return {'basis': 'static_logical_tensor_materialization',
+            'binding_sha256': report.get('binding_sha256'),
+            'selected_candidate_indices': sorted(selected_indices),
+            'potential_saved_logical_bytes': sum(row['materialization']['potential_saved_logical_bytes'] for row in selected),
+            'evaluation_order': [row['candidate_index'] for row in order]
+                + [row['candidate_index'] for row in report['candidates'] if row['candidate_index'] not in ordered_indices],
+            'conflict_cluster_methods': methods, 'excluded_from_byte_selection': excluded,
+            'scope': 'this discovery page; unvisited or other optimization benefits remain unranked',
+            'rewrite_authority': False, 'performance_ranking': False}
 
 def _boundary(operations, ordinals):
     # Regions may capture external SSA values without listing them as parent
@@ -225,6 +351,7 @@ def discover(module, *, capability_contract, numerical_policy_sha256, preparatio
                'status': 'unsupported' if not operations else 'unknown',
                'reason': detail.get('reason') if not operations else 'source opportunity; native realization required',
                'operation_ordinals': [ordinals[op] for op in operations], **_boundary(operations, ordinals),
+               'materialization': _materialization(operations, ordinals),
                'capability_observations': observations, 'detail': detail,
                'source_legality': checked, 'binding_sha256': binding_sha,
                'storage_lifetimes': 'unproved', 'schedule_sha256': None, 'whole_region_cost': None,
@@ -238,7 +365,7 @@ def discover(module, *, capability_contract, numerical_policy_sha256, preparatio
     if ir_digest(module) != source or document_digest(dict(capability_contract)) != binding['capability_sha256']:
         raise ValueError('fusion discovery source or contracts changed')
     counts = Counter(row['route'] for row in rows)
-    return {'schema': 'merlin.fusion_workflow.v1', **binding, 'binding_sha256': binding_sha,
+    report = {'schema': 'merlin.fusion_workflow.v1', **binding, 'binding_sha256': binding_sha,
             'planned': {'source_regions': sum(bool(row['operation_ordinals']) for row in rows)}, 'emitted': {},
             'maturity': 'source_opportunities_not_legalized', 'physical_savings_claimed': False,
             'status': 'budget_exhausted' if more else 'complete', 'page_offset': offset,
@@ -257,3 +384,5 @@ def discover(module, *, capability_contract, numerical_policy_sha256, preparatio
             'fallback': 'preserve original source and unfused schedule; no discovery mutation',
             'missing': ['general connected graph residency realization', 'native proof for each selected route',
                         'complete-region numerical checks and same-scope runtime cost']}
+    report['materialization_frontier'] = plan_materialization_frontier(report)
+    return report

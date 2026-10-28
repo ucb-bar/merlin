@@ -84,6 +84,8 @@ COMMON_SUBSTRATE_V13 = "merlin.common_compiler_substrate.v13"
 COMMON_SUBSTRATE_V14 = "merlin.common_compiler_substrate.v14"
 # V15 binds inventory 22 with explicit shared scheduling APIs and author SDK exclusions.
 COMMON_SUBSTRATE_V15 = "merlin.common_compiler_substrate.v15"
+COMMON_SUBSTRATE_V16 = "merlin.common_compiler_substrate.v16"
+COMMON_SUBSTRATE_V17 = "merlin.common_compiler_substrate.v17"
 _SHARED_SUBSTRATES = {
     COMMON_SUBSTRATE_V6: 6,
     COMMON_SUBSTRATE_V7: 7,
@@ -95,6 +97,8 @@ _SHARED_SUBSTRATES = {
     COMMON_SUBSTRATE_V13: 20,
     COMMON_SUBSTRATE_V14: 21,
     COMMON_SUBSTRATE_V15: 22,
+    COMMON_SUBSTRATE_V16: 23,
+    COMMON_SUBSTRATE_V17: 24,
 }
 _ISA_SUBSTRATES = frozenset(
     {
@@ -111,6 +115,8 @@ _ISA_SUBSTRATES = frozenset(
         COMMON_SUBSTRATE_V13,
         COMMON_SUBSTRATE_V14,
         COMMON_SUBSTRATE_V15,
+        COMMON_SUBSTRATE_V16,
+        COMMON_SUBSTRATE_V17,
     }
 )
 _PY = "merlin/python/merlin/"
@@ -252,6 +258,8 @@ def _policy_version(version: str) -> str:
         COMMON_SUBSTRATE_V13: "3",
         COMMON_SUBSTRATE_V14: "3",
         COMMON_SUBSTRATE_V15: "3",
+        COMMON_SUBSTRATE_V16: "3",
+        COMMON_SUBSTRATE_V17: "3",
     }[version]
 
 
@@ -756,6 +764,8 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V13,
         COMMON_SUBSTRATE_V14,
         COMMON_SUBSTRATE_V15,
+        COMMON_SUBSTRATE_V16,
+        COMMON_SUBSTRATE_V17,
     }:
         lines.append(
             "Shared dense scheduling is available as `merlin.transforms.dense_planning`: "
@@ -777,6 +787,8 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V13,
         COMMON_SUBSTRATE_V14,
         COMMON_SUBSTRATE_V15,
+        COMMON_SUBSTRATE_V16,
+        COMMON_SUBSTRATE_V17,
     }:
         lines.append(
             "Shared `merlin.compile.scheduling.block_schedule` provides checked synchronous "
@@ -808,6 +820,8 @@ def tool_profile_prompt(bundle: dict) -> str:
     if profile["common_substrate"] in (
         COMMON_SUBSTRATE_V9, COMMON_SUBSTRATE_V10, COMMON_SUBSTRATE_V11,
         COMMON_SUBSTRATE_V12, COMMON_SUBSTRATE_V13, COMMON_SUBSTRATE_V14, COMMON_SUBSTRATE_V15,
+        COMMON_SUBSTRATE_V16,
+        COMMON_SUBSTRATE_V17,
     ):
         catalog_call = (
             "scheduling_capabilities()"
@@ -836,6 +850,8 @@ def tool_profile_prompt(bundle: dict) -> str:
         COMMON_SUBSTRATE_V13,
         COMMON_SUBSTRATE_V14,
         COMMON_SUBSTRATE_V15,
+        COMMON_SUBSTRATE_V16,
+        COMMON_SUBSTRATE_V17,
     }:
         lines.append(
             "V19 additionally provides a source-checked final-K producer/readout frontier on the original "
@@ -843,12 +859,20 @@ def tool_profile_prompt(bundle: dict) -> str:
             "readiness capability, with original store snapshots/backpressure and a final full drain. "
             "It supplies no fixed-cycle spacing or loop-carried event ownership."
         )
-    if profile["common_substrate"] == COMMON_SUBSTRATE_V15:
+    if profile["common_substrate"] in (COMMON_SUBSTRATE_V15, COMMON_SUBSTRATE_V16, COMMON_SUBSTRATE_V17):
         lines.append(
             "V22 keeps every V21 scheduling API, including loop-carried completion events and "
             "effect-checked schedule composition. Operator-only kernel packages and access-policy "
-            "grader/oracle modules are not part of the V22 SDK; the CCA calls remain available "
+            "grader/oracle modules are not part of this SDK; the CCA calls remain available "
             "through their staged broker clients."
+        )
+    if profile["common_substrate"] == COMMON_SUBSTRATE_V17:
+        lines.append(
+            "V24 additionally exposes source-checked shared-RHS sibling products through "
+            "the scheduling dialect and the ordinary registered-pass A/B route. Bind original "
+            "member operands and all outputs, immutable storage, readout contracts and selected "
+            "ordering laws. Missing premises retain drains or decline; recheck emitted effects "
+            "and complete numerical results before comparing whole-call cycles."
         )
     for name in profile["treatment_tools"]:
         if name in _OPTIONAL_TOOLS:

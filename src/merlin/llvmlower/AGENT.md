@@ -269,6 +269,12 @@ and positive structural cost contracts gate layout propagation and contiguous
 dispatch fusion. Unknown views, reductions and opaque regions refuse this
 selection. These checks confer no Lean, physical-representation or timing
 authority; target placement and device policy remain OOT responsibilities.
+For original head/sibling projection, the same selected layout policy runs on
+the exact projected host before normal normalization. The source-binding leaf
+reopens that original product and compares its complete generic input bytes; ordinary
+layout conformance checks every opaque device-call operand/result and effect
+epoch. Object recipes retain the source binding and actual selected layout.
+Device interfaces, schedules and cross-call storage residency remain separate.
 
 `compile_host` may explicitly select `HostDescriptorSelection` for complete
 original tensor/storage declarations. The ordinary caller requires unchanged

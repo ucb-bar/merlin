@@ -417,22 +417,18 @@ def hoist_repeated_pointwise(module, *, immutable_argument_loader=None, max_cons
     return (current if report["rewrites"] else module.clone()), report
 
 
-def prepare_repeated_pointwise(prepared: Path, directory: Path, *, bundle_dir: Path):
-    """Explicit ordinary stored-parameter selection, preserving public interfaces."""
-    from merlin.frontends.linalg_mlir import parse_mlir_text
-    from merlin.xdsl_dialects._common import text
-
+def _hoist_stored_repeated_pointwise(module, *, bundle_dir):
+    """Internal source preparation with a fresh generated-caller/span binding."""
+    from .weight_prepack_runtime import fixed_arguments
     from .weights_pack import load_safetensors_header
 
-    if not selected():
-        return prepared
+    bundle_dir = Path(bundle_dir)
     manifest_path = bundle_dir / "weights.safetensors.manifest.json"
     weights = bundle_dir / "weights.safetensors"
     manifest_bytes = manifest_path.read_bytes()
     manifest = json.loads(manifest_bytes)
     header, offset = load_safetensors_header(weights)
-    source_bytes = prepared.read_bytes()
-    module = parse_mlir_text(source_bytes.decode())
+    caller_bytes = (bundle_dir / "model.mlir").read_bytes()
     entries = [
         op
         for op in module.body.block.ops
@@ -443,6 +439,9 @@ def prepare_repeated_pointwise(prepared: Path, directory: Path, *, bundle_dir: P
     if len(entries) != 1:
         raise ValueError("stored repeated-pointwise binding requires one original public entry")
     entry = entries[0]
+    # Manifest storage roles alone do not establish immutability. The existing
+    # generated-caller proof excludes state/stream slots and opaque effects.
+    fixed = fixed_arguments(bundle_dir, manifest, entry=entry.sym_name.data)
     loaded = {}
 
     def load(argument):
@@ -454,6 +453,7 @@ def prepare_repeated_pointwise(prepared: Path, directory: Path, *, bundle_dir: P
             or owner.function_type != entry.function_type
             or owner.sym_visibility is not None
             and owner.sym_visibility.data == "private"
+            or argument.index not in fixed
         ):
             return None
         row = manifest.get(str(argument.index))
@@ -490,24 +490,48 @@ def prepare_repeated_pointwise(prepared: Path, directory: Path, *, bundle_dir: P
         return data
 
     rewritten, report = hoist_repeated_pointwise(module, immutable_argument_loader=load)
-    if prepared.read_bytes() != source_bytes or manifest_path.read_bytes() != manifest_bytes:
+    def require_binding():
+        if (manifest_path.read_bytes() != manifest_bytes
+                or (bundle_dir / "model.mlir").read_bytes() != caller_bytes
+                or load_safetensors_header(weights) != (header, offset)):
+            raise ValueError("repeated pointwise preparation changed its selected source or argument binding")
+        if fixed_arguments(bundle_dir, manifest, entry=entry.sym_name.data) != fixed:
+            raise ValueError("repeated pointwise preparation lost its immutable generated-caller binding")
+        # Reopen each exact stored span before publishing/reusing specialization.
+        with weights.open("rb") as handle:
+            for item in loaded.values():
+                handle.seek(item["payload_offset"])
+                if hashlib.sha256(handle.read(item["bytes"])).hexdigest() != item["sha256"]:
+                    raise ValueError("repeated pointwise preparation lost its immutable stored argument")
+
+    require_binding()
+    report.update(
+        manifest_file_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+        immutable_argument_sources=list(loaded.values()),
+        immutable_generated_argument_indices=list(fixed),
+    )
+    return rewritten, report, require_binding
+
+
+def prepare_repeated_pointwise(prepared: Path, directory: Path, *, bundle_dir: Path):
+    """Explicit ordinary stored-parameter selection, preserving public interfaces."""
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects._common import text
+
+    if not selected():
+        return prepared
+    source_bytes = prepared.read_bytes()
+    rewritten, report, require_binding = _hoist_stored_repeated_pointwise(
+        parse_mlir_text(source_bytes.decode()), bundle_dir=bundle_dir)
+    if prepared.read_bytes() != source_bytes:
         raise ValueError("repeated pointwise preparation changed its selected source or argument binding")
-    # Reopen each exact stored span before publishing its specialization.
-    with weights.open("rb") as handle:
-        for item in loaded.values():
-            handle.seek(item["payload_offset"])
-            if hashlib.sha256(handle.read(item["bytes"])).hexdigest() != item["sha256"]:
-                raise ValueError("repeated pointwise preparation lost its immutable stored argument")
+    require_binding()
     directory.mkdir(parents=True, exist_ok=False)
     output = prepared
     if report["rewrites"]:
         output = directory / "model.mlir"
         output.write_text(text(rewritten, generic=True))
-    report.update(
-        source_file_sha256=hashlib.sha256(source_bytes).hexdigest(),
-        output_file_sha256=hashlib.sha256(output.read_bytes()).hexdigest(),
-        manifest_file_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
-        immutable_argument_sources=list(loaded.values()),
-    )
+    report.update(source_file_sha256=hashlib.sha256(source_bytes).hexdigest(),
+                  output_file_sha256=hashlib.sha256(output.read_bytes()).hexdigest())
     (directory / "report.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     return output

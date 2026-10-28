@@ -195,12 +195,16 @@ def schedule_compact_dense_group(
     readout_qualification_identities=None,
     verification_timeout_ms=2000,
     max_members=8,
+    block_tiles=None,
 ):
     """Choose and check one bounded full-K group before actual emission.
 
     Distinct RHS/accumulator assigned windows and complete explicit external
     pointers are required. A declaration or this result alone grants no effect
-    permission. Missing retention/full-K capacity yields no candidate.
+    permission. Missing retention/full-K capacity yields no candidate. Optional
+    ``block_tiles`` selects one (M, K, N) tile extent per original member for
+    exploration; it never bypasses the ordinary capacity/effect/source checks.
+    Unsupported requested geometry returns no candidate, without substitution.
     """
     if (
         type(problems) is not tuple
@@ -216,6 +220,13 @@ def schedule_compact_dense_group(
         or verification_timeout_ms <= 0
     ):
         raise ValueError("shared LHS requires bounded typed group inputs")
+    if block_tiles is not None and (
+        type(block_tiles) is not tuple or len(block_tiles) != len(problems)
+        or any(type(shape) is not tuple or len(shape) != 3
+               or any(type(value) is not int or value <= 0 for value in shape)
+               for shape in block_tiles)
+    ):
+        raise ValueError("shared LHS block selection needs one positive (M, K, N) tuple per source member")
     contracts, readouts, qualifications = _group_output_contracts(
         len(problems), selected_contracts, output_readouts, readout_qualification_identities
     )
@@ -271,6 +282,7 @@ def schedule_compact_dense_group(
             tuple(asdict(r) for r in reservations),
             verification_timeout_ms,
             max_members,
+            block_tiles,
             adapter.configuration_identity,
             adapter.numerical_policy_identity,
             adapter.qualification_identity,
@@ -328,6 +340,7 @@ def schedule_compact_dense_group(
                 tuple(asdict(r) for r in reservations),
                 verification_timeout_ms,
                 max_members,
+                block_tiles,
                 adapter.configuration_identity,
                 adapter.numerical_policy_identity,
                 adapter.qualification_identity,
@@ -433,6 +446,8 @@ def schedule_compact_dense_group(
         )
 
     def admits(blocks):
+        if block_tiles is not None and tuple((b.m, b.k, b.n) for b in blocks) != block_tiles:
+            return False
         if not all(s.admits(p, b, resources) for p, b, s in zip(problems, blocks, storages, strict=True)):
             return False
         counts = tuple(s.row_counts(p, b) for p, b, s in zip(problems, blocks, storages, strict=True))

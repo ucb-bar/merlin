@@ -173,6 +173,7 @@ module_access = _module
 
 MODULE_ACCESS = (
     _module("merlin.perf.analysis_worker", "grader"),
+    _module("merlin.perf.command_recorder", "grader"),
     # The whole-model build reads a model capsule's golden and recomputes its oracle; the rest of the
     # family grades or measures what a candidate built. Host code, withheld from a candidate compiler.
     _module(

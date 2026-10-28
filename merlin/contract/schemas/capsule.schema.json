@@ -200,6 +200,7 @@
             "bias_add",
             "residual_add",
             "residual_seam",
+            "sibling_feed",
             "fused_matmul_bias",
             "fused_norm_scale",
             "attention_scaled",

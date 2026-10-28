@@ -23,7 +23,7 @@ ROUTES = {
 
 
 # Stable public surface: discovery remains separate from physical realization.
-from .fusion_discovery import discover, _structural_family  # noqa: F401
+from .fusion_discovery import discover, plan_materialization_frontier, _structural_family  # noqa: F401
 
 
 @dataclass(frozen=True)
@@ -123,14 +123,18 @@ def realize_multioutput(module, operations, **selection):
     })
 
 
-def compare_region_costs(baseline, candidate):
+def compare_region_costs(baseline, candidate, *, allow_provisional=False):
     """Compare explicit complete-region observations; issue no placement authority.
 
     Observation trust remains with the caller's timing/correctness owner. Missing
-    measurements or unqualified models cannot turn planned transformations into
-    a gain. Physical observations need no fictitious cycle-model identity.
+    measurements cannot turn planned transformations into a gain. Explicit
+    allow_provisional admits complete, same-model exploratory comparisons without
+    promoting them to qualified or measured speedups. Physical observations need
+    no fictitious cycle-model identity.
     """
     keys = ("source_ir_sha256", "numeric_policy_sha256", "hardware_sha256", "scope_sha256")
+    if type(allow_provisional) is not bool:
+        raise ValueError("provisional comparison selection must be an explicit Boolean")
     unknown = {"status": "unknown", "saved_cycles": None, "placement_authority": False}
     if not isinstance(baseline, dict) or not isinstance(candidate, dict):
         return {**unknown, "reason": "missing whole-region observations"}
@@ -139,10 +143,12 @@ def compare_region_costs(baseline, candidate):
     method = baseline.get("method")
     if method not in {"physical", "model"} or candidate.get("method") != method:
         return {**unknown, "reason": "unknown or mismatched timing method"}
+    qualifications = {"qualified", "provisional"} if allow_provisional else {"qualified"}
     if method == "model" and (
             not is_sha256(baseline.get("model_sha256"))
             or baseline.get("model_sha256") != candidate.get("model_sha256")
-            or any(row.get("model_qualification") != "qualified" for row in (baseline, candidate))):
+            or baseline.get("model_qualification") != candidate.get("model_qualification")
+            or baseline.get("model_qualification") not in qualifications):
         return {**unknown, "reason": "unbound, mismatched or unqualified cycle model"}
     if any(row.get("scope") != "complete_region" or row.get("complete") is not True
            or row.get("correctness") != "pass"
@@ -152,6 +158,8 @@ def compare_region_costs(baseline, candidate):
         return {**unknown, "reason": "partial, incorrect, unbound or invalid complete-region observations"}
     return {"status": "reported_comparison", "saved_cycles": baseline["cycles"] - candidate["cycles"],
             "baseline": baseline, "candidate": candidate, "placement_authority": False,
+            "basis": "modeled_roi" if method == "model" else "measured_roi",
+            "provisional": method == "model" and baseline.get("model_qualification") == "provisional",
             "qualification": "supplied observations; native timing and correctness owners remain authoritative"}
 
 

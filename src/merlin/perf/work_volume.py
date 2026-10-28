@@ -290,7 +290,7 @@ def _unknown_evidence(refusal: str, compiler_provenance: str) -> tuple[dict[str,
     return work, artifact
 
 
-def command_buffer_evidence(command_buffer: Any, *, compiler_provenance: str
+def command_buffer_evidence(command_buffer: Any, *, compiler_provenance: str, store: Any = None
                             ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return the ``(work_volume, command_buffer_artifact)`` pair a perf consumer reads.
 
@@ -303,19 +303,31 @@ def command_buffer_evidence(command_buffer: Any, *, compiler_provenance: str
     Never returns a zero total for unpriceable work: an unknown stays ``exact_macs=None`` with the
     counter's own refusals attached, and a buffer that is absent or not serialisable evidence yields
     the same explicit UNKNOWN rather than a missing key.
+
+    With ``store`` (the directory of the result that will carry the artifact) the raw buffer is written
+    there once, as the canonical bytes the digest is taken over, and the artifact REFERENCES it
+    (:mod:`merlin.perf.command_buffer_store`) instead of embedding it: an expanded buffer carries every
+    canonical input tensor, up to 88 MB of integers per decoder-scale case. Readers load it with
+    :func:`merlin.perf.command_buffer_store.load_command_buffer`, which re-checks the digest.
     """
     if not isinstance(command_buffer, Mapping):
         return _unknown_evidence(NO_COMMAND_BUFFER_REFUSAL, compiler_provenance)
+    from merlin.perf.command_buffer_store import canonical_bytes, store_canonical
+
     try:
-        canonical = json.dumps(command_buffer, sort_keys=True, separators=(",", ":"))
+        canonical = canonical_bytes(command_buffer)
         # Round-tripped, so the bytes a reader re-digests are the bytes this digest was taken over.
-        replayed = json.loads(canonical)
+        replayed = json.loads(canonical) if store is None else None
     except (TypeError, ValueError) as exc:
         return _unknown_evidence(
             f"command buffer is not serialisable evidence and cannot be priced: {exc}",
             compiler_provenance)
     work = work_from_command_buffer(command_buffer).to_dict()
-    artifact = {"command_buffer": replayed,
-                "artifact_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+    sha256 = hashlib.sha256(canonical).hexdigest()
+    if store is not None:
+        artifact = {"artifact_sha256": sha256, "compiler_provenance": str(compiler_provenance),
+                    **store_canonical(command_buffer, canonical, sha256, store)}
+        return work, artifact
+    artifact = {"command_buffer": replayed, "artifact_sha256": sha256,
                 "compiler_provenance": str(compiler_provenance)}
     return work, artifact

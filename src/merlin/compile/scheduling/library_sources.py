@@ -284,14 +284,69 @@ LIBRARY_MODULES_V22 = (
     "merlin.transforms.pass_exploration",
     "merlin.transforms.evaluated_exploration",
     "merlin.transforms.shape_policy",
+    "merlin.compile.scheduling.dense_panel_epochs",
+)
+LIBRARY_MODULES_V23 = (
+    *LIBRARY_MODULES_V22,
+    "merlin.compile.scheduling.pointwise_convolution",
+    "merlin.compile.scheduling.affine_gather_runs",
+    "merlin.compile.scheduling.batched_dense",
+    "merlin.compile.scheduling.convolution_output_groups",
+    "merlin.compile.scheduling.loaded_sum_epochs",
+    "merlin.compile.tuning_knobs",
+    "merlin.transforms.tuning_selection",
+)
+LIBRARY_MODULES_V24 = (
+    *LIBRARY_MODULES_V23,
+    "merlin.llvmlower.late_quant_rne",
+    "merlin.llvmlower.source_expression_interval",
+    "merlin.llvmlower.source_expression_interval_llvm",
+    "merlin.llvmlower.bounded_rne_word_cells",
+    "merlin.llvmlower.scaled_integer_finite",
+    "merlin.llvmlower.scaled_integer_finite_llvm",
+    "merlin.llvmlower.bounded_rne_maps",
+    "merlin.llvmlower.closed_tensor_insert",
+    "merlin.compile.scheduling.projection_dense",
+    "merlin.compile.scheduling.projection_provenance",
+    "merlin.compile.scheduling.rolling_lookahead",
+    "merlin.compile.scheduling.operand_slots",
+    "merlin.compile.scheduling.compact_dense_group",
+    "merlin.compile.scheduling.compact_dense_group_check",
+    "merlin.compile.scheduling.dense_shared_rhs",
+    "merlin.compile.scheduling.dense_shared_rhs_check",
+    "merlin.compile.scheduling.shared_rhs_schedule_ir",
+    "merlin.compile.scheduling.horizontal_convolution",
+    # Early source preparation must retain its actual tensor/view and caller
+    # checks in the closed SDK, rather than importing a live full checkout.
+    "merlin.common.digest",
+    "merlin.common.mlir_query",
+    "merlin.common.yaml",
+    "merlin.capture",
+    "merlin.capture.safetensors",
+    "merlin.llvmlower.repeated_pointwise",
+    "merlin.llvmlower.contraction_row_slice",
+    "merlin.llvmlower.quant_round_check",
+    "merlin.llvmlower.segmented_matrix_view",
+    "merlin.llvmlower.layout_conformance",
+    "merlin.llvmlower.weight_prepack_runtime",
+    "merlin.llvmlower.weights_pack",
+    "merlin.llvmlower.prepared_operand_effects",
+    "merlin.llvmlower.tensor_preparation_identity",
+    "merlin.llvmlower.ordered_fma_groups",
+    "merlin.transforms.head_batching",
+    "merlin.transforms.dense_row_batching",
+    "merlin.transforms.dense_row_batching_check",
+    "merlin.transforms.shared_rhs_views",
 )
 LIBRARY_MODULES = LIBRARY_MODULES_V6
 
 
 def library_modules(version=6):
     """Select a closed reviewed inventory; this grants no import access."""
-    if type(version) is not int or version not in (6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22):
-        raise ValueError("shared compiler inventory requires version 6 through 22")
+    if type(version) is not int or version not in (
+        6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24
+    ):
+        raise ValueError("shared compiler inventory requires version 6 through 24")
     return {
         6: LIBRARY_MODULES_V6,
         7: LIBRARY_MODULES_V7,
@@ -310,6 +365,8 @@ def library_modules(version=6):
         20: LIBRARY_MODULES_V20,
         21: LIBRARY_MODULES_V21,
         22: LIBRARY_MODULES_V22,
+        23: LIBRARY_MODULES_V23,
+        24: LIBRARY_MODULES_V24,
     }[version]
 
 

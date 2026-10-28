@@ -18,9 +18,10 @@ contract; nothing here names an accelerator, an opcode or a class. The RoCC tran
 R-type instruction (``opcode``, ``rs1``, ``rs2``, ``funct7``) are the RISC-V encoding, not a target
 fact. Anything underivable leaves the profile UNKNOWN with its reason.
 
-The commit-log line format is the functional simulator's ``-l --log-commits`` text: an execution line
-``core N: 0x<pc> (0x<insn>) <disasm>`` and a commit line ``core N: <priv> 0x<pc> (0x<insn>) [x<r>
-0x<value>] ...``. Only commit lines are read, and only integer-register writes are replayed.
+The commit-log line format is the functional simulator's ``--log-commits`` text: a commit line
+``core N: <priv> 0x<pc> (0x<insn>) [x<r> 0x<value>] ...`` per retired instruction (with ``-l`` each is
+also preceded by an execution line ``core N: 0x<pc> (0x<insn>) <disasm>``, which readers skip). Only
+commit lines are read, and only integer-register writes are replayed.
 """
 
 from __future__ import annotations
@@ -194,7 +195,7 @@ def trace_invocation(target: str, elf: Path) -> tuple[list[str], dict[str, str]]
     flags, library_dir = extension()
     env = dict(os.environ)
     env["LD_LIBRARY_PATH"] = str(library_dir) + ":" + env.get("LD_LIBRARY_PATH", "")
-    return [str(path()), *[str(f) for f in flags], "-l", "--log-commits", str(elf)], env
+    return [str(path()), *[str(f) for f in flags], "--log-commits", str(elf)], env
 
 
 def profile_elf(elf: Path, *, target: str, timeout_s: int = 120, max_retired: int = DEFAULT_MAX_RETIRED) -> dict:

@@ -430,6 +430,8 @@ def with_shared_grid_operand_sums(
     body = json.loads(json.dumps(dict(recipe)))
     if CONTRACTION not in (body.get("families") or ()):
         raise ValueError("shared-grid sums need a recipe that quantizes contractions")
+    if "accumulator_residual" in body:
+        raise ValueError("accumulator residual and shared operand sums cannot own the same graph")
     body["families"] = list(dict.fromkeys([*(body.get("families") or ()), OPERAND_SUM]))
     if output_boundary not in {"quantized_readers", "dequantize"}:
         raise ValueError("shared-grid output boundary must be quantized_readers or dequantize")

@@ -61,6 +61,8 @@ def slot_wait_refusals() -> int:
     around the step rather than relying on the exception reaching it.
     """
     return _SLOT_WAIT_REFUSALS
+
+
 _ISSUED_LEASES = weakref.WeakKeyDictionary()
 # Linux UAPI values; some supported CPython builds omit the fcntl names.
 _SEALS = 0x000F
@@ -385,11 +387,16 @@ def _waiter_roster(directory: Path, key, *, fresh: bool = False) -> tuple[int, .
         finally:
             os.close(fd)
         body = json.loads(raw) if raw and len(raw) <= _WAITER_PAYLOAD_MAX else None
-        if (type(body) is dict and set(body) == {"version", "cpus"}
-                and type(body["version"]) is int and body["version"] == 1
-                and type(body["cpus"]) is list and body["cpus"]
-                and all(type(cpu) is int and cpu >= 0 for cpu in body["cpus"])
-                and len(set(body["cpus"])) == len(body["cpus"])):
+        if (
+            type(body) is dict
+            and set(body) == {"version", "cpus"}
+            and type(body["version"]) is int
+            and body["version"] == 1
+            and type(body["cpus"]) is list
+            and body["cpus"]
+            and all(type(cpu) is int and cpu >= 0 for cpu in body["cpus"])
+            and len(set(body["cpus"])) == len(body["cpus"])
+        ):
             roster = tuple(body["cpus"])
     except (OSError, ValueError, UnicodeError, RecursionError):
         pass
@@ -411,8 +418,7 @@ def _matching(rosters, available: tuple[int, ...]) -> dict[int, int]:
         choices = available if rosters[waiter] is None else rosters[waiter]
         choices = tuple(cpu for cpu in choices if cpu in free and cpu not in visited)
         # Prefer unused CPUs, avoiding needless displacement/collisions.
-        for cpu in (*[cpu for cpu in choices if cpu not in owners],
-                    *[cpu for cpu in choices if cpu in owners]):
+        for cpu in (*[cpu for cpu in choices if cpu not in owners], *[cpu for cpu in choices if cpu in owners]):
             if cpu in visited:
                 continue
             visited.add(cpu)
@@ -946,6 +952,23 @@ def compute_capacity(environ: Mapping[str, str] | None = None) -> int:
     return len(selected[0]) if selected is not None else 0
 
 
+def queued_waiters(level: int, environ: Mapping[str, str] | None = None) -> int | None:
+    """Live leases queued in the shared pool at ``level`` or a more urgent class; ``None`` without a pool.
+
+    A lease queues only when no slot it may take is free to it, so zero means every waiter of these
+    classes is already served: one more such requester would take a free slot, or the next one a less
+    urgent class releases. Read-only for live owners (an entry whose owner is gone is removed, as any
+    waiter does).
+    """
+    selected = _shared_compute_selection(os.environ if environ is None else environ)
+    if selected is None:
+        return None
+    level = _parse_priority(level)
+    directory = selected[1] / _WAITER_DIR
+    _QUEUE_VIEWS.pop(directory, None)  # a fresh listing; foreign liveness proofs keep their own TTL
+    return sum(1 for key in _queued_keys(directory) if key[0] <= level)
+
+
 def preparation_cpus(environ: Mapping[str, str] | None = None) -> tuple[int, ...]:
     """Affinity for unleased preparation; its bounded CPU steps lease shared slots.
 
@@ -988,10 +1011,21 @@ def shared_compute_pool(*, timeout_s: float | None = None, queued_since_ns: int 
 
 
 def _carried_priority(env: Mapping[str, str]) -> int | None:
-    """The caller's explicit lease class that a worker launched with ``env`` must carry."""
+    """The lease class a worker launched with ``env`` must carry: the less urgent of the caller's
+    explicit class and the class ``env`` already names.
+
+    A caller lowers one worker by naming a less urgent class in its environment (an operator
+    measurement launched from an author broker, a background promotion from the simulation broker).
+    The caller's own class must not raise that worker back above it: a launch prefix that did so ran
+    background work at the author's class, ahead of every grade.
+    """
     if _shared_compute_selection(env) is None:
         return None
-    return _explicit_priority()
+    level = _explicit_priority()
+    named = env.get(PRIORITY_ENV, "").strip()
+    if level is not None and named:
+        level = max(level, _parse_priority(named))
+    return level
 
 
 def child_environment(environ: Mapping[str, str] | None = None) -> dict[str, str]:

@@ -43,6 +43,45 @@ def composition_capabilities(*, selected_modules=None):
         "authority": "discovery only; no source, numerical, effects, target or execution grant",
         "selected_source_contract_required": True,
         "capabilities": [
+            row("original_head_batch_request", (
+                "merlin.llvmlower.head_source_route.HeadBatchSourceRoute",
+                "merlin.compile.owned_host_model.OwnedHostModelCompiler",
+            ), consumer="optional independent_heads, whole_head_batches and shared_rhs_row_views Booleans in ordinary "
+                        "source_composition.json",
+                access="original_host_owner", stage="original_source_admission_and_normal_device_link",
+                requires=("complete original eligible-operation evidence for every composed head",
+                          "stock batch bridge, original per-product work, actual object/link and all-output checks"),
+                limitations=("unmatched groups retain ordinary accelerator routing; original readouts remain",
+                             "joint opt-in checks disjoint sibling components after heads; "
+                             "typed sibling interfaces remain original",
+                             "whole_head_batches requires an actual target consumer of the complete ranked batch; "
+                             "it grants no inter-head overlap, storage or completion law",
+                             "shared_rhs_row_views freshly checks scalar invariance, generated immutable bindings "
+                             "when needed, inverse row batching and every original member's exact row range",
+                             "batch ABI calls are not matrix invocation counts or a performance estimate",)),
+            row("independent_head_and_plane_products", (
+                "merlin.transforms.head_batching.plan_independent_head_batching",
+                "merlin.compile.scheduling.batched_dense.BatchMatrixView",
+                "merlin.compile.scheduling.batched_dense.BatchedDenseProblem",
+                "merlin.compile.scheduling.batched_dense.counted_batched_dense_products",
+                "merlin.llvmlower.logical_borrowed_batch_abi.emit_borrowed_batch_translation_unit",
+                "merlin.llvmlower.integer_batched_matmul_calls.lower_integer_batched_matmul_program",
+            ), consumer="ordinary source host with an explicitly supplied per-product primitive or ranked-batch consumer",
+                access="additional_compiler_sources", stage="checked_source_refolding_and_ranked_borrowed_call",
+                requires=("complete independent original head slices and exact signed integer scalar body",
+                          "original readouts/plane sums, explicit primitive effects/format, immutable implementation pins",
+                          "whole-batch nonalias, output injectivity and bounded per-matrix scratch"),
+                limitations=("all matrix products remain; one batch ABI call is not one accelerator command",
+                             "default per-product bridge is synchronous; a ranked-batch consumer owns its "
+                             "storage/effects/completion; no implied overlap or performance improvement",
+                             "incomplete/unknown source retains its original form; selected module membership is required",)),
+            row("operation_profile_diagnostics", (
+                "merlin.runtime.operation_profile.summarize",
+            ), consumer="original-owner op_profile request and independently pinned typed operation table",
+                access="additional_compiler_sources", stage="optional_instrumented_observation",
+                requires=("complete original table and marker trace; uninstrumented control",),
+                limitations=("raw counter ticks do not establish elapsed cycles or performance ranking",
+                             "semantic categories do not establish CPU/device placement or physical occupancy",)),
             row("whole_model_source_coverage_and_work", (
                 "merlin.compile.model_coverage.plan_model_coverage",
                 "merlin.perf.model_group_work.summarize_group_work",
@@ -54,12 +93,17 @@ def composition_capabilities(*, selected_modules=None):
                              "unassigned or unsupported work remains explicit; no missing region becomes zero cost",)),
             row("source_fusion_exploration", (
                 "merlin.compile.fusion_workflow.discover",
+                "merlin.compile.fusion_workflow.plan_materialization_frontier",
                 "merlin.compile.fusion_workflow.realize_candidate",
                 "merlin.compile.fusion_workflow.evaluate_fusions",
+                "merlin.compile.fusion_workflow.compare_region_costs",
             ), consumer="registered passes and ordinary emission of the actual returned product",
                 stage="bounded_source_discovery_and_existing_realizers",
                 requires=("exact source/capability/numerical identities and original unfused alternative",),
-                limitations=("discovery is not legality or profitability; unsupported routes retain source",)),
+                limitations=("discovery is not legality or profitability; unsupported routes retain source",
+                             "logical materialization bytes prioritize bounded nonoverlapping proposals; actual region cycles select performance",
+                             "allow_provisional=True compares complete same-model region observations for exploration only; "
+                             "UNKNOWN remains unranked, and all-output/source/scope checks remain required",)),
             row("checked_pointwise_fusion", (
                 "merlin.compile.scheduling.fusion.plan_fusion",
                 "merlin.compile.scheduling.multioutput_fusion.compile_source_multioutput",
@@ -93,6 +137,14 @@ def composition_capabilities(*, selected_modules=None):
                 requires=("explicit original tensor values and total observation element bound",),
                 limitations=("observations extend lifetimes and change the ABI; no timing or effect equivalence",
                              "original outputs and acceptance criteria remain separately checked",)),
+            row("independent_shared_input_components", (
+                "merlin.llvmlower.sibling_components.prepare_sibling_components",
+            ), consumer="original-owner partial sibling route and actual ordinary unmatched groups",
+                access="additional_compiler_sources", stage="source_host_device_component_emission",
+                requires=("original SSA and exact synchronous borrowed-effect selection",),
+                limitations=("bounded independent components; original epilogues and all observers remain",
+                             "unproven input layouts retain identity copies and original guards",
+                             "source composition alone grants neither target legality nor numerical qualification",)),
             row("source_program_component_emission", (
                 "merlin.llvmlower.source_program.prepare_source_program",
                 "merlin.llvmlower.source_program.emit_source_program",
@@ -182,6 +234,28 @@ def composition_capabilities(*, selected_modules=None):
                 stage="storage_and_preparation_transform",
                 requires=("full writes, borrowing/noescape, lifetime/alias proof and bounded owned storage",),
                 limitations=("capacity is not completion; immutable prepacking requires original parameter identity",)),
+            row("connected_host_layout_selection", (
+                "merlin.llvmlower.host_layout_planning.plan_islands",
+                "merlin.llvmlower.host_layout_realization.rewrite_module",
+                "merlin.llvmlower.graph_optimizations.optimize_host_graph",
+            ), consumer="actual rewritten source enters ordinary host/device grouping and lowering",
+                access="additional_compiler_sources", stage="source_layout_before_device_grouping",
+                requires=("current source-coordinate and scalar-body conformance, fixed public layouts and observers",
+                          "selected supported regions, explicit structural budget and original software permissions"),
+                limitations=("unknown operations retain boundary conversions; source layout is not device residency",
+                             "composed source ownership needs a fresh checked bridge; no blanket ABI transfer",
+                             "conversion bytes screen alternatives; complete-region cycles establish performance",)),
+            row("completed_host_allocation_reuse", (
+                "merlin.llvmlower.host_storage_policy.prepare",
+                "merlin.llvmlower.host_storage_policy.recheck",
+                "merlin.llvmlower.arena_bind.bind_arena",
+            ), consumer="reuse_intermediate_storage request through the original host compiler and its exact LLVM",
+                access="original_host_owner", stage="completed_call_lifetime_and_final_arena_binding",
+                requires=("actual allocation aliases, real release/completion and checked nonescaping call effects",
+                          "original sequential/non-reentrant allocation policy and current compiled product"),
+                limitations=("graph last use alone cannot release asynchronous accesses or persistent state",
+                             "unknown effects, loop generations and unproved ownership retain original allocations",
+                             "arena bytes describe selected storage, not measured peak occupancy or elapsed cycles",)),
             row("ordered_quantization_boundaries", (
                 "merlin.compile.scheduling.spatial_readout.prove_spatial_readout",
                 "merlin.compile.scheduling.spatial_readout_cache.propose_spatial_readout_cache",

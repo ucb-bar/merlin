@@ -122,6 +122,9 @@ def emit_nhwc_window_panel(
     panel_bytes = rows * reduction
     if panel_bytes > maximum_panel_bytes:
         raise ValueError("window panel exceeds caller-selected packing capacity")
+    if _emit_complete_unit_window(builder, window, source, destination, row_start, rows):
+        return dict(_panel_receipt(rows, reduction, panel_bytes),
+                    transport="complete_unit_window_row_spans")
     ops = _WindowBuilder(builder)
     oh, ow = window.output_spatial
     start_valid = ops.cmp("ult", row_start, window.input_shape[0] * oh * ow)
@@ -131,6 +134,63 @@ def emit_nhwc_window_panel(
 
     _emit_window_bytes(builder, window, source, destination, rows, row_mapping)
     return _panel_receipt(rows, reduction, panel_bytes)
+
+
+def _emit_complete_unit_window(builder, window, source, destination, row_start, rows):
+    """Copy complete unit-stride 1x1 windows as contiguous row spans.
+
+    Only a proved constant-zero start and the complete padded output domain
+    enter this path. The original disjointness and byte budget were checked by
+    the public caller. Runtime/partial starts retain the general checked map.
+    No alignment or target memory-operation implementation is assumed.
+    """
+    start = getattr(row_start.owner, "value", None)
+    if (window.kernel != (1, 1) or window.stride != (1, 1)
+            or not isinstance(start, IntegerAttr) or start.value.data != 0):
+        return False
+    b, h, w, c = window.input_shape
+    oh, ow = window.output_spatial
+    if rows != b * oh * ow:
+        return False
+    pt, pl, pb, pr = window.padding
+    ops = _WindowBuilder(builder)
+
+    def pointer(base, offset):
+        return builder.gep(base, ops.value(offset), i8)
+
+    def fill(offset, count):
+        if count:
+            builder.add(llvm.CallIntrinsicOp("llvm.memset.p0.i64", [
+                pointer(destination, offset), builder.const(0, i8), builder.const(count), builder.const(0, i1)
+            ], []))
+
+    def copy(source_offset, destination_offset, count):
+        builder.add(llvm.CallIntrinsicOp("llvm.memcpy.p0.p0.i64", [
+            pointer(destination, destination_offset), pointer(source, source_offset),
+            builder.const(count), builder.const(0, i1)
+        ], []))
+
+    if not any(window.padding):
+        copy(0, 0, b * h * w * c)
+        return True
+
+    def image(image):
+        destination_base = ops.op("mul", image, oh * ow * c)
+        source_base = ops.op("mul", image, h * w * c)
+        fill(destination_base, pt * ow * c)
+
+        def row(y):
+            destination_row = ops.op("add", destination_base, ops.op("mul", ops.op("add", y, pt), ow * c))
+            source_row = ops.op("add", source_base, ops.op("mul", y, w * c))
+            fill(destination_row, pl * c)
+            copy(source_row, ops.op("add", destination_row, pl * c), w * c)
+            fill(ops.op("add", destination_row, (pl + w) * c), pr * c)
+
+        builder.for_loop(0, h, 1, row, retain_loop=True)
+        fill(ops.op("add", destination_base, (pt + h) * ow * c), pb * ow * c)
+
+    builder.for_loop(0, b, 1, image, retain_loop=True)
+    return True
 
 
 def _emit_window_bytes(builder, window, source, destination, rows, row_mapping):

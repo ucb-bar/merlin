@@ -9,6 +9,7 @@ and pure-reduction capabilities alone do not supply that conjunction.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
+from math import gcd
 
 from merlin.compile.scheduling.block_schedule import Compute, InitializeAccumulator, Load, Preload, Store
 from merlin.compile.scheduling.compact_dense import DenseBiasSource, _digest, _edge, _emit_lhs_panel, _Group, _groups
@@ -91,6 +92,44 @@ def _assignment(problem, block, resources, storage, window_offsets=None):
             or block.m * block.n * problem.tile_m * storage.accumulator.unit_bytes > resources.accumulator_bytes):
         raise ValueError("retained LHS plus two RHS segments exceed original byte capacity")
     return lhs, rhs
+
+
+def dense_segmented_blocks(problem, resources, storage):
+    """Bound K by the actual full-LHS/two-RHS placement before choosing blocks.
+
+    ``dense_blocks`` proposes only the largest K per M/N. Filtering that proposal
+    afterward can discard an M/N geometry whose smaller K fits two RHS slots.
+    This supplies its existing physical ``k_limit`` callback, without changing
+    memory capacities, pending commands, or the independent execution admission.
+    Returned choices use the default contiguous RHS slots and retained LHS base;
+    explicit alternative placements still require their own actual assignment.
+    One largest physically fitting K is returned per bounded M/N, not a timing
+    preference or exhaustive K search. All ordinary source/tail checks remain.
+    """
+    if storage.accumulator is None:
+        return ()
+
+    def limit(m, n):
+        lhs_rows = m * problem.tiles[1] * problem.tile_m
+        if lhs_rows > storage.lhs.capacity:
+            return 0
+        rhs_rows_per_k = n * problem.tile_k
+        remaining = resources.operand_bytes - lhs_rows * storage.lhs.unit_bytes
+        bound = min(storage.rhs.capacity // (2 * rhs_rows_per_k),
+                    remaining // (2 * rhs_rows_per_k * storage.rhs.unit_bytes))
+        # Both default slots must start on the original view's alignment.
+        quantum = storage.rhs.alignment // gcd(storage.rhs.alignment, rhs_rows_per_k)
+        bound = min(bound, problem.tiles[1], resources.max_k_blocks)
+        return max(0, bound - bound % quantum)
+
+    choices = []
+    for block in dense_blocks(problem, resources, k_limit=limit):
+        try:
+            _assignment(problem, block, resources, storage)
+        except ValueError:
+            continue
+        choices.append(block)
+    return tuple(choices)
 
 
 def build_dense_segmented_pipeline(
@@ -435,6 +474,17 @@ class DenseSegmentedPipelineResult:
         result = materialize_scf_commands(self.kernel)
         self.revalidate()
         return result
+
+    def emit_index_program(self, control, lower_effect, *, complete_epoch):
+        """Emit actual checked effects with the same encoder and full-drain callback."""
+        from .dense_panel_pipeline import DRAIN
+        from .llvm_program import emit_index_effect_program
+
+        self.revalidate()
+        report = emit_index_effect_program(self.kernel, control, lower_effect,
+            complete_epoch=complete_epoch, completion_instruction=DRAIN)
+        self.revalidate()
+        return report
 
     def emit_llvm(self, builder, lower_call):
         from merlin.compile.scheduling.llvm_program import FnBuilderIndexAdapter, emit_index_program

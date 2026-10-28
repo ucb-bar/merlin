@@ -15,6 +15,7 @@ import json
 import os
 import tempfile
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
@@ -191,20 +192,38 @@ def _validate_cached(src, dst, identity):
         != identity
     ):
         raise PrepackRefused("prepacked source, implementation or realized files changed; replan")
+    _verify_cached_contents(str(src.resolve()), str(dst.resolve()), json.dumps(record, sort_keys=True))
+    return record
+
+
+@lru_cache(maxsize=16)
+def _verify_cached_contents(source: str, destination: str, record_json: str) -> None:
+    """Reuse a successful semantic check only within this process and exact content.
+
+    The caller rehashes all source, implementation and realized files before every
+    lookup. A cache writer's new endorsement therefore cannot bypass the rewrite
+    check. This avoids repeatedly parsing a full model during a single build.
+    Failed checks are not retained, and another process starts with no authority.
+    """
     from merlin.capture.rewrite import RewriteRefused, verify_hoisted_bundle
+
+    src, dst = Path(source), Path(destination)
+    record = json.loads(record_json)
+    identity = record["inputs"]
+    immutable = tuple(identity["immutable_arguments"]) if identity["immutable_arguments"] is not None else None
 
     try:
         verify_hoisted_bundle(
             src,
             dst,
             identity["entry"],
-            immutable_arguments=(
-                tuple(identity["immutable_arguments"]) if identity["immutable_arguments"] is not None else None
-            ),
+            immutable_arguments=immutable,
         )
     except RewriteRefused as error:
         raise PrepackRefused(str(error)) from error
-    return record
+    # Do not memoize a proof over files that changed while it was being checked.
+    if _input_identity(src, identity["entry"], immutable) != identity or _prepared_files(dst) != record["outputs"]:
+        raise PrepackRefused("prepacked files changed during semantic validation; replan")
 
 
 def prepacked_bundle(

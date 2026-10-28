@@ -11,7 +11,7 @@ import hashlib
 import json
 import math
 
-from xdsl.dialects import builtin
+from xdsl.dialects import arith, builtin
 from xdsl.ir import Operation
 from xdsl.traits import get_effects
 
@@ -24,7 +24,7 @@ def bounded_round_input(value, integer_type):
     No producer, source label or selected plan supplies these bounds. Unknown
     scalars stop the walk, and both bounds must already have been established.
     """
-    from .quant_round import _float_width, _int_range, _integral_limit
+    from .quant_round_chain import _float_width, _int_range, _integral_limit
 
     if not isinstance(integer_type, builtin.IntegerType) or integer_type.width.data < 2:
         return False
@@ -80,7 +80,7 @@ def residual_round_expression(cur, ft, typ):
     return node("addi", typ, truncated, node("select", typ, bump, direction, integer(0)))
 
 
-def pure_scalar_body(block, *, bounded_intrinsics=False):
+def pure_scalar_body(block, *, bounded_intrinsics=False, integer_extensions=False):
     """Canonical value semantics exclude opaque effects and constrained FP."""
     if not block.ops or block.last_op.name != "linalg.yield":
         return False
@@ -92,12 +92,20 @@ def pure_scalar_body(block, *, bounded_intrinsics=False):
                     or op.regions or op.successors or op.properties or set(op.attributes) - {"op_name__"}):
                 return False
             continue
+        # These registered widening operations lack an effect trait in some
+        # xDSL versions. The optional source family admits only their exact
+        # integer value semantics; unknown or narrowing operations do not gain
+        # purity from a name prefix.
+        extension = (integer_extensions and type(op) in (arith.ExtSIOp, arith.ExtUIOp)
+                     and len(op.operands) == len(op.results) == 1
+                     and all(type(value.type) is builtin.IntegerType for value in (*op.operands, *op.results))
+                     and op.operands[0].type.width.data < op.results[0].type.width.data)
         if (
             isinstance(op, builtin.UnregisteredOp)
             or op.regions
             or op.successors
             or len(op.results) != 1
-            or get_effects(op) != set()
+            or get_effects(op) != set() and not extension
             or not op.name.startswith(("arith.", "math."))
         ):
             return False
@@ -115,7 +123,7 @@ def _term(name, typ, operands=(), parameter=None):
 
 
 def _outputs(block, external, *, legalize, bounded_intrinsics=False, values=None):
-    from .quant_round import _match_chain
+    from .quant_round_chain import _match_chain
 
     memo = {arg: _term("argument", arg.type, parameter=i) for i, arg in enumerate(block.args)}
 

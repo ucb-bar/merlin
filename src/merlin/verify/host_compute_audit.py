@@ -62,6 +62,10 @@ class Budget:
     arithmetic_per_element: float = 1.0
     value_arithmetic_per_element: float = 0.25
     payload_bytes_per_element_byte: float = 0.5
+    #: Scalar parameter loads (a scale or stride read from memory only to configure the unit) a
+    #: command-only kernel may execute per call. A kernel configures a handful of registers, once
+    #: or per tile pass; a load repeated per output element exceeds any small bound at real sizes.
+    command_parameter_loads: int = 64
 
 
 @dataclass(frozen=True)
@@ -125,64 +129,6 @@ def _functions(module) -> dict[str, Any]:
         if isinstance(name, str):
             found[name] = op
     return found
-
-
-def _command_only_integer_orchestration(function: Any, target: str | None) -> bool:
-    """Prove a high instruction count cannot be host tensor computation.
-
-    A pointer-only kernel with no scalar memory access or value arithmetic can
-    spend many integer instructions calculating transfer addresses and command
-    operands. Its only effects must be target-owned RoCC commands and fences;
-    unrecognized inline assembly, helpers, scalar memory, or a scalar return
-    keeps the ordinary element-scale veto in force.
-    """
-    if target is None:
-        return False
-    from xdsl.dialects.builtin import UnitAttr
-    from xdsl.dialects.llvm import LLVMPointerType, LLVMVoidType
-
-    from merlin.perf.host_cfg_activity import _INTEGER, _real_name
-    from merlin.targetgen.rocc.decode import _asm_template, _parse_insn, isa_constants
-
-    try:
-        isa = isa_constants(target)
-        opcode, classes = isa["CUSTOM_OPCODE"], isa["FUNCT_CLASS"]
-    except (KeyError, TypeError, ValueError):
-        return False
-    blocks = tuple(function.body.blocks)
-    if not blocks or not blocks[0].args or not all(isinstance(arg.type, LLVMPointerType) for arg in blocks[0].args):
-        return False
-    commands = 0
-    scalar_ops = _INTEGER | {
-        "llvm.func", "llvm.mlir.constant", "llvm.mlir.addressof", "llvm.getelementptr",
-        "llvm.ptrtoint", "llvm.inttoptr", "llvm.bitcast", "llvm.icmp", "llvm.select",
-        "llvm.trunc", "llvm.zext", "llvm.sext", "llvm.br", "llvm.cond_br", "llvm.return",
-    }
-    for op in function.walk():
-        name = _real_name(op)
-        if name not in scalar_ops and name != "llvm.inline_asm":
-            return False
-        if name == "llvm.return" and op.operands:
-            return False
-        if name != "llvm.inline_asm":
-            continue
-        void_result = (len(op.results) == 1 and isinstance(op.results[0].type, LLVMVoidType)
-                       and not op.results[0].uses)
-        if (
-            (op.results and not void_result) or not isinstance(op.has_side_effects, UnitAttr)
-            or "~{memory}" not in op.constraints.data.split(",")
-        ):
-            return False
-        template = _asm_template(op)
-        if template == "fence":
-            if op.operands:
-                return False
-            continue
-        parsed = _parse_insn(template, opcode)
-        if parsed is None or not parsed[1] or parsed[0] not in classes or len(op.operands) != 2:
-            return False
-        commands += 1
-    return commands > 0
 
 
 def audit_group(
@@ -260,20 +206,37 @@ def audit_group(
             if min(arithmetic, value_arithmetic, payload) < 0:
                 row.update(verdict=UNKNOWN, why="command parameter proof exceeds original raw accounting")
                 return row
-    command_only = (
-        site.placement != HOST
-        and (arithmetic > site.elements * budget.arithmetic_per_element
-             or value_arithmetic > site.elements * budget.value_arithmetic_per_element)
-        and payload == 0
-        and _command_only_integer_orchestration(function, target)
-    )
+    orchestration = None
+    if site.placement != HOST and (
+        arithmetic > site.elements * budget.arithmetic_per_element
+        or value_arithmetic > site.elements * budget.value_arithmetic_per_element
+        or payload > site.elements * max(site.element_bytes, 1) * budget.payload_bytes_per_element_byte
+    ):
+        from merlin.verify.command_orchestration import prove_command_orchestration
+
+        orchestration = prove_command_orchestration(
+            function, activity, target=target, parameter_loads=budget.command_parameter_loads
+        )
+        if orchestration["status"] == "proven" and payload != orchestration["parameter_payload_bytes"]:
+            # Earlier proofs already excluded part of this traffic; the two accountings must agree.
+            orchestration = {
+                "status": "refused",
+                "reason": f"{payload} bytes of host memory traffic are not the "
+                f"{orchestration['parameter_payload_bytes']} bytes of proven configuration loads",
+            }
+        if orchestration["status"] != "proven":
+            row["command_only_refusal"] = orchestration["reason"]
+    command_only = orchestration is not None and orchestration["status"] == "proven"
     if command_only:
         # The raw dynamic count remains visible. Only the proven pointer-only
         # command orchestration is removed from the tensor-compute budget.
         row["host_command_orchestration_arithmetic"] = arithmetic
         row["host_command_orchestration_conversions"] = value_arithmetic
+        row["host_command_parameter_loads"] = orchestration["parameter_loads"]
+        row["host_command_parameter_payload_bytes"] = orchestration["parameter_payload_bytes"]
         arithmetic = 0
         value_arithmetic = 0
+        payload = 0
     top = (activity.get("block_signatures") or [{}])[0]
     row.update(
         arithmetic_basis=("pointer_only_target_commands_v1" if command_only else "pointer_offset_provenance_v1"),
@@ -321,13 +284,25 @@ def audit_group(
             f"scalar loads and stores move {payload_ratio:.2f}x the group's output "
             f"through the host (budget {budget.payload_bytes_per_element_byte})"
         )
-    if breaches:
+    refusal = row.get("command_only_refusal")
+    dominant = f"Dominant block: {compact_signature(top.get('signature'))!r} x{top.get('trips')}"
+    if breaches and refusal and value_arithmetic == 0 and payload == 0:
+        # No tensor value is computed or moved: the integer work is unproven, not shown to be compute.
+        row.update(
+            verdict=HOST_COMPUTE,
+            why=f"placed on {site.placement}: {'; '.join(breaches)}, with no float arithmetic or scalar "
+            f"memory traffic; the command-only exemption fails on {refusal[:160]}. {dominant}",
+        )
+    elif breaches:
         row.update(
             verdict=HOST_COMPUTE,
             why=f"placed on {site.placement} and the host still works at element scale: "
             + "; ".join(breaches)
-            + f". Dominant block: {compact_signature(top.get('signature'))!r} "
-            f"x{top.get('trips')}",
+            # Float or conversion work at element scale already shows the compute; otherwise
+            # say which construct kept the integer work from counting as orchestration.
+            + (f"; the command-only exemption fails on {refusal[:120]}"
+               if refusal and value_per_element <= budget.value_arithmetic_per_element else "")
+            + f". {dominant}",
         )
     else:
         row.update(verdict=CLEAN, why="host work stays at command scale")

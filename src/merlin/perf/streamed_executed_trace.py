@@ -9,7 +9,13 @@ from __future__ import annotations
 from merlin.perf.executed_trace import _hex
 
 
-def iter_source_commands(view, *, isa, max_retired=200_000_000, max_commands=4_000_000, raw=False):
+#: Retired-instruction bound of one complete source trace.
+DEFAULT_MAX_RETIRED = 200_000_000
+#: Issued accelerator commands plus fences of one complete source trace.
+DEFAULT_MAX_COMMANDS = 4_000_000
+
+
+def iter_source_commands(view, *, isa, max_retired=DEFAULT_MAX_RETIRED, max_commands=DEFAULT_MAX_COMMANDS, raw=False):
     """Yield each executed command (decoded) and each fence in order.
 
     ``raw=True`` yields ``(funct, rs1, rs2)`` integer tuples and ``None`` per fence instead, for a
@@ -75,3 +81,33 @@ def _write_registers(parts, registers):
             value, index = _hex(writes[at + 1]), int(name[1:])
             if value is not None and 0 < index < 32:
                 registers[index] = value
+
+
+def iter_recorded_commands(records, *, isa, max_commands=DEFAULT_MAX_COMMANDS):
+    """:func:`iter_source_commands` with ``raw=True`` over recorded ``(bits, rs1, rs2)`` retirements.
+
+    ``records`` holds, in program order, every retired instruction of the kinds this reader yields (the
+    command recorder's stream, :mod:`merlin.perf.command_recorder`) with the values its source
+    registers held when it issued. The commit log's register replay gives exactly those values, so the
+    yielded items, their order and every refusal are the commit-log reader's. The retired-instruction
+    bound is the recorder's to check (it records the count); every other line of the commit log yields
+    nothing.
+    """
+    opcode = isa.get("CUSTOM_OPCODE")
+    if type(opcode) is not int or not 0 < opcode < 128 or type(max_commands) is not int or max_commands < 1:
+        raise ValueError("streamed trace needs exact custom opcode and finite command/retirement bounds")
+    commands = events = 0
+    for word, rs1, rs2 in records:
+        if word & 3 == 3 and word & 127 == opcode:
+            events += 1
+            if events > max_commands:
+                raise ValueError("complete source trace exceeds issued event limit")
+            yield (word >> 25, rs1, rs2)
+            commands += 1
+        elif word & 127 == 15 and word >> 12 & 7 == 0:
+            events += 1
+            if events > max_commands:
+                raise ValueError("complete source trace exceeds issued event limit")
+            yield None
+    if not commands:
+        raise ValueError("complete source trace contains no accelerator commands")

@@ -97,3 +97,63 @@ def canonicalize_tensor_views(module: builtin.ModuleOp) -> tuple[TensorViewWitne
             witnesses.append(witness)
     module.verify()
     return tuple(witnesses)
+
+
+def fold_complete_matrix_slice_concats(module: builtin.ModuleOp) -> int:
+    """View a complete ordered matrix-slice concat through its original aggregate.
+
+    A rank-three tensor ``[h,m,n]`` sliced at every ``h`` coordinate,
+    collapsed to ``[m,n]`` and concatenated along dimension zero is exactly
+    its row-major ``[h*m,n]`` collapse. Slice observers remain intact; only
+    the concat is replaced. Static unencoded tensors and exact unit strides
+    exclude partial, reordered, duplicated and layout-dependent alternatives.
+    """
+    module.verify()
+    count = 0
+    for concat in tuple(module.walk()):
+        if (type(concat) is not tensor.ConcatOp or concat.dim.value.data != 0
+                or set(concat.properties) != {"dim"}
+                or any(not key.startswith("prov.") for key in concat.attributes)):
+            continue
+        aggregate = None
+        for index, value in enumerate(concat.inputs):
+            collapse = value.owner
+            if (type(collapse) is not tensor.CollapseShapeOp or len(collapse.operands) != 1
+                    or set(collapse.properties) != {"reassociation"}
+                    or any(not key.startswith("prov.") for key in collapse.attributes)
+                    or tuple(tuple(i.value.data for i in group) for group in collapse.reassociation)
+                       != ((0, 1), (2,))):
+                break
+            view = collapse.operands[0].owner
+            if (type(view) is not tensor.ExtractSliceOp or len(view.operands) != 1
+                    or set(view.properties) != {
+                        "static_offsets", "static_sizes", "static_strides", "operandSegmentSizes"}
+                    or any(not key.startswith("prov.") for key in view.attributes)):
+                break
+            typ = view.source.type
+            if (not isinstance(typ, builtin.TensorType) or typ.encoding != builtin.NoneAttr()
+                    or len(typ.get_shape()) != 3 or any(d <= 0 for d in typ.get_shape())):
+                break
+            h, m, n = typ.get_shape()
+            if (h != len(concat.inputs)
+                    or (aggregate is not None and view.source is not aggregate)
+                    or tuple(view.static_offsets.get_values()) != (index, 0, 0)
+                    or tuple(view.static_sizes.get_values()) != (1, m, n)
+                    or tuple(view.static_strides.get_values()) != (1, 1, 1)
+                    or view.result.type != builtin.TensorType(typ.element_type, (1, m, n))
+                    or value.type != builtin.TensorType(typ.element_type, (m, n))
+                    or concat.result.type != builtin.TensorType(typ.element_type, (h*m, n))):
+                break
+            aggregate = view.source
+        else:
+            if aggregate is None:
+                continue
+            replacement = tensor.CollapseShapeOp.create(
+                operands=[aggregate], result_types=[concat.result.type],
+                properties={"reassociation": collapse.reassociation},
+                attributes=dict(concat.attributes),
+            )
+            Rewriter.replace_op(concat, replacement)
+            count += 1
+    module.verify()
+    return count

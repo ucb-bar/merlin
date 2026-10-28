@@ -101,6 +101,8 @@ class CommonTransformService:
                 "merlin.common_compiler_substrate.v13",
                 "merlin.common_compiler_substrate.v14",
                 "merlin.common_compiler_substrate.v15",
+                "merlin.common_compiler_substrate.v16",
+                "merlin.common_compiler_substrate.v17",
             }:
                 from .tool_profile_shared import host_source_digest
 
@@ -129,6 +131,8 @@ class CommonTransformService:
             "merlin.common_compiler_substrate.v13",
             "merlin.common_compiler_substrate.v14",
             "merlin.common_compiler_substrate.v15",
+            "merlin.common_compiler_substrate.v16",
+            "merlin.common_compiler_substrate.v17",
         }:
             resources = self.profile["shared_scheduling_resources"]
             frozen = BW.snapshot_input_paths(

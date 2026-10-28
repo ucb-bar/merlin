@@ -169,3 +169,36 @@ def plan_convolution_resident_panel(weight_shape, geometry, *, private_rows_owne
         raise ValueError("resident convolution layout exceeds its supplied resources")
     return ConvolutionResidentPanel(tile, channel_tiles, reduction_tiles, blocks, rhs_base, rhs_rows, blocks * tile,
                                     geometry.operand_rows, geometry.accumulator_rows)
+
+
+def emit_convolution_matrix_gather(plan, builder, first, count, *, reduction_block, reduction_tile):
+    """Map one checked logical im2col tile to exact original NHWC fragments.
+
+    The logical matrix is (B*OH*OW, KH*KW*CI), in original ky/kx/channel
+    order. A reduction tile must divide CI, so it cannot cross a source tap.
+    The caller supplies the checked matrix iteration domain and owns original
+    dtypes, all arithmetic/readout semantics, nonalias and physical row bounds.
+    Each returned tuple is (source element, destination row, row count); issue
+    consumers guard zero counts and retain their original completion contract.
+    No host payload copy, target command or storage permission is introduced.
+    """
+    if type(plan) is not ConvolutionGatherRuns:
+        raise ValueError("matrix gathers require the exact original valid window")
+    plan.__post_init__()
+    ci = plan.input_shape[-1]
+    if type(reduction_tile) is not int or reduction_tile <= 0 or ci % reduction_tile:
+        raise ValueError("matrix gather reduction tile must divide original input channels")
+    _, _, width, _ = plan.input_shape
+    _, kw = plan.kernel
+    dh, dw = plan.dilation
+    chunks = ci // reduction_tile
+    if type(reduction_block) is int and not 0 <= reduction_block < plan.kernel[0]*kw*chunks:
+        raise ValueError("matrix gather reduction block exceeds the original complete K domain")
+    tap = builder.op("udiv", reduction_block, chunks)
+    ky = builder.op("udiv", tap, kw)
+    kx = builder.op("urem", tap, kw)
+    channel = builder.op("mul", builder.op("urem", reduction_block, chunks), reduction_tile)
+    offset = builder.op("add", builder.op("add", builder.op("mul", ky, dh*width*ci),
+                             builder.op("mul", kx, dw*ci)), channel)
+    return tuple((builder.op("add", base, offset), row, rows)
+                 for base, row, rows in emit_convolution_gather_runs(plan, builder, first, count))

@@ -557,8 +557,12 @@ def _spike_argv(elf: str | Path, *extra: str) -> tuple[list[str], dict[str, str]
 
 def functional_trace_invocation(elf: str | Path) -> tuple[list[str], dict[str, str]]:
     """``(argv, env)`` running ``elf`` on the functional model with every retired instruction and its
-    register writes logged to stderr (``-l --log-commits``) -- the executed-command profile's input."""
-    return _spike_argv(elf, "-l", "--log-commits")
+    register writes logged to stderr (``--log-commits``) -- the executed-command profile's input.
+
+    Without ``-l`` the model prints only the commit lines every consumer reads, byte for byte as with
+    it, and not the paired disassembly line: half the lines, and 1.3-1.5x less engine time on large
+    programs (ZA 12544x256x64: 301 s with ``-l``, 228 s without)."""
+    return _spike_argv(elf, "--log-commits")
 
 
 def run_elf(

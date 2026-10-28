@@ -176,6 +176,35 @@ PUBLIC_MODULES_V22 = (
     "merlin.transforms.pass_exploration",
     "merlin.transforms.evaluated_exploration",
     "merlin.transforms.shape_policy",
+    "merlin.compile.scheduling.dense_panel_epochs",
+)
+PUBLIC_MODULES_V23 = (
+    *PUBLIC_MODULES_V22,
+    "merlin.compile.scheduling.pointwise_convolution",
+    "merlin.compile.scheduling.batched_dense",
+    "merlin.compile.scheduling.convolution_output_groups",
+    "merlin.compile.scheduling.loaded_sum_epochs",
+    "merlin.compile.tuning_knobs",
+    "merlin.transforms.tuning_selection",
+)
+PUBLIC_MODULES_V24 = (
+    *PUBLIC_MODULES_V23,
+    "merlin.llvmlower.late_quant_rne",
+    "merlin.llvmlower.source_expression_interval",
+    "merlin.llvmlower.source_expression_interval_llvm",
+    "merlin.llvmlower.bounded_rne_word_cells",
+    "merlin.llvmlower.scaled_integer_finite",
+    "merlin.llvmlower.scaled_integer_finite_llvm",
+    "merlin.compile.scheduling.projection_dense",
+    "merlin.compile.scheduling.rolling_lookahead",
+    "merlin.compile.scheduling.operand_slots",
+    "merlin.compile.scheduling.dense_shared_rhs",
+    "merlin.compile.scheduling.horizontal_convolution",
+    "merlin.llvmlower.repeated_pointwise",
+    "merlin.llvmlower.contraction_row_slice",
+    "merlin.llvmlower.weight_prepack_runtime",
+    "merlin.transforms.dense_row_batching",
+    "merlin.transforms.shared_rhs_views",
 )
 PUBLIC_MODULES = PUBLIC_MODULES_V6
 _NAMESPACES_V6 = dict(_NAMESPACES)
@@ -215,6 +244,8 @@ def public_modules(version=6):
         20: PUBLIC_MODULES_V20,
         21: PUBLIC_MODULES_V21,
         22: PUBLIC_MODULES_V22,
+        23: PUBLIC_MODULES_V23,
+        24: PUBLIC_MODULES_V24,
     }[version]
 
 
@@ -238,6 +269,8 @@ def namespace_replacements(version=6):
             20: _NAMESPACES_V20,
             21: _NAMESPACES_V20,
             22: _NAMESPACES_V20,
+            23: _NAMESPACES_V20,
+            24: _NAMESPACES_V20,
         }[version]
     )
 
@@ -264,9 +297,9 @@ def export_shared_scheduling(
     modules, namespaces = library_modules(version), namespace_replacements(version)
     if type(source_binding) is not bool:
         raise ValueError("shared source-binding export requires an explicit Boolean")
-    if source_binding and version not in (8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22):
+    if source_binding and version not in (8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24):
         raise ValueError(
-            "new source-binding exports require explicit inventory version 8 or 10 through 22"
+            "new source-binding exports require explicit inventory version 8 or 10 through 24"
         )
     if source_binding:
         modules = (*modules, *SOURCE_BINDING_MODULES)
@@ -322,6 +355,8 @@ def export_shared_scheduling(
             20: "merlin.shared_scheduling_library.v14",
             21: "merlin.shared_scheduling_library.v15",
             22: "merlin.shared_scheduling_library.v16",
+            23: "merlin.shared_scheduling_library.v17",
+            24: "merlin.shared_scheduling_library.v18",
         }[version],
         "public_modules": list(
             (*public_modules(version), *SOURCE_BINDING_MODULES) if source_binding else public_modules(version)
@@ -337,7 +372,7 @@ def export_shared_scheduling(
         manifest["inventory_version"] = version
     if source_binding:
         manifest["source_binding_protocol"] = SOURCE_BINDING_PROTOCOL
-    if version in (16, 17, 18, 19, 20, 21, 22):
+    if version in (16, 17, 18, 19, 20, 21, 22, 23, 24):
         from .api_catalog import scheduling_capabilities
 
         manifest["scheduling_capabilities"] = scheduling_capabilities(version)
@@ -379,7 +414,7 @@ def main(argv=None):
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--include-block-schedule", action="store_true")
     parser.add_argument("--library-version", type=int,
-                        choices=(6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22), default=6)
+                        choices=(6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24), default=6)
     parser.add_argument(
         "--shared-library", action="store_true", help="export all shared scheduling families for host review"
     )

@@ -12,9 +12,131 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
+from fractions import Fraction
 from typing import Literal
 
 from .pipeline_state import AnalysisStamp, PassSpec, PipelineSession, validate_pass_order
+
+
+@dataclass(frozen=True)
+class DimensionRef:
+    operand: int
+    axis: int
+
+    def __post_init__(self):
+        if any(type(v) is not int or v < 0 for v in (self.operand, self.axis)):
+            raise ValueError('dimension reference requires nonnegative operand and axis')
+
+    def value(self, facts):
+        if self.operand >= len(facts.shapes) or self.axis >= len(facts.shapes[self.operand]):
+            return None
+        return facts.shapes[self.operand][self.axis]
+
+
+@dataclass(frozen=True)
+class ResourceRef:
+    resource: str
+
+    def __post_init__(self):
+        if type(self.resource) is not str or not self.resource:
+            raise ValueError('resource reference requires a selected resource name')
+
+    def value(self, facts):
+        if not facts.stamp.context.resources:
+            return None
+        return dict(facts.resources).get(self.resource)
+
+
+@dataclass(frozen=True)
+class RatioFeature:
+    """Dimension divided by another dimension or a selected resource extent.
+
+    The caller must use commensurate dimension/resource units. Integer resource
+    facts do not automatically convert elements into bytes or another unit.
+    """
+    numerator: DimensionRef
+    denominator: DimensionRef | ResourceRef
+
+    def __post_init__(self):
+        if (type(self.numerator) is not DimensionRef
+                or type(self.denominator) not in (DimensionRef, ResourceRef)):
+            raise ValueError('ratio feature requires dimension and dimension/resource references')
+
+    def value(self, facts):
+        numerator = self.numerator.value(facts)
+        denominator = self.denominator.value(facts)
+        if numerator is None or denominator is None or denominator == 0:
+            return None
+        return Fraction(numerator, denominator)
+
+
+@dataclass(frozen=True)
+class TileFeature:
+    """Ceiling tile count, remainder elements or remainder/tile extent.
+
+    Tile extent is a selected positive resource in the same units as the
+    dimension. Computing these features does not allocate any device storage.
+    """
+    dimension: DimensionRef
+    tile: ResourceRef
+    kind: Literal['count', 'tail', 'tail_fraction'] = 'count'
+
+    def __post_init__(self):
+        if (type(self.dimension) is not DimensionRef or type(self.tile) is not ResourceRef
+                or self.kind not in ('count', 'tail', 'tail_fraction')):
+            raise ValueError('tile feature requires dimension, selected tile resource and known kind')
+
+    def value(self, facts):
+        dimension = self.dimension.value(facts)
+        tile = self.tile.value(facts)
+        if dimension is None or tile is None or tile == 0:
+            return None
+        if self.kind == 'count':
+            return Fraction((dimension + tile - 1) // tile)
+        tail = dimension % tile
+        return Fraction(tail, tile if self.kind == 'tail_fraction' else 1)
+
+
+def _bound(value):
+    if (type(value) is not tuple or len(value) != 2
+            or any(type(v) is not int for v in value) or value[0] < 0 or value[1] <= 0):
+        raise ValueError('feature bounds require nonnegative numerator and positive denominator')
+    fraction = Fraction(*value)
+    return fraction.numerator, fraction.denominator
+
+
+@dataclass(frozen=True)
+class FeaturePredicate:
+    """Inclusive exact rational bounds, with no floating point cutoff rounding.
+
+    This is performance applicability only. A matching feature never grants a
+    pass's independent legality or changes its verification requirements.
+    """
+    feature: RatioFeature | TileFeature
+    at_least: tuple[int, int] = (0, 1)
+    at_most: tuple[int, int] | None = None
+
+    def __post_init__(self):
+        if type(self.feature) not in (RatioFeature, TileFeature):
+            raise ValueError('feature predicate requires an exact shape/resource feature')
+        lower = _bound(self.at_least)
+        upper = None if self.at_most is None else _bound(self.at_most)
+        if upper is not None and Fraction(*upper) < Fraction(*lower):
+            raise ValueError('feature upper bound must not precede lower bound')
+        object.__setattr__(self, 'at_least', lower)
+        object.__setattr__(self, 'at_most', upper)
+
+    def value(self, facts):
+        return self.feature.value(facts)
+
+    def value_record(self, facts):
+        value = self.value(facts)
+        return None if value is None else dict(numerator=value.numerator, denominator=value.denominator)
+
+    def match(self, facts):
+        value = self.value(facts)
+        return None if value is None else (value >= Fraction(*self.at_least)
+            and (self.at_most is None or value <= Fraction(*self.at_most)))
 
 
 @dataclass(frozen=True)
@@ -39,7 +161,8 @@ class PolicyFacts:
             if type(values) is not tuple or any(v is not None and (type(v) is not str or not v) for v in values):
                 raise ValueError('operand properties require strings or unknown')
         for values in (self.operations, self.numerical_semantics):
-            if values is not None and (type(values) is not frozenset or any(type(v) is not str or not v for v in values)):
+            if values is not None and (type(values) is not frozenset
+                                       or any(type(v) is not str or not v for v in values)):
                 raise ValueError('semantic facts require immutable names or unknown')
         for values, scalar in ((self.capabilities, bool), (self.resources, int), (self.graph, int)):
             if (type(values) is not tuple or any(type(v) is not tuple or len(v) != 2 for v in values)
@@ -132,6 +255,9 @@ class ResourcePredicate:
         return None if value is None else value >= self.at_least
 
 
+POLICY_PREDICATE_TYPES = (ShapePredicate, PropertyPredicate, ResourcePredicate, GraphPredicate, FeaturePredicate)
+
+
 @dataclass(frozen=True)
 class RegisteredPass:
     spec: PassSpec
@@ -146,13 +272,15 @@ class RegisteredPass:
 class PipelineVariant:
     name: str
     passes: tuple[str, ...]
-    predicates: tuple[ShapePredicate | PropertyPredicate | ResourcePredicate | GraphPredicate, ...] = ()
+    predicates: tuple[
+        ShapePredicate | PropertyPredicate | ResourcePredicate | GraphPredicate | FeaturePredicate, ...
+    ] = ()
 
     def __post_init__(self):
         if (type(self.name) is not str or not self.name or type(self.passes) is not tuple
                 or not 1 <= len(self.passes) <= 64 or any(type(v) is not str or not v for v in self.passes)
                 or type(self.predicates) is not tuple or len(self.predicates) > 32
-                or any(type(p) not in (ShapePredicate, PropertyPredicate, ResourcePredicate, GraphPredicate) for p in self.predicates)):
+                or any(type(p) not in POLICY_PREDICATE_TYPES for p in self.predicates)):
             raise ValueError('variant requires a bounded ordered pass path and typed predicates')
 
 
@@ -226,7 +354,9 @@ def execute_policy(session: PipelineSession, policy: PipelinePolicy,
         matches = tuple(predicate.match(facts) for predicate in variant.predicates)
         status = 'unsupported' if False in matches else 'unknown' if None in matches else 'applicable'
         decisions.append(dict(variant=variant.name, status=status, predicates=[
-            dict(predicate=asdict(p), match=m) for p, m in zip(variant.predicates, matches)]))
+            dict(predicate=asdict(p), match=m, **(
+                dict(feature_value=p.value_record(facts)) if type(p) is FeaturePredicate else {}))
+            for p, m in zip(variant.predicates, matches)]))
         if status == 'applicable':
             selected = variant
             break
@@ -245,7 +375,8 @@ def execute_policy(session: PipelineSession, policy: PipelinePolicy,
         host_pass_profile=tuple(session.host_pass_profile),
         facts=dict(shapes=facts.shapes, element_types=facts.element_types, layouts=facts.layouts,
                    operations=sorted(facts.operations) if facts.operations is not None else None,
-                   numerical_semantics=sorted(facts.numerical_semantics) if facts.numerical_semantics is not None else None,
+                   numerical_semantics=(sorted(facts.numerical_semantics)
+                                        if facts.numerical_semantics is not None else None),
                    capabilities=facts.capabilities, resources=facts.resources, graph=facts.graph),
         qualification='pass execution and current-IR custody only; no semantic or hardware proof',
     ))
@@ -371,7 +502,8 @@ def evaluate_variants(module, variants: tuple[PipelineVariant, ...],
         applicability = ()
         try:
             current = facts(session)
-            if type(current) is not PolicyFacts or current.stamp != session.stamp() or session.stamp() != prepared_stamp:
+            if (type(current) is not PolicyFacts or current.stamp != session.stamp()
+                    or session.stamp() != prepared_stamp):
                 raise ValueError('search facts require unchanged current-IR source and contracts')
             applicability = tuple(predicate.match(current) for predicate in variant.predicates)
             status = 'unsupported' if False in applicability else 'unknown' if None in applicability else 'compiled'

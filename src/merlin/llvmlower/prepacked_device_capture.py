@@ -62,12 +62,13 @@ def rebind(device, *, source: Path, prepared: Path, work: Path, compilation=None
         from merlin.common import mlir_query as mq
         from merlin.xdsl_dialects._common import text
 
+        from .head_source_route import HeadBatchSourceRoute
         from .sibling_source_route import SiblingSourceRoute
 
-        if type(sibling) is not SiblingSourceRoute:
+        if type(sibling) not in (SiblingSourceRoute, HeadBatchSourceRoute):
             raise PrepackRefused("weight preparation needs the original typed sibling selection")
         sibling.record()
-        original = mq.parse((source / "model.mlir").read_text())
+        original = mq.parse(source / "model.mlir")
         if hashlib.sha256(text(original, generic=True).encode()).hexdigest() != sibling.source_ir_sha256:
             raise PrepackRefused("weight preparation source differs from the original sibling selection")
     selected = prepared / "model.mlir" if capture.name == "model.mlir" else prepared
@@ -118,7 +119,7 @@ def original_sibling_source(device, selected, *, actual_source, work):
             or Path(binding.get('prepared_capture', '')).resolve() != capture
             or Path(binding.get('source_capture', '')).resolve() not in (source, source / 'model.mlir')):
         raise PrepackRefused('sibling source does not consume its original checked weight preparation')
-    original = mq.parse((source / 'model.mlir').read_text())
+    original = mq.parse(source / 'model.mlir').clone()
     if hashlib.sha256(text(original, generic=True).encode()).hexdigest() != selected.source_ir_sha256:
         raise PrepackRefused('prepared sibling source lost its original source selection')
     return original, {

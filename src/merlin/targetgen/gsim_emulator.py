@@ -42,6 +42,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -217,14 +218,28 @@ class Resolution:
     flavour: str = "binary"
 
 
+def _lease_dropped(subject: str, error: BaseException) -> None:
+    """One line saying a cached digest stopped being reusable and the bytes are being read again."""
+    print(
+        f"[gsim] {subject}: cached read-lease digest no longer reusable ({error}); re-reading the bytes",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def _digest(path: Path) -> str:
+    """SHA-256 of ``path`` now. A lost lease is a cache miss: the bytes are read again, never assumed."""
     from merlin.common import provenance, read_lease_digest
 
     if read_lease_digest.enabled():
-        with read_lease_digest.verification():
-            value = read_lease_digest.digest(path)
-            if value is not None:
-                return value
+        try:
+            with read_lease_digest.verification():
+                value = read_lease_digest.digest(path)
+        except read_lease_digest.CustodyChanged as error:
+            _lease_dropped(f"file {path}", error)
+            value = None
+        if value is not None:
+            return value
     return provenance.file_digest(path)
 
 
@@ -266,7 +281,7 @@ def _pin_path(raw: Any) -> Path:
     return path
 
 
-def _pin_error(rows: list[tuple[str, Any]]) -> str | None:
+def _pin_error(rows: list[tuple[str, Any]], *, subject: str = "v3 receipt") -> str | None:
     """The first malformed, absent or changed pin, in receipt order; each distinct path is read once.
 
     With ``MERLIN_SNAPSHOT_LEASE_CACHE=1`` every pin this process already hashed under a live Linux read
@@ -274,21 +289,40 @@ def _pin_error(rows: list[tuple[str, Any]]) -> str | None:
     name, inode/size/owner identity and lease, which also proves the regular-file and no-symlink
     checks below. A pin outside the cache (first use, unsupported, over capacity) takes the original
     per-row checks and is hashed once per call; if any cached pin fails its recheck the whole call takes
-    that original path, whose lease hit reaches the cache's existing refusal. Without the cache every
-    distinct path is fully read once per call.
+    that original path. Without the cache every distinct path is fully read once per call.
+
+    A lease that lost custody (a writer opened a pinned file, a name was replaced, the custodian died)
+    means only that the cached digests may not be reused. The whole check is then repeated with full
+    reads of every pin, so a changed file is reported as ``pin changed`` from its current bytes and an
+    unchanged one still verifies; nothing from the leased attempt is kept, and no exception leaves here.
     """
     from merlin.common import read_lease_digest
 
+    leased = read_lease_digest.enabled()
+    try:
+        return _checked_pins(rows, leased=leased)
+    except read_lease_digest.CustodyChanged as error:
+        if not leased:
+            raise
+        _lease_dropped(subject, error)
+        return _checked_pins(rows, leased=False)
+
+
+def _checked_pins(rows: list[tuple[str, Any]], *, leased: bool) -> str | None:
+    """:func:`_pin_error` with (``leased``) or without the read-lease cache; custody loss raises."""
+    from merlin.common import provenance, read_lease_digest
+
     candidates: dict[Path, None] = {}
-    for _, row in rows:
-        if isinstance(row, dict) and isinstance(row.get("sha256"), str):
-            path = _pin_path(row.get("path"))
-            if path.is_absolute():
-                candidates[path] = None
-    reused = read_lease_digest.reuse(candidates) or {}
+    if leased:
+        for _, row in rows:
+            if isinstance(row, dict) and isinstance(row.get("sha256"), str):
+                path = _pin_path(row.get("path"))
+                if path.is_absolute():
+                    candidates[path] = None
+    reused = (read_lease_digest.reuse(candidates) or {}) if leased else {}
     digests = dict(reused)
     slower = len(reused) < len(candidates)
-    scope = read_lease_digest.verification() if slower and read_lease_digest.enabled() else contextlib.nullcontext()
+    scope = read_lease_digest.verification() if slower and leased else contextlib.nullcontext()
     with scope:
         for label, row in rows:
             if not isinstance(row, dict) or not isinstance(row.get("sha256"), str):
@@ -298,11 +332,11 @@ def _pin_error(rows: list[tuple[str, Any]]) -> str | None:
                 if not path.is_absolute() or path.is_symlink() or not path.is_file():
                     return f"v3 receipt {label} pin is absent, relative, or a symlink: {path}"
                 if path not in digests:
-                    digests[path] = _pin_digest(path)
+                    digests[path] = _pin_digest(path) if leased else provenance.file_digest(path)
             if digests[path] != row["sha256"]:
                 return f"v3 receipt {label} pin changed: {path}"
     if slower and reused and read_lease_digest.reuse(reused, required=True) != reused:
-        raise RuntimeError("original snapshot read lease custody changed")
+        raise read_lease_digest.CustodyChanged("original snapshot read lease custody changed")
     return None
 
 
@@ -336,8 +370,8 @@ def _canonical_sha(value: Any) -> str:
     return _mjson.canonical_sha256(value, ensure_ascii=False, allow_nan=True)
 
 
-def _strict_receipt_error(doc: dict[str, Any]) -> str | None:
-    """Validate every byte/transcript commitment introduced by the v3 receipt."""
+def _strict_receipt_error(doc: dict[str, Any], *, receipt: Path | None = None) -> str | None:
+    """Validate every byte/transcript commitment introduced by the v3 receipt (``receipt`` names it)."""
     artifacts, tools, inputs, commands = (
         doc.get("artifacts"),
         doc.get("tools"),
@@ -356,7 +390,8 @@ def _strict_receipt_error(doc: dict[str, Any]) -> str | None:
             (label, row)
             for label, rows in (("artifact", artifacts.values()), ("tool", tools.values()), ("input", inputs))
             for row in rows
-        ]
+        ],
+        subject=f"v3 receipt {receipt}" if receipt is not None else "v3 receipt",
     )
     if pin_error is not None:
         return pin_error
@@ -474,7 +509,7 @@ def _validate_receipt(target: str, binary: Path, digest: str, receipt: Path) -> 
             None,
         )
     if schema == STRICT_RECEIPT_SCHEMA:
-        strict_error = _strict_receipt_error(doc)
+        strict_error = _strict_receipt_error(doc, receipt=receipt)
         if strict_error is not None:
             return "invalid", strict_error, None
     return "bound", f"lineage bound by {receipt.name}", _receipt_block(doc, receipt, digest)

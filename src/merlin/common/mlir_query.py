@@ -18,6 +18,8 @@ from __future__ import annotations
 import hashlib
 from collections import OrderedDict
 from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from threading import RLock
 from typing import Any
@@ -33,9 +35,33 @@ from merlin.frontends.linalg_mlir import parse_mlir_file, parse_mlir_text
 _PARSE_CACHE: OrderedDict[tuple, Any] = OrderedDict()
 _PARSE_CACHE_MAX = 16
 _PARSE_CACHE_LOCK = RLock()
+_PARSE_SCOPE: ContextVar[tuple | None] = ContextVar("mlir_query_parse_scope", default=None)
 _SIGNATURE_CACHE: OrderedDict = OrderedDict()
 _SIGNATURE_CACHE_MAX = 32
 _SIGNATURE_CACHE_LOCK = RLock()
+
+
+@contextmanager
+def parse_scope(*, max_entries=4):
+    """Bound file-parse reuse to one ordinary invocation; nested callers share it.
+
+    Every lookup still reads exact current bytes and checks them after parsing
+    or a hit. Returned modules follow parse's existing read-only convention;
+    mutation consumers must clone. No global cache entry is borrowed, and all
+    local graph references are released at the outer scope's exit.
+    """
+    if type(max_entries) is not int or not 1 <= max_entries <= _PARSE_CACHE_MAX:
+        raise ValueError("parse scope requires an explicit bounded file-graph budget")
+    if _PARSE_SCOPE.get() is not None:
+        yield
+        return
+    local = OrderedDict()
+    token = _PARSE_SCOPE.set((local, max_entries))
+    try:
+        yield
+    finally:
+        local.clear()
+        _PARSE_SCOPE.reset(token)
 
 
 def parse(src: Any, *, source_text: str | None = None):
@@ -53,10 +79,12 @@ def parse(src: Any, *, source_text: str | None = None):
             payload = p.read_bytes() if source_text is None else source_text.encode("utf-8")
             digest = hashlib.sha256(payload).hexdigest()
             key = (str(p.resolve()), digest)
+            scope = _PARSE_SCOPE.get()
+            cache, maximum = scope if scope is not None else (_PARSE_CACHE, _PARSE_CACHE_MAX)
             with _PARSE_CACHE_LOCK:
-                hit = _PARSE_CACHE.get(key)
+                hit = cache.get(key)
                 if hit is not None:
-                    _PARSE_CACHE.move_to_end(key)
+                    cache.move_to_end(key)
             if hit is not None:
                 if source_text is None and hashlib.sha256(p.read_bytes()).hexdigest() != digest:
                     raise ValueError(f"MLIR source changed during cached parse read: {p}")
@@ -73,10 +101,10 @@ def parse(src: Any, *, source_text: str | None = None):
             if source_text is None and hashlib.sha256(p.read_bytes()).hexdigest() != digest:
                 raise ValueError(f"MLIR source changed during parsing: {p}")
             with _PARSE_CACHE_LOCK:
-                _PARSE_CACHE[key] = module
-                _PARSE_CACHE.move_to_end(key)
-                while len(_PARSE_CACHE) > _PARSE_CACHE_MAX:
-                    _PARSE_CACHE.popitem(last=False)
+                cache[key] = module
+                cache.move_to_end(key)
+                while len(cache) > maximum:
+                    cache.popitem(last=False)
             return module
     return parse_mlir_text(s)
 

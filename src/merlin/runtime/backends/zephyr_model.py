@@ -27,6 +27,7 @@ from typing import Any
 import numpy as np
 
 from merlin.common import proc as _proc
+from merlin.common.mlir_query import parse_scope
 from merlin.common.paths import runtime_dir
 
 from ...llvmlower import c_runtime, toolchain
@@ -447,6 +448,7 @@ def _prepare_model_mlir(
     vec_lanes: int = _VEC_RANK_LANES,
     vec_max_rank: int = _VEC_RANK_MAX_RANK,
     complete_group_device: Any | None = None,
+    composed_host_layout: Any | None = None,
 ) -> Path:
     """Apply the dispatch_runtime normalization passes to ``model.mlir`` and write the
     prepared module to ``work/model.prepared.mlir``. These make quantized / bf16 /
@@ -479,6 +481,14 @@ def _prepare_model_mlir(
         selected_passes = ("contraction_int8",)
 
     module = parse_mlir_file(mlir_path)
+    if composed_host_layout is not None:
+        if complete_group_device is not None:
+            raise ValueError("composed host layouts cannot precede a second group binding")
+        from ...llvmlower.host_graph_policy import prepare_group_layout
+
+        module = prepare_group_layout(
+            module, composed_host_layout, work / "pre_group_layout", projected_source=mlir_path,
+        )
     # Same first step as the interpreter path (dispatch_runtime.run_model): torchao's
     # choose_qparams/quantize arrive as opaque calls to externs nothing defines, and the two paths
     # diverging here is precisely how a bundle ends up interpretable but unlinkable.
@@ -559,12 +569,25 @@ def _prepare_model_mlir(
                     if k.startswith(("prequant_gather_mode_", "prequant_gather_refused_"))
                 )
             )
+    # Restrict a sole static observer before assigning any complete device ABI.
+    # Source-projected routes have already bound their original graph and use
+    # this same callable explicitly before constructing that source selection.
+    from ...llvmlower.contraction_row_slice import prepare_contraction_row_slices, selected as row_slice_selected
+
+    if row_slice_selected():
+        module, row_slice_report = prepare_contraction_row_slices(module, bundle_dir=bundle_dir)
+        (work / "contraction-row-slice.json").write_text(json.dumps(row_slice_report, indent=2) + "\n")
     # Source-admitted groups must be routed while their quantize/dequantize
     # boundaries still identify the integer computation. Lowering those
     # boundaries first turns a quantized window mean into unrelated float
     # generics and silently leaves that eligible group on the host.
     early_group_rewrite = None
     if complete_group_device is not None:
+        policy = getattr(complete_group_device, "pre_group_layout", None)
+        if policy is not None:
+            from ...llvmlower.host_graph_policy import prepare_group_layout
+
+            module = prepare_group_layout(module, policy, work / "pre_group_layout")
         from ...llvmlower.device_offload import rewrite_groups_to_device
 
         early_group_rewrite = rewrite_groups_to_device(
@@ -1013,6 +1036,8 @@ def prepare_for_lowering(
     _preparation_input = mlir_path
     _sibling_selected = getattr(device, "sibling_source", None) is not None
     _early_complete_groups = device is not None and getattr(device, "require_complete_groups", False)
+    if getattr(device, "pre_group_layout", None) is not None and not _early_complete_groups:
+        raise ValueError("pre-group layout is deferred: requires ordinary complete-group binding")
     if _sibling_selected:
         from ...llvmlower.device_preparation import prepare_sibling_device_host
 
@@ -1044,6 +1069,7 @@ def prepare_for_lowering(
         vec_lanes=_lanes or _VEC_RANK_LANES,
         vec_max_rank=_max_rank or _VEC_RANK_MAX_RANK,
         complete_group_device=device if _early_complete_groups else None,
+        composed_host_layout=getattr(device, "pre_group_layout", None) if _sibling_selected else None,
     )
     # SAY SO when a requested lever cannot fire on this module. A transform schedule matches by op
     # name, and `transform.structured.match` on a name nothing carries yields an empty handle, so
@@ -2385,6 +2411,7 @@ zephyr_link_libraries(-Wl,--whole-archive {model_archive} -Wl,--no-whole-archive
 # ---- build / run -------------------------------------------------------------------
 
 
+@parse_scope()
 @host_admitted
 def build_app(
     model_dir: str | Path,

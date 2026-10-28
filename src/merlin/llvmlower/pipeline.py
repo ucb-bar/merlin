@@ -1432,6 +1432,7 @@ def lower_to_llvm_ir(
     source_scalar_carrier=None,
     retain_llvm_dialect: bool = False,
     borrowed_buffer_calls=None,
+    borrowed_arena_lifetimes=None,
 ) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
@@ -1439,6 +1440,8 @@ def lower_to_llvm_ir(
     retains LLVM's default. Explicit ``index_bits`` binds index conversion.
     ``retain_llvm_dialect=True`` prints the actual serial post-pass module before
     the same in-process translation, retaining custody without correctness proof.
+    ``borrowed_arena_lifetimes`` optionally collects the live native-checked
+    original effects bound to the exact returned LLVM, for the ordinary allocator.
     ``masked_contraction_effects`` separately requires the closed-mask feature;
     dead-tile omission needs nontrapping/unobserved-flags permission and retains
     observed arithmetic order/types. Default lowering is unchanged.
@@ -2101,6 +2104,12 @@ def lower_to_llvm_ir(
     if retention is not None:
         retention.bind(recipe, lowering_selection, source=src, runner=runner, llvm_ir=result)
     recipe.returned(result)
+    if borrowed_buffer_calls is not None and borrowed_arena_lifetimes is not None:
+        from .borrowed_arena import _from_verified_native
+
+        borrowed_arena_lifetimes.append(
+            _from_verified_native(borrowed_buffer_calls, mlir_text, work, result, checked, runner)
+        )
     return result
 
 

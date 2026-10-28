@@ -167,6 +167,7 @@ def host_compute_row(
                 "dominant_block",
                 "input_preparation",
                 "command_parameters",
+                "command_only_refusal",
             )
         },
     }
@@ -495,7 +496,24 @@ def apply_host_compute_veto(
     declared itself host-only or declined says so and is reported, not penalised, and a whole-model
     capsule legitimately owns host regions. A program whose artifacts cannot be read is left as the
     grade found it; this can fail a pass, never manufacture one. Returns the rows it vetoed.
+
+    The audit runs in a short-lived child process that imports the code on disk
+    (:mod:`.host_compute_veto_process`), so a long-lived grader applies the current check, not the
+    one it imported at launch. Without a child answer it runs here, with the same result.
     """
+    from . import host_compute_veto_process
+
+    if host_compute_veto_process.enabled():
+        vetoed = host_compute_veto_process.run(results, suite_runs, capsules=capsules, target=target)
+        if vetoed is not None:
+            return vetoed
+    return _apply_host_compute_veto_here(results, suite_runs, capsules=capsules, target=target)
+
+
+def _apply_host_compute_veto_here(
+    results: list[dict[str, Any]], suite_runs: Path, *, capsules=None, target=None,
+) -> list[dict[str, Any]]:
+    """:func:`apply_host_compute_veto`, evaluated with the audit this process imported."""
     import json
     import os
 
@@ -529,11 +547,20 @@ def apply_host_compute_veto(
             result["host_compute"]["veto_suppressed_by"] = VETO_ENV
             continue
         result["status"] = "fail"
+        # With no value arithmetic and no memory traffic, nothing shows tensor compute: the veto
+        # rests on integer work that could not be proven to be command orchestration.
+        unproven = (audit.get("command_only_refusal") and audit.get("host_value_arithmetic") == 0
+                    and audit.get("host_payload_bytes") == 0)
+        lead = (
+            "the program passes numerics; its host integer work is not proven to be command orchestration"
+            if unproven
+            else "the program passes numerics and spends its work on the host"
+        )
         result["failure"] = {
             "plane": "host_compute",
             "category": VETO_CATEGORY,
             "detail": (
-                f"the program passes numerics and spends its work on the host: {audit.get('why')} "
+                f"{lead}: {audit.get('why')} "
                 f"(function {audit.get('symbol')!r}). Work that scales with the payload belongs to "
                 f"the unit: issue the commands that make the unit gather, accumulate or scale, in "
                 f"place of a host loop over the elements. The host may compute addresses, issue "
@@ -577,6 +604,8 @@ def _record_veto(path: Path, result: Mapping[str, Any]) -> None:
             return
         stored[VETO_PRIOR_STATUS] = stored.get("status")
         stored.update({key: result[key] for key in VETO_FIELDS})
-        path.write_text(json.dumps(stored, indent=1), encoding="utf-8")
+        from merlin.common.jsonio import readable_json
+
+        path.write_text(readable_json(stored), encoding="utf-8")
     except (OSError, ValueError, KeyError):
         return

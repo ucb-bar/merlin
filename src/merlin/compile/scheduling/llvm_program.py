@@ -214,3 +214,35 @@ def emit_index_program(kernel, builder, lower_call):
     emit(kernel.body, {})
     return {"kernel_sha256": kernel.digest(), "index_bits": 64,
             "scope": "actual counted-loop/index emission; target effects and machine conformance remain separate"}
+
+
+def emit_index_effect_program(kernel, control, lower_effect, *, complete_epoch, completion_instruction):
+    """Use one target effect encoder with explicit schedule-owned completion.
+
+    This only separates an original completion instruction from payload effects;
+    it neither inserts/removes boundaries nor grants their hardware semantics.
+    All loops stay counted through the same index emitter. Event, staging and
+    persistent-state annotations retain the raw emitter's conservative refusal;
+    use the checked SCF bridge when those annotations need actual lowering.
+    Checked scheduling owners revalidate source/effect premises around this call.
+    """
+    if (not callable(lower_effect) or not callable(complete_epoch)
+            or type(completion_instruction) is not str or not completion_instruction):
+        raise ValueError("counted effects require an encoder, original completion callback and instruction")
+    drains = 0
+
+    def lower(tag, values):
+        nonlocal drains
+        if tag == completion_instruction:
+            if values:
+                raise ValueError("full epoch completion cannot carry instruction operands")
+            complete_epoch()
+            drains += 1
+        else:
+            lower_effect(tag, values)
+
+    receipt = emit_index_program(kernel, control, lower)
+    return {**receipt, "completion_mapping": {
+        "kind": "explicit_checked_full_epoch_drains", "emitted_static_drains": drains,
+        "target_execution": "caller_obligation",
+    }}

@@ -167,6 +167,10 @@ class DeviceRouting:
     connected_spatial: ConnectedSpatialRoute | None = None
     #: Original source identity and selected synchronous borrowed sibling effects.
     sibling_source: SiblingSourceRoute | None = None
+    #: Original software-owned logical layout policy, consumed before complete group binding.
+    pre_group_layout: object | None = None
+    #: Original software-owned final host allocation lifetime policy.
+    intermediate_storage: object | None = None
 
     def __post_init__(self):
         if self.sibling_source is not None:
@@ -757,12 +761,13 @@ def build_device_objects(
         ):
             raise ValueError("private spatial object lost its original routed source and logical call")
     sibling_symbol = None
+    sibling_hosts = {}
     if sibling_source is not None:
-        from .sibling_source_route import require_host
+        from .sibling_source_route import component_hosts, require_host
 
         selected_sibling, sibling_host = sibling_source
         require_host(sibling_host, selected_sibling)
-        sibling_symbol = sibling_host.device_symbol
+        sibling_hosts = {item.device_symbol: item for item in component_hosts(sibling_host)}
         if (connected_spatial is not None or signatures != sibling_host.rewrite.signatures
             or entries != sibling_host.rewrite.entries or call_buffers != sibling_host.rewrite.call_buffers
             or expected_interfaces != sibling_host.rewrite.expected_interfaces
@@ -1108,9 +1113,14 @@ def build_device_objects(
             m, n, k = key[-3:] if len(key) in (3, 4) else (None, None, None)
             want = kernel_symbol(abi.symbol, index)
             stem = work / f"{sym}"
-            if sym == sibling_symbol:
-                require_host(sibling_host, selected_sibling)
-                iface = sibling_host.interface
+            if sym in sibling_hosts:
+                require_host(sibling_hosts[sym], selected_sibling)
+                iface = sibling_hosts[sym].interface
+            elif sibling_source is not None:
+                chosen = expected_interfaces[sym]
+                iface = chosen.get("mlir")
+                if not isinstance(iface, str) or sha256_text(iface) != chosen.get("sha256"):
+                    raise ValueError("ordinary unmatched source interface changed")
             elif expected_interfaces is None:
                 try:
                     _capsule, iface = CS.build(entry, binding)
@@ -1208,13 +1218,26 @@ def build_device_objects(
             except (BackendDeclined, CertFailure, ValueError) as error:
                 skipped.append((sym, f"package lowering: {type(error).__name__}: {str(error)[:300]}"))
                 continue
-            if sym == sibling_symbol:
+            if sym in sibling_hosts:
                 from .sibling_source_route import require_emission
 
-                require_emission(artifact, selected_sibling, sibling_host, entry_symbol=entry_symbol)
-            elif expected_interfaces is not None and f"llvm.func @{entry_symbol}(" not in artifact:
-                skipped.append((sym, "exact package artifact has no contract-named LLVM kernel entry"))
-                continue
+                require_emission(artifact, selected_sibling, sibling_hosts[sym], entry_symbol=entry_symbol)
+            elif sibling_hosts:
+                from .sibling_source_route import require_logical_emission
+
+                require_logical_emission(artifact, entry_symbol=entry_symbol, arity=len(call_buffers[sym]))
+            elif expected_interfaces is not None:
+                from .sibling_source_route import require_logical_emission
+
+                buffers, refusal = logical_buffers(expected_interfaces[sym]["mlir"])
+                if buffers is None:
+                    skipped.append((sym, refusal or "exact package interface has no complete pointer ABI"))
+                    continue
+                try:
+                    require_logical_emission(artifact, entry_symbol=entry_symbol, arity=len(buffers))
+                except ValueError as error:
+                    skipped.append((sym, f"exact package artifact: {error}"))
+                    continue
             art = stem.with_suffix(".device.mlir")
             # Keep the checked producer path for proof custody without a second
             # full artifact copy. Both names are in this build's filesystem.
@@ -1277,7 +1300,8 @@ def build_device_objects(
 
     unit = (
         emit_logical_translation_unit(
-            device, {s: group_buffers[s] for s in kernels if s != private_symbol}, kernel_symbol_for=kernels.get
+            device, {s: group_buffers[s] for s in kernels if s != private_symbol}, kernel_symbol_for=kernels.get,
+            descriptor_results=descriptor_results,
         )
         if grouped
         else emit_translation_unit(
@@ -1290,13 +1314,20 @@ def build_device_objects(
             descriptor_results=descriptor_results,
         )
     )
-    if sibling_symbol in kernels:
-        from .sibling_source_route import with_borrowed_bridge
+    built_siblings = tuple(symbol for symbol in sibling_hosts if symbol in kernels)
+    if built_siblings:
+        from .sibling_source_route import with_borrowed_bridges
 
-        unit = with_borrowed_bridge(unit, selected_sibling, sibling_host)
+        # All external package/target callbacks have finished. Reopen the whole
+        # source owner once for this pure final bridge assembly, without sharing
+        # that validation with any earlier or later build operation.
+        unit = with_borrowed_bridges(unit, selected_sibling, sibling_host, symbols=built_siblings)
+    for sibling_symbol, component_host in sibling_hosts.items():
+        if sibling_symbol not in kernels:
+            continue
         custody[sibling_symbol]["sibling_source"] = {
             "source_ir_sha256": selected_sibling.source_ir_sha256,
-            "interface_sha256": hashlib.sha256(sibling_host.interface.encode()).hexdigest(),
+            "interface_sha256": hashlib.sha256(component_host.interface.encode()).hexdigest(),
             "borrowed_effects": selected_sibling.record()["effects"],
             "original_epilogues_and_all_live_outputs_preserved": True,
         }
@@ -1373,7 +1404,9 @@ def build_device_objects(
             build_metrics=build_metrics,
         )
 
-    if sibling_symbol in kernels:
+    for sibling_symbol in sibling_hosts:
+        if sibling_symbol not in kernels:
+            continue
         def bridge_pin(path):
             return {"path": str(path.resolve()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                     "size_bytes": path.stat().st_size}
@@ -1382,6 +1415,34 @@ def build_device_objects(
             "source": bridge_pin(shim_c), "object": bridge_pin(shim_o),
             "compilation": _shim_invocation,
         }
+
+    if sibling_source is not None:
+        from .head_source_route import HeadBatchSourceRoute
+        from .head_source_route import require_host as require_head_host
+
+        if type(selected_sibling) is HeadBatchSourceRoute:
+            require_head_host(sibling_host, selected_sibling)
+            for family in sibling_host.receipt["head_families"]:
+                symbol = family["physical_symbol"]
+                if symbol not in kernels:
+                    raise ValueError("head source lost its actual per-matrix artifact")
+
+                def pin_head(path):
+                    return {"path": str(path.resolve()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                            "size_bytes": path.stat().st_size}
+
+                custody[symbol]["head_source"] = {
+                    "source_ir_sha256": selected_sibling.source_ir_sha256,
+                    "interface_sha256": expected_interfaces[symbol]["sha256"],
+                    "matrix_invocations": family["batch_extent"],
+                    "descriptor_bridge": {"source": pin_head(shim_c), "object": pin_head(shim_o),
+                                          "compilation": _shim_invocation},
+                    "bridge_kind": ("whole_logical_batch" if selected_sibling.whole_batch else
+                                    "stock_logical_batch_slices"),
+                }
+                if selected_sibling.whole_batch:
+                    custody[symbol]["head_source"].update(
+                        kernel_invocations=1, mathematical_products=len(family["members"]))
 
     for lowering, receipt_sha256 in target_receipts.values():
         revalidate_target(

@@ -110,7 +110,7 @@ def disassemble_text(obj_path: str | Path, triple: str = "riscv64", mattr: str |
 def _parse_line(line: str, section: str) -> RawInsn | None:
     """One disassembly line -> RawInsn, or None for non-instruction lines (headers, labels, '...').
 
-    Format: ``   <addr>: <hex>\\t<mnemonic>\\t<operands>``. We split structurally on ':' then
+    Format: ``   <addr>: [<hex>] <mnemonic> <operands>``. We split structurally on ':' then
     whitespace; the operand string is comma-split. Anything that doesn't fit (a ``<sym>:`` label,
     a blank line, ``...``) returns None.
     """
@@ -126,18 +126,29 @@ def _parse_line(line: str, section: str) -> RawInsn | None:
     right = right.strip()
     if not right:
         return None
-    parts = right.split(None, 2)  # [hexword, mnemonic, operands?]
-    if len(parts) < 2:
-        return None
-    hexword, mnemonic = parts[0], parts[1]
-    # the encoding word is hex; if parts[0] isn't hex this isn't an instruction line.
-    try:
-        int(hexword, 16)
-    except ValueError:
-        return None
+    parts = right.split(None, 2)
+    # An optional complete encoding column, not any hexadecimal-looking word:
+    # the scalar mnemonic "add" is also valid hexadecimal. Wordless objdump
+    # listings must retain it as a mnemonic with an unknown encoding.
+    encoded = len(parts) >= 2 and len(parts[0]) in (4, 8) and all(
+        char in "0123456789abcdefABCDEF" for char in parts[0])
+    hexword = parts[0] if encoded else ""
+    if not encoded:
+        parts = ["", *right.split(None, 1)]
+    mnemonic = parts[1]
     operands: list[str] = []
     if len(parts) == 3:
         operands = [o.strip() for o in parts[2].split(",") if o.strip()]
+    # GNU's no-raw-insn format still supplies exact custom words in this
+    # directive. Recover only an explicitly declared complete instruction;
+    # scalar mnemonics and register values are never assembled or guessed.
+    if not encoded and mnemonic == ".insn" and len(operands) == 2:
+        try:
+            width, word = int(operands[0], 0), int(operands[1], 0)
+            if width in (2, 4) and 0 <= word < 1 << (8 * width):
+                hexword = f"{word:0{width * 2}x}"
+        except ValueError:
+            pass
     return RawInsn(addr=addr, mnemonic=mnemonic, operands=operands, hexcode=hexword, section=section)
 
 

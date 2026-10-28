@@ -52,13 +52,22 @@ class OwnedHostModelCompiler:
         readback="full",
         materialized_inputs=None,
         group_profile=False,
+        op_profile=False,
         require_all_accelerator_groups=False,
         connected_spatial=None,
         sibling_source=None,
+        independent_heads=None,
+        pre_group_layout=None,
+        intermediate_storage=None,
         prepack_weights=False,
         share_exact_tensor_preparations=False,
         dense_input_views=False,
+        descriptor_results=False,
+        descriptor_effects=None,
         host_math_policy="native",
+        host_bounded_rne=False,
+        host_roundeven=False,
+        host_elementwise_fusion=False,
     ):
         """Build original source; the candidate supplies closed device groups only.
 
@@ -75,6 +84,29 @@ class OwnedHostModelCompiler:
         qualification remains required for the selected arithmetic.
         ``share_exact_tensor_preparations`` selects the existing source-exact
         view/constant preparation pass; no arithmetic or target effects are inferred.
+        ``host_bounded_rne`` requests the existing source-proved scalar RV64GC
+        late legalizer. It supplies no old observer/effect permissions; missing
+        original bounded chains or an unsupported CPU lane refuse normally.
+        ``host_roundeven`` selects the existing exact scalar RV64GC/lp64d
+        round-even runtime helper. ``host_elementwise_fusion`` selects the
+        existing second guarded elementwise fusion pass after generalization.
+        Both retain normal CPU/DTS, numerical and actual-product checks.
+        ``op_profile`` selects the ordinary typed operation profiler, retaining
+        its source table and execution observations. Instrumentation can change
+        optimization and scheduling; compare a separate uninstrumented control.
+        ``pre_group_layout`` consumes an original software-owned HostGraphPolicy
+        before complete group binding, retaining its exact source/report in the
+        ordinary compilation recipe. Missing permissions or savings keep source
+        unchanged. Head/sibling routes consume it on the checked projected host,
+        retaining opaque device-call boundaries. Partial/spatial binding remains
+        unsupported until its source correspondence is supplied independently.
+        ``intermediate_storage`` consumes the same original policy's explicit
+        sequential/successful-allocation/non-reentrant LLVM permissions. It
+        reuses only independently checked final allocation lifetimes, after
+        source/device binding, retaining unsupported sites and recurrence.
+        ``descriptor_results`` selects checked single-result logical shims only
+        with the original source-bound ``descriptor_effects`` factory. Descriptor
+        equality supplies no noescape, release or completion permission.
         """
         from merlin.compile.baremetal_model import compile_saved_model
         from merlin.compile.route_before_build import plan_before_build
@@ -84,10 +116,36 @@ class OwnedHostModelCompiler:
         # Original-owner arithmetic choice, validated before routing/building.
         # Changing it requires independent numerical qualification as usual.
         host_math_recipe(host_math_policy)
+        if type(host_bounded_rne) is not bool:
+            raise ValueError("host bounded RNE must be an explicit Boolean choice")
+        for name, value in (("host roundeven", host_roundeven),
+                            ("host elementwise fusion", host_elementwise_fusion)):
+            if type(value) is not bool:
+                raise ValueError(f"{name} must be an explicit Boolean choice")
+        if type(op_profile) is not bool:
+            raise ValueError("operation profiling must be an explicit Boolean choice")
         if type(dense_input_views) is not bool:
             raise ValueError("dense input views must be an explicit Boolean choice")
+        if type(descriptor_results) is not bool:
+            raise ValueError("descriptor results must be an explicit Boolean choice")
+        if descriptor_results and descriptor_effects is None:
+            raise ValueError("descriptor results require the original borrowed-call effects factory")
         if type(share_exact_tensor_preparations) is not bool:
             raise ValueError("tensor preparation sharing must be an explicit Boolean choice")
+        if intermediate_storage is not None:
+            from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+
+            if type(intermediate_storage) is not HostGraphPolicy or intermediate_storage.target != self.target:
+                raise TypeError("intermediate storage needs the original selected target software policy")
+            intermediate_storage.revalidate()
+        if pre_group_layout is not None:
+            from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+
+            if type(pre_group_layout) is not HostGraphPolicy or pre_group_layout.target != self.target:
+                raise TypeError("pre-group layout needs the original selected target software policy")
+            pre_group_layout.revalidate()
+            if not require_all_accelerator_groups or connected_spatial is not None:
+                raise ValueError("pre-group layout deferred: unsupported partial or spatial source binding")
 
         if linked_elf_admission is None:
             raise ValueError("an independently selected linked-ELF admission is required")
@@ -105,6 +163,14 @@ class OwnedHostModelCompiler:
             sibling_source.record()
             if connected_spatial is not None:
                 raise ValueError("original sibling and spatial routes are mutually exclusive")
+        if independent_heads is not None:
+            from merlin.llvmlower.head_source_route import HeadBatchSourceRoute
+
+            if type(independent_heads) is not HeadBatchSourceRoute:
+                raise TypeError("owned head lowering requires its original typed source selection")
+            independent_heads.record()
+            if sibling_source is not None or connected_spatial is not None:
+                raise ValueError("head, sibling and spatial source routes are separately selected")
         candidate = Path(candidate_package)
         if candidate.is_symlink():
             raise ValueError("candidate device package must not be a symlink")
@@ -131,6 +197,10 @@ class OwnedHostModelCompiler:
         device = routed.get("device_routing")
         if device is None or routed.get("offload") is None:
             raise ValueError(f"no buildable source-bound device route: {routed.get('device_routing_why')}")
+        if pre_group_layout is not None or intermediate_storage is not None:
+            device = replace(device, pre_group_layout=pre_group_layout, intermediate_storage=intermediate_storage)
+        if descriptor_results or descriptor_effects is not None:
+            device = replace(device, descriptor_results=descriptor_results, descriptor_effects=descriptor_effects)
         if connected_spatial is not None:
             from merlin.llvmlower.device_build import DeviceRouting
 
@@ -149,6 +219,12 @@ class OwnedHostModelCompiler:
             if device.sibling_source is not None and device.sibling_source is not sibling_source:
                 raise ValueError("owned model already has a distinct sibling source selection")
             device = replace(device, sibling_source=sibling_source)
+        if independent_heads is not None:
+            from merlin.llvmlower.device_build import DeviceRouting
+
+            if type(device) is not DeviceRouting or device.sibling_source is not None:
+                raise TypeError("owned head lowering needs an unchanged ordinary device route")
+            device = replace(device, sibling_source=independent_heads)
         receipt = compile_saved_model(
             capture=source,
             package=self.host_package,
@@ -169,10 +245,14 @@ class OwnedHostModelCompiler:
             materialized_inputs=materialized_inputs,
             respect_captured_quantization_scope=True,
             group_profile=group_profile,
+            op_profile=op_profile,
             prepack_weights=prepack_weights,
             share_exact_tensor_preparations=share_exact_tensor_preparations,
             dense_input_views=dense_input_views,
             host_math_policy=host_math_policy,
+            host_bounded_rne=host_bounded_rne,
+            **({"host_roundeven": True} if host_roundeven else {}),
+            **({"host_elementwise_fusion": True} if host_elementwise_fusion else {}),
         )
         if strict_tree_sha256(self.host_package) != self.host_package_identity:
             raise ValueError("selected owned host provider changed during compilation")

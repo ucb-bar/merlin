@@ -1,6 +1,7 @@
 """Bounded coordinate correspondence across unchanged opaque IR boundaries.
 
-This checks a static pointwise/layout subset, not arbitrary call, loop or device
+This checks a static pointwise/layout subset and opt-in ordered generic
+reductions, not arbitrary call, loop or device
 semantics. Unknown operations retain ordered typed identities and complete nested
 wiring. Tensor observations carry an effect epoch so materialized snapshots cannot
 silently become reads after an unknown effect. No tensor elements are enumerated.
@@ -21,6 +22,8 @@ from merlin.common.dense_float_ir import DenseFloatPrinter
 from merlin.transforms.certificates import ir_text
 
 from .quant_round_check import pure_scalar_body
+
+_EXPRESSION_CACHE_LIMIT = 32768
 
 
 def _attribute(attribute):
@@ -139,6 +142,54 @@ def pointwise_kind(op):
     return "generic"
 
 
+def ordered_reduction_bounds(op):
+    """Exact static projected-index reduction domain, with unchanged loop order.
+
+    This admits no reassociation or target layout capability. Output parallel
+    axes stay canonical; each input may be read through its exact permutation.
+    Uninitialized accumulator reads, affine gathers and index/effect observers
+    remain outside this family.
+    """
+    if (type(op) is not GenericOp or not _fields(op, {"indexing_maps", "iterator_types", "operandSegmentSizes"})
+            or len(op.results) != 1 or len(op.outputs) != 1 or len(op.body.blocks) != 1
+            or _shape(op.results[0]) is None or len(op.body.block.args) != len(op.operands)
+            or not pure_scalar_body(op.body.block, integer_extensions=True) or type(op.body.block.last_op) is not YieldOp
+            or not _fields(op.body.block.last_op, ()) or len(op.body.block.last_op.operands) != 1):
+        return None
+    shape = _shape(op.results[0])
+    rank, count = len(shape), len(op.iterator_types)
+    kinds = tuple(item.data.value for item in op.iterator_types)
+    maps = tuple(item.data for item in op.indexing_maps)
+    if (not rank or count <= rank or kinds[:rank] != ("parallel",) * rank
+            or kinds[rank:] != ("reduction",) * (count - rank)
+            or len(maps) != len(op.operands)
+            or tuple(op.properties["operandSegmentSizes"].get_values()) != (len(op.inputs), 1)
+            or maps[-1] != AffineMap(count, 0, tuple(AffineExpr.dimension(i) for i in range(rank)))
+            or _shape(op.outputs[0]) != shape):
+        return None
+    if op.body.block.args[-1].uses and type(op.outputs[0].owner) is tensor.EmptyOp:
+        return None
+    bounds = [*shape, *([None] * (count - rank))]
+    for operand, mapping in zip(op.operands, maps, strict=True):
+        sizes = _shape(operand)
+        if sizes is None or mapping.num_symbols or mapping.num_dims != count or len(mapping.results) != len(sizes):
+            return None
+        for expression, size in zip(mapping.results, sizes, strict=True):
+            if isinstance(expression, AffineDimExpr) and 0 <= expression.position < count:
+                axis = expression.position
+                if bounds[axis] is not None and bounds[axis] != size:
+                    return None
+                bounds[axis] = size
+            elif not isinstance(expression, AffineConstantExpr) or expression.value != 0 or size != 1:
+                return None
+    return tuple(bounds) if all(bound is not None for bound in bounds) else None
+
+
+def connected_kind(op):
+    """Existing pointwise family plus exactly checked ordered reductions."""
+    return pointwise_kind(op) or ("reduction" if ordered_reduction_bounds(op) is not None else None)
+
+
 def scalar_bodies(module):
     """Canonical complete scalar order, including captures and unused operations."""
     result = []
@@ -166,9 +217,10 @@ def scalar_bodies(module):
     return tuple(result)
 
 
-def layout_expression(module, *, include_work=False):
+def layout_expression(module, *, include_work=False, connected=False):
     """Reconstruct observable coordinates and every opaque boundary's wiring."""
     kinds, epochs, identities, arguments, paths = {}, {}, {}, {}, {}
+    classify = connected_kind if connected else pointwise_kind
 
     def register(block, path):
         if len(path) > 64:
@@ -177,8 +229,8 @@ def layout_expression(module, *, include_work=False):
         arguments.update({value: (path, i) for i, value in enumerate(block.args)})
         ordinal = 0
         for op in block.ops:
-            kind = pointwise_kind(op)
-            if kind == "empty" and any(pointwise_kind(use.operation) is None for use in op.results[0].uses):
+            kind = classify(op)
+            if kind == "empty" and any(classify(use.operation) is None for use in op.results[0].uses):
                 kind = None
             kinds[op], epochs[op] = kind, (path, ordinal)
             if kind is not None:
@@ -209,7 +261,7 @@ def layout_expression(module, *, include_work=False):
         key = value, coordinates, epoch
         if key in cache:
             return cache[key]
-        if len(cache) >= 32768 or len(visiting) >= 256 or value in visiting:
+        if len(cache) >= _EXPRESSION_CACHE_LIMIT or len(visiting) >= 256 or value in visiting:
             raise ValueError("layout coordinate checking exceeded its bounded expression budget")
         visiting.add(value)
         tensor_epoch = epoch if isinstance(value.type, builtin.TensorType) else None
@@ -233,12 +285,14 @@ def layout_expression(module, *, include_work=False):
                 result = element(source, source_coordinates, epoch)
             elif kind == "splat":
                 result = element(op.operands[0], (), epochs[op])
-            elif kind == "generic":
+            elif kind in {"generic", "reduction"}:
                 observed_generics.add(op)
                 rank = len(coordinates)
                 block = op.body.block
+                domain = ordered_reduction_bounds(op) if kind == "reduction" else None
+                indices = (*coordinates, *(AffineExpr.dimension(i) for i in range(rank, len(domain)))) if domain else coordinates
                 bindings = {
-                    arg: (operand, tuple(mapping.data.replace_dims_and_symbols(list(coordinates), [], rank, 0).results))
+                    arg: (operand, tuple(mapping.data.replace_dims_and_symbols(list(indices), [], len(indices), 0).results))
                     for arg, operand, mapping in zip(block.args, op.operands, op.indexing_maps, strict=True)
                 }
                 scalar_cache = {}
@@ -249,8 +303,9 @@ def layout_expression(module, *, include_work=False):
                     if item in scalar_cache:
                         return scalar_cache[item]
                     if item in bindings:
-                        operand, indices = bindings[item]
-                        answer = element(operand, indices, epochs[op])
+                        operand, input_coordinates = bindings[item]
+                        answer = (("accumulator", _attribute(item.type)) if domain and item is block.args[-1]
+                                  else element(operand, input_coordinates, epochs[op]))
                     elif isinstance(item.owner, Operation) and item.owner.parent is block:
                         owner = item.owner
                         answer = (owner.name, tuple(owner.results).index(item), _attribute(item.type), _metadata(owner),
@@ -262,8 +317,12 @@ def layout_expression(module, *, include_work=False):
 
                 yielded = scalar(block.last_op.operands[0])
                 plain_copy = len(list(block.ops)) == 1 and _metadata(block.last_op) == ((), ())
-                result = yielded if plain_copy else (
-                    "pointwise", _metadata(op)[0], scalar_bodies(op)[0], yielded)
+                if domain:
+                    result = ("ordered_reduction", _metadata(op)[0], scalar_bodies(op)[0], domain,
+                              element(op.outputs[0], coordinates, epochs[op]) if block.args[-1].uses else None, yielded)
+                else:
+                    result = yielded if plain_copy else (
+                        "pointwise", _metadata(op)[0], scalar_bodies(op)[0], yielded)
             elif kind in {"empty", "flat_pair"}:
                 raise ValueError("layout coordinate checker has no semantics for this tensor producer")
             elif type(op) is tensor.EmptyOp:
@@ -294,6 +353,11 @@ def layout_expression(module, *, include_work=False):
             rows.append((identities[op], op.name, _metadata(op), tuple(_attribute(v.type) for v in op.results),
                          tuple(observe(value, epochs[op]) for value in op.operands),
                          tuple(tuple(boundaries(child) for child in region.blocks) for region in op.regions)))
+            # Keep the complete checked row, including all operands and effect
+            # epochs. Finished expression cones need no memoized entries at
+            # the next opaque boundary; bound each observation independently
+            # instead of limiting the number of boundaries in a whole model.
+            cache.clear()
         return (tuple(_attribute(v.type) for v in block.args), tuple(rows))
 
     expression = (_metadata(module), tuple(
@@ -312,5 +376,6 @@ def layout_expression(module, *, include_work=False):
             metadata = tuple(tuple((name, value) for name, value in fields if not name.startswith("prov."))
                              for fields in _metadata(scalar))
             key = paths[op.parent], scalar.name, tuple(_attribute(v.type) for v in scalar.results), metadata
-            work[key] += prod(_shape(op.results[0]))
+            domain = ordered_reduction_bounds(op) if connected and kinds[op] == "reduction" else _shape(op.results[0])
+            work[key] += prod(domain)
     return expression, work

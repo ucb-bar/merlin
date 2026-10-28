@@ -183,6 +183,27 @@ class DenseTiledIntegerReadout:
         bits = tuple(struct.unpack("<I", struct.pack("<f", _f32(x)))[0] for x in scales)
         return cls(bits, tile_columns, relu, instruction_name, instruction_arguments)
 
+    @classmethod
+    def from_source_scales(cls, scales, *, columns, tile_columns, relu=False,
+                           instruction_name="store_tiled_i8", instruction_arguments=()):
+        """Preserve an original scalar broadcast or complete column vector.
+
+        A scalar supplies the same original binary32 coefficient to every
+        column. This is representation normalization, with no coefficient
+        averaging, fitting or new numerical policy. The existing constructor
+        still checks finite positive values and exact uniformity within each
+        selected primitive tile; unsupported source exits retain their route.
+        """
+        if type(columns) is not int or not 0 < columns <= 262144:
+            raise ValueError("source readout requires a bounded positive column count")
+        if type(scales) in (int, float):
+            scales = (scales,) * columns
+        elif type(scales) not in (tuple, list) or len(scales) != columns:
+            raise ValueError("source readout requires one scalar or exactly one scale per column")
+        return cls.from_column_scales(scales, tile_columns=tile_columns, relu=relu,
+                                      instruction_name=instruction_name,
+                                      instruction_arguments=instruction_arguments)
+
     @property
     def columns(self):
         return len(self.column_scale_bits)
