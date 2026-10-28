@@ -178,11 +178,17 @@ def test_merlin_compile_flags_request_validation(monkeypatch):
 
     ap = command.parser(("int8",), ("none",), "none", ("k1",))
     args = ap.parse_args(["--workload", "w", "--validate-passes", "all", "--lean-sdk-bin", "/sdk/bin"])
-    monkeypatch.delenv(pass_validation.ENV_PASSES, raising=False)
-    monkeypatch.delenv(pass_validation.ENV_SDK_BIN, raising=False)
-    command.apply_pass_validation(args)
-    assert os.environ[pass_validation.ENV_PASSES] == "all"
-    assert os.environ[pass_validation.ENV_SDK_BIN] == "/sdk/bin"
+    keys = (pass_validation.ENV_PASSES, pass_validation.ENV_SDK_BIN)
+    original = {key: os.environ.get(key) for key in keys}
+    with monkeypatch.context() as environment:
+        # Register restoration even for initially absent variables: delenv
+        # records no undo then, and apply_pass_validation sets them directly.
+        for key in keys:
+            environment.setenv(key, "")
+        command.apply_pass_validation(args)
+        assert os.environ[pass_validation.ENV_PASSES] == "all"
+        assert os.environ[pass_validation.ENV_SDK_BIN] == "/sdk/bin"
+    assert {key: os.environ.get(key) for key in keys} == original
 
 
 def test_a_checker_built_from_other_sources_is_refused(tmp_path):
@@ -453,15 +459,18 @@ CHUNKS = [chunk.name for chunk in lean_gate_chunks.all_chunks()]
 
 @pytest.mark.parametrize("variant", ["text", "pruned"])
 @pytest.mark.parametrize("name", CHUNKS)
-def test_representative_kernels_lower_identically_under_the_gate(tmp_path, tools, name, variant):
+def test_representative_kernels_lower_identically_under_the_gate(tmp_path, tools, name, variant, monkeypatch):
     """Every family of every retained capsule through the real passes: each submitted check accepts,
     the gated LLVM IR is byte-identical to the ungated one, and a lowering that fails without the
     gate fails the same way with it (the gate never masks or changes a compile error)."""
+    monkeypatch.delenv(pass_validation.ENV_PASSES, raising=False)
     source = kernel(variant, name)
     try:
         ungated = lower.lower_model(source, tmp_path / "ungated", targets=())
     except Exception as error:  # noqa: BLE001 -- the parity check below re-raises nothing
         ungated = error
+    assert not (tmp_path / "ungated" / "pass-validation").exists()
+    assert not (tmp_path / "ungated" / leading_cse.DIRECTORY).exists()
     gate = SpeculativeGate(tmp_path / "gate", job_timeout=900)
     validation = pass_validation.PassValidation(gate, tools)
     try:
