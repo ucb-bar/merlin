@@ -117,10 +117,14 @@ def application_graph_inventory(path: str | Path) -> dict:
     Ordinals only have meaning within their digest-bound program. A normalizer
     changing the program does not establish a raw-to-normalized operation mapping.
     """
+    return application_graph_inventory_from_bytes(Path(path).read_bytes())
+
+
+def application_graph_inventory_from_bytes(raw: bytes) -> dict:
+    """:func:`application_graph_inventory` of exactly these capture bytes: a function of ``raw`` alone."""
     from merlin.common import mlir_query as mq
     from merlin.frontends.capture_normalization import normalize_capture_mlir
 
-    raw = Path(path).read_bytes()
     text = raw.decode("utf-8")
     raw_digest = hashlib.sha256(raw).hexdigest()
     normalized, normalization = normalize_capture_mlir(text)

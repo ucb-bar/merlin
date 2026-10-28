@@ -140,6 +140,11 @@ def _normalize_capture_mlir_cached(raw_text: str) -> tuple[str, dict]:
     return _normalize_capture_mlir_uncached(raw_text)
 
 
+def normalize_capture_bytes(raw: bytes) -> tuple[str, dict]:
+    """``normalize_capture_mlir`` of the UTF-8 text in ``raw``: a function of the bytes alone."""
+    return normalize_capture_mlir(raw.decode("utf-8"))
+
+
 def normalize_capture_mlir(
     raw_text: str,
     *,

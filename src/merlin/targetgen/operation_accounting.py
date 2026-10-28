@@ -635,17 +635,30 @@ def build_operation_accounting(
     from merlin.targetgen.framework_operation_partition import attach_frontend_partitions, combine_frontend_partitions
     from merlin.targetgen.operation_obligations import build_application_completeness
 
+    normalizations = None
+    if application_sources is not None:
+        from merlin.common.parse_pool import Prefetch
+
+        # Each label's normalization is a function of its captured bytes alone: start them together and
+        # consume them in label order below, after the same digest check on the same bytes.
+        normalizations = Prefetch(
+            "merlin.frontends.capture_normalization:normalize_capture_bytes",
+            {
+                label: raw
+                for label, raw in application_sources.items()
+                if isinstance(raw, bytes) and label in applications
+            },
+        ).start()
     for label, application in sorted(applications.items()):
         selected_graph = (application_graphs or {}).get(label) or application.get("operation_graph")
         parsed_operations = None
         if application_sources is not None:
             from merlin.common import mlir_query as mq
-            from merlin.frontends.capture_normalization import normalize_capture_mlir
 
             raw = application_sources[label]
             if not isinstance(raw, bytes) or hashlib.sha256(raw).hexdigest() != application["capture_sha256"]:
                 raise ValueError("parsed source admission differs from selected capture bytes")
-            normalized, _ = normalize_capture_mlir(raw.decode("utf-8"))
+            normalized, _ = normalizations.get(label, raw)
             if selected_graph is not None and hashlib.sha256(normalized.encode()).hexdigest() != selected_graph.get(
                 "normalized_mlir_sha256"
             ):
@@ -747,6 +760,8 @@ def build_operation_accounting(
             "source_graph_versions": source_versions,
         }
         all_entries.extend(entries)
+    if normalizations is not None:
+        normalizations.close()
     declared = []
     for declaration in sorted((software_spec or {}).get("operations") or [], key=lambda item: item["id"]):
         observations = [

@@ -16,6 +16,7 @@ from typing import Any
 
 import yaml
 
+
 from .evidence_output import _materialize_evidence
 from .provenance import _canonical_digest, _digest, _json
 
@@ -572,56 +573,73 @@ def select_evidence(
                     capture_attestations and set(capture_attestations) != set(observed)
                 ):
                     raise ValueError("capture execution attestations must cover exactly the selected applications")
-                from merlin.targetgen.application_inventory import application_graph_inventory
+                from merlin.common.parse_pool import Prefetch
 
+                # Each capture's graph is a function of its bytes alone: start them together and consume
+                # them in label order, each after this loop's own read and digest check of the same file
+                # (see merlin.common.parse_pool).
+                graph_sources = {}
                 for label, application in sorted(observed.items()):
-                    # Only fresh inventories retain the exact capture owner.
-                    # Do not guess historical store paths from basename tags.
                     selected_capture = application.get("capture_source_path")
-                    if not isinstance(selected_capture, str) or not selected_capture:
-                        continue
-                    capture_path = Path(selected_capture)
-                    if not capture_path.is_absolute():
-                        capture_path = sidecar.parent / capture_path
-                    capture_raw = observe(capture_path, f"application-capture:{label}")
-                    if capture_raw is None:
-                        continue
-                    if _digest(capture_raw) != application.get("capture_sha256"):
-                        raise ValueError(f"selected application capture bytes changed: {label}")
-                    application_graphs[label] = application_graph_inventory(capture_path)
-                    if application_graphs[label]["capture_sha256"] != _digest(capture_raw):
-                        raise ValueError(f"application graph was derived from changed source bytes: {label}")
-                    normalized = (application.get("capture_normalization") or {}).get("output_sha256")
-                    if normalized and application_graphs[label]["normalized_mlir_sha256"] != normalized:
-                        raise ValueError(
-                            f"selected application normalization differs from the derived inventory: {label}; "
-                            "use the same frontend/MLIR environment for derivation and Phase 0 execution"
-                        )
-                    for name, filename, destination in (
-                        ("frontend-trace", "frontend-trace.json", frontend_traces),
-                        ("framework-catalog", "pytorch-opset.json", framework_catalogs),
-                    ):
-                        record = application.get(name.replace("-", "_")) or {}
-                        location = (
-                            (record.get("source_path") or record.get("path")) if isinstance(record, Mapping) else None
-                        )
-                        member = Path(location) if location else capture_path.with_name(filename)
-                        if not member.is_absolute():
-                            member = capture_path.parent / member
-                        if member.is_symlink():
-                            raise ValueError(f"selected {name} may not be symlinked: {label}")
-                        raw_member = observe(member, f"application-{name}:{label}")
-                        if raw_member is None:
+                    if isinstance(selected_capture, str) and selected_capture:
+                        graph_path = Path(selected_capture)
+                        if not graph_path.is_absolute():
+                            graph_path = sidecar.parent / graph_path
+                        graph_sources[str(graph_path)] = graph_path
+                graph_ref = "merlin.targetgen.application_graph:application_graph_inventory_from_bytes"
+                with Prefetch(graph_ref, graph_sources) as graph_jobs:
+                    for label, application in sorted(observed.items()):
+                        # Only fresh inventories retain the exact capture owner.
+                        # Do not guess historical store paths from basename tags.
+                        selected_capture = application.get("capture_source_path")
+                        if not isinstance(selected_capture, str) or not selected_capture:
                             continue
-                        expected_member = (
-                            (record.get("raw_sha256") or record.get("sha256")) if isinstance(record, Mapping) else None
-                        )
-                        if expected_member is not None and expected_member != _digest(raw_member):
-                            raise ValueError(f"selected application {name} bytes changed: {label}")
-                        parsed = json.loads(raw_member)
-                        if not isinstance(parsed, dict):
-                            raise ValueError(f"selected application {name} must be a mapping: {label}")
-                        destination[label] = parsed
+                        capture_path = Path(selected_capture)
+                        if not capture_path.is_absolute():
+                            capture_path = sidecar.parent / capture_path
+                        capture_raw = observe(capture_path, f"application-capture:{label}")
+                        if capture_raw is None:
+                            continue
+                        if _digest(capture_raw) != application.get("capture_sha256"):
+                            raise ValueError(f"selected application capture bytes changed: {label}")
+                        application_graphs[label] = graph_jobs.get(capture_path)
+                        if application_graphs[label]["capture_sha256"] != _digest(capture_raw):
+                            raise ValueError(f"application graph was derived from changed source bytes: {label}")
+                        normalized = (application.get("capture_normalization") or {}).get("output_sha256")
+                        if normalized and application_graphs[label]["normalized_mlir_sha256"] != normalized:
+                            raise ValueError(
+                                f"selected application normalization differs from the derived inventory: {label}; "
+                                "use the same frontend/MLIR environment for derivation and Phase 0 execution"
+                            )
+                        for name, filename, destination in (
+                            ("frontend-trace", "frontend-trace.json", frontend_traces),
+                            ("framework-catalog", "pytorch-opset.json", framework_catalogs),
+                        ):
+                            record = application.get(name.replace("-", "_")) or {}
+                            location = (
+                                (record.get("source_path") or record.get("path"))
+                                if isinstance(record, Mapping)
+                                else None
+                            )
+                            member = Path(location) if location else capture_path.with_name(filename)
+                            if not member.is_absolute():
+                                member = capture_path.parent / member
+                            if member.is_symlink():
+                                raise ValueError(f"selected {name} may not be symlinked: {label}")
+                            raw_member = observe(member, f"application-{name}:{label}")
+                            if raw_member is None:
+                                continue
+                            expected_member = (
+                                (record.get("raw_sha256") or record.get("sha256"))
+                                if isinstance(record, Mapping)
+                                else None
+                            )
+                            if expected_member is not None and expected_member != _digest(raw_member):
+                                raise ValueError(f"selected application {name} bytes changed: {label}")
+                            parsed = json.loads(raw_member)
+                            if not isinstance(parsed, dict):
+                                raise ValueError(f"selected application {name} must be a mapping: {label}")
+                            destination[label] = parsed
     if inventory_identity["status"] != "digest_bound":
         diagnostics.append(
             {
