@@ -81,7 +81,14 @@ def test_gemmini_software_spec_does_not_admit_integer_shift_as_fused_readout():
         "quantization": {"contraction": FactField(("quantizable",), True, ())},
     }
     spec, record = resolve_spec(authored, facts)
-    assert record["status"] == "resolved"
+    # These minimal facts resolve the operation screen; the newly declared
+    # scheme/composition axes still require their own output-path/resource facts.
+    assert all(row["status"] == "resolved" for row in record["declarations"])
+    assert record["status"] == "unresolved"
+    assert record["unresolved"] and all(
+        "scheme" in row or "composition" in row or row.get("field", "").startswith("schemes.")
+        for row in record["unresolved"]
+    )
     decision = screen_entry(spec, entry)
     assert decision["status"] == "unsupported"
     assert any(row["role"] == "epilogue" and row["status"] == "unsupported" for row in decision["decisions"])
@@ -488,3 +495,304 @@ def test_mx_conformance_rejects_legacy_accelerator_formats():
     assert "contraction/bf16/aligned" in conflicts
     assert "contraction/i8/aligned" in conflicts
     assert "contraction/mxfp4/aligned" not in conflicts
+
+
+def _f32_readout():
+    return {
+        "strategy": "f32_product_rne",
+        "accumulator_conversion": {"to": "f32", "rounding": "half_even"},
+        "multiplier": {"dtype": "f32", "formation": "rne_of_exact_rational"},
+        "product": {"dtype": "f32", "rounding": "half_even"},
+        "narrowing": {"rounding": "half_even", "saturate": "declared_dtype"},
+        "activation_order": "from_facts",
+        "exactness_bridge": "prove_fp32_products",
+    }
+
+
+@pytest.mark.parametrize("field", list(_f32_readout()))
+def test_f32_readout_requires_every_arithmetic_field(field):
+    declaration = _f32_readout()
+    del declaration[field]
+    with pytest.raises(ValueError):
+        SS.validate_readout(declaration)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("multiplier", {"dtype": "f32", "formation": "stepwise_f32"}),
+        ("product", {"dtype": "f64", "rounding": "half_even"}),
+        ("narrowing", {"rounding": "half_away", "saturate": "declared_dtype"}),
+        ("activation_order", ["activation", "scale"]),
+        ("exactness_bridge", "sampled_outputs"),
+    ],
+)
+def test_f32_readout_refuses_weaker_numerical_contracts(field, value):
+    declaration = _f32_readout()
+    declaration[field] = value
+    with pytest.raises(ValueError):
+        SS.validate_readout(declaration)
+
+
+def _composition_spec():
+    spec = _spec()
+    spec["numerical_semantics"] = {
+        "model": {"engine": "integer_reference"},
+        "operand_dtype": "int8",
+        "accumulator_dtype": "i32",
+        "readout_dtype": "i32",
+        "subnormal_operand_flush": False,
+        "readout": _f32_readout(),
+        "quantized_native_fallback": {"readout": "full_int32_then_host_readout_per_scheme"},
+    }
+    spec["compositions"] = {
+        "schema": "merlin.software_spec.compositions.v1",
+        "status": "authored_pending_operator_review",
+        "grading": "placement_and_instruction_audit",
+        "chains": [
+            {
+                "id": "readout",
+                "producer": "contraction",
+                "accumulator_stages": {"preload": "optional"},
+                "readout_stages": "from_output_path",
+                "exits": ["requant", "accumulator"],
+                "dataflows": "from_facts",
+                "constraints": [
+                    "activation_before_scale_requires_nonnegative_multiplier",
+                    "accumulator_exit_applies_no_readout_stage",
+                    {"os_dataflow_requires": "mesh_partial_sum_bound_from_constant_operands"},
+                    {"pool_window_within_register_fields": "from_facts"},
+                    {"pool_padding": "from_facts"},
+                ],
+            },
+            {
+                "id": "sum",
+                "producer": "operand_sum",
+                "readout_stages": "from_output_path",
+                "exits": ["requant", "accumulator"],
+                "constraints": [{"operand_multiplier_in": "(0, 1]"}, "load_minimum_not_negated"],
+            },
+            {
+                "id": "window",
+                "producer": ["movement", "contraction"],
+                "reduction_kinds": ["max", "sum"],
+                "constraints": [
+                    {"max_requires_store_path_pooling": "from_facts"},
+                    "scratchpad_source_pooling_fenced",
+                    {"padded_max_requires": "producer_lower_bound_or_derived_pad_value"},
+                ],
+            },
+            {
+                "id": "extension",
+                "producer": "contraction",
+                "extension": "constant_integer_operand",
+                "constraints": ["coefficient_integer_exact", {"k_extension_within": "from_facts"}],
+            },
+            {
+                "id": "siblings",
+                "producer": "contraction",
+                "multiplicity": {"min": 2},
+                "constraints": ["per_output_readout_independent", {"shared_input_resident": "from_facts"}],
+            },
+        ],
+    }
+    return spec
+
+
+def _composition_facts():
+    from merlin.targetgen.spec_fact_drift import FactField
+
+    def fact(value):
+        return FactField((value,), True, ("structural fixture evidence",))
+
+    return {
+        "families": {
+            family: {"placement": fact("accelerator")} for family in ("contraction", "operand_sum", "movement")
+        },
+        "composition": {
+            "output_path": {
+                "schema": "output_path_v1",
+                "accumulator": {"dtype": "i32"},
+                "accumulator_stages": [{"kind": "preload", "dtype": "i32"}],
+                "readout": [
+                    {"kind": "activation", "domain": "accumulator"},
+                    {"kind": "convert"},
+                    {"kind": "scale", "granularity": "per_command", "columns_per_scale": 7},
+                    {"kind": "requant"},
+                    {"kind": "pool", "padding": "zero", "reductions": ["max"]},
+                ],
+                "exits": {"requant": True, "accumulator": True},
+            },
+            "dataflows": FactField(("weight_stationary", "output_stationary"), True, ("dataflow selector",)),
+            "pool_window_within_register_fields": fact({"size_bits": 3, "stride_bits": 2}),
+            "max_requires_store_path_pooling": fact(True),
+            "k_extension_within": fact({"max_k": 23, "partial_sum_bits": 19}),
+            "shared_input_resident": fact({"capacity_bytes": 8192}),
+        },
+    }
+
+
+def test_family_compositions_resolve_all_readouts_exits_and_user_rulings():
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    spec = _composition_spec()
+    original = deepcopy(spec)
+    SS.validate_software_spec(spec)
+    resolved, record = resolve_spec(spec, _composition_facts())
+    assert record["status"] == "resolved"
+    assert spec == original
+    rows = {row["id"]: row for row in resolved["composition_resolution"]["chains"]}
+    assert all(row["placement"] == "fused_accelerator" for row in rows.values())
+    assert all(row["grading"] == "placement_and_instruction_audit" for row in rows.values())
+    assert rows["readout"]["readout_stages"] == ["activation", "convert", "scale", "requant", "pool"]
+    assert rows["readout"]["exit_stages"]["accumulator"] == []
+    assert rows["extension"]["required_when"] == {"residual_coefficient": "integer_constant"}
+    assert rows["window"]["grading_scope"] == "composition_truth_only"
+    assert rows["siblings"]["shared_input"] == "one_immutable_input"
+    assert resolved["readout_resolution"]["activation_order"] == rows["readout"]["readout_stages"]
+    # Definition describes admission, never claims an executed arithmetic proof.
+    assert SS.readout_exactness_gate("f32_product_rne") == {
+        "definitional": "f32_product_rne",
+        "requires": "decoded_multiplier_bits_equal_formed_multiplier",
+    }
+    assert SS.readout_exactness_gate("exact_rational_host")["proof"] == "prove_fp32_products"
+
+
+@pytest.mark.parametrize(
+    "prose", ["UNKNOWN historical result; this is a coverage rationale", "from_facts", "reviewed cross check"]
+)
+def test_composition_justification_does_not_become_an_unknown_constraint(prose):
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    spec = _composition_spec()
+    selection = {"primary": ["primary"], "cross_checks": [{"scheme": "cross", "justification": prose}]}
+    spec["compositions"]["chains"][0]["quantization_schemes"] = selection
+    spec = SS.validate_software_spec(spec)
+    original = deepcopy(spec)
+    facts = _composition_facts()
+    resolved, record = resolve_spec(spec, facts)
+    chain = resolved["composition_resolution"]["chains"][0]
+    assert record["status"] == "resolved"
+    assert chain["quantization_schemes"] == selection
+    assert chain["unknown"] == []
+    assert spec == original
+    # Annotation handling cannot hide a genuinely missing hardware bound.
+    del facts["composition"]["pool_window_within_register_fields"]
+    resolved, record = resolve_spec(spec, facts)
+    assert record["status"] == "unresolved"
+    assert (
+        "constraints[3].pool_window_within_register_fields"
+        in resolved["composition_resolution"]["chains"][0]["unknown"]
+    )
+
+
+@pytest.mark.parametrize("missing", ["output_path", "dataflows", "k_extension_within", "shared_input_resident"])
+def test_composition_missing_facts_are_unknown_and_listed(missing):
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    facts = _composition_facts()
+    del facts["composition"][missing]
+    resolved, record = resolve_spec(_composition_spec(), facts)
+    assert record["status"] == "unresolved"
+    assert record["unresolved"]
+    assert all(item["value"] == "UNKNOWN" for item in record["unresolved"])
+    assert any(row["status"] == "unresolved" for row in resolved["composition_resolution"]["chains"])
+
+
+def test_underived_pool_padding_and_unproved_producer_do_not_grant_fusion():
+    from merlin.targetgen.spec_fact_drift import FactField, resolve_spec
+
+    facts = _composition_facts()
+    facts["composition"]["output_path"]["readout"][-1]["padding"] = "unknown"
+    facts["families"]["contraction"]["placement"] = FactField(("accelerator",), False, ("incomplete",))
+    resolved, record = resolve_spec(_composition_spec(), facts)
+    assert record["status"] == "unresolved"
+    assert all(
+        row["placement"] == "unknown"
+        for row in resolved["composition_resolution"]["chains"]
+        if row["producer"] == "contraction"
+    )
+    assert any("pool" in item["field"] for item in record["unresolved"])
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda b: b.__setitem__("grading", "bytes_only"),
+        lambda b: b["chains"][0].__setitem__("producer", "conv2d"),
+        lambda b: b["chains"][0].__setitem__("readout_stages", ["relu"]),
+        lambda b: b["chains"][0].__setitem__("ops", ["conv2d"]),
+        lambda b: b["chains"][0].__setitem__("dataflows", ["OS"]),
+        lambda b: b["chains"].append(deepcopy(b["chains"][0])),
+        lambda b: b["chains"][3].__setitem__("constraints", ["coefficient_integer_exact"]),
+        lambda b: b["chains"][4].__setitem__("constraints", ["per_output_readout_independent"]),
+        lambda b: b["chains"][4].__setitem__("multiplicity", {"min": 1}),
+        lambda b: b["chains"][0].__setitem__("constraints", ["accumulator_exit_applies_no_readout_stage"]),
+    ],
+)
+def test_composition_vocabulary_constraints_and_grading_fail_closed(mutate):
+    block = _composition_spec()["compositions"]
+    mutate(block)
+    with pytest.raises(ValueError):
+        SS.validate_compositions(block)
+
+
+def test_composition_stage_order_is_checked_against_selected_path():
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    spec = _composition_spec()
+    spec["compositions"]["chains"][0]["readout_stages"] = ["requant", "convert"]
+    with pytest.raises(ValueError, match="output path order"):
+        resolve_spec(spec, _composition_facts())
+
+
+def test_legacy_rational_readout_and_fallback_remain_valid():
+    spec = _composition_spec()
+    del spec["compositions"]
+    spec["numerical_semantics"]["readout"] = {"strategy": "exact_rational_host", "requant_rounding": "half_even"}
+    spec["numerical_semantics"]["quantized_native_fallback"]["readout"] = "full_int32_then_exact_host_rne"
+    assert SS.validate_software_spec(spec)["numerical_semantics"] == spec["numerical_semantics"]
+    spec["numerical_semantics"]["quantized_native_fallback"]["readout"] = "guess"
+    with pytest.raises(ValueError, match="fallback.readout"):
+        SS.validate_software_spec(spec)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("max_requires_store_path_pooling", False),
+        ("shared_input_resident", {"capacity_bytes": 0}),
+        ("k_extension_within", {"max_k": True, "partial_sum_bits": 20}),
+        ("pool_window_within_register_fields", {"size_bits": 3}),
+    ],
+)
+def test_false_or_malformed_composition_facts_cannot_establish_fusion(field, value):
+    from merlin.targetgen.spec_fact_drift import FactField, resolve_spec
+
+    facts = _composition_facts()
+    facts["composition"][field] = FactField((value,), True, ("selected evidence",))
+    _, record = resolve_spec(_composition_spec(), facts)
+    assert record["status"] == "unresolved"
+    assert any(field in item["field"] for item in record["unresolved"])
+
+
+def test_bare_authored_composition_values_cannot_replace_facts():
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    facts = _composition_facts()
+    facts["composition"]["dataflows"] = ["weight_stationary", "output_stationary"]
+    _, record = resolve_spec(_composition_spec(), facts)
+    assert any(item["field"] == "dataflows" for item in record["unresolved"])
+
+
+def test_unavailable_exit_and_readout_stage_remain_unresolved():
+    from merlin.targetgen.spec_fact_drift import resolve_spec
+
+    spec, facts = _composition_spec(), _composition_facts()
+    spec["compositions"]["chains"][0]["readout_stages"] = ["pool"]
+    facts["composition"]["output_path"]["readout"].pop()
+    facts["composition"]["output_path"]["exits"]["accumulator"] = False
+    _, record = resolve_spec(spec, facts)
+    assert record["status"] == "unresolved"
+    assert any(item["field"] == "readout_stages" for item in record["unresolved"])
+    assert any(item["field"] == "exits.accumulator" for item in record["unresolved"])
