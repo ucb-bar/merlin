@@ -907,6 +907,21 @@ def generate_target(
                     )
                     print(f"  [roster] {e.get('name')}: NOT BUILT — {why}")
                     continue
+                uncapturable = withhold_uncapturable_micro_model(
+                    e, exc, detail=detail, must_refuse=e.get("outcome") == "refuse"
+                )
+                if uncapturable is not None:
+                    host_placed.append(
+                        _withhold_with_qualifying_groups(
+                            uncapturable,
+                            out_root / str(e.get("cat") or "") / str(e.get("name") or ""),
+                            out_root=out_root,
+                            written=written,
+                            missing_ok=True,
+                        )
+                    )
+                    print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {uncapturable['reason']}", flush=True)
+                    continue
                 gap = withhold_source_gap(
                     e, out_root / str(e.get("cat") or "") / str(e.get("name") or ""), exc=exc, detail=detail
                 )
@@ -1577,6 +1592,35 @@ def withhold_unadmitted_micro_model(entry: dict, observed: dict, *, must_refuse:
         "capsule": str(entry.get("name", "?")),
         "placements": copy.deepcopy(observed.get("placements") or {}),
         "reason": "emitted program not admitted by the selected host lane: " + str(observed.get("reason", "")),
+    }
+
+
+def withhold_uncapturable_micro_model(
+    entry: dict, exc: BaseException, *, detail: str, must_refuse: bool
+) -> dict | None:
+    """Account for a synthesized micro-model whose generation-time capture model2MLIR refuses.
+
+    The micro-model is derived from the application captures; when the selected model2MLIR cannot lower
+    its program cleanly (a typed ``M2MUnavailable``, e.g. an opaque op left in the int8 capture), there is
+    no program to screen or publish. Like a micro-model the host lane cannot admit, it is withheld and
+    disclosed with the verbatim refusal instead of failing generation. Only this case is relaxed: a roster
+    model, a must-refuse member, any capsule that is not a synthesized micro-model sweep entry, and any
+    other exception still fail generation.
+    """
+    from merlin.targetgen.capture_refusals import M2MUnavailable
+
+    if (
+        must_refuse
+        or _is_roster_capsule(entry)
+        or not entry.get("micro_model")
+        or entry.get("source_role") != "derived_sweep"
+        or not isinstance(exc, M2MUnavailable)
+    ):
+        return None
+    return {
+        "capsule": str(entry.get("name", "?")),
+        "placements": {},
+        "reason": "generation-time capture refused by the selected model2MLIR: " + str(detail),
     }
 
 
