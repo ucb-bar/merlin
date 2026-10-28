@@ -104,12 +104,14 @@ def test_reviewed_rows_admit_the_observed_micro_model_signatures(shipped, fronte
     assert decision["status"] == "admitted", decision["reason"]
 
 
+# The rank-5 quantize/dequantize, rank-1 exact_readout and bf16-result dequantize forms were removed from
+# this list when the operator chat of 2026-10-28 approved their proposed rows (operator_chat_addendum_2);
+# their open evidence obligations stay in the rows.
 REFUSE = [
     # m2m exact quantizer: reviewed f32-scale TorchAO form is a different contract; wrong storage/range/rank.
     ("m2m_q.quantize.default", "quant_ext.quantize_per_tensor", ["f32", "f32", "i64"], ["i8"], 2, Q),
     ("m2m_q.quantize.default", "quant_ext.quantize_per_tensor", ["bf16", "f64", "i64"], ["i8"], 2, Q),
     ("m2m_q.quantize.default", "quant_ext.quantize_per_tensor", ["f32", "f64", "i64"], ["ui8"], 2, Q),
-    ("m2m_q.quantize.default", "quant_ext.quantize_per_tensor", ["f32", "f64", "i64"], ["i8"], 5, Q),
     ("m2m_q.quantize.default", "quant_ext.quantize_per_tensor", ["f32", "f64", "i64"], ["i8"], 2,
      {"zero_point": 3, "quant_min": -128, "quant_max": 127}),
     ("m2m_q.quantize.default", "quant_ext.quantize_per_tensor", ["f32", "f64", "i64"], ["i8"], 2,
@@ -121,14 +123,9 @@ REFUSE = [
     ("m2m_q.exact_readout.default", "linalg.generic", ["i32", "f32", "f32"], ["f32"], 2, None),
     ("m2m_q.exact_readout.default", "linalg.generic", ["i32", "i8"], ["i8"], 2, None),
     ("m2m_q.exact_readout.default", "linalg.generic", ["i64", "f32"], ["f32"], 2, None),
-    ("m2m_q.exact_readout.default", "linalg.generic", ["i32", "f32"], ["f32"], 1, None),
     # Dequantize: other result dtype, zero point, rank.
     ("quantized_decomposed.dequantize_per_tensor.default", "quant_ext.dequantize_per_tensor",
-     ["i8", "f64", "i64"], ["bf16"], 2, Q),
-    ("quantized_decomposed.dequantize_per_tensor.default", "quant_ext.dequantize_per_tensor",
      ["i8", "f64", "i64"], ["f32"], 2, {"zero_point": 5, "quant_min": -128, "quant_max": 127}),
-    ("quantized_decomposed.dequantize_per_tensor.default", "quant_ext.dequantize_per_tensor",
-     ["i8", "f64", "i64"], ["f32"], 5, Q),
     ("quantized_decomposed.dequantize_per_tensor.default", "quant_ext.dequantize_per_tensor",
      ["i32", "f64", "i64"], ["f32"], 2, Q),
     # Two-result layer-norm moments only.

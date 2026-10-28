@@ -90,6 +90,7 @@ def test_signed_off_rank_2_admission_is_unchanged(shipped, case):
 
 @pytest.mark.parametrize("case", CASES, ids=[c[0] for c in CASES])
 def test_rank_5_and_wrong_dtypes_stay_refused(shipped, case):
-    assert _admit(shipped, *case[:4], 5, case[4])["status"] != "admitted"
+    # rank 5 became a reviewed form on the operator chat of 2026-10-28 (operator_chat_addendum_2)
+    assert _admit(shipped, *case[:4], 6, case[4])["status"] != "admitted"
     operands = ["f16"] + list(case[2][1:])
     assert _admit(shipped, case[0], case[1], operands, case[3], 3, case[4])["status"] != "admitted"
