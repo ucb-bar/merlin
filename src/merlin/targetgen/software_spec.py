@@ -805,6 +805,12 @@ def precision_disjoint(row: dict, signature: dict) -> list[str]:
         if expected_formats != actual_formats:
             reasons.append(f"{key} {actual_formats} differs from declared {expected_formats}")
     observed_operand = signature.get("operand_dtype")
+    # An element type outside the quant-format registry is observed as ``unsupported_mlir:<mlir type>``
+    # (``model_coverage._elem_dtype``): the same raw MLIR spelling the ordered signature carries. Only
+    # this disjointness test compares the underlying type, so a reviewed host row naming it keeps its
+    # exact-roster priority and screens the full signature itself; the token stays ineligible elsewhere.
+    if isinstance(observed_operand, str) and observed_operand.startswith("unsupported_mlir:"):
+        observed_operand = observed_operand.removeprefix("unsupported_mlir:")
     expected = declared.get("ordered_operand_dtypes")
     if (
         _executable(observed_operand)
