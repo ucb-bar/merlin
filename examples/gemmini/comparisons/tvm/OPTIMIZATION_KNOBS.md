@@ -1,5 +1,10 @@
 # Simplified TVM path: implementation and measurement review
 
+[ARCHITECTURE.md](ARCHITECTURE.md) is the current top-down design and paper-claim
+review. It also discloses the remaining custom placement, memory lowering and
+CPU producer-inlining step; removing graph preparation passes did not remove
+all custom integration. Operation boundaries are in [TENSORIR_OP_AUDIT.md](TENSORIR_OP_AUDIT.md).
+
 **Historical ELF preparation release:** [source, checks and restore instructions](../../../../out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/README.md).
 Release TVM pin: `619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a`. All 71 unchanged operator
 fixtures pass diagnostic Spike with wrong-oracle rejection; fresh extraction

@@ -1,6 +1,7 @@
 # Current TVM campaign instructions (2026-10-27)
 
-Read [FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md) and [TENSORIR_OP_AUDIT.md](TENSORIR_OP_AUDIT.md).
+Read [ARCHITECTURE.md](ARCHITECTURE.md), [FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md)
+and [TENSORIR_OP_AUDIT.md](TENSORIR_OP_AUDIT.md).
 The sole model-running protocol is Merlin `8ec99308cb1182b9b896a6075300312266fadf6f`.
 Use the frozen run contract, with the user's approved TinyLlama numerics correction
 from 128 to 32 prefill tokens; final chain is 32+32, cache capacity 64. Use only
