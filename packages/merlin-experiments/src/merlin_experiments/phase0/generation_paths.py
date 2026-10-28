@@ -33,14 +33,12 @@ def _require_distinct_corpus_destinations(te, *, output_root: str | Path, eviden
             if callable(method):
                 sources.extend(method())
     sources = sorted({Path(source).expanduser().resolve() for source in sources})
-    # A frozen run executes from its own sealed source snapshot below the evidence root, and that
-    # snapshot deliberately EXCLUDES the capsule corpus. A corpus path resolved inside it names
-    # nothing: it is the run's own read-only copy of the checkout, not a retained input to protect.
+    # A frozen run executes from its own sealed source snapshot below the evidence root. A corpus path
+    # inside that snapshot is the run's private read-only copy of the checkout, not a retained corpus
+    # destination. The original checkout and the descriptor-selected corpora stay protected.
     frozen = Path(evidence_root).expanduser().resolve() / "private" / "source" if evidence_root is not None else None
     if frozen is not None:
-        sources = [
-            source for source in sources if not ((source == frozen or frozen in source.parents) and not source.exists())
-        ]
+        sources = [source for source in sources if not (source == frozen or frozen in source.parents)]
     for field, raw in (("output_root", output_root), ("evidence_root", evidence_root)):
         if raw is None:
             continue
