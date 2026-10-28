@@ -48,6 +48,8 @@ from __future__ import annotations
 import statistics
 import threading
 from collections.abc import Iterable, Mapping, Sequence
+from contextlib import contextmanager
+from pathlib import Path
 
 # (target, tier) -> observed adapter wall-clock samples. Process-local: the grader runs capsules on
 # threads within one process, which is exactly the scope over which the ordering must be consistent.
@@ -355,17 +357,69 @@ def raised_tiers(declared) -> list[str]:
     return [f"L{i}" for i in range(deepest + 1, depth + 1)]
 
 
+#: A capsule field that exempts it from :data:`TIER_FLOOR_ENV`: its declared ladder is the whole policy.
+#: For a corpus whose declared policy has no rung above the declared one (a Spike-only functional suite).
+FLOOR_EXEMPT_FIELD = "tier_floor_exempt"
+
+_floor_exempt_dirs: dict[str, int] = {}
+_floor_exempt_lock = threading.Lock()
+
+
+@contextmanager
+def floor_exempt(directories: Iterable[str | Path]):
+    """Within this block the capsules loaded from ``directories`` keep exactly their declared ladder.
+
+    For a suite whose selected policy owns no deeper rung than the one it declares -- the Spike-only public
+    scalability suite has no L3 adapter by construction -- while the process-wide operator floor still
+    applies to every other capsule, including ones graded concurrently by other threads. Keyed on the
+    capsule's own directory (``__dir__``), so it is exact under fan-out and needs no change to sealed
+    capsule bytes. Re-entrant: the same directory entered twice stays exempt until both exits.
+    """
+    keys = [str(Path(d).resolve()) for d in directories]
+    with _floor_exempt_lock:
+        for key in keys:
+            _floor_exempt_dirs[key] = _floor_exempt_dirs.get(key, 0) + 1
+    try:
+        yield
+    finally:
+        with _floor_exempt_lock:
+            for key in keys:
+                left = _floor_exempt_dirs.get(key, 0) - 1
+                if left > 0:
+                    _floor_exempt_dirs[key] = left
+                else:
+                    _floor_exempt_dirs.pop(key, None)
+
+
+def is_floor_exempt(capsule: Mapping) -> bool:
+    """Whether the operator floor leaves this capsule on its declared ladder."""
+    if capsule.get(FLOOR_EXEMPT_FIELD) is True:
+        return True
+    directory = capsule.get("__dir__")
+    if directory is None:
+        return False
+    try:
+        key = str(Path(str(directory)).resolve())
+    except (OSError, RuntimeError):
+        return False
+    with _floor_exempt_lock:
+        return key in _floor_exempt_dirs
+
+
 def required_tiers(capsule: Mapping):
     """The capsule's mandatory tiers: ``required_oracle_tiers`` plus, under :data:`TIER_FLOOR_ENV`, every
     rung deeper than its deepest declared one up to the floor.
 
     Only scored capsules are raised: that is the population the formal grade counts. A host guard
     (``scored: false``) is outside that denominator and must stay on the host, so it keeps its declared
-    ladder. A raised tier is mandatory like a declared one: without an adapter that can run it the
-    capsule is ``not_run_is_not_pass``, never skipped. Unset, this returns the declared value itself.
+    ladder. A capsule exempted by :data:`FLOOR_EXEMPT_FIELD` or :func:`floor_exempt` (a suite whose policy
+    excludes the tier) keeps its declared ladder too. A raised tier is mandatory like a declared one:
+    without an adapter that can run it the capsule is ``not_run_is_not_pass``, never skipped. Unset, this
+    returns the declared value itself.
     """
     declared = capsule.get("required_oracle_tiers")
-    raised = [] if capsule.get("scored") is False else raised_tiers(declared)
+    exempt = capsule.get("scored") is False or is_floor_exempt(capsule)
+    raised = [] if exempt else raised_tiers(declared)
     return [*(str(t) for t in declared or ()), *raised] if raised else declared
 
 

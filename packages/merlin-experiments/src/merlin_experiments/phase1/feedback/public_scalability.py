@@ -182,7 +182,17 @@ def _grade(
 
     from contextlib import redirect_stderr, redirect_stdout
 
-    with (output / "grader.log").open("w") as log, redirect_stdout(log), redirect_stderr(log):
+    from merlin.targetgen.tier_policy import floor_exempt
+
+    # The selected policy is exactly Spike L0/L1/L2: no L3 adapter exists for this suite by construction, so
+    # the operator tier floor (MERLIN_CAPSULE_TIER_FLOOR=L3, which raises every scored core capsule) must not
+    # add a rung it cannot run. Scoped to these case directories; core capsules keep the floor.
+    with (
+        (output / "grader.log").open("w") as log,
+        redirect_stdout(log),
+        redirect_stderr(log),
+        floor_exempt([cases / name for name in names]),
+    ):
         score = CG.grade(
             submission,
             capsules_root=cases,
