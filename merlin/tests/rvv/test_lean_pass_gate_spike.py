@@ -84,8 +84,8 @@ def test_a_gated_build_runs_correctly_on_spike(tmp_path, capture_dir, spike_tool
     work = tmp_path / "work"
     result = spike_model.build_and_run(capture_dir, work, reference=np.load(capture_dir / "golden.npy"))
     assert result["ok"] and result["cos"] > 0.9999
-    # The whole-model route preprocesses textually; that is the boundary checked in production.
-    assert _verdicts(work) == {"preprocess_text_textual": "accepted"}
+    # The whole-model route preprocesses textually, then the pipeline's leading cse runs.
+    assert _verdicts(work) == {"preprocess_text_textual": "accepted", "cse": "accepted"}
 
 
 def test_a_wrong_dequantization_ships_without_the_gate(tmp_path, capture_dir, spike_tools, monkeypatch):

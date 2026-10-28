@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.llvmlower import lower, passes_xdsl
+from merlin.llvmlower import leading_cse, lower, passes_xdsl
 from merlin.verify import gate_checks, pass_validation
 from merlin.verify.gate_errors import GateRejected, GateUnsupported
 from merlin.verify.lean import check
@@ -66,7 +66,7 @@ def job(tmp_path, before: str, after: str, tools) -> dict:
     }
 
 
-def test_real_lowering_proves_both_preprocessing_passes(tmp_path, validation):
+def test_real_lowering_proves_preprocessing_and_cse(tmp_path, validation):
     result = lower.lower_model(
         capture("small_llama_int8_consistent"), tmp_path / "lower", targets=(), pass_validation=validation
     )
@@ -76,7 +76,10 @@ def test_real_lowering_proves_both_preprocessing_passes(tmp_path, validation):
     assert {label: v["verdict"] for label, v in verdicts.items()} == {
         "prune_dead_pure_tensor_ops": "accepted",
         "lower_quant_ext": "accepted",
+        "cse": "accepted",
     }
+    # The pipeline's own leading canonicalize,cse then changed nothing (no second cse check).
+    assert [v["label"] for v in validation.gate.verdicts].count("cse") == 1
     verdict = verdicts["prune_dead_pure_tensor_ops"]
     assert verdict["detail"]["theorems"] == list(gate_checks.THEOREMS)
     assert set(verdict["detail"]["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"}
@@ -115,9 +118,16 @@ def test_an_injected_prune_bug_stops_real_lowering(tmp_path, validation, monkeyp
     assert "arith.subf" in Path(report["after"]).read_text()
 
 
-def test_a_prune_that_changes_nothing_submits_nothing(tmp_path, validation):
-    lower.lower_model(capture("tiny_llama_fp32_consistent"), tmp_path / "lower", targets=(), pass_validation=validation)
-    assert validation.gate.verdicts == []
+def test_a_prune_that_changes_nothing_submits_nothing(tmp_path, tools):
+    gate = SpeculativeGate(tmp_path / "gate", job_timeout=900)
+    prune_only = pass_validation.PassValidation(gate, tools, frozenset({"prune_dead_pure_tensor_ops"}))
+    try:
+        lower.lower_model(
+            capture("tiny_llama_fp32_consistent"), tmp_path / "lower", targets=(), pass_validation=prune_only
+        )
+    finally:
+        gate.close()
+    assert gate.verdicts == []
 
 
 DEAD = f"""func.func @forward(%a: {T}) -> {T} {{
@@ -286,7 +296,10 @@ def test_the_textual_whole_model_route_is_proved(tmp_path, validation):
     lower.lower_model(
         capture("small_consistent"), tmp_path / "lower", targets=(), textual=True, pass_validation=validation
     )
-    assert [(v["label"], v["verdict"]) for v in validation.gate.verdicts] == [("preprocess_text_textual", "accepted")]
+    assert [(v["label"], v["verdict"]) for v in validation.gate.verdicts] == [
+        ("preprocess_text_textual", "accepted"),
+        ("cse", "accepted"),
+    ]
 
 
 def test_a_textual_dequantization_bug_stops_lowering(tmp_path, validation, monkeypatch):
@@ -297,3 +310,131 @@ def test_a_textual_dequantization_bug_stops_lowering(tmp_path, validation, monke
             capture("small_consistent"), tmp_path / "lower", targets=(), textual=True, pass_validation=validation
         )
     assert raised.value.report["label"] == "preprocess_text_textual"
+
+
+F23 = "tensor<2x3xf32>"
+DUPLICATES = f"""func.func @forward(%a: {F23}) -> (tensor<6xf32>, tensor<6xf32>, {F23}, {F23}) {{
+  %c = arith.constant 1.5 : f32
+  %d = arith.constant 2.5 : f32
+  %e0 = tensor.empty() : {F23}
+  %f0 = linalg.fill ins(%c : f32) outs(%e0 : {F23}) -> {F23}
+  %s0 = tensor.collapse_shape %a [[0, 1]] : {F23} into tensor<6xf32>
+  %e1 = tensor.empty() : {F23}
+  %f1 = linalg.fill ins(%CONSTANT : f32) outs(%e1 : {F23}) -> {F23}
+  %s1 = tensor.collapse_shape %a [[0, 1]] : {F23} into tensor<6xf32>
+  return %s0, %s1, %f0, %f1 : tensor<6xf32>, tensor<6xf32>, {F23}, {F23}
+}}
+"""
+
+
+def _cse(tmp_path, text: str) -> str:
+    directory = tmp_path / "apply"
+    directory.mkdir(exist_ok=True)
+    return leading_cse._apply(text, "cse", directory, "cse")
+
+
+def test_upstream_cse_of_empties_fills_and_reshapes_is_proved(tmp_path, tools):
+    before = DUPLICATES.replace("%CONSTANT", "%c")
+    after = _cse(tmp_path, before)
+    assert after.count("linalg.fill") == 1 and after.count("tensor.empty") == 1 and after.count("collapse_shape") == 1
+    detail = gate_checks.tensor_refinement(job(tmp_path, before, after, tools))
+    assert detail["claim"].startswith("strict refinement")
+
+
+def test_a_cse_that_merges_different_fills_is_rejected(tmp_path, tools):
+    before = DUPLICATES.replace("%CONSTANT", "%d")  # the second fill writes another value
+    merged = _cse(tmp_path, DUPLICATES.replace("%CONSTANT", "%c"))  # what merging both fills would give
+    with pytest.raises(GateRejected, match="did not verify"):
+        gate_checks.tensor_refinement(job(tmp_path, before, merged, tools))
+
+
+def test_an_injected_cse_bug_stops_real_lowering(tmp_path, validation, monkeypatch):
+    real = leading_cse._apply
+
+    def buggy(text, passes, directory, name):
+        result = real(text, passes, directory, name)
+        return result.replace("arith.mulf", "arith.addf", 1) if passes == "cse" else result
+
+    monkeypatch.setattr(leading_cse, "_apply", buggy)
+    with pytest.raises(GateFailure) as raised:
+        lower.lower_model(
+            capture("small_llama_int8_consistent"), tmp_path / "lower", targets=(), pass_validation=validation
+        )
+    assert raised.value.report["label"] == "cse"
+    assert raised.value.report["verdict"] == "not_established"
+
+
+def test_cse_validation_refuses_a_pipeline_whose_input_is_rewritten_first(tmp_path, validation):
+    from merlin.llvmlower.transpose_fuse import FEATURE
+
+    with pytest.raises(ValueError, match="cse validation"):
+        lower.lower_model(
+            LIVE, tmp_path / "lower", targets=(), features=frozenset({FEATURE}), pass_validation=validation
+        )
+
+
+MAP = "affine_map<(d0) -> (d0)>"
+
+
+def _generic(name: str, source: str, empty: str, body: str) -> str:
+    return (
+        f"  %{empty} = tensor.empty() : {T}\n"
+        f'  %{name} = linalg.generic {{indexing_maps = [{MAP}, {MAP}], iterator_types = ["parallel"]}}'
+        f" ins(%{source} : {T}) outs(%{empty} : {T}) {{\n"
+        f"  ^bb0(%i: f32, %o: f32):\n    {body}\n    linalg.yield %r : f32\n  }} -> {T}\n"
+    )
+
+
+NEGATE = "%r = arith.negf %i : f32"
+# Each repeat becomes visible only after the one before it merges: empty -> g -> h.
+CASCADE = (
+    f"func.func @forward(%x: {T}) -> ({T}, {T}) {{\n"
+    + _generic("g0", "x", "e0", NEGATE)
+    + _generic("g1", "x", "e1", NEGATE)
+    + _generic("h0", "g0", "e2", NEGATE)
+    + _generic("h1", "g1", "e3", NEGATE)
+    + f"  return %h0, %h1 : {T}, {T}\n}}\n"
+)
+
+
+def _capturing(first: str, second: str) -> str:
+    """Two generics whose bodies read outside constants (not operands)."""
+    return (
+        f"func.func @forward(%x: {T}) -> ({T}, {T}) {{\n  %c = arith.constant 1.5 : f32\n"
+        "  %d = arith.constant 2.5 : f32\n"
+        + _generic("g0", "x", "e0", f"%r = arith.addf %i, %{first} : f32")
+        + _generic("g1", "x", "e1", f"%r = arith.addf %i, %{second} : f32")
+        + f"  return %g0, %g1 : {T}, {T}\n}}\n"
+    )
+
+
+@pytest.mark.parametrize("before", [CASCADE, _capturing("c", "c")], ids=["cascade", "captured"])
+def test_upstream_cse_cascades_and_captured_values_are_proved(tmp_path, tools, before):
+    after = _cse(tmp_path, before)
+    assert after.count("linalg.generic") < before.count("linalg.generic")
+    assert gate_checks.tensor_refinement(job(tmp_path, before, after, tools))["claim"].startswith("strict refinement")
+
+
+def test_a_cse_merging_generics_that_read_different_values_is_rejected(tmp_path, tools):
+    merged = _cse(tmp_path, _capturing("c", "c"))  # what merging both would give
+    with pytest.raises(GateRejected, match="did not verify"):
+        gate_checks.tensor_refinement(job(tmp_path, _capturing("c", "d"), merged, tools))
+
+
+SQUARE = "%r = arith.mulf %i, %i : f32"
+# Upstream cse erases what is unused when it reaches it: the dead first square (so the later one is
+# kept, not merged into it) and the unused negation, but not the negation's producer.
+ERASES_UNUSED = (
+    f"func.func @forward(%x: {T}) -> ({T}, {T}) {{\n"
+    + _generic("a", "x", "e0", SQUARE)
+    + _generic("b", "x", "e1", NEGATE)
+    + _generic("c", "b", "e2", NEGATE)
+    + _generic("d", "x", "e3", SQUARE)
+    + f"  return %d, %d : {T}, {T}\n}}\n"
+)
+
+
+def test_upstream_cse_erasing_unused_operations_is_proved(tmp_path, tools):
+    after = _cse(tmp_path, ERASES_UNUSED)
+    assert after.count("linalg.generic") == 2  # b and d survive
+    assert gate_checks.tensor_refinement(job(tmp_path, ERASES_UNUSED, after, tools))["claim"].startswith("strict")

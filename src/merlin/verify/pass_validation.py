@@ -32,6 +32,8 @@ CHECKS = {
     "lower_quant_ext": "tensor_refinement",
     # The whole-model route's textual preprocessing: dequantization, slice repair and C interface.
     "preprocess_text_textual": "tensor_refinement",
+    # The pipeline's leading tensor-level cse, run by merlin.llvmlower.leading_cse.
+    "cse": "tensor_refinement",
 }
 ENV_PASSES = "MERLIN_VALIDATE_PASSES"
 ENV_SDK_BIN = "MERLIN_LEAN_SDK_BIN"
@@ -201,8 +203,9 @@ def selected(pass_name: str) -> bool:
     return validation is not None and pass_name in validation.passes
 
 
-def submit(pass_name: str, before: str, after: str) -> bool:
-    """Queue the pass's exact before/after pair; returns whether a check was submitted."""
+def submit(pass_name: str, before: str, after: str, *, label: str | None = None) -> bool:
+    """Queue the pass's exact before/after pair; returns whether a check was submitted. ``label``
+    names the check in reports (default: the pass)."""
     validation = _ACTIVE.get()
     if validation is None or pass_name not in validation.passes or before == after:
         return False
@@ -215,6 +218,6 @@ def submit(pass_name: str, before: str, after: str) -> bool:
             "compiler_python": str(validation.tools.compiler_python),
             "index_bits": validation.index_bits,
         },
-        label=pass_name,
+        label=label or pass_name,
     )
     return True

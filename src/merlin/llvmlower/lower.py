@@ -173,9 +173,17 @@ def lower_model(
 
         audit.stage("upstream", upstream_text)
         lowering_selection: dict[str, Any] = {}
+        from . import leading_cse
+
+        pipeline_text = leading_cse.run(
+            upstream_text,
+            work,
+            features=features,
+            stages=(source_scalar_carrier, source_observation_effects, masked_contraction_effects),
+        )
         try:
             ll_text = lower_to_llvm_ir(
-                upstream_text,
+                pipeline_text,
                 workdir=work,
                 audit=audit,
                 vectorize=vectorize,
