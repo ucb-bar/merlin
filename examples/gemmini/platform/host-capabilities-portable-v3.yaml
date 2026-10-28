@@ -11,8 +11,10 @@ review:
     unless separately reviewed below. Source-call-to-symbol routing is not proved.'
   library_numerical_policy_addendum: "only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
   m2m_exact_quant_addendum: "REVIEWED by operator sign-off /scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68: four exact typed declarations for model2MLIR exact-quantization captures (m2m_q.quantize f32/f64/i64->i8, m2m_q.exact_readout i32/f32->f32, dequantize_per_tensor i8/f64/i64->f32, two-result f32 layer-norm moments). Each row records that review in its reviewed_by evidence."
-  operator_chat_addendum: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28): exactly six rows, host_m2m_exact_quantize_f32_i8_rank3_4, host_m2m_exact_readout_i32_f32_rank3_4, host_m2m_dequantize_per_tensor_f64_scale_rank3_4, host_m2m_exact_readout_i32_i8_requantized_rank3_4, host_f32_max_pool2d_with_i64_indices_rank4 and host_i8_to_i32_to_copy_rank3; each row's stated open evidence obligations remain mandatory."
-  operator_chat_addendum_2: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28): exactly three rows, host_i32_int_mm_seed_overflow_guard_rank1, host_f32_layer_norm_two_result_moments_2x8 and host_f32_layer_norm_two_result_moments_rank3_1x17x16; each row's stated open evidence obligations remain mandatory (cf.assert lowering inside a linalg.generic body not proved and no execution evidence for the guard; no numerical comparison to eager rerun for the two moments bodies)."
+  operator_chat_addendum: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28): exactly six rows, host_m2m_exact_quantize_f32_i8_rank3_4, host_m2m_exact_readout_i32_f32_rank3_4, host_m2m_dequantize_per_tensor_f64_scale_rank3_4, host_m2m_exact_readout_i32_i8_requantized_rank3_4, host_f32_max_pool2d_with_i64_indices_rank4 and host_i8_to_i32_to_copy_rank3; and, for core_aten_coverage_contraction and core_aten_coverage_reduce, exactly seven further rows: host_review_i32_add_projected_rank4, host_i8_to_i32_to_copy_rank4, host_f32_window_sum_pool_rank3_4_5, host_bf16_window_sum_adaptive_avg_pool3d_rank5, host_f16_window_sum_adaptive_avg_pool3d_rank5, host_i64_window_sum_avg_pool_rank3_4_5, host_f32_sum_reduce_rank0_1; each row's stated open evidence obligations remain mandatory."
+  operator_chat_addendum_2: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, item 2 of the proposed-row list): exactly 65 rows, host_review_static_i32_sum, host_review_static_i32_cumsum, host_review_static_i8_cumsum, host_proposed_convbwd_bf16_extf_loops4, host_proposed_convbwd_bf16_truncf_loops1_4_7, host_proposed_convbwd_bf16_extf_addf_truncf_loops4, host_proposed_convbwd_f16_extf_loops4, host_proposed_convbwd_f16_truncf_loops1_4_7, host_proposed_convbwd_f16_extf_addf_truncf_loops4, host_proposed_convbwd_f32_mulf_addf_contraction_loops4_7, host_proposed_convbwd_f32_bias_grad_reduce_loops1, host_proposed_scalar_extf_bf16_to_f32, host_proposed_scalar_extf_f16_to_f32, host_proposed_scalar_extf_f32_to_f64, host_proposed_scalar_truncf_f32_to_bf16, host_proposed_scalar_truncf_f32_to_f16, host_proposed_scalar_truncf_f64_to_f32, host_proposed_scalar_addf_f32_f32_to_f32, host_proposed_scalar_addf_f64_f64_to_f64, host_proposed_scalar_divui_index, host_proposed_scalar_remui_index, host_proposed_scalar_subi_index, host_proposed_scalar_cmpi_index, host_m2m_exact_readout_i32_f32_rank1, host_support_empty_f32, host_support_empty_bf16, host_support_empty_f16, host_support_empty_i64, host_support_empty_i32, host_support_empty_i8, host_support_empty_f64, host_support_splat_f32, host_support_splat_bf16, host_support_splat_f16, host_support_splat_i64, host_support_splat_i32, host_support_splat_i8, host_support_splat_f64, host_support_extract_f32, host_support_extract_bf16, host_support_extract_f16, host_support_extract_i8, host_support_from_elements_f32, host_support_from_elements_bf16, host_support_from_elements_f16, host_support_from_elements_i8, host_support_collapse_shape_f32, host_support_collapse_shape_bf16, host_support_collapse_shape_f16, host_support_collapse_shape_i8, host_support_expand_shape_f32, host_support_expand_shape_bf16, host_support_expand_shape_f16, host_support_expand_shape_i8, host_support_extract_slice_f32, host_support_extract_slice_bf16, host_support_extract_slice_f16, host_support_extract_slice_i64, host_support_insert_slice_f32, host_support_insert_slice_bf16, host_support_insert_slice_f16, host_support_insert_slice_i64, host_m2m_exact_quantize_f32_i8_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_bf16_result, host_m2m_dequantize_per_tensor_f64_scale_f16_result, host_m2m_dequantize_per_tensor_f64_scale_f64_result; every open evidence obligation and semantics question stays verbatim in each row (open_obligation and proposal_text_retained_verbatim) and this approval does not state that any of them was verified beyond what the row basis records. REVIEWED by Loren Hung (approved in operator chat 2026-10-28): exactly three rows, host_i32_int_mm_seed_overflow_guard_rank1, host_f32_layer_norm_two_result_moments_2x8 and host_f32_layer_norm_two_result_moments_rank3_1x17x16; each row's stated open evidence obligations remain mandatory (cf.assert lowering inside a linalg.generic body not proved and no execution evidence for the guard; no numerical comparison to eager rerun for the two moments bodies)."
+  operator_chat_addendum_3: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, item 2 of the proposed-row list), core_aten_coverage_reduce non-reduction stages: exactly 22 rows, host_rd_extf_bf16_f32_to_f32, host_rd_divf_f32_f32_f32_to_f32, host_rd_truncf_f32_bf16_to_bf16, host_rd_extf_f16_f32_to_f32, host_rd_truncf_f32_f16_to_f16, host_rd_divf_bf16_bf16_bf16_to_bf16, host_rd_addf_bf16_bf16_bf16_to_bf16, host_rd_divf_f16_f16_f16_to_f16, host_rd_addf_f16_f16_f16_to_f16, host_rd_addf_f32_f32_f32_to_f32, host_rd_divsi_i64_i64_i64_to_i64, host_rd_addi_i64_i64_i64_to_i64, host_rd_complex_0e7649_bf16_f32_to_f32, host_rd_complex_06b1e1_f32_bf16_to_bf16, host_rd_complex_990961_bf16_bf16_to_bf16, host_rd_complex_e6a62e_bf16_bf16_to_bf16, host_rd_complex_0e7649_f16_f32_to_f32, host_rd_complex_35cbde_f32_f32_to_f32, host_rd_complex_6fcc8f_f32_f16_to_f16, host_rd_complex_9a688d_f16_f16_to_f16, host_rd_complex_9a688d_f32_f32_to_f32, host_rd_mean_scf_for_f32_sum_rank0; each row keeps its open_obligation verbatim; the scalar-primitive eager checks cover only division, addition and casts, and the complex-bodied and scf.for rows were not executed."
+  operator_chat_addendum_4: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, 'narrow first'): the narrowing of 38 support-op host rows (tensor.empty, splat, extract, from_elements, collapse_shape, expand_shape, extract_slice, insert_slice), each now limited to the ranks and dtypes observed in core_aten_coverage_contraction and core_aten_coverage_reduce, exactly: host_support_empty_f32, host_support_empty_bf16, host_support_empty_f16, host_support_empty_i64, host_support_empty_i32, host_support_empty_i8, host_support_empty_f64, host_support_splat_f32, host_support_splat_bf16, host_support_splat_f16, host_support_splat_i64, host_support_splat_i32, host_support_splat_i8, host_support_splat_f64, host_support_extract_f32, host_support_extract_bf16, host_support_extract_f16, host_support_extract_i8, host_support_from_elements_f32, host_support_from_elements_bf16, host_support_from_elements_f16, host_support_from_elements_i8, host_support_collapse_shape_f32, host_support_collapse_shape_bf16, host_support_collapse_shape_f16, host_support_collapse_shape_i8, host_support_expand_shape_f32, host_support_expand_shape_bf16, host_support_expand_shape_f16, host_support_expand_shape_i8, host_support_extract_slice_f32, host_support_extract_slice_bf16, host_support_extract_slice_f16, host_support_extract_slice_i64, host_support_insert_slice_f32, host_support_insert_slice_bf16, host_support_insert_slice_f16, host_support_insert_slice_i64. Static shapes and slice geometry remain unconstrained by the signature. Unobserved dtype rows removed: host_support_empty_i1, host_support_splat_i1."
   successor: attention-host-placement-v2-20261019
   attention_source_addendum: "add only the nine exact typed attention-preparation declarations below for a prospective fresh host view. Closed parsed source bodies, selected index bounds, source-to-linked-image correspondence and ordinary numerical execution remain mandatory. Existing declarations, sealed views, numerical policies and accelerator obligations are unchanged; this review is not an all-input numerical or hardware qualification."
 compiler:
@@ -3262,89 +3264,6 @@ operations:
     evidence:
       reviewed_by: "Loren Hung, operator sign-off 2026-10-28 (/scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68); reviewer text /scratch/loren/hostfix-ln/RESULT.md section 6 (the reviewer text is on the stopped compute-2 disk; source-body screen evidence in this history: commit 0e20d3243); the stated basis and RV64 obligations remain mandatory."
       basis: the digest-pinned parsed body, executed op by op in binary32 with single-rounding fma, against eager native_layer_norm mean and rstd on edge and random rows (out-of-tree /scratch/loren/hostfix-ln/evidence/ln_moments_evidence.out sha256 326b5a59db61566b4d566ece2463d5d448690bf9e3d80868ab6932566566a1c3; 1472 rows, mean and rstd bit-exact vs eager with single-rounding fma); RV64 lowering, fused-fma emission and Spike execution remain obligations
-- id: host_f32_layer_norm_two_result_moments_2x8
-  status: reviewed
-  ops:
-  - aten.native_layer_norm.default
-  families:
-  - reduction
-  - elementwise_map
-  placement: host
-  signature:
-    ordered_operand_dtypes:
-    - f32
-    - f32
-    ordered_result_dtypes:
-    - f32
-    - f32
-    ranks:
-    - 2
-  source_body:
-    schema: merlin.static_f32_row_moments_source_body.v1
-    operation: row_mean_biased_variance
-    data_operand:
-      dtype: f32
-      shape:
-      - 2
-      - 8
-      reduction_axis: 1
-    canonical_body_sha256: 80ae7cf203308d57065fed1031a198251023bcb85812d9ed8014fdb77b12726c
-  numerical_contract:
-    status: reviewed
-    semantics:
-      arithmetic: ieee754_binary32
-      rounding: round_to_nearest_even
-      accumulator: f32
-      reduction_order: selected_lowering
-      existing_numerical_tolerance: unchanged
-      data_operand: one captured static [2, 8] f32 tensor read by tensor.extract; source_body proves the single capture, its shape and dtype, the row index and that every column of the row is read exactly once (axis 1)
-      tolerance: atol 0.03125, rtol 0.02 against eager native_layer_norm mean and rstd
-      fused_multiply_add: math.fma must lower to a fused llvm.fma (fmadd.s or correctly rounded fmaf)
-    evidence:
-      reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory. Open obligations: the numerical evidence run of the reviewed [32, 32] row (1472 rows against eager) was NOT repeated for this [2, 8] body, so no numerical comparison against eager native_layer_norm mean and rstd has been run for it; RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
-      basis: "the digest-pinned parsed body of the coverage_mlp capture (static [2, 8] f32 data operand), accepted by the row-moments structural proof; NO numerical comparison against eager native_layer_norm mean and rstd has been run for this body. RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
-- id: host_f32_layer_norm_two_result_moments_rank3_1x17x16
-  status: reviewed
-  ops:
-  - aten.native_layer_norm.default
-  families:
-  - reduction
-  - elementwise_map
-  placement: host
-  signature:
-    ordered_operand_dtypes:
-    - f32
-    - f32
-    ordered_result_dtypes:
-    - f32
-    - f32
-    ranks:
-    - 3
-  source_body:
-    schema: merlin.static_f32_row_moments_rank3_source_body.v1
-    operation: row_mean_biased_variance
-    data_operand:
-      dtype: f32
-      shape:
-      - 1
-      - 17
-      - 16
-      reduction_axis: 2
-    canonical_body_sha256: b49e906cd89c993f1dabf4e39f128088d91b7c36b1bf7653b007e4f7894abfce
-  numerical_contract:
-    status: reviewed
-    semantics:
-      arithmetic: ieee754_binary32
-      rounding: round_to_nearest_even
-      accumulator: f32
-      reduction_order: selected_lowering
-      existing_numerical_tolerance: unchanged
-      data_operand: one captured static [1, 17, 16] f32 tensor read by tensor.extract; source_body proves the single capture, its shape and dtype, the leading row indexes (linalg.index 0 and 1) and that every column of the row is read exactly once (axis 2)
-      tolerance: atol 0.03125, rtol 0.02 against eager native_layer_norm mean and rstd
-      fused_multiply_add: math.fma must lower to a fused llvm.fma (fmadd.s or correctly rounded fmaf)
-    evidence:
-      reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory. Open obligations: the numerical evidence run of the reviewed [32, 32] row (1472 rows against eager) was NOT repeated for this [1, 17, 16] body, so no numerical comparison against eager native_layer_norm mean and rstd has been run for it; RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
-      basis: "the digest-pinned parsed body of the multimodal_policy capture (static [1, 17, 16] f32 data operand), accepted by the rank-3 row-moments structural proof; NO numerical comparison against eager native_layer_norm mean and rstd has been run for this body. RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
 - id: host_m2m_exact_quantize_f32_i8_rank3_4
   status: reviewed
   ops:
@@ -3568,6 +3487,2731 @@ operations:
         arith.extsi then linalg.yield over all-parallel iterators. Exhaustive 256-code
         equality is a property of sign extension; it has not been run on the selected
         host package.
+- id: host_review_i32_add_projected_rank4
+  status: reviewed
+  ops:
+  - aten.add.Tensor
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - i32
+    - i32
+    - i32
+    ordered_result_dtypes:
+    - i32
+    ranks:
+    - 4
+  source_body:
+    schema: merlin.static_projected_pointwise_body.v1
+    operation: arith.addi
+    integer_dtype: i32
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: twos_complement_modulo_2_32
+      signed_no_wrap: false
+      operand_2: i32 init tensor (outs), value unused
+    evidence:
+      basis: Nine core_aten_coverage_contraction aten.add.Tensor linalg.generic ops, all tensor<1x1x3x3xi32>, identity maps, all-parallel iterators, body exactly arith.addi then linalg.yield (one body text modulo SSA ids). The extracted body was executed over random i32 pairs plus INT32_MIN/INT32_MAX edges and equals torch.add on int32 (modulo 2^32). Emitted scalar-package execution on Spike is not recorded.
+      neutral_case: matrix_i32_add
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: no Spike probe of the emitted i32 add on the selected host package; evidence is body execution vs torch eager only
+- id: host_i8_to_i32_to_copy_rank4
+  status: reviewed
+  ops:
+  - aten._to_copy.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - i8
+    - i32
+    ordered_result_dtypes:
+    - i32
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      conversion: signed_int8_to_signed_int32_sign_extension
+      exact_values: all 256 codes map to their signed value
+      operand_1: i32 init tensor (outs), value unused
+    evidence:
+      basis: core_aten_coverage_contraction aten._to_copy.default linalg.generic over tensor<1x2x3x3xi8> to i32, body exactly arith.extsi (i8)->i32 then linalg.yield over all-parallel iterators. All 256 i8 codes were checked equal to torch int8->int32 conversion. Same contract as the reviewed rank-3 row host_i8_to_i32_to_copy_rank3, rank extended to 4.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: no Spike probe of this conversion is recorded; the body is a single arith.extsi, which needs no new lowering
+- id: host_review_static_i32_sum
+  status: reviewed
+  ops:
+  - aten.sum.dim_IntList
+  placement: host
+  signature:
+    family: reduction
+    ordered_operand_dtypes:
+    - i32
+    - i32
+    ordered_result_dtypes:
+    - i32
+  families:
+  - reduction
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: twos_complement_modulo_2_32
+      signed_no_wrap: false
+    evidence:
+      basis: linalg.reduce dims [0,2,3] of tensor<1x2x3x3xi32> to tensor<2xi32>, body arith.addi i32 then yield; executed body equals torch.sum(dtype=int32) and equals torch's default int64-promoted sum wrapped to 32 bits.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: extend the closed integer-reduction recognizer to this element type; Spike probe of the emitted reduction
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): body executed against torch eager (verify_bodies.py) and matches, but the closed integer-reduction source recognizer (merlin.frontends.linalg_integer_reductions) types only i64 operands, and host_capabilities.validate_host_capabilities hard-codes i64 for an integer-reduction source_body, so this row carries no source_body (it is an unreviewed family-level proposal) and cannot be reviewed as a source-bound admission until both are extended; that is code, not a row'
+- id: host_review_static_i32_cumsum
+  status: reviewed
+  ops:
+  - aten.cumsum.default
+  placement: host
+  signature:
+    family: reduction
+    ordered_operand_dtypes:
+    - i32
+    - i32
+    ordered_result_dtypes:
+    - i32
+  families:
+  - reduction
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: twos_complement_modulo_2_32
+      signed_no_wrap: false
+    evidence:
+      basis: linalg.generic tensor<2x3xi32> prefix sum along dim 1 (maps (d0,d2)->(d0,d1), index select cmpi ule, body arith.addi); executed body equals torch.cumsum(dtype=int32).
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: extend the closed integer-reduction recognizer to this element type; Spike probe of the emitted reduction
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): body executed against torch eager (verify_bodies.py) and matches, but the closed integer-reduction source recognizer (merlin.frontends.linalg_integer_reductions) types only i64 operands, and host_capabilities.validate_host_capabilities hard-codes i64 for an integer-reduction source_body, so this row carries no source_body (it is an unreviewed family-level proposal) and cannot be reviewed as a source-bound admission until both are extended; that is code, not a row'
+- id: host_review_static_i8_cumsum
+  status: reviewed
+  ops:
+  - aten.cumsum.default
+  placement: host
+  signature:
+    family: reduction
+    ordered_operand_dtypes:
+    - i8
+    - i8
+    ordered_result_dtypes:
+    - i8
+  families:
+  - reduction
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: twos_complement_modulo_2_8
+      signed_no_wrap: false
+    evidence:
+      basis: linalg.generic tensor<2x3xi8> prefix sum along dim 1, same body shape as the i32 form, wraps modulo 2^8; executed body equals torch.cumsum(dtype=int8) with saturated-high inputs.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: extend the closed integer-reduction recognizer to this element type; Spike probe of the emitted reduction
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): body executed against torch eager (verify_bodies.py) and matches, but the closed integer-reduction source recognizer (merlin.frontends.linalg_integer_reductions) types only i64 operands, and host_capabilities.validate_host_capabilities hard-codes i64 for an integer-reduction source_body, so this row carries no source_body (it is an unreviewed family-level proposal) and cannot be reviewed as a source-bound admission until both are extended; that is code, not a row'
+- id: host_proposed_convbwd_bf16_extf_loops4
+  status: reviewed
+  ops:
+  - aten.convolution_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_body: arith.extf bf16->f32
+    evidence:
+      basis: bf16 to f32 widening generic inside convolution_backward (3 instances per dtype)
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
+- id: host_proposed_convbwd_bf16_truncf_loops1_4_7
+  status: reviewed
+  ops:
+  - aten.convolution_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 1
+    - 4
+    - 7
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_body: arith.truncf f32->bf16
+    evidence:
+      basis: f32 to bf16 narrowing generic inside convolution_backward (loop counts 1, 4 and 7; tensor ranks 0, 3 and 6)
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
+- id: host_proposed_convbwd_bf16_extf_addf_truncf_loops4
+  status: reviewed
+  ops:
+  - aten.convolution_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_body: extf,extf,addf,truncf bf16
+    evidence:
+      basis: bf16 add via f32 (extf both, addf, truncf) inside convolution_backward (9 instances per dtype); result rounding is the single final truncf
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
+- id: host_proposed_convbwd_f16_extf_loops4
+  status: reviewed
+  ops:
+  - aten.convolution_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_body: arith.extf f16->f32
+    evidence:
+      basis: f16 to f32 widening generic inside convolution_backward (3 instances per dtype)
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
+- id: host_proposed_convbwd_f16_truncf_loops1_4_7
+  status: reviewed
+  ops:
+  - aten.convolution_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 1
+    - 4
+    - 7
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_body: arith.truncf f32->f16
+    evidence:
+      basis: f32 to f16 narrowing generic inside convolution_backward (loop counts 1, 4 and 7; tensor ranks 0, 3 and 6)
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
+- id: host_proposed_convbwd_f16_extf_addf_truncf_loops4
+  status: reviewed
+  ops:
+  - aten.convolution_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f16
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_body: extf,extf,addf,truncf f16
+    evidence:
+      basis: f16 add via f32 (extf both, addf, truncf) inside convolution_backward (9 instances per dtype); result rounding is the single final truncf
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: bf16/f16 extf/truncf rounding and accumulation order versus torch.ops.aten.convolution_backward; stride/padding/dilation/groups coverage; non-finite propagation; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
+- id: host_proposed_convbwd_f32_mulf_addf_contraction_loops4_7
+  status: reviewed
+  ops:
+  - aten.convolution_backward.default
+  families:
+  - contraction
+  placement: host
+  signature:
+    family: contraction
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 4
+    - 7
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_body: mulf then addf accumulate over reduction iterators
+    evidence:
+      basis: f32 multiply-accumulate generics (7-8 loop dims, 1 or 3 reduction iterators) inside convolution_backward weight/input gradient
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: accumulation order versus eager; fp32 non-associativity tolerance; Spike probe; whether these belong on host or on the accelerator contraction lane
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
+- id: host_proposed_convbwd_f32_bias_grad_reduce_loops1
+  status: reviewed
+  ops:
+  - aten.convolution_backward.default
+  families:
+  - reduction
+  placement: host
+  signature:
+    family: reduction
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_body: linalg.reduce addf f32 rank3 to rank0
+    evidence:
+      basis: bias-gradient reduction (2 instances)
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: reduction order versus eager; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): convolution_backward decomposition body observed in core_aten_coverage_contraction; not verified against an eager reference; not in the mechanical group'
+- id: host_proposed_scalar_extf_bf16_to_f32
+  status: reviewed
+  ops:
+  - arith.extf
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.extf
+    evidence:
+      basis: arith.extf ['bf16']->['f32'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_extf_f16_to_f32
+  status: reviewed
+  ops:
+  - arith.extf
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.extf
+    evidence:
+      basis: arith.extf ['f16']->['f32'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_extf_f32_to_f64
+  status: reviewed
+  ops:
+  - arith.extf
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - f64
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.extf
+    evidence:
+      basis: arith.extf ['f32']->['f64'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_truncf_f32_to_bf16
+  status: reviewed
+  ops:
+  - arith.truncf
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.truncf
+    evidence:
+      basis: arith.truncf ['f32']->['bf16'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_truncf_f32_to_f16
+  status: reviewed
+  ops:
+  - arith.truncf
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.truncf
+    evidence:
+      basis: arith.truncf ['f32']->['f16'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_truncf_f64_to_f32
+  status: reviewed
+  ops:
+  - arith.truncf
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f64
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.truncf
+    evidence:
+      basis: arith.truncf ['f64']->['f32'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_addf_f32_f32_to_f32
+  status: reviewed
+  ops:
+  - arith.addf
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.addf
+    evidence:
+      basis: arith.addf ['f32', 'f32']->['f32'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_addf_f64_f64_to_f64
+  status: reviewed
+  ops:
+  - arith.addf
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f64
+    - f64
+    ordered_result_dtypes:
+    - f64
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.addf
+    evidence:
+      basis: arith.addf ['f64', 'f64']->['f64'] scalar op in the convolution_backward decomposition of core_aten_coverage_contraction
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: IEEE rounding of the conversion/arithmetic versus the selected host package; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_divui_index
+  status: reviewed
+  ops:
+  - arith.divui
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - index
+    - index
+    ordered_result_dtypes:
+    - index
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.divui
+    evidence:
+      basis: 'arith.divui on index values: unflattening of linalg.index coordinates in the convolution_backward decomposition'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: unsigned index arithmetic semantics and bounds (no overflow for the static extents); Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_remui_index
+  status: reviewed
+  ops:
+  - arith.remui
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - index
+    - index
+    ordered_result_dtypes:
+    - index
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.remui
+    evidence:
+      basis: 'arith.remui on index values: unflattening of linalg.index coordinates in the convolution_backward decomposition'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: unsigned index arithmetic semantics and bounds (no overflow for the static extents); Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_subi_index
+  status: reviewed
+  ops:
+  - arith.subi
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - index
+    - index
+    ordered_result_dtypes:
+    - index
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.subi
+    evidence:
+      basis: 'arith.subi on index values: unflattening of linalg.index coordinates in the convolution_backward decomposition'
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: unsigned index arithmetic semantics and bounds (no overflow for the static extents); Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_proposed_scalar_cmpi_index
+  status: reviewed
+  ops:
+  - arith.cmpi
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - index
+    - index
+    ordered_result_dtypes:
+    - i1
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      scalar_op: arith.cmpi
+    evidence:
+      basis: arith.cmpi on index values (bounds/guard) in the convolution_backward decomposition
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: predicate set actually used; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): scalar child of a convolution_backward body, counted as an operation by the whole-program screen; not verified against an eager reference'
+- id: host_m2m_exact_readout_i32_f32_rank1
+  status: reviewed
+  ops:
+  - m2m_q.exact_readout.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - i32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      readout: same exact integer-to-f32 readout body as the reviewed rank-2/3/4 rows
+    evidence:
+      basis: tensor<2xf32> m2m_q.exact_readout generic in the contraction program; scalar body is the same long integer rounding sequence as the reviewed rank 3/4 instances
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      open_obligation: diff the rank-1 scalar body against the reviewed rank-3/4 body; bit-exact check against the reference rounding; Spike probe
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (contraction fork 2026-10-28): rank-1 extension of a reviewed contract; bit-exactness of the extracted rank-1 body against the reviewed body and an eager reference was not checked'
+- id: host_f32_window_sum_pool_rank3_4_5
+  status: reviewed
+  ops:
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  - aten.avg_pool3d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten._adaptive_avg_pool2d.default
+  - aten._adaptive_avg_pool3d.default
+  families:
+  - reduction
+  placement: host
+  signature:
+    family: reduction
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 3
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_binary32
+      accumulation: f32 addf from literal 0.0, row-major window scan, one rounding per add
+      window: linalg.generic with parallel output dims and reduction window dims; input map d*2+k (kernel 2, stride 2, no padding); the window-shape operand is an unread tensor.empty
+      division: separate divf stage by the window element count splat (not part of this row)
+      nan: propagates (IEEE addf)
+      subnormals: preserved
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Body and maps read from the captured core_aten_coverage_reduce linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b), all six forward pool ops, f32: arith.addf accumulate, window maps (d2*2+d4, d3*2+d5) and rank-1/3 analogues. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_pools.py -> pools.json): the captured decomposition (sequential f32 window sum, divide by 2**rank) is bit-identical to torch 2.14 CPU F.avg_pool1d/2d/3d and F.adaptive_avg_pool1d/2d/3d on f32 over 6528 elements (6 input families: normal, 1e3 scale, 1e-30 scale, 1e37 scale, NaN/Inf/-0/subnormal/65504 edge mix, permuted edge mix), 0 mismatches. Open obligations: (1) the signature cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry) were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not recorded.'
+- id: host_bf16_window_sum_adaptive_avg_pool3d_rank5
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool3d.default
+  families:
+  - reduction
+  placement: host
+  signature:
+    family: reduction
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_bf16_accumulation
+      accumulation: bf16 addf from literal 0.0, row-major window scan, ROUNDED TO bf16 AFTER EVERY ADD (no f32 accumulator)
+      window: linalg.generic, input map d*2+k, kernel 2x2x2, stride 2, no padding
+      division: separate divf stage in bf16 (not part of this row)
+      differs_from_rank3_4_half_pools: rank 3/4 half pools extf to f32, sum in f32 and truncf; this rank-5 body accumulates in the half type
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Body read from the captured core_aten_coverage_reduce linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor<1x1x4x4x4xbf16> window sum with arith.addf in bf16, then divf in bf16. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_pools.py -> pools.json, kind=adaptive rank=3 body=native): the captured bf16 accumulate-in-bf16 then divide-in-bf16 decomposition is bit-identical to torch 2.14 CPU F.adaptive_avg_pool3d on bf16 over 768 elements (edge mix incl. NaN/Inf/subnormal/overflow), 0 mismatches; the alternative f32-accumulate path differs from eager on that op (241 bf16 / 152 f16 mismatches), so the half-type accumulation is the real semantics. torch has no CPU avg_pool3d for bf16, so avg_pool3d bf16 is NOT claimed. Open obligations: (1) the signature cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry) were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not recorded.'
+- id: host_f16_window_sum_adaptive_avg_pool3d_rank5
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool3d.default
+  families:
+  - reduction
+  placement: host
+  signature:
+    family: reduction
+    ordered_operand_dtypes:
+    - f16
+    - f16
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_f16_accumulation
+      accumulation: f16 addf from literal 0.0, row-major window scan, ROUNDED TO f16 AFTER EVERY ADD (no f32 accumulator)
+      window: linalg.generic, input map d*2+k, kernel 2x2x2, stride 2, no padding
+      division: separate divf stage in f16 (not part of this row)
+      differs_from_rank3_4_half_pools: rank 3/4 half pools extf to f32, sum in f32 and truncf; this rank-5 body accumulates in the half type
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Body read from the captured core_aten_coverage_reduce linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor<1x1x4x4x4xf16> window sum with arith.addf in f16, then divf in f16. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_pools.py -> pools.json, kind=adaptive rank=3 body=native): the captured f16 accumulate-in-f16 then divide-in-f16 decomposition is bit-identical to torch 2.14 CPU F.adaptive_avg_pool3d on f16 over 768 elements (edge mix incl. NaN/Inf/subnormal/overflow), 0 mismatches; the alternative f32-accumulate path differs from eager on that op (241 bf16 / 152 f16 mismatches), so the half-type accumulation is the real semantics. torch has no CPU avg_pool3d for f16, so avg_pool3d f16 is NOT claimed. Open obligations: (1) the signature cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry) were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not recorded.'
+- id: host_i64_window_sum_avg_pool_rank3_4_5
+  status: reviewed
+  ops:
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  - aten.avg_pool3d.default
+  families:
+  - reduction
+  placement: host
+  signature:
+    family: reduction
+    ordered_operand_dtypes:
+    - i64
+    - i64
+    - i64
+    ordered_result_dtypes:
+    - i64
+    ranks:
+    - 3
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: two_complement_i64
+      accumulation: addi from literal 0, row-major window scan, wraps modulo 2**64
+      division: separate divsi stage (truncation toward zero), not part of this row
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Body read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): arith.addi window reduction on tensor<..i64>. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_i64pool.py -> i64pool.json): sequential wrapping i64 window sum then divsi (trunc toward zero) equals torch 2.14 CPU F.avg_pool1d/2d/3d on int64 over 1088 elements including INT64_MAX/INT64_MIN and 2**62-scale values, 0 mismatches. Adaptive int64 pools do not exist in torch CPU and are not claimed. Open obligations: (1) the signature cannot express window geometry; only kernel 2, stride 2, no padding, evenly divisible windows (the captured geometry) were checked, so a fail-closed source check of the window geometry is required before any other geometry is admitted; (2) RV64 scalar-package execution of the emitted lowering (Spike probe) is not recorded.'
+- id: host_f32_sum_reduce_rank0_1
+  status: reviewed
+  ops:
+  - aten.sum.dim_IntList
+  - aten.mean.default
+  families:
+  - reduction
+  placement: host
+  signature:
+    family: reduction
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_binary32
+      accumulator: f32
+      reduction_order: selected_lowering
+      rounding: round_to_nearest_even
+      reassociation_vs_eager: 'not bit-exact: torch reassociates; observed differences are accumulation-order ulps only'
+      empty_reduction: '0.0'
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'linalg.reduce arith.addf over f32 read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): sum.dim 2x3 -> 3, mean 2x3 -> scalar (reduce dims 0,1) followed by a separate divf stage, empty tensor<0xf32> -> f32. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_sum.py -> sum.json): sequential f32 order equals torch.sum on the captured sum.dim shape (12/12 bit-identical incl. NaN/Inf/-0/overflow edge inputs) and on length-0, but differs from eager by summation-order ulps for mean 2x3 (2/8 elements, 1 ulp, e.g. 0.49661734 vs 0.49661732) and for longer reductions (1-4 elements of 4-12 at lengths 5, 64, 1000). The row therefore claims f32 sequential-order sums with reduction_order selected_lowering, as the existing reviewed host_f32_reduction row does; any tolerance must absorb reassociation. RV64 execution not recorded.'
+- id: host_support_empty_f32
+  status: reviewed
+  ops:
+  - tensor.empty
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes: []
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics: &id001
+      value: undefined; never read (verified on the captured program only)
+      scope: any use that reads an element before a write is NOT covered
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 1, 2, 3, 4, 5], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_empty_bf16
+  status: reviewed
+  ops:
+  - tensor.empty
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes: []
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 0
+    - 1
+    - 3
+    - 4
+    - 5
+    - 7
+  numerical_contract:
+    status: reviewed
+    semantics: *id001
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 1, 3, 4, 5, 7], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_empty_f16
+  status: reviewed
+  ops:
+  - tensor.empty
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes: []
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 0
+    - 1
+    - 3
+    - 4
+    - 5
+    - 7
+  numerical_contract:
+    status: reviewed
+    semantics: *id001
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 1, 3, 4, 5, 7], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_empty_i64
+  status: reviewed
+  ops:
+  - tensor.empty
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes: []
+    ordered_result_dtypes:
+    - i64
+    ranks:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics: *id001
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1, 2, 3, 4, 5], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_empty_i32
+  status: reviewed
+  ops:
+  - tensor.empty
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes: []
+    ordered_result_dtypes:
+    - i32
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics: *id001
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_empty_i8
+  status: reviewed
+  ops:
+  - tensor.empty
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes: []
+    ordered_result_dtypes:
+    - i8
+    ranks:
+    - 2
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics: *id001
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [2, 4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_empty_f64
+  status: reviewed
+  ops:
+  - tensor.empty
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes: []
+    ordered_result_dtypes:
+    - f64
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics: *id001
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'check_empty.py (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)) over the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): all 134 tensor.empty results are write-only (115 are linalg.generic outs whose block argument is never read in the body; 19 are generic window-shape inputs whose block argument is never read). Open question for review: whether admitting tensor.empty for every frontend op (not only reduce/pool ops) is acceptable, and the dtype list is the union seen across the reduce capture and the sibling captures, not verified per dtype.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): support allocation for linalg outs and pool window-shape placeholders. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_splat_f32
+  status: reviewed
+  ops:
+  - tensor.splat
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+    - 1
+    - 3
+    - 4
+    - 5
+    - 7
+  numerical_contract:
+    status: reviewed
+    semantics: &id002
+      value: the scalar bit pattern replicated to every element
+      arithmetic: none
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 1, 3, 4, 5, 7], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_splat_bf16
+  status: reviewed
+  ops:
+  - tensor.splat
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics: *id002
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4, 5], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_splat_f16
+  status: reviewed
+  ops:
+  - tensor.splat
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics: *id002
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4, 5], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_splat_i64
+  status: reviewed
+  ops:
+  - tensor.splat
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - i64
+    ordered_result_dtypes:
+    - i64
+    ranks:
+    - 0
+    - 2
+    - 3
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics: *id002
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 2, 3, 4, 5], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_splat_i32
+  status: reviewed
+  ops:
+  - tensor.splat
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - i32
+    ordered_result_dtypes:
+    - i32
+    ranks:
+    - 0
+    - 1
+    - 2
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics: *id002
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 1, 2, 4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_splat_i8
+  status: reviewed
+  ops:
+  - tensor.splat
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - i8
+    ordered_result_dtypes:
+    - i8
+    ranks:
+    - 0
+    - 2
+  numerical_contract:
+    status: reviewed
+    semantics: *id002
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0, 2], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_splat_f64
+  status: reviewed
+  ops:
+  - tensor.splat
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f64
+    ordered_result_dtypes:
+    - f64
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics: *id002
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): 165 tensor.splat ops from arith.constant scalars (0.0 accumulator inits, window-element-count divisors). No numeric transformation; bit pattern of the scalar is replicated. Open question: none beyond review of the dtype union and rank scope.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): constant scalar broadcast used as accumulator init (zero_fill) and divisor/count (broadcast). Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_extract_f32
+  status: reviewed
+  ops:
+  - tensor.extract
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_extract_bf16
+  status: reviewed
+  ops:
+  - tensor.extract
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_extract_f16
+  status: reviewed
+  ops:
+  - tensor.extract
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_extract_i8
+  status: reviewed
+  ops:
+  - tensor.extract
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - i8
+    ordered_result_dtypes:
+    - i8
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.extract occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [0], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_from_elements_f32
+  status: reviewed
+  ops:
+  - tensor.from_elements
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_from_elements_bf16
+  status: reviewed
+  ops:
+  - tensor.from_elements
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_from_elements_f16
+  status: reviewed
+  ops:
+  - tensor.from_elements
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_from_elements_i8
+  status: reviewed
+  ops:
+  - tensor.from_elements
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - i8
+    ordered_result_dtypes:
+    - i8
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.from_elements occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_collapse_shape_f32
+  status: reviewed
+  ops:
+  - tensor.collapse_shape
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_collapse_shape_bf16
+  status: reviewed
+  ops:
+  - tensor.collapse_shape
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_collapse_shape_f16
+  status: reviewed
+  ops:
+  - tensor.collapse_shape
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_collapse_shape_i8
+  status: reviewed
+  ops:
+  - tensor.collapse_shape
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - i8
+    ordered_result_dtypes:
+    - i8
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.collapse_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [1], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_expand_shape_f32
+  status: reviewed
+  ops:
+  - tensor.expand_shape
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 2
+    - 4
+    - 5
+    - 6
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [2, 4, 5, 6], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_expand_shape_bf16
+  status: reviewed
+  ops:
+  - tensor.expand_shape
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 2
+    - 4
+    - 6
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [2, 4, 6], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_expand_shape_f16
+  status: reviewed
+  ops:
+  - tensor.expand_shape
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 2
+    - 4
+    - 6
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [2, 4, 6], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_expand_shape_i8
+  status: reviewed
+  ops:
+  - tensor.expand_shape
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - i8
+    ordered_result_dtypes:
+    - i8
+    ranks:
+    - 2
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: pure shape/element movement
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): tensor.expand_shape occurs in the mean/sum edge decompositions and col2im. No value is changed. Open question: ranks, layouts and aliasing are not constrained by this signature; no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [2], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_extract_slice_f32
+  status: reviewed
+  ops:
+  - tensor.extract_slice
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 4
+    - 6
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: strided slice copy; offsets/sizes/strides are static op attributes
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4, 6], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_extract_slice_bf16
+  status: reviewed
+  ops:
+  - tensor.extract_slice
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 4
+    - 6
+    - 7
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: strided slice copy; offsets/sizes/strides are static op attributes
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4, 6, 7], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_extract_slice_f16
+  status: reviewed
+  ops:
+  - tensor.extract_slice
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 4
+    - 6
+    - 7
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: strided slice copy; offsets/sizes/strides are static op attributes
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4, 6, 7], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_extract_slice_i64
+  status: reviewed
+  ops:
+  - tensor.extract_slice
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - i64
+    ordered_result_dtypes:
+    - i64
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: strided slice copy; offsets/sizes/strides are static op attributes
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_insert_slice_f32
+  status: reviewed
+  ops:
+  - tensor.insert_slice
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: strided slice copy; offsets/sizes/strides are static op attributes
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_insert_slice_bf16
+  status: reviewed
+  ops:
+  - tensor.insert_slice
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: strided slice copy; offsets/sizes/strides are static op attributes
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_insert_slice_f16
+  status: reviewed
+  ops:
+  - tensor.insert_slice
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - f16
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: strided slice copy; offsets/sizes/strides are static op attributes
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_support_insert_slice_i64
+  status: reviewed
+  ops:
+  - tensor.insert_slice
+  families:
+  - movement
+  placement: host
+  signature:
+    family: movement
+    ordered_operand_dtypes:
+    - i64
+    - i64
+    ordered_result_dtypes:
+    - i64
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: none
+      semantics: strided slice copy; offsets/sizes/strides are static op attributes
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): used by the backward pools and col2im lowerings. Open question: slice geometry is a static attribute not constrained by the signature (out-of-bounds/overlap safety unverified); no eager check run.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): data-movement support op used by the backward pool and col2im lowerings. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      narrowing: Narrowed on 2026-10-28 from an unconstrained rank to the ranks [4], the only ones this operation, dtype signature takes in the core_aten_coverage_contraction and core_aten_coverage_reduce programs (loop screens). Static shapes, slice offsets/sizes/strides and reshape groupings remain unconstrained by the signature.
+- id: host_m2m_exact_quantize_f32_i8_rank0_1_5
+  status: reviewed
+  ops:
+  - m2m_q.quantize.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - f32
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - i8
+    quantization_parameters: &id003
+      zero_point: 0
+      quant_min: -128
+      quant_max: 127
+    ranks:
+    - 0
+    - 1
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      formula: 'identical to host_m2m_exact_quantize_f32_i8_rank3_4: q = clamp(round_half_even(x / scale) + zero_point, quant_min, quant_max)'
+      nan: runtime_assert_refusal
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Rank-0/1/5 sibling of the operator-reviewed rank-2 and rank-3/4 rows; the reduce capture quantizes scalar, vector and rank-5 tensors. Only the ranks differ. Open questions: (1) rank-0 scalar lowering of the exact_quantize pass and the rank-5 loop nest have not been exercised on the host package; (2) no Spike probe at these ranks.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): rank sibling of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): rank sibling of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+- id: host_m2m_dequantize_per_tensor_f64_scale_rank0_1_5
+  status: reviewed
+  ops:
+  - quantized_decomposed.dequantize_per_tensor.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i8
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - f32
+    quantization_parameters: *id003
+    ranks:
+    - 0
+    - 1
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      formula: 'identical to host_m2m_dequantize_per_tensor_f64_scale_rank3_4: f32((i8 - zero_point) * scale), binary64 product then one truncation'
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Rank-0/1/5 sibling of the reviewed rank-3/4 row (and rank-2 row). Only ranks differ. Open question: same binary32-representable scale premise as the sibling, unenforced by the signature; no probe at these ranks.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): rank sibling of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): rank sibling of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+- id: host_m2m_dequantize_per_tensor_f64_scale_bf16_result
+  status: reviewed
+  ops:
+  - quantized_decomposed.dequantize_per_tensor.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i8
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - bf16
+    quantization_parameters: *id003
+    ranks:
+    - 0
+    - 2
+  numerical_contract:
+    status: reviewed
+    semantics:
+      formula: bf16((i8 - zero_point) * scale)
+      host_arithmetic: 'binary64 product, then ONE narrowing to the result type (unverified for bf16/f16: a double narrowing via f32 would round differently)'
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Result-type variant of the reviewed f32 row. Open questions: (1) single vs double rounding f64 -> f32 -> bf16 in the emitted lowering; (2) exhaustive 256-code eager comparison not run for bf16.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+- id: host_m2m_dequantize_per_tensor_f64_scale_f16_result
+  status: reviewed
+  ops:
+  - quantized_decomposed.dequantize_per_tensor.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i8
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - f16
+    quantization_parameters: *id003
+    ranks:
+    - 2
+  numerical_contract:
+    status: reviewed
+    semantics:
+      formula: f16((i8 - zero_point) * scale)
+      host_arithmetic: 'binary64 product, then ONE narrowing to the result type (unverified for bf16/f16: a double narrowing via f32 would round differently)'
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Result-type variant of the reviewed f32 row. Open questions: (1) single vs double rounding f64 -> f32 -> f16 in the emitted lowering; (2) exhaustive 256-code eager comparison not run for f16.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+- id: host_m2m_dequantize_per_tensor_f64_scale_f64_result
+  status: reviewed
+  ops:
+  - quantized_decomposed.dequantize_per_tensor.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i8
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - f64
+    quantization_parameters: *id003
+    ranks:
+    - 2
+  numerical_contract:
+    status: reviewed
+    semantics:
+      formula: f64((i8 - zero_point) * scale)
+      host_arithmetic: 'binary64 product, then ONE narrowing to the result type (unverified for bf16/f16: a double narrowing via f32 would round differently)'
+    evidence:
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+      basis: 'Result-type variant of the reviewed f32 row. Open questions: (1) single vs double rounding f64 -> f32 -> f64 in the emitted lowering; (2) exhaustive 256-code eager comparison not run for f64.'
+      proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+      open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+- id: host_rd_extf_bf16_f32_to_f32
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 3
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: exact_widening
+      result_dtype: f32
+      operand_dtypes:
+      - bf16
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.extf''] over loop counts [3, 4] for ops [''aten._adaptive_avg_pool2d.default'', ''aten.adaptive_avg_pool1d.default'', ''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'']. prims.json extf_torch.bfloat16_to_f32: 0 mismatches (widening exact; round trip identity) over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_divf_f32_f32_f32_to_f32
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d.default
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten._adaptive_avg_pool3d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  - aten.avg_pool2d_backward.default
+  - aten.avg_pool3d.default
+  - aten.mean.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+    - 3
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_division
+      result_dtype: f32
+      operand_dtypes:
+      - f32
+      - f32
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 25 linalg.generic with body [''arith.divf''] over loop counts [0, 3, 4, 5] for ops [''aten._adaptive_avg_pool2d.default'', ''aten._adaptive_avg_pool2d_backward.default'', ''aten._adaptive_avg_pool3d.default'', ''aten.adaptive_avg_pool1d.default'', ''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'', ''aten.avg_pool2d_backward.default'', ''aten.avg_pool3d.default'', ''aten.mean.default'']. prims.json divf_torch.float32: 0 mismatches over 20012 values vs correctly rounded double result (incl NaN/Inf/-0/overflow/subnormal edges). Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_truncf_f32_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 3
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: round_to_nearest_even_narrowing
+      result_dtype: bf16
+      operand_dtypes:
+      - f32
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.truncf''] over loop counts [3, 4] for ops [''aten._adaptive_avg_pool2d.default'', ''aten.adaptive_avg_pool1d.default'', ''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'']. prims.json truncf_f32_to_bf16: 0 mismatches vs explicit round-to-nearest-even on the f32 bit pattern over 20012 values, NaN preserved. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_extf_f16_f32_to_f32
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 3
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: exact_widening
+      result_dtype: f32
+      operand_dtypes:
+      - f16
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.extf''] over loop counts [3, 4] for ops [''aten._adaptive_avg_pool2d.default'', ''aten.adaptive_avg_pool1d.default'', ''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'']. prims.json extf_torch.float16_to_f32: 0 mismatches (widening exact; round trip identity) over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_truncf_f32_f16_to_f16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 3
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: round_to_nearest_even_narrowing
+      result_dtype: f16
+      operand_dtypes:
+      - f32
+      - f16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.truncf''] over loop counts [3, 4] for ops [''aten._adaptive_avg_pool2d.default'', ''aten.adaptive_avg_pool1d.default'', ''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'']. prims.json truncf_f32_to_f16: 0 mismatches vs correctly rounded double result over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_divf_bf16_bf16_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten._adaptive_avg_pool3d.default
+  - aten.avg_pool2d_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_division
+      result_dtype: bf16
+      operand_dtypes:
+      - bf16
+      - bf16
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 6 linalg.generic with body [''arith.divf''] over loop counts [4, 5] for ops [''aten._adaptive_avg_pool2d_backward.default'', ''aten._adaptive_avg_pool3d.default'', ''aten.avg_pool2d_backward.default'']. prims.json divf_torch.bfloat16: 0 mismatches over 20012 values vs correctly rounded double result (incl NaN/Inf/-0/overflow/subnormal edges). Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_addf_bf16_bf16_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten.avg_pool2d_backward.default
+  - aten.col2im.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_addition
+      result_dtype: bf16
+      operand_dtypes:
+      - bf16
+      - bf16
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 12 linalg.generic with body [''arith.addf''] over loop counts [4] for ops [''aten._adaptive_avg_pool2d_backward.default'', ''aten.avg_pool2d_backward.default'', ''aten.col2im.default'']. prims.json addf_torch.bfloat16: 0 mismatches over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_divf_f16_f16_f16_to_f16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten._adaptive_avg_pool3d.default
+  - aten.avg_pool2d_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f16
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_division
+      result_dtype: f16
+      operand_dtypes:
+      - f16
+      - f16
+      - f16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 6 linalg.generic with body [''arith.divf''] over loop counts [4, 5] for ops [''aten._adaptive_avg_pool2d_backward.default'', ''aten._adaptive_avg_pool3d.default'', ''aten.avg_pool2d_backward.default'']. prims.json divf_torch.float16: 0 mismatches over 20012 values vs correctly rounded double result (incl NaN/Inf/-0/overflow/subnormal edges). Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_addf_f16_f16_f16_to_f16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten.avg_pool2d_backward.default
+  - aten.col2im.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f16
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_addition
+      result_dtype: f16
+      operand_dtypes:
+      - f16
+      - f16
+      - f16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 12 linalg.generic with body [''arith.addf''] over loop counts [4] for ops [''aten._adaptive_avg_pool2d_backward.default'', ''aten.avg_pool2d_backward.default'', ''aten.col2im.default'']. prims.json addf_torch.float16: 0 mismatches over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_addf_f32_f32_f32_to_f32
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten.avg_pool2d_backward.default
+  - aten.col2im.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_addition
+      result_dtype: f32
+      operand_dtypes:
+      - f32
+      - f32
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 12 linalg.generic with body [''arith.addf''] over loop counts [4] for ops [''aten._adaptive_avg_pool2d_backward.default'', ''aten.avg_pool2d_backward.default'', ''aten.col2im.default'']. prims.json addf_torch.float32: 0 mismatches over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_divsi_i64_i64_i64_to_i64
+  status: reviewed
+  ops:
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  - aten.avg_pool2d_backward.default
+  - aten.avg_pool3d.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - i64
+    - i64
+    - i64
+    ordered_result_dtypes:
+    - i64
+    ranks:
+    - 3
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: signed_integer_division_truncating_toward_zero
+      result_dtype: i64
+      operand_dtypes:
+      - i64
+      - i64
+      - i64
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.divsi''] over loop counts [3, 4, 5] for ops [''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'', ''aten.avg_pool2d_backward.default'', ''aten.avg_pool3d.default'']. prims.json divsi_i64_trunc: 0 mismatches over 20006 values incl INT64_MAX/MIN vs python truncation toward zero (torch.div rounding_mode=trunc). Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_addi_i64_i64_i64_to_i64
+  status: reviewed
+  ops:
+  - aten.avg_pool2d_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - i64
+    - i64
+    - i64
+    ordered_result_dtypes:
+    - i64
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: twos_complement_wrapping_addition
+      result_dtype: i64
+      operand_dtypes:
+      - i64
+      - i64
+      - i64
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.addi''] over loop counts [4] for ops [''aten.avg_pool2d_backward.default'']. prims.json addi_i64_wrapping: 0 mismatches over 20000 values vs python wrap mod 2^64. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_0e7649_bf16_f32_to_f32
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f32
+      operand_dtypes:
+      - bf16
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.extf'', ''arith.bitcast'', ''arith.extui'', ''arith.constant'', ''arith.shrui'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shli'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [1] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.extf'', ''arith.bitcast'', ''arith.extui'', ''arith.constant'', ''arith.shrui'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shli'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.extf', 'arith.bitcast', 'arith.extui', 'arith.constant', 'arith.shrui', 'arith.constant', 'arith.shli', 'arith.constant', 'arith.andi', 'arith.constant', 'arith.shli', 'arith.ori', 'arith.constant', 'arith.ori', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_06b1e1_f32_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: bf16
+      operand_dtypes:
+      - f32
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.truncf'', ''arith.bitcast'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.truncf'', ''arith.bitcast'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.truncf', 'arith.bitcast', 'arith.constant', 'arith.shrui', 'arith.trunci', 'arith.constant', 'arith.shli', 'arith.constant', 'arith.andi', 'arith.constant', 'arith.shrui', 'arith.trunci', 'arith.ori', 'arith.constant', 'arith.ori', 'arith.constant', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_990961_bf16_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: bf16
+      operand_dtypes:
+      - bf16
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.bitcast', 'arith.constant', 'arith.ori', 'arith.constant', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_e6a62e_bf16_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten.mean.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: bf16
+      operand_dtypes:
+      - bf16
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 1 linalg.generic with body [''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'']. NOT executed: body op sequence [''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.constant', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_0e7649_f16_f32_to_f32
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f32
+      operand_dtypes:
+      - f16
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.extf'', ''arith.bitcast'', ''arith.extui'', ''arith.constant'', ''arith.shrui'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shli'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0, 1] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.extf'', ''arith.bitcast'', ''arith.extui'', ''arith.constant'', ''arith.shrui'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shli'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.extf', 'arith.bitcast', 'arith.extui', 'arith.constant', 'arith.shrui', 'arith.constant', 'arith.shli', 'arith.constant', 'arith.andi', 'arith.constant', 'arith.shli', 'arith.ori', 'arith.constant', 'arith.ori', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_35cbde_f32_f32_to_f32
+  status: reviewed
+  ops:
+  - aten.mean.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f32
+      operand_dtypes:
+      - f32
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 1 linalg.generic with body [''arith.constant'', ''arith.constant'', ''arith.remui'', ''arith.subi'', ''arith.constant'', ''arith.subi'', ''arith.constant'', ''arith.minui'', ''arith.constant'', ''arith.divui'', ''arith.constant'', ''arith.muli'', ''arith.cmpi'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'']. NOT executed: body op sequence [''arith.constant'', ''arith.constant'', ''arith.remui'', ''arith.subi'', ''arith.constant'', ''arith.subi'', ''arith.constant'', ''arith.minui'', ''arith.constant'', ''arith.divui'', ''arith.constant'', ''arith.muli'', ''arith.cmpi'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.constant', 'arith.constant', 'arith.remui', 'arith.subi', 'arith.constant', 'arith.subi', 'arith.constant', 'arith.minui', 'arith.constant', 'arith.divui', 'arith.constant', 'arith.muli', 'arith.cmpi', 'arith.constant', 'arith.bitcast', 'arith.cmpf', 'arith.select', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_6fcc8f_f32_f16_to_f16
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f16
+      operand_dtypes:
+      - f32
+      - f16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.truncf'', ''arith.bitcast'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.truncf'', ''arith.bitcast'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.truncf', 'arith.bitcast', 'arith.constant', 'arith.shrui', 'arith.trunci', 'arith.constant', 'arith.shli', 'arith.constant', 'arith.andi', 'arith.constant', 'arith.shrui', 'arith.trunci', 'arith.ori', 'arith.constant', 'arith.ori', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_9a688d_f16_f16_to_f16
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f16
+      operand_dtypes:
+      - f16
+      - f16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.bitcast', 'arith.constant', 'arith.ori', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_9a688d_f32_f32_to_f32
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f32
+      operand_dtypes:
+      - f32
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0, 1] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.bitcast', 'arith.constant', 'arith.ori', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_mean_scf_for_f32_sum_rank0
+  status: reviewed
+  ops:
+  - aten.mean.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_binary32
+      per_element: sequential_f32_addf_over_scf_for_with_four_interleaved_accumulators
+      reduction_order: selected_lowering
+      rounding: round_to_nearest_even
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: two rank-0 linalg.generic bodies of aten.mean.default that sum a tensor<f32> with scf.for loops over tensor.extract and arith.addf (four accumulators, stride 4). The scalar addf was checked against eager (rd/prims.json addf_torch.float32: 0 mismatches over 20012 values); the loop structure and four-way accumulation order were read, not executed, so bit equality with eager torch.mean is NOT claimed (reassociation).'
+      open_obligation: Execute the generic body (four interleaved accumulators, tail handling) against torch.mean on the captured shapes and record the ulp bound; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_f32_layer_norm_two_result_moments_2x8
+  status: reviewed
+  ops:
+  - aten.native_layer_norm.default
+  families:
+  - reduction
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    - f32
+    ranks:
+    - 2
+  source_body:
+    schema: merlin.static_f32_row_moments_source_body.v1
+    operation: row_mean_biased_variance
+    data_operand:
+      dtype: f32
+      shape:
+      - 2
+      - 8
+      reduction_axis: 1
+    canonical_body_sha256: 80ae7cf203308d57065fed1031a198251023bcb85812d9ed8014fdb77b12726c
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_binary32
+      rounding: round_to_nearest_even
+      accumulator: f32
+      reduction_order: selected_lowering
+      existing_numerical_tolerance: unchanged
+      data_operand: one captured static [2, 8] f32 tensor read by tensor.extract; source_body proves the single capture, its shape and dtype, the row index and that every column of the row is read exactly once (axis 1)
+      tolerance: atol 0.03125, rtol 0.02 against eager native_layer_norm mean and rstd
+      fused_multiply_add: math.fma must lower to a fused llvm.fma (fmadd.s or correctly rounded fmaf)
+    evidence:
+      reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory. Open obligations: the numerical evidence run of the reviewed [32, 32] row (1472 rows against eager) was NOT repeated for this [2, 8] body, so no numerical comparison against eager native_layer_norm mean and rstd has been run for it; RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
+      basis: "the digest-pinned parsed body of the coverage_mlp capture (static [2, 8] f32 data operand), accepted by the row-moments structural proof; NO numerical comparison against eager native_layer_norm mean and rstd has been run for this body. RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
+- id: host_f32_layer_norm_two_result_moments_rank3_1x17x16
+  status: reviewed
+  ops:
+  - aten.native_layer_norm.default
+  families:
+  - reduction
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    - f32
+    ranks:
+    - 3
+  source_body:
+    schema: merlin.static_f32_row_moments_rank3_source_body.v1
+    operation: row_mean_biased_variance
+    data_operand:
+      dtype: f32
+      shape:
+      - 1
+      - 17
+      - 16
+      reduction_axis: 2
+    canonical_body_sha256: b49e906cd89c993f1dabf4e39f128088d91b7c36b1bf7653b007e4f7894abfce
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_binary32
+      rounding: round_to_nearest_even
+      accumulator: f32
+      reduction_order: selected_lowering
+      existing_numerical_tolerance: unchanged
+      data_operand: one captured static [1, 17, 16] f32 tensor read by tensor.extract; source_body proves the single capture, its shape and dtype, the leading row indexes (linalg.index 0 and 1) and that every column of the row is read exactly once (axis 2)
+      tolerance: atol 0.03125, rtol 0.02 against eager native_layer_norm mean and rstd
+      fused_multiply_add: math.fma must lower to a fused llvm.fma (fmadd.s or correctly rounded fmaf)
+    evidence:
+      reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory. Open obligations: the numerical evidence run of the reviewed [32, 32] row (1472 rows against eager) was NOT repeated for this [1, 17, 16] body, so no numerical comparison against eager native_layer_norm mean and rstd has been run for it; RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
+      basis: "the digest-pinned parsed body of the multimodal_policy capture (static [1, 17, 16] f32 data operand), accepted by the rank-3 row-moments structural proof; NO numerical comparison against eager native_layer_norm mean and rstd has been run for this body. RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
 - id: host_i32_int_mm_seed_overflow_guard_rank1
   status: reviewed
   ops:
