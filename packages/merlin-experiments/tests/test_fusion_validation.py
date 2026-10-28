@@ -30,7 +30,7 @@ def test_release_pool_constraints_remain_unique():
 
 @pytest.mark.parametrize("strategy", ["f32_product_rne", "exact_rational_host"])
 @pytest.mark.parametrize("activation", [False, True])
-def test_residual_references_follow_each_source_f32_operation(strategy, activation):
+def test_residual_references_accumulate_the_residual_before_one_readout(strategy, activation):
     import numpy as np
     from merlin_experiments.phase0.fusion_reference import exact_reference, unfused_reference
 
@@ -49,7 +49,10 @@ def test_residual_references_follow_each_source_f32_operation(strategy, activati
         operation=dict(attributes=dict(M=2, K=2, N=1, outputs=["Y"], case=case, quantization_scheme=scheme)),
         inputs=[dict(name=name, dtype="i8", shape=list(value.shape)) for name, value in env.items()],
     )
-    wanted = {"Y": [[0 if activation else -127], [127]]}
+    # c*R joins the accumulator (-823 + 64, 823 - 64), then ONE readout rounding: -126.5 and 126.5
+    # in f32 round half-even to -126 and 126; the exact rational products lie past the ties.
+    low, high = (-126, 126) if strategy == "f32_product_rne" else (-127, 127)
+    wanted = {"Y": [[0 if activation else low], [high]]}
     assert exact_reference(cap, env)[0] == wanted
     assert unfused_reference(cap, env) == wanted
     assert boundary(-823 + 64, gain, "f32_product_rne", False) == -126
@@ -80,8 +83,10 @@ def test_residual_counterexample_is_a_required_frozen_stimulus(profile, tmp_path
     assert accumulator[0, 0] == -823 and values["node0_Residual"][0][0] == 64
     assert np.min(values["node0_A"]) >= -128 and np.max(values["node0_A"]) <= 127
     assert case["coefficient"] == 1 and case["multipliers"] == [float(np.float32(1 / 6))]
-    assert frozen["references"][0]["values"][0][0] == (0 if activation else -127)
-    assert frozen["references"][0]["values"][1][0] == 127
+    # The declared integer residual reads out once (-759 * g = -126.5 in f32, half-even -126);
+    # the witness records that the stimulus separates it from a dequantized f32 residual add.
+    assert frozen["references"][0]["values"][0][0] == (0 if activation else -126)
+    assert frozen["references"][0]["values"][1][0] == 126
     assert frozen["witnesses"][0]["residual_rounding_difference"]
     assert dict(node=0, event="residual_rounding_difference") in frozen["required_witnesses"]
 
@@ -95,7 +100,7 @@ def test_shared_residual_counterexample_preserves_the_witness_input(profile, tmp
     residual["residual"] = dict(coefficient_bound=127)
     candidate["semantic"].update(structure="shared_input", nodes=[node, residual])
     frozen = payload(profile, tmp_path, "residual_rounding")
-    assert frozen["references"][1]["values"][0][0] == -127
+    assert frozen["references"][1]["values"][0][0] == -126
     assert frozen["witnesses"][1]["residual_rounding_difference"]
 
 
@@ -718,12 +723,12 @@ def test_packed_output_audit_requires_a_complete_partition():
         _bind_result_slices(dict(instructions=[]), binding, args)
 
 
-def test_residual_source_uses_a_direct_quantized_grid(profile, tmp_path):
+def test_residual_source_keeps_the_integer_accumulator_term(profile, tmp_path):
     profile[0]["semantic"]["nodes"][0]["residual"] = dict(coefficient_bound=127)
     result = payload(profile, tmp_path)
-    assert "quant_ext.dequantize_per_tensor" in result["source"]
-    assert "arith.addf" in result["source"]
-    assert "arith.muli %r" not in result["source"]
+    assert "quant_ext.dequantize_per_tensor" not in result["source"]
+    assert "quant_ext.dequantize_per_channel" not in result["source"]
+    assert "arith.muli %r" in result["source"]
 
 
 @pytest.mark.parametrize("form", ["contraction", "movement", "operand_sum", "mean"])

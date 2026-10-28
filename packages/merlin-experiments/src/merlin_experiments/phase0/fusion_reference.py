@@ -73,8 +73,9 @@ def stimuli(cap, label, sibling=0):
                 env["A"][6, :3] = 127
                 env["A"][7, :3] = -128
     if label == "residual_rounding" and "coefficient" in case:
-        # +/-823 and the opposite residual +/-64 distinguish source f32 ops
-        # from an integer-domain extension, including after ReLU or max pooling.
+        # +/-823 and the opposite residual +/-64 distinguish the declared integer-domain
+        # extension (c*R accumulated before the one readout rounding) from a dequantized f32
+        # residual add, including after ReLU or max pooling.
         signs = np.resize([1, -1], attrs["M"])
         env["A"].fill(0)
         env["A"][:, :6] = -127 * signs[:, None]
@@ -119,6 +120,15 @@ def boundary(value, multiplier, strategy, activation):
     if product == float("-inf"):
         return -128
     return min(127, max(-128, round(product)))
+
+
+def integer_residual(residual, coefficient):
+    """``c * R`` as the accumulator term the chain declares (``residual_accumulates_before_readout``):
+    exact for an integer ``c``; a non-integer ``c`` rounds each product half-even, as its source does."""
+    exact = Fraction(coefficient)
+    if exact.denominator == 1:
+        return residual.astype(object) * int(exact)
+    return np.array([[round(int(v) * exact) for v in row] for row in residual], dtype=object)
 
 
 def _readout(value, case, scheme, *, multipliers=None, activation=None, residual=None, divisor=None):
@@ -187,8 +197,9 @@ def _producer(case, scheme, env):
         else env["W0"].astype(object)
     )
     value = env["A"].astype(object) @ weights
-    if "coefficient" in case and case["exit"] != "requant":
-        value += env["Residual"].astype(object) * int(case["coefficient"])
+    if "coefficient" in case:
+        # The residual enters the i32 accumulator before any readout, for every exit.
+        value += integer_residual(env["Residual"], case["coefficient"])
     if "preload" in case["accumulator_stages"]:
         value += env["Bias"].astype(object)
     if any(not -(2**31) <= int(v) < 2**31 for v in value.flat):
@@ -257,20 +268,25 @@ def _legacy_exact_reference(cap, env):
         _source_float(
             int(v),
             case["multipliers"][min(c // width, len(case["multipliers"]) - 1)],
-            int(residual[r, c]) if residual is not None else None,
-            case.get("coefficient", 0),
+            None,
+            0,
             divisor,
         )
         for r, row in enumerate(value if case["exit"] == "requant" else [])
         for c, v in enumerate(row)
     ]
     if residual is not None:
+        # The stimulus separates the declared integer extension (the products above) from a
+        # dequantized f32 residual add: round(f32(acc * g) + f32(R * f32(c * g))).
+        base = value - integer_residual(residual, case["coefficient"])
         witnesses["residual_rounding_difference"] = any(
             round(product)
             != round(
                 _source_float(
-                    int(value[r, c]) + int(residual[r, c]) * int(case["coefficient"]),
+                    int(base[r, c]),
                     case["multipliers"][min(c // width, len(case["multipliers"]) - 1)],
+                    int(residual[r, c]),
+                    case["coefficient"],
                 )
             )
             for (r, c), product in zip(np.ndindex(value.shape), products, strict=True)
@@ -281,7 +297,7 @@ def _legacy_exact_reference(cap, env):
         negative_saturation=any(p < -128 for p in products),
     )
     if case["exit"] == "requant":
-        value = _readout(value, case, scheme, residual=residual, divisor=divisor)
+        value = _readout(value, case, scheme, divisor=divisor)
     if "pool" in case["readout_stages"]:
         h, w = case["pool_in_dims"]
         wh, ww = case["pool_window"]
