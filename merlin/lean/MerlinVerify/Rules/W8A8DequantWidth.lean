@@ -64,10 +64,21 @@ theorem result32 (c : Dequant.Config) (M : FloatModel) (q s z : Tensor) :
     result 32 c M q s z = Dequant.result c M q s z := by
   simp only [result, Dequant.result, Spec.Dequant.tensor, scalarValue32]
 
-theorem run32 (c : Dequant.Config) (M : FloatModel) (args : List RVal) :
-    run 32 c M args = Dequant.run c M args := by
-  simp only [run, Dequant.run, validInputs, Dequant.validInputs, result32]
-  rfl
+/-- Where this i32 candidate succeeds the source semantics agrees (the source also admits
+per-tensor i64 zero points). -/
+theorem run32 (c : Dequant.Config) (M : FloatModel) (args : List RVal) (r : List RVal)
+    (h : run 32 c M args = .ok r) : Dequant.run c M args = .ok r := by
+  unfold run at h
+  split at h
+  · next q s z =>
+    split at h
+    · next hv =>
+      have hv' : Dequant.validInputs c q s z = true := by
+        simpa [validInputs, Dequant.validInputs] using hv
+      simp only [Dequant.run, hv', ↓reduceIte, ← result32]
+      exact h
+    · cases h
+  · cases h
 
 theorem result_typed (ib width : Nat) (c : Dequant.Config) (M : FloatModel) (q s z : Tensor) :
     Check.RVal.HasTy ib (.tensor (result width c M q s z)) (.tensor c.shape (.float .f32)) := by
