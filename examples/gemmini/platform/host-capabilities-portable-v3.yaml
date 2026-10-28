@@ -3381,6 +3381,44 @@ operations:
         when the scale is f64, truncf to f32). Exhaustive 256-code comparison
         against torch eager at the captured scales. The binary32-representable scale
         premise is not checked by this signature screen.'
+- id: host_m2m_exact_readout_i32_i8_requantized_rank3_4
+  status: unreviewed
+  ops:
+  - m2m_q.exact_readout.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i32
+    - i8
+    ordered_result_dtypes:
+    - i8
+    ranks:
+    - 3
+    - 4
+    aliasing: disjoint_inputs_outputs
+    layouts:
+    - row_major_contiguous
+    readout_dtype: i8
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      formula: q = clamp(round_half_even(acc * activation_scale * alpha * weight_scale[channel] / output_scale) + zero_point, quant_min, quant_max)
+      arithmetic: exact_rational_wide_integer_body
+      rounding: single_round_half_to_even_to_integer_code
+      accumulator: i32 full range (no |acc| < 2^24 premise)
+      saturation: clamp to the signed int8 range after the rounded code is formed
+      operand_1: i8 init tensor (outs), value unused
+      excluded_forms: bias operand, relu clamp and unsigned output have other typed signatures; f32 output is the host_m2m_exact_readout_i32_f32 form
+    evidence:
+      reviewed_by: "PROPOSED, NOT REVIEWED (app-fix 2026-10-28): the requantized (integer-output) form that the reviewed host_m2m_exact_readout_i32_f32 row explicitly excludes (excluded_forms: requantized integer output has another typed signature). Observed once in each of causal_decoder, causal_decoder_decode_step (rank 4) and multimodal_policy (rank 3). Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here. Open obligation: the emitted body must be checked against the evaluator for the requantized path (no saved Spike or boundary probe exists for it yet)."
+      basis: 'model2MLIR m2m_q::exact_readout CPU evaluator m2m/capture/exact_quant.py
+        exact_readout with output_scale set: value = acc*activation_scale*alpha*weight_scale
+        (exact Fractions), code = Python round(value / output_scale) + zero_point
+        (round half to even), clamped to [quant_min, quant_max], int8 result. Emitted
+        linalg.generic body from m2m/ir/integer_readout.py decompose_exact_readout.
+        Not yet compared against the emitted body on boundary and random accumulators.'
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:
