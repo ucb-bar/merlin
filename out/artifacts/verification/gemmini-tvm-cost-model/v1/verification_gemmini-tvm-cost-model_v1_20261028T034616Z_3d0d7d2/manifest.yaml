@@ -1,0 +1,22 @@
+artifacts:
+- README.md
+- SHA256SUMS
+- logs/final-warmup-smoke.log.gz
+- logs/runner-session-updated-tests.log.gz
+- logs/search-regression-tests.log.gz
+- logs/structure.log.gz
+- logs/warmup-boundary-tests-with-xgb.log.gz
+- logs/warmup-boundary-tests.log.gz
+- logs/xgboost-install.log.gz
+- merlin-runner.patch
+- software-spec-audit.json
+- summary.json
+- tvm.patch
+git_sha: 3d0d7d2
+notes: Local source audit and bounded stock-XGB tests; no FireSim run or model qualification.
+run_id: verification_gemmini-tvm-cost-model_v1_20261028T034616Z_3d0d7d2
+sources: []
+target: gemmini-tvm-cost-model
+timestamp: 20261028T034616Z
+topic: verification
+version: 1

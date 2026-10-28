@@ -1,0 +1,57 @@
+{
+  "tvm_commit": "3d5e9c353ec39930e235e482b1fff678754dfc2c",
+  "merlin_runner_commit": "3d0d7d2bdd1abf4ee2fe9be64bac163896a63640",
+  "xgboost": "xgboost-cpu==2.1.4",
+  "results": {
+    "runner_session_tests": 71,
+    "search_regression_tests": 5,
+    "final_warmup_smoke_tests": 1,
+    "spec_declarations": 11,
+    "baseline_fixtures_audited": 51,
+    "inherited_module_size_failures": 9
+  },
+  "warmup_smoke": {
+    "threshold": 3,
+    "task_cap": 5,
+    "batch": 1,
+    "eps_greedy": 0,
+    "model_available": [
+      false,
+      false,
+      false,
+      true,
+      true
+    ],
+    "costs": "constant diagnostic labels, not hardware measurements"
+  },
+  "policy": {
+    "warmup": 50,
+    "task_cap": 55,
+    "batch": 1,
+    "eps_greedy": 0,
+    "scope": "Grouping and time precedence await user clarification"
+  },
+  "limitations": [
+    "No FireSim execution or cost-model ranking-quality claim",
+    "New 16 kernel payloads/ELFs and complete-call adapters remain to be built",
+    "Per-program spec and selected-hardware admission remain separate",
+    "Stock heuristic exhaustion is not finite-space proof"
+  ],
+  "sources": [
+    {
+      "path": "/scratch/grammy/tvm-gemmini-simple/python/tvm/relax/backend/contrib/gemmini_search.py",
+      "sha256": "6cad6428b1d482ea6c59fec2b61295bdba7234e56e723e59b212f5f7f25a2b5a",
+      "bytes": 13079
+    },
+    {
+      "path": "/scratch/grammy/merlin-tvm-firesim-ready/examples/gemmini/comparisons/tvm/tune_firesim_chunks.py",
+      "sha256": "3aedd26822fe505c832b89e2eeecee6306e18927c7cf85f32ab48d5c1f281436",
+      "bytes": 22045
+    },
+    {
+      "path": "/scratch/grammy/merlin-tvm-firesim-ready/examples/gemmini/comparisons/tvm/run_firesim_study.py",
+      "sha256": "2408355316888589323c906e68c76c059e11c3090dbad86f494eab2791ce9a80",
+      "bytes": 16414
+    }
+  ]
+}

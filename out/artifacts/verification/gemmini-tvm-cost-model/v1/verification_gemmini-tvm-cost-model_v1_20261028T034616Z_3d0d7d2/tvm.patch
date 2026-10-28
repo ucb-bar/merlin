@@ -1,0 +1,214 @@
+diff --git a/apps/gemmini/AGENTS.md b/apps/gemmini/AGENTS.md
+index 7aa8d1662..f017acaf0 100644
+--- a/apps/gemmini/AGENTS.md
++++ b/apps/gemmini/AGENTS.md
+@@ -1,5 +1,9 @@
+ # Agent handoff: TVM Gemmini and EL4
+ 
++Current campaign: ResNet50 plus the 16 cases in the companion Merlin
++KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md. Full TinyLlama/SmolVLA
++are backlogged; their full-model recipes below are retained future work.
++
+ Read README.md, OWNERSHIP.md, TUNING.md and FIRESIM.md before making changes.
+ The sole campaign protocol is Merlin 8ec99308 (superseding older protocol links
+ below). The current selection is full ResNet50, TinyLlama **32-token prefill plus 32
+@@ -58,7 +62,7 @@ complete TinyLlama numerical failure or qualify a FireSim deployment.
+ ## Next-agent execution order
+ 
+ 1. Reopen the handoff artifact's refs, file audit, tests and remaining gates.
+-2. Read the [selected EL4 contract](https://github.com/ucb-bar/merlin/blob/0cc289de52a10bed256f32c90cfbb54a21b3c81f/examples/gemmini/protocol/experiment.yaml)
++2. Read the [selected EL4 contract](https://github.com/ucb-bar/merlin/blob/8ec99308cb1182b9b896a6075300312266fadf6f/examples/gemmini/protocol/experiment.yaml)
+    and companion shared-assets guide. Model revisions, inputs, calibration,
+    recurrence and host-math choices are already specified. Finish/publish their
+    portable prepared payloads. Older factory recipes and synthetic cutouts do
+@@ -82,7 +86,7 @@ complete TinyLlama numerical failure or qualify a FireSim deployment.
+    evidence or legacy full-array transport are distinct modes. The supplied
+    strict publisher and lightweight mode require compact all-element comparison.
+    Keep small positive/wrong-oracle controls on functional engines; paid FPGA
+-   runs are complete models. Report every output/state check and timing scope.
++   runs measure the complete selected kernel case or full model, as declared. Report every output/state check and timing scope.
+ 8. Tune only after correctness and deployment gates pass. Preserve default/CPU
+    baselines, failed caps, pure-search minima, record provenance and replayability.
+ 
+diff --git a/apps/gemmini/FIRESIM.md b/apps/gemmini/FIRESIM.md
+index da5387db2..c932d1898 100644
+--- a/apps/gemmini/FIRESIM.md
++++ b/apps/gemmini/FIRESIM.md
+@@ -2,18 +2,23 @@
+ 
+ The companion Merlin `examples/gemmini/comparisons/tvm/FIRESIM_HANDOFF.md` owns
+ model inputs, portable chunk delivery, budgets, complete-chain construction and
+-remote qualification. This simplified compiler is not yet a published replacement
+-for its frozen delivery. Rebuild packages and re-extract workloads; do not relabel
++remote qualification. The simplified compiler is published; use the companion Merlin handoff for
++current source and campaign pins. Rebuild packages and re-extract workloads; do not relabel
+ old ELFs or graph plans with new source identities.
+ 
+ ## Current campaign decisions
+ 
+ - Sole model protocol: Merlin 8ec99308, with approved TinyLlama prefill correction
+   to 32; E2E is 32 prefill + 32 decode. Tune published 16/1 probes.
+-- Aggregate occupied tuning time: ResNet 4h, TinyLlama 1h, SmolVLA 1h, across chunks
++- Aggregate occupied tuning time: active ResNet 4h; backlogged TinyLlama/SmolVLA
++  retain 1h each for a future reactivation, across chunks
+   and graph choices. Stop new admissions at budget; finish active runs under their
+   safeguards and report overrun. CPU preparation and final E2E are separate.
+-- Final E2E wall timeouts only: ResNet 3600s, TinyLlama/SmolVLA 21600s per run.
++- Final E2E wall timeouts only: ResNet 1800s, TinyLlama/SmolVLA 25200s per run.
++- Next campaign: ResNet plus the 16 kernel cases in the companion Merlin
++  KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md. Full TinyLlama/SmolVLA
++  are backlogged. Requested plan: 50 warmup + 5 guided trials per workload,
++  with explicit grouping/budget decisions in the handoff. Report unequal effort.
+ - Candidate median-based wall watchdog replaces incumbent-cycle cancellation.
+   Use three real baseline timings, a 3x latest-nine median with a 3x baseline floor,
+   and an explicit hard ceiling. Bootstrap/ceiling values come from the remote pilot.
+diff --git a/apps/gemmini/TUNING.md b/apps/gemmini/TUNING.md
+index f86e88305..a40f2fdd8 100644
+--- a/apps/gemmini/TUNING.md
++++ b/apps/gemmini/TUNING.md
+@@ -1,3 +1,4 @@
++<!-- Current FireSim policy is in the companion Merlin handoff. -->
+ # TensorIR scheduling and MetaSchedule
+ 
+ The active path is `tune_models.py` with stock extraction, EvolutionarySearch,
+@@ -81,3 +82,24 @@ Historical presets can have zero or partial structural coverage after this
+ cleanup. Re-extract and report misses; new measurements require fresh source-bound
+ records. The predecessor experiments and commands remain in
+ [the pinned tuning history](https://github.com/grammy117/tvm/blob/42b3c1ef27abe878f930e48b335b24956beb0e56/apps/gemmini/TUNING.md).
++
++## Next FireSim campaign
++
++ResNet plus the 16 separately specified kernel cases are active. Full TinyLlama
++and SmolVLA are backlogged. The requested plan is 50 warmup plus 5 guided
++candidate trials per workload. The companion handoff resolves workload grouping,
++wall caps and complete-call kernel measurement; counts alone do not establish
++five successful guided runs. ResNet's last confirmed caps are 4h DSE and 30min
++per E2E run. No optimizer/hardware result is implied by these settings.
++
++The FireSim caller passes warmup=50, batch=1, eps_greedy=0 and a per-task cap55.
++Each recorded trial includes the XGB sample count and learned-ranking availability
++before its labels update the model. XGB may train during warmup; its predictions
++remain random until the sample threshold and a booster exist. Runner-error labels
++can count. Baseline calibration is separate from search training. Check actual
++unique correct trials and stage counts before writing paper results.
++
++The tuner imports XGBoost before measurement and records its version. A bounded
++local smoke test used xgboost-cpu==2.1.4; install it in the selected TVM environment
++and run the search smoke test before any paid measurements. Preserve cycle units
++and CPU/thread bounds. This does not qualify cost-model prediction quality.
+diff --git a/python/tvm/relax/backend/contrib/gemmini_search.py b/python/tvm/relax/backend/contrib/gemmini_search.py
+index 8c755f166..d6cb38ceb 100644
+--- a/python/tvm/relax/backend/contrib/gemmini_search.py
++++ b/python/tvm/relax/backend/contrib/gemmini_search.py
+@@ -188,9 +188,10 @@ class GemminiRunner(ms.runner.PyRunner):
+ class RecordMeasurements(ms.measure_callback.PyMeasureCallback):
+     """Append every measured candidate to a JSON-lines campaign log."""
+ 
+-    def __init__(self, path, describe=None):
++    def __init__(self, path, describe=None, model_state=None):
+         self.path = str(path)
+         self.describe = describe
++        self.model_state = model_state
+ 
+     def apply(self, task_scheduler, task_id, measure_candidates, builder_results, runner_results):
+         task = task_scheduler.tasks_[task_id].ctx
+@@ -208,6 +209,8 @@ class RecordMeasurements(ms.measure_callback.PyMeasureCallback):
+                     "run_error": ran.error_msg,
+                     "cycles": float(ran.run_secs[0]) if ran.run_secs else None,
+                 }
++                if self.model_state is not None:
++                    row.update(self.model_state())
+                 if self.describe is not None:
+                     row.update(self.describe(built.artifact_path))
+                 stream.write(json.dumps(row) + "\n")
+@@ -229,8 +232,14 @@ def tune_gemmini_tasks(
+     include_cpu=True,
+     warmup=4,
+     compact=False,
++    eps_greedy=0.1,
++    max_trials_per_task=None,
+ ):
+     """Tune extracted tasks with stock ``tune_tasks`` and return the JSONDatabase."""
++    import xgboost  # Fail before measurements if the optional tuner is unavailable.
++
++    if type(warmup) is not int or warmup < 1 or not 0 <= eps_greedy <= 1:
++        raise ValueError("Use a positive XGB warmup and epsilon in [0,1]")
+     capabilities = capabilities or GemminiCapabilities()
+     target = capabilities.target()
+     contexts, weights = [], []
+@@ -244,7 +253,7 @@ def tune_gemmini_tasks(
+                 genetic_num_iters=2 if compact else 3,
+                 genetic_mutate_prob=0.85,
+                 genetic_max_fail_count=10,
+-                eps_greedy=0.1,
++                eps_greedy=eps_greedy,
+             )
+         elif strategy == "replay":
+             search = ms.search_strategy.ReplayTrace(max_fail_count=8)
+@@ -267,9 +276,6 @@ def tune_gemmini_tasks(
+         for context in contexts:
+             context.generate_design_space()
+     database = ms.database.JSONDatabase(work_dir=str(work_dir))
+-    callbacks = [ms.measure_callback.AddToDatabase(), ms.measure_callback.UpdateCostModel()]
+-    if log is not None:
+-        callbacks.append(RecordMeasurements(log, describe))
+     cost_model = ms.cost_model.XGBModel(
+         extractor=MathematicalFeatures(), adaptive_training=False, num_tuning_cores=1,
+         num_warmup_samples=warmup,
+@@ -277,11 +283,21 @@ def tune_gemmini_tasks(
+     model_path = Path(work_dir) / "cost_model.xgb"
+     if model_path.exists():
+         cost_model.load(str(model_path))
++    def model_state():
++        return dict(training_samples_before_update=cost_model.data_size,
++                    learned_ranking_available=cost_model.data_size >= warmup and cost_model.booster is not None)
++
++    callbacks = [ms.measure_callback.AddToDatabase()]
++    if log is not None:
++        # Log the state used to select this batch, before its labels train XGB.
++        callbacks.append(RecordMeasurements(log, describe, model_state))
++    callbacks.append(ms.measure_callback.UpdateCostModel())
+     ms.tune_tasks(
+         tasks=contexts,
+         task_weights=weights,
+         work_dir=str(work_dir),
+         max_trials_global=max_trials_global,
++        max_trials_per_task=max_trials_per_task,
+         num_trials_per_iter=num_trials_per_iter,
+         builder=builder,
+         runner=runner,
+@@ -294,6 +310,9 @@ def tune_gemmini_tasks(
+         cost_model.save(str(model_path))
+     (Path(work_dir) / "cost-model.json").write_text(json.dumps({
+         "implementation": "TVM XGBModel", "warmup_samples": warmup,
++        "xgboost_version": xgboost.__version__,
++        "eps_greedy": eps_greedy, "max_trials_per_task": max_trials_per_task,
++        "warmup_scope": "this cost-model instance; feature-bearing samples, including runner errors",
+         "training_samples": cost_model.data_size, "booster_trained": cost_model.booster is not None,
+         "learned_predictions_enabled": cost_model.data_size >= warmup and cost_model.booster is not None,
+     }, indent=2) + "\n")
+diff --git a/tests/python/relax/test_backend_contrib_gemmini_search.py b/tests/python/relax/test_backend_contrib_gemmini_search.py
+index cd2501f42..5c6eee94c 100644
+--- a/tests/python/relax/test_backend_contrib_gemmini_search.py
++++ b/tests/python/relax/test_backend_contrib_gemmini_search.py
+@@ -108,3 +108,20 @@ def test_features_remain_finite_after_tensorization():
+     assert candidates
+     features = MathematicalFeatures().extract_from(context, candidates)
+     assert all(np.isfinite(feature.numpy()).all() and feature.shape[0] > 0 for feature in features)
++
++
++def test_single_trial_batches_record_warmup_boundary_and_per_task_cap(tmp_path):
++    work = task()
++    database = tune_gemmini_tasks(
++        [work], work_dir=tmp_path, builder=GemminiBuilder(lambda mod, key: key, max_workers=1),
++        runner=GemminiRunner(lambda path: 123, max_workers=1), max_trials_global=9,
++        max_trials_per_task=5, num_trials_per_iter=1, warmup=3, eps_greedy=0.0,
++        compact=True, include_cpu=False, log=tmp_path / "trials.jsonl",
++    )
++    rows = [json.loads(line) for line in (tmp_path / "trials.jsonl").read_text().splitlines()]
++    assert len(rows) == 5
++    assert [row["training_samples_before_update"] for row in rows] == list(range(5))
++    assert [row["learned_ranking_available"] for row in rows] == [False]*3 + [True]*2
++    assert len(database.get_all_tuning_records()) == 5
++    state = json.loads((tmp_path / "cost-model.json").read_text())
++    assert state["training_samples"] == 5 and state["eps_greedy"] == 0

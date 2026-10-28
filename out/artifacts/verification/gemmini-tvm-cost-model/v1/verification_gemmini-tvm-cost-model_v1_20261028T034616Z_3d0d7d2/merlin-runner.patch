@@ -1,0 +1,120 @@
+diff --git a/examples/gemmini/comparisons/tvm/run_firesim_study.py b/examples/gemmini/comparisons/tvm/run_firesim_study.py
+index 3293dc320..11063305a 100644
+--- a/examples/gemmini/comparisons/tvm/run_firesim_study.py
++++ b/examples/gemmini/comparisons/tvm/run_firesim_study.py
+@@ -95,6 +95,8 @@ def reserve_campaigns(path, rows, root, *, deadline, clock_hz, pool, cap,
+                 trials=row["trials"],
+                 workload_keys=row.get("workload_keys", []),
+                 graph_options=options,
++                cost_model_warmup=row.get("cost_model_warmup", 50),
++                batch=row.get("batch", 1),
+             )
+             old = state["campaigns"].get(row["id"])
+             if old is not None:
+@@ -133,12 +135,13 @@ def command(row, root, args, output, deadline):
+         "--trials",
+         str(row["trials"]),
+         "--batch",
+-        str(row.get("batch", 4)),
++        str(row.get("batch", 1)),
+         "--builders",
+         "1",
+         "--graph-fusion-level",
+         str(options["graph_fusion_level"]),
+     ]
++    argv.extend(["--cost-model-warmup", str(row.get("cost_model_warmup", 50))])
+     argv.extend(["--finish-active-runs", "--candidate-bootstrap-seconds",
+                  str(args.candidate_bootstrap_seconds), "--candidate-timeout-ceiling-seconds",
+                  str(args.candidate_timeout_ceiling_seconds)])
+diff --git a/examples/gemmini/comparisons/tvm/tune_firesim_chunks.py b/examples/gemmini/comparisons/tvm/tune_firesim_chunks.py
+index 242c010a6..9baf7213b 100644
+--- a/examples/gemmini/comparisons/tvm/tune_firesim_chunks.py
++++ b/examples/gemmini/comparisons/tvm/tune_firesim_chunks.py
+@@ -151,6 +151,7 @@ def build_request(path):
+ 
+ 
+ def tune(args):
++    import xgboost  # Check before baseline jobs consume any FireSim time.
+     import measure
+     import tvm
+     from firesim_runner_seconds import SecondsRunner, cycles_to_seconds
+@@ -328,6 +329,9 @@ def tune(args):
+         num_trials_per_iter=args.batch,
+         include_cpu=False,
+         compact=True,
++        warmup=args.cost_model_warmup,
++        eps_greedy=0.0,
++        max_trials_per_task=55,
+         log=root / "trials.jsonl",
+         describe=describe,
+     )
+@@ -391,6 +395,10 @@ def tune(args):
+             bindings=binding_identity,
+             proposal_budget=args.trials,
+             batch=args.batch,
++            cost_model_warmup=args.cost_model_warmup,
++            xgboost_version=xgboost.__version__,
++            max_trials_per_task=55,
++            eps_greedy=0.0,
+             builders=args.builders,
+             slots=len(pool.slots),
+             validated_records=len(validated.get_all_tuning_records()),
+@@ -427,7 +435,7 @@ def main():
+         required=True,
+         help="Shared absolute deadline across all chunk studies; never renewed per process",
+     )
+-    parser.add_argument("--trials", type=int, default=12)
++    parser.add_argument("--trials", type=int, default=55)
+     parser.add_argument(
+         "--workload-key", action="append", help="Tune only these exact structural keys; repeat as needed"
+     )
+@@ -437,7 +445,8 @@ def main():
+         required=True,
+         help="Documented frequency of the target cycle counter; never substitute FPGA host or emulation frequency",
+     )
+-    parser.add_argument("--batch", type=int, default=4)
++    parser.add_argument("--batch", type=int, default=1)
++    parser.add_argument("--cost-model-warmup", type=int, default=50)
+     parser.add_argument("--builders", type=int, default=2)
+     parser.add_argument("--finish-active-runs", action="store_true", default=True,
+                         help="Stop new slot admissions at the deadline; drain active measurements")
+@@ -466,8 +475,8 @@ def main():
+             raise ValueError("Bootstrap watchdog exceeds the hard ceiling")
+     except ValueError as error:
+         parser.error(str(error))
+-    if not (args.builders >= 1 and args.batch >= 1 and args.trials >= 4):
+-        parser.error("Use positive builder/batch counts and at least four proposals to bootstrap ML ranking")
++    if not (args.builders >= 1 and args.batch >= 1 and args.trials >= 1 and args.cost_model_warmup >= 1):
++        parser.error("Use positive builder/batch counts and positive proposal and XGB warmup counts")
+     if not time.time() < args.deadline_epoch <= time.time() + 4 * 3600:
+         parser.error("Supply a future shared deadline at most four hours away")
+     tune(args)
+diff --git a/merlin/tests/gemmini/test_tvm_firesim_study.py b/merlin/tests/gemmini/test_tvm_firesim_study.py
+index 29b36784a..41c551ac7 100644
+--- a/merlin/tests/gemmini/test_tvm_firesim_study.py
++++ b/merlin/tests/gemmini/test_tvm_firesim_study.py
+@@ -131,6 +131,8 @@ def test_graph_options_reach_inner_campaign(study, tmp_path):
+                graph_cse=True, prepack_weights=False, bias_preload=False)
+     command = study.command(row, tmp_path, args, tmp_path / "output", 1000)
+     assert command[command.index("--graph-fusion-level") + 1] == "0"
++    assert command[command.index("--cost-model-warmup") + 1] == "50"
++    assert command[command.index("--batch") + 1] == "1"
+     assert {"--graph-cse", "--no-prepack-weights", "--no-bias-preload"}.issubset(command)
+ 
+ 
+@@ -163,3 +165,15 @@ def test_removed_graph_preparation_is_refused_before_launch(study, tmp_path, opt
+ def test_default_study_uses_only_stock_graph_options(study):
+     assert study.graph_options({}) == dict(graph_fusion_level=2, prepack_weights=False,
+                                           bias_preload=False, graph_cse=False)
++
++
++def test_continuation_cannot_change_xgb_warmup(study, tmp_path):
++    (tmp_path / "p").write_text("program")
++    (tmp_path / "f").write_text("fixture")
++    (tmp_path / "pool").write_text("{}")
++    row = dict(id="one", program="p", fixture="f", trials=55)
++    options = dict(deadline=100, clock_hz=30_000_000, pool=tmp_path / "pool", cap=55,
++                   bootstrap_seconds=10, ceiling_seconds=60)
++    study.reserve_campaigns(tmp_path / "ledger", [row], tmp_path, **options)
++    with pytest.raises(ValueError, match="identity"):
++        study.reserve_campaigns(tmp_path / "ledger", [dict(row, cost_model_warmup=4)], tmp_path, **options)
