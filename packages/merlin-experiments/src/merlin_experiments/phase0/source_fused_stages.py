@@ -205,12 +205,18 @@ def _column_values(values: list[int] | None, rows: int, columns: int) -> list[in
 
 
 def bias_add(op, accumulator) -> dict | None:
-    """``accumulator + bias`` elementwise in i32, where the bias is ONE i32 value per output column.
+    """``accumulator + bias`` elementwise in i32: a per-column bias stage, or a full accumulator seed.
 
-    The fused bias stage adds a per-column bias, so the written bias must be exactly that: an
+    The fused bias stage adds ONE i32 value per output column, so it is observed only for an
     ``[N]`` vector broadcast along M (map ``(d0, d1) -> (d1)``), or an ``[M, N]`` tensor that is
-    provably constant along M (``M == 1``, or a constant whose rows are all equal). A runtime or
-    row-varying ``[M, N]`` bias is a different computation and stays unobserved.
+    provably constant along M (``M == 1``, or a constant whose rows are all equal).
+
+    Any other identity-indexed ``[M, N]`` i32 tensor (a runtime input, or a constant whose rows
+    differ) is NOT that stage. It is returned as an accumulator ``seed`` instead: the reviewed
+    contraction's int32 accumulator seed (one full-width, unscaled i32 load of the whole tensor into
+    the accumulator, which the contraction then adds onto). i32 addition wraps in the source and on
+    the device, so ``(A @ B) + S`` and ``S`` seeded then accumulated are equal for every ``S``.
+    ``bias_bound`` is ``None`` for a runtime seed.
     """
     if len(op.inputs) != 2 or op.inputs[0] is not accumulator or not _fresh_output(op):
         return None
@@ -225,15 +231,18 @@ def bias_add(op, accumulator) -> dict | None:
         return None
     rows, columns = acc[0]
     values = _dense_int(op.inputs[1])
+    seed = False
     if broadcast:
         if bias[0] != [columns]:
             return None
     elif bias[0] != acc[0]:
         return None
     elif rows != 1:
-        values = _column_values(values, rows, columns)
-        if values is None:
-            return None
+        column = _column_values(values, rows, columns)
+        if column is None:
+            seed = True
+        else:
+            values = column
     x, y, _ = op.body.block.args
     body = _body(op)
     if [_name(item) for item in body] != ["arith.addi", "linalg.yield"]:
@@ -243,7 +252,11 @@ def bias_add(op, accumulator) -> dict | None:
         return None
     if yld.operands[0] is not add.results[0]:
         return None
-    return {"bias": {"dtype": "i32", "shape": [columns]}, "bias_bound": max(map(abs, values)) if values else None}
+    bound = max(map(abs, values)) if values else None
+    if seed:
+        source = "runtime_input" if values is None else "constant"
+        return {"seed": {"dtype": "i32", "shape": [rows, columns], "source": source}, "bias_bound": bound}
+    return {"bias": {"dtype": "i32", "shape": [columns]}, "bias_bound": bound}
 
 
 def readout(
@@ -799,14 +812,18 @@ def prove_chains(
     max_k: int | None = None,
     pooling_fenced: bool = False,
     mesh_mac: dict | None = None,
+    full_tensor_seed: bool = False,
 ) -> list[dict]:
-    """Every proven contraction -> [k_extension | bias_add] -> [readout] chain, and every proven
+    """Every proven contraction -> [k_extension | bias_add | seed] -> [readout] chain, and every proven
     movement -> readout -> max pool chain when its scratchpad-source pooling is fenced, by
     top-level source op index.
 
     Under OS a contraction chain needs ``os_value_bound`` for its producer and carries no K
     extension and no bias (either would enter the partial sums the bound covers; neither is
     observed there), and no movement window chain is observed.
+
+    A full-tensor bias (``bias_add``'s ``seed``) is observed only with ``full_tensor_seed``, the
+    selected spec's reviewed ``accumulator_seed_tensor`` declaration; otherwise it ends the chain.
     """
     if dataflow not in _OBSERVED_DATAFLOWS and dataflow != _OUTPUT_STATIONARY:
         return []
@@ -842,9 +859,15 @@ def prove_chains(
             bias = bias_add(user, value)
             if bias is not None and dataflow == _OUTPUT_STATIONARY:
                 continue
+            if bias is not None and "seed" in bias and not full_tensor_seed:
+                bias = None
+                user = None  # an undeclared full-tensor bias ends the chain: no readout through it
             if bias is not None:
                 bound = bound + bias["bias_bound"] if bias["bias_bound"] is not None else None
-                stages.append({"member": index[id(user)], "stages": ["bias_add"], "bias": bias["bias"]})
+                if "seed" in bias:
+                    stages.append({"member": index[id(user)], "stages": [], "seed": bias["seed"]})
+                else:
+                    stages.append({"member": index[id(user)], "stages": ["bias_add"], "bias": bias["bias"]})
                 value = user.results[0]
                 user = only_user(value)
         if user is not None:
@@ -939,6 +962,8 @@ def stage_rows(chain: dict) -> dict[int, list[dict]]:
             "bias": next((s["bias"] for s in stages if "bias" in s), None),
         }
     for stage in stages:
+        if "seed" in stage:
+            continue  # the contraction's own accumulator seed (``observe``), not an epilogue stage
         if "k_extension" in stage:
             rows = _extension_rows(stage["member"], carrier, stage["k_extension"])
             for row in rows:
@@ -1060,7 +1085,13 @@ def observe(
 
     ``max_k`` is the facts' ``k_extension_within.max_k`` and ``pooling_fenced`` the composition's
     ``scratchpad_source_pooling_fenced``; without them no K extension, respectively no movement
-    window chain, is observed."""
+    window chain, is observed.
+
+    A full-tensor seed member (only under the reviewed ``accumulator_seed_tensor`` declaration) is
+    judged as part of its contraction: its entry is a copy of the producer's own admitted contraction
+    entry, renamed ``accumulator_seed`` and naming the seed it carries."""
+    import copy
+
     spec = getattr(evidence, "software_spec", None) or {}
     numerics = (spec.get("numerical_semantics") or {}).get("readout") or {}
     chains = prove_chains(
@@ -1071,6 +1102,7 @@ def observe(
         max_k=max_k,
         pooling_fenced=pooling_fenced,
         mesh_mac=((spec.get("numerical_semantics") or {}).get("native_unit_contract") or {}).get("mesh_mac"),
+        full_tensor_seed=accumulator_seed_tensor(spec),
     )
     by_member: dict[int, list[dict]] = {}
     placed_producers = {
@@ -1080,10 +1112,26 @@ def observe(
         if (entry.get("observed_signature") or {}).get("semantic_family") == "contraction"
         and (entry.get("accelerator_admission") or {}).get("status") == "admitted"
     }
+    producer_entries = {
+        tuple((entry.get("observed_signature") or {}).get("source_op_indices") or []): entry for entry in entries
+    }
     for chain in chains:
         # A movement chain has no producer member: its source is a program input the movement loads.
         if chain["producer"] is not None and chain["producer"] not in placed_producers:
             continue
+        for stage in chain["stages"]:
+            producer = producer_entries.get((chain["producer"],))
+            if "seed" not in stage or producer is None:
+                continue
+            seeded = copy.deepcopy(producer)
+            # Named as the seed load, so no count reads it as a second contraction.
+            seeded["operation"] = "accumulator_seed"
+            seeded["observed_signature"] = {
+                **seeded["observed_signature"],
+                "observation": "source_accumulator_seed",
+                "accumulator_seed": {**stage["seed"], "producer": chain["producer"]},
+            }
+            by_member[stage["member"]] = [seeded]
         for member, rows in stage_rows(chain).items():
             extras = [row.pop("_observation_extra", {}) for row in rows]
             by_member[member] = [_admitted(row, spec, evidence) for row in rows]
@@ -1099,6 +1147,12 @@ def observe(
                 own = [row for row in rows if row["ordinals"] == members]
                 groups.append((set(members), [_admitted(row, spec, evidence) for row in own]))
     return _replace(entries, groups)
+
+
+def accumulator_seed_tensor(spec: dict) -> bool:
+    """Whether the selected spec reviews a whole [M, N] i32 tensor as a contraction's accumulator seed."""
+    declared = (spec.get("numerical_semantics") or {}).get("accumulator_seed_tensor") or {}
+    return declared.get("status") == "reviewed" and "full_tensor" in (declared.get("forms") or ())
 
 
 def _admitted(row: dict, spec: dict, evidence) -> dict:

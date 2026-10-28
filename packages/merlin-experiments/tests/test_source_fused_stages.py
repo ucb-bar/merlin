@@ -86,10 +86,10 @@ def build(*, bias=True, bias_form="column", relu=True, ext="extsi", bias_operand
     return text
 
 
-def prove(tmp_path, numerics=NUMERICS, strategy="f32_product_rne", **kw):
+def prove(tmp_path, numerics=NUMERICS, strategy="f32_product_rne", full_tensor_seed=False, **kw):
     path = tmp_path / "capsule.interface.mlir"
     path.write_text(build(**kw))
-    return prove_chains(path, numerics=numerics, strategy=strategy)
+    return prove_chains(path, numerics=numerics, strategy=strategy, full_tensor_seed=full_tensor_seed)
 
 
 def stage_names(chains):
@@ -203,15 +203,17 @@ def test_output_stationary_or_unknown_dataflow_is_not_observed(tmp_path, dataflo
     ]
 
 
-def two_gain_chain(tmp_path, *, bias=False, relu=True, last="0.10000000149011612", first=GAIN):
+def two_gain_chain(
+    tmp_path, *, bias=False, relu=True, last="0.10000000149011612", first=GAIN, bias_form="column", **kwargs
+):
     """A chain whose readout scales columns 0..14 by ``first`` and column 15 by ``last``."""
-    text = build(bias=bias, relu=relu, gain=first)
+    text = build(bias=bias, bias_form=bias_form, relu=relu, gain=first)
     one = ", ".join([first] * 16)
     two = ", ".join([first] * 15 + [last])
     assert text.count(one) == 1
     path = tmp_path / "two_gain.mlir"
     path.write_text(text.replace(one, two))
-    return prove_chains(path, numerics=NUMERICS, strategy="f32_product_rne")
+    return prove_chains(path, numerics=NUMERICS, strategy="f32_product_rne", **kwargs)
 
 
 def test_rows_state_the_chain_epilogue_in_commit_order(tmp_path):
@@ -262,6 +264,54 @@ def test_two_gains_with_a_column_bias_partition_with_its_bias_lane(tmp_path):
 def test_bias_not_constant_along_rows_leaves_no_chain(tmp_path, form):
     """The fused bias stage adds one value per column; a runtime or row-varying [M, N] bias is not that."""
     assert prove(tmp_path, bias_form=form) == []
+
+
+@pytest.mark.parametrize("form", ["matrix", "rows_distinct"])
+def test_full_tensor_bias_ends_the_chain_unless_the_seed_is_declared(tmp_path, form):
+    assert prove(tmp_path, bias_form=form, full_tensor_seed=False) == []
+
+
+@pytest.mark.parametrize(
+    ("form", "source", "seed_member"), [("matrix", "runtime_input", 5), ("rows_distinct", "constant", 6)]
+)
+def test_declared_full_tensor_bias_is_an_accumulator_seed_not_bias_add(tmp_path, form, source, seed_member):
+    """Under the reviewed ``accumulator_seed_tensor`` the bias is the contraction's own int32 accumulator seed:
+    a ``seed`` member with no epilogue stage, no ``bias_add`` row and no bias lane in the readout's column source.
+    """
+    chains = prove(tmp_path, bias_form=form, full_tensor_seed=True)
+    (chain,) = chains
+    assert chain["producer"] == 3
+    (seed,) = [stage for stage in chain["stages"] if "seed" in stage]
+    assert seed["member"] == seed_member
+    assert seed["seed"] == {"dtype": "i32", "shape": [16, 16], "source": source}
+    assert seed["stages"] == []
+    assert "bias" not in seed
+    # No stage dict anywhere is the per-column bias stage.
+    assert all("bias" not in stage and "bias_add" not in stage["stages"] for stage in chain["stages"])
+    assert "bias_add" not in stage_names(chains)
+    rows = stage_rows(chain)
+    assert seed_member not in rows  # a seed carries no epilogue stage row of its own
+    assert "bias_add" not in [row["operation"] for member_rows in rows.values() for row in member_rows]
+    # The readout is still observed (relu, acc_scale) behind the seed.
+    assert members(chains) == [(seed_member, []), (seed_member + 3, ["relu", "acc_scale"])]
+
+
+@pytest.mark.parametrize("form", ["column", "rows_equal"])
+def test_the_seed_declaration_does_not_change_a_per_column_bias(tmp_path, form):
+    assert prove(tmp_path, bias_form=form, full_tensor_seed=True) == prove(tmp_path, bias_form=form)
+    assert "bias_add" in stage_names(prove(tmp_path, bias_form=form, full_tensor_seed=True))
+
+
+@pytest.mark.parametrize("form", ["matrix", "rows_distinct"])
+def test_seeded_readout_column_source_states_no_bias_lane(tmp_path, form):
+    from merlin.targetgen.output_scale_partition import interface_components
+
+    (chain,) = two_gain_chain(tmp_path, bias=True, bias_form=form, full_tensor_seed=True)
+    (member_rows,) = stage_rows(chain).values()
+    for row in member_rows:
+        source = row["logical_output_column_source"]
+        assert source["bias"] is None
+        assert interface_components(source) is not None
 
 
 @pytest.mark.parametrize("form", ["column", "rows_equal"])

@@ -156,6 +156,8 @@ def validate_numerical_semantics(document: dict) -> dict:
         validate_emission_obligations(mesh["emission_obligations"])
     if "os_value_bound" in mesh:
         _validate_os_value_bound(mesh)
+    if "accumulator_seed_tensor" in document:
+        _validate_accumulator_seed_tensor(document["accumulator_seed_tensor"])
     model = document.get("model")
     if not isinstance(model, dict) or model.get("engine") not in {
         "specir_fp_reduce",
@@ -318,6 +320,26 @@ def load_software_spec(path: str | Path, target: str | None = None) -> dict:
     source = Path(path)
     document = yaml.safe_load(source.read_bytes())
     return validate_software_spec(document, target=target, source=source)
+
+
+def _validate_accumulator_seed_tensor(declared) -> None:
+    """A whole [M, N] i32 tensor as a contraction's accumulator seed: one unscaled full-width load."""
+    if not isinstance(declared, dict) or declared.get("status") not in REVIEW_STATUSES:
+        raise ValueError("accumulator_seed_tensor requires an explicit review status")
+    if (
+        declared.get("forms") != ["full_tensor"]
+        or not set(declared.get("sources") or ()) <= {"constant", "runtime_input"}
+        or not declared.get("sources")
+        or declared.get("seed_load") != "unscaled_full_i32_shrink0_once"
+        or declared.get("accumulation") != "wrapping_i32"
+    ):
+        raise ValueError(
+            "accumulator_seed_tensor must declare forms [full_tensor], its sources, seed_load "
+            "unscaled_full_i32_shrink0_once and accumulation wrapping_i32"
+        )
+    evidence = declared.get("evidence")
+    if not isinstance(evidence, dict) or not str(evidence.get("basis") or "").strip():
+        raise ValueError("accumulator_seed_tensor requires evidence with a basis")
 
 
 def _validate_os_value_bound(mesh: dict) -> None:
