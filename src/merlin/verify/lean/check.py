@@ -46,6 +46,8 @@ from typing import Any
 from merlin.common.paths import out_dir, repo_root
 from merlin.verify.lean.export import MLIR_EXPORT, ExportError, export_file, round_trip_exported
 
+from .receipt_session import remember, reusable
+
 THEOREM = "MerlinVerify.Check.moduleCheck_sound"
 CHECKER = "MerlinVerify.Check.moduleCheck"
 SUPPORT_THEOREM = "MerlinVerify.Check.supportCheck_sound"
@@ -414,7 +416,9 @@ def _finish(destination: Path, receipt: dict[str, Any]) -> dict[str, Any]:
         reasons.append("exporter changed during verification")
     if reasons:
         receipt.update(verdict="unmeasured", reason="; ".join(reasons))
-    return _write(destination, receipt)
+    result = _write(destination, receipt)
+    remember(destination / "receipt.json", receipt)
+    return result
 
 
 CHAIN_THEOREM = "MerlinVerify.Check.chain_refines"
@@ -433,9 +437,19 @@ def _result_identity(result: dict[str, Any], obligation: _Obligation) -> None:
 
 
 def _validate_receipt(
-    receipt: dict[str, Any], *, obligation: _Obligation, function: str, m2m_python: Path, work: Path
+    receipt: dict[str, Any],
+    *,
+    obligation: _Obligation,
+    function: str,
+    m2m_python: Path,
+    work: Path,
+    fresh: bool = False,
 ) -> list[str]:
-    """Re-establish proof premises from the exact recorded exports, never from verdict strings."""
+    """Re-establish proof premises from the exact recorded exports, never from verdict strings.
+
+    ``fresh``: this process produced the receipt with this checker binary moments ago (its digest
+    is unchanged). Every binding below is still checked; only re-running the same deterministic
+    checker and round trip on the same bytes is skipped, since it cannot add evidence (LEDGER T2)."""
     import jsonschema
 
     schema = repo_root() / "merlin/contract/schemas/lean_receipt.schema.json"
@@ -478,12 +492,18 @@ def _validate_receipt(
                 return ["receipt files changed while replaying"]
         if not _exported_from(exported, source):
             return ["export does not name the bound source snapshot"]
+        if fresh:
+            continue
         trip = round_trip_exported(
             source, exported, work / f"rt_{key}", lean_exe=lean_exe(), backend="mlir", m2m_python=m2m_python
         )
         if trip.status != "identical":
             return [f"receipt replay round trip: {trip.status}: {trip.detail}"]
         exports.append(exported)
+    if fresh:
+        if not single and function not in receipt.get("functions", []):
+            return ["module receipt does not cover the requested function"]
+        return _stale(receipt, "fresh receipt")
     args = (
         [obligation.command, str(exports[0]), function, str(receipt["index_bits"])]
         if single
@@ -525,13 +545,16 @@ def _replay(
     obligation: _Obligation,
     function: str,
     m2m_python: Path,
+    fresh: bool = False,
 ) -> list[str]:
     """Bind the replayed claim to the actual pipeline stage, then recheck its exact exports."""
     for key, source in inputs.items():
         current = _file_ref(source)
         if any(current[k] != receipt[key][k] for k in ("sha256", "bytes")):
             return [f"{key} bytes do not match the receipt"]
-    errors = _validate_receipt(receipt, obligation=obligation, function=function, m2m_python=m2m_python, work=root)
+    errors = _validate_receipt(
+        receipt, obligation=obligation, function=function, m2m_python=m2m_python, work=root, fresh=fresh
+    )
     return [f"receipt does not match the replay: {error}" for error in errors]
 
 
@@ -562,7 +585,10 @@ def compose_chain(
     m2m_python: Path | None = None,
     definedness: Path | None = None,
 ) -> dict[str, Any]:
-    """Replay the proof premises before composing; a receipt is an untrusted hint."""
+    """Replay the proof premises before composing; a receipt is an untrusted hint.
+
+    A gate-job receipt session can reuse actual live results; saved receipts are
+    always replayed. Callers cannot supply hashes to assert that a receipt is fresh."""
     pending = {"schema": "merlin.lean.attempt.v1", "verdict": "unmeasured", "reason": "chain replay incomplete"}
     _atomic_json(out, pending)
     try:
@@ -611,7 +637,13 @@ def _compose_chain(
         inputs = {key: stage / f"{key}.mlir" for key in ("before", "after")}
         live_inputs.append((receipt, inputs))
         reasons += _replay(
-            receipt, inputs, work / f"stage_{index}", obligation=obligation, function=function, m2m_python=m2m_python
+            receipt,
+            inputs,
+            work / f"stage_{index}",
+            obligation=obligation,
+            function=function,
+            m2m_python=m2m_python,
+            fresh=reusable(path, digest),
         )
         receipts.append(receipt)
         links.append(
@@ -630,7 +662,13 @@ def _compose_chain(
     witnesses.append((support, support_digest, sup))
     support_inputs = {"subject": stages[0] / "before.mlir"} if stages else {}
     reasons += _replay(
-        sup, support_inputs, work / "support", obligation=_SUPPORT, function=function, m2m_python=m2m_python
+        sup,
+        support_inputs,
+        work / "support",
+        obligation=_SUPPORT,
+        function=function,
+        m2m_python=m2m_python,
+        fresh=reusable(support, support_digest),
     )
     if sup["verdict"] != "verified":
         reasons.append(f"support: {sup['verdict']}: {sup.get('reason', '')}")
@@ -684,6 +722,7 @@ def _compose_chain(
             function=function,
             m2m_python=m2m_python,
             work=work / "definedness",
+            fresh=reusable(definedness, digest),
         )
         if (
             defined_receipt.get("subject", {}).get("sha256") != sup["subject"]["sha256"]
