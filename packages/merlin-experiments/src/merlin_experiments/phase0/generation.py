@@ -652,6 +652,16 @@ def generate_target(
                 preflight_entry(entry, binding=binding)
             except ValueError as exc:
                 preallocation_denials[entry["name"]] = str(exc)
+    if not component_only and evidence is not None:
+        from merlin.targetgen.composition_corpus import synthesize_compositions_enabled
+        from .composition_generation import append_declared, selected_facts
+
+        workload = te.workload_spec or {}
+        if synthesize_compositions_enabled(workload) and evidence.software_spec.get("compositions"):
+            entries = append_declared(
+                entries, evidence.software_spec, selected_facts(evidence, selected_requirement, binding),
+                budget=int(workload.get("max_synthesized_capsules", 160)),
+            )
     if evidence is not None and evidence.software_spec:
         screened = []
         for entry in entries:
@@ -918,6 +928,10 @@ def generate_target(
                             host_capabilities=evidence.host_capabilities,
                         )
                     admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
+                    if e.get("op") == "composition_program":
+                        from .composition_generation import require_placement
+
+                        require_placement(actual, observed)
                     # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation
                     # grades none of the author's work (host placement is Merlin-supplied), so it is removed
                     # and reported, exactly as an unprovable forbid is, never left on disk for a glob.
@@ -1208,6 +1222,9 @@ def generate_target(
             "ledger": "phase2-deferred.json",
             "sha256": hashlib.sha256(deferred_raw).hexdigest(),
         }
+    from .composition_generation import coverage as composition_coverage
+
+    performance_record["composition_coverage"] = composition_coverage(entries)
     update_provenance_manifest(
         written,
         cap_root=out_root,
