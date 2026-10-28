@@ -2,8 +2,9 @@
 
 A chunk is a contiguous window of a capsule's top-level ops re-emitted as a standalone function:
 values the window reads from outside become arguments and values it defines that are read later
-become results. Its ``pruned`` variant returns only the window's last value, so everything that
-does not feed it (real kernel code, quantization included) is dead and must be pruned.
+become results. Its ``pruned`` variant returns only the value in the window's middle third with the
+most producers inside the window, so a real live kernel remains and everything that does not feed
+it (real kernel code, quantization included) is dead and must be pruned.
 
 Windows are chosen by the capsules' own ``prov.family`` tags: for every family a capsule contains,
 the window that starts just before its first op of that family, with overlapping windows merged.
@@ -51,7 +52,7 @@ def _family(op) -> str | None:
     return value.data if isinstance(value, StringAttr) else None
 
 
-def _emit(ops: list, later: list, *, last_only: bool = False) -> str | None:
+def _emit(ops: list, later: list, *, keep: object | None = None) -> str | None:
     """``ops`` as a standalone ``@forward``; None when the window reads a value defined after it."""
     from xdsl.dialects import func
     from xdsl.dialects.builtin import ModuleOp
@@ -78,7 +79,7 @@ def _emit(ops: list, later: list, *, last_only: bool = False) -> str | None:
                         return None
     later_ops = [nested for op in later for nested in op.walk()]
     read_later = {value for op in later_ops for value in op.operands}
-    results = [] if last_only else [r for op in ops for r in op.results if r in read_later]
+    results = [keep] if keep is not None else [r for op in ops for r in op.results if r in read_later]
     if not results:
         results = list(ops[-1].results)
     if not results:
@@ -92,6 +93,21 @@ def _emit(ops: list, later: list, *, last_only: bool = False) -> str | None:
     block.add_op(func.ReturnOp(*[mapping[r] for r in results]))
     function = func.FuncOp("forward", ([v.type for v in external], [r.type for r in results]), Region(block))
     return text(ModuleOp([function]), generic=True)
+
+
+def _deepest(window: list):
+    """The tensor result in the window's middle third with the most producers inside the window."""
+    producers: dict[object, set[int]] = {}
+    for index, op in enumerate(window):
+        seen = {index}
+        for nested in op.walk():
+            for value in nested.operands:
+                seen |= producers.get(value, set())
+        for result in op.results:
+            producers[result] = seen
+    middle = window[len(window) // 3 : 2 * len(window) // 3]
+    candidates = [r for op in middle for r in op.results if "tensor" in str(r.type)]
+    return max(candidates, key=lambda r: len(producers[r]), default=None)
 
 
 @cache
@@ -113,11 +129,13 @@ def chunks(capsule: str) -> tuple[Chunk, ...]:
     selected, covered = [], -1
     for family, index in sorted(first.items(), key=lambda item: item[1]):
         start = max(0, index - LEAD)
-        if start < covered:  # already inside the previous window
+        if index < covered:  # this family's first op is already inside the previous window
             continue
         end = min(len(body), start + WINDOW)
-        emitted = _emit(body[start:end], body[end:] + terminator)
-        pruned = _emit(body[start:end], [], last_only=True)
+        window = body[start:end]
+        emitted = _emit(window, body[end:] + terminator)
+        keep = _deepest(window)
+        pruned = _emit(window, [], keep=keep) if keep is not None else None
         if emitted is not None and pruned is not None:
             selected.append(Chunk(capsule, family, start, emitted, pruned))
             covered = end
