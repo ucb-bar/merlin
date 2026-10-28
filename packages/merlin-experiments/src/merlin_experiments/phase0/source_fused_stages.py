@@ -296,8 +296,18 @@ def readout(op, accumulator, *, numerics: dict, strategy: str | None = None, bou
     }
 
 
-def prove_chains(program: Path, *, numerics: dict, strategy: str | None = None) -> list[dict]:
+#: Dataflows whose fused readout needs nothing beyond the program's own arithmetic. An
+#: output-stationary contraction keeps its partial sums in the mesh, whose bound Phase 0 does not
+#: prove, so its epilogue is not observed (any other or unknown dataflow likewise).
+_OBSERVED_DATAFLOWS = (None, "WS")
+
+
+def prove_chains(
+    program: Path, *, numerics: dict, strategy: str | None = None, dataflow: str | None = None
+) -> list[dict]:
     """Every proven contraction -> [bias_add] -> [readout] chain, by top-level source op index."""
+    if dataflow not in _OBSERVED_DATAFLOWS:
+        return []
     from merlin.common import mlir_query as mq
     from merlin.frontends.capture_normalization import normalize_capture_mlir
 
@@ -340,14 +350,21 @@ def prove_chains(program: Path, *, numerics: dict, strategy: str | None = None) 
     return chains
 
 
-def observe(program: Path, entries: list[dict], *, evidence, readout_strategy: str | None = None) -> list[dict]:
+def observe(
+    program: Path,
+    entries: list[dict],
+    *,
+    evidence,
+    readout_strategy: str | None = None,
+    dataflow: str | None = None,
+) -> list[dict]:
     """``entries`` with each proven fused member's standalone entry replaced by its stage rows' entries."""
     from merlin.targetgen.interface_observations import _stage_rows
     from merlin.targetgen.operation_accounting import admit_operation_row
 
     spec = getattr(evidence, "software_spec", None) or {}
     numerics = (spec.get("numerical_semantics") or {}).get("readout") or {}
-    chains = prove_chains(program, numerics=numerics, strategy=readout_strategy)
+    chains = prove_chains(program, numerics=numerics, strategy=readout_strategy, dataflow=dataflow)
     by_member: dict[int, list[dict]] = {}
     placed_producers = {
         index

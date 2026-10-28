@@ -172,3 +172,16 @@ def test_large_runtime_contraction_under_exact_strategy_is_not_observed(tmp_path
     path.write_text(text)
     assert stage_names(prove_chains(path, numerics=NUMERICS, strategy="exact_rational_host")) == []
     assert stage_names(prove_chains(path, numerics=NUMERICS, strategy="f32_product_rne")) == ["relu", "acc_scale"]
+
+
+@pytest.mark.parametrize("dataflow", ["OS", "unknown_dataflow"])
+def test_output_stationary_or_unknown_dataflow_is_not_observed(tmp_path, dataflow):
+    # The mesh partial-sum bound an output-stationary contraction needs is not proven at Phase 0.
+    path = tmp_path / "capsule.interface.mlir"
+    path.write_text(build())
+    assert prove_chains(path, numerics=NUMERICS, strategy="f32_product_rne", dataflow=dataflow) == []
+    assert stage_names(prove_chains(path, numerics=NUMERICS, strategy="f32_product_rne", dataflow="WS")) == [
+        "bias_add",
+        "relu",
+        "acc_scale",
+    ]

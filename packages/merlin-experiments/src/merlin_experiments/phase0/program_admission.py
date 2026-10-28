@@ -381,9 +381,13 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
             # A chain member proven to be its contraction's epilogue is judged as that fused stage.
             from .source_fused_stages import observe as observe_fused_stages
 
-            scheme = ((capsule.get("operation") or {}).get("attributes") or {}).get("quantization_scheme") or {}
+            attributes = (capsule.get("operation") or {}).get("attributes") or {}
             entries = observe_fused_stages(
-                program, entries, evidence=evidence, readout_strategy=scheme.get("readout_strategy")
+                program,
+                entries,
+                evidence=evidence,
+                readout_strategy=(attributes.get("quantization_scheme") or {}).get("readout_strategy"),
+                dataflow=(attributes.get("case") or {}).get("dataflow"),
             )
         numeric_screens = []
     else:
