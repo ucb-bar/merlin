@@ -366,11 +366,16 @@ def run_audit() -> bool:
     for group in groups:
         if not group:
             continue
+        selection = ["--defined-in", group[0]] if len(group) == 1 and group[0] in drivers else []
         audit = subprocess.run(
-            ["lake", "exe", "merlin-lean-audit", *group], cwd=LEAN, env=env, capture_output=True, text=True
+            ["lake", "exe", "merlin-lean-audit", *selection, *group], cwd=LEAN, env=env, capture_output=True, text=True
         )
         report = audit_report(audit, "theorem audit")
         if report is None or not isinstance(report.get("violations"), list):
+            ok = False
+            continue
+        if selection and report.get("defined_in") != [group[0]]:
+            print(f"[FAIL] audit did not confirm the requested declaration module: {group[0]}")
             ok = False
             continue
         for violation in report["violations"]:

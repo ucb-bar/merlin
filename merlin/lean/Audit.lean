@@ -76,13 +76,18 @@ def jsonStrList (xs : List String) : String := (jsonStrListJson xs).compress
 
 def main (args : List String) : IO UInt32 := do
   initSearchPath (← findSysroot)
-  let (axiomTarget, statementTargets, mods) := match args with
-    | "--axioms" :: d :: ms => (some d, [], ms)
-    | "--statements" :: ds :: ms => (none, ds.splitOn ",", ms)
-    | ms => (none, [], ms)
+  let (axiomTarget, statementTargets, declaredIn, mods) := match args with
+    | "--axioms" :: d :: ms => (some d, [], none, ms)
+    | "--statements" :: ds :: ms => (none, ds.splitOn ",", none, ms)
+    | "--defined-in" :: m :: ms => (none, [], some m, ms)
+    | ms => (none, [], none, ms)
   if mods.isEmpty then
-    IO.eprintln "usage: merlin-lean-audit [--axioms <decl> | --statements <decl>,...] <module>..."
+    IO.eprintln "usage: merlin-lean-audit [--axioms <decl> | --statements <decl>,... | --defined-in <module>] <module>..."
     return 2
+  if let some m := declaredIn then
+    if !mods.contains m then
+      IO.eprintln "--defined-in must name an explicitly imported module"
+      return 2
   let env ← importModules (mods.toArray.map fun m => { module := m.toName }) {} (loadExts := false)
   if let some d := axiomTarget then
     let axs ← axiomsOf env d.toName
@@ -102,6 +107,8 @@ def main (args : List String) : IO UInt32 := do
   let mut theorems := 0
   for (n, ci) in env.constants.toList do
     if !inProject env n then continue
+    if let some m := declaredIn then
+      if definingModule? env n != some m.toName then continue
     -- Compiler-generated recursive twins may be unsafe/partial, but their names must not exempt user
     -- implementation overrides or extern attributes from the audit.
     if ci.isUnsafe && !isCompilerAux env n then violations := violations.push s!"unsafe: {n}"
@@ -120,5 +127,7 @@ def main (args : List String) : IO UInt32 := do
         if !(allowedAxioms.contains a || reviewedAssumption env a) then
           violations := violations.push s!"theorem {n} depends on axiom {a}"
     | _ => pure ()
-  IO.println s!"\{\"theorems_audited\": {theorems}, \"violations\": {jsonStrList (violations.toList.map toString)}}"
+  IO.println (Json.mkObj [("theorems_audited", toJson theorems),
+    ("defined_in", jsonStrListJson declaredIn.toList),
+    ("violations", jsonStrListJson (violations.toList.map toString))]).compress
   return (if violations.isEmpty then 0 else 1)

@@ -27,12 +27,16 @@ def test_conflicting_driver_entrypoints_are_all_audited(guard, monkeypatch):
     imported = []
 
     def auditor(argv, **kwargs):
-        modules = argv[3:]
+        arguments = argv[3:]
+        selected = arguments[1:2] if arguments[:1] == ["--defined-in"] else []
+        modules = arguments[2:] if selected else arguments
         imported.extend(modules)
         drivers = [name for name in modules if name.startswith("MerlinVerify.Driver.")]
         if len(drivers) > 1:
             return subprocess.CompletedProcess(argv, 1, "", "environment already contains 'main'")
-        return subprocess.CompletedProcess(argv, 0, json.dumps({"theorems_audited": 1, "violations": []}), "")
+        return subprocess.CompletedProcess(
+            argv, 0, json.dumps({"theorems_audited": 1, "defined_in": selected, "violations": []}), ""
+        )
 
     monkeypatch.setattr(guard.subprocess, "run", auditor)
     assert guard.run_audit()
@@ -58,8 +62,12 @@ def test_missing_audit_reports_fail_without_masking_diagnostics(guard, monkeypat
 def test_a_violation_in_one_standalone_driver_fails_the_audit(guard, monkeypatch):
     def auditor(argv, **kwargs):
         violations = ["unapproved axiom"] if "MerlinVerify.Driver.Qinner" in argv else []
+        selected = argv[4:5] if argv[3:4] == ["--defined-in"] else []
         return subprocess.CompletedProcess(
-            argv, bool(violations), json.dumps({"theorems_audited": 1, "violations": violations}), ""
+            argv,
+            bool(violations),
+            json.dumps({"theorems_audited": 1, "defined_in": selected, "violations": violations}),
+            "",
         )
 
     monkeypatch.setattr(guard.subprocess, "run", auditor)
