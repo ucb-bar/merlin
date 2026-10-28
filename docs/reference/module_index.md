@@ -79,6 +79,7 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.triton` | Triton as a target-independent KERNEL FRONTEND to Merlin (not a per-target backend). |
 | `merlin.validation` | Structural/artifact validation for generated target repos + contract plans. |
 | `merlin.verify` | Compiler-pass verification: the static (lit/FileCheck) and formal (SMT) layers. |
+| `merlin.verify.lean` | Python side of the Lean verification layer: stage capture, certificates, export and receipts. |
 | `merlin.xdsl_dialects` | merlin's core dialects in xDSL (the default prototyping plane). |
 | `merlin.xdsl_dialects.lowering` | Staged lowering across the core dialects. |
 | `merlin.xdsl_dialects.targets` | Generic xDSL target-dialect construction. Target plans and implementations live in examples/OOT. |
