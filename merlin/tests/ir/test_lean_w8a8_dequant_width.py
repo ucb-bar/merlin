@@ -171,7 +171,7 @@ def test_candidate_against_pytorch_and_native_mlir(tmp_path, lean_tools, fidelit
     assert native["results"] == expected
 
 
-def test_actual_i64_channel_lowering_still_has_integer_promotion_discrepancy(tmp_path, lean_tools, fidelity_tools):
+def test_actual_i64_channel_lowering_matches_integer_promotion(tmp_path, lean_tools, fidelity_tools):
     cases, arguments = samples(64, "per_channel", (2, 8), 1)
     # A finite, in-range witness does not depend on overflow or exceptional floats.
     case, sample = cases[1], arguments[1]
@@ -188,9 +188,9 @@ def test_actual_i64_channel_lowering_still_has_integer_promotion_discrepancy(tmp
     native = diff.execute_mlir(
         tmp_path / "actual.mlir", [sample], tmp_path, fidelity_tools, inputs=inputs, outputs=outputs, function="forward"
     )
-    assert native["results"] != expected
+    assert native["results"] == expected
     assert native["results"][0] == [
-        str(int(x)) for x in np.full((2, 8), -16777215, dtype=np.float32).view(np.uint32).flat
+        str(int(x)) for x in np.full((2, 8), -16777216, dtype=np.float32).view(np.uint32).flat
     ]
 
 

@@ -61,6 +61,40 @@ _PRINT_GENERIC_SRC = (
 GENERIC_SUFFIX = ".generic.mlir"
 
 
+def to_generic_text(source: str, timeout: int = 120) -> str:
+    """Materialize named-operation regions with the compiling MLIR parser.
+
+    A partial parser can accept custom syntax yet construct a different default body.
+    Reprinting first preserves the authoritative body's operand order without running
+    an optimization pass. Stdin/stdout avoid intermediate files for text callers.
+    """
+    from .toolchain import compiler_python
+
+    script = (
+        "import sys\n"
+        "from torch_mlir import ir\n"
+        "with ir.Context() as ctx:\n"
+        "    ctx.allow_unregistered_dialects = True\n"
+        "    mod = ir.Module.parse(sys.stdin.read())\n"
+        "    mod.operation.verify()\n"
+        "    print(mod.operation.get_asm(print_generic_op_form=True, large_elements_limit=None))\n"
+    )
+    try:
+        result = subprocess.run(
+            [str(compiler_python()), "-c", script],
+            input=source,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise GenericFormError(f"cannot materialize authoritative MLIR regions: {error}") from error
+    if result.returncode != 0 or not result.stdout.strip():
+        raise GenericFormError(f"cannot materialize authoritative MLIR regions: {result.stderr[-2000:]}")
+    return result.stdout
+
+
 def to_generic_form(mlir_path: "str | Path", work: "str | Path | None" = None, timeout: int = 3600) -> Path:
     """Re-print ``mlir_path`` in generic form; return the path of the re-printed file.
 
