@@ -7,6 +7,7 @@ last_verified: 2026-10-28
 related: [verification, compiler_verification]
 code_refs:
   - src/merlin/verify/pass_validation.py
+  - src/merlin/verify/bf16_policy_gate.py
   - src/merlin/verify/gate_checks.py
   - src/merlin/verify/speculative_gate.py
   - src/merlin/verify/lean/check.py
@@ -137,6 +138,23 @@ Reproduce with `build_tools/scripts/verify_lean_pass_models.py`, passing each
 plus `--sdk-bin` and `--compiler-python`. The script retains all exact before/after
 exports and receipts in a new verification product, requires a live source quantizer
 boundary and a recorded CSE check, and compares gated/ungated LLVM bytes.
+
+## bf16/f16 f32 accumulation policy gate
+
+`lower_bf16_matmul_f32acc` is registered separately as `bf16_f32acc_policy` at
+its actual preparation boundary. It requires complete-output reference matching,
+strict qualification and coverage of every actual contraction, and an independently
+attributable installed policy review bound to the current specification and proofs.
+The candidate policy is currently unapproved: selecting this gate refuses before
+checking tools. A provisional receipt or matching pins cannot grant approval.
+
+`all` includes this policy gate and therefore also refuses while its review is
+pending. To retain the previously available CSE/Q-DQ/pruning gate selection, use
+`--validate-passes cse,prune_dead_pure_tensor_ops,lower_quant_ext,preprocess_text_textual`.
+Ungated compilation is unchanged. The scope is zero-initialized same-format bf16/f16
+two-input contractions with f32 accumulation; nonzero initialization, arbitrary mixed
+fusion and bit-exact backend correspondence are outside the claim. Numerical policy
+approval and whole-model definedness are separate from checker acceptance.
 
 ## Set it up once
 

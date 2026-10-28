@@ -1,3 +1,5 @@
+> **CURRENT2026-10-28 USER RESUME: bf16/f16 f32 accumulation only.** Three original workers are resumed on `feat/bf16-f32acc-verification` in `/home/jeremy/Projects/merlin-bf16-verification`. Read [current task/ownership](out/artifacts/verification/merlin-passes/bf16-integration-20261028/README.md) and your role TASK.md. The main checkout and other workers remain untouched. This supersedes the historical stop below for this bounded assignment only; old runtime holds and human-review requirements remain.
+
 # Merlin verification: START HERE
 
 **2026-10-26: user requested STOP at 5% weekly allowance.** All five workers

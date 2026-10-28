@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -114,11 +115,22 @@ def matched(result: dict[str, Any]) -> bool:
 
 
 def check_stage(
-    stage: Path, destination: Path, *, m2m_python: Path, index_bits: int = 64, timeout_seconds: int = 1800
+    stage: Path,
+    destination: Path,
+    *,
+    m2m_python: Path,
+    index_bits: int = 64,
+    timeout_seconds: int = 1800,
+    theorem_auditor: Callable[[str, str], list[str]] = theorem_axioms,
 ) -> dict[str, Any]:
     """Check one recorded boundary directory and publish ``destination/receipt.json``."""
     return check_stages(
-        [stage], destination, m2m_python=m2m_python, index_bits=index_bits, timeout_seconds=timeout_seconds
+        [stage],
+        destination,
+        m2m_python=m2m_python,
+        index_bits=index_bits,
+        timeout_seconds=timeout_seconds,
+        theorem_auditor=theorem_auditor,
     )
 
 
@@ -130,6 +142,7 @@ def check_stages(
     index_bits: int = 64,
     handoff: Path | None = None,
     timeout_seconds: int = 1800,
+    theorem_auditor: Callable[[str, str], list[str]] = theorem_axioms,
 ) -> dict[str, Any]:
     """Check the bf16 boundary followed by its recorded downstream stages, joined byte for byte."""
     return _attempt(
@@ -141,6 +154,7 @@ def check_stages(
             index_bits=index_bits,
             handoff=handoff,
             timeout_seconds=timeout_seconds,
+            theorem_auditor=theorem_auditor,
         ),
     )
 
@@ -153,6 +167,7 @@ def _check_stages(
     index_bits: int,
     handoff: Path | None,
     timeout_seconds: int,
+    theorem_auditor: Callable[[str, str], list[str]] = theorem_axioms,
 ) -> dict[str, Any]:
     from merlin.verify.lean.check import _export_checked
 
@@ -203,7 +218,7 @@ def _check_stages(
         "domain": SEGMENT_DOMAIN.format(index_bits) if chain else BOUNDARY_DOMAIN,
         "exporter": _exporter_block(m2m_python),
         "lean": _lean_block(),
-        "axioms": theorem_axioms(theorem, module),
+        "axioms": theorem_auditor(theorem, module),
         "verdict": "unmeasured",
         "assumptions": list(ASSUMPTIONS),
     }
@@ -225,9 +240,9 @@ def _check_stages(
                 "boundary_links": links,
                 "program_exports": program_exports,
                 "handoff": handoff_binding,
-                "qualification_axioms": theorem_axioms(qualify, module),
+                "qualification_axioms": theorem_auditor(qualify, module),
                 "contract_theorem_axioms": {
-                    name: theorem_axioms(name, owner) for name, owner in CONTRACT_THEOREMS.items()
+                    name: theorem_auditor(name, owner) for name, owner in CONTRACT_THEOREMS.items()
                 },
                 "checker_timeout_seconds": timeout_seconds,
             },
@@ -270,7 +285,14 @@ def _summary(result: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
-def replay(receipt_path: Path, *, m2m_python: Path, work: Path, timeout_seconds: int = 1800) -> dict[str, Any]:
+def replay(
+    receipt_path: Path,
+    *,
+    m2m_python: Path,
+    work: Path,
+    timeout_seconds: int = 1800,
+    theorem_auditor: Callable[[str, str], list[str]] = theorem_axioms,
+) -> dict[str, Any]:
     """Recheck a receipt's exact exports with the current checker; never trust its verdict string."""
     import jsonschema
 
@@ -288,7 +310,7 @@ def replay(receipt_path: Path, *, m2m_python: Path, work: Path, timeout_seconds:
     stale = _stale(receipt, "receipt")
     if receipt["exporter"] != {**_exporter_block(m2m_python), "round_trip": "identical"}:
         stale.append("receipt: exporter identity or round trip differs from the current exporter")
-    if receipt["axioms"] != theorem_axioms(theorem, module):
+    if receipt["axioms"] != theorem_auditor(theorem, module):
         stale.append("receipt: axioms differ from the current audited theorem")
     links = recorded["boundary_links"]
     sources = [links[0]["before"], *(link["after"] for link in links)]

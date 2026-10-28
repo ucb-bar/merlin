@@ -35,6 +35,8 @@ CHECKS = {
     "preprocess_text_textual": "tensor_refinement",
     # The pipeline's leading tensor-level cse, run by merlin.llvmlower.leading_cse.
     "cse": "tensor_refinement",
+    # Numerics-changing policy; never route this boundary through tensor_refinement.
+    "lower_bf16_matmul_f32acc": "bf16_f32acc_policy",
 }
 ENV_PASSES = "MERLIN_VALIDATE_PASSES"
 ENV_SDK_BIN = "MERLIN_LEAN_SDK_BIN"
@@ -108,9 +110,19 @@ class PassValidation:
             # merlin/lean/LEDGER.md S6: at index32 the Lean model and the pinned native pipeline
             # disagree on a retained overflow example; a refinement claim there is not established.
             raise ValueError("pass validation supports the 64-bit index width only (LEDGER S6)")
+        _policy_handler(self)
 
 
 _ACTIVE: ContextVar[PassValidation | None] = ContextVar("merlin_pass_validation", default=None)
+
+
+def _policy_handler(validation: PassValidation) -> None:
+    """A selected numerical policy may not be aliased to an ordinary refinement check."""
+    if "lower_bf16_matmul_f32acc" not in validation.passes:
+        return
+    name = CHECKS["lower_bf16_matmul_f32acc"]
+    if validation.gate._aliases.get(name, name) != name or validation.gate._worker_path:
+        raise ValueError("bf16 policy validation requires the canonical handler and worker import path")
 
 
 def from_environment(workdir: Path, *, index_bits: int | None = None) -> PassValidation | None:
@@ -122,6 +134,13 @@ def from_environment(workdir: Path, *, index_bits: int | None = None) -> PassVal
     sdk_bin = os.environ.get(ENV_SDK_BIN)
     if not sdk_bin:
         raise ValueError(f"{ENV_PASSES} is set but {ENV_SDK_BIN} does not select a Lean SDK")
+    if "lower_bf16_matmul_f32acc" in passes:
+        # Pending numerical policy must refuse before CheckerTools touches an SDK.
+        from merlin.common.paths import repo_root
+
+        from .bf16_policy_gate import require_admission
+
+        require_admission(repo_root())
     from merlin.llvmlower.toolchain import compiler_python
 
     from .speculative_gate import SpeculativeGate
@@ -218,6 +237,7 @@ def submit(pass_name: str, before: str, after: str, *, label: str | None = None)
     validation = _ACTIVE.get()
     if validation is None or pass_name not in validation.passes or before == after:
         return False
+    _policy_handler(validation)
     validation.gate.submit(
         CHECKS[pass_name],
         before=before,

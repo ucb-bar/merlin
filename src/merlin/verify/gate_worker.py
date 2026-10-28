@@ -15,7 +15,7 @@ import sys
 import traceback
 from pathlib import Path
 
-BUILTIN_CHECKS = ("tensor_refinement",)
+BUILTIN_CHECKS = ("tensor_refinement", "bf16_f32acc_policy")
 
 
 def resolve(name: str):
@@ -53,6 +53,17 @@ def main(argv: list[str]) -> int:
     request = json.loads((directory / "request.json").read_text())
     try:
         detail = resolve(request["check"])(request) or {}
+        if request["check"] == "bf16_f32acc_policy":
+            # This draft check historically returns abstracted reports. Never
+            # interpret a normally returning report as policy admission.
+            from .gate_errors import GateRejected
+
+            if (
+                not isinstance(detail, dict)
+                or detail.get("schema") != "merlin.bf16.policy.gate.v1"
+                or detail.get("status") != "admitted"
+            ):
+                raise GateRejected("bf16 handler did not return admitted policy evidence")
         verdict = {"verdict": "accepted", "reason": "", "detail": detail}
     except BaseException as error:  # noqa: BLE001 -- every outcome must be recorded as a verdict
         verdict = {
