@@ -11,6 +11,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from merlin.model_check import report as R
+from merlin.model_check.bundle import BundleError
 from merlin.model_check.models import ModelsFileError
 from merlin.model_check.models import load as load_models
 
@@ -242,9 +243,10 @@ def main(argv: Sequence[str] | None = None, *, full_build_provider=None) -> int:
     except ModelsFileError as error:
         report["failures"].append({"kind": "usage", "gate": None, "detail": str(error)})
     except Exception as error:  # noqa: BLE001 -- every failure must still produce a report
-        report["failures"].append(
-            {"kind": "infrastructure", "gate": None, "detail": f"{type(error).__name__}: {error}"}
-        )
+        # The agent view never carries a host-only bundle location: a bundle error is reported by its
+        # path-free public text (the operator's own report keeps the full message).
+        shown = error.public if getattr(args, "agent_view", False) and isinstance(error, BundleError) else error
+        report["failures"].append({"kind": "infrastructure", "gate": None, "detail": f"{type(error).__name__}: {shown}"})
     report["timing"]["total_seconds"] = round(time.monotonic() - started, 3)
     R.settle(report)
     if getattr(args, "agent_view", False):

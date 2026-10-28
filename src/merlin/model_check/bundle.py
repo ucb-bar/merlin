@@ -26,7 +26,16 @@ MANIFEST_SCHEMA = "merlin.model_check.bundle.v1"
 
 
 class BundleError(RuntimeError):
-    """The bundle is missing, incomplete, or was built from different inputs."""
+    """The bundle is missing, incomplete, or was built from different inputs.
+
+    ``public`` is the same message without any host-only bundle location; the agent view reports that text,
+    so a missing bundle surfaces as a typed, path-free error instead of tripping the broker's sealed/private
+    content check. ``str(error)`` keeps the full message for the operator.
+    """
+
+    def __init__(self, message: str, *, public: str | None = None) -> None:
+        super().__init__(message)
+        self.public = public if public is not None else message
 
 
 def stage_dir(captures: Path, model: Model, program: str) -> Path:
@@ -47,10 +56,10 @@ class Bundle:
     def manifest(self) -> dict[str, Any]:
         path = self.root / "MANIFEST.json"
         if not path.is_file():
-            raise BundleError(f"no bundle manifest at {path}")
+            raise BundleError(f"no bundle manifest at {path}", public="no bundle manifest at the selected numerics bundle")
         doc = json.loads(path.read_text())
         if doc.get("schema") != MANIFEST_SCHEMA:
-            raise BundleError(f"{path}: not a {MANIFEST_SCHEMA} manifest")
+            raise BundleError(f"{path}: not a {MANIFEST_SCHEMA} manifest", public=f"the selected numerics bundle manifest is not a {MANIFEST_SCHEMA} manifest")
         return doc
 
     def blobs(self, model: str) -> CAT.BlobStore:
