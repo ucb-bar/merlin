@@ -433,6 +433,300 @@ def operand_sum_chain(op, users, *, numerics: dict, strategy: str | None) -> dic
     }
 
 
+#: Largest i8 digit of a K-extension coefficient: ``c * R == sum(d_i * R)`` with ``0 < d_i <= 127``,
+#: so every scaled-identity entry is an ordinary signed int8 weight.
+_DIGIT_MAX = 127
+
+
+def extension_digits(coefficient: int) -> list[int]:
+    """Additive int8 digits of a positive integer coefficient: as many 127s as fit, then the rest."""
+    count = -(-coefficient // _DIGIT_MAX)
+    return [_DIGIT_MAX] * (count - 1) + [coefficient - _DIGIT_MAX * (count - 1)]
+
+
+def k_extension(op, accumulator, *, max_k: int | None, contraction_k: int) -> dict | None:
+    """``acc + c * extsi(R)`` in i32: ``R`` an int8 tensor of the accumulator's shape, ``c`` a positive
+    integer CONSTANT (an ``arith.constant`` of i32 -- a float path is no integer coefficient).
+
+    That is exactly the contraction ``[A | R ... R] @ [W ; d_1 I ; ... ; d_n I]`` over the extended
+    reduction ``K + n * N`` with int8 digits ``d_i`` (``extension_digits``), provided the extended
+    reduction fits the facts' ``k_extension_within.max_k``; otherwise there is no observation.
+    """
+    if max_k is None:
+        return None
+    if not _generic(op, (_IDENTITY2,) * 3, (_PARALLEL, _PARALLEL)) or len(op.inputs) != 2:
+        return None
+    if op.inputs[0] is not accumulator or not _fresh_output(op):
+        return None
+    acc, residual, result = _tensor(op.inputs[0]), _tensor(op.inputs[1]), _tensor(op.results[0])
+    if None in (acc, residual, result) or acc[1] != "i32" or residual[1] != "i8" or result[1] != "i32":
+        return None
+    if not (acc[0] == residual[0] == result[0]) or len(acc[0]) != 2:
+        return None
+    x, r, _ = op.body.block.args
+    body = _body(op)
+    names = [_name(item) for item in body]
+    if names == ["arith.extsi", "arith.constant", "arith.muli", "arith.addi", "linalg.yield"]:
+        widen, constant, mul, add, yld = body
+    elif names == ["arith.constant", "arith.extsi", "arith.muli", "arith.addi", "linalg.yield"]:
+        constant, widen, mul, add, yld = body
+    else:
+        return None
+    if widen.operands[0] is not r or str(widen.results[0].type) != "i32":
+        return None
+    value = constant.properties.get("value") or constant.attributes.get("value")
+    if str(getattr(value, "type", "")) != "i32" or not isinstance(getattr(getattr(value, "value", None), "data", None), int):
+        return None
+    coefficient = int(value.value.data)
+    if coefficient < 1:
+        return None
+    if set(map(id, mul.operands)) != {id(widen.results[0]), id(constant.results[0])}:
+        return None
+    if set(map(id, add.operands)) != {id(x), id(mul.results[0])} or add.operands[0] is add.operands[1]:
+        return None
+    if yld.operands[0] is not add.results[0]:
+        return None
+    digits = extension_digits(coefficient)
+    extended_k = contraction_k + len(digits) * acc[0][1]
+    if extended_k > max_k:
+        return None
+    return {
+        "coefficient": coefficient,
+        "digits": digits,
+        "extended_k": extended_k,
+        "residual": {"dtype": "i8", "shape": residual[0]},
+        "bound": coefficient * 128,
+    }
+
+
+#: Store-path pooling register fields (facts ``pool_window_within_register_fields``: 2-bit size and
+#: stride, so 1..3) and the pooled grid fields (8 bits).
+_POOL_FIELD_MAX = 3
+_POOL_GRID_MAX = 255
+# Channels are not bounded here: pooling and a tensor-wide readout act per column, so a lowering
+# splits them into pooled mvouts of at most one block (pooling_on_readout's columns obligation).
+
+
+def _ints(attr) -> list[int] | None:
+    try:
+        return [int(v) for v in attr.get_values()]
+    except Exception:  # noqa: BLE001 - an unreadable attribute is no proof
+        return None
+
+
+def _reassociation(attr) -> list[list[int]] | None:
+    try:
+        return [[int(item.value.data) for item in group.data] for group in attr.data]
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _spatial_source(value, only_user):
+    """``value``'s producer viewed as a ``[rows * cols, C]`` pooling grid: the readout result itself
+    (unpadded; the grid width is then unknown) or ``collapse(pad(expand(readout)))`` with a constant
+    zero-valued static pad of the two spatial axes. Returns (readout_value, rows, cols, low, high)."""
+    owner = _defining_op(value)
+    if owner is None:
+        return None
+    if _name(owner) != "tensor.collapse_shape":
+        return value, None, None, (0, 0), (0, 0)
+    pad = _defining_op(owner.operands[0])
+    if pad is None or _name(pad) != "tensor.pad" or only_user(pad.results[0]) is not owner:
+        return None
+    expand = _defining_op(pad.operands[0])
+    if expand is None or _name(expand) != "tensor.expand_shape" or only_user(expand.results[0]) is not pad:
+        return None
+    if _reassociation(owner.properties.get("reassociation")) != [[0, 1], [2]]:
+        return None
+    if _reassociation(expand.properties.get("reassociation")) != [[0, 1], [2]]:
+        return None
+    if len(pad.operands) != 1 or len(pad.regions) != 1:
+        return None
+    low, high = _ints(pad.properties.get("static_low")), _ints(pad.properties.get("static_high"))
+    if low is None or high is None or len(low) != 3 or len(high) != 3 or low[2] or high[2] or min(low + high) < 0:
+        return None
+    region = list(pad.regions[0].block.ops)
+    if [_name(item) for item in region] != ["arith.constant", "tensor.yield"]:
+        return None
+    pad_value = region[0].properties.get("value") or region[0].attributes.get("value") or getattr(region[0], "value", None)
+    if str(getattr(pad_value, "type", "")) != "i8" or getattr(getattr(pad_value, "value", None), "data", None) != 0:
+        return None
+    if region[1].operands[0] is not region[0].results[0]:
+        return None
+    grid = _tensor(expand.results[0])
+    if grid is None or len(grid[0]) != 3:
+        return None
+    return expand.operands[0], grid[0][0], grid[0][1], (low[0], low[1]), (high[0], high[1])
+
+
+def _divisors(n: int) -> list[int]:
+    return [d for d in range(1, n + 1) if n % d == 0]
+
+
+def max_pool(op, *, only_user, producer_nonnegative: bool) -> dict | None:
+    """A store-path max pool of a readout: ``out[p, c] = max(-128, max over the window of grid[...])``.
+
+    The access map is checked EXHAUSTIVELY against the pooled-store addressing for one (size,
+    stride, grid, pad) assignment with size and stride in 1..3; a window may read the low (upper or
+    left) zero pad only when the producer is non-negative (a ReLU readout), never the high pad, and
+    every window keeps at least one valid tap."""
+    if _name(op) != "linalg.generic" or len(op.inputs) != 2 or len(op.results) != 1 or len(op.outputs) != 1:
+        return None
+    if tuple(str(i) for i in op.iterator_types) != (_PARALLEL, _PARALLEL, _REDUCTION):
+        return None
+    source = _spatial_source(op.inputs[0], only_user)
+    if source is None:
+        return None
+    readout_value, rows, cols, low, high = source
+    grid_t, window_t, result_t = _tensor(op.inputs[0]), _tensor(op.inputs[1]), _tensor(op.results[0])
+    if None in (grid_t, window_t, result_t) or grid_t[1] != "i8" or result_t[1] != "i8" or len(window_t[0]) != 1:
+        return None
+    if len(grid_t[0]) != 2 or len(result_t[0]) != 2 or grid_t[0][1] != result_t[0][1]:
+        return None
+    if _dense_int(op.inputs[1]) is None:
+        return None
+    init = _defining_op(op.outputs[0])
+    if init is None or _name(init) != "linalg.fill" or not init.inputs:
+        return None
+    floor = _defining_op(init.inputs[0])
+    floor_value = None if floor is None else (floor.properties.get("value") or floor.attributes.get("value"))
+    if floor is None or _name(floor) != "arith.constant" or str(getattr(floor_value, "type", "")) != "i8":
+        return None
+    if getattr(getattr(floor_value, "value", None), "data", None) != -128:
+        return None
+    empty = _defining_op(init.outputs[0])
+    if empty is None or _name(empty) != "tensor.empty":
+        return None
+    x, w, acc = op.body.block.args
+    body = _body(op)
+    if [_name(item) for item in body] != ["arith.maxsi", "linalg.yield"] or list(w.uses):
+        return None
+    if set(map(id, body[0].operands)) != {id(x), id(acc)} or body[1].operands[0] is not body[0].results[0]:
+        return None
+    try:
+        maps = [m.data for m in op.indexing_maps.data]
+    except Exception:  # noqa: BLE001
+        return None
+    outputs, channels = result_t[0]
+    taps = window_t[0][0]
+    window = math.isqrt(taps)
+    if window * window != taps or not 1 <= window <= _POOL_FIELD_MAX:
+        return None
+    points = [(p, c, t) for p in range(outputs) for c in range(channels) for t in range(taps)]
+    try:
+        if any(tuple(maps[1].eval([p, c, t], [])) != (t,) for p, c, t in points):
+            return None
+        if any(tuple(maps[2].eval([p, c, t], [])) != (p, c) for p, c, t in points):
+            return None
+        reads = {(p, c, t): tuple(maps[0].eval([p, c, t], [])) for p, c, t in points}
+    except Exception:  # noqa: BLE001
+        return None
+    flat = grid_t[0][0]
+    if rows is None:  # unpadded: the readout's [rows * cols, C] grid, width unknown
+        grids = [(flat // width, width) for width in _divisors(flat)]
+    else:
+        grids = [(rows + low[0] + high[0], cols + low[1] + high[1])]
+        if grids[0][0] * grids[0][1] != flat:
+            return None
+    found = []
+    for grid_rows, grid_cols in grids:
+        for stride in range(1, _POOL_FIELD_MAX + 1):
+            for pooled_cols in _divisors(outputs):
+                ok = all(
+                    reads[(p, c, t)]
+                    == (
+                        ((p // pooled_cols) * stride + t // window) * grid_cols + (p % pooled_cols) * stride + t % window,
+                        c,
+                    )
+                    for p, c, t in points
+                )
+                if ok:
+                    found.append((grid_rows, grid_cols, stride, pooled_cols))
+    if len(found) != 1:
+        return None
+    grid_rows, grid_cols, stride, pooled_cols = found[0]
+    orows, ocols = grid_rows - low[0] - high[0], grid_cols - low[1] - high[1]
+    pooled_rows = outputs // pooled_cols
+    padded = False
+    for p in range(outputs):
+        valid = 0
+        for t in range(taps):
+            r = (p // pooled_cols) * stride + t // window - low[0]
+            col = (p % pooled_cols) * stride + t % window - low[1]
+            if r >= orows or col >= ocols:
+                return None  # a high-pad tap: not the pooled-store addressing
+            if r < 0 or col < 0:
+                padded = True
+            else:
+                valid += 1
+        if valid == 0:
+            return None
+    if padded and not producer_nonnegative:
+        return None
+    if max(orows, ocols, pooled_rows, pooled_cols) > _POOL_GRID_MAX or max(low) > _POOL_FIELD_MAX:
+        return None
+    return {
+        "readout": readout_value,
+        "result": {"dtype": "i8", "shape": [outputs, channels]},
+        "pooled_store": {
+            "pool_size": window,
+            "pool_stride": stride,
+            "orows": orows,
+            "ocols": ocols,
+            "porows": pooled_rows,
+            "pocols": pooled_cols,
+            "upad": low[0],
+            "lpad": low[1],
+            "padded": padded,
+            "padding_value": 0 if padded else None,
+        },
+    }
+
+
+def prove_window_chains(top, index, only_user, *, numerics: dict, strategy: str | None) -> list[dict]:
+    """Every proven movement -> readout -> max pool chain: an int8 FUNCTION ARGUMENT (a tensor the
+    movement loads into the accumulator) read out by the selected readout, then max pooled.
+
+    Only under the ``f32_product_rne`` strategy (the reviewed evidence covers that readout only)."""
+    if strategy != "f32_product_rne":
+        return []
+    chains = []
+    for i, op in enumerate(top):
+        if _name(op) != "linalg.generic" or not op.inputs:
+            continue
+        source = op.inputs[0]
+        if _defining_op(source) is not None or len(_uses(source)) != 1:
+            continue
+        proven = readout(op, source, numerics=numerics, strategy=strategy, bound=128, source_dtype="i8")
+        if proven is None or len(set(proven["gains"])) != 1 or len(proven["result"]["shape"]) != 2:
+            continue
+        value = op.results[0]
+        user = only_user(value)
+        while user is not None and _name(user) in ("tensor.expand_shape", "tensor.pad", "tensor.collapse_shape"):
+            user = only_user(user.results[0])
+        if user is None:
+            continue
+        pool = max_pool(user, only_user=only_user, producer_nonnegative=proven["relu"])
+        if pool is None or pool["readout"] is not value:
+            continue
+        chains.append(
+            {
+                "producer": None,
+                "carrier": {"operation": "movement", "source": {"dtype": "i8", "shape": proven["result"]["shape"]}},
+                "stages": [
+                    {"member": i, "stages": (["relu"] if proven["relu"] else []) + ["acc_scale"], **proven},
+                    {
+                        "member": index[id(user)],
+                        "stages": ["maxpool"],
+                        "pooled_store": pool["pooled_store"],
+                        "result": pool["result"],
+                    },
+                ],
+            }
+        )
+    return chains
+
+
 #: Dataflows whose fused readout needs nothing beyond the program's own arithmetic. An
 #: output-stationary contraction keeps its partial sums in the mesh, whose bound Phase 0 does not
 #: prove, so its epilogue is not observed (any other or unknown dataflow likewise).
@@ -460,9 +754,17 @@ def _top_level(program: Path):
 
 
 def prove_chains(
-    program: Path, *, numerics: dict, strategy: str | None = None, dataflow: str | None = None
+    program: Path,
+    *,
+    numerics: dict,
+    strategy: str | None = None,
+    dataflow: str | None = None,
+    max_k: int | None = None,
+    pooling_fenced: bool = False,
 ) -> list[dict]:
-    """Every proven contraction -> [bias_add] -> [readout] chain, by top-level source op index."""
+    """Every proven contraction -> [k_extension | bias_add] -> [readout] chain, and every proven
+    movement -> readout -> max pool chain when its scratchpad-source pooling is fenced, by
+    top-level source op index."""
     if dataflow not in _OBSERVED_DATAFLOWS:
         return []
     parsed = _top_level(program)
@@ -478,7 +780,15 @@ def prove_chains(
         value = op.results[0]
         user = only_user(value)
         bound = carrier["bound"]
+        extension = None
         if user is not None:
+            extension = k_extension(user, value, max_k=max_k, contraction_k=carrier["rhs"]["shape"][0])
+            if extension is not None:
+                bound = bound + extension["bound"]
+                stages.append({"member": index[id(user)], "stages": ["k_extension"], "k_extension": extension})
+                value = user.results[0]
+                user = only_user(value)
+        if user is not None and extension is None:
             bias = bias_add(user, value)
             if bias is not None:
                 bound = bound + bias["bias_bound"] if bias["bias_bound"] is not None else None
@@ -493,7 +803,39 @@ def prove_chains(
                 )
         if stages:
             chains.append({"producer": i, "carrier": carrier, "stages": stages})
+    if pooling_fenced:
+        chains += prove_window_chains(top, index, only_user, numerics=numerics, strategy=strategy)
     return chains
+
+
+def _extension_rows(index: int, carrier: dict, extension: dict) -> list[dict]:
+    """The k_extension member observed as what it is proven to equal: its contraction over the
+    extended reduction, a fused stage composed with that contraction (``contraction_shape`` carries
+    the extended K, which a declaration bounds with ``shape_bounds``)."""
+    from merlin.targetgen.interface_observations import _ROW_MAJOR, _row
+
+    m, n = carrier["result"]
+    k = extension["extended_k"]
+    return [
+        _row(
+            index,
+            "MATMUL",
+            "k_extension",
+            "contraction",
+            disposition="unclassified",
+            operand_dtypes=["i8"],
+            ordered_operand_types=[{"dtype": "i8", "shape": [m, k]}, {"dtype": "i8", "shape": [k, n]}],
+            ordered_result_types=[{"dtype": "i32", "shape": [m, n]}],
+            accumulator_dtypes=["i32"],
+            result_dtypes=["i32"],
+            contraction_shape={"M": m, "K": k, "N": n},
+            layout=_ROW_MAJOR,
+            aliasing="disjoint_inputs_outputs",
+            tails="zero_pad_valid_window",
+            broadcasting="none",
+            composed_observation={"epilogues": ["k_extension"], "composed_with": ["contraction"], "scale_granularity": None},
+        )
+    ]
 
 
 def stage_rows(chain: dict) -> dict[int, list[dict]]:
@@ -503,8 +845,14 @@ def stage_rows(chain: dict) -> dict[int, list[dict]]:
 
     rows_by_member: dict[int, list[dict]] = {}
     stages = chain["stages"]
-    exit_type = next((s["result"] for s in reversed(stages) if "result" in s), None)
-    exit_type = exit_type or {"dtype": "i32", "shape": chain["carrier"]["result"]}
+    # A movement chain (no producer member) reads an int8 tensor loaded into the accumulator; its
+    # stages share the pooled store's destination, as a COMMIT's would.
+    movement = chain["producer"] is None
+    if movement:
+        exit_type = stages[-1]["result"]
+    else:
+        exit_type = next((s["result"] for s in reversed(stages) if "result" in s), None)
+        exit_type = exit_type or {"dtype": "i32", "shape": chain["carrier"]["result"]}
     gains = next((s["gains"] for s in stages if "gains" in s), None)
     # The command attributes an interface program states for this chain: its epilogue (in the
     # order a COMMIT applies it) and its multipliers. The logical output-column partition reads
@@ -521,23 +869,38 @@ def stage_rows(chain: dict) -> dict[int, list[dict]]:
     if exit_type["dtype"] != "i32":
         attributes["output_dtype"] = exit_type["dtype"]
     carrier = chain["carrier"]
-    bias = next((s["bias"] for s in stages if "bias" in s), None)
-    column_source = {
-        "operation": "matmul",
-        "lhs": carrier["lhs"],
-        "rhs": carrier["rhs"],
-        "operand_names": ["lhs", "rhs"],
-        "disjoint": True,
-        "result": exit_type,
-        "bias": bias,
-    }
+    column_source = None
+    if not movement:
+        extension = next((s["k_extension"] for s in stages if "k_extension" in s), None)
+        lhs, rhs = carrier["lhs"], carrier["rhs"]
+        if extension is not None:  # the readout drains the contraction over the extended K
+            k = extension["extended_k"]
+            lhs = {**lhs, "shape": [lhs["shape"][0], k]}
+            rhs = {**rhs, "shape": [k, rhs["shape"][1]]}
+        column_source = {
+            "operation": "matmul",
+            "lhs": lhs,
+            "rhs": rhs,
+            "operand_names": ["lhs", "rhs"],
+            "disjoint": True,
+            "result": exit_type,
+            "bias": next((s["bias"] for s in stages if "bias" in s), None),
+        }
     for stage in stages:
+        if "k_extension" in stage:
+            rows = _extension_rows(stage["member"], carrier, stage["k_extension"])
+            for row in rows:
+                row["_observation_extra"] = {
+                    "k_extension": {key: stage["k_extension"][key] for key in ("coefficient", "digits", "extended_k")}
+                }
+            rows_by_member[stage["member"]] = rows
+            continue
         rows_by_member[stage["member"]] = _stage_rows(
             index=stage["member"],
-            opcode="MATMUL",
+            opcode="MOVEMENT" if movement else "MATMUL",
             stages=stage["stages"],
-            producer="contraction",
-            operand_dtype=carrier["lhs"]["dtype"],
+            producer="movement" if movement else "contraction",
+            operand_dtype="i8" if movement else carrier["lhs"]["dtype"],
             result_dtype=exit_type["dtype"],
             accumulator="i32",
             destination_declared=True,
@@ -545,6 +908,9 @@ def stage_rows(chain: dict) -> dict[int, list[dict]]:
             column_source=column_source,
             result_type=exit_type,
         )
+        if "pooled_store" in stage:
+            for row in rows_by_member[stage["member"]]:
+                row["_observation_extra"] = {"pooled_store": stage["pooled_store"]}
     return rows_by_member
 
 
@@ -635,11 +1001,24 @@ def observe(
     evidence,
     readout_strategy: str | None = None,
     dataflow: str | None = None,
+    max_k: int | None = None,
+    pooling_fenced: bool = False,
 ) -> list[dict]:
-    """``entries`` with each proven fused member's standalone entry replaced by its stage rows' entries."""
+    """``entries`` with each proven fused member's standalone entry replaced by its stage rows' entries.
+
+    ``max_k`` is the facts' ``k_extension_within.max_k`` and ``pooling_fenced`` the composition's
+    ``scratchpad_source_pooling_fenced``; without them no K extension, respectively no movement
+    window chain, is observed."""
     spec = getattr(evidence, "software_spec", None) or {}
     numerics = (spec.get("numerical_semantics") or {}).get("readout") or {}
-    chains = prove_chains(program, numerics=numerics, strategy=readout_strategy, dataflow=dataflow)
+    chains = prove_chains(
+        program,
+        numerics=numerics,
+        strategy=readout_strategy,
+        dataflow=dataflow,
+        max_k=max_k,
+        pooling_fenced=pooling_fenced,
+    )
     by_member: dict[int, list[dict]] = {}
     placed_producers = {
         index
@@ -649,10 +1028,14 @@ def observe(
         and (entry.get("accelerator_admission") or {}).get("status") == "admitted"
     }
     for chain in chains:
-        if chain["producer"] not in placed_producers:
+        # A movement chain has no producer member: its source is a program input the movement loads.
+        if chain["producer"] is not None and chain["producer"] not in placed_producers:
             continue
         for member, rows in stage_rows(chain).items():
+            extras = [row.pop("_observation_extra", {}) for row in rows]
             by_member[member] = [_admitted(row, spec, evidence) for row in rows]
+            for item, extra in zip(by_member[member], extras, strict=True):
+                item["observed_signature"].update(extra)
     groups = [({member}, rows) for member, rows in by_member.items()]
     if dataflow in _OBSERVED_DATAFLOWS:
         for chain in prove_operand_sums(program, numerics=numerics, strategy=readout_strategy):

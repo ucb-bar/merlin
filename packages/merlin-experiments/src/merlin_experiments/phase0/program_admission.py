@@ -425,12 +425,19 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
             from .source_fused_stages import observe as observe_fused_stages
 
             attributes = (capsule.get("operation") or {}).get("attributes") or {}
+            case = attributes.get("case") or {}
+            # The fact-derived extended-K bound the generator resolved for this composition.
+            within = ((semantic.get("composition_facts") or {}).get("k_extension_within")) or {}
             entries = observe_fused_stages(
                 program,
                 entries,
                 evidence=evidence,
                 readout_strategy=(attributes.get("quantization_scheme") or {}).get("readout_strategy"),
-                dataflow=(attributes.get("case") or {}).get("dataflow"),
+                dataflow=case.get("dataflow"),
+                max_k=within.get("max_k") if type(within.get("max_k")) is int else None,
+                # The Linalg cannot state a fence; the composition declares it (an unfenced twin
+                # has byte-identical Linalg), so only a declared fence lets a pool be observed.
+                pooling_fenced=case.get("scratchpad_source_pooling_fenced") is True,
             )
         numeric_screens = []
     else:
