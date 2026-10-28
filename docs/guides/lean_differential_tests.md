@@ -11,7 +11,6 @@ code_refs:
   - build_tools/toolchains/lean-mlir-requirements.txt
   - merlin/lean/LEDGER.md
   - merlin/tests/ir/test_lean_pass_gate.py
-  - merlin/tests/ir/test_lean_dequant_contract.py
   - merlin/tests/ir/test_lean_pass_gate_fuzz.py
   - merlin/tests/rvv/test_lean_pass_gate_spike.py
 ---
@@ -31,7 +30,7 @@ axioms and executable substitutions. `--lock-only` checks file identities only;
 it does not replace the full audit. Specification changes require independent
 review; regenerating a hash is not approval.
 
-Run the real gate and quantization regression files listed in `code_refs`.
+Run the real gate regression files listed in `code_refs`.
 The pass-gate fuzzer executes the actual preprocessing passes and compares
 mutations with an independent NumPy oracle. Increase coverage with
 `MERLIN_FUZZ_SEED` and `MERLIN_FUZZ_CASES`. These tests exercise checker acceptance
