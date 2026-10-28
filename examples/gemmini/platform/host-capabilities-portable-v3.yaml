@@ -3419,6 +3419,42 @@ operations:
         (round half to even), clamped to [quant_min, quant_max], int8 result. Emitted
         linalg.generic body from m2m/ir/integer_readout.py decompose_exact_readout.
         Not yet compared against the emitted body on boundary and random accumulators.'
+- id: host_f32_max_pool2d_with_i64_indices_rank4
+  status: unreviewed
+  ops:
+  - aten.max_pool2d_with_indices.default
+  families:
+  - reduction
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - f32
+    - i64
+    ordered_result_dtypes:
+    - f32
+    - i64
+    ranks:
+    - 4
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      arithmetic: ieee754_binary32
+      layout: static_nchw
+      output: values_and_flat_plane_indices
+      geometry: static kernel, stride, padding and dilation from the captured op; floor mode
+      padding: negative_infinity (out-of-plane taps are skipped)
+      reduction_order: row_major_window_scan
+      equal_values: first_maximum
+      nan: last_encountered_nan
+      index: int64 flat offset h*input_width+w within the input plane of the selected tap
+      index_initial: -1 until the first in-plane tap is taken
+    evidence:
+      reviewed_by: "PROPOSED, NOT REVIEWED (app-fix 2026-10-28): value-and-index sibling of the operator-reviewed host_f32_value_only_max_pool row, which admits only the values-only form with indices unused. Observed once in residual_cnn (f32 1x12x5x5 -> f32,i64). Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here. Open obligations: (1) a fail-closed source check of the window geometry and the update predicate; (2) a Spike tie/NaN/padding probe of the index output."
+      basis: 'Emitted linalg.generic body in the residual_cnn capture (unrolled window of
+        scf.if taps, update select when value > current, or value is NaN, or the stored
+        index is -1; index = h*W+w cast to i64) matches the documented PyTorch CPU
+        max_pool2d tie and NaN rule by inspection only. The exact index-tie contract is
+        stated here and is the thing that needs review.'
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:
