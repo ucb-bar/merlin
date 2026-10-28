@@ -34,7 +34,7 @@ IMPLEMENTATIONS = {
 BASELINE_GROUPS = [
     (["mm", "bmm", "addmm", "convolution"], ["contraction"], "device_subregion_candidate", "Only admitted integer contraction and seed; preserve any source output conversion separately."),
     (["sum.dim_IntList"], ["reduction_standalone", "contraction"], "device_subregion_candidate", "Bounded byte-source sum; i64 ABI result conversion is retained host work."),
-    (["add.Tensor", "add.Scalar", "sub.Scalar"], ["elementwise_map_standalone"], "outside_declared_exact_domain", "Historical full-i32 boundary fixtures wrap. Current accumulator code exists, but bounded-exact affine does not authorize this domain."),
+    (["add.Tensor", "add.Scalar", "sub.Scalar"], ["elementwise_map_standalone"], "outside_declared_exact_domain", "Historical full-i32 boundary fixtures wrap. The simplified backend removes this accumulator-add mapping and retains host semantics; bounded-exact affine does not authorize this domain."),
     (["sub.Tensor", "mul.Scalar", "div.Scalar", "neg"], [], "host_only_for_baseline", "Historical full-i32 forms remain host. New byte-affine/readout expressions are different typed programs, not support for these overloads."),
     (["relu"], ["elementwise_map_standalone"], "device_subregion_candidate", "Historical i8 max(x,0): unit load and identity-scale narrow ReLU; no f32 ReLU claim."),
     (["mean.dim", "mean.default", "adaptive_avg_pool1d", "_adaptive_avg_pool2d", "_adaptive_avg_pool3d", "avg_pool2d_backward", "_adaptive_avg_pool2d_backward", "col2im"], [], "host_only_for_baseline", "Historical floating arithmetic is not the declared integer sum/window-mean program."),

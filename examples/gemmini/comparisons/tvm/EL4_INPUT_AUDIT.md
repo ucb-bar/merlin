@@ -1,5 +1,11 @@
 # Historical EL4 input audit
 
+> Historical input audit. Current decisions and readiness are in
+> [FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md): protocol 8ec99308 only, TinyLlama
+> 32+32 correction, pinned quality policy only, 4h/1h/1h tuning, and the approved
+> median wall watchdog. The older quality/budget/active-cycle policy below is
+> superseded; it is retained to explain the original findings.
+
 This dated audit preserves earlier source/input findings. It is not the current
 model protocol or preparation plan. All three models are now enabled; current
 8ec99308 bindings, completed chunks and remaining E2E work are in

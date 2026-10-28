@@ -1,15 +1,42 @@
 # FireSim ELF preparation and tuning plan
 
-This handoff extends `comparisons/tvm-workload-tuning` base
-**82b321a89a8a646877484f4bd09637040ce0fa26** with the published audit, build-only
-and DSE completion changes. Use the commit containing this handoff. TVM is `gemmini/device-ops` at
-**42b3c1ef27abe878f930e48b335b24956beb0e56**, plus the recorded schedule/source-binding
-patch. Earlier worktrees and published evidence are preserved.
+The [simplified preparation release](../../../../out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/README.md) contains
+TVM **619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a**, the portable source bundle/patch,
+71-case diagnostic Spike ELFs/results and a fresh 36-chunk task index. Use this
+repository's median-watchdog runner (implementation commit dd079d3a0).
+It replaces the prior compiler for new builds; earlier receipts remain historical.
+This is ready for remote build/qualification work, **not a completed FireSim or
+full-model qualification**. Remote cancellation, selected hardware facts and
+per-program spec admission remain required before paid model execution.
 
 Our deliverable is ELFs or exact instructions to build them after handoff.
 **The remote worker owns deployment, manager configuration and physical slots.**
 Do not ask the user to supply deployment details to finish this preparation.
 No simulator job is started by the build commands below.
+
+## Fresh simplified-compiler extraction
+
+The release's [task index](../../../../out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/index/summary.json) re-extracts
+all 36 ready chunks with fusion=2, CSE off, prepacking off and bias folding off.
+Frozen programs, weights/scales, boundary inputs and references are unchanged.
+
+| Model | Chunks | Distinct contractions | Owners | Baseline jobs (three per task) |
+| --- | ---: | ---: | ---: | ---: |
+| ResNet50 | 18 | 21 | 10 | 63 |
+| TinyLlama | 10 | 12 | 8 | 36 |
+| SmolVLA | 8 | 14 | 8 | 42 |
+| Total | 36 | 47 | 26 | 141 |
+
+No workload keys match the old catalog. Full structural equality was checked
+across occurrences of each shared key. Rebuild packages and remeasure; do not
+import historical costs. The excluded SmolVLA normalization probe stays excluded.
+Extraction is not connected-model execution. The release supplies its reproducer
+and source/input/compiler bindings; relocate inputs explicitly on the remote.
+
+At an illustrative 60 seconds per job, the baseline jobs alone occupy 63/36/42
+minutes. Under 4h/1h/1h budgets that leaves at most 177/24/18 further one-minute
+jobs before connected confirmation. Actual pilot occupancy must replace this
+illustration; allocate no fixed paper-sized trial count in advance.
 
 ## Approved decisions
 
@@ -20,9 +47,10 @@ No simulator job is started by the build commands below.
   resumes it without renewing spent time. Allocation can be revised by the user.
 - **TinyLlama tuning uses the published 16/1 row probes; E2E uses 32/32.**
   Do not replace the tuning roster with newly derived 32-row chunks.
-- Start with published graph settings: fusion=2, constant prepacking on,
-  proved accumulator-bias preload on, CSE off. Then search the existing graph
-  options within the **same** per-model budgets. No new compiler passes.
+- For the simplified compiler, start with stock fusion=2 and CSE off, then
+  search stock fusion/CSE and TensorIR schedules within the same budgets.
+  Automatic prepacking and bias folding are removed. Published packed/bias
+  plans describe historical artifacts and must not be silently replayed.
 - Use stock MetaSchedule **EvolutionarySearch + XGB**, existing TensorIR schedules
   and registered TensorIntrins. Share records through exact structural equality.
 - Remote candidate validation uses FireSim guest checks. **No sequential Spike
@@ -32,6 +60,44 @@ No simulator job is started by the build commands below.
 The publication's shared-four-hour/remaining-proposal wording and fixed-fusion-only
 instructions describe its original campaign; they do not override these decisions.
 The full-model protocol and its numerical choices remain fixed during tuning.
+
+## Approved timeout policy and remote qualification
+
+| Model | Aggregate tuning allowance | Final E2E wall timeout per baseline/tuned run |
+| --- | --- | --- |
+| ResNet50 | 4 hours | 3,600 seconds |
+| TinyLlama | 1 hour | 21,600 seconds |
+| SmolVLA | 1 hour | 21,600 seconds |
+
+The user approved per-workload median wall watchdogs instead of best-so-far
+active-cycle cancellation. No live observer is required. Run three successful
+baseline jobs; use `min(ceiling, max(3*baseline_median, 3*recent_median))`, with the
+recent median taken from nine successful uncached candidates when available.
+Freeze each watchdog at slot admission. Charge baseline jobs, failures and
+candidate execution to tuning occupancy. Preserve all completed correct cycles,
+including slower candidates. Failed/timed-out attempts are not duration samples.
+
+The remote pilot supplies explicit positive bootstrap/ceiling values through
+`--candidate-bootstrap-seconds` and `--candidate-timeout-ceiling-seconds` to
+`run_firesim_study.py`. Both are required even for its dry-run plan; they are
+separate from final E2E limits. A ceiling below 3x baseline median refuses search.
+The source-bound timeout history is `timeout-history.json` in each campaign.
+
+Final E2E timeouts include deployment startup through result collection after
+slot admission; exclude queue wait and CPU preparation. They apply only to final
+E2E. Stop new tuning admissions at budget and finish active jobs under their
+frozen watchdogs; report overrun and do not launch queued jobs during completion.
+
+The installed v4 adapter must qualify fixed-warm measurement, wrong-oracle
+rejection, wall timeout and actual remote termination. Unconfirmed termination
+quarantines the physical slot. See [ADAPTER_CONTRACT.md](ADAPTER_CONTRACT.md).
+The local median-policy/pool/study/cycle-unit suite passes 51 tests, including
+confirmed cancellation versus quarantined slots. Python lowering/build/runner
+sources and the native compiler are bound to the history. These changes are in the current repository; the prior frozen bundle does not
+contain this runner. Use the current runner and the simplified source release.
+
+Local tests do not qualify a deployment, and old v3 observer receipts do not
+qualify this new wall-watchdog contract. Preserve historical artifacts unchanged.
 
 ## Contract and quality
 
@@ -163,27 +229,26 @@ commands, not newly built ELFs.
 
 ## Remote tuning sequence
 
-1. Establish a valid guest baseline for each selected distinct task as budget
-   permits. Rotate owners across chunks; prioritize measured connected cost,
+1. Establish three correct baseline executions for each selected distinct task
+   as budget permits, calibrating its wall watchdog and median cycle baseline. Rotate owners across chunks; prioritize measured connected cost,
    not guessed FLOP cost. Record any uncovered tasks if time runs out.
 2. Run stock EvolutionarySearch/XGB over the existing schedules. Then explore
    deduplicated graph alternatives within the same budget, with new task extraction.
    No hard per-chunk minute split is assumed. One ledger per model covers all
    chunks, graph plans and candidate validation/measurement occupancy.
-3. Use the remote runner's guest checks and wrong-oracle qualification. Current
-   local `tune_firesim_chunks.py` still runs a Spike preflight and uses elapsed
-   deadlines including CPU preparation. **Do not execute it unchanged** as this
-   campaign's remote runner. Its graph-option forwarding and new
-   `--finish-active-runs --active-run-timeout-seconds SECONDS` mode are reusable;
-   the remote worker supplies a separate per-run hang watchdog. Admission closes
-   at the budget boundary, active slot jobs can finish under that watchdog, and
-   `occupancy.json` records completion time beyond the admission deadline.
-   The watchdog is not a new tuning allowance. Remote occupancy accounting and
-   FireSim-only validation remain the remote agent's work.
-4. Stop a candidate when live active measured cycles reach the current best for
-   the same exact task/input/hardware/window. Refresh incumbents in flight;
-   retain failures/censored trials. Exclude startup, loading and warmup from the
-   performance cycle window; include actual host work, DMA and completion.
+3. Use the remote runner's guest checks and independent wrong-oracle qualification.
+   `tune_firesim_chunks.py` no longer requires a Spike receipt or sequential Spike
+   preflight. Its new explicit bootstrap/ceiling flags control candidate watchdogs.
+   The remote aggregate occupancy ledger must enforce 4h/1h/1h across owners;
+   the local absolute admission deadline remains an additional bound and includes
+   elapsed CPU-preparation time. It is not itself the required occupancy ledger.
+   `occupancy.json` records all admitted local lease durations and post-deadline
+   completion. Remote accounting must bind actual physical-slot occupancy.
+4. Retain every completed correct warm-cycle measurement, including slower
+   candidates. Timeout only under the frozen wall watchdog or explicit failure
+   cancellation. Keep startup/warmup outside measured model cycles and include
+   host work, DMA and completion inside them. Do not report failed placeholders
+   or timeout bounds as completed costs.
 5. Replay matching winners and confirm each promoted connected chunk, including
    those sharing owners. Connected confirmation consumes the same tuning allowance.
    Cover all 36 as budget permits; report unconfirmed chunks and retain untuned
