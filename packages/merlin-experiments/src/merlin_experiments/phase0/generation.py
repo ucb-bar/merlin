@@ -995,19 +995,16 @@ def generate_target(
                         actual["source_reference"] = diagnostic_entry(actual, observed)["source_reference"]
                     (Path(w) / "capsule.yaml").write_text(yaml.safe_dump(actual, sort_keys=False))
                     if evidence_mode != "diagnostic" and observed["status"] != "admitted" and not must_refuse:
-                        withheld = withhold_unadmitted_micro_model(e, observed, must_refuse=must_refuse)
+                        withheld = withhold_unadmitted_member(e, observed, Path(w), must_refuse=must_refuse)
                         if withheld is not None:
                             host_placed.append(withheld)
                             print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}", flush=True)
-                        else:
-                            failures.append(
-                                (e.get("name", "?"), "emitted SW operation admission: " + observed["reason"])
-                            )
-                            print(
-                                f"  [failure] {e.get('name', '?')}: emitted SW operation admission: "
-                                f"{observed['reason']}",
-                                flush=True,
-                            )
+                            continue
+                        failures.append((e.get("name", "?"), "emitted SW operation admission: " + observed["reason"]))
+                        print(
+                            f"  [failure] {e.get('name', '?')}: emitted SW operation admission: {observed['reason']}",
+                            flush=True,
+                        )
                     # Verified evidence admits a generation-time capture only from the sealed runner.
                     capture_refusal = verified_capture_failure(actual)
                     if evidence_mode != "diagnostic" and capture_refusal is not None:
@@ -1526,6 +1523,20 @@ def withhold_unadmitted_micro_model(entry: dict, observed: dict, *, must_refuse:
         "placements": copy.deepcopy(observed.get("placements") or {}),
         "reason": "emitted program not admitted by the selected host lane: " + str(observed.get("reason", "")),
     }
+
+
+def withhold_unadmitted_member(entry: dict, observed: dict, directory: Path, *, must_refuse: bool) -> dict | None:
+    """Withhold a synthesized micro-model the host lane cannot admit: record it and remove what was written.
+
+    The member must leave the output tree, as a placement-withheld member does: a directory left under the
+    output root (even in ``_diagnostic``) is globbed as a corpus member, counted in the manifest and the
+    commitments, and copied into the release, while the same capsule is also reported as not published.
+    Returns the record that replaces it in the manifest, or ``None`` when the member stays and fails.
+    """
+    record = withhold_unadmitted_micro_model(entry, observed, must_refuse=must_refuse)
+    if record is not None:
+        shutil.rmtree(directory)
+    return record
 
 
 def withhold_unaccelerated(name: str, observed: dict, directory: Path, *, capsule: dict | None = None) -> dict | None:
