@@ -16,9 +16,6 @@ a modified TVM backend, not stock TVM with only intrinsic registration. There is
 no reason to restore the removed pattern-forcing graph optimizations. Freezing
 the design does not complete software-spec or hardware qualification.
 
-The cited methods draft is [PAPER_IMPLEMENTATION.md](PAPER_IMPLEMENTATION.md),
-with LaTeX and BibTeX beside it.
-
 ## Top-down execution path
 
 ```mermaid

@@ -2,7 +2,6 @@
 
 [ARCHITECTURE.md](ARCHITECTURE.md) owns the implementation boundary;
 [FIRESIM_HANDOFF.md](FIRESIM_HANDOFF.md) owns execution budgets and readiness.
-[Paper implementation summary](PAPER_IMPLEMENTATION.md) supplies cited prose.
 
 ## Campaign re-audit (2026-10-27)
 
