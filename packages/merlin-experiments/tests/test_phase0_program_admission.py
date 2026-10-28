@@ -193,7 +193,13 @@ def test_column_readout_admits_only_screened_logical_scalar_components(operation
         assert [c for part in proof["parts"] for c in range(part["start"], part["stop"])] == list(range(9))
     # Missing/incorrect original dimensions never gain scalar admission.
     tensors["W"]["shape"][1] = 8
-    refused = program_admission.account_interface_text(emit_interface_mlir(cb), target="fixture", evidence=evidence)
+    from merlin.targetgen.contract.interface_emit import InterfaceGrammarError
+    try:
+        refused = program_admission.account_interface_text(emit_interface_mlir(cb), target="fixture", evidence=evidence)
+    except InterfaceGrammarError:
+        # An explicit result/declaration type conflict is refused during parsing.
+        assert operation == "matmul"
+        return
     assert all(
         entry["accelerator_admission"]["status"] != "admitted"
         for entry in refused

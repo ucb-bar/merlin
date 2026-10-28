@@ -155,7 +155,7 @@ def _observed_signature(row: dict) -> dict:
             observed["rank"] = len(shape)
             break
     # Access observations derived from the graph (application_inventory); absent ones stay unresolved.
-    for key in ("layout", "tails", "broadcasting", "aliasing"):
+    for key in ("layout", "tails", "broadcasting", "aliasing", "tensor_operands", "expression"):
         if row.get(key) is not None:
             observed[key] = row[key]
     if row.get("quantization_parameters") is not None:

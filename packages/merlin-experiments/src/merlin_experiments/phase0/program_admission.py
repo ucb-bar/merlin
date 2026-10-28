@@ -263,7 +263,7 @@ def account_interface_text(
     from merlin.targetgen.interface_observations import command_rows
     from merlin.targetgen.operation_accounting import admit_operation_row
 
-    parsed = parse_interface_mlir(mlir)
+    parsed = parse_interface_mlir(mlir, include_results=True)
     if parsed.get("target") != target:
         raise ValueError("written interface program names a different target")
     if numeric_screens is None:
