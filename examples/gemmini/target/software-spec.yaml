@@ -519,6 +519,40 @@ operations:
           - {path: execution.scratchpad_source_pooling_fenced, eq: true}
       load_scale: {status: instruction_audit, check: unit_mvin_scale, constraints: {eq: 1.0}}
       c_stride: {status: compiler_obligation, constraints: {eq: 1}}
+  contraction_k_extension:
+    # PROPOSAL (comp-more/c3), NOT REVIEWED, BLOCKED: the frozen composition oracle reads this
+    # chain out as f32(acc*g) + f32(R*f32(c*g)) (two roundings), which this execution does not
+    # compute. Apply only after the operator settles the chain's readout semantics.
+    status: unreviewed
+    families: [contraction]
+    placement: fused_accelerator
+    arithmetic: integer_multiply_accumulate
+    description: >-
+      acc + c*sext(R), c a positive integer constant and R an int8 tensor of the accumulator's
+      shape, executed as the contraction [A | R .. R] @ [W ; d_1*I ; .. ; d_n*I] with additive
+      int8 digits (lower_k_extension tile_digits, |d_i| <= 127, sum d_i = c) over
+      K' = K + n*N <= k_extension_within.max_k, weight-stationary only. Exact in i32; the
+      readout after it is the ordinary contraction readout (one f32 product).
+    numerical_contract:
+      status: unreviewed
+      semantics:
+        identity: "acc + c*R == [A | R*n] @ [W ; d_i*I], exact in i32 for K' <= max_k"
+        rounding: "none before the readout; the readout rounds once"
+      evidence:
+        basis: "k_extension.py:49-65; composition_facts.py:82-99 (max_k); comp-more/c3 evidence/diff_ext.py"
+    evidence:
+      review_status: unreviewed
+      basis: "PE.scala:118-131 (WS: <= 16 products per compute, |partial| <= 262144 < 2^19); ExecuteController.scala:951 and AccumulatorMem.scala:63-70 (sign-extended, wrapping 32-bit accumulate; exact below 2^31); digits |d| <= 127 keep [d*I] an int8 weight"
+    composed_with: [contraction]
+    epilogues: [k_extension]
+    operand_dtypes: [int8]
+    accumulator_dtype: i32
+    ranks: [2]
+    layouts: [row_major_contiguous]
+    tails: [zero_pad_valid_window]
+    broadcasting: [none]
+    aliasing: [disjoint_inputs_outputs]
+    shape_bounds: {K: {max: 131071}}
   reduction_standalone:
     # Standalone SUM reductions: accumulate-on-load over an outer axis or a window, then one
     # readout scale. Max reductions stay fused (`pooling_on_readout`).
