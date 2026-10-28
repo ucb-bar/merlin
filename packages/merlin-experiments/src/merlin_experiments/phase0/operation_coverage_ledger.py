@@ -165,9 +165,30 @@ def _declarations_from_cases(cases):
 
 
 def _capsule_family(entry):
+    """The family a capsule's own semantic block names; the op spelling table is a fallback only.
+
+    A component program (``op: component_program``) has no op-table family, so without its
+    ``semantic_family`` a column-sum cell would credit nothing and read as unjustified. A declared family
+    that contradicts the op spelling is refused rather than resolved silently either way.
+    """
     from merlin.targetgen.semantic_families import from_op
 
-    return entry.get("family") or from_op(entry.get("op"))
+    declared = entry.get("family") or (entry.get("generalization") or {}).get("semantic_family")
+    spelled = from_op(entry.get("op"))
+    if declared and spelled and declared != spelled:
+        raise ValueError(
+            f"capsule {entry.get('name')!r} declares family {declared!r} but op {entry.get('op')!r} is {spelled!r}"
+        )
+    return declared or spelled
+
+
+def _composed_families(entry):
+    """Families a capsule only composes (for example a maxpool epilogue on a matmul).
+
+    Recorded as ``composed:<family>`` keys, which no operation row reads: an epilogue inside a
+    contraction test is not a standalone test of that family.
+    """
+    return sorted({str(name) for name in (entry.get("generalization") or {}).get("composed_families") or ()})
 
 
 def _must_refuse(entry):
@@ -238,6 +259,7 @@ def _capsule_coverage(entries, *, traces, chains):
             family = _capsule_family(entry)
             if family:
                 keys.add(f"family:{family}")
+            keys |= {f"composed:{composed}" for composed in _composed_families(entry)}
         covered[name] = keys
     return covered
 

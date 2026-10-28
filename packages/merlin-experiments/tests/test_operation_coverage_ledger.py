@@ -441,3 +441,56 @@ def test_a_disclosure_does_not_override_a_surviving_positive(inputs):
 def test_malformed_disclosure_is_refused(inputs):
     with pytest.raises(ValueError, match="needs a capsule name"):
         L.prepare(**inputs, composition_disclosures=[{"chain": "lonely_chain"}])
+
+
+# --- capsule family from the capsule's own semantic block ---------------------------------------
+
+
+def _lite(inputs, ops):
+    """A capture-only (record-less) ledger over a model that contains exactly ``ops``."""
+    inputs.pop("spec_validation").unlink()
+    reviewed = dict(SPEC, operations=[dict(row, status="reviewed") for row in SPEC["operations"]])
+    inputs["software_spec"].write_text(yaml.safe_dump(reviewed, sort_keys=False))
+    inputs["captures"]["mlp"].write_text(
+        "\n".join(f'%{i} = linalg.generic {{prov.aten = "{op}"}}' for i, op in enumerate(ops))
+    )
+    inputs["capsules"] = [c for c in inputs["capsules"] if c["name"] != "SY_source_mlp"]
+    return inputs
+
+
+def test_component_program_takes_its_semantic_family(inputs):
+    _lite(inputs, ["aten.sum.dim_IntList"])
+    inputs["capsules"].append(
+        {"name": "SY_reduction_sum_i8_aligned", "op": "component_program", "source_role": "derived_sweep",
+         "generalization": {"semantic_family": "reduction"}}
+    )
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    capsules = {row["name"]: row for row in document["capsules"]}
+    assert capsules["SY_reduction_sum_i8_aligned"]["covers"] == ["family:reduction"]
+    assert "SY_reduction_sum_i8_aligned" not in document["omissions"]["unjustified_capsules"]
+    row = _rows(document)["sum.dim_IntList"]
+    assert row["test_identity"]["family_capsules"] == ["SY_reduction_sum_i8_aligned"]
+    assert row["evidence_state"] != "not_evidenced"
+
+
+def test_composed_epilogue_is_not_a_standalone_family_test(inputs):
+    _lite(inputs, ["aten.sum.dim_IntList"])
+    inputs["capsules"].append(
+        {"name": "SY_reduction_i8_aligned", "op": "matmul", "source_role": "derived_sweep",
+         "generalization": {"semantic_family": "contraction", "composed_families": ["reduction"]}}
+    )
+    document = L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record()
+    capsules = {row["name"]: row for row in document["capsules"]}
+    assert capsules["SY_reduction_i8_aligned"]["covers"] == ["composed:reduction", "family:contraction"]
+    row = _rows(document)["sum.dim_IntList"]
+    assert row["test_identity"]["family_capsules"] == []
+    assert row["evidence_state"] == "not_evidenced"
+
+
+def test_semantic_family_contradicting_the_op_is_refused(inputs):
+    inputs["capsules"].append(
+        {"name": "SY_bad", "op": "matmul", "source_role": "derived_sweep",
+         "generalization": {"semantic_family": "reduction"}}
+    )
+    with pytest.raises(ValueError, match="declares family 'reduction'"):
+        L.prepare(**inputs)
