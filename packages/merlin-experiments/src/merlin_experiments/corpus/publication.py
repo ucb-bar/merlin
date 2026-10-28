@@ -256,26 +256,43 @@ def require_accelerator_placement(roots) -> int:
     of the author's work. The placement read is the one Phase 0 froze into ``software_screen``; a
     capsule without that record is refused as well, because its absence is not evidence of accelerator
     work. An unscored host guard is admitted: it is host-placed by design and grades no accelerator
-    work. Returns the number of public capsules checked.
+    work. A composition refusal twin is admitted when a positive of its chain and scheme in the same roots is
+    placed on the accelerator. Returns the number of public capsules checked.
     """
     from merlin.targetgen.capsule_common import is_unscored_host_guard
 
+    from ..phase0.composition_generation import positive_is_placed, twin_group
     from ..phase0.program_admission import accelerator_placement_refusal
 
-    refused, checked = [], 0
+    documents = []
     for root in roots:
         for path in sorted(Path(root).rglob("capsule.yaml")):
             document = yaml.safe_load(path.read_bytes())
             if not isinstance(document, dict):
                 raise SpecError("public capsule declaration is malformed")
-            if document.get("label") not in PUBLIC_LABELS:
-                continue
-            checked += 1
-            if is_unscored_host_guard(document):
-                continue
-            reason = accelerator_placement_refusal(document.get("software_screen"))
-            if reason is not None:
-                refused.append(f"{document.get('name') or path.parent.name}: {reason}")
+            if document.get("label") in PUBLIC_LABELS:
+                documents.append((path, document))
+    # A refusal twin is graded on being refused, so it is admitted when a positive of its chain and scheme
+    # in the same public cohort is placed on the accelerator; a twin with no such sibling stays refused.
+    placed_groups = {
+        twin_group(document)
+        for _, document in documents
+        if positive_is_placed(document, document.get("software_screen"))
+    }
+    refused, checked = [], 0
+    for path, document in documents:
+        checked += 1
+        if is_unscored_host_guard(document):
+            continue
+        reason = accelerator_placement_refusal(document.get("software_screen"))
+        if reason is not None and (
+            document.get("operation", {}).get("op") == "composition_program"
+            and ((document.get("semantic") or {}).get("composition_truth") or {}).get("outcome") == "refuse"
+            and twin_group(document) in placed_groups
+        ):
+            reason = None
+        if reason is not None:
+            refused.append(f"{document.get('name') or path.parent.name}: {reason}")
     if refused:
         raise SpecError(
             f"{len(refused)} public capsule(s) carry no accelerator placement; public capsules grade the "
