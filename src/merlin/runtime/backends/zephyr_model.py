@@ -106,13 +106,6 @@ def _zephyr_base() -> Path:
     return selected
 
 
-def _zephyr_sw_root() -> Path:
-    selected = _pick("MERLIN_ZEPHYR_SW")
-    if selected is None:
-        raise ZephyrModelError("MERLIN_ZEPHYR_SW is not configured")
-    return selected
-
-
 def _sdk_dir() -> Path:
     selected = _pick("ZEPHYR_SDK_INSTALL_DIR")
     if selected is None:

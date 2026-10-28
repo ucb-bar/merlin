@@ -48,7 +48,6 @@ unreferenced-def build_tools/scripts/k1_int8_recipe_ab.py:_instret
 unreferenced-def merlin/python/merlin/baselines/exo.py:_venv_python
 unreferenced-def merlin/python/merlin/compare/paper_report.py:_attribution_records
 unreferenced-def merlin/python/merlin/dse_guidance/presentation_plots.py:_r_primitive_coverage
-unreferenced-def merlin/python/merlin/runtime/backends/zephyr_model.py:_zephyr_sw_root
 unreferenced-def merlin/python/merlin/targetgen/corpus_synth.py:_sf_primitives
 unreferenced-def merlin/python/merlin/targetgen/isa_direction.py:_base_operands
 unreferenced-def merlin/python/merlin/targetgen/program_oracle.py:_load_verilator_runner

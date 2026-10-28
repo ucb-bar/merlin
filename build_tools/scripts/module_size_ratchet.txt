@@ -25,7 +25,7 @@ merlin/python/merlin/mining/k1.py  # 2649
 merlin/python/merlin/perf/calibration.py  # 1581
 merlin/python/merlin/perf/harvest.py  # 1733
 merlin/python/merlin/perf/host_source_witness.py  # 2016
-merlin/python/merlin/runtime/backends/zephyr_model.py  # 3537
+merlin/python/merlin/runtime/backends/zephyr_model.py  # 3532
 merlin/python/merlin/targetgen/capability_discovery.py  # 3051
 merlin/python/merlin/targetgen/capsule_grade.py  # 2473
 merlin/python/merlin/targetgen/capsule_runner.py  # 6825
