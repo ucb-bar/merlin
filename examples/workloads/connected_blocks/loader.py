@@ -16,6 +16,8 @@ from torch import nn
 PROFILE_SCHEMA = "merlin.iteration_workload_profile.v1"
 WORKLOAD_ID = "connected_blocks"
 DEFAULTS = {
+    "conv_pool": dict(channels=3, out_channels=16, height=9, width=11, conv_kernel=3,
+                      conv_stride=1, conv_padding=1, pool_kernel=3, pool_stride=2, pool_padding=1),
     "residual": dict(channels=8, width=4, out_channels=16, side=8, stride=2, blocks=1),
     "attention": dict(tokens=2, hidden=16, heads=2, kv_heads=1, prefix=3, ffn=32),
     "repeated": dict(steps=2, rows=3, hidden=8, ffn=12, output=8),
@@ -36,11 +38,23 @@ def validate_profile(profile):
         raise ValueError("connected block profile has unknown fields")
     p = {**DEFAULTS[kind], **profile}
     for key in DEFAULTS[kind]:
-        low = 0 if key == "prefix" else 1
+        low = 0 if key in {"prefix", "conv_padding", "pool_padding"} else 1
         if type(p[key]) is not int or not low <= p[key] <= 8192:
             raise ValueError(f"connected block profile has invalid {key}")
     # A finite construction screen, not an allocation, placement or traffic proof.
-    if kind == "residual":
+    if kind == "conv_pool":
+        if p["pool_padding"] > p["pool_kernel"] // 2:
+            raise ValueError("pool source padding exceeds half its window")
+        conv = tuple((p[axis] + 2*p["conv_padding"] - p["conv_kernel"]) // p["conv_stride"] + 1
+                     for axis in ("height", "width"))
+        pooled = tuple((extent + 2*p["pool_padding"] - p["pool_kernel"]) // p["pool_stride"] + 1
+                       for extent in conv)
+        if min(*conv, *pooled) <= 0:
+            raise ValueError("conv/pool source geometry has no output elements")
+        elements = (p["channels"]*p["height"]*p["width"]
+                    + p["channels"]*p["out_channels"]*p["conv_kernel"]**2
+                    + p["out_channels"]*(math.prod(conv) + math.prod(pooled)))
+    elif kind == "residual":
         if p["stride"] not in (1, 2) or p["blocks"] > 8:
             raise ValueError("residual source needs stride 1/2 and at most eight blocks")
         elements = (p["channels"] + p["out_channels"] + p["width"]) * p["side"]**2
@@ -66,6 +80,18 @@ def validate_profile(profile):
 def values(shape, offset=0):
     count = math.prod(shape)
     return (((torch.arange(count, dtype=torch.int64) + offset) % 31 - 15).float() / 64).reshape(shape)
+
+
+class ConvPool(nn.Module):
+    """One connected original graph; the selected capture recipe owns quantization."""
+    def __init__(self, p):
+        super().__init__()
+        self.convolution = nn.Conv2d(p["channels"], p["out_channels"], p["conv_kernel"],
+                                     stride=p["conv_stride"], padding=p["conv_padding"], bias=False)
+        self.pool = nn.MaxPool2d(p["pool_kernel"], stride=p["pool_stride"], padding=p["pool_padding"])
+
+    def forward(self, image):
+        return (self.pool(torch.relu(self.convolution(image))),)
 
 
 class Bottleneck(nn.Module):
@@ -151,7 +177,10 @@ def build(profile):
     p = validate_profile(profile)
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(71)
-        if p["kind"] == "residual":
+        if p["kind"] == "conv_pool":
+            model = ConvPool(p)
+            inputs = (values((1, p["channels"], p["height"], p["width"])),)
+        elif p["kind"] == "residual":
             model = ResidualStages(p)
             inputs = (values((1, p["channels"], p["side"], p["side"])),)
         elif p["kind"] == "attention":

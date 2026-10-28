@@ -1,0 +1,9 @@
+# Arm A: the common raw corpus, with derived reference tools and guidance off.
+extends: fresh-campaign-fresh7-paired.yaml
+id: gemmini-open-compiler-fresh7-raw-reference-control
+run:
+  run_id: gemmini-open-compiler-20261027-fresh7raw
+  unit: merlinphase1fresh7raw20261027
+  cpus: 9,10,11,12,13,14,15,16,17,18
+plan:
+  reference_guidance: "off"

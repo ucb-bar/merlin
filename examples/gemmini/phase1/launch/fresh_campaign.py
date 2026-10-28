@@ -1,8 +1,9 @@
-"""Reproducible fresh (unseeded) open-compiler campaign launch from one reviewed spec.
+"""Reproducible fresh open-compiler campaign launch from one reviewed spec.
 
     fresh_campaign.py export    --spec SPEC   # frozen framework export of the branch HEAD
     fresh_campaign.py inputs    --spec SPEC   # author library, full compiler, references, corpus
     fresh_campaign.py seal      --spec SPEC   # corpus inspect + reviewed seal
+    fresh_campaign.py ordering  --spec SPEC   # completion-order selection from the run's facts
     fresh_campaign.py plan      --spec SPEC   # policy, pins and proposed-launch.json (no launch)
     fresh_campaign.py preflight --spec SPEC [--run] [--execute]
     fresh_campaign.py launch    --spec SPEC --confirm
@@ -15,6 +16,9 @@ so a reviewer reads the exact argv and environment instead of a rewrite rule. Pr
 reservation reuse the sibling launch modules of the export (prepare_author_library,
 prepare_source_release, prepare_author_launch, resource_reservation) and
 ``merlin_experiments.phase1.full_compiler_workspace``. Only ``launch`` starts anything.
+
+A spec with a ``seed:`` section starts from an existing compiler instead of an empty backend;
+``fresh_seed.py`` beside this file owns that path, and a spec without one never loads it.
 """
 
 from __future__ import annotations
@@ -42,11 +46,13 @@ _NAME_REST = _NAME_START | set("0123456789")
 # Run-section values exposed as variables; the spec may reference but not redefine them.
 # HOME and USER are the operator's own account, taken from the invoking environment.
 # RUN_TAG is the run id's last dash-separated word (fresh2 for ...-20261026-fresh2).
+# CPU_COUNT is the number of reserved CPUs (in CPUS), for settings sized from the reservation.
 BUILTINS = (
     "RUN_ID",
     "RUN_TAG",
     "UNIT",
     "CPUS",
+    "CPU_COUNT",
     "PREPARATION_CPUS",
     "EXPORT_ID",
     "PREFLIGHT_RUN_ID",
@@ -147,7 +153,17 @@ def with_defaults(value: dict, defaults: dict) -> dict:
 class Context:
     """One spec with its run section and variables resolved for this invocation."""
 
-    def __init__(self, spec_path: str | Path, *, overrides=(), run_id=None, unit=None, cpus=None, export_id=None):
+    def __init__(
+        self,
+        spec_path: str | Path,
+        *,
+        overrides=(),
+        run_id=None,
+        unit=None,
+        cpus=None,
+        export_id=None,
+        reference_guidance=None,
+    ):
         self.spec_path = Path(spec_path).resolve()
         self.spec = load_spec(self.spec_path)
         self.spec_sources = spec_chain(self.spec_path)
@@ -162,6 +178,11 @@ class Context:
         self.preparation_cpus = run.get("preparation_cpus") or self.cpus
         cpu_list(self.cpus), cpu_list(self.preparation_cpus)
         self.run = run
+        plan = self.spec.get("plan") or {}
+        default_guidance = plan.get("reference_guidance", "on" if plan.get("reference_experiments") else "off")
+        self.reference_guidance = reference_guidance if reference_guidance is not None else default_guidance
+        if self.reference_guidance not in ("off", "on"):
+            raise SpecError("reference guidance must be explicitly off or on")
         declared = dict(self.spec.get("variables") or {})
         clash = sorted(set(declared) & set(BUILTINS))
         if clash:
@@ -179,6 +200,7 @@ class Context:
             "PREFLIGHT_RUN_ID": self.run_id + "-preflight",
             "UNIT": self.unit or "",
             "CPUS": self.cpus,
+            "CPU_COUNT": str(len(cpu_list(self.cpus))),
             "PREPARATION_CPUS": self.preparation_cpus,
         }
         for name in ("HOME", "USER"):
@@ -245,6 +267,11 @@ def cmd_export(ctx: Context, args) -> int:
     archive.stdout.close()
     if archive.wait() != 0:
         raise SpecError("git archive failed")
+    # The export has no .git: record its own revision, or every provenance read inside it would walk up
+    # to whichever checkout encloses it and report that branch's moving HEAD instead.
+    from merlin.targetgen.provenance import write_source_record
+
+    write_source_record(framework, head)
     # Repository-local configuration that git archive cannot carry.
     source = ctx.path(section["config_source"])
     for item in section.get("copies") or ():
@@ -299,6 +326,105 @@ def cmd_inputs(ctx: Context, args) -> int:
     return subprocess.run(command, cwd=framework, env=environment).returncode
 
 
+ORDERING_SCRIPT = """
+import json, sys
+from pathlib import Path
+from merlin.targetgen.rtl import command_ordering_selection as owner
+target, facts, contract, declarations, output = sys.argv[1:6]
+pin = owner.prepare(target=target, facts=Path(facts), contract=Path(contract),
+                    declarations=Path(declarations), output=Path(output))
+print(json.dumps(pin))
+"""
+
+
+def ordering_inputs(ctx: Context) -> dict[str, Path]:
+    """The facts and contract the campaign grades against, the declarations and the selection to write."""
+    section = ctx.section("ordering")
+    # Other plan entries contain bindings produced later by build_plan. Ordering
+    # needs only these source identities and must be independently preparable.
+    environment = ctx.section("plan")["environment"]
+    return {
+        "facts": ctx.path(environment["MERLIN_RTL_FACTS"]),
+        "contract": ctx.path(environment["MERLIN_TARGET_CONTRACT"]),
+        "declarations": ctx.path(section["declarations"]),
+        "output": ctx.path(ctx.section("plan")["ordering_selection"]),
+    }
+
+
+def cmd_ordering(ctx: Context, args) -> int:
+    """Derive the completion-order selection from this campaign's own facts and contract (idempotent)."""
+    paths = ordering_inputs(ctx)
+    output = paths["output"]
+    if output.is_file():
+        selection = json.loads(output.read_text())
+        bound = all(sha256(paths[key]) == selection[f"base_{key}"]["sha256"] for key in ("facts", "contract"))
+        if not bound:
+            raise SpecError(f"{output} binds other facts or a different contract; remove it to derive again")
+        print(json.dumps({"selection": str(output), "sha256": sha256(output), "reused": True}))
+        return prepare_command_recorder(ctx)
+    environment, framework = _prepared_runtime(ctx)
+    command = [
+        "taskset",
+        "-c",
+        ctx.preparation_cpus,
+        ctx.x("${PYTHON}"),
+        "-B",
+        "-c",
+        ORDERING_SCRIPT,
+        ctx.x(ctx.section("ordering")["target"]),
+    ]
+    command += [str(paths[key]) for key in ("facts", "contract", "declarations", "output")]
+    result = subprocess.run(command, cwd=framework, env=environment).returncode
+    return result or prepare_command_recorder(ctx)
+
+
+def prepare_command_recorder(ctx: Context) -> int:
+    """Build the explicitly selected operator recorder using the frozen framework's sources."""
+    config = (ctx.spec.get("ordering") or {}).get("command_recorder")
+    if config is None:
+        return 0
+    environment, framework = _prepared_runtime(ctx)
+    command = [
+        "taskset",
+        "-c",
+        ctx.preparation_cpus,
+        ctx.x("${PYTHON}"),
+        "-B",
+        "-m",
+        "merlin.perf.command_recorder",
+        "--engine",
+        str(ctx.path(config["engine"])),
+        "--include",
+        str(ctx.path(config["include"])),
+        "--out",
+        str(ctx.path(config["output"])),
+    ]
+    return subprocess.run(command, cwd=framework, env=environment).returncode
+
+
+def command_recorder_pin(ctx: Context) -> dict | None:
+    """Reopen every recorder product and source pin before putting it in a launch environment."""
+    config = (ctx.spec.get("ordering") or {}).get("command_recorder")
+    if config is None:
+        return None
+    manifest = ctx.path(config["output"]) / "manifest.json"
+    try:
+        doc = json.loads(manifest.read_text())
+        source = ctx.path("${FRAMEWORK}") / "src/merlin/perf/spike_command_recorder.cc"
+        engine = ctx.path(config["engine"]).resolve()
+        if (
+            doc["schema"] != "merlin.command_recorder.v1"
+            or Path(doc["engine"]["path"]).resolve() != engine
+            or sha256(engine) != doc["engine"]["sha256"]
+            or sha256(Path(doc["library"]["path"])) != doc["library"]["sha256"]
+            or sha256(source) != doc["source_sha256"]
+        ):
+            raise ValueError("recorder source, engine or library changed")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise SpecError(f"command recorder unavailable; run ordering first: {exc}") from exc
+    return {"path": str(manifest), "sha256": sha256(manifest)}
+
+
 def forbidden_references(members, prefixes) -> list[str]:
     return [m["path"] for m in members if any(m["path"].startswith(prefix) for prefix in prefixes)]
 
@@ -306,8 +432,11 @@ def forbidden_references(members, prefixes) -> list[str]:
 def reference_members(document):
     """Publication-reviewed v2 destinations, or legacy historical manifest entries."""
     if document.get("schema") == "operator.allowed_reference_sources.v2":
-        return [{"path": origin["name"] + "/" + member["destination"]}
-                for origin in document["origins"] for member in origin["files"]]
+        return [
+            {"path": origin["name"] + "/" + member["destination"]}
+            for origin in document["origins"]
+            for member in origin["files"]
+        ]
     return document["members"]
 
 
@@ -318,6 +447,7 @@ def stage_launch_references(manifest, destination, prefixes):
         raise SpecError(f"public references carry forbidden members: {forbidden[:3]}")
     if document.get("schema") == "operator.allowed_reference_sources.v2":
         from merlin_experiments.corpus.public_references import stage
+
         stage(manifest, destination)
         # The original reviewed origin containers are needed for release staging.
         return manifest
@@ -380,8 +510,9 @@ def cmd_inputs_stage(ctx: Context, args) -> int:
     # Public references: the pinned base members only; a forbidden prefix (private measured kernels)
     # refuses the whole preparation before anything is copied.
     source_refs, refs = ctx.path(section["public_references"]), out / "public-references"
-    reference_manifest = stage_launch_references(source_refs / "reference-manifest.json", refs,
-        section.get("forbidden_reference_prefixes") or ())
+    reference_manifest = stage_launch_references(
+        source_refs / "reference-manifest.json", refs, section.get("forbidden_reference_prefixes") or ()
+    )
 
     source = load_module("prepare_source_release", modules)
     corpus, budget = ctx.path(section["corpus"]), int(section["logical_storage_budget_bytes"])
@@ -453,8 +584,9 @@ def edited_policy(base: dict, *, max_wall_s, final_model_s, workers, excluded, v
     """The base policy without a reviewed compiler origin, on the selected clock."""
     policy = json.loads(json.dumps(base))
     policy.pop("compiler_origin", None)
-    policy["duration_s"] = max(3600, int(max_wall_s))
-    policy["final_model_s"] = min(int(final_model_s), policy["duration_s"] - 1800)
+    policy["duration_s"] = int(max_wall_s)
+    author_reserve = min(1800, max(1, policy["duration_s"] // 2))
+    policy["final_model_s"] = min(int(final_model_s), policy["duration_s"] - author_reserve)
     policy["drain_s"] = min(policy.get("drain_s", 900), policy["final_model_s"])
     gsim = policy.setdefault("gsim", {})
     # The gSIM worker budget follows the clock: take the harness's own default for this duration.
@@ -571,33 +703,85 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
 
     # 4. Campaign argv and environment, exactly as the spec spells them.
     argv = [ctx.x(item) for item in plan["argv"]]
+    reference = plan.get("reference_experiments") if ctx.reference_guidance == "on" else None
+    if ctx.reference_guidance == "on" and reference is None:
+        raise SpecError("reference guidance on requires a pinned reference_experiments selection")
+    if reference is not None:
+        from merlin_experiments.phase1.feedback.reference_experiments import invocation
+
+        if (
+            not isinstance(reference, dict)
+            or set(reference) != {"path", "sha256"}
+            or any(flag in argv for flag in ("--reference-experiments", "--reference-experiments-sha256"))
+        ):
+            raise SpecError("reference_experiments requires one explicit path/sha256 pin")
+        reference = {"path": str(ctx.path(reference["path"]).resolve()), "sha256": ctx.x(reference["sha256"])}
+        try:
+            with invocation(reference["path"], reference["sha256"]):
+                pass  # Reopen the complete selected closure before writing any enabled launch.
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise SpecError(f"reference experiment selection is invalid: {error}") from error
+        argv += ["--reference-experiments", reference["path"], "--reference-experiments-sha256", reference["sha256"]]
+    tasks = plan.get("reference_experiment_tasks", "on")
+    if tasks not in ("on", "off") or "--reference-experiments-tasks" in argv:
+        raise SpecError("reference_experiment_tasks must be on or off (the spec's argv must not pass it)")
+    if reference is not None and tasks == "off":
+        # Keep the selection's analysis grant; serve none of its prior tasks.
+        argv += ["--reference-experiments-tasks", "off"]
     effort = helper_effort if helper_effort is not None else run.get("author_helper_effort")
     if effort and "--author-helper-effort" not in argv:
         argv += ["--author-helper-effort", str(effort)]
     environment = {key: ctx.x(value) for key, value in plan["environment"].items()}
+    reference_map = pin_reference_map(ctx, plan, output, references)
+    if reference_map is not None:
+        from merlin_experiments.phase1.feedback.reference_map import ENV as REFERENCE_MAP_ENV
+
+        if REFERENCE_MAP_ENV in environment:
+            raise SpecError(f"select the reference map through plan.reference_map, not {REFERENCE_MAP_ENV}")
+        environment[REFERENCE_MAP_ENV] = json.dumps(reference_map)
+    recorder = command_recorder_pin(ctx)
+    if recorder is not None:
+        environment["MERLIN_COMMAND_RECORDER"] = json.dumps(recorder)
+    if plan.get("ordering_selection"):
+        selected = ctx.path(plan["ordering_selection"])
+        if not selected.is_file():
+            raise SpecError(f"no ordering selection at {selected}: run `fresh_campaign.py ordering` first")
+        pinned = output / "completion-order-selection.json"
+        if selected.resolve() != pinned.resolve():
+            shutil.copyfile(selected, pinned)
+        environment[ORDERING_ENV] = json.dumps({"path": str(pinned), "sha256": sha256(pinned)})
     if workers:
         environment = {k: cap(v) if k in WORKER_KEYS else v for k, v in environment.items()}
     for key in ("MERLIN_COMPUTE_CPUS", "MERLIN_CODEX_CPUS", "MERLIN_PREPARATION_CPUS"):
         if environment.get(key) != ctx.cpus:
             raise SpecError(f"{key} must be the reserved CPU list")
     _check_campaign(ctx, argv, plan)
+    check_ordering_selection(environment, framework=ctx.path("${FRAMEWORK}"))
+    check_capture_interpreter(environment, framework=ctx.path("${FRAMEWORK}"))
 
     # 5. Reservation command: the export's own wrapper, with the selected unit, state and log.
     launch = load_module("prepare_author_launch", ctx.path(plan["launch_modules"]))
     reservation = plan["reservation"]
     duration = policy["duration_s"]
-    reserved = launch.reservation_argv(
-        argv,
-        environment,
-        task=ctx.path("${TASK}"),
-        output=output,
-        run_id=ctx.run_id,
-        cpus=ctx.cpus,
-        duration_s=duration + int(reservation["margin_s"]),
-    )
-    for flag, key in (("--state", "state"), ("--log", "log"), ("--unit", "unit")):
-        if reservation.get(key):
-            set_wrapper_option(reserved, flag, ctx.x(reservation[key]))
+
+    def reserve(argv, environment):
+        reserved = launch.reservation_argv(
+            argv,
+            environment,
+            task=ctx.path("${TASK}"),
+            output=output,
+            run_id=ctx.run_id,
+            cpus=ctx.cpus,
+            duration_s=duration + int(reservation["margin_s"]),
+        )
+        for flag, key in (("--state", "state"), ("--log", "log"), ("--unit", "unit")):
+            # An unselected unit expands to "" and keeps the wrapper's run-id-derived name.
+            value = ctx.x(reservation[key]) if reservation.get(key) else ""
+            if value:
+                set_wrapper_option(reserved, flag, value)
+        return reserved
+
+    reserved = reserve(argv, environment)
     launch.prepare_slot_roots(environment)
 
     framework = ctx.path("${FRAMEWORK}")
@@ -608,18 +792,24 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     seal = ctx.path("${RELEASE}") / "private/seal.json"
     if inspection.is_file() and seal.is_file():
         inspected, sealed = json.loads(inspection.read_text()), json.loads(seal.read_text())
-        if (Path(inspected.get("release", "")).resolve() != ctx.path("${RELEASE}").resolve()
-                or inspected.get("review_digest") != sealed.get("review_digest")):
+        if Path(inspected.get("release", "")).resolve() != ctx.path("${RELEASE}").resolve() or inspected.get(
+            "review_digest"
+        ) != sealed.get("review_digest"):
             raise SpecError("capsule counts must come from this release's sealed inspection")
         counts = inspected["counts"]
         core = counts["public_admitted"]
         scalability = counts.get("public_scalability", {}).get("source_cases", 0)
         programs = counts.get("public_programs", {}).get("source_cases", 0)
-        record["capsules"] = {"total_public": core + scalability + programs,
-            "core": core, "scalability": scalability, "connected_programs": programs,
-            "basis": "sealed admission inventory; not execution results"}
+        record["capsules"] = {
+            "total_public": core + scalability + programs,
+            "core": core,
+            "scalability": scalability,
+            "connected_programs": programs,
+            "basis": "sealed admission inventory; not execution results",
+        }
     record.update(
         {
+            "reference_guidance": ctx.reference_guidance,
             "execution_started": False,
             "run_id": ctx.run_id,
             "cwd": str(framework),
@@ -631,6 +821,7 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
             "launcher_pid": None,
             "treatment": run["treatment"],
             "source_release": str(ctx.path("${RELEASE}")),
+            "reference_manifest": {"path": str(references), "sha256": sha256(references)},
             "timing_selection": timing,
             "argv": argv,
             "reserved_argv": reserved,
@@ -643,14 +834,62 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
             },
         }
     )
+    if reference is not None:
+        record["reference_experiments"] = reference
+        if tasks == "off":
+            record["reference_experiment_tasks"] = "off"
+    if reference_map is not None:
+        record["reference_map"] = reference_map
+    input_selection = ctx.path(ctx.section("inputs")["output"]) / "inputs-selection.json"
+    if input_selection.is_file():
+        record["inputs_selection"] = {"path": str(input_selection), "sha256": sha256(input_selection)}
     for directory in (ctx.path("${RUN_STATE}"), ctx.path("${PRIVATE_ROOT}")):
         directory.mkdir(parents=True, exist_ok=True)
     private = ctx.path("${PRIVATE_ROOT}")
     if private.stat().st_mode & 0o077:
         os.chmod(private, 0o700)
+    if ctx.spec.get("seed") is not None:
+        # The fresh invariants above held for the unseeded launch; the seed rewrites it (fresh_seed.apply).
+        load_module("fresh_seed", HERE).apply(
+            ctx, record, validate_policy=_validate_policy, check_campaign=_check_campaign, reserve=reserve
+        )
     if write:
         (output / "proposed-launch.json").write_text(json.dumps(record, indent=2) + "\n")
     return record
+
+
+def pin_reference_map(ctx: Context, plan: dict, output: Path, references: Path) -> dict | None:
+    """The operator-built reference map, verified and copied beside the launch: ``{path, sha256}``.
+
+    The same bytes for every arm that names the same pin; it must describe this launch's reference
+    manifest. Absent (or null), no map is staged and no feedback names a reference region."""
+    selected = plan.get("reference_map")
+    if selected is None:
+        return None
+    if not isinstance(selected, dict) or set(selected) != {"path", "sha256"}:
+        raise SpecError("reference_map requires one explicit path/sha256 pin")
+    path, digest = ctx.path(selected["path"]), ctx.x(selected["sha256"])
+    if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+        raise SpecError(
+            f"reference_map sha256 ({selected['sha256']} = {digest!r}) must be the 64-hex digest of "
+            f"{path}: set it in the spec or pass --var NAME=SHA256 once the map is reviewed"
+        )
+    if not path.is_file():
+        raise SpecError(f"reference map is unavailable: {path}")
+    from merlin_experiments.phase1.feedback.reference_map import FILENAME, read_pin
+
+    try:
+        _, document = read_pin({"path": str(path.resolve()), "sha256": digest})
+    except ValueError as error:
+        raise SpecError(f"reference map is invalid: {error}") from error
+    if document["reference_manifest_sha256"] != sha256(references):
+        raise SpecError("reference map describes another reference manifest than this launch selects")
+    pinned = output / FILENAME
+    if pinned.resolve() != path.resolve():
+        shutil.copyfile(path, pinned)
+    if sha256(pinned) != digest:
+        raise SpecError(f"reference map copy differs from its pin: {pinned}")
+    return {"path": str(pinned), "sha256": digest}
 
 
 def _check_campaign(ctx: Context, argv: list[str], plan: dict) -> None:
@@ -671,6 +910,64 @@ def _check_campaign(ctx: Context, argv: list[str], plan: dict) -> None:
         value = argv[argv.index(flag) + 1]
         if not Path(value).exists():
             raise SpecError(f"missing input for {flag}: {value}")
+
+
+ORDERING_ENV = "MERLIN_COMPLETION_ORDER_SELECTION"
+ORDERING_BINDINGS = (("base_contract", "MERLIN_TARGET_CONTRACT"), ("base_facts", "MERLIN_RTL_FACTS"))
+
+
+def check_ordering_selection(environment: dict, *, framework: Path) -> None:
+    """An ordering selection binds exact facts, contract and reader bytes; the grader reports any other
+    pairing as unknown and never checks a kernel, so refuse one this campaign would not select."""
+    raw = environment.get(ORDERING_ENV)
+    if not raw:
+        return
+    pin = json.loads(raw)
+    path = Path(pin["path"])
+    if not path.is_file() or sha256(path) != pin["sha256"]:
+        raise SpecError(f"{ORDERING_ENV} does not match its pinned bytes: {path}")
+    selection = json.loads(path.read_text())
+    for key, selected_key in ORDERING_BINDINGS:
+        selected = environment.get(selected_key)
+        if not selected or not Path(selected).is_file() or sha256(selected) != selection[key]["sha256"]:
+            raise SpecError(
+                f"{ORDERING_ENV} binds {key} {selection[key]['path']}, not this campaign's {selected_key} "
+                f"{selected}: prepare a selection from this export's facts and contract"
+            )
+    roots = [framework / "src", *sorted((framework / "packages").glob("*/src"))]
+    for module, digest in selection["readers"].items():
+        relative = Path(*module.split(".")).with_suffix(".py")
+        found = [root / relative for root in roots if (root / relative).is_file()]
+        if len(found) != 1 or sha256(found[0]) != digest:
+            raise SpecError(
+                f"{ORDERING_ENV} was prepared with a different reader {module}: prepare it from this export"
+            )
+
+
+CAPTURE_PYTHON_ENV = "MERLIN_M2M_PYTHON"
+
+
+def check_capture_interpreter(environment: dict, *, framework: Path) -> None:
+    """Full visible-model checks run their child under the model2MLIR capture interpreter. Probe that
+    interpreter with the export's own dependency list, so a missing package stops the plan here
+    instead of refusing every kernel of every full model check during the run."""
+    python = environment.get(CAPTURE_PYTHON_ENV)
+    if not python:
+        return
+    probe = "from merlin_experiments.phase1.brokers.model_check import import_probe; import_probe()"
+    selected = dict(os.environ, **environment)
+    try:
+        done = subprocess.run(
+            [python, "-c", probe], cwd=framework, env=selected, capture_output=True, text=True, timeout=300
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SpecError(f"{CAPTURE_PYTHON_ENV} {python} cannot be probed: {exc}") from exc
+    if done.returncode:
+        lines = [line for line in done.stderr.splitlines() if line.strip()]
+        raise SpecError(
+            f"{CAPTURE_PYTHON_ENV} {python} cannot run the full model-check child "
+            f"({lines[-1] if lines else done.returncode}): install the missing package into that environment"
+        )
 
 
 def cmd_plan(ctx: Context, args) -> int:
@@ -719,9 +1016,74 @@ def preflight_script(plan: dict, *, run: bool) -> str:
     return "\n".join(lines) + "\n"
 
 
+def prepared_plan(ctx: Context) -> dict:
+    """Refuse a plan prepared from another spec or mode before execution."""
+    plan = json.loads((ctx.path("${ARTIFACTS}") / "proposed-launch.json").read_text())
+    expected = dict(
+        path=str(ctx.spec_path),
+        sha256=sha256(ctx.spec_path),
+        extends=[dict(path=str(p), sha256=sha256(p)) for p in ctx.spec_sources[1:]],
+        unit=ctx.unit,
+    )
+    selected_mode = plan.get("reference_guidance", "on" if plan.get("reference_experiments") else "off")
+    if (
+        plan.get("launch_spec") != expected
+        or plan.get("run_id") != ctx.run_id
+        or selected_mode != ctx.reference_guidance
+    ):
+        raise SpecError("prepared plan differs from this launch spec; run plan and preflight for the selected mode")
+    return plan
+
+
+def host_health_line() -> str:
+    """One line for the operator: host conditions that degraded earlier runs. Never refuses a launch."""
+    try:
+        warnings = load_module("run_watchdog", HERE).host_warnings()
+    except (OSError, ValueError, KeyError, StopIteration) as error:
+        return f"HOST HEALTH unknown: {error}"
+    return "HOST HEALTH WARNING: " + "; ".join(warnings) if warnings else "HOST HEALTH ok"
+
+
+def drop_inputs(root: Path, members) -> int:
+    """Remove the listed sandbox input copies under ``root``; returns the bytes their names held alone.
+
+    A preflight's sandbox holds a full copy of the run's declared input closure (8.6 GB, 2.8 GB of
+    it unique); its ``snapshot.json`` records every member's digest, so the copy itself is
+    regenerable and no record cites its bytes. Read-only directories are plain mode bits here. Links
+    are removed as names, never followed, and a member that leaves ``root`` is refused.
+    """
+    root, freed = Path(root), 0
+    for member in members or ():
+        target = root / member
+        if ".." in Path(member).parts or Path(member).is_absolute():
+            raise SpecError(f"preflight drop member must stay inside its state: {member}")
+        if target.is_symlink() or not target.is_dir():
+            continue
+        relative = target.relative_to(root)
+        for parent in [*reversed(relative.parents), relative]:
+            if parent != Path("."):  # the state root keeps its own mode
+                os.chmod(root / parent, 0o755)
+        for directory, names, files in os.walk(target):
+            for name in names:
+                if not os.path.islink(os.path.join(directory, name)):
+                    os.chmod(os.path.join(directory, name), 0o755)
+            for name in files:
+                stat = os.lstat(os.path.join(directory, name))
+                freed += stat.st_size if stat.st_nlink == 1 else 0
+        shutil.rmtree(target)
+    return freed
+
+
 def cmd_preflight(ctx: Context, args) -> int:
     section = ctx.section("preflight")
-    plan = json.loads((ctx.path("${ARTIFACTS}") / "proposed-launch.json").read_text())
+    plan = prepared_plan(ctx)
+    print(host_health_line())
+    if plan.get("seed") is not None:
+        # The runtime's preflight-only mode refuses a candidate: check the seed itself, then
+        # preflight the environment with the plan's unseeded twin.
+        seed = load_module("fresh_seed", HERE)
+        print(json.dumps({"seed_check": seed.verify(ctx, plan)}))
+        plan = seed.preflight_plan(plan, run=args.run)
     script = ctx.path(section["run_script" if args.run else "script"])
     script.parent.mkdir(parents=True, exist_ok=True)
     script.write_text(preflight_script(plan, run=args.run))
@@ -729,13 +1091,15 @@ def cmd_preflight(ctx: Context, args) -> int:
     print(json.dumps({"script": str(script), "mode": "unreserved run" if args.run else "preflight"}))
     if not args.execute or args.run:
         return 0
-    # A preflight starts from empty preflight state: earlier attempts move aside, never deleted.
+    # A preflight starts from empty preflight state: earlier attempts move aside, never deleted, except
+    # for the sandbox input copies an item lists under ``drop`` (see drop_inputs).
     retired = ctx.path(section["retire_into"]) / str(int(time.time()))
     for item in section.get("retire") or ():
         source = ctx.path(item["path"])
         if source.exists():
             retired.mkdir(parents=True, exist_ok=True)
             shutil.move(str(source), str(retired / item["as"]))
+            drop_inputs(retired / item["as"], item.get("drop"))
     log = ctx.path(section["log"])
     with open(log, "wb") as handle:
         try:
@@ -746,6 +1110,9 @@ def cmd_preflight(ctx: Context, args) -> int:
     lines = log.read_text(errors="replace").splitlines()
     if code == 0:
         print("PREFLIGHT OK")
+        # A passed preflight is never resumed; a failed one keeps its inputs for diagnosis until retired.
+        freed = sum(drop_inputs(ctx.path(item["path"]), item.get("drop")) for item in section.get("retire") or ())
+        print(f"released {freed >> 20} MiB of preflight sandbox input copies")
     else:
         print(f"PREFLIGHT rc={code}")
         for line in lines:
@@ -758,7 +1125,9 @@ def cmd_preflight(ctx: Context, args) -> int:
 
 def cmd_launch(ctx: Context, args) -> int:
     path = ctx.path("${ARTIFACTS}") / "proposed-launch.json"
-    plan = json.loads(path.read_text())
+    plan = prepared_plan(ctx)
+    if plan.get("seed") is not None:
+        print(json.dumps({"seed_check": load_module("fresh_seed", HERE).verify(ctx, plan)}))
     if not args.confirm:
         print(json.dumps({"would_execute": plan["reserved_argv"][:12], "cwd": plan["cwd"]}, indent=2))
         print("refusing to launch without --confirm", file=sys.stderr)
@@ -772,6 +1141,11 @@ def cmd_launch(ctx: Context, args) -> int:
             plan["reserved_argv"], cwd=plan["cwd"], stdout=log, stderr=subprocess.STDOUT, start_new_session=True
         )
     print("launched reservation pid", process.pid)
+    if not args.no_watchdog:
+        watchdog = load_module("run_watchdog", HERE).start_detached(
+            planned_unit(ctx), set(cpu_list(ctx.cpus)), ctx.path("${ARTIFACTS}") / "watchdog.log"
+        )
+        print("started run watchdog pid", watchdog, "(log", ctx.path("${ARTIFACTS}") / "watchdog.log)")
     return 0
 
 
@@ -916,11 +1290,18 @@ def parser() -> argparse.ArgumentParser:
     common.add_argument("--unit", help="override the spec's reservation unit name")
     common.add_argument("--cpus", help="override the spec's reserved CPU list (comma separated)")
     common.add_argument("--export-id", help="framework export (12-hex commit); default: the repo's HEAD")
+    common.add_argument(
+        "--reference-guidance",
+        choices=("off", "on"),
+        default=None,
+        help="enable lifting/CCA reference tools and derived guidance; default: the spec's mode",
+    )
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("export", parents=[common], help="frozen framework export of the branch HEAD")
     sub.add_parser("inputs", parents=[common], help="prepare author library, full compiler and corpus")
     sub.add_parser("_inputs", parents=[common], help=argparse.SUPPRESS)
+    sub.add_parser("ordering", parents=[common], help="derive the completion-order selection from the run's facts")
     seal = sub.add_parser("seal", parents=[common], help="inspect and seal the prepared corpus")
     seal.add_argument("--inspect-only", action="store_true")
     seal.add_argument("--reviewed-by")
@@ -932,6 +1313,7 @@ def parser() -> argparse.ArgumentParser:
     preflight.add_argument("--execute", action="store_true", help="run the preflight script now")
     launch = sub.add_parser("launch", parents=[common], help="start the reserved campaign")
     launch.add_argument("--confirm", action="store_true")
+    launch.add_argument("--no-watchdog", action="store_true", help="do not start run_watchdog.py for the unit")
     check = sub.add_parser("check", parents=[common], help="read-only campaign status")
     check.add_argument("--watch", action="store_true", help="return once the campaign needs attention")
     check.add_argument("--until", metavar="HHMM", help="wait until this UTC time, then report")
@@ -943,6 +1325,7 @@ COMMANDS = {
     "export": cmd_export,
     "inputs": cmd_inputs,
     "_inputs": cmd_inputs_stage,
+    "ordering": cmd_ordering,
     "seal": cmd_seal,
     "plan": cmd_plan,
     "preflight": cmd_preflight,
@@ -954,7 +1337,13 @@ COMMANDS = {
 def main(argv=None) -> int:
     args = parser().parse_args(argv)
     ctx = Context(
-        args.spec, overrides=args.var, run_id=args.run_id, unit=args.unit, cpus=args.cpus, export_id=args.export_id
+        args.spec,
+        overrides=args.var,
+        run_id=args.run_id,
+        unit=args.unit,
+        cpus=args.cpus,
+        export_id=args.export_id,
+        reference_guidance=args.reference_guidance,
     )
     return COMMANDS[args.command](ctx, args)
 

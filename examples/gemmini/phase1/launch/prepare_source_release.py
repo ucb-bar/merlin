@@ -38,6 +38,8 @@ def prepare(
         "merlin.common_compiler_substrate.v13",
         "merlin.common_compiler_substrate.v14",
         "merlin.common_compiler_substrate.v15",
+        "merlin.common_compiler_substrate.v16",
+        "merlin.common_compiler_substrate.v17",
     ):
         raise ValueError("source refresh requires an explicitly supported reviewed common substrate")
     previous, output, sdk = Path(previous), Path(output), Path(sdk)
@@ -174,10 +176,13 @@ def main():
             "merlin.common_compiler_substrate.v13",
             "merlin.common_compiler_substrate.v14",
             "merlin.common_compiler_substrate.v15",
+            "merlin.common_compiler_substrate.v16",
+            "merlin.common_compiler_substrate.v17",
         ),
         help="explicit prospective source epoch; default preserves the existing V8 profile",
     )
-    p.add_argument("--host-capability-spec", type=Path, help="Exact reviewed support source for the existing host package")
+    p.add_argument("--host-capability-spec", type=Path,
+                   help="Exact reviewed support source for the existing host package")
     p.add_argument("--host-capability-spec-sha256", help="Digest of the explicitly selected host support source")
     p.add_argument("--public-program-suite", type=Path, help="Explicit reviewed complete-program roster")
     args = p.parse_args()

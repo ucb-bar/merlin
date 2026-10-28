@@ -70,9 +70,7 @@ def effective_cpus(unit):
 
 
 def set_allowed(unit, value):
-    subprocess.run(
-        ["systemctl", "set-property", "--runtime", unit, "AllowedCPUs=" + value], check=True
-    )
+    subprocess.run(["systemctl", "set-property", "--runtime", unit, "AllowedCPUs=" + value], check=True)
 
 
 def root_state(path):
@@ -111,9 +109,7 @@ def acquire(path):
         checks = {}
         for unit in HOST_UNITS:
             group = command(["systemctl", "show", unit, "--property=ControlGroup", "--value"])
-            effective = cpus(
-                (Path("/sys/fs/cgroup") / group.lstrip("/") / "cpuset.cpus.effective").read_text()
-            )
+            effective = cpus((Path("/sys/fs/cgroup") / group.lstrip("/") / "cpuset.cpus.effective").read_text())
             checks[unit] = sorted(effective)
             if not effective or effective & selected:
                 raise ValueError(f"{unit} still overlaps the experiment reservation")
@@ -169,9 +165,7 @@ def child(path):
         raise ValueError("experiment service does not have the exact reserved CPUs")
     soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
     if soft != resource.RLIM_INFINITY and soft < FILE_DESCRIPTOR_LIMIT:
-        raise ValueError(
-            "experiment service lacks the selected file-descriptor capacity"
-        )
+        raise ValueError("experiment service lacks the selected file-descriptor capacity")
     env = json.loads(Path(state["environment_path"]).read_text())
     argv = state["argv"]
     log = Path(state["log_path"])
@@ -209,12 +203,17 @@ def launch(args):
         raise ValueError("a finite experiment duration and command are required")
     for entry in Path("/sys/fs/cgroup").iterdir():
         if entry.is_dir() and entry.name not in (*HOST_UNITS, "init.scope"):
-            effective = entry / "cpuset.cpus.effective"
-            occupied = any(item.read_text().strip() for item in entry.rglob("cgroup.procs"))
-            if effective.exists() and occupied and cpus(effective.read_text()) & selected:
-                raise ValueError(
-                    f"another top-level cgroup can use the selected CPUs: {entry.name}"
-                )
+            # Judge each occupied cgroup by its own CPUs: a slice that holds a reservation reports every
+            # CPU while its occupied unit is pinned to a subset, so two disjoint reservations can coexist.
+            for procs in (entry / "cgroup.procs", *entry.rglob("*/cgroup.procs")):
+                effective = procs.parent / "cpuset.cpus.effective"
+                if (
+                    procs.exists()
+                    and procs.read_text().strip()
+                    and effective.exists()
+                    and cpus(effective.read_text()) & selected
+                ):
+                    raise ValueError(f"another top-level cgroup can use the selected CPUs: {entry.name}")
     args.state.parent.mkdir(parents=True, exist_ok=True)
     if args.state.exists() or args.state.is_symlink():
         raise ValueError("reservation needs a new state file")
@@ -298,7 +297,8 @@ def launch(args):
     for signum in (signal.SIGTERM, signal.SIGINT):
         prior[signum] = signal.signal(signum, stop)
     try:
-        result = subprocess.run(argv, check=False)
+        with announced(args, selected):
+            result = subprocess.run(argv, check=False)
         final = json.loads(args.state.read_text())
         if final.get("release_complete") is not True:
             subprocess.run(
@@ -311,15 +311,31 @@ def launch(args):
             signal.signal(signum, handler)
 
 
+def announced(args, selected):
+    """The quiet-host marker entry (run_watchdog.py beside this file) for the reservation's lifetime."""
+    import contextlib
+    import importlib.util
+
+    source = Path(__file__).with_name("run_watchdog.py")
+    try:
+        spec = importlib.util.spec_from_file_location("reservation_run_watchdog", source)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (OSError, ImportError) as error:
+        print(f"quiet-host marker unavailable: {error}", file=sys.stderr)
+        return contextlib.nullcontext()
+    command = args.command
+    run_ids = [command[command.index("--run-id") + 1]] if "--run-id" in command[:-1] else []
+    return module.announced(args.unit, selected, args.max_seconds, run_ids)
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] in {"_acquire", "_release", "_child"}:
         parser = argparse.ArgumentParser()
         parser.add_argument("action")
         parser.add_argument("--state", type=Path, required=True)
         args = parser.parse_args()
-        return {"_acquire": acquire, "_release": release, "_child": child}[args.action](
-            args.state
-        ) or 0
+        return {"_acquire": acquire, "_release": release, "_child": child}[args.action](args.state) or 0
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--max-seconds", type=int, required=True)

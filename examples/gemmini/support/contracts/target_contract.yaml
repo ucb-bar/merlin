@@ -189,6 +189,10 @@ encoding:
     6: PRELOAD             # compiler alias LOOP_CONV (the _WS dataflow suffix is implicit); all others exact.
     7: FLUSH
     8: LOOP_WS
+    14: MVIN3              # LOAD3_CMD (GemminiISA.scala `LOAD3_CMD = 14.U`; header `k_MVIN3 14`): the third
+                           # load state. RTL decode: ReservationStation `is_load` admits it with LOAD/LOAD2 and
+                           # LoadController selects load state 2 for it; command_ordering observes it entering the
+                           # load queue with its block stride keyed by load state 2 (MVIN 0, MVIN2 1).
     15: LOOP_CONV
   # config_subtype: CONFIG (funct 0) refined by rs1 & 0x3. NAMES are HEADER-DERIVED (gemmini.h
   # `#define CONFIG_EX 0` / `CONFIG_LD 1` / `CONFIG_ST 2`); the CODES are the rs1[1:0] sub-field the RTL

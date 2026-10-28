@@ -10,8 +10,6 @@ variables:
   # Override both variables when selecting a different immutable runtime bundle.
   NEXT_TIMING_SELECTION: ${WORKSPACE}/tasks/el4-cycle-source-repair-20261026/merlin/out/artifacts/prospective-performance-selection-v83/performance-selection.json
   NEXT_TIMING_SELECTION_SHA256: 5a219811e8edbe66197b57cacb84008833abcdc9ee6d73a36a81d4f0eb0788ef
-  NEXT_ORDERING_SELECTION: ${WORKSPACE}/tasks/el4-orchestration-feedback-20261026/merlin/out/artifacts/studies/completion-order-selection-v2/selection.json
-  NEXT_ORDERING_SELECTION_SHA256: 5ba76d2743c988474bac9dc959f36cc1cfa480cf75d1cda089cff343e089ddb9
   NEXT_CORRECTNESS_ROSTER_PIN: '{"path": "${TASK}/.tmp/fresh4/original-roster-r6.json", "sha256": "ef87a212e750da87b22be4fec6cd947fdeb8db8be876dd95fe7e7e4f0ed12ab8"}'
 run:
   run_id: null
@@ -21,6 +19,14 @@ run:
   final_model_s: 3600
   # Codex fresh-context helpers reason at medium effort.
   author_helper_effort: medium
+ordering:
+  target: gemmini
+  # Ordering-only dispatch declarations supplementing the selected contract.
+  declarations: ${FRAMEWORK}/examples/gemmini/target/contracts/target_contract.yaml
+  command_recorder:
+    engine: ${WORKSPACE}/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike
+    include: ${WORKSPACE}/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/include
+    output: ${INPUTS}/command-recorder
 seal:
   # Each corpus seal records its own review: pass --review-note.
   review_note: null
@@ -28,9 +34,27 @@ plan:
   record:
     acceptance: Fresh backend with reviewed inputs; correctness and performance qualification remain execution results.
   timing_selection: ${NEXT_TIMING_SELECTION}
+  # Derived from this run's own facts and contract by `fresh_campaign.py ordering`; a selection
+  # derived for another bundle makes every completion-order check report unknown, and leaves the
+  # ordering capabilities of the session's optimization suggestions unknown.
+  ordering_selection: ${INPUTS}/completion-order-selection/selection.json
   environment:
-    MERLIN_COMPLETION_ORDER_SELECTION: '{"path": "${NEXT_ORDERING_SELECTION}", "sha256": "${NEXT_ORDERING_SELECTION_SHA256}"}'
     MERLIN_JOINT_CORRECTNESS_ROSTER: ${NEXT_CORRECTNESS_ROSTER_PIN}
+    # Engine and lane caps follow the reserved CPU list (fresh2 spelled out 20 for 20 CPUs). The
+    # self-check dispatcher starts author requests past these lanes while the shared pool has no
+    # author backlog, up to one more per reserved CPU; nothing else needs to be set for that.
+    MERLIN_DEVICE_BUILD_JOBS: ${CPU_COUNT}
+    MERLIN_GRADE_WORKERS: ${CPU_COUNT}
+    MERLIN_GSIM_MAX_SLOTS: ${CPU_COUNT}
+    MERLIN_SPIKE_MAX_SLOTS: ${CPU_COUNT}
+    MERLIN_PRIVATE_EXECUTION_WORKERS: ${CPU_COUNT}
+    MERLIN_SELFCHECK_ORDINARY_JOBS: ${CPU_COUNT}
+    MERLIN_SELFCHECK_VARIANT_JOBS: ${CPU_COUNT}
+    # fresh2 enabled the snapshot read-lease cache. Each grade worker's helper held up to
+    # MAX_FILES leases (~3e5 on the host); every /proc/locks reader then held the kernel's
+    # global file-lock rwsem for write and all lease operations stalled, idling both fresh8
+    # runs. Full SHA-256 reads are the default; set '1' only on a host nothing scans.
+    MERLIN_SNAPSHOT_LEASE_CACHE: '0'
   policy:
     base:
       path: ${REPO}/out/artifacts/open-fresh/fresh4/policy.json
@@ -43,6 +67,8 @@ plan:
       # executed command stream issues a command the target's derived ISA facts give this role.
       prohibited_instruction_roles: [loop_descriptor]
       # Long gSIM measurements of the largest cases (idle capacity only; never the grade reserve).
+      # The lane is off by default (performance runs on the Spike cycle model); these knobs apply
+      # only with enabled: true.
       gsim_measurement:
         long_max_jobs: 4
         # gSIM runs only where its projected wall time fits: longer runs stall iteration.
@@ -68,8 +94,8 @@ inputs:
   # grader/oracle modules), with explicit shared exploration and logical-ABI APIs. fresh2 ran
   # the earlier withholding release under its
   # pre-merge number (inventory 20, substrate v13); those numbers now name the V20 carried-event roster.
-  library_version: 22
-  common_substrate: merlin.common_compiler_substrate.v15
+  library_version: 23
+  common_substrate: merlin.common_compiler_substrate.v16
   # Exact additional generic leaves relative to the pinned previous_library.
   # Listing these explicitly keeps SDK expansion reviewable; no package-wide grant.
   reviewed_modules:
@@ -83,5 +109,8 @@ inputs:
   - merlin.compile.scheduling.spatial_max_stripes
   - merlin.compile.logical_abi
   - merlin.compile.scheduling.convolution_exploration
+  - merlin.compile.scheduling.dense_panel_epochs
   - merlin.transforms.evaluated_exploration
   - merlin.transforms.shape_policy
+  - merlin.compile.scheduling.pointwise_convolution
+  - merlin.compile.scheduling.batched_dense

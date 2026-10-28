@@ -180,9 +180,6 @@ environment:
     MERLIN_GRADE_START_TO_START: "1"
   caches:
     MERLIN_SHAPE_COVERAGE_CACHE: "1"
-    MERLIN_SNAPSHOT_LEASE_CACHE: "1"
-    MERLIN_SNAPSHOT_LEASE_MIN_BYTES: "65536"
-    MERLIN_SNAPSHOT_LEASE_MAX_FILES: "65536"
 
 # Set by the supervisor immediately before it starts the controller; not part
 # of environment.sh. A live controller must carry these values.

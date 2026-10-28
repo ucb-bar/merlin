@@ -334,11 +334,13 @@ preflight:
   run_script: ${OPERATOR_TMP}/run-${RUN_ID}.sh
   log: ${OPERATOR_TMP}/preflight-${RUN_ID}.log
   timeout_s: 1500
-  # Earlier preflight state moves aside (never deleted) before a new preflight.
+  # Earlier preflight state moves aside (never deleted) before a new preflight; its sandbox input
+  # copies (digests kept in bundle_inputs/snapshot.json) are dropped then, or as soon as it passes.
   retire_into: ${OPERATOR_TMP}/old-preflight-${RUN_ID}
   retire:
   - path: ${REPO}/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/${PREFLIGHT_RUN_ID}
     as: ws
+    drop: [bundle_inputs/external, bundle_inputs/repo]
   - path: ${REPO}/out/runs/gemmini/phase1/${PREFLIGHT_RUN_ID}
     as: run
 

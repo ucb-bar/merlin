@@ -49,3 +49,22 @@ compiler-library export before launch. Its dependency closure includes
 source hashes and review the new selection. Do not mutate a running author's
 frozen library. The adapter remains authored in the fresh backend, and private
 reference implementations and measurements remain excluded.
+
+## Existing bounded host RNE in ordinary owned builds
+
+An owned model backend may add `"host_bounded_rne": true` to its ordinary
+`source_composition.json` request (alongside the required `schema`,
+`shared_input_siblings`, and `prepack_weights` fields). The fixed host owner
+forwards this to `OwnedHostModelCompiler.compile(host_bounded_rne=True)`.
+It selects Merlin's existing late bounded clamp/RNE legalizer; it supplies
+neither host LLVM nor numerical permissions from another experiment.
+
+The original source must contain a recognized unconstrained binary32 bounded
+integer rounding chain and the selected host lane must support scalar RV64GC.
+The existing matcher, assembler, actual emitted-LLVM proof and complete-output
+checks remain authoritative. No matching chain or unsupported CPU semantics
+produce an explicit refusal. Defaults stay off; existing operator pass overrides
+retain precedence. Applied feedback requires the pinned original preparation
+report, rather than the request alone. This option does not select historical
+interval-observer tables, source fallback replacements, or their FP effect
+permissions, and does not imply a speedup.
