@@ -487,6 +487,33 @@ than the facts without a recorded restriction (`forbids_established`), or one cl
 values the facts decide against (`exceeds_facts`), blocks the coverage commitment.
 `restricted`, `unconfirmed` and `undetermined` findings are reported for review.
 
+### Must-refuse composition twins that place nothing on the accelerator
+
+A composition's must-refuse twin (`outcome: refuse`) is the positive's program with one chain
+constraint broken. When the screen then places no operation of the written program on the
+accelerator, public preparation cannot grade it (host placement is Merlin-supplied), so
+generation removes it from the output tree and discloses it in `host_placement_not_published`
+with the verbatim `accelerator_placement_refusal` reason and the rule
+`composition_refusal_twin_places_nothing_on_accelerator`. The refusal is not exempted from the
+public placement check.
+
+This is by design, not a placement gap. For `window_reduction_readout` the producer is a
+movement, so the program is a readout stage and a store-path max pool and nothing else. The
+four withheld twins each break the constraint they are named for:
+
+- `standalone_pool_unfenced` and `padded_pool_unfenced`: `scratchpad_source_pooling_fenced` is
+  false for a movement-sourced pool (`scratchpad-source pooling lacks its required fence`).
+- `pool_above_tile` and `pool_below_tile`: the pool window exceeds the derived register field
+  (`pool_window exceeds or lacks derived register bounds`; the field is 2 bits wide, so windows
+  above 3 are refused on either side of the tile edge).
+
+An unfenced twin is byte-identical to its fenced positive (same `program_sha256`); only the
+composition truth differs, and the fused readout and pool are admitted only through the
+composition. With fusion refused, nothing remains for the accelerator. Placing an operation
+on the accelerator would need a different program (for example an added contraction), which
+changes what the twin grades, so it is not done. The withhold reason digest is
+`75d45316a6c5669a6ccc4f4e6b0fd267dd3200bab359abc9d80c113afd351aac`.
+
 ## Optional reference APIs
 
 The [component diagnostic reference](../reference/component_phase0_diagnostics.md)
