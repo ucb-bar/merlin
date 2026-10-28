@@ -884,9 +884,38 @@ def _flat(nested) -> list:
 _MISMATCH_INDEX_CAP = 64
 
 
-def _per_output_value(value, mode):
+#: The per-output numeric policy versions. ``v1`` is the finite-only contract: every float leaf on
+#: either side must be finite. ``nonfinite.v1`` is a separate, explicitly declared contract that
+#: additionally compares NaN/+-Inf leaves by class (see :func:`nonfinite_class`); nothing selects it
+#: except a capsule that declares exactly this schema string, so every v1 capsule grades as before.
+PER_OUTPUT_SCHEMA = "merlin.numeric_policy.per_output.v1"
+PER_OUTPUT_NONFINITE_SCHEMA = "merlin.numeric_policy.per_output.nonfinite.v1"
+PER_OUTPUT_SCHEMAS = (PER_OUTPUT_SCHEMA, PER_OUTPUT_NONFINITE_SCHEMA)
+
+
+def nonfinite_class(value) -> str | None:
+    """The comparison class of a decoded float leaf, or ``None`` for a finite value.
+
+    NaN compares by its IEEE-754 quiet bit (``nan_quiet`` / ``nan_signaling``) and ignores sign and
+    payload, which hardware does not preserve (the x86 default NaN is negative; a float32 -> float64
+    widening keeps the quiet bit but may rewrite the payload). Infinity compares by sign
+    (``+inf`` / ``-inf``).
+    """
+    if not isinstance(value, float) or math.isfinite(value):
+        return None
+    if math.isinf(value):
+        return "+inf" if value > 0 else "-inf"
+    import struct
+
+    (bits,) = struct.unpack("<Q", struct.pack("<d", value))
+    return "nan_quiet" if bits >> 51 & 1 else "nan_signaling"
+
+
+def _per_output_value(value, mode, nonfinite=False):
     if not isinstance(value, (int, float)):
         return False
+    if nonfinite and mode == "tolerance_float":
+        return True
     return not isinstance(value, float) or (math.isfinite(value) and (mode != "exact_int" or value.is_integer()))
 
 
@@ -908,14 +937,15 @@ def match_per_output(observed: dict, expected: dict, policy: dict) -> bool:
 
     Integer leaves compare original values without narrowing or truncation.
     Finite float leaves use the existing comparator and its declared thresholds.
-    Nonfinite values require a separately specified comparison contract.
+    Nonfinite values are refused under ``per_output.v1`` and compared by class (NaN by quiet bit, Inf
+    by sign) only under a policy that declares ``per_output.nonfinite.v1``.
     """
     if not observed or not expected or set(observed) != set(expected):
         return False
     policies = policy.get("outputs")
     if (
         set(policy) != {"schema", "compare", "outputs"}
-        or policy.get("schema") != "merlin.numeric_policy.per_output.v1"
+        or policy.get("schema") not in PER_OUTPUT_SCHEMAS
         or policy.get("compare") != "per_output"
         or type(policies) is not dict
         or set(policies) != set(expected)
@@ -924,17 +954,23 @@ def match_per_output(observed: dict, expected: dict, policy: dict) -> bool:
         )
     ):
         raise ValueError("per-output matching requires the complete versioned result policy roster")
+    nonfinite = policy["schema"] == PER_OUTPUT_NONFINITE_SCHEMA
     for name, child in policies.items():
         actual, wanted = _flat(observed[name]), _flat(expected[name])
         if len(actual) != len(wanted) or any(
-            not _per_output_value(value, child["compare"]) for values in (actual, wanted) for value in values
+            not _per_output_value(value, child["compare"], nonfinite)
+            for values in (actual, wanted)
+            for value in values
         ):
             return False
         if child["compare"] == "exact_int":
             if actual != wanted:
                 return False
         else:
-            if compare({name: expected[name]}, {name: observed[name]}, child, _strict_values=True)["status"] != "pass":
+            checked = compare(
+                {name: expected[name]}, {name: observed[name]}, child, _strict_values=True, _nonfinite=nonfinite
+            )
+            if checked["status"] != "pass":
                 return False
     return True
 
@@ -946,6 +982,7 @@ def compare(
     *,
     golden_source: str = "merlin_tensor_int",
     _strict_values: bool = False,
+    _nonfinite: bool = False,
 ) -> dict:
     """Exact-int (or tolerance-float) comparison; returns a numeric_report dict. ``golden_source`` is
     stamped into the report so provenance is honest — ``merlin_tensor_int`` for a recomputed integer
@@ -972,7 +1009,7 @@ def compare(
         if (
             not expected
             or set(policy) != {"schema", "compare", "outputs"}
-            or policy.get("schema") != "merlin.numeric_policy.per_output.v1"
+            or policy.get("schema") not in PER_OUTPUT_SCHEMAS
             or type(policies) is not dict
             or set(policies) != set(expected)
             or set(observed) - set(expected)
@@ -989,6 +1026,7 @@ def compare(
                 policies[name],
                 golden_source=golden_source,
                 _strict_values=True,
+                _nonfinite=policy["schema"] == PER_OUTPUT_NONFINITE_SCHEMA,
             )
             rep["per_output"][name] = {**child["per_output"][name], "policy": policies[name]["compare"]}
             rep["mismatch_count"] += child["mismatch_count"]
@@ -1025,6 +1063,7 @@ def compare(
             total_mismatch += abs(len(ef) - len(of)) + 1
             continue
         mism = 0
+        nonfinite_compared = 0
         maxabs = 0
         maxrel = 0.0
         first = None
@@ -1039,9 +1078,19 @@ def compare(
         # indices are enough to see clustering, and `mismatch_count` already carries the total.
         bad_idx: list[int] = []
         for idx, (a, b) in enumerate(zip(ef, of)):
-            if _strict_values and (not _per_output_value(a, mode) or not _per_output_value(b, mode)):
+            if _strict_values and (
+                not _per_output_value(a, mode, _nonfinite) or not _per_output_value(b, mode, _nonfinite)
+            ):
                 raise ValueError("per-output values must be finite and integral for exact integer leaves")
-            if mode == "exact_int":
+            class_a, class_b = (nonfinite_class(a), nonfinite_class(b)) if _nonfinite else (None, None)
+            if class_a is not None or class_b is not None:
+                # Under the non-finite contract an expected or observed NaN/Inf matches only the same
+                # class (quiet NaN, signaling NaN, +Inf, -Inf); a finite value never matches one. No
+                # numeric distance exists, so it contributes to the count and first mismatch only.
+                nonfinite_compared += 1
+                bad = class_a != class_b
+                d = 0
+            elif mode == "exact_int":
                 bad = int(a) != int(b)
                 d = abs(int(a) - int(b))
             else:
@@ -1072,6 +1121,8 @@ def compare(
             "n_elements": len(ef),
             "saturated": bool(mism and mism == len(ef)),
         }
+        if _nonfinite:
+            rep["per_output"][name]["nonfinite_compared"] = nonfinite_compared
         if mism:
             rep["per_output"][name]["mismatch_indices"] = bad_idx
             rep["per_output"][name]["mismatch_indices_truncated"] = mism > len(bad_idx)

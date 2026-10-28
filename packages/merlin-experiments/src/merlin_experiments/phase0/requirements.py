@@ -29,6 +29,15 @@ from .program_admission import entry_refusal_is_final
 from .software_screen import diagnostic_entry, intersect_requirement, screen_entry
 from .typed_scope import typed_required_instances
 
+#: Applications whose captured goldens hold NaN/+-Inf results by design (the core-ATen coverage set
+#: exercises domain edges). Their materialized source entries declare
+#: ``captured_per_output_nonfinite_v1``, so the writer publishes the capsule under
+#: ``merlin.numeric_policy.per_output.nonfinite.v1`` and a submission is graded class-wise on those
+#: leaves. Every other application keeps ``captured_per_output_v1`` (finite-only, unchanged).
+NONFINITE_CONTRACT_LABELS = frozenset(
+    f"core_aten_coverage_{family}" for family in ("affine", "contraction", "movement", "reduce")
+)
+
 
 def _json(value) -> bytes:
     return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
@@ -200,7 +209,10 @@ def _materialized_iteration_capsules(
                 "source_reference": "full saved iteration capture; target compile and execution unverified",
                 # The capture's output ABI names every result and its dtype, so a mixed-dtype model is
                 # graded by one existing policy per result; a single-dtype model keeps its one policy.
-                "output_numeric_policy": "captured_per_output_v1",
+                "output_numeric_policy": (
+                    "captured_per_output_nonfinite_v1" if label in NONFINITE_CONTRACT_LABELS
+                    else "captured_per_output_v1"
+                ),
                 "materialized_capture": {
                     **selection,
                     "path": f"{prefix}/{label}/model.mlir",

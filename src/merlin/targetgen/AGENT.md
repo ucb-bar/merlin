@@ -68,6 +68,15 @@ without a constructor-specific marker. Preserve historical default refusal,
 output cardinality, captured dtypes and original tolerances; this issues no
 hardware or performance admission.
 
+A model entry whose captured results legitimately hold NaN or +-Inf may instead select
+`output_numeric_policy: captured_per_output_nonfinite_v1`. The writer then declares
+`merlin.numeric_policy.per_output.nonfinite.v1` (same envelope, same per-result leaves) and the
+grader compares non-finite leaves by class: NaN by quiet bit (sign and payload ignored), Inf by
+sign; finite leaves, integer leaves and tolerances are unchanged. Only a capsule that declares
+that exact schema string is graded this way; `per_output.v1` still refuses any non-finite leaf
+and the writer's default still refuses a non-finite golden. The two policy versions are never
+inferred from the data.
+
 Explicit `component_program` v2 adds signed integer casts and true kept-axis
 sum reductions to closed rank-two DAGs. Legacy source bytes retain their original
 meaning. Logical copies, fanout, aliases and state epochs are source semantics;

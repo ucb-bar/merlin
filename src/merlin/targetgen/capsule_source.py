@@ -1375,7 +1375,9 @@ def _scalars(value):
         yield value
 
 
-def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, binding, *, output_names=None) -> dict:
+def _model_output_numeric_policy(
+    output_abi: list[dict], golden_values: list, binding, *, output_names=None, nonfinite_contract: bool = False
+) -> dict:
     """Grade in the captured result's element type, not the target's operand type.
 
     The capture worker serializes even integer tensors through float64 JSON. An
@@ -1383,23 +1385,34 @@ def _model_output_numeric_policy(output_abi: list[dict], golden_values: list, bi
     integral and exactly representable; the ABI supplies the actual tensor dtype.
     Heterogeneous result dtypes require an explicit complete output roster and
     receive one existing numerical policy per result; legacy calls refuse them.
+
+    ``nonfinite_contract`` is the separately declared opt-in to ``per_output.nonfinite.v1``: the
+    capsule is always graded per output under that schema (even when every result shares a dtype),
+    and NaN/+-Inf float goldens are published for class-wise comparison instead of being refused.
+    Without it a non-finite golden is still refused, exactly as before.
     """
     if len(output_abi) != len(golden_values):
         raise M2MUnavailable("model output ABI/result cardinality disagrees with its golden")
     dtypes = {str(result.get("dtype") or "") for result in output_abi}
-    if len(dtypes) != 1 and output_names is not None:
+    if (len(dtypes) != 1 or nonfinite_contract) and output_names is not None:
         if len(output_names) != len(output_abi) or len(set(output_names)) != len(output_names):
             raise M2MUnavailable("typed model output numerical policy needs every unique original result")
         # The per-output grader (capsule_golden.match_per_output) accepts only finite leaves; a
         # non-finite golden needs a separately specified comparison contract. Refuse it here, so no
         # published capsule carries a golden that no submission could ever match.
         for name, value in zip(output_names, golden_values, strict=True):
-            if any(isinstance(leaf, float) and not math.isfinite(leaf) for leaf in _scalars(value)):
+            if not nonfinite_contract and any(
+                isinstance(leaf, float) and not math.isfinite(leaf) for leaf in _scalars(value)
+            ):
                 raise M2MUnavailable(
                     f"captured result {name} has a non-finite golden; per-output comparison has no contract for it"
                 )
         return {
-            "schema": "merlin.numeric_policy.per_output.v1",
+            "schema": (
+                "merlin.numeric_policy.per_output.nonfinite.v1"
+                if nonfinite_contract
+                else "merlin.numeric_policy.per_output.v1"
+            ),
             "compare": "per_output",
             "outputs": {
                 name: _model_output_numeric_policy([abi], [value], binding)
@@ -3677,13 +3690,16 @@ def write_model_capsule(
         raise M2MUnavailable(f"model declares outputs {out_names!r}, but capture has {len(output_abi)} tensor results")
     typed_public = (entry.get("public_boundary") or {}).get("schema") == "merlin.phase0.public_joint_boundaries.v2"
     output_selection = entry.get("output_numeric_policy")
-    if output_selection not in (None, "captured_per_output_v1"):
-        raise M2MUnavailable("model output numerical selection must be captured_per_output_v1")
+    if output_selection not in (None, "captured_per_output_v1", "captured_per_output_nonfinite_v1"):
+        raise M2MUnavailable(
+            "model output numerical selection must be captured_per_output_v1 or captured_per_output_nonfinite_v1"
+        )
     numeric_policy = _model_output_numeric_policy(
         output_abi,
         golden_values,
         binding,
-        output_names=out_names if typed_public or output_selection == "captured_per_output_v1" else None,
+        output_names=out_names if typed_public or output_selection is not None else None,
+        nonfinite_contract=output_selection == "captured_per_output_nonfinite_v1",
     )
     out_name = out_names[0]
     gate = entry.get("gate") or {"after_op_pass_fraction": 0.8}
