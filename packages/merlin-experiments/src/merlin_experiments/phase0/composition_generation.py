@@ -484,8 +484,31 @@ def withhold_unplaced(cap, screen, directory):
     return record
 
 
-def withhold_unaccelerated_twin(cap, screen, directory):
+def twin_group(cap):
+    """The (chain, scheme) identity a refusal twin shares with its positive siblings, or ``None``."""
+    if cap.get("operation", {}).get("op") != "composition_program":
+        return None
+    truth = (cap.get("semantic") or {}).get("composition_truth") or {}
+    return (truth.get("chain_id"), truth.get("scheme_id"))
+
+
+def positive_is_placed(cap, screen):
+    """Whether ``cap`` is a positive composition whose screen places an operation on the accelerator."""
+    if cap.get("operation", {}).get("op") != "composition_program":
+        return False
+    if ((cap.get("semantic") or {}).get("composition_truth") or {}).get("outcome") != "pass":
+        return False
+    count = (screen.get("placements") or {}).get("accelerator", 0) if isinstance(screen, dict) else 0
+    return type(count) is int and count > 0
+
+
+def withhold_unaccelerated_twin(cap, screen, directory, *, placed_positive_groups=None):
     """Withhold a must-refuse composition whose written program places nothing on the accelerator.
+
+    A twin whose (chain, scheme) group has a positive sibling placed on the accelerator
+    (``placed_positive_groups``) is published instead: it grades the refusal of a program the same chain
+    places fused, so the absence of an accelerator placement is the point of the twin. The default
+    (``None``) is the unchanged behaviour.
 
     Such a refusal twin grades none of the author's accelerator compiler (host placement is
     Merlin-supplied), and public corpus preparation refuses a capsule with no accelerator placement. The
@@ -505,6 +528,8 @@ def withhold_unaccelerated_twin(cap, screen, directory):
         return None
     reason = accelerator_placement_refusal(screen)
     if reason is None:
+        return None
+    if placed_positive_groups and twin_group(cap) in placed_positive_groups:
         return None
     record = dict(
         capsule=cap.get("name"),

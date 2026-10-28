@@ -210,3 +210,62 @@ def test_public_preparation_still_refuses_a_refusal_twin_with_no_accelerator_pla
     document["software_screen"] = _twin_screen({"accelerator": 1})
     (root / "capsule.yaml").write_text(yaml.safe_dump(document))
     assert require_accelerator_placement([tmp_path / "public"]) == 1
+
+
+def test_a_refusal_twin_is_published_when_its_positive_sibling_is_placed(tmp_path):
+    from merlin_experiments.phase0.composition_generation import (
+        positive_is_placed,
+        twin_group,
+        withhold_unaccelerated_twin,
+    )
+
+    positive = _capsule(outcome="pass")
+    assert positive_is_placed(positive, _twin_screen({"accelerator": 2}))
+    groups = {twin_group(positive)}
+    twin = _written(tmp_path)
+    assert withhold_unaccelerated_twin(_capsule(outcome="refuse"), _twin_screen({}), twin, placed_positive_groups=groups) is None
+    assert twin.is_dir()
+
+
+def test_a_refusal_twin_is_withheld_when_its_positive_sibling_is_unplaced_or_absent(tmp_path):
+    from merlin_experiments.phase0.composition_generation import positive_is_placed, withhold_unaccelerated_twin
+
+    assert not positive_is_placed(_capsule(outcome="pass"), _twin_screen({}))
+    assert not positive_is_placed(_capsule(outcome="refuse"), _twin_screen({"accelerator": 2}))
+    for groups in (set(), {("other_chain", "scheme")}):
+        written = _written(tmp_path / str(len(groups)))
+        record = withhold_unaccelerated_twin(
+            _capsule(outcome="refuse"), _twin_screen({}), written, placed_positive_groups=groups
+        )
+        assert record is not None and not written.exists()
+
+
+def test_a_non_twin_unaccelerated_capsule_is_still_withheld_by_the_generic_path(tmp_path):
+    from merlin_experiments.phase0.generation import withhold_unaccelerated
+
+    written = _written(tmp_path)
+    record = withhold_unaccelerated("x", {"status": "admitted", "placements": {"host": 1}}, written, capsule={})
+    assert record is not None and not written.exists()
+
+
+def test_public_preparation_admits_a_twin_only_beside_a_placed_positive(tmp_path):
+    import yaml
+
+    from merlin_experiments.corpus.publication import require_accelerator_placement
+    from merlin_experiments.spec import SpecError
+
+    def put(name, outcome, placements):
+        root = tmp_path / "public" / name
+        root.mkdir(parents=True, exist_ok=True)
+        document = {**_capsule(outcome=outcome), "name": name, "label": "public", "software_screen": _twin_screen(placements)}
+        (root / "capsule.yaml").write_text(yaml.safe_dump(document))
+
+    put("twin", "refuse", {})
+    with pytest.raises(SpecError, match="carry no accelerator placement.*twin"):
+        require_accelerator_placement([tmp_path / "public"])
+    put("positive_host_only", "pass", {"host": 1})
+    with pytest.raises(SpecError, match="2 public capsule.*twin"):
+        require_accelerator_placement([tmp_path / "public"])
+    (tmp_path / "public" / "positive_host_only" / "capsule.yaml").unlink()
+    put("positive", "pass", {"accelerator": 1})
+    assert require_accelerator_placement([tmp_path / "public"]) == 2

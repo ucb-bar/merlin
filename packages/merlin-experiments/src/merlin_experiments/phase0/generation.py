@@ -854,6 +854,10 @@ def generate_target(
     workers = worker_limit() if getattr(selected_capture, "parallel_safe", False) is True else 1
     prepare_model = (lambda e: prepare_entry(e, defer_model=True)) if workers > 1 else None
     print(f"  [capture] independent workers={workers}; dependent model writes remain ordered", flush=True)
+    # A refusal twin is published when a positive of its chain and scheme is placed on the accelerator, so
+    # the twins are screened after every positive (a stable move; every other entry keeps its order).
+    placed_positive_groups: set = set()
+    entries = [e for e in entries if not _is_composition_twin(e)] + [e for e in entries if _is_composition_twin(e)]
     with closing(ordered_jobs(entries, prepare_entry, workers=workers, prepare_model=prepare_model)) as jobs:
         for e, job in jobs:
             family = (e.get("performance") or {}).get("family")
@@ -957,7 +961,9 @@ def generate_target(
                     admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
                     if e.get("op") == "composition_program":
                         from .composition_generation import (
+                            positive_is_placed,
                             require_placement,
+                            twin_group,
                             withhold_unaccelerated_twin,
                             withhold_unplaced,
                         )
@@ -977,12 +983,16 @@ def generate_target(
                         # A must-refuse twin that places nothing on the accelerator grades no author work:
                         # withheld and disclosed with the verbatim reason (host_placement_not_published),
                         # never exempted from the public placement check.
-                        twin = withhold_unaccelerated_twin(actual, observed, Path(w))
+                        twin = withhold_unaccelerated_twin(
+                            actual, observed, Path(w), placed_positive_groups=placed_positive_groups
+                        )
                         if twin is not None:
                             host_placed.append(twin)
                             print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {twin['reason']}", flush=True)
                             continue
                         require_placement(actual, observed)
+                        if positive_is_placed(actual, observed):
+                            placed_positive_groups.add(twin_group(actual))
                     # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation
                     # grades none of the author's work (host placement is Merlin-supplied), so it is removed
                     # and reported, exactly as an unprovable forbid is, never left on disk for a glob.
@@ -1777,6 +1787,10 @@ def withhold_source_gap(
     if record is None:
         return None
     return _withhold_with_qualifying_groups(record, directory, out_root=out_root, written=written, missing_ok=True)
+
+
+def _is_composition_twin(entry: dict) -> bool:
+    return entry.get("op") == "composition_program" and entry.get("outcome") == "refuse"
 
 
 def withhold_unaccelerated(name: str, observed: dict, directory: Path, *, capsule: dict | None = None) -> dict | None:
