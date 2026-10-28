@@ -11,8 +11,9 @@ review:
     unless separately reviewed below. Source-call-to-symbol routing is not proved.'
   library_numerical_policy_addendum: "only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
   m2m_exact_quant_addendum: "REVIEWED by operator sign-off /scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68: four exact typed declarations for model2MLIR exact-quantization captures (m2m_q.quantize f32/f64/i64->i8, m2m_q.exact_readout i32/f32->f32, dequantize_per_tensor i8/f64/i64->f32, two-result f32 layer-norm moments). Each row records that review in its reviewed_by evidence."
-  operator_chat_addendum: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28): exactly six rows, host_m2m_exact_quantize_f32_i8_rank3_4, host_m2m_exact_readout_i32_f32_rank3_4, host_m2m_dequantize_per_tensor_f64_scale_rank3_4, host_m2m_exact_readout_i32_i8_requantized_rank3_4, host_f32_max_pool2d_with_i64_indices_rank4 and host_i8_to_i32_to_copy_rank3; and, for core_aten_coverage_contraction and core_aten_coverage_reduce, exactly nine further rows: host_review_i32_add_projected_rank4, host_i8_to_i32_to_copy_rank4, host_f32_window_sum_pool_rank3_4_5, host_bf16_window_sum_adaptive_avg_pool3d_rank5, host_f16_window_sum_adaptive_avg_pool3d_rank5, host_i64_window_sum_avg_pool_rank3_4_5, host_f32_sum_reduce_rank0_1, host_i32_wrapping_sum_reduce_rank0_1 and host_i8_wrapping_sum_reduce_rank0; each row's stated open evidence obligations remain mandatory."
-  operator_chat_addendum_2: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, item 2 of the proposed-row list): exactly 69 rows, host_review_static_i32_sum, host_review_static_i32_cumsum, host_review_static_i8_cumsum, host_proposed_convbwd_bf16_extf_loops4, host_proposed_convbwd_bf16_truncf_loops1_4_7, host_proposed_convbwd_bf16_extf_addf_truncf_loops4, host_proposed_convbwd_f16_extf_loops4, host_proposed_convbwd_f16_truncf_loops1_4_7, host_proposed_convbwd_f16_extf_addf_truncf_loops4, host_proposed_convbwd_f32_mulf_addf_contraction_loops4_7, host_proposed_convbwd_f32_bias_grad_reduce_loops1, host_proposed_scalar_extf_bf16_to_f32, host_proposed_scalar_extf_f16_to_f32, host_proposed_scalar_extf_f32_to_f64, host_proposed_scalar_truncf_f32_to_bf16, host_proposed_scalar_truncf_f32_to_f16, host_proposed_scalar_truncf_f64_to_f32, host_proposed_scalar_addf_f32_f32_to_f32, host_proposed_scalar_addf_f64_f64_to_f64, host_proposed_scalar_divui_index, host_proposed_scalar_remui_index, host_proposed_scalar_subi_index, host_proposed_scalar_cmpi_index, host_m2m_exact_readout_i32_f32_rank1, host_support_empty_f32, host_support_empty_bf16, host_support_empty_f16, host_support_empty_i64, host_support_empty_i32, host_support_empty_i8, host_support_empty_i1, host_support_empty_f64, host_support_splat_f32, host_support_splat_bf16, host_support_splat_f16, host_support_splat_i64, host_support_splat_i32, host_support_splat_i8, host_support_splat_i1, host_support_splat_f64, host_support_extract_f32, host_support_extract_bf16, host_support_extract_f16, host_support_extract_i8, host_support_from_elements_f32, host_support_from_elements_bf16, host_support_from_elements_f16, host_support_from_elements_i8, host_support_collapse_shape_f32, host_support_collapse_shape_bf16, host_support_collapse_shape_f16, host_support_collapse_shape_i8, host_support_expand_shape_f32, host_support_expand_shape_bf16, host_support_expand_shape_f16, host_support_expand_shape_i8, host_support_extract_slice_f32, host_support_extract_slice_bf16, host_support_extract_slice_f16, host_support_extract_slice_i64, host_support_insert_slice_f32, host_support_insert_slice_bf16, host_support_insert_slice_f16, host_support_insert_slice_i64, host_m2m_exact_quantize_f32_i8_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_bf16_result, host_m2m_dequantize_per_tensor_f64_scale_f16_result, host_m2m_dequantize_per_tensor_f64_scale_f64_result; every open evidence obligation and semantics question stays verbatim in each row (open_obligation and proposal_text_retained_verbatim) and this approval does not state that any of them was verified beyond what the row basis records."
+  operator_chat_addendum: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28): exactly six rows, host_m2m_exact_quantize_f32_i8_rank3_4, host_m2m_exact_readout_i32_f32_rank3_4, host_m2m_dequantize_per_tensor_f64_scale_rank3_4, host_m2m_exact_readout_i32_i8_requantized_rank3_4, host_f32_max_pool2d_with_i64_indices_rank4 and host_i8_to_i32_to_copy_rank3; and, for core_aten_coverage_contraction and core_aten_coverage_reduce, exactly seven further rows: host_review_i32_add_projected_rank4, host_i8_to_i32_to_copy_rank4, host_f32_window_sum_pool_rank3_4_5, host_bf16_window_sum_adaptive_avg_pool3d_rank5, host_f16_window_sum_adaptive_avg_pool3d_rank5, host_i64_window_sum_avg_pool_rank3_4_5, host_f32_sum_reduce_rank0_1; each row's stated open evidence obligations remain mandatory."
+  operator_chat_addendum_2: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, item 2 of the proposed-row list): exactly 67 rows, host_review_static_i32_sum, host_review_static_i32_cumsum, host_review_static_i8_cumsum, host_proposed_convbwd_bf16_extf_loops4, host_proposed_convbwd_bf16_truncf_loops1_4_7, host_proposed_convbwd_bf16_extf_addf_truncf_loops4, host_proposed_convbwd_f16_extf_loops4, host_proposed_convbwd_f16_truncf_loops1_4_7, host_proposed_convbwd_f16_extf_addf_truncf_loops4, host_proposed_convbwd_f32_mulf_addf_contraction_loops4_7, host_proposed_convbwd_f32_bias_grad_reduce_loops1, host_proposed_scalar_extf_bf16_to_f32, host_proposed_scalar_extf_f16_to_f32, host_proposed_scalar_extf_f32_to_f64, host_proposed_scalar_truncf_f32_to_bf16, host_proposed_scalar_truncf_f32_to_f16, host_proposed_scalar_truncf_f64_to_f32, host_proposed_scalar_addf_f32_f32_to_f32, host_proposed_scalar_addf_f64_f64_to_f64, host_proposed_scalar_divui_index, host_proposed_scalar_remui_index, host_proposed_scalar_subi_index, host_proposed_scalar_cmpi_index, host_m2m_exact_readout_i32_f32_rank1, host_support_empty_f32, host_support_empty_bf16, host_support_empty_f16, host_support_empty_i64, host_support_empty_i32, host_support_empty_i8, host_support_empty_i1, host_support_empty_f64, host_support_splat_f32, host_support_splat_bf16, host_support_splat_f16, host_support_splat_i64, host_support_splat_i32, host_support_splat_i8, host_support_splat_i1, host_support_splat_f64, host_support_extract_f32, host_support_extract_bf16, host_support_extract_f16, host_support_extract_i8, host_support_from_elements_f32, host_support_from_elements_bf16, host_support_from_elements_f16, host_support_from_elements_i8, host_support_collapse_shape_f32, host_support_collapse_shape_bf16, host_support_collapse_shape_f16, host_support_collapse_shape_i8, host_support_expand_shape_f32, host_support_expand_shape_bf16, host_support_expand_shape_f16, host_support_expand_shape_i8, host_support_extract_slice_f32, host_support_extract_slice_bf16, host_support_extract_slice_f16, host_support_extract_slice_i64, host_support_insert_slice_f32, host_support_insert_slice_bf16, host_support_insert_slice_f16, host_support_insert_slice_i64, host_m2m_exact_quantize_f32_i8_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_rank0_1_5, host_m2m_dequantize_per_tensor_f64_scale_bf16_result, host_m2m_dequantize_per_tensor_f64_scale_f16_result, host_m2m_dequantize_per_tensor_f64_scale_f64_result; every open evidence obligation and semantics question stays verbatim in each row (open_obligation and proposal_text_retained_verbatim) and this approval does not state that any of them was verified beyond what the row basis records."
+  operator_chat_addendum_3: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28, item 2 of the proposed-row list), core_aten_coverage_reduce non-reduction stages: exactly 22 rows, host_rd_extf_bf16_f32_to_f32, host_rd_divf_f32_f32_f32_to_f32, host_rd_truncf_f32_bf16_to_bf16, host_rd_extf_f16_f32_to_f32, host_rd_truncf_f32_f16_to_f16, host_rd_divf_bf16_bf16_bf16_to_bf16, host_rd_addf_bf16_bf16_bf16_to_bf16, host_rd_divf_f16_f16_f16_to_f16, host_rd_addf_f16_f16_f16_to_f16, host_rd_addf_f32_f32_f32_to_f32, host_rd_divsi_i64_i64_i64_to_i64, host_rd_addi_i64_i64_i64_to_i64, host_rd_complex_0e7649_bf16_f32_to_f32, host_rd_complex_06b1e1_f32_bf16_to_bf16, host_rd_complex_990961_bf16_bf16_to_bf16, host_rd_complex_e6a62e_bf16_bf16_to_bf16, host_rd_complex_0e7649_f16_f32_to_f32, host_rd_complex_35cbde_f32_f32_to_f32, host_rd_complex_6fcc8f_f32_f16_to_f16, host_rd_complex_9a688d_f16_f16_to_f16, host_rd_complex_9a688d_f32_f32_to_f32, host_rd_mean_scf_for_f32_sum_rank0; each row keeps its open_obligation verbatim; the scalar-primitive eager checks cover only division, addition and casts, and the complex-bodied and scf.for rows were not executed."
   successor: attention-host-placement-v2-20261019
   attention_source_addendum: "add only the nine exact typed attention-preparation declarations below for a prospective fresh host view. Closed parsed source bodies, selected index bounds, source-to-linked-image correspondence and ordinary numerical execution remain mandatory. Existing declarations, sealed views, numerical policies and accelerator obligations are unchanged; this review is not an all-input numerical or hardware qualification."
 compiler:
@@ -4294,57 +4295,6 @@ operations:
     evidence:
       reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
       basis: 'linalg.reduce arith.addf over f32 read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b): sum.dim 2x3 -> 3, mean 2x3 -> scalar (reduce dims 0,1) followed by a separate divf stage, empty tensor<0xf32> -> f32. Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_sum.py -> sum.json): sequential f32 order equals torch.sum on the captured sum.dim shape (12/12 bit-identical incl. NaN/Inf/-0/overflow edge inputs) and on length-0, but differs from eager by summation-order ulps for mean 2x3 (2/8 elements, 1 ulp, e.g. 0.49661734 vs 0.49661732) and for longer reductions (1-4 elements of 4-12 at lengths 5, 64, 1000). The row therefore claims f32 sequential-order sums with reduction_order selected_lowering, as the existing reviewed host_f32_reduction row does; any tolerance must absorb reassociation. RV64 execution not recorded.'
-- id: host_i32_wrapping_sum_reduce_rank0_1
-  status: reviewed
-  ops:
-  - aten.sum.dim_IntList
-  families:
-  - reduction
-  placement: host
-  signature:
-    family: reduction
-    ordered_operand_dtypes:
-    - i32
-    - i32
-    ordered_result_dtypes:
-    - i32
-    ranks:
-    - 0
-    - 1
-  numerical_contract:
-    status: reviewed
-    semantics:
-      arithmetic: two_complement_i32
-      accumulation: addi in i32, wraps modulo 2**32
-      empty_reduction: '0'
-    evidence:
-      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'linalg.reduce arith.addi on i32 read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b) (the capture reduces tensor<0xi32> -> i32). Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_sum.py -> intsum.json): wrapping sequential i32 addition equals torch.sum(x, dim=0, dtype=torch.int32) on 300 elements (lengths 0,1,2,7,100; full-range values), 0 mismatches. NOTE torch.sum without dtype= promotes integers to int64, which this i32-typed reduction does not do; the row asserts only the captured i32-typed wrapping semantics. RV64 execution not recorded.'
-- id: host_i8_wrapping_sum_reduce_rank0
-  status: reviewed
-  ops:
-  - aten.sum.dim_IntList
-  families:
-  - reduction
-  placement: host
-  signature:
-    family: reduction
-    ordered_operand_dtypes:
-    - i8
-    - i8
-    ordered_result_dtypes:
-    - i8
-    ranks:
-    - 0
-  numerical_contract:
-    status: reviewed
-    semantics:
-      arithmetic: two_complement_i8
-      accumulation: addi in i8, wraps modulo 2**8
-      empty_reduction: '0'
-    evidence:
-      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
-      basis: 'linalg.reduce arith.addi on i8 read from the captured linalg.mlir (sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b) (the capture reduces tensor<0xi8> -> i8). Eager check (/scratch/loren/nonfinite-work/red/ev (sha256s in /scratch/loren/nonfinite-work/red/ev.sha)/verify_sum.py -> intsum.json): wrapping sequential i8 addition equals torch.sum(x, dim=0, dtype=torch.int8) on 300 elements (lengths 0,1,2,7,100; full-range values), 0 mismatches. NOTE torch.sum without dtype= promotes integers to int64, which this i8-typed reduction does not do; the row asserts only the captured i8-typed wrapping semantics. RV64 execution not recorded.'
 - id: host_support_empty_f32
   status: reviewed
   ops:
@@ -5375,6 +5325,689 @@ operations:
       basis: 'Result-type variant of the reviewed f32 row. Open questions: (1) single vs double rounding f64 -> f32 -> f64 in the emitted lowering; (2) exhaustive 256-code eager comparison not run for f64.'
       proposal_text_retained_verbatim: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
       open_obligation: 'PROPOSED, NOT REVIEWED (reduce-fork 2026-10-28): result-dtype variant of an already-reviewed row. Not covered by the 2026-10-28 operator sign-off or the operator-chat approval of the mechanical group; the host lane counts it only after an operator records review here.'
+- id: host_rd_extf_bf16_f32_to_f32
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 3
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: exact_widening
+      result_dtype: f32
+      operand_dtypes:
+      - bf16
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.extf''] over loop counts [3, 4] for ops [''aten._adaptive_avg_pool2d.default'', ''aten.adaptive_avg_pool1d.default'', ''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'']. prims.json extf_torch.bfloat16_to_f32: 0 mismatches (widening exact; round trip identity) over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_divf_f32_f32_f32_to_f32
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d.default
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten._adaptive_avg_pool3d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  - aten.avg_pool2d_backward.default
+  - aten.avg_pool3d.default
+  - aten.mean.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+    - 3
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_division
+      result_dtype: f32
+      operand_dtypes:
+      - f32
+      - f32
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 25 linalg.generic with body [''arith.divf''] over loop counts [0, 3, 4, 5] for ops [''aten._adaptive_avg_pool2d.default'', ''aten._adaptive_avg_pool2d_backward.default'', ''aten._adaptive_avg_pool3d.default'', ''aten.adaptive_avg_pool1d.default'', ''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'', ''aten.avg_pool2d_backward.default'', ''aten.avg_pool3d.default'', ''aten.mean.default'']. prims.json divf_torch.float32: 0 mismatches over 20012 values vs correctly rounded double result (incl NaN/Inf/-0/overflow/subnormal edges). Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_truncf_f32_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 3
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: round_to_nearest_even_narrowing
+      result_dtype: bf16
+      operand_dtypes:
+      - f32
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.truncf''] over loop counts [3, 4] for ops [''aten._adaptive_avg_pool2d.default'', ''aten.adaptive_avg_pool1d.default'', ''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'']. prims.json truncf_f32_to_bf16: 0 mismatches vs explicit round-to-nearest-even on the f32 bit pattern over 20012 values, NaN preserved. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_extf_f16_f32_to_f32
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 3
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: exact_widening
+      result_dtype: f32
+      operand_dtypes:
+      - f16
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.extf''] over loop counts [3, 4] for ops [''aten._adaptive_avg_pool2d.default'', ''aten.adaptive_avg_pool1d.default'', ''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'']. prims.json extf_torch.float16_to_f32: 0 mismatches (widening exact; round trip identity) over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_truncf_f32_f16_to_f16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d.default
+  - aten.adaptive_avg_pool1d.default
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 3
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: round_to_nearest_even_narrowing
+      result_dtype: f16
+      operand_dtypes:
+      - f32
+      - f16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.truncf''] over loop counts [3, 4] for ops [''aten._adaptive_avg_pool2d.default'', ''aten.adaptive_avg_pool1d.default'', ''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'']. prims.json truncf_f32_to_f16: 0 mismatches vs correctly rounded double result over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_divf_bf16_bf16_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten._adaptive_avg_pool3d.default
+  - aten.avg_pool2d_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_division
+      result_dtype: bf16
+      operand_dtypes:
+      - bf16
+      - bf16
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 6 linalg.generic with body [''arith.divf''] over loop counts [4, 5] for ops [''aten._adaptive_avg_pool2d_backward.default'', ''aten._adaptive_avg_pool3d.default'', ''aten.avg_pool2d_backward.default'']. prims.json divf_torch.bfloat16: 0 mismatches over 20012 values vs correctly rounded double result (incl NaN/Inf/-0/overflow/subnormal edges). Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_addf_bf16_bf16_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten.avg_pool2d_backward.default
+  - aten.col2im.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_addition
+      result_dtype: bf16
+      operand_dtypes:
+      - bf16
+      - bf16
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 12 linalg.generic with body [''arith.addf''] over loop counts [4] for ops [''aten._adaptive_avg_pool2d_backward.default'', ''aten.avg_pool2d_backward.default'', ''aten.col2im.default'']. prims.json addf_torch.bfloat16: 0 mismatches over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_divf_f16_f16_f16_to_f16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten._adaptive_avg_pool3d.default
+  - aten.avg_pool2d_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f16
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_division
+      result_dtype: f16
+      operand_dtypes:
+      - f16
+      - f16
+      - f16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 6 linalg.generic with body [''arith.divf''] over loop counts [4, 5] for ops [''aten._adaptive_avg_pool2d_backward.default'', ''aten._adaptive_avg_pool3d.default'', ''aten.avg_pool2d_backward.default'']. prims.json divf_torch.float16: 0 mismatches over 20012 values vs correctly rounded double result (incl NaN/Inf/-0/overflow/subnormal edges). Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_addf_f16_f16_f16_to_f16
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten.avg_pool2d_backward.default
+  - aten.col2im.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f16
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_addition
+      result_dtype: f16
+      operand_dtypes:
+      - f16
+      - f16
+      - f16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 12 linalg.generic with body [''arith.addf''] over loop counts [4] for ops [''aten._adaptive_avg_pool2d_backward.default'', ''aten.avg_pool2d_backward.default'', ''aten.col2im.default'']. prims.json addf_torch.float16: 0 mismatches over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_addf_f32_f32_f32_to_f32
+  status: reviewed
+  ops:
+  - aten._adaptive_avg_pool2d_backward.default
+  - aten.avg_pool2d_backward.default
+  - aten.col2im.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_correctly_rounded_addition
+      result_dtype: f32
+      operand_dtypes:
+      - f32
+      - f32
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 12 linalg.generic with body [''arith.addf''] over loop counts [4] for ops [''aten._adaptive_avg_pool2d_backward.default'', ''aten.avg_pool2d_backward.default'', ''aten.col2im.default'']. prims.json addf_torch.float32: 0 mismatches over 20012 values. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_divsi_i64_i64_i64_to_i64
+  status: reviewed
+  ops:
+  - aten.avg_pool1d.default
+  - aten.avg_pool2d.default
+  - aten.avg_pool2d_backward.default
+  - aten.avg_pool3d.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - i64
+    - i64
+    - i64
+    ordered_result_dtypes:
+    - i64
+    ranks:
+    - 3
+    - 4
+    - 5
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: signed_integer_division_truncating_toward_zero
+      result_dtype: i64
+      operand_dtypes:
+      - i64
+      - i64
+      - i64
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.divsi''] over loop counts [3, 4, 5] for ops [''aten.avg_pool1d.default'', ''aten.avg_pool2d.default'', ''aten.avg_pool2d_backward.default'', ''aten.avg_pool3d.default'']. prims.json divsi_i64_trunc: 0 mismatches over 20006 values incl INT64_MAX/MIN vs python truncation toward zero (torch.div rounding_mode=trunc). Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_addi_i64_i64_i64_to_i64
+  status: reviewed
+  ops:
+  - aten.avg_pool2d_backward.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - i64
+    - i64
+    - i64
+    ordered_result_dtypes:
+    - i64
+    ranks:
+    - 4
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: twos_complement_wrapping_addition
+      result_dtype: i64
+      operand_dtypes:
+      - i64
+      - i64
+      - i64
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 4 linalg.generic with body [''arith.addi''] over loop counts [4] for ops [''aten.avg_pool2d_backward.default'']. prims.json addi_i64_wrapping: 0 mismatches over 20000 values vs python wrap mod 2^64. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Scalar primitive checked against eager as stated; the lowering that the selected compiler emits for this generic and its host-package execution (RV64/Spike) were not run; the signature does not express window geometry, broadcast maps or shape, so only the captured shapes were inspected.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_0e7649_bf16_f32_to_f32
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f32
+      operand_dtypes:
+      - bf16
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.extf'', ''arith.bitcast'', ''arith.extui'', ''arith.constant'', ''arith.shrui'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shli'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [1] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.extf'', ''arith.bitcast'', ''arith.extui'', ''arith.constant'', ''arith.shrui'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shli'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.extf', 'arith.bitcast', 'arith.extui', 'arith.constant', 'arith.shrui', 'arith.constant', 'arith.shli', 'arith.constant', 'arith.andi', 'arith.constant', 'arith.shli', 'arith.ori', 'arith.constant', 'arith.ori', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_06b1e1_f32_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: bf16
+      operand_dtypes:
+      - f32
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.truncf'', ''arith.bitcast'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.truncf'', ''arith.bitcast'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.truncf', 'arith.bitcast', 'arith.constant', 'arith.shrui', 'arith.trunci', 'arith.constant', 'arith.shli', 'arith.constant', 'arith.andi', 'arith.constant', 'arith.shrui', 'arith.trunci', 'arith.ori', 'arith.constant', 'arith.ori', 'arith.constant', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_990961_bf16_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: bf16
+      operand_dtypes:
+      - bf16
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.bitcast', 'arith.constant', 'arith.ori', 'arith.constant', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_e6a62e_bf16_bf16_to_bf16
+  status: reviewed
+  ops:
+  - aten.mean.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - bf16
+    - bf16
+    ordered_result_dtypes:
+    - bf16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: bf16
+      operand_dtypes:
+      - bf16
+      - bf16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 1 linalg.generic with body [''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'']. NOT executed: body op sequence [''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.constant', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_0e7649_f16_f32_to_f32
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f32
+      operand_dtypes:
+      - f16
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.extf'', ''arith.bitcast'', ''arith.extui'', ''arith.constant'', ''arith.shrui'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shli'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0, 1] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.extf'', ''arith.bitcast'', ''arith.extui'', ''arith.constant'', ''arith.shrui'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shli'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.extf', 'arith.bitcast', 'arith.extui', 'arith.constant', 'arith.shrui', 'arith.constant', 'arith.shli', 'arith.constant', 'arith.andi', 'arith.constant', 'arith.shli', 'arith.ori', 'arith.constant', 'arith.ori', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_35cbde_f32_f32_to_f32
+  status: reviewed
+  ops:
+  - aten.mean.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f32
+      operand_dtypes:
+      - f32
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 1 linalg.generic with body [''arith.constant'', ''arith.constant'', ''arith.remui'', ''arith.subi'', ''arith.constant'', ''arith.subi'', ''arith.constant'', ''arith.minui'', ''arith.constant'', ''arith.divui'', ''arith.constant'', ''arith.muli'', ''arith.cmpi'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'']. NOT executed: body op sequence [''arith.constant'', ''arith.constant'', ''arith.remui'', ''arith.subi'', ''arith.constant'', ''arith.subi'', ''arith.constant'', ''arith.minui'', ''arith.constant'', ''arith.divui'', ''arith.constant'', ''arith.muli'', ''arith.cmpi'', ''arith.constant'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.constant', 'arith.constant', 'arith.remui', 'arith.subi', 'arith.constant', 'arith.subi', 'arith.constant', 'arith.minui', 'arith.constant', 'arith.divui', 'arith.constant', 'arith.muli', 'arith.cmpi', 'arith.constant', 'arith.bitcast', 'arith.cmpf', 'arith.select', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_6fcc8f_f32_f16_to_f16
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f16
+      operand_dtypes:
+      - f32
+      - f16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.truncf'', ''arith.bitcast'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.truncf'', ''arith.bitcast'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.constant'', ''arith.shli'', ''arith.constant'', ''arith.andi'', ''arith.constant'', ''arith.shrui'', ''arith.trunci'', ''arith.ori'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.truncf', 'arith.bitcast', 'arith.constant', 'arith.shrui', 'arith.trunci', 'arith.constant', 'arith.shli', 'arith.constant', 'arith.andi', 'arith.constant', 'arith.shrui', 'arith.trunci', 'arith.ori', 'arith.constant', 'arith.ori', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_9a688d_f16_f16_to_f16
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f16
+    - f16
+    ordered_result_dtypes:
+    - f16
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f16
+      operand_dtypes:
+      - f16
+      - f16
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.bitcast', 'arith.constant', 'arith.ori', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_complex_9a688d_f32_f32_to_f32
+  status: reviewed
+  ops:
+  - aten.mean.default
+  - aten.sum.dim_IntList
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+    - 1
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: body_not_semantically_verified
+      result_dtype: f32
+      operand_dtypes:
+      - f32
+      - f32
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: 2 linalg.generic with body [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select''] over loop counts [0, 1] for ops [''aten.mean.default'', ''aten.sum.dim_IntList'']. NOT executed: body op sequence [''arith.bitcast'', ''arith.constant'', ''arith.ori'', ''arith.bitcast'', ''arith.cmpf'', ''arith.select'']; semantics unverified against eager. Evidence script /scratch/loren/nonfinite-work/rd/verify_prims.py.'
+      open_obligation: Body op sequence ['arith.bitcast', 'arith.constant', 'arith.ori', 'arith.bitcast', 'arith.cmpf', 'arith.select'] was read from the capture but not executed against an eager reference; it is a NaN/rounding-canonicalizing or index-arithmetic body whose exact semantics (NaN class and payload handling, half-precision narrowing, window-index bounds) need a body-level check; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
+- id: host_rd_mean_scf_for_f32_sum_rank0
+  status: reviewed
+  ops:
+  - aten.mean.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    family: elementwise_map
+    ordered_operand_dtypes:
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 0
+  numerical_contract:
+    status: reviewed
+    semantics:
+      arithmetic: ieee754_binary32
+      per_element: sequential_f32_addf_over_scf_for_with_four_interleaved_accumulators
+      reduction_order: selected_lowering
+      rounding: round_to_nearest_even
+    evidence:
+      basis: 'core_aten_coverage_reduce capture linalg.mlir sha256 e3bbf0fbeb9cc301bf32adfff9a285e9700fb696a3f340fbab3588ec70017a3b: two rank-0 linalg.generic bodies of aten.mean.default that sum a tensor<f32> with scf.for loops over tensor.extract and arith.addf (four accumulators, stride 4). The scalar addf was checked against eager (rd/prims.json addf_torch.float32: 0 mismatches over 20012 values); the loop structure and four-way accumulation order were read, not executed, so bit equality with eager torch.mean is NOT claimed (reassociation).'
+      open_obligation: Execute the generic body (four interleaved accumulators, tail handling) against torch.mean on the captured shapes and record the ulp bound; no RV64/Spike execution was run.
+      reviewed_by: Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory.
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:
