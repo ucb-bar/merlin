@@ -284,6 +284,19 @@ def _lake_env() -> dict[str, str]:
     return env
 
 
+def audit_report(proc: subprocess.CompletedProcess, label: str) -> dict | None:
+    """An empty or malformed auditor response is a failed check, with its original diagnostic."""
+    lines = proc.stdout.strip().splitlines()
+    try:
+        report = json.loads(lines[-1]) if lines else None
+    except json.JSONDecodeError:
+        report = None
+    if not isinstance(report, dict):
+        print(f"[FAIL] {label} returned no JSON report (exit {proc.returncode}):\n" + proc.stderr[-2000:])
+        return None
+    return report
+
+
 def pinned_statements() -> dict[str, str] | None:
     """SHA-256 of each pinned theorem's elaborated statement (needs a built checker)."""
     mods = sorted(set(PINNED.values()))
@@ -297,7 +310,10 @@ def pinned_statements() -> dict[str, str] | None:
     if proc.returncode != 0:
         print("[FAIL] could not read pinned statements:\n" + proc.stderr[-2000:])
         return None
-    stmts = json.loads(proc.stdout.strip().splitlines()[-1])["statements"]
+    report = audit_report(proc, "pinned-statement audit")
+    if report is None or not isinstance(report.get("statements"), dict):
+        return None
+    stmts = report["statements"]
     return {f"statement:{d}": hashlib.sha256(stmts[d].encode()).hexdigest() for d in PINNED}
 
 
@@ -342,17 +358,28 @@ def run_audit() -> bool:
     mods = sorted(
         str(p.relative_to(LEAN).with_suffix("")).replace("/", ".") for p in (LEAN / "MerlinVerify").rglob("*.lean")
     )
-    audit = subprocess.run(
-        ["lake", "exe", "merlin-lean-audit", *mods], cwd=LEAN, env=env, capture_output=True, text=True
-    )
-    if audit.returncode not in (0, 1):
-        print("[FAIL] merlin-lean-audit error:\n" + audit.stderr[-2000:])
-        return False
-    report = json.loads(audit.stdout.strip().splitlines()[-1])
-    for v in report["violations"]:
-        print(f"[FAIL] {v}")
-    print(f"audit: {report['theorems_audited']} theorems, {len(report['violations'])} violations")
-    return audit.returncode == 0 and not report["violations"]
+    # Standalone drivers define a root `main`; importing two together is invalid Lean.
+    # Audit every driver in its own environment, retaining the complete module roster.
+    drivers = [m for m in mods if m.startswith("MerlinVerify.Driver.")]
+    groups = [[m for m in mods if m not in drivers], *[[m] for m in drivers]]
+    ok = True
+    for group in groups:
+        if not group:
+            continue
+        audit = subprocess.run(
+            ["lake", "exe", "merlin-lean-audit", *group], cwd=LEAN, env=env, capture_output=True, text=True
+        )
+        report = audit_report(audit, "theorem audit")
+        if report is None or not isinstance(report.get("violations"), list):
+            ok = False
+            continue
+        for violation in report["violations"]:
+            print(f"[FAIL] {violation}")
+        label = group[0] if len(group) == 1 else f"{len(group)} shared modules"
+        print(f"audit ({label}): {report['theorems_audited']} theorems, {len(report['violations'])} violations")
+        ok = audit.returncode == 0 and not report["violations"] and ok
+    print(f"audit coverage: {len(mods)} source modules; imported theorem counts overlap between groups")
+    return ok
 
 
 def main(argv: list[str]) -> int:
