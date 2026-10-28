@@ -421,12 +421,12 @@ def selected_facts(evidence, requirement, binding):
     return context
 
 
-def require_placement(cap, screen):
-    """Require independently screened accelerator placement for every member."""
+def unplaced_members(cap, screen):
+    """The original chain members of a positive composition the screen did not admit on the accelerator."""
     if cap.get("operation", {}).get("op") != "composition_program":
-        return
+        return []
     if cap["semantic"]["composition_truth"]["outcome"] == "refuse":
-        return
+        return []
     members = set(cap["expected"]["composition"]["source_op_indices"])
     placements = {}
     for row in screen.get("decisions", []):
@@ -434,8 +434,54 @@ def require_placement(cap, screen):
             if index in placements:
                 raise ValueError("composition placement has ambiguous original source identities")
             placements[index] = row.get("placement") if row.get("status") == "admitted" else None
-    if any(placements.get(index) != "accelerator" for index in members):
+    return sorted(index for index in members if placements.get(index) != "accelerator")
+
+
+def require_placement(cap, screen):
+    """Require independently screened accelerator placement for every member."""
+    if unplaced_members(cap, screen):
         raise ValueError("composition requires accelerator placement for every original chain member")
+
+
+def withhold_unplaced(cap, screen, directory):
+    """Disclose a positive composition the screen cannot place whole, and remove what was written.
+
+    Nothing is admitted here: every member decision of the screen stands, and a must-refuse composition
+    is never withheld. A composition that needs a member the screen keeps off the accelerator cannot
+    grade fused placement, so it leaves the output tree and is recorded as ``planned_not_generated``
+    with the member decisions that kept it out. Returns ``None`` when every member is placed.
+    """
+    import shutil
+
+    unplaced = unplaced_members(cap, screen)
+    if not unplaced:
+        return None
+    truth = cap["semantic"]["composition_truth"]
+    members = set(cap["expected"]["composition"]["source_op_indices"])
+    record = dict(
+        capsule=cap.get("name"),
+        status="planned_not_generated",
+        rule="composition_member_not_accelerator_admitted",
+        chain=truth.get("chain_id"),
+        scheme=truth.get("scheme_id"),
+        shape_class=truth.get("shape_class"),
+        members=sorted(members),
+        unplaced_members=unplaced,
+        screen_status=screen.get("status"),
+        decisions=[
+            dict(
+                source_op_indices=list(row.get("source_op_indices") or []),
+                status=row.get("status"),
+                placement=row.get("placement"),
+                classification=row.get("classification"),
+                reason=row.get("reason"),
+            )
+            for row in screen.get("decisions", [])
+            if members & set(row.get("source_op_indices") or [])
+        ],
+    )
+    shutil.rmtree(directory)
+    return record
 
 
 def read_bound_validation(binding, *, base, evidence, workers=None):

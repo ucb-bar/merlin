@@ -653,6 +653,7 @@ def generate_target(
             except ValueError as exc:
                 preallocation_denials[entry["name"]] = str(exc)
     composition_selection = {}
+    composition_unplaced: list[dict] = []
     if not component_only and evidence is not None:
         from merlin.targetgen.composition_corpus import synthesize_compositions_enabled
         from .composition_generation import append_declared, selected_facts
@@ -939,8 +940,19 @@ def generate_target(
                         )
                     admission.append({"capsule": e.get("name"), "observation": "emitted_capsule", **observed})
                     if e.get("op") == "composition_program":
-                        from .composition_generation import require_placement
+                        from .composition_generation import require_placement, withhold_unplaced
 
+                        # Verified evidence discloses a positive composition the screen cannot place whole
+                        # as planned_not_generated; the member refusals stand and nothing replaces them.
+                        unplaced = withhold_unplaced(actual, observed, Path(w)) if evidence_mode != "diagnostic" else None
+                        if unplaced is not None:
+                            composition_unplaced.append(unplaced)
+                            print(
+                                f"  [composition] {e.get('name')}: NOT GENERATED — members "
+                                f"{unplaced['unplaced_members']} are not admitted on the accelerator",
+                                flush=True,
+                            )
+                            continue
                         require_placement(actual, observed)
                     # PLACEMENT DECIDES PUBLICATION. A written program with no accelerator-placed operation
                     # grades none of the author's work (host placement is Merlin-supplied), so it is removed
@@ -1244,9 +1256,20 @@ def generate_target(
         }
     from .composition_generation import coverage as composition_coverage
 
-    performance_record["composition_coverage"] = composition_coverage(entries)
+    withheld_compositions = {row["capsule"] for row in composition_unplaced}
+    performance_record["composition_coverage"] = composition_coverage(
+        [entry for entry in entries if entry.get("name") not in withheld_compositions]
+    )
     if composition_selection:
         performance_record["composition_selection"] = composition_selection
+    if composition_unplaced:
+        performance_record.setdefault("composition_selection", {})["planned_not_generated"] = sorted(
+            composition_unplaced, key=lambda row: row["capsule"]
+        )
+        print(
+            f"  [composition] {len(composition_unplaced)} selected composition(s) need a member the screen "
+            f"does not admit on the accelerator; they are recorded as planned_not_generated, never published"
+        )
     update_provenance_manifest(
         written,
         cap_root=out_root,
