@@ -206,6 +206,29 @@ def _materialized_inputs(command: dict) -> dict[Path, tuple[Path, str]]:
     return result
 
 
+def _held_out_capsule_exclusions(root: Path) -> set[str]:
+    """Exclude the capsule corpus from the frozen snapshot except the inputs composition synthesis reads.
+
+    Composition synthesis excludes the held-out model-layer shapes, which it reads from the pinned
+    manifest and the model-layer capsule definitions. Everything else in the corpus stays out.
+    """
+    from merlin.targetgen.composition_corpus import held_out_inputs
+
+    corpus = root / "merlin/contract/capsules"
+    manifest = corpus / "MANIFEST.yaml"
+    if not manifest.is_file():
+        return {"merlin/contract/capsules"}
+    keep_files = set(held_out_inputs(manifest))
+    keep_dirs = {parent.as_posix() for name in keep_files for parent in Path(name).parents if parent != Path(".")}
+    excluded = set()
+    for path in corpus.rglob("*"):
+        member = path.relative_to(corpus).as_posix()
+        if (path.is_dir() and member in keep_dirs) or (path.is_file() and member in keep_files):
+            continue
+        excluded.add(path.relative_to(root).as_posix())
+    return excluded
+
+
 def _source_layout():
     root = checkout_root()
     if root is None:
@@ -309,7 +332,7 @@ def stage(plan: dict) -> dict:
             owner = _input_owner(source.path.parent)
         layout[key] = f"{source_snapshot.INPUT_ROOT}/{owner}/{relative}"
     snapshot = artifact_root / "private" / "source"
-    excluded = {"merlin/contract/capsules"}
+    excluded = _held_out_capsule_exclusions(root)
     for relative in source_roots:
         for path in (root / relative).rglob(".env*"):
             if path.name == ".env" or path.name.startswith(".env."):
