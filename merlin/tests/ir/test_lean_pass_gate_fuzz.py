@@ -48,17 +48,19 @@ BINARY = ("arith.addf", "arith.subf", "arith.mulf", "arith.maximumf")
 NUMPY = {"arith.addf": np.add, "arith.subf": np.subtract, "arith.mulf": np.multiply, "arith.maximumf": np.maximum}
 IDENTITY = "affine_map<(d0, d1) -> (d0, d1)>"
 COLUMN = "affine_map<(d0, d1) -> (d1)>"
+SCALAR = "affine_map<(d0, d1) -> ()>"
 
 
 @dataclass
 class Node:
-    kind: str  # "binary" | "negate" | "constant" | "dequant"
+    kind: str  # "binary" | "negate" | "constant" | "dequant" (per-channel, i32) | "dequant_t" (per-tensor, i64)
     op: str = ""
     args: list[str] = field(default_factory=list)
     value: float = 0.0
     lowered: bool = False  # a dequant printed as its linalg.generic lowering
     subtract_reversed: bool = False  # lowering bug model: (zp - w)
     scale_added: bool = False  # lowering bug model: (w - zp) + scale
+    low: int = -128  # dequant_t quant_min: PyTorch ignores it, captures carry -128 and -127
 
 
 @dataclass
@@ -88,8 +90,10 @@ def generate(rnd: random.Random) -> Program:
         roll = rnd.random()
         if roll < 0.15:
             node = Node("constant", value=rnd.choice([0.5, 1.5, -2.0, 3.0]))
-        elif roll < 0.3:
+        elif roll < 0.22:
             node = Node("dequant", args=["w", "s", "z"])
+        elif roll < 0.3:
+            node = Node("dequant_t", args=["w", "st", "zt"], low=rnd.choice([-128, -127]))
         elif roll < 0.4:
             node = Node("negate", args=[rnd.choice(values)])
         else:
@@ -113,6 +117,11 @@ def evaluate(program: Program, env: dict[str, np.ndarray]) -> list[np.ndarray]:
             vals[name] = -vals[node.args[0]]
         elif node.kind == "binary":
             vals[name] = NUMPY[node.op](vals[node.args[0]], vals[node.args[1]]).astype(np.float32)
+        elif node.kind == "dequant_t":
+            # PyTorch v2.10.0 per-tensor: (input.to(f32) - zero_point) * scale, all in f32.
+            wf, zf = vals["w"].astype(np.float32), np.float32(vals["zt"])
+            difference = (zf - wf) if node.subtract_reversed else (wf - zf)
+            vals[name] = (difference + vals["st"]) if node.scale_added else (difference * vals["st"])
         else:
             w = vals["w"].astype(np.int32)
             difference = (vals["z"] - w) if node.subtract_reversed else (w - vals["z"])
@@ -129,6 +138,8 @@ def random_inputs(rnd: random.Random, program: Program) -> dict[str, np.ndarray]
     env["w"] = np.asarray([[rnd.randint(-128, 127) for _ in range(C)] for _ in range(R)], np.int8)
     env["s"] = np.asarray([rnd.uniform(0.01, 0.5) for _ in range(C)], np.float32)
     env["z"] = np.asarray([rnd.randint(-5, 5) or 1 for _ in range(C)], np.int32)
+    env["st"] = np.float32(rnd.uniform(0.01, 0.5))
+    env["zt"] = np.int64(rnd.choice([rnd.randint(-5, 5) or 1, rnd.randint(2**31, 2**40)]))  # past i32 too
     return env
 
 
@@ -145,7 +156,8 @@ def generic(name: str, ins: list[tuple[str, str, str]], body: list[str]) -> str:
     names = ", ".join(v for v, _, _ in ins)
     types = ", ".join(t for _, t, _ in ins)
     args = ", ".join(
-        f"%i{k}: {t[t.rindex('x') + 1 : -1] if t.startswith('tensor') else t}" for k, (_, t, _) in enumerate(ins)
+        f"%i{k}: {(t[t.rindex('x') + 1 : -1] if 'x' in t else t[len('tensor<') : -1]) if t.startswith('tensor') else t}"
+        for k, (_, t, _) in enumerate(ins)
     )
     return "\n".join(
         [
@@ -160,7 +172,13 @@ def generic(name: str, ins: list[tuple[str, str, str]], body: list[str]) -> str:
 
 
 def render(program: Program, *, dead_empty: bool = True) -> str:
-    ref = {f"x{i}": f"%x{i}" for i in range(program.inputs)} | {"w": "%w", "s": "%s", "z": "%z"}
+    ref = {f"x{i}": f"%x{i}" for i in range(program.inputs)} | {
+        "w": "%w",
+        "s": "%s",
+        "z": "%z",
+        "st": "%st",
+        "zt": "%zt",
+    }
     lines = []
     for name in program.order:
         node = program.nodes[name]
@@ -175,6 +193,32 @@ def render(program: Program, *, dead_empty: bool = True) -> str:
                     name,
                     [(a[0], F, IDENTITY), (a[1], F, IDENTITY)],
                     [f"%r = {node.op} %i0, %i1 : f32", "linalg.yield %r : f32"],
+                )
+            )
+        elif node.kind == "dequant_t" and not node.lowered:
+            lines.append(
+                f'  %{name} = "quant_ext.dequantize_per_tensor"(%w, %st, %zt) '
+                f"<{{quant_min = {node.low} : i64, quant_max = 127 : i64}}>"
+                f" : (tensor<{R}x{C}xi8>, tensor<f32>, tensor<i64>) -> {F}"
+            )
+        elif node.kind == "dequant_t":
+            difference = "%c = arith.subf %b, %a : f32" if node.subtract_reversed else "%c = arith.subf %a, %b : f32"
+            scaled = "%d = arith.addf %c, %i1 : f32" if node.scale_added else "%d = arith.mulf %c, %i1 : f32"
+            lines.append(
+                generic(
+                    name,
+                    [
+                        ("%w", f"tensor<{R}x{C}xi8>", IDENTITY),
+                        ("%st", "tensor<f32>", SCALAR),
+                        ("%zt", "tensor<i64>", SCALAR),
+                    ],
+                    [
+                        "%a = arith.sitofp %i0 : i8 to f32",
+                        "%b = arith.sitofp %i2 : i64 to f32",
+                        difference,
+                        scaled,
+                        "linalg.yield %d : f32",
+                    ],
                 )
             )
         elif not node.lowered:
@@ -207,6 +251,7 @@ def render(program: Program, *, dead_empty: bool = True) -> str:
     params = ", ".join(
         [f"%x{i}: {F}" for i in range(program.inputs)]
         + [f"%w: tensor<{R}x{C}xi8>", f"%s: tensor<{C}xf32>", f"%z: tensor<{C}xi32>"]
+        + ["%st: tensor<f32>", "%zt: tensor<i64>"]
     )
     results = ", ".join(F for _ in program.outputs)
     returned = ", ".join(ref.get(o, f"%{o}") for o in program.outputs)
@@ -225,7 +270,7 @@ def pruned(program: Program) -> Program:
 def lowered(program: Program) -> Program:
     result = copy.deepcopy(program)
     for node in result.nodes.values():
-        if node.kind == "dequant":
+        if node.kind in ("dequant", "dequant_t"):
             node.lowered = True
     return result
 
@@ -238,7 +283,7 @@ def deduplicated(program: Program) -> Program:
     for name in program.order:
         node = copy.deepcopy(program.nodes[name])
         node.args = [alias.get(a, a) for a in node.args]
-        key = (node.kind, node.op, tuple(node.args), node.value, node.lowered)
+        key = (node.kind, node.op, tuple(node.args), node.value, node.lowered, node.low)
         if key in seen:
             alias[name] = seen[key]
             continue
