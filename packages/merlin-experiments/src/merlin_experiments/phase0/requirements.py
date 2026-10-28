@@ -213,6 +213,11 @@ def _materialized_iteration_capsules(
                     "captured_per_output_nonfinite_v1" if label in NONFINITE_CONTRACT_LABELS
                     else "captured_per_output_v1"
                 ),
+                **(
+                    {"zero_device_group_qualification": "vacuous_disclosed_v1"}
+                    if label in NONFINITE_CONTRACT_LABELS
+                    else {}
+                ),
                 "materialized_capture": {
                     **selection,
                     "path": f"{prefix}/{label}/model.mlir",
