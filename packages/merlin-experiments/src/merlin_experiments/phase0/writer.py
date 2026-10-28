@@ -974,7 +974,15 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
         except CSRC.SpecProgramUnavailable as e:
             print(f"  [skip] {entry['name']}: {e}")
             return None
+    if entry.get("op") == "composition_program":
+        from .composition_generation import prepare_entries
+
+        entry = prepare_entries([entry])[0]
     cap, mlir = CS.build(entry, eb)
+    if entry.get("op") == "composition_program":
+        from .composition_generation import bind_capsule
+
+        bind_capsule(cap, mlir)
     if cap["operation"]["op"] == "component_program":
         cap["numerical_semantics"] = copy.deepcopy(entry.get("numerical_semantics") or {})
     d = Path(out_root) / entry["cat"] / entry["name"]
