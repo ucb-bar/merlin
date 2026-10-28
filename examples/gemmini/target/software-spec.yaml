@@ -469,6 +469,56 @@ operations:
         check: pool_window
         constraints:
           eq: true
+  elementwise_map_after_movement:
+    # PROPOSAL (comp-more/c3), NOT REVIEWED. The readout of an int8 tensor that a movement loads
+    # into the accumulator, feeding a store-path max pool. Authored placement and signature (no
+    # `hardware:`): the facts' fused elementwise_map form is composed with the contraction only.
+    status: unreviewed
+    families: [elementwise_map]
+    placement: fused_accelerator
+    arithmetic: readout_stages
+    description: >-
+      An int8 tensor moved into the i32 accumulator through an input-width (shrink) load at unit
+      scale holds exactly sext(x). Its readout is the selected one: ReLU on the accumulator,
+      one f32 product with a single tensor-wide gain rounded half-even, saturation to int8. Only
+      the readout feeding a store-path max pool (pooling_on_readout composed_with movement) of a
+      declared-fenced scratchpad source is observed (source_fused_stages.prove_window_chains):
+      window and stride in 1..3, grid fields <= 255, a zero pad read only after a ReLU and only
+      on the upper/left side. Not RTL qualification; no lowering emits it yet.
+    numerical_contract:
+      status: unreviewed
+      semantics:
+        load: "accumulator := sext_i32(x_i8); mvin scale 1.0 is exact on every int8"
+        readout: "f32_product_rne: sat_i8(rne(f32(relu(acc)) * g)); g one f32 for the tensor"
+        pool: "max over the window; an out-of-grid tap contributes 0"
+      evidence:
+        basis: "LoadController.scala:108; Scratchpad.scala:420-424,847; AccumulatorScale.scala:118-138; StoreController.scala:76-80,131-133; Scratchpad.scala:293-324; DMA.scala:597-605; differential test comp-more/c3/evidence/diff_window.py"
+    evidence:
+      review_status: unreviewed
+      basis: "LoadController.scala:108 (is_acc && !shrink selects input width); Scratchpad.scala:420-424 (that load takes the input-type mvin scale, RNE) and :847 (withWidthOf(accType) sign-extends into the accumulator); AccumulatorScale.scala:118-138 (relu, then scale, then clippedToWidthOf); StoreController.scala:76-80,131-133 (pool tap addressing; out-of-grid taps are garbage addresses); Scratchpad.scala:293-324 (garbage taps skip scale/activation and are written as zeros); DMA.scala:597-605 (per-column maxOf across taps); GemminiISA.scala:126-129 (2-bit size, stride, upad, lpad fields)"
+    composed_with: [movement]
+    epilogues: [acc_scale, relu]
+    dtypes: [int8]
+    ranks: [2]
+    layouts: [row_major_contiguous]
+    aliasing: [disjoint_inputs_outputs]
+    scale_granularity: [tensor]
+    unconstrained:
+      tails: each readout stage maps one loaded element to one result element; padded lanes never reach a valid result
+    emission_obligations:
+      execution_program:
+        status: compiler_obligation
+        condition:
+          all:
+          - {path: execution.load_source, eq: int8_input_width_into_accumulator}
+          - {path: execution.load_scale, eq: 1.0}
+          - {path: execution.readout_exit, eq: narrow_i8}
+          - {path: execution.readout_strategy, eq: f32_product_rne}
+          - {path: execution.scale_delivery, eq: scalar_per_command_partition}
+          - {path: execution.pooling, eq: true}
+          - {path: execution.scratchpad_source_pooling_fenced, eq: true}
+      load_scale: {status: instruction_audit, check: unit_mvin_scale, constraints: {eq: 1.0}}
+      c_stride: {status: compiler_obligation, constraints: {eq: 1}}
   reduction_standalone:
     # Standalone SUM reductions: accumulate-on-load over an outer axis or a window, then one
     # readout scale. Max reductions stay fused (`pooling_on_readout`).
