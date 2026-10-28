@@ -70,10 +70,10 @@ def build(*, bias=True, relu=True, ext="extsi", bias_operands="%x0, %x1", gain=G
     return text
 
 
-def prove(tmp_path, numerics=NUMERICS, **kw):
+def prove(tmp_path, numerics=NUMERICS, strategy="f32_product_rne", **kw):
     path = tmp_path / "capsule.interface.mlir"
     path.write_text(build(**kw))
-    return prove_chains(path, numerics=numerics)
+    return prove_chains(path, numerics=numerics, strategy=strategy)
 
 
 def stage_names(chains):
@@ -149,3 +149,26 @@ def test_bias_added_to_itself_yields_no_bias_stage(tmp_path):
     chains = prove(tmp_path, bias_operands="%x0, %x0")
     assert "bias_add" not in stage_names(chains)
     assert "acc_scale" not in stage_names(chains)
+
+
+def test_other_strategy_needs_power_of_two_gains_and_a_bounded_accumulator(tmp_path):
+    # f32(acc) * gain equals an exact rational readout only for an exact sitofp and a power-of-two gain.
+    assert stage_names(prove(tmp_path, strategy="exact_rational_host", bias=False)) == []  # gain 1/6
+    assert stage_names(prove(tmp_path, strategy="exact_rational_host", bias=False, gain="0.0625")) == [
+        "relu",
+        "acc_scale",
+    ]
+    # A runtime i32 bias leaves the accumulator unbounded: no readout stage, the bias stage stands.
+    assert stage_names(prove(tmp_path, strategy="exact_rational_host", gain="0.0625")) == ["bias_add"]
+    assert stage_names(prove(tmp_path, strategy=None, bias=False, gain="0.0625")) == ["relu", "acc_scale"]
+
+
+def test_large_runtime_contraction_under_exact_strategy_is_not_observed(tmp_path):
+    # |acc| <= 128 * 128 * K exceeds 2**24 once K > 1024 (the shape of an OS runtime-weight twin).
+    text = build(bias=False, gain="0.0625").replace("16x16xi8>", "16x2048xi8>", 1)
+    text = text.replace("%W0: tensor<16x16xi8>", "%W0: tensor<2048x16xi8>")
+    text = text.replace("ins(%A, %W0 : tensor<16x16xi8>, tensor<16x16xi8>)", "ins(%A, %W0 : tensor<16x2048xi8>, tensor<2048x16xi8>)")
+    path = tmp_path / "big.mlir"
+    path.write_text(text)
+    assert stage_names(prove_chains(path, numerics=NUMERICS, strategy="exact_rational_host")) == []
+    assert stage_names(prove_chains(path, numerics=NUMERICS, strategy="f32_product_rne")) == ["relu", "acc_scale"]

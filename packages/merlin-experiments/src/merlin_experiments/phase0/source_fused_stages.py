@@ -110,6 +110,39 @@ def _dense_f32(value) -> list[float] | None:
     return values
 
 
+def _dense_int(value) -> list[int] | None:
+    """The flat values of an ``arith.constant`` dense integer tensor, else ``None`` (a runtime input)."""
+    owner = _defining_op(value)
+    if owner is None or _name(owner) != "arith.constant":
+        return None
+    attr = owner.properties.get("value") or owner.attributes.get("value")
+    typed = _tensor(value)
+    try:
+        from xdsl.dialects.builtin import DenseIntOrFPElementsAttr
+
+        if typed is None or not isinstance(attr, DenseIntOrFPElementsAttr):
+            return None
+        values = [int(v) for v in attr.get_values()]
+    except Exception:  # noqa: BLE001 - an unreadable constant is no bound
+        return None
+    count = math.prod(typed[0])
+    if len(values) == 1:
+        values = values * count
+    return values if len(values) == count else None
+
+
+def _accumulator_bound(lhs, rhs, k: int, n: int) -> int:
+    """Largest |accumulator| an i8 x i8 contraction can reach: exact for a constant operand, else |i8| <= 128."""
+    weights = _dense_int(rhs)
+    if weights is not None:
+        return max(sum(abs(weights[row * n + col]) for row in range(k)) for col in range(n)) * 128
+    activations = _dense_int(lhs)
+    if activations is not None:
+        m = len(activations) // k
+        return max(sum(abs(activations[row * k + col]) for col in range(k)) for row in range(m)) * 128
+    return 128 * 128 * k
+
+
 def _generic(op, maps: tuple[str, ...], iterators: tuple[str, ...]) -> bool:
     return (
         _name(op) == "linalg.generic"
@@ -155,7 +188,12 @@ def contraction(op) -> dict | None:
         return None
     if set(map(id, add.operands)) != {id(mul.results[0]), id(acc)} or yld.operands[0] is not add.results[0]:
         return None
-    return {"lhs": {"dtype": "i8", "shape": lhs[0]}, "rhs": {"dtype": "i8", "shape": rhs[0]}, "result": result[0]}
+    return {
+        "lhs": {"dtype": "i8", "shape": lhs[0]},
+        "rhs": {"dtype": "i8", "shape": rhs[0]},
+        "result": result[0],
+        "bound": _accumulator_bound(op.inputs[0], op.inputs[1], rhs[0][0], rhs[0][1]),
+    }
 
 
 def bias_add(op, accumulator) -> dict | None:
@@ -176,11 +214,20 @@ def bias_add(op, accumulator) -> dict | None:
         return None
     if yld.operands[0] is not add.results[0]:
         return None
-    return {"bias": {"dtype": "i32", "shape": bias[0]}}
+    values = _dense_int(op.inputs[1])
+    return {"bias": {"dtype": "i32", "shape": bias[0]}, "bias_bound": max(map(abs, values)) if values else None}
 
 
-def readout(op, accumulator, *, numerics: dict) -> dict | None:
-    """The selected readout of an i32 accumulator to a narrow integer: [relu,] scale, round half even, saturate."""
+def readout(op, accumulator, *, numerics: dict, strategy: str | None = None, bound: int | None = None) -> dict | None:
+    """The selected readout of an i32 accumulator to a narrow integer: [relu,] scale, round half even, saturate.
+
+    The body computes ``f32(acc) * gain`` rounded once: that IS the readout only under the
+    ``f32_product_rne`` strategy. Under any other (e.g. an exact rational readout) it is equal only
+    when ``sitofp`` is exact (a proven ``|acc| <= 2**24``) and every gain is a power of two, so the
+    product is exact too; otherwise there is no observation.
+    """
+    if strategy != "f32_product_rne" and (bound is None or bound > 2**24):
+        return None
     if numerics.get("acc_scale_rounding") != "half_even" or numerics.get("narrowing") != "saturate_to_declared_dtype":
         return None
     if not _generic(op, (_IDENTITY2, _COLUMN2, _IDENTITY2), (_PARALLEL, _PARALLEL)) or len(op.inputs) != 2:
@@ -192,6 +239,8 @@ def readout(op, accumulator, *, numerics: dict) -> dict | None:
         return None
     gains = _dense_f32(op.inputs[1])
     if gains is None or len(gains) != result[0][-1]:
+        return None
+    if strategy != "f32_product_rne" and not all(g > 0 and math.frexp(g)[0] == 0.5 for g in gains):
         return None
     lo_bound, hi_bound = _NARROW[result[1]]
     x, gain, _ = op.body.block.args
@@ -247,7 +296,7 @@ def readout(op, accumulator, *, numerics: dict) -> dict | None:
     }
 
 
-def prove_chains(program: Path, *, numerics: dict) -> list[dict]:
+def prove_chains(program: Path, *, numerics: dict, strategy: str | None = None) -> list[dict]:
     """Every proven contraction -> [bias_add] -> [readout] chain, by top-level source op index."""
     from merlin.common import mlir_query as mq
     from merlin.frontends.capture_normalization import normalize_capture_mlir
@@ -272,14 +321,16 @@ def prove_chains(program: Path, *, numerics: dict) -> list[dict]:
         stages = []
         value = op.results[0]
         user = only_user(value)
+        bound = carrier["bound"]
         if user is not None:
             bias = bias_add(user, value)
             if bias is not None:
-                stages.append({"member": index[id(user)], "stages": ["bias_add"], **bias})
+                bound = bound + bias["bias_bound"] if bias["bias_bound"] is not None else None
+                stages.append({"member": index[id(user)], "stages": ["bias_add"], "bias": bias["bias"]})
                 value = user.results[0]
                 user = only_user(value)
         if user is not None:
-            proven = readout(user, value, numerics=numerics)
+            proven = readout(user, value, numerics=numerics, strategy=strategy, bound=bound)
             if proven is not None:
                 stages.append(
                     {"member": index[id(user)], "stages": (["relu"] if proven["relu"] else []) + ["acc_scale"], **proven}
@@ -289,14 +340,14 @@ def prove_chains(program: Path, *, numerics: dict) -> list[dict]:
     return chains
 
 
-def observe(program: Path, entries: list[dict], *, evidence) -> list[dict]:
+def observe(program: Path, entries: list[dict], *, evidence, readout_strategy: str | None = None) -> list[dict]:
     """``entries`` with each proven fused member's standalone entry replaced by its stage rows' entries."""
     from merlin.targetgen.interface_observations import _stage_rows
     from merlin.targetgen.operation_accounting import admit_operation_row
 
     spec = getattr(evidence, "software_spec", None) or {}
     numerics = (spec.get("numerical_semantics") or {}).get("readout") or {}
-    chains = prove_chains(program, numerics=numerics)
+    chains = prove_chains(program, numerics=numerics, strategy=readout_strategy)
     by_member: dict[int, list[dict]] = {}
     placed_producers = {
         index
