@@ -429,6 +429,25 @@ operations:
   elementwise_map_after_operand_sum:
     status: reviewed
     numerical_contract: operand_sum_exhaustive_i8_v1
+    readout_gain_screens: [tensor]
+    description: >-
+      Single-rounding operand sum. For each selected scalar f32 operand-scale pair, screen all
+      65,536 ordered signed-i8 pairs: source RNE(f32(a*l) + f32(b*r)) saturated to i8 against two
+      half-even saturating loads at l/max(1,l,r) and r/max(1,l,r), an exact sum and a readout by
+      max(1,l,r). When the source reads the sum out by a positive finite f32 gain g (tensor
+      granularity), the same screen carries g: source sat_i8(RNE(f32(relu?(RNE(f32(a*l) +
+      f32(b*r)))) * g)) against the device readout register f32(max(1,l,r) * g). At unit
+      multipliers the sum is exact and both are sat_i8(RNE(f32(relu?(a+b)) * g)). Every distinct
+      readout gain needs its own full screen. This software-model screen is not RTL qualification
+      or a provider proof.
+    evidence:
+      review_status: reviewed
+      reviewed_by: "Loren Hung (comp-more c4 sign-off, 2026-10-28)"
+      basis: >-
+        Operator review of the readout gain on the single-rounding operand-sum contract;
+        operand_sum_numeric.audit_i8_operand_sum(readout_scale=g); the realization binds this row
+        by the scheme's operand_sum_rounding (admission_conditions.binding_declaration,
+        declaration_numerics).
     families:
     - elementwise_map
     hardware: fused_operand_sum
