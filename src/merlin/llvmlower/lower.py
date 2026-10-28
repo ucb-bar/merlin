@@ -11,10 +11,14 @@ from __future__ import annotations
 import os as _os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from merlin.verify.pass_validation import PassValidation
 
 from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit, audit_mode
+from merlin.verify import pass_validation as _validation
 
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
@@ -74,7 +78,20 @@ class LowerResult:
     audit_index: Path | None = None
 
 
+#: Products a lowering leaves in its workdir; a failed pass validation must not leave them usable.
+_ARTIFACTS = ("model.ll", "model_host.so", "model_rv64gcv.o")
+
+
+def _reject_artifacts(work: Path) -> None:
+    """Rename this lowering's products to ``*.rejected``: kept as evidence, never mistaken for output."""
+    for name in _ARTIFACTS:
+        path = work / name
+        if path.exists():
+            path.replace(path.with_name(name + ".rejected"))
+
+
 @host_admitted
+@_validation.validated("workdir", index_bits_argument="index_bits", on_failure=lambda w: _reject_artifacts(w))
 def lower_model(
     mlir_text: str,
     workdir: str | Path,
@@ -95,8 +112,14 @@ def lower_model(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    pass_validation: PassValidation | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
+
+    ``pass_validation`` (or ``MERLIN_VALIDATE_PASSES`` with ``MERLIN_LEAN_SDK_BIN``) checks the selected
+    passes against Merlin's Lean proofs beside the lowering: each one's exact before/after IR goes to
+    the validation's speculative gate, lowering continues as if the check passes, and a check that does
+    not accept stops the lowering with its evidence. See :mod:`merlin.verify.pass_validation`.
 
     ``data_layout`` is the target's LLVM data layout, set on the module before translation (see
     :func:`merlin.llvmlower.pipeline.lower_to_llvm_ir`). ``index_bits`` explicitly binds every LLVM
@@ -185,6 +208,9 @@ def lower_model(
             except Exception:  # noqa: BLE001 -- an exotic constructor: keep the original
                 raise exc
             raise enriched from exc
+        from . import leading_cse
+
+        leading_cse.submit(work)  # every tensor-level cse the build's runner ran, as it ran it
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
         if "source_scalar_carrier" in lowering_selection:
@@ -254,6 +280,7 @@ def lower_model_file(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    pass_validation: PassValidation | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -276,4 +303,5 @@ def lower_model_file(
         masked_contraction_effects=masked_contraction_effects,
         source_observation_effects=source_observation_effects,
         source_scalar_carrier=source_scalar_carrier,
+        pass_validation=pass_validation,
     )
