@@ -12,8 +12,10 @@ dependencies = ["merlin==0.0.1", "numpy", "pyyaml"]
 
 [project.optional-dependencies]
 compiler = ["xdsl>=0.68"]
+reconstruction = ["xdsl>=0.68", "z3-solver", "tree-sitter>=0.25,<0.26", "tree-sitter-c>=0.24,<0.24.2"]
 
 [project.scripts]
+merlin-kernel-reconstruct = "merlin.mining.reconstruction_cli:main"
 merlin-kernel-report = "merlin.mining.report:main"
 merlin-kernel-mine = "merlin.mining.mine:main"
 merlin-kernel-autotune = "merlin.mining.autotune:main"
