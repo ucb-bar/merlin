@@ -1,0 +1,167 @@
+[
+  {
+    "m": 512,
+    "k": 512,
+    "n": 512,
+    "sketch": "ij.16x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      8,
+      8,
+      32
+    ],
+    "memory": {
+      "spad_rows": 8192,
+      "acc_rows": 1024
+    }
+  },
+  {
+    "m": 12544,
+    "k": 256,
+    "n": 64,
+    "sketch": "ij.16x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      16,
+      4,
+      16
+    ],
+    "memory": {
+      "spad_rows": 5120,
+      "acc_rows": 1024
+    }
+  },
+  {
+    "m": 12544,
+    "k": 64,
+    "n": 256,
+    "sketch": "ij.16x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      8,
+      8,
+      4
+    ],
+    "memory": {
+      "spad_rows": 1024,
+      "acc_rows": 1024
+    }
+  },
+  {
+    "m": 3136,
+    "k": 512,
+    "n": 128,
+    "sketch": "ij.16x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      7,
+      8,
+      32
+    ],
+    "memory": {
+      "spad_rows": 7680,
+      "acc_rows": 896
+    }
+  },
+  {
+    "m": 3136,
+    "k": 128,
+    "n": 512,
+    "sketch": "ij.16x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      7,
+      8,
+      8
+    ],
+    "memory": {
+      "spad_rows": 1920,
+      "acc_rows": 896
+    }
+  },
+  {
+    "m": 784,
+    "k": 256,
+    "n": 1024,
+    "sketch": "ij.16x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      7,
+      8,
+      16
+    ],
+    "memory": {
+      "spad_rows": 3840,
+      "acc_rows": 896
+    }
+  },
+  {
+    "m": 16,
+    "k": 64,
+    "n": 16,
+    "sketch": "ij.16x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      1,
+      1,
+      4
+    ],
+    "memory": {
+      "spad_rows": 128,
+      "acc_rows": 16
+    }
+  },
+  {
+    "m": 16,
+    "k": 16,
+    "n": 64,
+    "sketch": "ij.16x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      1,
+      4,
+      1
+    ],
+    "memory": {
+      "spad_rows": 80,
+      "acc_rows": 64
+    }
+  },
+  {
+    "m": 16,
+    "k": 5632,
+    "n": 2048,
+    "sketch": "ij.16x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      1,
+      64,
+      11
+    ],
+    "memory": {
+      "spad_rows": 11440,
+      "acc_rows": 1024
+    }
+  },
+  {
+    "m": 16,
+    "k": 2048,
+    "n": 5632,
+    "sketch": "ij.16x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      1,
+      44,
+      16
+    ],
+    "memory": {
+      "spad_rows": 11520,
+      "acc_rows": 704
+    }
+  },
+  {
+    "m": 1,
+    "k": 2048,
+    "n": 32000,
+    "sketch": "ij.1x16x16.os.h0.p0.eroot.stile.tnone",
+    "groups": [
+      1,
+      50,
+      16
+    ],
+    "memory": {
+      "spad_rows": 12816,
+      "acc_rows": 64
+    }
+  }
+]

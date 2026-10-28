@@ -7,25 +7,37 @@ TinyLlama and SmolVLA are backlogged; T01–T07 remain active isolated kernels a
 must not be confused with those backlogged model runs. The earlier "few trials"
 policy for those models is superseded for this kernel campaign.
 
-Requested TVM tuning: **50 warmup trials + 5 model-guided trials per workload**,
-using stock MetaSchedule EvolutionarySearch/XGB, or stop earlier when the legal
-space is exhausted. Count candidate schedules, not batches, executions, or timing
-repetitions. Three baseline wall-watchdog calibrations are separate and charged
-to the same occupied-slot budget. An empty stochastic batch is not proof that
-all legal schedules have been enumerated. Record budget stop, search failure,
-and verified exhaustion separately. Record fewer than five guided trials when
-warmup/training did not complete; do not call random predictions guided.
+Use **stock MetaSchedule ReplayTrace, up to 25 candidate trials total per
+kernel case or ResNet chunk**, shared across its internal tasks and graph options.
+There is no ML warmup, guided phase, XGBoost import/training or learned ranking.
+The 25 are sampled schedule proposals, not 25 different mathematical fixtures.
+Repeated timings and the three baseline watchdog calibrations are separate and
+consume the same occupied-slot allowance. Do not multiply the trial budget by
+head count or internal task count. Duplicate/failed proposals count against the
+cap; report actual unique successful candidates. Stop at the cap, wall budget,
+or an explicit search stop; stochastic failure is not proof of space exhaustion.
 
-ResNet's last confirmed time caps are **4 hours DSE** and **30 minutes per final
-baseline/tuned E2E run**. Kernel aggregate wall budget and precedence of the
-ResNet time cap versus the requested candidate count are awaiting clarification;
-this document does not authorize an unbounded paid campaign. Candidate median
-watchdogs and confirmed remote termination remain mandatory.
+Start from a deterministic shape-derived baseline: largest exact legal tile
+(up to 16), bounded M/N operand-reuse groups and K batching. Prefer less logical
+operand traffic, then larger legal groups; validate the actual aligned physical
+allocation. Try at most eight ranked choices and a one-group fallback. Preserve
+explicit user schedule settings. This is a heuristic, not a cycle predictor or a
+claimed optimum; pipeline/hoisting/dataflow alternatives remain search choices.
+Keep the baseline in the database and choose only correct measured winners.
 
-The meaning of "per workload" for multi-output cases versus internal TensorIR
-tasks is awaiting confirmation. Regardless of tuning granularity, published
-cycles for T01/T02 include all 32 heads; T04/T06 include both/all three outputs.
-Never substitute a single contraction's cycles for the complete case.
+ResNet retains **4h total DSE and 30min per E2E run**; the time cap wins even
+if some chunks have fewer than 25 trials. For the 16-case **TVM** kernel sweep,
+use a conservative **24 occupied-slot-hour aggregate ceiling**, excluding CPU
+preparation. This is an authorized planning estimate, not measured runtime:
+400 proposals at an illustrative 3 minutes occupy 20h, plus 48 baseline jobs
+at 3 minutes occupy 2.4h, leaving 1.6h for confirmations. Actual calibration and
+profile counts may differ; the same cap still wins. This is not 24h per case,
+not 24h for every compiler, and concurrency must not multiply the allowance.
+Close admissions at budget; finish active jobs under their frozen median
+watchdogs and report overrun. Preserve actual cycle labels and failures.
+
+T01/T02 still measure all 32 heads together; T04/T06 measure all outputs.
+Task-level tuning records are never complete-call results.
 
 This is a **preparation specification**, not a claim that 16 TVM kernel ELFs,
 other compilers' adapters or FireSim results already exist. The current TVM

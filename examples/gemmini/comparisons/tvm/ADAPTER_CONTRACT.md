@@ -79,8 +79,8 @@ image substitution or require a new live-observer bitstream.
 ## Budgets and final runs
 
 Only ResNet is active from the model roster (4h DSE); TinyLlama/SmolVLA
-are backlogged (retained future allowance 1h each). Kernel-study wall budget is
-separate and pending. Charge time across chunks/graph
+are backlogged (retained future allowance 1h each). The 16-case TVM kernel-study safety ceiling is
+24 occupied-slot-hours total (planning estimate, not a runtime prediction). Charge time across chunks/graph
 plans. The remote aggregate occupancy ledger is authoritative; the local shared
 absolute deadline is an additional admission bound, not a substitute for that
 ledger. Stop new admissions at budget, finish active jobs under their frozen

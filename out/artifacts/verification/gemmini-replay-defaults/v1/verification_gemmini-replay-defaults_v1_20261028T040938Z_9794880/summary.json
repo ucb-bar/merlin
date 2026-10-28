@@ -1,0 +1,21 @@
+{
+  "tvm_commit": "64bed0cb9c876b89707e69584909abe5e13b0384",
+  "merlin_runner_commit": "9794880b465a8fa456bd0949914187ea192a45e3",
+  "strategy": "ReplayTrace",
+  "learned_model": false,
+  "default": "Largest exact intrinsic divisors <=16; rank bounded reuse groups by logical operand traffic; validate actual physical SRAM allocation; bounded fallback",
+  "checks": {
+    "schedules_graph_database": "53 passed; 21 subtests",
+    "wrapper_and_publication": "36 passed",
+    "inventory_and_no_ml": "3 passed; 51 inventory subtests",
+    "firesim_control": "57 passed",
+    "structure": "9 inherited module-size failures; no modified files among failures"
+  },
+  "evidence_scope": "Host/emulated fixtures and control tests. Shape examples are compile inspection only.",
+  "remaining": [
+    "No new Spike runs for changed schedules",
+    "No new FireSim cycles or complete-model qualification",
+    "Complete 16-case grouped kernel builders remain outstanding",
+    "Exact per-program software-spec/hardware admission and remote cancellation/occupancy qualification required"
+  ]
+}
