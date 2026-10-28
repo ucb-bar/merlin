@@ -10,12 +10,15 @@ code_refs:
   - src/merlin/verify/gate_checks.py
   - src/merlin/verify/speculative_gate.py
   - src/merlin/verify/lean/check.py
+  - src/merlin/verify/lean/receipt_session.py
+  - src/merlin/verify/gate_worker.py
   - src/merlin/llvmlower/passes_xdsl.py
   - src/merlin/llvmlower/lower.py
   - src/merlin/llvmlower/leading_cse.py
   - src/merlin/llvmlower/pipeline.py
   - src/merlin/compile/command.py
   - merlin/lean/MerlinVerify/Check/ExactCse.lean
+  - merlin/lean/MerlinVerify/Check/AlphaFast.lean
   - merlin/lean/MerlinVerify/Rules/Dce.lean
   - merlin/lean/LEDGER.md
   - merlin/lean/lakefile.toml
@@ -24,6 +27,8 @@ code_refs:
   - merlin/tests/ir/test_lean_pass_gate.py
   - merlin/tests/ir/lean_gate_chunks.py
   - merlin/tests/ir/test_lean_pass_gate_fuzz.py
+  - merlin/tests/ir/test_lean_receipt_session.py
+  - merlin/tests/ir/test_speculative_gate.py
   - merlin/tests/rvv/test_lean_pass_gate_spike.py
 ---
 
@@ -57,8 +62,10 @@ For every validated boundary the worker requires all of:
 3. `compose_chain` replaying both, with `refinement_verdict: verified`.
 
 It attempts two strengthenings and reports them without requiring them: the universal boundary
-theorem (`moduleCheck_sound`, for all inputs) and source definedness. The receipt's `claim` says
-exactly what was established. Axioms: `propext`, `Classical.choice`, `Quot.sound`.
+conditional theorem (`moduleCheck_sound`, for all inputs) and source definedness. The strict claim
+retains the declared input types, where source support was established; a universal conditional
+boundary alone does not widen that domain. The receipt's `claim` says exactly what was established.
+Axioms: `propext`, `Classical.choice`, `Quot.sound`.
 
 * Pruning is proved by the C1 DCE rule. Dead source ops are erased before alignment
   (`synthC1Live`, and `synthC1Unused` for what upstream `cse` erases), so a dead op is never matched
@@ -79,9 +86,10 @@ Lean checks every proof step; review establishes that what is proved is what is 
 2. **The purity scope** (`Rules/Dce.lean` `pureOp`/`erasable`, ledger A9): which ops are treated as
    only computing their results, and so may be erased when dead and reused by `cse`. A9 extends this
    to the three modeled `quant_ext` ops, so a dead quantization op can be pruned.
-3. **The quantization source semantics, for pruning only** (`Spec/Dequant.lean`,
-   `Spec/Quantize.lean`): a prune boundary whose input still contains `quant_ext` ops needs their
-   meaning to show the input never gets stuck. A module without them does not depend on these files.
+3. **Source Q/DQ meanings where these operations remain** (`Spec/Dequant.lean`,
+   `Spec/Quantize.lean`): a boundary whose input contains modeled `quant_ext` ops needs their
+   meaning to establish source support, even when the transformation only prunes or reuses them.
+   This does not check the separate quantization-lowering boundary.
 4. **The trusted components** (ledger T1–T6): the Lean kernel and compiler, the `torch_mlir` exporter
    and the Python bridge, and everything below the tensor stage.
 5. **The locked statements** (`merlin/lean/SPEC_LOCK`): the hashes pin the semantics files and the
@@ -105,6 +113,8 @@ PATH=<lean-4.35.0>/bin:$PATH taskset -c 0-7 nice -n 19 lake build MerlinVerify m
 
 A checker that is out of date with `merlin/lean` (`lake build --no-build`) is refused.
 `build_tools/scripts/check_lean_guard.py` audits every theorem's axioms and the locked files.
+On Linux, workers also require util-linux `setpriv` for parent-death signals. Missing cleanup
+tooling is `unavailable`, never an accepted check.
 
 ## Turn it on
 
@@ -116,6 +126,54 @@ or set `MERLIN_VALIDATE_PASSES` (`all` or a comma list) and `MERLIN_LEAN_SDK_BIN
 `MERLIN_COMPILER_PYTHON=<venv>/bin/python`, or pass `pass_validation=PassValidation(gate, tools)` to
 `lower_model`. It is off by default; a missing or stale tool stops the compile before it starts. A
 lowering called inside an active validation joins it, and a different explicit validation is refused.
+
+Checks run in owned worker process groups. A failed check rejects speculative compiler products;
+closing the gate stops its groups. On Linux, a compile killed by TERM or KILL also stops its
+workers and their checker children. A startup parent-identity check closes the interval before
+the parent-death signal was armed. Worker crashes are followed by bounded group cleanup too.
+
+## Cost and implemented speedups
+
+Two optimizations preserve the existing proof obligations:
+
+* `Check/AlphaFast.lean` replaces list-based correspondence lookup and image membership with
+  persistent ordered maps/sets. Lean proves equality to `alphaOps` for every correspondence and
+  pair of operation lists; `@[csimp]` selects that equal implementation in compiled callers.
+  Frozen semantics, the original checker definition and its soundness statements stay unchanged.
+* Within a gate job, `receipt_session` records results issued by actual successful checks.
+  Composition validates their schema, provenance, axioms, exports and byte bindings and reuses
+  the live result instead of executing the same checker twice. This authority exists only in
+  memory in that process/job, and is discarded on exit. Saved or edited JSON cannot declare
+  itself fresh. Ordinary external composition still reruns the checks. This is trusted host
+  orchestration under ledger T2, not a new Lean axiom.
+
+The original profiling of `SY_model_tiny_llama` (4,659 source operations) measured about 61 minutes
+in the accepting normalization plus another replay of similar cost. The indexed implementation
+reduced the measured accepting normalization to about 98 seconds; eliminating duplicate replay
+removes the second execution. These are historical component measurements from the performance
+worktree, not a bound on complete gate latency. Exact timings depend on the module and host load.
+
+## Further optimizations deferred
+
+The following ideas were identified during profiling and are deliberately not implemented here:
+
+* Order cheaper, likely accepting `TypedModule.check` alternatives first, or index the rule search
+  in `synthC1Live`. Historical failed alternatives cost about 73 seconds, including 66 seconds in
+  `synthC1Live` alone.
+* Batch `ExactCse` substitutions into one checked pass per block. It currently performs a
+  continuation rename for each merge (about 1,800 merges in the profiled module).
+* Index the scans in `FromElementsSelect` and `DenseExtract`, measured at roughly 18 and 2 seconds
+  respectively in that same profile.
+
+Each would need separate correctness and qualification work. Current rule ordering and these
+normalizers are retained.
+
+## Quantization handoff
+
+This branch gates pruning and tensor CSE only. Quantization proof progress, branches, evidence,
+review obligations and integration boundaries are recorded in the separate
+[quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md).
+Its numerical lowering and proof coverage are not extended by this deliverable.
 
 ## Outcomes
 
@@ -137,6 +195,10 @@ A pass that changes nothing submits nothing.
   real lowering, live and with dead code, with byte-identical gated output.
 * `merlin/tests/ir/test_lean_pass_gate_fuzz.py` — seeded random programs through the real passes;
   completeness against an independent reference and soundness against a numpy oracle.
+* `merlin/tests/ir/test_lean_receipt_session.py` — actual proof invocation counts, external replay,
+  forged verdicts and edited live receipts.
+* `merlin/tests/ir/test_speculative_gate.py` — worker ownership, bounded cancellation, parent/worker
+  death and cleanup-tool refusal.
 * `merlin/tests/rvv/test_lean_pass_gate_spike.py` — whole-model builds on Spike: a gated build matches
   its golden output, and a wrong `cse` is stopped before any ELF exists.
 
