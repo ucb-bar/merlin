@@ -3117,8 +3117,6 @@ operations:
     - i8
     ranks:
     - 2
-    - 3
-    - 4
     quantization_parameters:
       zero_point: 0
       quant_min: -128
@@ -3135,7 +3133,7 @@ operations:
       quant_min: -128
       quant_max: 127
       infinity: saturates_to_quant_min_or_quant_max
-      nan: runtime_assert_refusal
+      nan: runtime_assert_refusal (unless recipe quantization_nonfinite=byte_storage_zero_nan_saturating_infinity sets merlin.quantizer_nan_storage_zero, then NaN -> code 0)
     evidence:
       review_status: proposed; operator review required before status may be reviewed
       basis: 'model2MLIR m2m_q::quantize CPU evaluator m2m/capture/exact_quant.py quantize_tensor
@@ -3160,8 +3158,10 @@ operations:
     - f32
     ranks:
     - 2
-    - 3
-    - 4
+    aliasing: disjoint_inputs_outputs
+    layouts:
+    - row_major_contiguous
+    readout_dtype: f32
   numerical_contract:
     status: unreviewed
     semantics:
@@ -3198,8 +3198,6 @@ operations:
     - f32
     ranks:
     - 2
-    - 3
-    - 4
     quantization_parameters:
       zero_point: 0
       quant_min: -128
@@ -3212,6 +3210,7 @@ operations:
       exactness_premise: scale is exactly representable in binary32 (then the binary64
         product of a byte code and the scale is exact and the only rounding is the
         final half-even narrowing, equal to PyTorch's binary32 multiply)
+      exactness_premise_enforcement: none in signature screen; operator obligation per admitted instance until a lowering guard refuses non-binary32 f64 scales
       scale_granularity: tensor
       zero_point: 0
     evidence:
@@ -3237,8 +3236,6 @@ operations:
     - f32
     ranks:
     - 2
-    - 3
-    - 4
   numerical_contract:
     status: unreviewed
     semantics:
@@ -3247,6 +3244,8 @@ operations:
       accumulator: f32
       reduction_order: selected_lowering
       existing_numerical_tolerance: unchanged
+      data_operand: implicit capture read by tensor.extract inside the body (zero ins, two f32 outs); not screened by this typed signature
+      fused_multiply_add: math.fma must lower to a fused llvm.fma (fmadd.s or correctly rounded fmaf)
     evidence:
       review_status: proposed; operator review required before status may be reviewed
       basis: same f32 layer-norm decomposition as host_f32_reduction, observed as
