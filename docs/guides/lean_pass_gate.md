@@ -12,6 +12,9 @@ code_refs:
   - src/merlin/verify/lean/check.py
   - src/merlin/llvmlower/passes_xdsl.py
   - src/merlin/llvmlower/lower.py
+  - src/merlin/llvmlower/leading_cse.py
+  - merlin/lean/MerlinVerify/Check/ExactCse.lean
+  - merlin/lean/MerlinVerify/Rules/Dce.lean
   - src/merlin/runtime/backends/zephyr_model.py
   - src/merlin/compile/command.py
   - merlin/lean/lakefile.toml
@@ -33,10 +36,24 @@ the paths of the input and output, and renames any `.ll`, `.so` or `.o` already 
 | `prune_dead_pure_tensor_ops` | `lower_model` preprocessing (xDSL route) | `passes_xdsl._preprocess_module` |
 | `lower_quant_ext` | `lower_model` preprocessing, and every `prepare_for_lowering` | `_preprocess_module`, `zephyr_model._prepare_model_mlir` |
 | `preprocess_text_textual` | `lower_model(textual=True)`: the whole-model RVV route, including Spike | `passes_xdsl.preprocess_text_textual` |
+| `cse` | the tensor-level `cse` every lowering pipeline starts with, on every route | `leading_cse.run` |
 
 The whole-model RVV route lowers textually, so in a Spike or `merlin-compile` RVV build the checked
-boundary is `preprocess_text_textual` (dequantization, slice repair and the C interface together);
-the xDSL prune and quantization run only on the xDSL route and in preparation.
+boundaries are `preprocess_text_textual` (dequantization, slice repair and the C interface together)
+and `cse`; the xDSL prune and quantization run only on the xDSL route and in preparation.
+
+Every pipeline opens with `canonicalize,cse`. With `cse` validated, `leading_cse` runs those two passes
+before the pipeline (same pass registry and fusion guard as the build's runner), checks the exact `cse`
+pair, and hands the result on; it then runs them once more and checks any change, so the pipeline's own
+head provably changes nothing and the build lowers exactly what was checked. `canonicalize` is not
+validated (folds are outside the checker). This is exact only when nothing rewrites the module before
+the pass manager, so with features or source-carrier, observation or masked-contraction stages selected
+`cse` validation is refused; validate the other passes then.
+
+On the textual (RVV, Spike) route the gated build's `model.ll` is byte-identical to the ungated one.
+On the xDSL route 15 commutative `fadd`s of `small_llama_int8` have their operands swapped: the
+pipeline now parses the module once more after `cse`, and the later elementwise fusion builds bodies
+in use order, which a print and parse does not keep (the likely cause; not separately confirmed).
 
 ## What is proved
 
@@ -48,11 +65,25 @@ For every validated boundary the worker requires all of:
    which makes the refinement strict rather than conditional;
 3. `compose_chain` replaying both, with `refinement_verdict: verified`.
 
+Dead-code deletion is proved by the C1 DCE rule; dead ops are erased before alignment is
+attempted (`synthC1Live`), so a dead op is never matched with an identical live one. Common
+subexpressions are proved by `Check/ExactCse.lean`, in one forward walk as upstream `cse` makes them:
+a later effect-free op with the same head as an earlier one, operands holding the same values, and
+regions reading the same outside values computes the earlier op's value in the same run, so its uses
+are renamed to it. The facts come from the earlier op's actual execution, plus an alias fact for
+every merge, so merges cascade (an empty, then the fill of it, then a generic of that) and regions
+may read outside constants. Like upstream `cse`, which erases an op nothing reads when it reaches
+it, nothing is merged into an op nothing reads; the comparison afterwards may erase such unused ops
+(or, for pruning, whole dead cones). Both programs are normalized this way before comparison. It covers what
+upstream `cse` merges in the captured models: `tensor.empty`, `tensor.collapse_shape`/`expand_shape`,
+`linalg.fill` and generics.
+
 It then attempts two strengthenings and reports them, never requiring them: the universal boundary
 theorem (`moduleCheck_sound`, for all inputs) and source definedness (no undefined behaviour or
 poison). The receipt's `claim` says exactly what was established, for example "strict refinement
 for all inputs; definedness not established". Axioms: `propext`, `Classical.choice`, `Quot.sound`.
-Assumptions: `merlin/lean/LEDGER.md` A1–A8 and T1–T6 (notably T2, the exporter and Python bridge,
+Assumptions: `merlin/lean/LEDGER.md` A1–A9 and T1–T6 (A9: the two modeled `quant_ext` dequantizations are
+effect-free and may be erased when dead) (notably T2, the exporter and Python bridge,
 and T3, fidelity of the op semantics to MLIR). Only the 64-bit index width is admitted: at index32
 the model and the native pipeline disagree on a retained example (LEDGER S6).
 
@@ -91,6 +122,12 @@ or set `MERLIN_VALIDATE_PASSES` (`all` or a comma list) and `MERLIN_LEAN_SDK_BIN
 `prepare_for_lowering` and `lower_model` each run under their own guard; a step called inside an
 active validation joins it, and a different explicit validation is refused.
 
+## Cost
+
+Each check takes 14–20 s on the captured models (1,000 ops); checks run one at a time, at nice 19,
+beside the compile, so a gated `small_llama_int8` lowering takes about 48 s (xDSL route, three checks)
+or 33 s (textual route, two), against 1.4 s and 0.6 s ungated.
+
 ## Outcomes
 
 | Verdict | Meaning | Compile |
@@ -103,16 +140,12 @@ active validation joins it, and a different explicit validation is refused.
 A pass that changes nothing submits nothing. Raw int8 captures that read a value before its
 definition are rejected by MLIR's parser and so reported `unsupported`.
 
-## Known checker gaps
+## Checker gaps
 
-Found by fuzzing and pinned by tests in `test_lean_pass_gate_fuzz.py` (they flip when fixed). Both
-are correct rewrites the checker does not prove, so the gate would stop a compile that contains them:
-
-* deleting a dead `quant_ext` dequantization (no totality fact for dequantization);
-* deleting a dead constant-fed generic placed before live code (the same cone after live code is proved).
-
-Neither occurs in the captured models checked so far, but random programs hit them often (32 of 40
-in one campaign), so they block turning the prune gate on by default.
+None known. Fuzzing found two correct prune rewrites the checker did not prove (deleting a dead
+dequantization; a dead cone before live code whose `tensor.empty` matched a live one). Both are now
+proved and kept as regression tests in `test_lean_pass_gate_fuzz.py`, beside a test that deleting a
+used value is still refused. A refusal the fuzzer cannot attribute to the checker fails the test.
 
 ## Tests
 
@@ -123,7 +156,7 @@ in one campaign), so they block turning the prune gate on by default.
   stopped, before any ELF exists, with it.
 * `merlin/tests/ir/test_lean_pass_gate_fuzz.py` — seeded random programs through the real passes.
   Completeness: each real output is accepted, or it is identical to an independently rendered expected
-  output that is refused too (a checker gap). Soundness, at all three boundaries: a mutated output a
+  output that is refused too (a checker gap). Soundness, at every boundary: a mutated output a
   numpy oracle can tell apart is never accepted. `MERLIN_FUZZ_SEED` and `MERLIN_FUZZ_CASES` scale it.
 
 Set `MERLIN_LEAN_REQUIRED=1` to turn a missing tool into a failure instead of a skip.
