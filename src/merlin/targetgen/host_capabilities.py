@@ -722,6 +722,11 @@ def admit_host_operation(
                                 decision["linkage_requirement"] = validate_linkage_contract(
                                     declaration["linkage_contract"]
                                 )
+                    elif source_operations and screened["status"] == "unsupported" and decision["status"] == "unknown":
+                        # A PROPOSED (unreviewed) sibling whose own structural proof refuses the parsed
+                        # body does not describe this operation. Reporting its review wording as
+                        # "unknown" would mask a refusal a reviewed row already established.
+                        decision = {**decision, "status": "unsupported", "reason": screened["reason"]}
                 decisions.append(decision)
         verdict = next(
             (decision for decision in decisions if decision["status"] == "admitted"),
