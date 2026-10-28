@@ -538,3 +538,21 @@ its separate whole-capture qualification. The review packet under
 claim, executable evidence publisher and an unapplied specification/pinning patch. The publisher
 replays the checker and permits `verified` only after the installed specification, policy files
 and all current theorem statements match `SPEC_LOCK`; it cannot approve the policy itself.
+
+## Ordered per-tensor quantizer components
+
+`Spec/Quantize.lean` is a proposed signed-i8 per-tensor quantizer contract,
+following the scalar extraction and operation order in PyTorch v2.10.0. It
+retains binary64 reciprocal formation, conversion to f32, multiply, round-even,
+zero-point conversion/addition, lower-then-upper clamp, and signed conversion.
+The contract is parametric in the existing FloatModel and propagates poison;
+it assumes no floating algebra or concrete conversion-success law.
+
+`Rules/QuantizeScalar.lean` proves the actual reciprocal and quantizer bodies
+and their composition. `Rules/QuantizeTensor.lean` transports those results
+through checked SSA renaming, captured clamp constants, mapped reads and full
+tensor overwrites, including rank-zero and empty shapes. Access bounds and
+geometry remain independently checked premises. These are component results: the
+source operation dispatcher, whole-boundary checker and production quantizer gate
+connection are not established by these modules. Specification/capture review
+and native numerical fidelity remain separate obligations.
