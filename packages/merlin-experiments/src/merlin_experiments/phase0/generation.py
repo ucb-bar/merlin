@@ -1046,7 +1046,7 @@ def generate_target(
                     if evidence_mode != "diagnostic" and observed["status"] != "admitted" and not must_refuse:
                         withheld = withhold_unadmitted_member(
                             e, observed, Path(w), must_refuse=must_refuse, out_root=out_root, written=written
-                        )
+                        ) or withhold_pending_seeded_slice(e, observed, Path(w), must_refuse=must_refuse)
                         if withheld is not None:
                             host_placed.append(withheld)
                             print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}", flush=True)
@@ -1593,6 +1593,34 @@ def withhold_unadmitted_micro_model(entry: dict, observed: dict, *, must_refuse:
         "placements": copy.deepcopy(observed.get("placements") or {}),
         "reason": "emitted program not admitted by the selected host lane: " + str(observed.get("reason", "")),
     }
+
+
+def withhold_pending_seeded_slice(entry: dict, observed: dict, directory: Path, *, must_refuse: bool) -> dict | None:
+    """Withhold and disclose a synthesized ``SY_int_mm_seeded`` slice that waits only on an unreviewed host row.
+
+    The seeded contraction's emitted guard and broadcast need host rows. While one of them is only PROPOSED the
+    screen is ``unknown`` with ``pending_host_review_only``; the slice is then removed from the output tree and
+    reported verbatim as a withheld member, never published and never failing verified generation. Only this
+    case is relaxed: a must-refuse member, any other capsule, an ``unsupported`` screen and any ``unknown`` that
+    is not purely a pending host review still fail.
+    """
+    if (
+        must_refuse
+        or _is_roster_capsule(entry)
+        or entry.get("capture_op") != "int_mm_seeded"
+        or entry.get("source_role") != "model_derived"
+        or not str(entry.get("name", "")).startswith("SY_int_mm_seeded_")
+        or observed.get("status") != "unknown"
+        or observed.get("pending_host_review_only") is not True
+    ):
+        return None
+    record = {
+        "capsule": str(entry.get("name", "?")),
+        "placements": copy.deepcopy(observed.get("placements") or {}),
+        "reason": "emitted program waits on an unreviewed host row (pending operator review of a proposed host row): "
+        + str(observed.get("reason", "")),
+    }
+    return _withhold_with_qualifying_groups(record, directory, out_root=None, written=(), missing_ok=True)
 
 
 def withhold_uncapturable_micro_model(

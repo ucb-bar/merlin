@@ -31,6 +31,7 @@ def render_builtin_source(
     parametric_linear: str,
     bodies: dict[str, str],
     input_names: dict,
+    seeded_integer_matmul: str | None = None,
 ) -> str:
     """Render the PyTorch loader source for an op spec. ``spec`` carries ``op`` + the shape fields the op
     needs (M/K/N/Dv) + optional ``eps``/``causal``/``bias`` + ``seed``/``dtype``. Fail closed on an
@@ -39,9 +40,9 @@ def render_builtin_source(
     native = native_storage_source_spec(spec)
     if op == "dtype_cast" and native is None:
         raise ValueError("dtype_cast requires an explicit native source/result declaration")
-    if spec.get("input_palette") is not None and (op == "int_matmul" or spec.get("quant_scheme")):
+    if spec.get("input_palette") is not None and (op in {"int_matmul", "int_mm_seeded"} or spec.get("quant_scheme")):
         raise ValueError("selected input palettes require the normal typed float builtin source path")
-    if op != "int_matmul" and op not in bodies:
+    if op != "int_matmul" and not (op == "int_mm_seeded" and seeded_integer_matmul) and op not in bodies:
         raise KeyError(f"capsule_source has no PyTorch template for op {op!r} (have {sorted(bodies)})")
     raw_shape = spec.get("shape")
     if raw_shape is None:
@@ -104,6 +105,10 @@ def render_builtin_source(
         if spec.get("quant_scheme"):
             raise ValueError("an isolated int_matmul has quantized operands; do not quantize it again")
         return preamble.format(**fields) + integer_matmul.format(**fields)
+    if op == "int_mm_seeded":
+        if spec.get("quant_scheme"):
+            raise ValueError("an isolated int_mm_seeded has quantized operands; do not quantize it again")
+        return preamble.format(**fields) + seeded_integer_matmul.format(**fields)
     # A QUANTIZED capture needs a weight PARAMETER for the scheme to bind to (see parametric_linear).
     # Only the contraction ops have a meaningful weight; asking for a quantized elementwise op is a
     # request that cannot be honoured, and saying so beats emitting an unquantized program under a

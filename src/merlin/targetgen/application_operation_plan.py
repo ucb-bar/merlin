@@ -103,9 +103,10 @@ def _application_operation_plan(demands: dict | None, *, exact_entries: list[dic
                     exact_entries,
                     demands.get("full_inventory_sha256"),
                     tuple(sorted((demands.get("applications") or {}).keys())),
+                    operation=operation,
                 )
                 if (
-                    operation == "aten._int_mm.default"
+                    operation in {"aten._int_mm.default", "m2m_q.int_mm_seeded.default"}
                     and mlir_operation == "linalg.generic"
                     and family == "contraction"
                     and fmt == "int8"
@@ -118,7 +119,11 @@ def _application_operation_plan(demands: dict | None, *, exact_entries: list[dic
                     {
                         "status": "candidate_unverified",
                         "obligation": "exact_signature_capsule_and_compile_route",
-                        "writer_candidate": {"op": "matmul", "source": "pytorch", "capture_op": "int_matmul"},
+                        "writer_candidate": {
+                            "op": "matmul",
+                            "source": "pytorch",
+                            "capture_op": "int_mm_seeded" if operation == "m2m_q.int_mm_seeded.default" else "int_matmul",
+                        },
                         "capsule_candidates": exact_candidates,
                         "mapped_occurrences": row["count"],
                         "missing_mapping": [

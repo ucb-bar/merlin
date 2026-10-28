@@ -294,10 +294,15 @@ def test_mutated_body_or_declaration_is_not_admitted_end_to_end(shipped, fixture
     assert result["status"] == "unsupported"
     (profile,) = result["profiles"]
     assert "source_body_proof" not in profile
-    (decision,) = profile["decisions"]
-    assert decision["status"] == "unsupported" and "source_body_proof" not in decision
-    assert "row moments structural proof refused" in decision["reason"]
-    assert re.search(reason, decision["reason"])
+    # The shipped [2, 8] sibling is a PROPOSED row; its own proof refuses these bodies too, so both
+    # declarations report the structural refusal and the unreviewed one cannot mask it as unknown.
+    assert len(profile["decisions"]) == 3  # reviewed [32, 32] plus the proposed [2, 8] and rank-3 siblings
+    for decision in profile["decisions"]:
+        assert decision["status"] == "unsupported" and "source_body_proof" not in decision
+        # the rank-3 sibling is excluded by its own signature before any body proof runs
+        assert "row moments structural proof refused" in decision["reason"] or decision["reason"] == "rank 2 not in [3]"
+    reviewed_decision = next(d for d in profile["decisions"] if d["declaration"] == ROW_ID)
+    assert re.search(reason, reviewed_decision["reason"])
 
 
 def test_unmutated_control_still_admits(shipped, fixture_text):
@@ -406,3 +411,37 @@ def test_row_shape_is_closed_to_the_two_init_layer_norm_abi(shipped, changes):
     document["operations"][index] = row
     with pytest.raises(ValueError):
         validate_host_capabilities(document)
+
+
+# ---------------------------------------------------------------- sibling rows keep digests fixed
+
+SIBLING_ID = "host_f32_layer_norm_two_result_moments_2x8"
+SIBLING_DIGEST = "80ae7cf203308d57065fed1031a198251023bcb85812d9ed8014fdb77b12726c"
+
+
+def test_reviewed_and_proposed_digests_are_byte_identical_to_the_recorded_ones(shipped):
+    rows = {r["id"]: r for r in shipped["operations"]}
+    assert rows[ROW_ID]["source_body"]["canonical_body_sha256"] == DIGEST
+    sibling = rows[SIBLING_ID]
+    assert sibling["source_body"]["canonical_body_sha256"] == SIBLING_DIGEST
+    assert sibling["source_body"]["data_operand"]["shape"] == [2, 8]
+    assert sibling["status"] == "reviewed" and sibling["numerical_contract"]["status"] == "reviewed"
+    assert sibling["numerical_contract"]["evidence"]["reviewed_by"].startswith(
+        "Reviewed by Loren Hung (approved in operator chat 2026-10-28)")
+    assert "no numerical comparison against eager" in sibling["numerical_contract"]["evidence"]["reviewed_by"]
+    assert SIBLING_ID in shipped["review"]["operator_chat_addendum_2"]
+    # demote counterfactual: the in-memory unreviewed copy is what the old proposal looked like
+    demoted = copy.deepcopy(shipped)
+    row = next(r for r in demoted["operations"] if r["id"] == SIBLING_ID)
+    row["status"] = row["numerical_contract"]["status"] = "unreviewed"
+    assert next(r for r in demoted["operations"] if r["id"] == SIBLING_ID)["status"] == "unreviewed"
+    assert rm.canonical_body_sha256(_generic(FIXTURE.read_text())) == DIGEST
+
+
+def test_reviewed_sibling_refuses_the_other_shape_and_does_not_mask_a_reviewed_row(shipped, fixture_text):
+    # The reviewed [32, 32] row admits its fixture; the reviewed [2, 8] row refuses it structurally.
+    result = _admit(shipped, (_generic(fixture_text),))
+    assert result["status"] == "admitted"
+    by_id = {d["declaration"]: d for d in result["profiles"][0]["decisions"]}
+    assert by_id[ROW_ID]["status"] == "admitted"
+    assert by_id[SIBLING_ID]["status"] == "unsupported"

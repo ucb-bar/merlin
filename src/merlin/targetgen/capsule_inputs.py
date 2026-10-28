@@ -56,8 +56,10 @@ def _exact_integer_leaves(capsule: dict) -> dict[str, Tensor]:
     for spec in leaves:
         name = spec["name"]
         saved = provenance[name]
-        if not isinstance(saved, dict) or spec.get("dtype") != "i8" or saved.get("dtype") != "i8":
-            raise ValueError(f"exact PyTorch integer input {name} has no matching captured i8 dtype")
+        # Operands are i8; the one bias of a seeded slice is its i32 accumulator seed.
+        dtype, width = ("i32", 4) if spec.get("role") == "bias" else ("i8", 1)
+        if not isinstance(saved, dict) or spec.get("dtype") != dtype or saved.get("dtype") != dtype:
+            raise ValueError(f"exact PyTorch integer input {name} has no matching captured {dtype} dtype")
         shape = spec.get("shape")
         if saved.get("shape") != shape or not isinstance(shape, list) or not shape:
             raise ValueError(f"exact PyTorch integer input {name} has no matching captured shape")
@@ -74,14 +76,14 @@ def _exact_integer_leaves(capsule: dict) -> dict[str, Tensor]:
                 raise ValueError(f"exact PyTorch integer input {name} has invalid shape")
             count *= dim
         decoded = saved.get("decoded")
-        if len(raw) != count or not isinstance(decoded, list) or len(decoded) != count:
+        if len(raw) != count * width or not isinstance(decoded, list) or len(decoded) != count:
             raise ValueError(f"exact PyTorch integer input {name} has incomplete captured values")
-        values = [value - 256 if value >= 128 else value for value in raw]
+        values = [int.from_bytes(raw[i : i + width], "little", signed=True) for i in range(0, len(raw), width)]
         if any(
             type(value) not in (int, float) or value != actual for value, actual in zip(decoded, values, strict=True)
         ):
             raise ValueError(f"exact PyTorch integer input {name} numeric projection differs from its bytes")
-        env[name] = _context().Tensor(tuple(shape), values, "i8")
+        env[name] = _context().Tensor(tuple(shape), values, dtype)
     return env
 
 
@@ -170,7 +172,10 @@ def canonical_input_raws(capsule: dict, capsule_dir: str | Path | None = None) -
     captured typed bytes, so a byte-preload oracle consumes the same operands as Torch eager."""
     if is_exact_pytorch_integer_source(capsule):
         return {
-            name: bytes(value & 0xFF for value in tensor.data)
+            name: b"".join(
+                (value & ((1 << (8 * _integer_width(tensor.dtype))) - 1)).to_bytes(_integer_width(tensor.dtype), "little")
+                for value in tensor.data
+            )
             for name, tensor in _exact_integer_leaves(capsule).items()
         }
     ins = _input_provenance(capsule_dir)
@@ -194,6 +199,11 @@ def canonical_input_raws(capsule: dict, capsule_dir: str | Path | None = None) -
         if enc is not None:
             out[name] = enc
     return out
+
+
+def _integer_width(dtype: str) -> int:
+    """Bytes of one exact integer element (i8 operand, i32 accumulator seed)."""
+    return {"i8": 1, "i32": 4}[str(dtype)]
 
 
 def _leaf_dtype(capsule: dict, name: str) -> str | None:
@@ -316,7 +326,7 @@ def bind_exact_integer_stimulus(capsule: dict, command_buffer: dict) -> None:
         spec = (command_buffer.get("tensors") or {}).get(name)
         if not isinstance(spec, dict) or spec.get("role") not in ("input", "weight", "bias"):
             raise ValueError(f"exact PyTorch integer input {name} is not a declared command-buffer leaf")
-        if spec.get("dtype") != "i8" or spec.get("shape") != value.get("shape"):
+        if spec.get("dtype") != ("i32" if spec.get("role") == "bias" else "i8") or spec.get("shape") != value.get("shape"):
             raise ValueError(f"exact PyTorch integer input {name} disagrees with its command-buffer ABI")
         spec["data"] = list(value["values"])
 

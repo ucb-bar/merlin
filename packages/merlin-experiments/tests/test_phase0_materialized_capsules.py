@@ -1051,3 +1051,67 @@ def test_selected_host_axes_do_not_resolve_an_ambient_contract(tmp_path, monkeyp
             [member],
             inputs={"capability_contract": {**contract, "compute_units": [{}]}},
         )
+
+
+def _seeded_source_integer_member(root, *, reduction_extent, seed, columns=2):
+    """A seeded slice: the isolated i8 matmul plus its [N] i32 seed as the only (bias) stage."""
+    entry, binding, capsule, _ = _exact_source_integer_member(root, reduction_extent=reduction_extent)
+    entry = {**entry, "capture_op": "int_mm_seeded", "N": columns, "epilogue": ["bias_add"], "bias": "B"}
+    capsule, _ = build(entry, binding)
+    capsule["application_signature_match"] = {
+        "status": "verified_capture_match",
+        "source_quantization": "int8_dyn_act_int8_weight",
+    }
+    (root / "capsule.yaml").write_text(yaml.safe_dump(capsule))
+    lhs, rhs = [127] * reduction_extent, [127] * (reduction_extent * columns)
+    seed_bytes = b"".join((value & 0xFFFFFFFF).to_bytes(4, "little") for value in seed)
+    golden = {
+        "golden_source": "host_torch_eager",
+        "oracle_provenance": {
+            "inputs": {
+                "A0": {"shape": [1, reduction_extent], "dtype": "i8", "decoded": lhs, "integer_bytes_hex": bytes(lhs).hex()},
+                "W": {"shape": [reduction_extent, columns], "dtype": "i8", "decoded": rhs, "integer_bytes_hex": bytes(rhs).hex()},
+                "B": {"shape": [columns], "dtype": "i32", "decoded": list(seed), "integer_bytes_hex": seed_bytes.hex()},
+            }
+        },
+        "outputs": {"Y0": [[reduction_extent * 127 * 127 + value for value in seed]]},
+    }
+    (root / "golden.yaml").write_text(yaml.safe_dump(golden))
+    return entry, capsule, golden
+
+
+def test_seeded_source_integer_bound_counts_the_seed_as_an_initial_addend(tmp_path):
+    directory = tmp_path / "seeded"
+    entry, capsule, _ = _seeded_source_integer_member(directory, reduction_extent=2, seed=[5, -9])
+    proof = _source_integer_reference_bound(entry, capsule, directory)
+    assert proof["status"] == "proven_safe" and proof["reduction_extent"] == 2
+    assert proof["maximum_absolute_operands"] == [127, 127]
+    assert proof["maximum_absolute_initial_addend"] == 9
+    # The same seed alone carries no weight for the unseeded operator: a third input there is refused.
+    with pytest.raises(ValueError, match="verified isolated i8 matmul"):
+        _source_integer_reference_bound({**entry, "capture_op": "int_matmul"}, capsule, directory)
+
+
+def test_seeded_source_integer_bound_refuses_an_overflowing_seed_and_a_malformed_slice(tmp_path):
+    overflowing = tmp_path / "overflowing"
+    # 127*127*2 plus a seed at the i20 limit exceeds the selected 20-bit MAC result width.
+    entry, capsule, _ = _seeded_source_integer_member(overflowing, reduction_extent=2, seed=[(1 << 19) - 1, 0])
+    with pytest.raises(ValueError, match="may_overflow"):
+        _source_integer_reference_bound(entry, capsule, overflowing)
+
+    safe = tmp_path / "safe"
+    entry, capsule, golden = _seeded_source_integer_member(safe, reduction_extent=2, seed=[1, 2])
+    _source_integer_reference_bound(entry, capsule, safe)
+    for mutate in (
+        lambda c: c["inputs"].pop(),  # no seed input
+        lambda c: [row.update(role="input") for row in c["inputs"] if row.get("role") == "bias"],  # seed is not a bias
+        lambda c: c["operation"]["attributes"].update(epilogue=[]),  # no declared seed stage
+    ):
+        broken = yaml.safe_load(yaml.safe_dump(capsule))
+        mutate(broken)
+        with pytest.raises(ValueError, match="verified isolated i8 matmul"):
+            _source_integer_reference_bound(entry, broken, safe)
+    golden["outputs"]["Y0"][0][0] += 1
+    (safe / "golden.yaml").write_text(yaml.safe_dump(golden))
+    with pytest.raises(ValueError, match="host-eager output differs"):
+        _source_integer_reference_bound(entry, capsule, safe)

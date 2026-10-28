@@ -27,9 +27,15 @@ from merlin.common.digest import is_sha256
 from merlin.common.jsonio import canonical_json
 
 SCHEMA = "merlin.static_f32_row_moments_source_body.v1"
+#: Rank-3 data operand ([B, S, C], rows indexed by linalg.index 0 and 1). A separate schema, so the
+#: rank-2 canonical serialization and every digest pinned to it stay byte-identical.
+SCHEMA_RANK3 = "merlin.static_f32_row_moments_rank3_source_body.v1"
+SCHEMAS = (SCHEMA, SCHEMA_RANK3)
+_SCHEMA_RANK = {SCHEMA: 2, SCHEMA_RANK3: 3}
 OPERATION = "row_mean_biased_variance"
 FRONTEND_OP = "aten.native_layer_norm.default"
 SIGNATURE = {"ordered_operand_dtypes": ["f32", "f32"], "ordered_result_dtypes": ["f32", "f32"], "ranks": [2]}
+SIGNATURE_RANK3 = {**SIGNATURE, "ranks": [3]}
 _ALLOWED_BODY_OPS = frozenset(
     {
         "linalg.index",
@@ -52,6 +58,16 @@ _ALLOWED_BODY_OPS = frozenset(
 )
 _IDENTITY_MAPS = "[affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>]"
 _PARALLEL = "[#linalg.iterator_type<parallel>, #linalg.iterator_type<parallel>]"
+
+
+def _identity_maps(rank):
+    dims = ", ".join(f"d{i}" for i in range(rank))
+    one = f"affine_map<({dims}) -> ({dims})>"
+    return f"[{one}, {one}]"
+
+
+def _parallel(rank):
+    return "[" + ", ".join(["#linalg.iterator_type<parallel>"] * rank) + "]"
 _MAX_ENUMERATION = 1 << 16
 
 
@@ -63,17 +79,18 @@ def validate(body):
     """Validate the closed declaration; it selects a source proof and admits nothing."""
     data = body.get("data_operand") if type(body) is dict else None
     shape = data.get("shape") if type(data) is dict else None
+    rank = _SCHEMA_RANK.get(body.get("schema")) if type(body) is dict else None
     if (
         type(body) is not dict
         or set(body) != {"schema", "operation", "data_operand", "canonical_body_sha256"}
-        or body["schema"] != SCHEMA
+        or rank is None
         or body["operation"] != OPERATION
         or type(data) is not dict
         or set(data) != {"dtype", "shape", "reduction_axis"}
         or data["dtype"] != "f32"
-        or data["reduction_axis"] != 1
+        or data["reduction_axis"] != rank - 1
         or type(shape) is not list
-        or len(shape) != 2
+        or len(shape) != rank
         or any(type(d) is not int or d <= 0 for d in shape)
         or not is_sha256(body["canonical_body_sha256"])
     ):
@@ -84,7 +101,8 @@ def validate(body):
 def validate_row(row):
     """A row-moments declaration names one frontend op and the exact two-init f32 ABI."""
     validate(row["source_body"])
-    if row.get("ops") != [FRONTEND_OP] or row.get("signature") != SIGNATURE:
+    expected = SIGNATURE_RANK3 if row["source_body"]["schema"] == SCHEMA_RANK3 else SIGNATURE
+    if row.get("ops") != [FRONTEND_OP] or row.get("signature") != expected:
         raise ValueError("row moments needs the exact layer-norm frontend op and two-init f32 rank-2 ABI")
     if not isinstance(row.get("numerical_contract"), dict):
         raise ValueError("row moments needs an explicit numerical contract")
@@ -102,7 +120,7 @@ def _inner_ops(op):
     return inner
 
 
-def canonical_body(op) -> dict:
+def canonical_body(op, schema=SCHEMA) -> dict:
     """Serialize the generic without provenance and with position-based value names."""
     inner = _inner_ops(op)
     op_ids = {id(o): i for i, o in enumerate(inner)}
@@ -121,7 +139,7 @@ def canonical_body(op) -> dict:
         return ["captured", str(value.type)]
 
     return {
-        "schema": SCHEMA,
+        "schema": schema,
         "ops": [
             {
                 "name": mq.op_name(o),
@@ -136,8 +154,8 @@ def canonical_body(op) -> dict:
     }
 
 
-def canonical_body_sha256(op) -> str:
-    payload = canonical_json(canonical_body(op))
+def canonical_body_sha256(op, schema=SCHEMA) -> str:
+    payload = canonical_json(canonical_body(op, schema))
     return sha256(payload if isinstance(payload, bytes) else payload.encode()).hexdigest()
 
 
@@ -182,21 +200,23 @@ def _enclosing_loops(op, generic):
 
 def prove(op, declaration: dict) -> dict:
     """Return the closed proof for one parsed occurrence or raise RowMomentsRefused."""
-    rows, cols = declaration["data_operand"]["shape"]
+    schema = declaration.get("schema", SCHEMA)
+    *lead, cols = declaration["data_operand"]["shape"]
+    rank = len(lead) + 1
     if mq.op_name(op) != "linalg.generic" or mq.attr_str(op, "prov.aten") != FRONTEND_OP:
         raise RowMomentsRefused("occurrence is not a layer-norm linalg.generic")
     if (
         str(op.properties.get("operandSegmentSizes")) != "array<i32: 0, 2>"
         or len(op.operands) != 2
         or len(op.results) != 2
-        or str(op.properties.get("indexing_maps")) != _IDENTITY_MAPS
-        or str(op.properties.get("iterator_types")) != _PARALLEL
+        or str(op.properties.get("indexing_maps")) != _identity_maps(rank)
+        or str(op.properties.get("iterator_types")) != _parallel(rank)
         or len(op.regions) != 1
         or len(op.regions[0].blocks) != 1
     ):
         raise RowMomentsRefused("generic is not zero-input, two identity-mapped parallel inits")
     for value in (*op.operands, *op.results):
-        if _static_type(value) != ([rows, 1], "f32"):
+        if _static_type(value) != ([*lead, 1], "f32"):
             raise RowMomentsRefused("init or result is not a static [R, 1] f32 tensor")
     if any(mq.op_name(v.owner) != "tensor.empty" for v in op.operands):
         raise RowMomentsRefused("init is not a fresh tensor.empty")
@@ -212,7 +232,7 @@ def prove(op, declaration: dict) -> dict:
         name = mq.op_name(o)
         if name not in _ALLOWED_BODY_OPS or o.successors:
             raise RowMomentsRefused(f"body uses {name} outside the closed row-moments vocabulary")
-        if name == "linalg.index" and str(o.properties.get("dim")) != "0 : i64":
+        if name == "linalg.index" and str(o.properties.get("dim")) not in {f"{d} : i64" for d in range(rank - 1)}:
             raise RowMomentsRefused("body indexes a non-row iteration dimension")
         for position, value in enumerate(o.operands):
             owner = value.owner
@@ -228,20 +248,26 @@ def prove(op, declaration: dict) -> dict:
             extracts.append(o)
     if data is None or not extracts:
         raise RowMomentsRefused("body reads no captured data operand")
-    if _static_type(data) != ([rows, cols], declaration["data_operand"]["dtype"]):
+    if _static_type(data) != ([*lead, cols], declaration["data_operand"]["dtype"]):
         raise RowMomentsRefused("captured data operand differs from the declared static f32 shape")
     reads = Counter()
     enumerated = 0
     for extract in extracts:
-        if len(extract.operands) != 3 or extract.operands[0] is not data or str(extract.results[0].type) != "f32":
-            raise RowMomentsRefused("data read is not one rank-2 f32 scalar extract of the data operand")
-        row_index = extract.operands[1].owner
-        if (
-            id(row_index) not in inside
-            or mq.op_name(row_index) != "linalg.index"
-            or row_index.parent_op() is not op
-        ):
-            raise RowMomentsRefused("data row index is not linalg.index 0 of the [R, 1] domain")
+        if len(extract.operands) != rank + 1 or extract.operands[0] is not data or str(extract.results[0].type) != "f32":
+            raise RowMomentsRefused(f"data read is not one rank-{rank} f32 scalar extract of the data operand")
+        for axis in range(rank - 1):
+            row_index = extract.operands[1 + axis].owner
+            if (
+                id(row_index) not in inside
+                or mq.op_name(row_index) != "linalg.index"
+                or row_index.parent_op() is not op
+                or str(row_index.properties.get("dim")) != f"{axis} : i64"
+            ):
+                raise RowMomentsRefused(
+                    "data row index is not linalg.index 0 of the [R, 1] domain"
+                    if rank == 2
+                    else f"data row index {axis} is not linalg.index {axis} of the leading domain"
+                )
         loops = _enclosing_loops(extract, op)
         ranges = []
         for loop in loops:
@@ -254,18 +280,18 @@ def prove(op, declaration: dict) -> dict:
             if enumerated > _MAX_ENUMERATION:
                 raise RowMomentsRefused("column enumeration exceeds the closed bound")
             env = {id(loop.regions[0].blocks[0]): iv for loop, iv in zip(loops, ivs, strict=True)}
-            column = _evaluate(extract.operands[2], env, inside)
+            column = _evaluate(extract.operands[rank], env, inside)
             if not 0 <= column < cols:
                 raise RowMomentsRefused(f"column index {column} is outside [0, {cols})")
             reads[column] += 1
     if reads != Counter(range(cols)):
         raise RowMomentsRefused("body does not read each column of its row exactly once")
-    digest = canonical_body_sha256(op)
+    digest = canonical_body_sha256(op, schema)
     if digest != declaration["canonical_body_sha256"]:
         raise RowMomentsRefused("canonical body digest differs from the declared evidenced body")
     return {
-        "data_operand": {"dtype": "f32", "shape": [rows, cols], "reduction_axis": 1},
-        "row_index": "linalg.index 0 over [R, 1]",
+        "data_operand": {"dtype": "f32", "shape": [*lead, cols], "reduction_axis": rank - 1},
+        "row_index": "linalg.index 0 over [R, 1]" if rank == 2 else f"linalg.index 0..{rank - 2} over {lead} + [1]",
         "column_reads": cols,
         "extract_sites": len(extracts),
         "canonical_body_sha256": digest,
@@ -289,9 +315,12 @@ def screen(declaration, row, signature, source_operations, source_context):
     if (
         signature.get("ordered_operand_dtypes") != SIGNATURE["ordered_operand_dtypes"]
         or signature.get("ordered_result_dtypes") != SIGNATURE["ordered_result_dtypes"]
-        or signature.get("rank") != 2
+        or signature.get("rank") != _SCHEMA_RANK[body["schema"]]
     ):
-        return {"status": "unsupported", "reason": "row moments differs from observed two-init f32 rank-2 ABI"}
+        return {
+            "status": "unsupported",
+            "reason": f"row moments differs from observed two-init f32 rank-{_SCHEMA_RANK[body['schema']]} ABI",
+        }
     try:
         proofs = [prove(op, body) for op in source_operations]
     except RowMomentsRefused as exc:
@@ -300,7 +329,7 @@ def screen(declaration, row, signature, source_operations, source_context):
         "status": "admitted",
         "reason": "every parsed occurrence is the declared row-moments body with proved data bounds",
         "proof": {
-            "schema": SCHEMA,
+            "schema": body["schema"],
             "declaration": declaration["id"],
             "operation": body["operation"],
             "patterns": proofs,

@@ -671,7 +671,12 @@ def _mark_source(entry: dict) -> None:
 
 
 def _exact_int_mm_group_candidates(
-    group: dict, entries: list[dict], inventory_digest: str | None, application_order: tuple[str, ...]
+    group: dict,
+    entries: list[dict],
+    inventory_digest: str | None,
+    application_order: tuple[str, ...],
+    *,
+    operation: str = "aten._int_mm.default",
 ) -> list[str]:
     """Name candidates only when every source occurrence has one digest-bound exact signature.
 
@@ -711,9 +716,11 @@ def _exact_int_mm_group_candidates(
     names: list[str] = []
     for entry in entries:
         match = entry.get("application_signature_match") or {}
+        seeded = operation == "m2m_q.int_mm_seeded.default"
         if (
             entry.get("op") != "matmul"
-            or entry.get("capture_op") != "int_matmul"
+            or entry.get("capture_op") != ("int_mm_seeded" if seeded else "int_matmul")
+            or match.get("operation") != (operation if seeded else None)
             or match.get("status") != "candidate_unverified"
             or match.get("full_inventory_sha256") != inventory_digest
             or not int_mm_source_is_qualified(match)
@@ -750,6 +757,23 @@ def _exact_int_mm_group_candidates(
 
 
 def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[list[dict], list[dict]]:
+    """Return exact W8A8 ``aten._int_mm`` slice candidates from a sealed application inventory (see below)."""
+    return _exact_int_mm_family_entries(demands, inventory, seeded=False)
+
+
+def exact_int_mm_seeded_entries(demands: dict | None, inventory: dict | None) -> tuple[list[dict], list[dict]]:
+    """Return exact ``m2m_q.int_mm_seeded`` slice candidates from a sealed application inventory.
+
+    The same digest-bound, source-quantization-qualified rule as :func:`exact_int_mm_entries`, applied to the
+    seeded contraction row (its accumulator starts from an [N] i32 seed). The candidate is a ``matmul`` with a
+    ``bias_add`` stage whose bias is that seed (the reviewed ``accumulator_seed_load``), captured through
+    ``m2m_q.int_mm_seeded`` and verified against the emitted guard, broadcast and contraction."""
+    return _exact_int_mm_family_entries(demands, inventory, seeded=True)
+
+
+def _exact_int_mm_family_entries(
+    demands: dict | None, inventory: dict | None, *, seeded: bool
+) -> tuple[list[dict], list[dict]]:
     """Return exact W8A8 integer-matmul slice candidates from a sealed application inventory.
 
     This is a candidate mapping, not a claim that the generated capsule or a submitted compiler runs.
@@ -770,7 +794,14 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
         raise SynthesisError("exact application inventory roster differs from the selected conformance spec")
 
     from merlin.common.digest import is_sha256
-    from merlin.targetgen.application_inventory import exact_int_mm_geometry, verified_static_integerization
+    from merlin.targetgen.application_inventory import (
+        INT_MM_OPERATION,
+        INT_MM_SEEDED_OPERATION,
+        exact_int_mm_geometry,
+        verified_static_integerization,
+    )
+
+    operation = INT_MM_SEEDED_OPERATION if seeded else INT_MM_OPERATION
 
     # The arithmetic slice can be shared within one source scheme, never by aliasing two different
     # full-model quantization workflows that happen to have the same integer tensor ABI.
@@ -794,7 +825,7 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
             and static_proof["capture"]["sha256"] == app.get("capture_sha256")
         )
         for row in app.get("signatures") or ():
-            if row.get("operation") != "aten._int_mm.default" or row.get("mlir_operation") != "linalg.generic":
+            if row.get("operation") != operation or row.get("mlir_operation") != "linalg.generic":
                 continue
             source = {
                 # The exact private inventory keeps the source name. Public capsules use its
@@ -817,7 +848,7 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
             # A sealed model capture proves the operation's bytes and module-level quantization
             # identity. Older captures can still serve diagnostics when m2m supplied the per-op
             # quantized-weight origin; absence of both receipts is a refusal.
-            geometry = exact_int_mm_geometry(row, require_quant_origin=not materialized)
+            geometry = exact_int_mm_geometry(row, require_quant_origin=not materialized, operation=operation)
             if (
                 not (
                     scheme == "int8_dyn_act_int8_weight"
@@ -829,6 +860,7 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
                 refused.append(
                     {
                         **source,
+                        **({"operation": operation} if seeded else {}),
                         "reason": (
                             "requires admitted rank-2 signed i8×i8→i32 with exact matmul maps/body, "
                             "a supported source scheme and a verified materialization receipt or "
@@ -865,10 +897,10 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
         entry = {
             "cat": "layers",
             "kind": "layer",
-            "name": f"{SYNTH_PREFIX}_int_mm_m{m}_k{k}_n{n}_{identity[:10]}",
+            "name": f"{SYNTH_PREFIX}_int_mm{'_seeded' if seeded else ''}_m{m}_k{k}_n{n}_{identity[:10]}",
             "op": "matmul",
             "source": "pytorch",
-            "capture_op": "int_matmul",
+            "capture_op": "int_mm_seeded" if seeded else "int_matmul",
             # The isolated torch._int_mm body already takes quantized i8 operands; fp32 here only
             # disables the worker's automatic weight-only quantizer. The emitted IR is verified below.
             "capture_dtype": "fp32",
@@ -881,8 +913,11 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
             "weight": "W",
             "out": "Y0",
             "source_role": "model_derived",
+            # The seed is the reviewed accumulator_seed_load: a per-column i32 bias added to the accumulator
+            # before any readout, so the slice is a matmul whose only stage is that bias at full width.
+            **({"epilogue": ["bias_add"], "bias": "B"} if seeded else {}),
             "source_reference": (
-                f"exact normalized application aten._int_mm.default i8×i8→i32, {m}×{k}×{n}; "
+                f"exact normalized application {operation} i8×i8→i32, {m}×{k}×{n}; "
                 f"{sum(s['count'] for s in sources)} occurrence(s) in "
                 f"{len({s['source_index'] for s in sources})} selected capture(s)"
             ),
@@ -892,6 +927,7 @@ def exact_int_mm_entries(demands: dict | None, inventory: dict | None) -> tuple[
                 "status": "candidate_unverified",
                 "full_inventory_sha256": digest,
                 "source_quantization": scheme,
+                **({"operation": operation} if seeded else {}),
                 "expected_signature": sources[0]["signature"],
                 "sources": [{key: value for key, value in source.items() if key != "signature"} for source in sources],
             },
@@ -1117,6 +1153,10 @@ def synthesize(
             raise SynthesisError("held-out claim model appears in the selected public derivation inventory")
     pool = available_ops()
     exact_entries, exact_refused = exact_int_mm_entries(spec_doc.get("application_demands"), application_inventory)
+    seeded_entries, seeded_refused = exact_int_mm_seeded_entries(
+        spec_doc.get("application_demands"), application_inventory
+    )
+    exact_entries, exact_refused = [*exact_entries, *seeded_entries], [*exact_refused, *seeded_refused]
 
     admitted_dtypes = {str(c.get("dtype")) for c in cells if c.get("dtype")}
     # A preference is declared in REGISTRY spelling ("int8"); a cell carries the CAPSULE spelling
