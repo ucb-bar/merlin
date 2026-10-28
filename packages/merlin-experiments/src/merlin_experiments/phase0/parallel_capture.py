@@ -185,8 +185,15 @@ def ordered_jobs(entries, write, *, workers: int, prepare_model=None):
 
     Exceptions remain attached to their original entry for the ordinary failure ledger.
     Every thread receives its own copy of the caller's observed-facts/import context.
+    Full sealed-tree inventories run in worker interpreters meanwhile, so capture
+    threads do not serialize their per-member bookkeeping on this process's GIL.
     """
-    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="phase0-capture") as pool:
+    from merlin_experiments.capture_execution.inventory_processes import offloaded_inventories
+
+    with (
+        offloaded_inventories(workers),
+        ThreadPoolExecutor(max_workers=workers, thread_name_prefix="phase0-capture") as pool,
+    ):
 
         def batch_kind(entry):
             if prepare_model is not None and _fresh_model(entry):
