@@ -167,15 +167,19 @@ def validated(workdir_argument: str, *, index_bits_argument: str | None = None, 
             arguments = signature.bind(*args, **kwargs).arguments
             explicit = arguments.get("pass_validation")
             active = _ACTIVE.get()
+            bits = arguments.get(index_bits_argument) if index_bits_argument else None
             if active is not None:
                 if explicit is not None and explicit is not active:
                     raise ValueError("a different pass validation is already active for this compile")
+                if bits is not None and bits != active.index_bits:
+                    raise ValueError("lowering index width differs from the active pass validation")
                 return function(*args, **kwargs)
             work = Path(arguments[workdir_argument])
-            bits = arguments.get(index_bits_argument) if index_bits_argument else None
             validation = explicit or from_environment(work, index_bits=bits)
             if validation is None:
                 return function(*args, **kwargs)
+            if bits is not None and bits != validation.index_bits:
+                raise ValueError("lowering index width differs from the selected pass validation")
             from .speculative_gate import GateFailure
 
             try:

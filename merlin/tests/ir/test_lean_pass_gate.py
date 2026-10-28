@@ -221,6 +221,22 @@ def test_a_32_bit_index_width_is_refused(tmp_path, tools):
         gate.close()
 
 
+@pytest.mark.parametrize("nested", [False, True])
+def test_explicit_lowering_width_must_match_its_validation(tmp_path, tools, nested):
+    gate = SpeculativeGate(tmp_path / "gate", job_timeout=30)
+    validation = pass_validation.PassValidation(gate, tools)
+    try:
+        if nested:
+            with pass_validation.validating(validation), pytest.raises(ValueError, match="index width differs"):
+                lower.lower_model(LIVE, tmp_path / "output", targets=(), index_bits=32)
+        else:
+            with pytest.raises(ValueError, match="index width differs"):
+                lower.lower_model(LIVE, tmp_path / "output", targets=(), index_bits=32, pass_validation=validation)
+    finally:
+        gate.close()
+    assert gate.verdicts == []
+
+
 def test_a_failed_check_leaves_no_usable_artifact(tmp_path, tools, monkeypatch):
     from xdsl.dialects import arith
     from xdsl.rewriter import Rewriter

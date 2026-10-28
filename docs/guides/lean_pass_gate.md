@@ -3,7 +3,7 @@ title: Gate compiler passes on Merlin's Lean proofs
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-27
+last_verified: 2026-10-28
 related: [verification, compiler_verification]
 code_refs:
   - src/merlin/verify/pass_validation.py
@@ -22,7 +22,9 @@ code_refs:
   - merlin/tests/ir/test_lean_pass_gate_fuzz.py
   - merlin/tests/rvv/test_lean_pass_gate_spike.py
   - merlin/tests/ir/test_lean_dequant_contract.py
+  - merlin/tests/ir/test_lean_quantize_contract.py
   - merlin/lean/MerlinVerify/Spec/Dequant.lean
+  - merlin/lean/MerlinVerify/Spec/Quantize.lean
 ---
 
 # Gate compiler passes on Merlin's Lean proofs
@@ -41,8 +43,10 @@ the paths of the input and output, and renames any `.ll`, `.so` or `.o` already 
 | `cse` | every tensor-level `cse` the build's runner runs (the pipeline's leading one), on every route | `leading_cse.bind_runner`, `leading_cse.submit` |
 
 The whole-model RVV route lowers textually, so in a Spike or `merlin-compile` RVV build the checked
-boundaries are `preprocess_text_textual` (dequantization, slice repair and the C interface together)
-and `cse`; the xDSL prune and quantization run only on the xDSL route and in preparation.
+boundaries are `preprocess_text_textual` (Q/DQ lowering, slice repair and the C interface together)
+and `cse`; the separate xDSL prune and quantization boundaries run on the xDSL route and in preparation.
+After repairing legacy slices, the textual route uses the structural quantizer lowering when source
+quantizers are present, including multiline operations and quantizers inside generic regions.
 
 Every pipeline opens with `canonicalize,cse` on tensors, and some pre-pipeline rewrites run the same
 pair. With `cse` validated, `leading_cse.bind_runner` puts a prelude ahead of the build's own runner,
@@ -85,7 +89,7 @@ It then attempts two strengthenings and reports them, never requiring them: the 
 theorem (`moduleCheck_sound`, for all inputs) and source definedness (no undefined behaviour or
 poison). The receipt's `claim` says exactly what was established, for example "strict refinement
 for all inputs; definedness not established". Axioms: `propext`, `Classical.choice`, `Quot.sound`.
-Assumptions: `merlin/lean/LEDGER.md` A1–A9 and T1–T6 (A9: the two modeled `quant_ext` dequantizations are
+Assumptions: `merlin/lean/LEDGER.md` A1–A9 and T1–T6 (A9: the three modeled `quant_ext` Q/DQ operations are
 effect-free and may be erased when dead) (notably T2, the exporter and Python bridge,
 and T3, fidelity of the op semantics to MLIR). Only the 64-bit index width is admitted: at index32
 the model and the native pipeline disagree on a retained example (LEDGER S6).
@@ -97,13 +101,42 @@ implements since 03a22c5fd ("match PyTorch per-channel dequantization order"). S
 f32 scale; per-tensor with an i32 or i64 zero point, per-channel with i32. `quant_min`/`quant_max`
 follow PyTorch: ignored per-tensor, checked against the i8 range per-channel, never clamped. Every
 per-tensor dequantization in the tracked capsules (627 ops, i64 zero points, ranges [-128, 127] and
-[-127, 127]) is proved (`test_lean_dequant_contract.py`); a whole capsule still is not, because its
-`quant_ext.quantize_per_tensor` ops have no contract. f64 scales and per-channel i64 zero points are
-excluded (`LEDGER.md`). Deleting a dead dequantization relies on ledger assumption A9 (both modeled
-dequantizations are effect-free). The contract still needs human specification review and
+[-127, 127]) is proved (`test_lean_dequant_contract.py`). f64 scales and per-channel i64 zero points are
+excluded (`LEDGER.md`). Deleting a dead Q/DQ operation relies on ledger assumption A9.
+The contract still needs human specification review and
 capture-route binding; draft policy, native and capture premises remain;
 an unexplained SmolVLA complete-output comparison failure is recorded upstream. With `int8_compute`
 the W8A8 passes do most of the quantization before `lower_quant_ext` and are not gated here.
+
+`quant_ext.quantize_per_tensor` now has a source contract and a registered lowering proof for
+static f32 tensors, scalar f32 scales, scalar i32/i64 zero points and full-range signed-i8 output.
+The exact order is binary64 reciprocal, conversion to f32, multiplication, round-even, signed
+zero-point conversion/addition, lower-then-upper clamp and signed-byte conversion. All 230 retained
+quantizers (35 forms) are checked after actual lowering. A typed exact normalizer also checks
+expansions inside supported generic regions and prevents temporary values from escaping into the
+continuation. The proofs assume no floating algebra and preserve poison; they do not establish
+unrestricted conversion success or whole-model numerical definedness. Source/capture specification
+review remains required.
+
+## Model qualification
+
+The following retained capsules have source quantizers and were exported through ordinary
+`lower_model` compilation with all selected gates enabled on both xDSL and textual routes.
+Every CSE/quantization verdict was accepted, and each returned LLVM file was byte-identical
+to a separate ungated build. These are pass-boundary claims under the ledger assumptions;
+bufferization, LLVM and model accuracy retain their existing trust status.
+
+| Capsule | Source quantizers | Routes |
+| --- | ---: | --- |
+| `SY_micro_model` | 2 | xDSL, textual |
+| `M2_microvit_gemmini` | 1 | xDSL, textual |
+| `GX0_interop_rvv_lane` | 9 | xDSL, textual |
+
+Reproduce with `build_tools/scripts/verify_lean_pass_models.py`, passing each
+`merlin/contract/capsules/model/<capsule>/capsule.interface.mlir` as `--capture`,
+plus `--sdk-bin` and `--compiler-python`. The script retains all exact before/after
+exports and receipts in a new verification product, requires a live source quantizer
+boundary and a recorded CSE check, and compares gated/ungated LLVM bytes.
 
 ## Set it up once
 

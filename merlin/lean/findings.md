@@ -185,6 +185,12 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   zero-point-zero dequantization; it is not a replay of this per-channel witness. Source-contract
   review and a separate compiler fix remain distinct obligations.
 
+**Compiler correction (2026-10-28):** both structural and textual lowerings now promote signed
+i8 to the i32/i64 zero-point width, subtract there, and convert once. The retained witness is a
+regression requiring `-16777216`, rather than the historical `-16777215`; prior evidence remains
+unchanged. The registered Lean dequantization profile still admits i32 per-channel zero points
+only, so this compiler correction adds no per-channel i64 proof claim.
+
 ## F13 — calibrated W8A8 reuse does not check channel/zero-point preconditions
 
 - **Observed:** `lower_contraction_int8` recognizes a direct per-channel dequantization by its
