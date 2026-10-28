@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin.lean.cert.v1",
+  "title": "Merlin certificate envelope (merlin.lean.cert.v1)",
+  "description": "An UNTRUSTED hint a certifying pass emits for one boundary (docs/design/merlin_lean_verification.md, D2). The Lean checker recomputes every fact it needs; a wrong certificate can only cause rejection. Sites name ops by their position: function symbol plus a path of indices (op index in the entry block; then region, block, op index for nested ops).",
+  "type": "object",
+  "required": ["schema", "boundary", "pass", "claim_type", "before_sha256", "after_sha256", "sites"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "merlin.lean.cert.v1"},
+    "boundary": {"type": "string", "description": "Inventory boundary id (e.g. U15.quant_ext_lowered)."},
+    "pass": {"type": "string", "description": "Dotted path of the pass entry that produced the after-module."},
+    "claim_type": {"enum": ["equiv", "refine", "equiv_args", "policy", "erasure", "partition", "contract_seam", "safety"]},
+    "policy": {"type": "string", "description": "Policy spec name when claim_type is policy."},
+    "before_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "after_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "arg_map": {
+      "description": "equiv_args: for each after-argument, the before-argument index it receives, or a tensor binding.",
+      "type": "array",
+      "items": {"oneOf": [
+        {"type": "object", "required": ["before_arg"], "additionalProperties": false,
+         "properties": {"before_arg": {"type": "integer", "minimum": 0}}},
+        {"type": "object", "required": ["bound_tensor"], "additionalProperties": false,
+         "properties": {"bound_tensor": {"type": "string"}}}
+      ]}
+    },
+    "sites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "before", "after", "params"],
+        "additionalProperties": false,
+        "properties": {
+          "rule": {"type": "string"},
+          "before": {"type": "array", "items": {"$ref": "#/$defs/opRef"}},
+          "after": {"type": "array", "items": {"$ref": "#/$defs/opRef"}},
+          "params": {"type": "object"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "opRef": {
+      "type": "object",
+      "required": ["func", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "func": {"type": "string"},
+        "path": {"type": "array", "items": {"type": "integer", "minimum": 0}, "minItems": 1}
+      }
+    }
+  }
+}

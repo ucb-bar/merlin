@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin.lean.receipt.v1",
+  "title": "Merlin Lean verification receipt (merlin.lean.receipt.v1)",
+  "description": "Byte-bound evidence for one checked boundary, or for the support of one program (docs/design/merlin_lean_verification.md, D10, §4.5). Replay reruns the named checker on the bound bytes; a receipt for different bytes is stale.",
+  "type": "object",
+  "required": ["schema", "boundary", "claim_type", "checker", "theorem", "exporter", "lean", "axioms", "verdict"],
+  "allOf": [{
+    "if": {"properties": {"claim_type": {"enum": ["not_stuck", "defined"]}}, "required": ["claim_type"]},
+    "then": {"required": ["subject", "function", "domain", "index_bits"]},
+    "else": {"required": ["before", "after"]}
+  }, {
+    "if": {"properties": {"checker": {"const": "MerlinVerify.Check.TypedModule.check"}}, "required": ["checker"]},
+    "then": {"required": ["index_bits", "domain", "functions"]}
+  }],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "merlin.lean.receipt.v1"},
+    "boundary": {"type": "string"},
+    "claim_type": {"enum": ["equiv", "refine", "refine_conditional", "equiv_args", "policy", "erasure", "partition", "contract_seam", "safety", "not_stuck", "defined"], "description": "refine_conditional: refinement wherever the source is modelled (FuncRefinesC). defined: successful, nonpoison results on the explicitly declared typed, nonpoison input domain."},
+    "policy": {"type": "string"},
+    "checker": {"type": "string", "description": "Lean name of the Checker value."},
+    "theorem": {"type": "string", "description": "Lean name of the soundness theorem whose statement is pinned in SPEC_LOCK."},
+    "before": {"$ref": "#/$defs/fileRef"},
+    "after": {"$ref": "#/$defs/fileRef"},
+    "subject": {"$ref": "#/$defs/fileRef", "description": "The one program a not_stuck claim is about."},
+    "function": {"type": "string", "description": "The function a not_stuck claim is about."},
+    "index_bits": {"type": "integer", "minimum": 1},
+    "functions": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "domain": {"type": "string", "description": "The inputs and contexts a not_stuck claim quantifies over."},
+    "cert": {"$ref": "#/$defs/fileRef"},
+    "exports": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "before": {"$ref": "#/$defs/fileRef"},
+        "after": {"$ref": "#/$defs/fileRef"},
+        "subject": {"$ref": "#/$defs/fileRef"}
+      }
+    },
+    "exporter": {
+      "type": "object",
+      "required": ["executable_sha256", "mlir_revision"],
+      "additionalProperties": false,
+      "properties": {
+        "executable_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "mlir_revision": {"type": "string"},
+        "round_trip": {"enum": ["identical", "different", "not_run"]}
+      }
+    },
+    "lean": {
+      "type": "object",
+      "required": ["toolchain", "mathlib_rev", "checker_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "toolchain": {"type": "string"},
+        "mathlib_rev": {"type": "string"},
+        "checker_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "spec_lock_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "axioms": {"type": "array", "items": {"type": "string"}, "description": "#print axioms of the soundness theorem."},
+    "verdict": {"enum": ["verified", "refuted", "abstracted", "unmeasured"]},
+    "reason": {"type": "string"},
+    "witness": {"type": "string"},
+    "assumptions": {"type": "array", "items": {"type": "string"},
+                    "description": "Named float laws, IEEE-instance use, contract holes and value-dependent poison preconditions this verdict depends on."}
+  },
+  "$defs": {
+    "fileRef": {
+      "type": "object",
+      "required": ["sha256", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "bytes": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
