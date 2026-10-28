@@ -196,3 +196,44 @@ def test_a_checker_built_from_other_sources_is_refused(tmp_path):
         pytest.skip("the merlin-lean checker is not built")
     with pytest.raises(ValueError, match="out of date"):
         pass_validation.CheckerTools(sdk, Path(sys.executable))
+
+
+def test_a_32_bit_index_width_is_refused(tmp_path, tools):
+    # LEDGER S6: the Lean model and the pinned native pipeline disagree at index32.
+    gate = SpeculativeGate(tmp_path / "gate")
+    try:
+        with pytest.raises(ValueError, match="index"):
+            pass_validation.PassValidation(gate, tools, index_bits=32)
+    finally:
+        gate.close()
+
+
+def test_a_failed_check_leaves_no_usable_artifact(tmp_path, tools, monkeypatch):
+    from xdsl.dialects import arith
+    from xdsl.rewriter import Rewriter
+
+    real = passes_xdsl.prune_dead_pure_tensor_ops
+
+    def buggy(module):
+        count = real(module)
+        for op in module.walk():
+            if isinstance(op, arith.AddfOp):
+                Rewriter.replace_op(op, arith.SubfOp(op.lhs, op.rhs))
+                break
+        return count
+
+    monkeypatch.setattr(passes_xdsl, "prune_dead_pure_tensor_ops", buggy)
+    gate = SpeculativeGate(tmp_path / "gate", interrupt=False, job_timeout=900)  # lowering always finishes first
+    work = tmp_path / "lower"
+    try:
+        with pytest.raises(GateFailure):
+            lower.lower_model(
+                capture("small_llama_int8_consistent"),
+                work,
+                targets=(),
+                pass_validation=pass_validation.PassValidation(gate, tools),
+            )
+    finally:
+        gate.close()
+    assert not (work / "model.ll").exists()
+    assert (work / "model.ll.rejected").is_file()

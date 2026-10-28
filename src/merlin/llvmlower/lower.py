@@ -93,10 +93,28 @@ def _validated_passes(function):
         )
         if validation is None:
             return function(*args, **kwargs)
-        with validation_module.validating(validation):
-            return function(*args, **kwargs)
+        from merlin.verify.speculative_gate import GateFailure
+
+        try:
+            with validation_module.validating(validation):
+                return function(*args, **kwargs)
+        except GateFailure:
+            _reject_artifacts(Path(arguments["workdir"]))
+            raise
 
     return invoke
+
+
+#: Products a lowering leaves in its workdir; a failed pass validation must not leave them usable.
+_ARTIFACTS = ("model.ll", "model_host.so", "model_rv64gcv.o")
+
+
+def _reject_artifacts(work: Path) -> None:
+    """Rename this lowering's products to ``*.rejected``: kept as evidence, never mistaken for output."""
+    for name in _ARTIFACTS:
+        path = work / name
+        if path.exists():
+            path.replace(path.with_name(name + ".rejected"))
 
 
 @host_admitted

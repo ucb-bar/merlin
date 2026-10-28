@@ -93,8 +93,10 @@ class PassValidation:
             raise ValueError("pass validation requires explicit CheckerTools")
         if type(self.passes) is not frozenset or not self.passes or not self.passes <= set(CHECKS):
             raise ValueError(f"validated passes must be a nonempty subset of {sorted(CHECKS)}")
-        if self.index_bits not in (32, 64):
-            raise ValueError("the typed boundary check supports 32- and 64-bit index widths")
+        if self.index_bits != 64:
+            # merlin/lean/LEDGER.md S6: at index32 the Lean model and the pinned native pipeline
+            # disagree on a retained overflow example; a refinement claim there is not established.
+            raise ValueError("pass validation supports the 64-bit index width only (LEDGER S6)")
 
 
 _ACTIVE: ContextVar[PassValidation | None] = ContextVar("merlin_pass_validation", default=None)
