@@ -353,3 +353,91 @@ def test_capture_ledger_does_not_require_validation_record(inputs):
     assert set(_rows(document)) == {"mm.default", "relu.default", "convolution.default", "view.default"}
     assert all(row["reference"]["spec_validation"] is None for row in document["operations"])
     assert document["release_authority"] == "not_issued"
+
+
+def _twin(chain="scaled_operand_sum"):
+    return {
+        "name": f"SY_composition_{chain}_q_refusal",
+        "op": "composition_program",
+        "outcome": "refuse",
+        "generalization": {
+            "composition_chain": {"id": chain},
+            "quantization_scheme": {"id": "q"},
+            "composition_truth": {"outcome": "refuse", "lane": "must_refuse"},
+        },
+        "source_role": "derived_sweep",
+        "lanes": {"forbid": ["on_mesh"]},
+    }
+
+
+def _disclosure(chain="scaled_operand_sum", name=None):
+    return {
+        "capsule": name or f"SY_composition_{chain}_q_aligned",
+        "status": "planned_not_generated",
+        "rule": "composition_member_not_accelerator_admitted",
+        "chain": chain,
+        "unplaced_members": [3],
+        "screen_status": "partial",
+        "decisions": [{"source_op_indices": [3], "status": "host", "placement": "host", "reason": "no mesh kernel"}],
+    }
+
+
+def _composition_row(document, chain):
+    return next(row for row in document["compositions"] if row["composition"] == chain)
+
+
+def test_refusal_twin_alone_never_reads_generated(inputs):
+    capsules = [c for c in inputs["capsules"] if not c["name"].startswith("SY_composition_")] + [_twin()]
+    row = _composition_row(L.prepare(**dict(inputs, capsules=capsules)).record(), "scaled_operand_sum")
+    assert row["evidence_state"] == "not_evidenced"
+    assert row["test_identity"]["refusal_twins"] == ["SY_composition_scaled_operand_sum_q_refusal"]
+    assert "refusal twin" in row["justification"]
+
+
+def test_positive_composition_still_reads_generated_beside_its_twin(inputs):
+    inputs["capsules"].append(_twin())
+    document = L.prepare(**inputs).record()
+    row = _composition_row(document, "scaled_operand_sum")
+    assert row["evidence_state"] == "generated"
+    assert "SY_composition_scaled_operand_sum_q_tail" in row["justification"]
+    assert "q_refusal" not in row["justification"]
+
+
+def test_disclosed_unplaceable_chain_is_withheld_and_never_traced(inputs):
+    capsules = [c for c in inputs["capsules"] if not c["name"].startswith("SY_composition_")] + [_twin()]
+    disclosure = _disclosure()
+    document = L.prepare(**dict(inputs, capsules=capsules), composition_disclosures=[disclosure]).record()
+    row = _composition_row(document, "scaled_operand_sum")
+    assert row["evidence_state"] == "withheld_unplaceable"
+    (held,) = row["withheld_unplaceable"]
+    assert held["capsule"] == disclosure["capsule"] and held["unplaced_members"] == [3]
+    assert held["reasons"][0]["reason"] == "no mesh kernel"
+    assert disclosure["capsule"] in row["justification"]
+    assert document["omissions"]["compositions_withheld_unplaceable"] == ["scaled_operand_sum"]
+    assert document["status"] == "diagnostic_incomplete"
+    assert "withheld_unplaceable" in document["states"]
+    # recomputation from the same inputs, disclosures included, reproduces the ledger
+    ledger = L.prepare(**dict(inputs, capsules=capsules), composition_disclosures=[disclosure])
+    assert L.verify(ledger, **dict(inputs, capsules=capsules), composition_disclosures=[disclosure]) == ledger.record()
+
+
+def test_disclosure_credits_only_its_declared_chain(inputs):
+    document = L.prepare(**inputs, composition_disclosures=[_disclosure("lonely_chain")]).record()
+    assert _composition_row(document, "lonely_chain")["evidence_state"] == "withheld_unplaceable"
+    elsewhere = _disclosure("scaled_operand_sum")
+    other = L.prepare(**inputs, composition_disclosures=[dict(elsewhere, chain="undeclared_chain", capsule="x")]).record()
+    assert _composition_row(other, "lonely_chain")["evidence_state"] == "not_evidenced"
+    assert _composition_row(other, "scaled_operand_sum")["evidence_state"] == "generated"
+
+
+def test_a_disclosure_does_not_override_a_surviving_positive(inputs):
+    row = _composition_row(
+        L.prepare(**inputs, composition_disclosures=[_disclosure()]).record(), "scaled_operand_sum"
+    )
+    assert row["evidence_state"] == "generated"
+    assert [held["capsule"] for held in row["withheld_unplaceable"]] == ["SY_composition_scaled_operand_sum_q_aligned"]
+
+
+def test_malformed_disclosure_is_refused(inputs):
+    with pytest.raises(ValueError, match="needs a capsule name"):
+        L.prepare(**inputs, composition_disclosures=[{"chain": "lonely_chain"}])

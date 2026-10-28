@@ -44,6 +44,7 @@ STATES = (
     "executed_spike",
     "executed_host",
     "generated",
+    "withheld_unplaceable",
     "not_evidenced",
     "out_of_scope",
     "rtl_qualified",
@@ -167,6 +168,41 @@ def _capsule_family(entry):
     from merlin.targetgen.semantic_families import from_op
 
     return entry.get("family") or from_op(entry.get("op"))
+
+
+def _must_refuse(entry):
+    """A refusal twin grades a refusal, not a composition the accelerator ran."""
+    truth = (entry.get("generalization") or {}).get("composition_truth") or {}
+    return entry.get("outcome") == "refuse" or truth.get("outcome") == "refuse" or truth.get("lane") == "must_refuse"
+
+
+def _composition_disclosures(disclosures, chains):
+    """Group the generation's ``planned_not_generated`` composition records by declared chain."""
+    by_chain = {}
+    for record in disclosures or ():
+        if not isinstance(record, dict) or not (record.get("capsule") or record.get("name")):
+            raise ValueError("composition disclosure needs a capsule name")
+        name = str(record.get("capsule") or record.get("name"))
+        chain = record.get("chain")
+        if chain not in chains:
+            chain = next((c for c in chains if name.startswith(f"SY_composition_{c}_")), None)
+        if chain is None:
+            continue  # matches no declared chain, so it can excuse nothing
+        reasons = [
+            {key: row.get(key) for key in ("source_op_indices", "status", "placement", "classification", "reason")}
+            for row in record.get("decisions") or ()
+            if row.get("reason") or row.get("status")
+        ]
+        by_chain.setdefault(chain, []).append(
+            {
+                "capsule": name,
+                "rule": record.get("rule"),
+                "screen_status": record.get("screen_status"),
+                "unplaced_members": list(record.get("unplaced_members") or ()),
+                "reasons": reasons,
+            }
+        )
+    return {chain: sorted(rows, key=lambda row: row["capsule"]) for chain, rows in by_chain.items()}
 
 
 def _capsule_engine(entry):
@@ -295,6 +331,7 @@ def prepare(
     target=None,
     descriptor=None,
     workload_spec=None,
+    composition_disclosures=None,
 ):
     """Join validation evidence, the selected spec, derived capsules and captures into one ledger.
 
@@ -302,6 +339,10 @@ def prepare(
     entries; ``captures`` maps an application label to its captured ``model.mlir``.
     ``descriptor`` is a mapping or YAML path; an explicit ``workload_spec`` takes precedence.
     Composition synthesis defaults to enabled when the workload spec omits the switch.
+    Only a positive (not must-refuse) composition capsule evidences a chain as ``generated``.
+    ``composition_disclosures`` are the generation's ``composition_selection.planned_not_generated`` records: a chain
+    with no surviving positive and at least one disclosure reads ``withheld_unplaceable`` (never ``generated``); the
+    consumer must still check that every selected positive of that chain is disclosed.
     """
     from merlin.targetgen.aten_coverage import aten_ops_in
     from merlin.targetgen.composition_corpus import synthesize_compositions_enabled
@@ -334,8 +375,13 @@ def prepare(
         traces[label] = sorted({overload_name(op) for op in aten_ops_in(path)})
         capture_pins[label] = {"path": str(path), "sha256": _sha256(path)}
     entries = [copy.deepcopy(entry) for entry in capsules]
+    refusal_twins = {
+        str(entry.get("name")) for entry in entries if entry.get("op") == "composition_program" and _must_refuse(entry)
+    }
+    disclosed = _composition_disclosures(composition_disclosures, chains)
     composition_coverage = coverage(
-        entries, excluded_spec=spec if not synthesize_compositions_enabled(workload_spec) else None
+        [entry for entry in entries if str(entry.get("name")) not in refusal_twins],
+        excluded_spec=spec if not synthesize_compositions_enabled(workload_spec) else None
     )
     covered = _capsule_coverage(entries, traces=traces, chains=chains)
     capsule_rows = _capsule_rows(entries, covered)
@@ -439,7 +485,10 @@ def prepare(
 
     composition_rows = []
     for chain in chains:
-        names = sorted(by_key.get(f"composition:{chain}", []))
+        all_names = sorted(by_key.get(f"composition:{chain}", []))
+        names = [name for name in all_names if name not in refusal_twins]
+        twins = [name for name in all_names if name in refusal_twins]
+        withheld = disclosed.get(chain, [])
         chain_coverage = [row for row in composition_coverage if row["composition"] == chain]
         excluded = next((row for row in chain_coverage if row.get("status") == "out_of_scope"), None)
         if excluded is not None:
@@ -448,22 +497,34 @@ def prepare(
         elif names or any(row["count"] for row in chain_coverage):
             state = "generated"
             justification = f"declared chain {chain}; capsule(s) {', '.join(names)} exercise it"
+        elif withheld:
+            state = "withheld_unplaceable"
+            justification = (
+                f"disclosed: declared composition {chain} has no published positive capsule; "
+                f"{len(withheld)} selected positive(s) withheld because a member is not admitted on the accelerator "
+                f"({', '.join(row['capsule'] for row in withheld)})"
+            )
         else:
             state = "not_evidenced"
-            justification = f"omission: declared composition {chain} has no capsule"
-        composition_rows.append(
-            {
-                "kind": "composition",
-                "composition": chain,
-                "source_requirement": {"demanded_by": ["declared_composition_axis"]},
-                "declaration": {"status": "declared", "rows": [{"id": chain}]},
-                "reference": {"capsules": "capture golden of each listed capsule" if names else None},
-                "test_identity": {"capsules": names},
-                "required_engine": "accelerator",
-                "evidence_state": state,
-                "justification": justification,
-            }
-        )
+            justification = f"omission: declared composition {chain} has no positive capsule" + (
+                f" (refusal twin(s) {', '.join(twins)} grade refusals only)" if twins else ""
+            )
+        row = {
+            "kind": "composition",
+            "composition": chain,
+            "source_requirement": {"demanded_by": ["declared_composition_axis"]},
+            "declaration": {"status": "declared", "rows": [{"id": chain}]},
+            "reference": {"capsules": "capture golden of each listed capsule" if all_names else None},
+            "test_identity": {"capsules": all_names},
+            "required_engine": "accelerator",
+            "evidence_state": state,
+            "justification": justification,
+        }
+        if twins:
+            row["test_identity"]["refusal_twins"] = twins
+        if withheld:
+            row["withheld_unplaceable"] = withheld
+        composition_rows.append(row)
 
     linked = None
     if source_requirement_ledger is not None:
@@ -485,6 +546,9 @@ def prepare(
         "compositions_without_capsule": [
             row["composition"] for row in composition_rows if row["evidence_state"] == "not_evidenced"
         ],
+        "compositions_withheld_unplaceable": [
+            row["composition"] for row in composition_rows if row["evidence_state"] == "withheld_unplaceable"
+        ],
         "accelerator_declarations_unexercised": sorted(
             row["id"]
             for row in spec["operations"]
@@ -496,7 +560,13 @@ def prepare(
         "mismatches": [row["overload"] for row in operation_rows if row["evidence_state"] == "mismatch"],
         "unjustified_capsules": [row["name"] for row in capsule_rows if row["justification"] is None],
     }
-    blocking = ("admitted_without_evidence", "compositions_without_capsule", "mismatches", "unjustified_capsules")
+    blocking = (
+        "admitted_without_evidence",
+        "compositions_without_capsule",
+        "compositions_withheld_unplaceable",
+        "mismatches",
+        "unjustified_capsules",
+    )
     document = {
         "schema": SCHEMA,
         "spec_validation": {
