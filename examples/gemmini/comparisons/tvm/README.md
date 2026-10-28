@@ -6,13 +6,13 @@ The frozen model delivery originated at `82b321a89`; the simplified compiler
 and median-watchdog runner are supplied by the current handoff. Model protocol is exclusively `8ec99308` with the
 approved TinyLlama 32+32 correction. Use only its quality policy.
 
-The published chunk delivery contains 18 ResNet, 10 TinyLlama and 8 ready SmolVLA
-chunks: 47 initial distinct contractions across 26 owners. TinyLlama tunes at
-16/1 rows and runs E2E at 32/32. Fresh extraction with the simplified compiler retains these counts, with new
-workload keys; old costs cannot be imported. Begin with fusion=2, without automatic prepacking or bias
-folding, then search stock fusion/CSE and TensorIR schedules, within 4h/1h/1h total
-per-model tuning allowances. Final E2E is separate. The remote worker owns
-slots, deployment, FireSim-only guest validation and tuning-time accounting.
+The next campaign is **ResNet50 plus 16 kernel cases**, with a requested
+50 warmup + 5 guided trials per workload. Full TinyLlama/SmolVLA model runs are
+backlogged; their isolated kernel cases remain in scope. ResNet's caps are
+4h DSE and 30min per E2E run. See the handoff for grouping/budget clarifications
+and the separate [kernel study](KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md).
+The restored 36-chunk delivery remains available as historical input evidence;
+its TinyLlama/SmolVLA model roster is not the new kernel roster.
 
 | Reference | Purpose |
 | --- | --- |

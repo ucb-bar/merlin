@@ -4,7 +4,11 @@ The [simplified preparation release](../../../../out/artifacts/handoff/gemmini-s
 TVM **619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a**, the portable source bundle/patch,
 71-case diagnostic Spike ELFs/results and a fresh 36-chunk task index. Use this
 repository's median-watchdog runner (implementation commit dd079d3a0).
-It replaces the prior compiler for new builds; earlier receipts remain historical.
+For the new tuning settings use TVM `3d5e9c353ec39930e235e482b1fff678754dfc2c`
+on `gemmini/direct-intrinsics` plus the current Merlin runner. The frozen release
+above predates the cost-model changes; its ELFs/results remain historical.
+The [cost-model re-audit](OPTIMIZATION_KNOBS.md#campaign-re-audit-2026-10-27)
+links the new source patches and test evidence.
 This is ready for remote build/qualification work, **not a completed FireSim or
 full-model qualification**. Remote cancellation, selected hardware facts and
 per-program spec admission remain required before paid model execution.
@@ -13,6 +17,42 @@ Our deliverable is ELFs or exact instructions to build them after handoff.
 **The remote worker owns deployment, manager configuration and physical slots.**
 Do not ask the user to supply deployment details to finish this preparation.
 No simulator job is started by the build commands below.
+
+## Next campaign: ResNet and kernel comparisons
+
+Active: **ResNet50 and the 16 standalone kernel cases** in
+[KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md](KERNEL_BENCHMARK_HANDOFF_IREE_TVM_VOYAGER_AGENTIC.md).
+Full-model TinyLlama and SmolVLA are backlogged; their seven isolated kernel
+cases remain active. Their earlier small-sweep/default-transfer plan is deferred.
+Existing frozen deliveries retain historical budgets; the current handoff wins.
+
+ResNet: **4 hours DSE, 30 minutes maximum per baseline/tuned E2E run**.
+Backlogged model limits remain 1h DSE and 7h per E2E run when reactivated; they
+are not permission to launch those models in this campaign. Candidate median
+watchdogs are separate. Finish active jobs under their frozen watchdogs and
+report overrun; do not renew the spent budget on continuation.
+
+Requested tuning is **50 warmup candidate trials + 5 guided trials per workload**,
+or earlier verified space exhaustion. Use stock MetaSchedule/XGB with warmup=50,
+single-trial batches and epsilon-greedy exploration=0 for the guided phase.
+The prior compact profile's four-sample warmup is superseded. Three baseline
+wall timings and repeated timing samples do not count as 50 candidate schedules.
+The driver records feature-bearing sample count and learned-ranking availability;
+errors can count under stock XGB semantics. Report actual valid unique samples and
+guided trials, not just the requested total. Five additional attempts are not five
+successful guided measurements if builds/runs fail or training never becomes ready.
+
+Per-workload versus per-owner grouping, and whether the 4h cap truncates the
+50+5 targets, are awaiting the user's clarification. The kernel aggregate wall
+budget is not yet set. Do not infer extra paid time from the candidate-count goal.
+Current runner costs cover extracted contractions; the grouped kernel cases need
+complete-call measurement/build support before their results can use that label.
+
+For reporting, disclose that ResNet received deeper model optimization effort;
+full-model TinyLlama/SmolVLA were deferred as too expensive. Do not imply equal
+optimization effort, convergence, full-model results from kernels, or measured
+superiority solely from the allocation of time. See
+[the stack re-audit](OPTIMIZATION_KNOBS.md#campaign-re-audit-2026-10-27).
 
 ## Fresh simplified-compiler extraction
 
@@ -40,7 +80,7 @@ illustration; allocate no fixed paper-sized trial count in advance.
 
 ## Approved decisions
 
-- Tune all models concurrently, provisionally one slot per model. Budgets are
+- The following model allocation is retained for reference; only ResNet is active. Budgets are
   **ResNet 4 hours; TinyLlama 1 hour; SmolVLA 1 hour**, total across each model's
   chunks and graph configurations. Charge actual tuning slot occupancy; exclude
   CPU preparation and final E2E. The remote worker implements this ledger and
@@ -48,10 +88,11 @@ illustration; allocate no fixed paper-sized trial count in advance.
 - **TinyLlama tuning uses the published 16/1 row probes; E2E uses 32/32.**
   Do not replace the tuning roster with newly derived 32-row chunks.
 - For the simplified compiler, start with stock fusion=2 and CSE off, then
-  search stock fusion/CSE and TensorIR schedules within the same budgets.
+  search stock fusion/CSE and TensorIR schedules within the active ResNet budget.
+  Full-model TinyLlama/SmolVLA are backlogged.
   Automatic prepacking and bias folding are removed. Published packed/bias
   plans describe historical artifacts and must not be silently replayed.
-- Use stock MetaSchedule **EvolutionarySearch + XGB**, existing TensorIR schedules
+- Use stock MetaSchedule **EvolutionarySearch + XGB**, warmup=50, existing TensorIR schedules
   and registered TensorIntrins. Share records through exact structural equality.
 - Remote candidate validation uses FireSim guest checks. **No sequential Spike
   preflight** is added before candidates or long sessions. Preserve independent
@@ -65,9 +106,9 @@ The full-model protocol and its numerical choices remain fixed during tuning.
 
 | Model | Aggregate tuning allowance | Final E2E wall timeout per baseline/tuned run |
 | --- | --- | --- |
-| ResNet50 | 4 hours | 3,600 seconds |
-| TinyLlama | 1 hour | 21,600 seconds |
-| SmolVLA | 1 hour | 21,600 seconds |
+| ResNet50 | 4 hours | 1,800 seconds |
+| TinyLlama | 1 hour | 25,200 seconds |
+| SmolVLA | 1 hour | 25,200 seconds |
 
 The user approved per-workload median wall watchdogs instead of best-so-far
 active-cycle cancellation. No live observer is required. Run three successful
@@ -332,5 +373,5 @@ Current preparation product: [plan](../../../../out/artifacts/handoff/gemmini-fi
 
 At the per-model tuning limit, stop admitting new work and **finish active runs**.
 Do not start queued jobs during this completion period. Record the time beyond
-budget separately; preserve cycle-pruning and failure/hang safeguards. This adds
+budget separately; preserve the median wall watchdog and failure safeguards. This adds
 no new tuning allowance and does not renew a continuation's budget.

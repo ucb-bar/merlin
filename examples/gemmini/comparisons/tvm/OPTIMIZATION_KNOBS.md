@@ -15,6 +15,85 @@ The isolated implementation is `/scratch/grammy/tvm-gemmini-simple`, branch
 `gemmini/direct-intrinsics`, based on TVM `42b3c1ef2` plus the published dispatcher
 fix. Its source and local checks are packaged above; it is not hardware-qualified.
 
+## Campaign re-audit: 2026-10-27
+
+[Source-bound test evidence](../../../../out/artifacts/verification/gemmini-tvm-cost-model/v1/verification_gemmini-tvm-cost-model_v1_20261028T034616Z_3d0d7d2/README.md):
+71 runner/session tests and five search tests pass; the final-source warmup
+smoke also passes. The structure gate retains nine unchanged module-size failures.
+Current TVM source is `3d5e9c353ec39930e235e482b1fff678754dfc2c`; the compiler
+mapping evidence at `619c7c202` is preserved, not relabeled as a new execution.
+
+The latest campaign is ResNet plus the 16 separately specified kernels; full
+TinyLlama/SmolVLA are backlogged. ResNet caps: 4h DSE, 30min per E2E run.
+Requested search: 50 warmup + 5 guided candidate trials per workload, stopping
+for verified space exhaustion; exact grouping and wall-budget precedence are
+pending clarification in the handoff. Earlier few-run/default-transfer proposals
+are superseded for active workloads. Frozen release manifests stay unchanged.
+
+### Cost model and measurement
+
+- Stock TVM v0.19 `XGBModel` defaults to 100 warmup samples. Our generic backend
+  previously defaulted to four. The FireSim entrypoint now explicitly passes
+  **50**, uses **batch=1**, sets **epsilon-greedy=0**, and caps each task at **55**
+  proposals. The explicit CLI/study settings and continuation ledger bind these
+  decisions. A multi-task invocation still shares one XGB instance; it does not
+  provide an independent 50-sample warmup to each task without splitting campaigns.
+- Warmup controls prediction, not the start of training: stock XGB may train
+  from its first eligible sample but returns random predictions until its
+  feature-bearing sample count reaches 50 and a booster exists. Runner-error
+  samples can count. Baseline watchdog calibration happens outside this search;
+  its three timings are inserted into the database afterward and do not count
+  toward XGB warmup. Saved records alone do not transfer an XGB model.
+- Every trial now records `training_samples_before_update` and
+  `learned_ranking_available` before the current label updates the model. This
+  distinguishes pre-threshold attempts from subsequent model-enabled selection.
+  Count valid unique timings and failures separately. If fewer than 50 eligible
+  samples arrive, do not claim five guided trials or convergence.
+- The optimization label is **completed warm target cycles**, converted to
+  seconds using the target counter frequency only at the TVM Runner boundary.
+  This positive constant scaling preserves ordering/normalized XGB scores.
+  Occupied wall duration controls watchdog/budget only; it is not a speed label.
+  Completed slower runs are retained; timeout thresholds never become cycle data.
+- The baseline test environment lacked `xgboost`. An isolated CPU-only
+  `xgboost-cpu==2.1.4` install passed a real stock-MetaSchedule smoke test with a
+  reduced 3+2 threshold, batch1, epsilon0 and per-task cap5: logged model state
+  was false/false/false/true/true. Diagnostic constant labels validate plumbing,
+  **not prediction accuracy or hardware speed**. Remote preparation must install
+  and smoke-test XGBoost before allocating FireSim time. No native TVM rebuild
+  is needed for these Python scheduling/telemetry changes.
+
+### Stack and readiness findings
+
+| Layer | Verified state | Remaining requirement |
+| --- | --- | --- |
+| Op mapping | Ordinary math TensorIR, trace scheduling and registered TensorIntrins; automatic bias/packing/scale/normalization and DMA peepholes remain removed. Full-range i32 adds stay host. | Exact software-spec proof/selected hardware admission is separate from pattern recognition. No automatic all-obligations gate exists. |
+| Memory | SRAM allocation/capacity, DMA hazards and completion are required lowering; tile/reuse/staging decisions are traced. | Capability defaults bind an older source profile; selected deployed hardware facts must be checked. No general cross-function SRAM residency. |
+| Cost model | Stock EvolutionarySearch/XGB; mathematical loop/store features; explicit 50 warmup and measured cycle units. | No demonstrated hardware ranking quality. Five guided attempts are a small follow-up, not evidence of convergence. |
+| Coverage | Prior 71-case diagnostic Spike controls and 36-chunk/47-task extraction remain source-bound evidence. | They do not construct the new 16 nibble-input cases or validate complete grouped calls. |
+| Grouped kernel timing | Current remote driver measures individual extracted contractions. | T01/T02 need all32 heads, T04/T06 need all outputs within one complete-call interval. A single task's cycles cannot replace that interval. |
+| Runtime/qualification | Median watchdog, slot locks/quarantine and positive/wrong-oracle contract exist; local runner/session tests pass. | Actual remote cancellation and fixed-warm qualification remain mandatory. Kernel cache profiles must not be mislabeled as the model warm-repeat profile. |
+| Whole model | ResNet has frozen chunks and build/session interfaces. | Rebuild/confirm the connected model with current sources; the 30min timeout is an upper bound, not a measured runtime. |
+| Environment | Local op-audit env.sh still points PYTHONPATH at the older tvm-device-op-audit tree; this re-audit explicitly overrides it with tvm-gemmini-simple. | Verify imported tvm.__file__, native-library hash and app source pin together before a remote build; --tvm-source alone selects app scripts, not the imported Python package. |
+| Delivery | Previous release is tracked and checksum-restorable. | New settings/source revisions require fresh measurement identities; never relabel old ELFs, costs or model results. |
+
+### Paper methods text (planned configuration, not results)
+
+"TVM used stock MetaSchedule EvolutionarySearch with XGBoost and mathematical
+TensorIR features. We configured 50 warmup samples, followed by a target of five
+model-guided candidate evaluations per workload, using single-candidate batches
+and no epsilon-greedy exploration after warmup. Search cost was measured completed-
+call target cycles, represented as seconds using the target counter frequency.
+We recorded actual eligible training samples, successful unique measurements,
+failed attempts and stop reasons; requested budgets do not imply all guided
+trials completed or the search converged. Three baseline wall-time calibrations
+were separate from the cost-model warmup. Full-model TinyLlama and SmolVLA were
+deferred because broader model tuning was considered too expensive; their
+isolated kernel measurements are not full-model inference results."
+
+Before publication, fill in the resolved workload grouping, actual counts,
+stop reasons, hardware/cache profile and wall budgets. No paper/manuscript source
+was supplied; this is the versioned methods text for that later insertion.
+
 ## Current implementation work
 
 - Automatic bias-to-accumulator rewriting has been removed from the active
@@ -60,10 +139,10 @@ source mathematics -> stock graph passes -> extracted TensorIR tasks
 | Frontend/graph | Fork semantic fixes; stock legalization/fusion/CSE; four custom preparation transforms now removed in the isolated branch | Preserve numerical correctness fixes. Keep stock graph knobs; do not expand supported math by rewriting it to fit a device pattern. |
 | Extraction/admission | Stock `extract_tasks`, call-count weights; `_supported` recognizes contraction, reduction, pool, elementwise. Unsupported CPU-only tasks are recorded but excluded from search. | One family dispatcher for baseline/search/replay. Recognition is not proof of strict software-spec admission; the audit inventory is not a production gate. |
 | Schedule space | Custom rule builds ordinary traced schedules: rectangles/tails, M/N/K reuse, OS/WS, traversal, hoisting, pipeline, staging, epilogue placement, unroll | Keep target legality and ordinary schedule APIs. Prune duplicate/inactive choices before adding knobs. Do not remove necessary movement scheduling to reduce line count. |
-| Mutation/search | Stock EvolutionarySearch and mutators. Compact profile: population 32, 2 genetic iterations, 4 initial unmeasured; full: 64, 3, 16. Mutation probability .85, random exploration .1; tile/location/unroll mutation weights .9/.05/.05 | These are custom settings, not a custom search algorithm. Put the selected settings in one explicit campaign profile; avoid unreviewed tuning of the tuner. |
+| Mutation/search | Stock EvolutionarySearch and mutators. Compact profile: population 32, 2 genetic iterations, 4 initial unmeasured; full: 64, 3, 16. Mutation probability .85; current FireSim epsilon-greedy=0 (historically .1); tile/location/unroll mutation weights .9/.05/.05 | These are custom settings, not a custom search algorithm. Put the selected settings in one explicit campaign profile; avoid unreviewed tuning of the tuner. |
 | Task allocation | Stock gradient scheduler inside each invocation; wrapper starts separate owner campaigns and shares slots/deadline externally | This is not one global model-wide task scheduler. Record dedup/shared measurements separately from shared cost-model training. Consolidation into one invocation is a possible later change, not yet selected. |
 | Features | `MathematicalFeatures` replays each trace with postprocessing removed, then uses stock `PerStoreFeature` | Retain this small adapter: late tensorization hides loops in extern calls. It is not a Gemmini cycle simulator and has no explicit model of DMA latency, bank conflicts or command setup. Eager tensorization, notably pool, can still hide work. |
-| Cost model | Stock `XGBModel`; per-workload normalized score based on best observed cost / candidate cost, median of repeated `run_secs`; one thread; warmup 4 instead of upstream 100; adaptive training disabled | Four total feature-bearing samples enable learned prediction, not demonstrated ranking quality. Warmup is per model object, not per workload, and error samples can count. Decide an explicit training profile after the pilot; do not claim convergence from a saved booster. |
+| Cost model | Stock `XGBModel`; per-workload normalized score based on best observed cost / candidate cost, median of repeated `run_secs`; one thread; FireSim warmup 50 instead of upstream 100; adaptive training disabled | Fifty total feature-bearing samples enable learned prediction, not demonstrated ranking quality. Warmup is per model object, not per workload, and error samples can count. The current profile explicitly selects 50; do not claim convergence from a saved booster. |
 | Build/run | Target adapters create RV64 guests and collect actual measurements. FireSim wraps cycle-valued runner results into seconds using the documented target counter frequency | Keep raw cycles as evidence; use standard seconds in fresh TVM records. Older local databases storing cycles are a separate convention and must not be mixed. |
 | Feedback/errors | Stock callback forwards runner errors from successfully built candidates; XGB maps absent timings to 1e10, then a poor normalized score. The median-watchdog pool retains completed results even when slower than the incumbent | This is not censoring-aware training. Keep complete slow timings under the approved wall-watchdog policy. Track timeout, compile failure, wrong output, infrastructure error and success separately; no timeout threshold becomes a measured cycle count. |
 | Database/replay | Stock JSONDatabase and MetaScheduleApplyDatabase; custom registration before opening workload-dependent intrinsic traces; measured default fallback retained | Keep exact structural matching and source/hardware/timing bindings. Database reuse is not proof of learned-model transfer or connected speedup. Regenerate changed graph plans. |
@@ -193,7 +272,7 @@ model or convergence; any choice must be reported explicitly.
   and 1 hour at most 60, before confirmation overhead. This is an illustration,
   not a measurement of the remote runner or a chosen trial count.
 - Keep the 4h ResNet / 1h TinyLlama / 1h SmolVLA aggregate tuning budgets and
-  finish-active policy. Final E2E alone has 1h ResNet / 6h TinyLlama / 6h SmolVLA
+  finish-active policy. Final E2E alone has 30min ResNet / 7h TinyLlama / 7h SmolVLA
   wall timeouts. Candidate timeout values are still unset; no paid run is launched.
 - Stock TVM records missing timings with failure sentinels, not measured durations.
   Keep timeout/error counts and raw receipts; never describe those placeholders

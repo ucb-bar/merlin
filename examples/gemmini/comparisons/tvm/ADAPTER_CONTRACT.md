@@ -78,15 +78,17 @@ image substitution or require a new live-observer bitstream.
 
 ## Budgets and final runs
 
-Tuning allowances remain ResNet 4h, TinyLlama 1h, SmolVLA 1h across chunks/graph
+Only ResNet is active from the model roster (4h DSE); TinyLlama/SmolVLA
+are backlogged (retained future allowance 1h each). Kernel-study wall budget is
+separate and pending. Charge time across chunks/graph
 plans. The remote aggregate occupancy ledger is authoritative; the local shared
 absolute deadline is an additional admission bound, not a substitute for that
 ledger. Stop new admissions at budget, finish active jobs under their frozen
 watchdogs, and report completion overrun. Do not renew a continuation's allowance.
 CPU preparation and final E2E are excluded from tuning occupancy.
 
-Final baseline/tuned E2E wall timeouts are separate: ResNet 3600s and TinyLlama/
-SmolVLA 21600s per run. Do not use those values as candidate bootstrap/ceiling values.
+Final baseline/tuned E2E wall timeouts are separate: ResNet 1800s and TinyLlama/
+SmolVLA 25200s per run. Do not use those values as candidate bootstrap/ceiling values.
 
 ## Prior evidence
 
