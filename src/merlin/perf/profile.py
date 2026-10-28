@@ -934,11 +934,11 @@ def _t_explicit_completion(sources: Sources) -> tuple[Trait, str]:
 
             pf = port_facts(sources.target, fields=("completed",))
         else:
-            pf = sources.facts.get("port_facts") or {
-                "status": "unavailable",
-                "why": "selected snapshot supplies no completion-port facts",
-                "fields": {},
-            }
+            # A selected snapshot is read, never extended: its port list must travel in the bundle
+            # and be bound (by digest) to the elaboration the same bundle declares.
+            from merlin.targetgen.rtl.ports import bound_port_facts
+
+            pf = bound_port_facts(sources.facts)
     except Exception as e:  # noqa: BLE001
         pf = {"status": "unavailable", "why": f"{type(e).__name__}: {str(e)[:120]}", "fields": {}}
     if pf.get("status") == "derived":
