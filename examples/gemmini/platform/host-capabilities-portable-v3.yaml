@@ -3260,6 +3260,127 @@ operations:
     evidence:
       reviewed_by: "Loren Hung, operator sign-off 2026-10-28 (/scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68); reviewer text /scratch/loren/hostfix-ln/RESULT.md section 6 (the reviewer text is on the stopped compute-2 disk; source-body screen evidence in this history: commit 0e20d3243); the stated basis and RV64 obligations remain mandatory."
       basis: the digest-pinned parsed body, executed op by op in binary32 with single-rounding fma, against eager native_layer_norm mean and rstd on edge and random rows (out-of-tree /scratch/loren/hostfix-ln/evidence/ln_moments_evidence.out sha256 326b5a59db61566b4d566ece2463d5d448690bf9e3d80868ab6932566566a1c3; 1472 rows, mean and rstd bit-exact vs eager with single-rounding fma); RV64 lowering, fused-fma emission and Spike execution remain obligations
+- id: host_m2m_exact_quantize_f32_i8_rank3_4
+  status: unreviewed
+  ops:
+  - m2m_q.quantize.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - f32
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - i8
+    ranks:
+    - 3
+    - 4
+    quantization_parameters:
+      zero_point: 0
+      quant_min: -128
+      quant_max: 127
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      formula: q = clamp(round_half_even(x / scale) + zero_point, quant_min, quant_max)
+      quotient: exact_rational_no_reciprocal
+      rounding: round_half_to_even
+      scale: binary64 operand equal to prov.quant.scale_numerator/scale_denominator (lowering refuses otherwise)
+      scale_granularity: tensor
+      zero_point: 0
+      quant_min: -128
+      quant_max: 127
+      infinity: saturates_to_quant_min_or_quant_max
+      nan: runtime_assert_refusal (unless recipe quantization_nonfinite=byte_storage_zero_nan_saturating_infinity sets merlin.quantizer_nan_storage_zero, then NaN -> code 0)
+    evidence:
+      reviewed_by: "PROPOSED, NOT REVIEWED (app-admit 2026-10-28): rank-3/4 sibling of the operator-reviewed rank-2 row without the _rank3_4 suffix; identical ops, operand and result dtypes, quantization parameters and per-element formula; only the observed ranks differ (the whole-model captures of causal_decoder, causal_decoder_decode_step, multimodal_policy and residual_cnn). Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here."
+      basis: 'model2MLIR m2m_q::quantize CPU evaluator m2m/capture/exact_quant.py quantize_tensor
+        (exact Fraction quotient, Python round half-even, clamp, NaN raises); host lowering
+        llvmlower/passes_xdsl.py selects llvmlower/exact_quantize.py for prov.aten
+        m2m_q.quantize.default (255 exact RNE thresholds over ordered binary32 codes,
+        integer bisection, cf.assert on NaN). Threshold-adjacency check over every
+        threshold proves the table equals the evaluator for every finite binary32
+        input at the checked scales; RV64 execution remains a separate obligation.'
+- id: host_m2m_exact_readout_i32_f32_rank3_4
+  status: unreviewed
+  ops:
+  - m2m_q.exact_readout.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 3
+    - 4
+    aliasing: disjoint_inputs_outputs
+    layouts:
+    - row_major_contiguous
+    readout_dtype: f32
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      formula: y = round_to_binary32_half_even(acc * activation_scale * alpha * weight_scale[channel])
+      arithmetic: exact_rational_wide_integer_body
+      rounding: single_round_half_to_even_to_binary32
+      accumulator: i32 full range (no |acc| < 2^24 premise)
+      subnormals: produced_exactly
+      overflow: infinity
+      operand_1: f32 init tensor (outs), value unused
+      excluded_forms: bias operand and requantized integer output have other typed signatures
+    evidence:
+      reviewed_by: "PROPOSED, NOT REVIEWED (app-admit 2026-10-28): rank-3/4 sibling of the operator-reviewed rank-2 row without the _rank3_4 suffix; identical ops, operand and result dtypes, quantization parameters and per-element formula; only the observed ranks differ (the whole-model captures of causal_decoder, causal_decoder_decode_step, multimodal_policy and residual_cnn). Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here."
+      basis: 'model2MLIR m2m_q::exact_readout CPU evaluator m2m/capture/exact_quant.py
+        exact_readout/float_bits; emitted linalg.generic body from m2m/ir/integer_readout.py
+        decompose_exact_readout (i32 -> wide signed integer product with the exact
+        rational scale numerator, shift, normalize, RNE, binary32 bit assembly).
+        A Python integer interpretation of the emitted body matched the evaluator
+        on boundary and random accumulators; RV64 legalization of the non-native
+        integer widths remains a separate obligation.'
+- id: host_m2m_dequantize_per_tensor_f64_scale_rank3_4
+  status: unreviewed
+  ops:
+  - quantized_decomposed.dequantize_per_tensor.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i8
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 3
+    - 4
+    quantization_parameters:
+      zero_point: 0
+      quant_min: -128
+      quant_max: 127
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      formula: f32((i8 - zero_point) * scale)
+      host_arithmetic: binary64 product then one truncation to binary32
+      exactness_premise: scale is exactly representable in binary32 (then the binary64
+        product of a byte code and the scale is exact and the only rounding is the
+        final half-even narrowing, equal to PyTorch's binary32 multiply)
+      exactness_premise_enforcement: none in signature screen; operator obligation per admitted instance until a lowering guard refuses non-binary32 f64 scales
+      scale_granularity: tensor
+      zero_point: 0
+    evidence:
+      reviewed_by: "PROPOSED, NOT REVIEWED (app-admit 2026-10-28): rank-3/4 sibling of the operator-reviewed rank-2 row without the _rank3_4 suffix; identical ops, operand and result dtypes, quantization parameters and per-element formula; only the observed ranks differ (the whole-model captures of causal_decoder, causal_decoder_decode_step, multimodal_policy and residual_cnn). Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here."
+      basis: 'host lowering llvmlower/passes_xdsl.py dequantize rewrite (f64 compute
+        when the scale is f64, truncf to f32). Exhaustive 256-code comparison
+        against torch eager at the captured scales. The binary32-representable scale
+        premise is not checked by this signature screen.'
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:
