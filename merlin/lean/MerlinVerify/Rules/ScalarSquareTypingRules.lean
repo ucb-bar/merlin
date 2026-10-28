@@ -1,7 +1,8 @@
 /- A partial operational rulebook: successful-result preservation plus typed callback
-congruence. Known-stuck quantization contracts are identified, never given progress. -/
+congruence. Source Q/DQ contracts preserve successful result types. -/
 import MerlinVerify.Rules.ScalarSquareTypingFamilies
 import MerlinVerify.Rules.DequantPerTensor
+import MerlinVerify.Rules.QuantizeRule
 
 namespace MerlinVerify.Rules.ScalarSquareTyping
 open MerlinVerify MerlinVerify.Check MerlinVerify.Sem.Ops MerlinVerify.Sem.Ops.Linalg
@@ -78,8 +79,7 @@ theorem structuredRule_related (ib : Nat) : RelatedRuleSound ib (structuredRule 
     · exact reduceRule_related ib
   exact sound d op ats rts sigs hm accepted
 
-/-- Static type obligations for the captured per-tensor quantization operations. The shared
-semantics computes per-tensor dequantization with an i64 zero point and rejects quantization.
+/-- Static type obligations for the captured per-tensor quantization operations.
 This rule proves only that they cannot return an ill-typed successful result. -/
 def rejectedQuantRule : OpRule := fun _ op ats rts =>
   if dialectOf op.name = "quant_ext" ∧ op.regions = [] then
@@ -144,6 +144,26 @@ theorem dequant_i64_typed {ib : Nat} {sh : List Nat} {args : List RVal}
                   · cases hv
     · cases hv
 
+theorem quantize_i64_typed {ib : Nat} {sh : List Nat} {args : List RVal}
+    (ha : HasTys ib args [.tensor sh (.float .f32), .tensor [] (.float .f32), .tensor [] (.int 64)])
+    (ctx : Ctx) (call : CallSem) (op : Op) (regions : List (Ctx → RegionSem)) :
+    ∀ v, Quantize.sem ctx call op args regions = .ok v → HasTys ib v [.tensor sh (.int 8)] := by
+  intro v hv
+  cases configured : Quantize.config? op with
+  | none => simp [Quantize.sem, configured] at hv
+  | some c =>
+    simp only [Quantize.sem, configured] at hv
+    split at hv
+    · obtain ⟨w, data, scale, zero, rfl, rfl, valid⟩ := QuantizeRule.run_witness hv
+      cases ha with
+      | cons hx rest =>
+        have shape : c.shape = sh := by
+          simp only [Quantize.validInputs, Bool.and_eq_true, decide_eq_true_eq] at valid
+          exact valid.1.1.1.1.symm.trans hx.1
+        rw [← shape]
+        exact .cons (QuantizeSource.result_typed ib w c ctx.M data scale zero) .nil
+    · cases hv
+
 /-- Any successful result of an operation this rule accepts has the declared types. -/
 theorem rejectedQuant_typed {ib d : Nat} {op : Op} {ats rts : List VTy} {sigs : List RegionSig}
     (h : rejectedQuantRule d op ats rts = some sigs) (ctx : Ctx) (call : CallSem)
@@ -161,19 +181,16 @@ theorem rejectedQuant_typed {ib d : Nat} {op : Op} {ats rts : List VTy} {sigs : 
       · next sh sh' =>
         split at h
         · next hn =>
-          obtain ⟨_, rfl⟩ := hn
-          exact dequant_i64_typed ha ctx _ op.blind rs v hv
+          obtain ⟨name, rfl⟩ := hn
+          simp only [name, reduceBEq, Bool.false_eq_true, ↓reduceIte] at hv
+          exact dequant_i64_typed ha ctx (restrictCall (calleeOf op.blind) call) op.blind rs v hv
         · cases h
       · next sh sh' =>
         split at h
         · next hn =>
-          -- Quantization has no source semantics: the op is stuck.
-          have hname : op.blind.name = "quant_ext.quantize_per_tensor" := by
-            rw [Op.blind_name]; exact hn.1
-          cases hcfg : Dequant.config? op.blind with
-          | none => simp [Dequant.sem, hcfg] at hv
-          | some c =>
-            rcases Rules.DequantPerTensor.config_name hcfg with e | e <;> rw [hname] at e <;> exact absurd e (by decide)
+          obtain ⟨name, rfl⟩ := hn
+          simp only [name, beq_self_eq_true, ↓reduceIte] at hv
+          exact quantize_i64_typed ha ctx (restrictCall (calleeOf op.blind) call) op.blind rs v hv
         · cases h
       · cases h
   · cases h

@@ -1,0 +1,4 @@
+# Linux x86_64, CPython 3.12. Same torch-mlir revision as compiler-python.toml.
+# Raw IR parsing/passes only: install with --no-deps; no PyTorch capture frontend is needed.
+torch-mlir @ https://github.com/llvm/torch-mlir-release/releases/download/dev-wheels/torch_mlir-20260531.828-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl#sha256=a233633de4dde184f97cc4ae54e8673b0eacefe55bdab555eb7eba3cfb65c2f7
+numpy==2.4.6

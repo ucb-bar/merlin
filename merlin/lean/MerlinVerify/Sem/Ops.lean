@@ -10,6 +10,7 @@ import MerlinVerify.Sem.Ops.Tensor
 import MerlinVerify.Sem.Ops.Func
 import MerlinVerify.Sem.Ops.Cf
 import MerlinVerify.Sem.Ops.Dequant
+import MerlinVerify.Sem.Ops.Quantize
 import MerlinVerify.Spec.Annotations
 
 namespace MerlinVerify.Sem.Ops
@@ -34,7 +35,9 @@ def dispatch : OpSem := fun ctx call op args regions =>
   | "tensor" => Tensor.sem ctx call op args regions
   | "func" => Func.sem ctx call op args regions
   | "cf" => Cf.sem ctx call op args regions
-  | "quant_ext" => Dequant.sem ctx call op args regions
+  | "quant_ext" =>
+    if op.name == "quant_ext.quantize_per_tensor" then Quantize.sem ctx call op args regions
+    else Dequant.sem ctx call op args regions
   | _ => .stuck s!"no semantics for dialect of {op.name}"
 
 /-- The flat `callee` symbol of an op, if it has one. -/
@@ -72,6 +75,7 @@ def interpretedAttrs (name : String) : List String :=
   | "tensor.concat" => ["dim"]
   | "quant_ext.dequantize_per_tensor" => ["quant_min", "quant_max", "input_dtype"]
   | "quant_ext.dequantize_per_channel" => ["axis", "quant_min", "quant_max", "input_dtype"]
+  | "quant_ext.quantize_per_tensor" => ["quant_min", "quant_max", "output_dtype"]
   | "func.call" => ["callee"]
   | "cf.assert" => ["msg"]
   | n => if n.startsWith "math." || n.startsWith "arith." then ["fastmath"] else []
