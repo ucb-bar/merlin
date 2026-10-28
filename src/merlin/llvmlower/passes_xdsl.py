@@ -657,15 +657,18 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
     if audit is not None:
         record_stage(audit, PREPROCESS_STAGES[0], module, generic=True)
     stats = {}
+    from ..verify import pass_validation
     from ..verify.lean import stages as _lean_stages
 
     for statistic, stage, name in _PREPROCESS:
         transform = globals()[name]
         before = _lean_stages.generic_text(module) if _lean_stages.enabled() else None
-        stats[statistic] = (
-            transform(module, on_rewrite=on_quant_rewrite)
+        stats[statistic] = pass_validation.observe(
+            name,
+            module,
+            (lambda m: transform(m, on_rewrite=on_quant_rewrite))
             if statistic == "quant_ext_lowered" and on_quant_rewrite is not None
-            else transform(module)
+            else transform,
         )
         if audit is not None:
             record_stage(audit, stage, module, generic=True)
@@ -1259,7 +1262,10 @@ def preprocess_text_textual(mlir_text: str) -> tuple[str, dict]:
             out_lines.append(_fix_insert_slices(_fix_extract_slices(line)))
     text = "\n".join(out_lines)
     quant_lowered = 0
-    if '"quant_ext.quantize_per_tensor"' in text:
+    if any(
+        f'"quant_ext.{name}"' in text
+        for name in ("quantize_per_tensor", "dequantize_per_tensor", "dequantize_per_channel")
+    ):
         # Preserve MLIR's materialized named bodies before the structural quantizer lowering.
         from ..xdsl_dialects._common import text as module_to_text
         from .generic_form import to_generic_text
@@ -1268,4 +1274,7 @@ def preprocess_text_textual(mlir_text: str) -> tuple[str, dict]:
         quant_lowered = lower_quant_ext(module)
         text = module_to_text(module, generic=True)
     text, n_funcs = _attach_c_interface(text)
+    from ..verify import pass_validation
+
+    pass_validation.submit("preprocess_text_textual", mlir_text, text)
     return text, {"dequantize_lowered": n, "quant_ext_lowered": quant_lowered, "c_interface_funcs": n_funcs}

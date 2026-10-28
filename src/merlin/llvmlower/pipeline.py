@@ -1743,13 +1743,10 @@ def lower_to_llvm_ir(
     runner = work / "run_lowering.py"
     src.write_text(mlir_text, encoding="utf-8")
 
-    # The vectorized_transcendental_activation feature splices a math.exp/erf/tanh -> arith
-    # polynomial rewriter into the runner (run before the pass manager). The accumulator-resident
-    # micro-kernel v3 feature splices a two-stage runner that runs the A-operand scalarization rewrite
-    # BETWEEN two pass-manager stages (split at the SCALARIZE_MARKER pass name). Default-off; with the
-    # feature absent the plain _RUNNER is used and the lowering is byte-identical to the baseline.
-    # The SAME selection is used on the OpenMP transport (only `emit` differs), so a multicore build
-    # of a v3/act_poly package still gets its rewrites.
+    # vectorized_transcendental_activation splices an exp/erf/tanh polynomial rewriter into the runner
+    # (before the pass manager); accumulator-resident micro-kernel v3 splices a two-stage runner that
+    # scalarizes A reads between pass-manager stages (at SCALARIZE_MARKER). Absent both, the plain
+    # _RUNNER keeps the lowering byte-identical; the OpenMP transport uses the same selection.
     inspection_dir = (
         str(audit.directory)
         if audit is not None and audit.directory is not None and audit.mode in {"compact", "both"}
@@ -1783,6 +1780,9 @@ def lower_to_llvm_ir(
         )
     if shared_pass_native is not None:
         runner_src = shared_pass_native.bind_runner(runner_src, timeout=timeout)
+    from .leading_cse import bind_runner as _record_leading_cse
+
+    runner_src = _record_leading_cse(runner_src, work)
     runner.write_text(runner_src, encoding="utf-8")
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
     # lowering unless the feature is explicitly enabled.

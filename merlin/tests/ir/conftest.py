@@ -101,3 +101,28 @@ def fidelity_tools(tmp_path_factory, lean_oracle):
     result = diff._run([str(compiler), str(Path(diff.__file__).with_name("mlir_execute.py")), str(request)])
     (work / "contract.json").write_text(result.stdout)
     return tools
+
+
+@pytest.fixture
+def pass_gate_tools():
+    """The exact tools the Lean pass gate uses; skips without them, or fails under MERLIN_LEAN_REQUIRED."""
+    from merlin.verify import pass_validation
+    from merlin.verify.lean.check import lean_exe
+
+    sdk_bin = os.environ.get(pass_validation.ENV_SDK_BIN)
+    python = os.environ.get(pass_validation.ENV_COMPILER_PYTHON)
+    missing = [
+        name
+        for name, ok in (
+            (pass_validation.ENV_SDK_BIN, sdk_bin and (Path(sdk_bin) / "lake").is_file()),
+            (pass_validation.ENV_COMPILER_PYTHON, python and Path(python).is_file()),
+            ("built merlin-lean", lean_exe().is_file()),
+        )
+        if not ok
+    ]
+    if missing:
+        reason = "Lean pass-validation tools unavailable: " + ", ".join(missing)
+        if os.environ.get("MERLIN_LEAN_REQUIRED"):
+            pytest.fail(reason)
+        pytest.skip(reason)
+    return pass_validation.CheckerTools(Path(sdk_bin), Path(python))

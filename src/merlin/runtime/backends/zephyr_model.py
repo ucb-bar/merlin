@@ -32,8 +32,10 @@ from merlin.common.paths import runtime_dir
 from ...llvmlower import c_runtime, toolchain
 from ...llvmlower.lower import lower_model_file
 from ...llvmlower.masked_contraction import MaskEffectContract
+from ...llvmlower.perop_blocks import PARALLEL_ARMS_FILE, parallel_arms
 from ...llvmlower.source_expression_interval import IntervalEffectContract
 from ...llvmlower.source_scalar_carrier_binding import host_admitted
+from ...verify import pass_validation as _validation
 from . import spike as _spike
 from .firesim_runner import FireSimRunner, select_runner
 
@@ -102,13 +104,6 @@ def _zephyr_base() -> Path:
     selected = _pick("ZEPHYR_BASE")
     if selected is None:
         raise ZephyrModelError("ZEPHYR_BASE is not configured")
-    return selected
-
-
-def _zephyr_sw_root() -> Path:
-    selected = _pick("MERLIN_ZEPHYR_SW")
-    if selected is None:
-        raise ZephyrModelError("MERLIN_ZEPHYR_SW is not configured")
     return selected
 
 
@@ -587,7 +582,9 @@ def _prepare_model_mlir(
                     if k.startswith(("prequant_gather_mode_", "prequant_gather_refused_"))
                 )
             )
-    _lean_stages.run("prepare-lower-quant-ext", lower_quant_ext, module)
+    _validation.observe(
+        "lower_quant_ext", module, lambda m: _lean_stages.run("prepare-lower-quant-ext", lower_quant_ext, m)
+    )
     _lean_stages.run("prepare-bf16-matmul-f32acc", lower_bf16_matmul_f32acc, module)
     _lean_stages.run("prepare-fix-bool-sitofp", fix_bool_sitofp, module)
     # The other half of the bool-cast repair, and the one that erases models rather than skewing
@@ -873,14 +870,6 @@ def load_matrix_signatures(work: Path, matrix: MatrixRouting | None) -> dict[str
     return signatures
 
 
-#: Where :func:`prepare_for_lowering` records the multicore split it derived, and where the build
-#: sites read it back. A FILE rather than a third return value because the two ends are already
-#: separated by the prepared-module handoff every backend does, and because the record is then
-#: readable after the fact -- "which contractions did this image actually split, and into how many
-#: pieces" is the first question any multicore number raises, and it must not have to be re-derived.
-PARALLEL_ARMS_FILE = "perop_parallel_arms.json"
-
-
 def _write_parallel_arms(work: Path, harts: int, table: dict, par_table: dict) -> None:
     """Record the derived split next to the build. Written on EVERY per-op-blocked prepare."""
     import json
@@ -908,22 +897,7 @@ def _write_parallel_arms(work: Path, harts: int, table: dict, par_table: dict) -
     )
 
 
-def parallel_arms(work: Path) -> list | None:
-    """The ``[(op class, tiles)]`` :func:`prepare_for_lowering` derived for ``work``, or None.
-
-    None means "this prepare derived no per-op block table", which is the packages whose block lives
-    in their schedule text -- there the multicore split stays the legacy class-wide one. An EMPTY
-    list is a different statement: a table existed and nothing in it could be split.
-    """
-    import json
-
-    path = Path(work) / PARALLEL_ARMS_FILE
-    if not path.is_file():
-        return None
-    rec = json.loads(path.read_text(encoding="utf-8"))
-    return [(op, tuple(int(t) for t in tiles)) for op, tiles in rec.get("arms", ())]
-
-
+@_validation.validated("work")
 def prepare_for_lowering(
     mlir_path: Path,
     work: Path,
@@ -1366,9 +1340,10 @@ def prepare_for_lowering(
         )
         nr_fill_vlen = None
     if _mr_named or _nr_named:
-        features = {
+        plain_features = {
             f for f in features if parse_perop_mr_sentinel(f) is None and parse_perop_nr_sentinel(f) is None
-        } | {PEROP_BLOCK_NAME}
+        }
+        features = frozenset(plain_features | {PEROP_BLOCK_NAME})
     if PEROP_BLOCK_NAME in features:
         from ...kernels.shapes import contraction_shapes as _cshapes
 

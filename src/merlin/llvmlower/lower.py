@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit, audit_mode
+from merlin.verify import pass_validation as _validation
 
 from ..verify.lean import stages as _lean_stages
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
@@ -39,6 +40,7 @@ from .transpose_maps import ensure_registered as _register_fold_weight_transpose
 if TYPE_CHECKING:
     from merlin.verify.lean.handoff import Options as SharedPassVerification
     from merlin.verify.lean.preparation import CapturedPreparation
+    from merlin.verify.pass_validation import PassValidation
 
 _register_epilogue_fusion()
 _register_fold_weight_transpose()
@@ -79,7 +81,19 @@ class LowerResult:
     audit_index: Path | None = None
 
 
+_ARTIFACTS = ("model.ll", "model_host.so", "model_rv64gcv.o")
+
+
+def _reject_artifacts(work: Path) -> None:
+    """Retain failed compilation products as evidence, with an explicit rejected suffix."""
+    for name in _ARTIFACTS:
+        path = work / name
+        if path.exists():
+            path.replace(path.with_name(name + ".rejected"))
+
+
 @host_admitted
+@_validation.validated("workdir", index_bits_argument="index_bits", on_failure=_reject_artifacts)
 def lower_model(
     mlir_text: str,
     workdir: str | Path,
@@ -103,6 +117,7 @@ def lower_model(
     shared_pass_verification: SharedPassVerification | None = None,
     shared_pass_preparation: CapturedPreparation | None = None,
     verify_native_prefix: bool = False,
+    pass_validation: PassValidation | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -121,9 +136,13 @@ def lower_model(
     ``ir_audit="compact"`` requests native inspection-only views and exact hashes;
     ``"both"`` also retains exact snapshots. Text-only stages have no compact printer.
 
-    ``textual=True`` uses compatibility pure-text preprocessing without an xDSL
-    round-trip. The default route emits generic MLIR at the upstream seam to
-    preserve attributes and avoid custom-printer grammar skew.
+    ``textual=True`` repairs legacy captures before parsing source quantizers in
+    authoritative generic form. The default route emits generic MLIR at the upstream
+    seam to preserve attributes and avoid custom-printer grammar skew.
+
+    ``pass_validation`` (or ``MERLIN_VALIDATE_PASSES``) requires the selected actual
+    pass boundaries to satisfy the Lean refinement and source-support checks before
+    returning compiler products. A failed check rejects any speculative products.
 
     ``shared_pass_verification`` requires a fresh, replayed Lean chain through preprocessing,
     including source support and definedness, before upstream lowering starts. It covers only
@@ -240,6 +259,9 @@ def lower_model(
             except Exception:  # noqa: BLE001 -- an exotic constructor: keep the original
                 raise exc
             raise enriched from exc
+        from . import leading_cse
+
+        leading_cse.submit(work)
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
         if "source_scalar_carrier" in lowering_selection:
@@ -312,6 +334,7 @@ def lower_model_file(
     shared_pass_verification: SharedPassVerification | None = None,
     shared_pass_preparation: CapturedPreparation | None = None,
     verify_native_prefix: bool = False,
+    pass_validation: PassValidation | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     return lower_model(
@@ -337,4 +360,5 @@ def lower_model_file(
         shared_pass_verification=shared_pass_verification,
         shared_pass_preparation=shared_pass_preparation,
         verify_native_prefix=verify_native_prefix,
+        pass_validation=pass_validation,
     )
