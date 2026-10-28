@@ -34,3 +34,35 @@ def test_operator_handoff_keeps_source_and_prior_evidence_without_grade(tmp_path
     (source / 'compiler.py').write_text('# changed after custody\n')
     with pytest.raises(H.oot_repo.OotRepoError, match='changed outside'):
         O.verify_turn_end(run, source, result['oot_commit'])
+
+
+def test_freeze_handoff_skips_the_post_turn_grade(tmp_path, monkeypatch):
+    from merlin_experiments.phase1 import joint_control
+
+    workspace = tmp_path / 'workspace'
+    source = workspace / 'submission'
+    source.mkdir(parents=True)
+    (source / 'manifest.yaml').write_text('name: independently-authored\n')
+    (workspace / 'qa').mkdir()
+    prior = {'n_required_development': 12, 'n_passed': 7}
+    (workspace / 'qa/verdict.json').write_text(json.dumps(prior))
+    run = tmp_path / 'run'
+    run.mkdir()
+    O.start(run, sandbox_roots=(workspace,))
+    monkeypatch.setattr(joint_control, 'selected', lambda: {'policy': {}})
+    left = [5.0]
+    monkeypatch.setattr(joint_control, 'remaining', lambda drain=False: left[0])
+    assert H.stop(run) == (None, None)  # before the freeze a turn is graded as before
+    with pytest.raises(ValueError, match='explicit operator'):
+        H.checkpoint(workspace, run, 3)
+    left[0] = 0.0
+    assert H.stop(run) == ('freeze', H.FREEZE)
+    result = H.checkpoint(workspace, run, 3)
+    assert result['status'] == 'ungraded_freeze_checkpoint' and result['stop_reason'] == H.FREEZE
+    assert result['all_pass'] is None and result['n_capsules'] == 0 and result['n_pending_development'] == 12
+    assert json.loads((run / 'qa_history/freeze_handoff_03_prior.json').read_text()) == prior
+    assert O.verify_turn_end(run, source, result['oot_commit'])['matched']
+    # An operator epoch stop keeps its own label even at the freeze.
+    (run / 'joint_epoch_stop.json').write_text(json.dumps({
+        'schema': 'merlin.joint_epoch_stop.v1', 'reason': 'reviewed library repair'}))
+    assert H.stop(run)[0] == 'epoch'

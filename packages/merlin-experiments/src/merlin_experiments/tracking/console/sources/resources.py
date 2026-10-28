@@ -163,10 +163,6 @@ def _core_rows(cores: list[dict], private: bool) -> list[dict[str, Any]]:
     return out
 
 
-#: Seconds between scans of ``/proc/locks`` for held gSIM slots (it can hold 10^5 lines).
-SLOT_SCAN_S = 5.0
-
-
 def _slot_dir(ctx) -> Path | None:
     """The gSIM slot directory: the launch's ``gsim-slots``, else the runner's ``MERLIN_GSIM_SLOT_ROOT``."""
     launch = ctx.experiment.get("launch_dir")
@@ -188,33 +184,31 @@ def _slot_dir(ctx) -> Path | None:
     return found
 
 
-def _held_locks(paths: list[Path]) -> int:
-    """How many of ``paths`` some process holds a lock on."""
-    keys = {}
+def _held_slots(paths: list[Path], proc_root: Path = Path("/proc")) -> int:
+    """Slots whose holder's own ``pid starttime`` line names a live process of that birth.
+
+    A gSIM holder writes the line on acquiring its slot and clears it before releasing, so this
+    reads no lock state at all (``/proc/locks`` stalled every lease operation on the host)."""
+    count = 0
     for path in paths:
-        try:
-            st = path.stat()
-        except OSError:
+        fields = (probe.read(path, 64) or b"").split()
+        if len(fields) != 2 or not all(field.isdigit() for field in fields):
             continue
-        keys[(st.st_dev, st.st_ino)] = path
-    return len(probe.locks(wanted=set(keys)))
+        row = probe.task_stat(int(fields[0]), proc_root=proc_root)
+        count += bool(row and row["start_ticks"] == int(fields[1]))
+    return count
 
 
 def _gsim_active(ctx, live: bool) -> int | None:
     """gSIM simulations holding a slot now (live), else the budget's recorded active admissions.
 
     The budget's ``active`` rows are admissions of the runner, whose pid outlives each simulation, so
-    a live count never comes from them: only a held slot lock is a simulation running."""
+    a live count never comes from them: only a slot named by its live holder is a simulation running."""
     experiment = ctx.experiment
     slots = _slot_dir(ctx) if live else None
     if slots is not None:
-        cached = ctx.state.get("gsim_held")
-        if cached and time.monotonic() - cached[0] < SLOT_SCAN_S:
-            return cached[1]
         paths = [Path(e.path) for e in scan_dir(slots, 512) if e.name.startswith("slot_") and e.name.endswith(".lock")]
-        held = _held_locks(paths)
-        ctx.state["gsim_held"] = (time.monotonic(), held)
-        return held
+        return _held_slots(paths)
     if live:
         return None
     budget = ctx.reader.document(Path(experiment["run_dir"]) / "joint_gsim_correctness_budget.json", limit=16 << 20)

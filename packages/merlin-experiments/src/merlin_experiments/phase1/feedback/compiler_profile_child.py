@@ -229,6 +229,12 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
         "merlin.targetgen.shared_pass_contract",
         "merlin.llvmlower.target_schedule",
         "merlin.llvmlower.device_target_passes",
+        "merlin_experiments.phase1.feedback.model_storage_completion",
+        "merlin.llvmlower.completed_host_storage",
+        "merlin.llvmlower.host_storage_policy",
+        "merlin.llvmlower.borrowed_arena",
+        "merlin.targetgen.source_composition_preferences",
+        "merlin.targetgen.owned_host_model_execution",
     )
     if library:
         names += (
@@ -307,6 +313,9 @@ def _owner_record(service):
 class ModelChildTransport:
     def __init__(self, *, fd, document, executor, boundary):
         self.fd, self.document, self.executor, self.boundary = fd, document, executor, boundary
+        from .model_storage_completion import ModelStorageReturn
+
+        self.storage_return = ModelStorageReturn(document['host_sources'], document.get('storage_completion_key'))
         self.compiler_library_selection = active_compiler_library()
         self.compiler_pass_selection = active_compiler_passes()
         from merlin.targetgen.checked_source_model_diagnostic import active_checked_source_diagnostic
@@ -368,12 +377,15 @@ class ModelChildTransport:
             if self.boundary.verify() != original["resources"]["boundary_sha256"]:
                 raise StageGateError("original model child kernel resource owner changed")
 
-    def verify_result(self, result):
+    def launched(self, process, command):
+        self.storage_return.launched(process, command)
+
+    def verify_result(self, result, *, completed_process=None):
         original = self.document
         self._verify_original()
         if result.get("original_compiler_child") != _receipt(original):
             raise StageGateError("model child did not complete under its original restored execution owner")
-        return result
+        return self.storage_return.verify_result(result, completed_process)
 
     def verify_checkpoint(self, receipt, *, worker):
         """Reopen parent custody for one closed case, never an entire batch."""
@@ -664,6 +676,7 @@ def _prepare_model_child(*, spec_path, environment, package_dir):
             if passes is not None
             else _closure(library=library is not None)
         ),
+        "storage_completion_key": os.urandom(32).hex(),
         "python": _pin(Path(sys.executable).resolve()),
         "work_root": str(_plain(spec_path).parent / "compiler"),
         "resources": None,
@@ -910,6 +923,9 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
             )
             if _owner_record(service) != owner:
                 raise StageGateError("model child original execution owner changed during setup")
+        from .model_storage_completion import signing_scope
+
+        execution.enter_context(signing_scope(document.get('storage_completion_key')))
         state = _RestoredChild(document, R.active_original_execution(), boundary)
         _RESTORED_ISSUED.add(state)
         token = _RESTORED_CHILD.set(state)
@@ -1078,7 +1094,10 @@ def run_model_grade(argv):
                 numeric_policy=spec.get("numeric_policy", runner._MODEL_NUMERIC_UNSET),
                 numeric_policy_identity=spec.get("numeric_policy_identity"),
             )
-    if child_receipt is not None:
-        res[snapshot_model_child.FIELD if snapshot_execution.selected() else "original_compiler_child"] = child_receipt
+        if child_receipt is not None:
+            res[snapshot_model_child.FIELD if snapshot_execution.selected() else "original_compiler_child"] = child_receipt
+            from .model_storage_completion import export_return
+
+            export_return(res)
     Path(sa.model_grade_out).write_text(json.dumps(res, indent=2), encoding="utf-8")
     return 0

@@ -109,7 +109,8 @@ def test_plan_pins_exact_public_clients_and_mapping_owner(corpus_run):
         f"phase1:client:{module}": str(module_source_path(module).resolve())
         for module in (*public_client_modules(), "merlin.targetgen.tool_registry")
     }
-    assert len(actual) == 6
+    assert len(actual) == 8
+    assert "phase1:client:merlin_experiments.phase1.tools.result_details" in actual
 
 
 @pytest.mark.parametrize("change", ["bytes", "resolution", "missing_pin", "membership"])

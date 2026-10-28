@@ -169,6 +169,37 @@ def test_joint_periodic_qa_never_constructs_physical_ladder(campaign, tmp_path, 
     assert len(seen) == 1 and result["all_pass"] is False
 
 
+def test_joint_development_grade_stops_admitting_at_the_freeze(campaign, tmp_path, monkeypatch):
+    from merlin_experiments.phase1.context import InvocationContext
+    from merlin_experiments.phase1.feedback import qa
+    J.start()
+    root = tmp_path / "capsules"
+    (root / "small").mkdir(parents=True)
+    (root / "small" / "capsule.yaml").write_text("name: small\nrequired_oracle_tiers: [L2]\n")
+    context = InvocationContext(tmp_path, tmp_path / "descriptor", tmp_path, "fixture",
+                                tmp_path, tmp_path, tmp_path, ())
+    monkeypatch.setattr(qa, "_loop_target_sim_via", lambda _: ("fixture", ""))
+    monkeypatch.setattr(qa.CR, "qa_loop_adapters", lambda *a, **k: {"L2": "functional"})
+    monkeypatch.setattr(qa, "_per_capsule_from_results", lambda *a, **k: {})
+    policy = J.selected()["policy"]
+    freeze = 1000.0 + policy["duration_s"] - policy["drain_s"]
+    reasons = []
+
+    def grade(*args, **kwargs):
+        defer = kwargs["defer_pending"]
+        for now in (freeze - 1, freeze, freeze + policy["drain_s"]):
+            monkeypatch.setattr(J.time, "time", lambda now=now: now)
+            reasons.append(defer())
+        return {"n_capsules": 1, "n_passed": 0, "per_capsule": []}
+
+    monkeypatch.setattr(qa.CG, "grade", grade)
+    qa.run("submission", str(root), tmp_path / "runs", {"public"}, False, 1, context=context,
+           defer_pending=lambda: None, defer_running=False)
+    # Before the freeze the caller's own admission decides; from the freeze on, no new development
+    # case starts inside the final window.
+    assert reasons == [None, "joint campaign freeze/drain boundary reached", "joint campaign deadline reached"]
+
+
 def test_external_policy_uses_dynamic_pool_without_changing_strict_limits(tmp_path):
     path = tmp_path / "policy.json"
     value = {"version": 1, "duration_s": 18000, "final_model_s": 3600,

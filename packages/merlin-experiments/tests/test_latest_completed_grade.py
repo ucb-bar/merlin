@@ -149,3 +149,112 @@ def test_a_file_written_before_row_labels_keeps_its_rows_attributed(tmp_path):
     assert rows == {"t9": {"token": "200", "graded_source_sha256": "new", "graded_at": "at-new"},
                     "t0": {"token": "100", "graded_source_sha256": "legacy", "graded_at": "at-legacy"},
                     "t1": {"token": "100", "graded_source_sha256": "legacy", "graded_at": "at-legacy"}}
+
+
+def _rows_grade(source, rows):
+    return {"per_capsule": [{"capsule": name, "status": status, "tiers": {"L2": status}} for name, status in rows],
+            "graded_source_sha256": source, "graded_at": f"at-{source}", "snapshot_current": True,
+            "n_passed": sum(status == "pass" for _, status in rows)}
+
+
+def _latest(ws):
+    document = json.loads((ws / "qa" / CG.FILENAME).read_text())
+    return document, {row["capsule"]: row for row in document["per_capsule"]}
+
+
+def test_per_case_rows_merge_without_regressing_other_grades_and_keep_their_own_source(tmp_path):
+    ws = tmp_path / "ws"
+    (ws / "qa").mkdir(parents=True)
+    write = lambda path, doc: publish(path, doc)  # noqa: E731
+    CG.publish(ws, _rows_grade("s100", [("a", "pass"), ("b", "fail"), ("c", "pass")]), 100, write)
+    # Grade 200 is still running: its finished cases arrive one by one.
+    assert CG.record_rows(ws, [{"capsule": "b", "status": "pass", "tiers": {"L2": "pass"}}], 200,
+                          graded_source_sha256="s200")
+    assert not CG.record_rows(ws, [{"capsule": "c", "status": "gated", "tiers": {}}], 200,
+                              graded_source_sha256="s200")  # no result never replaces a result
+    # An older grade's long case lands late: it fills nothing a newer result holds.
+    assert not CG.record_rows(ws, [{"capsule": "a", "status": "fail", "tiers": {"L2": "fail"}}], 50,
+                              graded_source_sha256="s50")
+    document, rows = _latest(ws)
+    assert document[CG.POINTER]["token"] == "100" and document["n_passed"] == 2  # top level: the completed grade
+    assert {name: row[CG.ORIGIN]["graded_source_sha256"] for name, row in rows.items()} == {
+        "a": "s100", "b": "s200", "c": "s100"}
+    assert rows["b"]["status"] == "pass" and rows["a"]["status"] == "pass"
+    assert document["snapshot_current"] is False  # mixed sources are never one snapshot's result
+    assert document[CG.SUMMARY]["passed"] == 3
+    # Grade 200 completes: its own document replaces the rows it published case by case.
+    CG.publish(ws, _rows_grade("s200", [("b", "pass"), ("c", "fail")]), 200, write)
+    document, rows = _latest(ws)
+    assert document[CG.POINTER]["token"] == "200" and rows["c"]["status"] == "fail"
+    assert rows["a"][CG.ORIGIN]["token"] == "100"
+    assert not CG.record_rows(ws, [{"capsule": "b", "status": "fail", "tiers": {"L2": "fail"}}], 200,
+                              graded_source_sha256="s200")  # a completed grade's rows are final
+
+
+def test_per_case_rows_wait_for_a_first_completed_grade(tmp_path):
+    ws = tmp_path / "ws"
+    (ws / "qa").mkdir(parents=True)
+    assert not CG.record_rows(ws, [{"capsule": "a", "status": "pass", "tiers": {"L2": "pass"}}], 100,
+                              graded_source_sha256="s100")
+    assert not (ws / "qa" / CG.FILENAME).exists()
+
+
+
+def _python_submission(ws):
+    source = ws / "submission"
+    source.mkdir(parents=True, exist_ok=True)
+    (source / "manifest.yaml").write_text("language: python\ncommands:\n  parse:\n    argv: [python3, compiler.py]\n")
+    (source / "compiler.py").write_text("print(1)\n")
+    return source
+
+
+def test_each_row_is_reconciled_with_the_current_source_at_publication(tmp_path):
+    from merlin_experiments.phase1.feedback import reconcile
+
+    ws = _ws(tmp_path)
+    source = _python_submission(ws)
+    first = reconcile.current_reach(ws)
+    CG.publish(ws, {**_grade("s1", current=False, rows=2), "graded_reach_sha256": first}, 100, _live_writer([]))
+    latest = json.loads((ws / "qa" / CG.FILENAME).read_text())
+    assert {row[CG.ORIGIN]["currency"] for row in latest["per_capsule"]} == {reconcile.CURRENT}
+    assert latest[CG.SUMMARY]["current_passed"] == 2 and latest[CG.SUMMARY]["older_version_rows"] == 0
+
+    (source / "NOTES.md").write_text("an inert note\n")  # unreadable by any command: still current
+    CG.record_rows(ws, [{"capsule": "t9", "status": "fail", "tiers": {"L2": "fail"}}], 150,
+                   graded_source_sha256="s1b", reach_sha256=first)
+    latest = json.loads((ws / "qa" / CG.FILENAME).read_text())
+    assert latest[CG.SUMMARY]["older_version_rows"] == 0
+
+    (source / "compiler.py").write_text("print(2)\n")  # the entry every case reaches
+    second = reconcile.current_reach(ws)
+    CG.record_rows(ws, [{"capsule": "t1", "status": "fail", "tiers": {"L2": "fail"}}], 200,
+                   graded_source_sha256="s2", reach_sha256=second)
+    latest = json.loads((ws / "qa" / CG.FILENAME).read_text())
+    rows = {row["capsule"]: row for row in latest["per_capsule"]}
+    assert rows["t1"]["status"] == "fail" and rows["t1"][CG.ORIGIN]["currency"] == reconcile.CURRENT
+    assert rows["t0"]["status"] == "pass" and rows["t0"][CG.ORIGIN]["currency"] == reconcile.OLDER  # evidence kept
+    assert rows["t0"][CG.ORIGIN]["graded_source_sha256"] == "s1"  # never re-attributed
+    summary = latest[CG.SUMMARY]
+    assert summary["current_passed"] == 0 and summary["older_version_passed"] == 1
+    assert summary["older_version_rows"] == 2 and summary["current_rows"] == 1
+
+    (source / "compiler.py").write_text("print(1)\n")  # reverted: the first snapshot's bytes are current again
+    assert not CG.record_rows(ws, [{"capsule": "t1", "status": "fail", "tiers": {"L2": "fail"}}], 200,
+                              graded_source_sha256="s2", reach_sha256=second)  # an identical row is no change
+    CG.record_rows(ws, [{"capsule": "t5", "status": "pass", "tiers": {"L2": "pass"}}], 210,
+                   graded_source_sha256="s1c", reach_sha256=first)
+    rows = {row["capsule"]: row for row in json.loads((ws / "qa" / CG.FILENAME).read_text())["per_capsule"]}
+    assert rows["t0"][CG.ORIGIN]["currency"] == reconcile.CURRENT
+    assert rows["t1"][CG.ORIGIN]["currency"] == reconcile.OLDER
+
+
+def test_rows_without_a_reach_reconcile_only_on_identical_source(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import reconcile
+
+    rows = [{"capsule": "a", "graded": {"graded_source_sha256": "same"}},
+            {"capsule": "b", "graded": {"graded_source_sha256": "other"}}]
+    reconcile.label(rows, reach=None, source="same")
+    assert [row["graded"]["currency"] for row in rows] == [reconcile.CURRENT, reconcile.OLDER]
+    unknown = [{"capsule": "c", "graded": {"graded_source_sha256": "x"}}]
+    reconcile.label(unknown, reach=None, source=None)
+    assert "currency" not in unknown[0]["graded"]  # no identity of the current source: nothing claimed

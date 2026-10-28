@@ -17,6 +17,36 @@ _COMMON = {'capsule', 'target', 'required_tiers', 'compiler_sha256', 'submission
     'lowered_ir_sha256', 'kernel_object_sha256'}
 
 
+# WHICH toolchain entries bind a boundary. Every declared hardware pin (the RTL, generator and ISA-header
+# revisions the simulator and the ELF build are made from) changes what executes, so each must match.
+# Merlin's own commit does not: the executed bytes are already pinned field by field above (source IR,
+# both command buffers, lowered IR, kernel object, and per engine the ELF and harness), and the judge is
+# pinned by the instrument digest on the ledger record, which hashes the grading path's bytes. That is
+# the rule `merlin.targetgen.tier_cache.execution_identity` keys certificates on. Keying on the commit
+# instead discarded every gSIM pass whose Spike observation was recorded before an unrelated commit landed
+# on the checkout enclosing a frozen export (fresh6: 142 of 315 promoted passes). The commit stays in the
+# recorded observation as provenance; it just does not decide whether two observations are one boundary.
+_PROVENANCE_ONLY_TOOLCHAIN = frozenset({'merlin'})
+
+
+def _execution_toolchain(shas):
+    if not isinstance(shas, dict):
+        return shas
+    return {k: v for k, v in shas.items() if not (isinstance(k, str) and k.lower() in _PROVENANCE_ONLY_TOOLCHAIN)}
+
+
+def boundary_key(common):
+    """``common`` as compared between two observations: every field, toolchain minus provenance-only."""
+    if not isinstance(common, dict):
+        return common
+    return dict(common, toolchain_shas=_execution_toolchain(common.get('toolchain_shas')))
+
+
+def same_boundary(left, right):
+    """Whether two observations' ``common`` sections describe the same executed and graded boundary."""
+    return isinstance(left, dict) and isinstance(right, dict) and boundary_key(left) == boundary_key(right)
+
+
 def _sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -100,7 +130,7 @@ def join(left, right):
     common = left.get('common')
     if not isinstance(common, dict) or set(common) != _COMMON:
         raise ValueError('tier observation boundary is incomplete')
-    if common != right.get('common'):
+    if not same_boundary(common, right.get('common')):
         raise ValueError('compiler, capsule, input, numerical or emitted-kernel boundary changed')
     required = common.get('required_tiers')
     if (not isinstance(required, list) or any(not isinstance(t, str) for t in required)
@@ -143,7 +173,7 @@ def reusable_certificate(certificate, loop, *, name, source, instrument):
                 or any(current.get(key) != old[key] for key in ('execution_digest', 'elf_sha256', 'harness_sha256'))
                 or not isinstance(boundary, dict) or set(boundary) != _COMMON
                 or boundary.get('capsule') != name or boundary.get('submission_digest') != source
-                or any(boundary[key] != old['common'][key]
+                or any(boundary_key(boundary)[key] != boundary_key(old['common'])[key]
                        for key in _COMMON - {'compiler_sha256', 'submission_digest'})):
             return None
         for pin in (current.get('result_sha256'), boundary.get('compiler_sha256')):
@@ -187,12 +217,33 @@ def resolve(state, name, requested_identity, row, *, source_identity_verified):
     actual = row.get('execution_digest')
     if (proof['common']['capsule'] != name
             or proof['common']['submission_digest'] != pending.get('digest')
-            or proof['common']['submission_digest'] != loop.get('digest')
-            or loop.get('tier_boundary') != proof['L2']
             or proof['L2']['execution_digest'] != requested_identity
             or proof['L3']['execution_digest'] != actual):
         return None
+    previous = P._slots_ro(state, name, 'L3').get(actual)
+    if (isinstance(previous, dict) and previous.get('status') == 'fail'
+            and previous.get('instrument') == pending.get('instrument')):
+        return None  # A draining pass cannot hide this exact physical counterexample.
     entry = dict(pending, execution_digest=actual, tier_boundary=proof['L3'], boundary_join=proof)
+    if loop.get('digest') == pending.get('digest'):
+        if loop.get('tier_boundary') != proof['L2']:
+            return None
+    else:
+        # A passed re-observation can replace the L2 slot under the SAME ELF
+        # while an older physical job drains. Keep the old pending boundary as
+        # its source authority; never attribute this completion to the new source.
+        # Require the existing strict cross-source join, including current ELF,
+        # harness, kernel/input boundary and independently selected loop judge.
+        from merlin.targetgen.oracle_schedule import valid_execution_digest
+
+        loop_instrument = pending.get('loop_instrument')
+        if not valid_execution_digest(loop_instrument) or loop.get('instrument') != loop_instrument:
+            return None
+        reuse = reusable_certificate(dict(entry, status='pass'), loop, name=name,
+                                     source=loop.get('digest'), instrument=pending.get('instrument'))
+        if reuse is None:
+            return None
+        entry['completion_loop_reobservation'] = reuse
     # A link is NOT a pass for the Spike ELF, nor readable by tier_cache.lookup.
     old = dict(pending, status='joined', certified_execution_digest=actual)
     P._slots(state, name, 'L3')[requested_identity] = old

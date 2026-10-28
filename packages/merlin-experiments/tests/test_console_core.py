@@ -269,3 +269,19 @@ def test_serve_follows_a_relaunch_that_reuses_the_run_directory(machine, monkeyp
     shutil.copytree(run_dir.with_name(run_dir.name + ".archived"), run_dir)
     server.scan()
     assert server.collector is not first and server.sent == {}  # a new run at the same path starts fresh
+
+
+def test_live_gsim_slots_are_counted_from_their_holders_own_lines(tmp_path):
+    # The holder writes "pid starttime" into its locked slot file and clears it before releasing;
+    # the console never reads the kernel lock table to find it.
+    from merlin_experiments.tracking.console.sources import resources
+
+    proc = tmp_path / "proc"
+    fields = ["S", "1", *(["0"] * 17), "777", *(["0"] * 20)]
+    (proc / "41").mkdir(parents=True)
+    (proc / "41" / "stat").write_text(f"41 (holder) {' '.join(fields)}\n")
+    slots = [tmp_path / f"slot_{index}.lock" for index in range(4)]
+    for path, line in zip(slots, ("41 777\n", "41 778\n", "", "99 777\n"), strict=True):
+        path.write_text(line)
+    # Only the line naming pid 41 at its own birth counts; a reused pid, an empty and a dead holder do not.
+    assert resources._held_slots(slots, proc_root=proc) == 1

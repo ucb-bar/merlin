@@ -41,7 +41,6 @@ def fixture(tmp_path):
     write(proc / '200/task/201/stat', stat(201, 20))
     write(proc / '200/task/201/status', 'Cpus_allowed_list:\t0\n')
     write(proc / 'stat', 'cpu0 100 0 0 100 0 0 0 0\ncpu1 0 0 0 200 0 0 0 0\n')
-    write(proc / 'locks', '')
     write(pool / 'cpu-0.lock', '')
     return task, proc, cgroup, run, pool
 
@@ -68,14 +67,12 @@ def test_core_delta_is_not_last_cpu_thread_delta_and_private_redaction(tmp_path,
 
 def test_inode_lock_and_setup_records_are_distinct_from_cpu_usage(tmp_path):
     task, proc, cgroup, run, pool = fixture(tmp_path)
-    st = (pool / 'cpu-0.lock').stat()
-    write(proc / 'locks', f'1: FLOCK ADVISORY WRITE 100 {os.major(st.st_dev):02x}:{os.minor(st.st_dev):02x}:{st.st_ino} 0 EOF\n')
     stage = run / '_qa_work/profile_package_execution/setup-timing/a.json'
     write(stage, json.dumps({'schema': 'merlin.compiler_setup_timing.v1', 'pid': 100, 'source_sha256': 'PRIVATE',
                             'stages': [{'stage': 'policy', 'status': 'running', 'started_ns': 1}]}))
     sampler = Sampler(task, proc_root=proc, cgroup_root=cgroup)
     sample = sampler.sample()
-    assert sample['cores'][0]['lease_owner_pids'] == [100]
+    assert sample['cores'][0]['lease_owner_pids'] == []
     assert sample['cores'][0]['measured_utilization_pct'] is None
     job = next(j for j in sample['jobs'] if j['kind'] == 'setup_stage')
     assert job['tid'] is None and job['capsule'] is None and job['source_sha256'] is None
@@ -198,22 +195,39 @@ def test_sleeping_thread_does_not_paint_idle_core_as_busy_unknown():
     assert dominant(row) == {} and activity(row) == 'unknown'
 
 
-def test_one_lock_inventory_serves_every_caller_until_it_ages(tmp_path, monkeypatch):
-    # A run's read leases put 10^5 entries in /proc/locks and each read() of it re-walks the list:
-    # re-reading it for every caller of every refresh stalled the console for a minute per refresh.
-    from merlin_experiments.tracking import terminal_probe as P
+def test_held_slots_and_tickets_come_from_probes_never_from_a_lock_table(tmp_path):
+    # A run's read leases put 10^5 entries in /proc/locks, and each read of it takes the kernel's
+    # global file-lock rwsem for write, stalling every lease operation on the host.
+    import fcntl
+    import sys
 
-    proc = tmp_path / 'proc'
-    clock = [100.]
-    monkeypatch.setattr(P.time, 'monotonic', lambda: clock[0])
-    line = '1: FLOCK ADVISORY WRITE {pid} 08:01:77 0 EOF\n'
-    write(proc / 'locks', line.format(pid=10))
-    key = (os.makedev(8, 1), 77)
-    assert P.locks(proc)[key][0]['pid'] == 10
-    write(proc / 'locks', line.format(pid=20))
-    clock[0] += P.LOCKS_MAX_AGE_S / 2
-    assert P.locks(proc, wanted={key})[key][0]['pid'] == 10
-    assert P.locks(proc, max_age_s=0)[key][0]['pid'] == 20
-    write(proc / 'locks', line.format(pid=30))
-    clock[0] += P.LOCKS_MAX_AGE_S + 1
-    assert P.locks(proc)[key][0]['pid'] == 30
+    task, proc, cgroup, run, pool = fixture(tmp_path)
+    table = os.path.normpath(str(proc / 'locks'))
+    write(proc / 'locks', '1: LEASE  ACTIVE    READ  4242 08:01:77 0 EOF\n' * 1000)
+    ticket = pool / 'waiters/2-1234-100-101-deadbeef.wait'
+    write(ticket, '{"cpus": [0, 1]}')
+    opened = []
+
+    def watch(event, args):
+        if event == 'open' and args and isinstance(args[0], (str, bytes, os.PathLike)):
+            if os.path.normpath(os.fsdecode(args[0])) == table:
+                opened.append(args[0])
+
+    sys.addaudithook(watch)
+    holders = [os.open(pool / 'cpu-0.lock', os.O_RDWR), os.open(ticket, os.O_RDWR)]
+    try:
+        for fd in holders:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        sample = Sampler(task, proc_root=proc, cgroup_root=cgroup).sample()
+        leases = [j for j in sample['jobs'] if j['kind'] == 'cpu_lease']
+        assert [(j['cpu'], j['pid']) for j in leases] == [(0, None)]
+        waiters = [j for j in sample['jobs'] if j['kind'] == 'cpu_waiter']
+        assert [j['state'] for j in waiters] == ['locked_wait_ticket']
+        # The probe released at once: the holders can drop and retake their locks.
+        for fd in holders:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    finally:
+        for fd in holders:
+            os.close(fd)
+    assert opened == []

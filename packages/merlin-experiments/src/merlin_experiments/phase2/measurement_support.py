@@ -435,12 +435,25 @@ def collect_linked_counter_passes(
     return result
 
 
+def raw_command_buffer(artifact) -> Mapping | None:
+    """The raw buffer ``artifact`` carries, embedded or stored; ``None`` when absent or refused.
+
+    A stored buffer whose bytes no longer match its digest is refused (treated as absent), so every
+    axis that needs it stays unestablished rather than priced from changed bytes."""
+    from merlin.perf.command_buffer_store import CommandBufferIntegrityError, load_command_buffer
+
+    try:
+        return load_command_buffer(artifact)
+    except CommandBufferIntegrityError:
+        return None
+
+
 def resource_bindings(measurement: Mapping) -> dict[str, dict]:
     """Name only resource axes established by the artifacts actually carried by this run."""
     out: dict[str, dict] = {}
     work = measurement.get("work_volume")
     command_artifact = measurement.get("command_buffer_artifact")
-    command = command_artifact.get("command_buffer") if isinstance(command_artifact, Mapping) else None
+    command = raw_command_buffer(command_artifact)
     derived_work = work_from_command_buffer(command) if isinstance(command, Mapping) else None
     if (
         isinstance(work, Mapping)

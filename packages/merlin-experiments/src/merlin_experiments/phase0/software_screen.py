@@ -118,6 +118,9 @@ def screen_entry(
     if (
         kind == "model"
         or op in {"model", "micro_model"}
+        # A typed tensor program states its operations in its nodes; the entry carries no per-node
+        # observation, so its written program's per-operation screen decides it.
+        or (capsule is None and op == "component_program")
         or entry.get("micro_model") is True
         or entry.get("materialized_capture")
         or compound_program

@@ -188,6 +188,69 @@ def segmented_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="se
     return result, text
 
 
+def retained_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="separate",
+                      retained_operand="lhs", input_pipeline=False):
+    """Full-K panel plus optional causal readouts, including a single primitive K tile.
+
+    The target must supply its own reduction/readout declarations. These test-only
+    laws permit the neutral executor; they confer no hardware support. All modes
+    use the same block and original operands. No second accumulator window or
+    segmented-K premise is required.
+    """
+    from dataclasses import replace
+
+    from merlin.compile.scheduling.compact_dense import emit_compact_dense
+    from merlin.compile.scheduling.dense_panel_pipeline import (
+        DenseReadyReadoutAdmission,
+        dense_retained_compute_order,
+        dense_retained_operand_hoists,
+    )
+    from merlin.compile.scheduling.dense_ready_readout import schedule_dense_pipeline
+    from merlin.compile.scheduling.loop_schedule import propose_loop_transforms
+    from merlin.compile.scheduling.schedule_ir import (
+        dense_schedule_text,
+        make_dense_schedule_plan,
+        parse_dense_schedule_plan,
+    )
+
+    if readout_mode not in ("separate", "ready"):
+        raise ValueError("full-K recipe supports separate or ready readouts")
+    if block.k != p.tiles[1]:
+        raise ValueError("full-K recipe requires the entire reduction panel")
+    if input_pipeline and (retained_operand != "weight" or readout_mode != "ready"):
+        raise ValueError("advancing-input recipe needs invariant weights and causal readouts")
+    order = ("m", "n") if retained_operand == "lhs" else ("n", "m")
+    law = example()._laws(a, block, segmented=False)
+    if batch or readout_mode == "ready":
+        law = replace(law, max_issued_readouts=block.m * block.n, pending_readouts=2,
+                      readout_configuration="ordered_snapshot_before_store_issue")
+    raw = emit_compact_dense(p, block, s, a, name=name, dtypes=dtypes(), outer_order=order)
+    transforms = dense_retained_operand_hoists(raw, a, role=retained_operand)
+    transforms += dense_retained_compute_order(
+        propose_loop_transforms(raw, transforms), a, order=("k", "n", "m"))
+    plan = make_dense_schedule_plan(
+        p, r, s, a, source_identity=SOURCE, dtypes=dtypes(), static_budget=128,
+        block_tiles=(block.m, block.k, block.n), outer_order=order,
+        loop_transforms=transforms, pipeline_kind="retained_full_k", pipeline_prefetch=False,
+    )
+    text = dense_schedule_text(plan)
+    readout = None if readout_mode == "separate" else DenseReadyReadoutAdmission(
+        a.configuration_identity, a.numerical_policy_identity,
+        "test-only-ready-readout-completion", "test-only-store-snapshot", block.m * block.n, 2,
+    )
+    if input_pipeline:
+        readout = replace(readout, disjoint_load_qualification_identity="test-only-disjoint-load-ready-conjunction")
+    result = schedule_dense_pipeline(
+        p, r, s, a, name=name, dtypes=dtypes(), source_identity=SOURCE,
+        external_buffers_disjoint=True, schedule_plan=parse_dense_schedule_plan(text),
+        pipeline_admission=law, batch_readouts=batch,
+        readout_mode=readout_mode, readout_admission=readout,
+        input_pipeline_row_offset=block.m * block.k * p.tile_m if input_pipeline else None,
+    )
+    result.materialize_scf().verify()
+    return result, text
+
+
 def pick(blocks, accepts):
     """The legal block with the fewest requested loads among those a pipeline's premise accepts."""
     return example()._pick(blocks, accepts)

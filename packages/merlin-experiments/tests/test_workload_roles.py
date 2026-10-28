@@ -1,9 +1,8 @@
 """Search classification changes rankings and automatic work, never gates."""
 import pytest
-
-from merlin_experiments.phase1.workload_roles import classify
 from merlin_experiments.phase1.feedback import idle_performance as I
 from merlin_experiments.phase1.feedback import joint_performance_priority as P
+from merlin_experiments.phase1.workload_roles import classify
 
 
 def member(size=16, **changes):
@@ -16,6 +15,7 @@ def test_small_scalability_control_never_becomes_primary_by_cohort_alone():
     assert value['workload_role'] == 'diagnostic_control'
     assert value['performance_priority'] == 'diagnostic'
     assert not value['engine_authorization_changed']
+    assert 'no routine performance tuning' in value['optimization_goal']
     assert classify(member(512))['performance_priority'] == 'primary'
 
 
@@ -66,7 +66,9 @@ def test_newest_empty_primary_roster_does_not_fall_back_to_an_older_control():
 
 def test_response_and_grade_headroom_keep_controls_out_of_optimization_lists(tmp_path):
     import json
-    from merlin_experiments.phase1.feedback import performance_brief as B, performance_headroom as H
+
+    from merlin_experiments.phase1.feedback import performance_brief as B
+    from merlin_experiments.phase1.feedback import performance_headroom as H
     # Both are numerically valid with deliberately worse tiny-control headroom.
     (tmp_path / 'PUBLIC_CAPABILITIES.json').write_text(json.dumps(dict(
         schema='merlin.public_capability_inventory.v1', members={
@@ -79,3 +81,28 @@ def test_response_and_grade_headroom_keep_controls_out_of_optimization_lists(tmp
     for result in (B.build(rows, workspace=tmp_path), H.build(tmp_path, {'per_capsule': rows})):
         assert [row['test_case'] for row in result['largest_headroom']] == ['kernel']
         assert [row['test_case'] for row in result['diagnostic_controls']] == ['control']
+
+
+
+def test_missing_roles_never_enqueue_idle_optimization_or_rank_headroom(tmp_path):
+    import json
+
+    from merlin_experiments.phase1.feedback import performance_headroom as H
+
+    verdict = dict(joint_test_selection=dict(performance_cohorts={'primary': ['unknown']}),
+                   per_capsule=[dict(capsule='unknown', tiers={'L2': 'pass'}, performance=dict(
+                       status='PROVISIONAL', complete_event_accounting=True, estimated_whole_soc_cycles=10000,
+                       structural_roofline={'structural_compute_floor_cycles': 10}))])
+    names, status = I._cohort_l2([verdict])
+    assert names == [] and status == {'unknown': 'pass'}
+    block = H.build(tmp_path, verdict)
+    assert block['largest_headroom'] == []
+    assert block['classification_needed'] == {'count': 1, 'cases': ['unknown']}
+    assert block['diagnostic_controls'][0]['test_case'] == 'unknown'
+    result = P.summarize(verdict['per_capsule'], cohorts={
+        'primary': ['unknown'], 'correctness_regression': [], 'calibration_diagnostics': []})
+    assert result['comparison_groups'] == [] and result['classification_needed'] == ['unknown']
+    # Merely present inventory without declared roles does not infer a search role.
+    (tmp_path / 'PUBLIC_CAPABILITIES.json').write_text(json.dumps({
+        'schema': 'merlin.public_capability_inventory.v1', 'members': {'unknown': {}}}))
+    assert H.build(tmp_path, verdict)['largest_headroom'] == []

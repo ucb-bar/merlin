@@ -34,6 +34,7 @@ INTEGER_CONTRACTION_BOUND_OPS = frozenset(
         "resident_reuse",
         "host_island_seam",
         "residual_seam",
+        "sibling_feed",
         "conv2d",
         "scope_chain",
         "attention_qk",
@@ -218,6 +219,40 @@ def _integer_reference_bound(entry: dict, cap: dict) -> dict:
                 {"region": "contraction_0", "partial_sum_bound": first},
                 {"region": "contraction_1", "partial_sum_bound": second},
             ],
+        }
+
+    if op == "sibling_feed":
+        from merlin.targetgen.corpus_sibling_feed import merged_operand
+
+        members = [{"region": region, "partial_sum_bound": bounded_matmul(attrs["lhs"], attrs[weight])}
+                   for region, weight in (("gate", "gate_weight"), ("up", "up_weight"))]
+        merged = merged_operand(cap, leaves, apply_epilogue=CG._apply_epilogue, narrow=CG._narrow_to_dtype)
+        down = leaves[attrs["down_weight"]]
+        if merged.shape[1] != down.shape[0]:
+            raise ValueError("sibling-feed down projection reduction extent differs from the merged operand")
+        result = integer_partial_sum_bound(
+            semantics, reduction_extent=down.shape[0], lhs_values=[int(v) for v in merged.data],
+            rhs_values=[int(v) for v in down.data],
+        )
+        if result["status"] == "may_overflow":
+            from merlin.targetgen.operation_numerics import integer_matrix_partial_sum_bound
+
+            result = integer_matrix_partial_sum_bound(
+                semantics, lhs_shape=merged.shape, rhs_shape=down.shape,
+                lhs_values=merged.data, rhs_values=down.data,
+            )
+        if result["status"] != "proven_safe":
+            raise ValueError(f"integer mathematical golden cannot qualify selected internal MAC width: {result}")
+        members.append({"region": "down", "partial_sum_bound": result})
+        bounds = [row["partial_sum_bound"] for row in members]
+        return {
+            "status": "proven_safe",
+            "scope": "both sibling contractions and the down projection on the concrete inputs and the derived "
+                     "merged operand; not full-kernel execution",
+            "bound": max(bound["bound"] for bound in bounds),
+            "signed_positive_limit": bounds[0]["signed_positive_limit"],
+            "mac_result_bits": bounds[0]["mac_result_bits"],
+            "members": members,
         }
 
     def name(role, declared):
@@ -590,6 +625,8 @@ _DECLARED_BLOCKS = (
     # (merlin_experiments.phase0.case_redundancy / performance_demand).
     "performance_scope",
     "performance_demand",
+    # The chain a connected case was derived from (merlin_experiments.phase0.chain_demand).
+    "chain_demand",
 )
 
 

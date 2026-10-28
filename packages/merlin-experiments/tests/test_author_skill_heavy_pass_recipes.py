@@ -21,12 +21,18 @@ SKILL = "heavy-pass-recipes"
 SCRIPTS = (
     "recipe_support",
     "dense_readout_recipe",
+    "projection_recipe",
+    "source_observer_recipe",
     "long_k_recipe",
     "conv_window_recipe",
+    "conv_epoch_recipe",
+    "dense_epoch_recipe",
     "spatial_chain_recipe",
     "library_pipeline_policy",
+    "counted_emission_recipe",
+    "composition_routes",
 )
-REFERENCES = ("dense-recipes.md", "convolution.md", "composition.md", "pipeline-policy.md")
+REFERENCES = ("dense-recipes.md", "convolution.md", "composition.md", "source-composition.md", "pipeline-policy.md")
 
 
 def _facts(tmp_path, *, edge=4, operand_rows=128, accumulator_rows=32):
@@ -47,7 +53,7 @@ def _facts(tmp_path, *, edge=4, operand_rows=128, accumulator_rows=32):
 
 
 def test_skill_is_generic_bounded_and_points_at_its_files():
-    assert_generic_skill(SKILL, allowed_imports=frozenset({"merlin", "recipe_support"}))
+    assert_generic_skill(SKILL, allowed_imports=frozenset({"merlin", "recipe_support", "xdsl", "yaml"}))
     fields, body = front_matter(SKILL)
     assert len(body.encode()) <= BODY_LIMIT
     for script in SCRIPTS[1:]:
@@ -59,6 +65,7 @@ def test_skill_is_generic_bounded_and_points_at_its_files():
         "dense_ready_readout",
         "dense_segmented_pipeline",
         "convolution_exploration",
+        "DensePanelEpochLaw",
         "rolling_window",
         "rolling_spatial",
         "composition_catalog",
@@ -101,6 +108,63 @@ def test_readout_recipe_overlaps_readout_on_an_accumulator_bound_gemm():
         < variants["batched_readouts"]["epoch_drains"]
         < (variants["segmented"]["epoch_drains"])
     )
+
+
+@pytest.mark.parametrize("shape", [(7, 4, 19), (7, 13, 19), (3, 7, 11)])
+def test_full_k_readout_recipe_accepts_one_tile_and_ragged_reductions(shape, monkeypatch):
+    from merlin.compile.scheduling import dense_ready_readout
+
+    recipe = load_script(SKILL, "dense_readout_recipe")
+    captured = []
+    original = dense_ready_readout.schedule_dense_pipeline
+
+    def consume(*args, **kwargs):
+        result = original(*args, **kwargs)
+        captured.append(result)
+        return result
+
+    monkeypatch.setattr(dense_ready_readout, "schedule_dense_pipeline", consume)
+    report = recipe.recipe(shape=shape, family="retained")
+    assert report["family"] == "retained" and report["block"][1] == report["tiles"][1]
+    assert report["accumulator_window_rows"] == report["accumulator_rows"]
+    variants = report["variants"]
+    assert set(variants) == {"retained", "batched_readouts", "ready_readout"}
+    # The recipe independently executes every actual projected kernel against
+    # the original product; the changed frontier must also reach executable IR.
+    assert len({row["calls"]["compute"] for row in variants.values()}) == 1
+    assert variants["ready_readout"]["causal_ready_epochs"] > 0
+    assert variants["ready_readout"]["epoch_drains"] <= variants["batched_readouts"]["epoch_drains"]
+    from test_dense_pipeline_recipe import _llvm
+
+    for result in captured:
+        module, declarations = _llvm(result)
+        assert {"lhs_load", "weight_load", "preload", "compute", "store"} <= declarations.keys()
+        assert len(tuple(module.walk())) < 1500
+    assert report["cycles"].startswith("UNKNOWN")
+
+
+def test_full_k_readout_recipe_refuses_when_original_panel_does_not_fit():
+    recipe = load_script(SKILL, "dense_readout_recipe")
+    with pytest.raises(SystemExit, match="no capacity-legal block"):
+        recipe.recipe(shape=(7, 4 * 17, 19), family="retained")
+    # This choice does not relax the independent segmented-K prerequisite.
+    with pytest.raises(SystemExit, match="one K tile"):
+        recipe.recipe(shape=(7, 4, 19))
+
+
+@pytest.mark.parametrize("shape", [(7, 4, 19), (19, 7, 11), (13, 13, 7)])
+def test_readout_recipe_pipelines_only_advancing_inputs_with_invariant_weights(shape):
+    report = load_script(SKILL, "dense_readout_recipe").recipe(
+        shape=shape, family="retained", input_pipeline=True)
+    assert report["retained_operand"] == "weight"
+    rows = report["variants"]
+    assert rows["input_pipeline"]["input_pipeline"]
+    assert rows["input_pipeline"]["epoch_drains"] < rows["ready_readout"]["epoch_drains"]
+    assert len({v["calls"]["compute"] for v in rows.values()}) == 1
+    assert len({v["calls"]["store"] for v in rows.values()}) == 1
+    # Each variant already executed every original product; no target timing
+    # conclusion is inferred from the changed drains or integer interpreter.
+    assert report["cycles"].startswith("UNKNOWN")
 
 
 def test_long_k_recipe_derives_both_bounds_and_segments_past_the_first(tmp_path):
@@ -312,6 +376,22 @@ def test_the_acceptance_check_refuses_outputs_that_do_not_show_the_mechanism():
     conv["routes"]["border_rows"]["candidates"][0]["input_transfers"] = 100
     assert "per-pixel gather" in H._conv(conv)
     assert "declined" not in (H._long_k({"retained_full_k": "applies"}) or "declined")
+    dense = {"epoch_law": "admitted", "cases": [{"routes": {"drained": {}, "epochs": {}},
+                                                "comparison": {"drains_before": 42, "drains_after": 3}}]}
+    assert H._dense_epochs(dense) is None
+    dense["cases"][0]["comparison"]["drains_after"] = 42
+    assert "removed no drain" in H._dense_epochs(dense)
+    assert H._dense_epochs(dict(dense, epoch_law="UNKNOWN flag")) is None
+    assert "both realized" in H._dense_epochs({"cases": [{"routes": {"drained": {}}}]})
+    assert ("dense_epoch_recipe.py", H._dense_epochs, ["--small"]) in H.RECIPES
     assert H._policy(
         {"policy": [{"class": "a", "status": "incumbent_retained"}, {"class": "b", "status": "incumbent_retained"}]}
     )
+
+
+def test_projection_recipe_keeps_counted_member_pointers_and_shared_input():
+    out = load_script(SKILL, "projection_recipe").recipe()
+    assert out["facts"].startswith("synthetic") and out["pointer_checks"] > 0
+    assert out["shared_input_requested_bytes"] == out["shape"][0] * out["shape"][1]
+    assert out["original_output_boundaries"][-1] == sum(out["shape"][2])
+    assert not out["mapping"]["dynamic_command_expansion"] and out["timing"] == "UNKNOWN"

@@ -101,10 +101,14 @@ class RunOptions:
     author_token_unbounded: bool = False
     offline_actions: str = ""
     compiler_execution: str = "profile_strict_v1"
+    sandbox_reuse: str = "persistent"
     compiler_access: str = "selected_library"
     full_compiler_root: str = ""
     full_compiler_manifest: str = ""
     full_compiler_manifest_sha256: str = ""
+    reference_experiments: str = ""
+    reference_experiments_sha256: str = ""
+    reference_experiments_tasks: str = "on"
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -123,18 +127,22 @@ def build_parser(
     environment = os.environ if environ is None else environ
     ap = argparse.ArgumentParser()
     ap.add_argument("--offline-actions", default="", metavar="PUBLIC_JSON",
-                    help="run an explicit public construction action study through ordinary admission, sandbox and brokers; no provider")
+                    help="run an explicit public construction action study through ordinary admission, "
+                         "sandbox and brokers; no provider")
     ap.add_argument("--author-token-target", type=int, default=None,
                     help="soft aggregate input (including cache) plus output token target across all authors; "
                          "joint campaigns default to 40000000, not a hard token cap")
     ap.add_argument("--author-token-reserve", type=int, default=None,
                     help="portion of the author token target reserved for integration/repairs; joint default 8000000")
     ap.add_argument("--author-token-admission", action="store_true",
-                    help="opt in to managed author token admission/checkpointing using live all-thread usage; not a hard token cap")
+                    help="opt in to managed author token admission/checkpointing using live all-thread usage; "
+                         "not a hard token cap")
     ap.add_argument("--author-token-turn-allowance", type=int, default=None,
-                    help="planning allowance per outstanding author turn; requires token admission; default 1000000, not a provider bound")
+                    help="planning allowance per outstanding author turn; requires token admission; "
+                         "default 1000000, not a provider bound")
     ap.add_argument("--author-token-unbounded", action="store_true",
-                    help="select no aggregate author token target, even for a joint campaign; excludes the other token options")
+                    help="select no aggregate author token target, even for a joint campaign; "
+                         "excludes the other token options")
     ap.add_argument(
         "--validation-scope", choices=("full", "capsules"), default="full",
         help="explicit completion scope; capsules exports a frozen compiler before external model validation",
@@ -407,7 +415,13 @@ def build_parser(
     ap.add_argument(
         "--compiler-execution", choices=("profile_strict_v1", "snapshot_external_v1"),
         default="profile_strict_v1",
-        help="compiler execution boundary; snapshot_external_v1 uses an isolated compiler snapshot and external grading",
+        help="compiler execution boundary; snapshot_external_v1 uses an isolated compiler snapshot "
+             "and external grading",
+    )
+    ap.add_argument(
+        "--sandbox-reuse", choices=("persistent", "per_call"), default="persistent",
+        help="persistent: each compiler worker reuses one sandbox, reset between calls; "
+             "per_call: a new sandbox for every compiler call",
     )
     ap.add_argument("--compiler-access", choices=("selected_library", "full_compiler"), default="selected_library")
     ap.add_argument("--full-compiler-root", default="", help="operator-selected public compiler source tree")
@@ -544,6 +558,16 @@ def build_parser(
         help="run ordinary sealed native readiness, then stop before authoring or completion",
     )
     ap.add_argument("--corpus-seal", default="", help="explicit reviewed corpus seal; required with --preflight-only")
+    ap.add_argument(
+        "--reference-experiments", default="", metavar="SELECTION_JSON",
+        help="explicit operator-selected reference experiment feedback; requires its exact SHA256",
+    )
+    ap.add_argument("--reference-experiments-sha256", default="", help="SHA256 of the reference experiment selection")
+    ap.add_argument(
+        "--reference-experiments-tasks", default="on", choices=("on", "off"),
+        help="off keeps the selection's reference analysis but serves none of its prior tasks "
+        "(no REFERENCE_EXPERIMENTS.json)",
+    )
     return ap
 
 

@@ -75,7 +75,7 @@ def test_prepare_writes_compact_scoped_guidance(tmp_path):
     text = S.prepare(ws, run, repo=REPO, inventory=inventory)
     result = json.loads((ws / 'OPTIMIZATION_SUGGESTIONS.json').read_text())
     assert state(result, 'requant_proof') == 'supported'
-    assert len(result['all_mechanisms']) == 52  # 45 original + 7 scheduling-library mechanisms
+    assert len(result['all_mechanisms']) == len(catalog()['mechanisms'])
     assert len(result['starter_sets']) == 9
     assert len(result['suggestions']) <= 12 and len(result['discovery']) <= 12
     assert 'pass order' in text and 'no workload IR' in text

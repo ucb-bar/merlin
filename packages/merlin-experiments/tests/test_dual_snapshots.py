@@ -4,13 +4,29 @@ import threading
 import time
 from types import SimpleNamespace
 
-from merlin.targetgen.capsule_scheduling import run_pipelined
+import pytest
 from merlin_experiments.phase1.feedback import dual_snapshots
 from merlin_experiments.phase1.feedback.grade_progress import SnapshotProgress
+
+from merlin.targetgen.capsule_scheduling import run_pipelined
 
 
 def _guard():
     return SimpleNamespace(current=lambda: True, reason=lambda: None)
+
+
+def test_queued_admission_counts_only_observed_deferrals_not_missing_rosters():
+    assert dual_snapshots._queued_admission({})['deferred_count_observed'] is None
+    summary = dual_snapshots._queued_admission({
+        'admission_retirement_reason': 'automatic snapshot no longer owns publication',
+        'verdict': {'per_capsule': [
+            {'status': 'pass'},
+            {'failure_category': 'ADMISSION_DEFERRED',
+             'failure_detail': 'snapshot owner stopped new admission'},
+            {'failure_category': 'ADMISSION_DEFERRED',
+             'failure_detail': 'snapshot admission deadline reached'},
+            {'failure_category': 'GATED', 'failure_detail': 'independent gate closed'}]}})
+    assert summary['deferred_count_observed'] == 2 and summary['retired_count_observed'] == 1
 
 
 def test_new_snapshot_runs_while_old_drains_and_late_progress_cannot_clobber(tmp_path):
@@ -85,6 +101,114 @@ def test_two_owner_limit_and_stop_joins_both_without_cancelling(tmp_path):
     assert not manager.is_alive()
     owners = list((run / '_qa_work/background_snapshot_owners').glob('*.json'))
     assert len(owners) == 2 and all(json.loads(p.read_text())['state'] == 'complete' for p in owners)
+
+
+def test_a_newer_snapshot_grade_stops_the_older_ones_admission_and_its_started_case_drains(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv('MERLIN_CAPSULE_ORDER', 'legacy')
+    ws, run = tmp_path / 'ws', tmp_path / 'run'
+    (ws / 'submission').mkdir(parents=True)
+    (ws / 'submission/manifest.yaml').write_text('{}')
+    stop, newer_ran = threading.Event(), threading.Event()
+    source, results = ['a' * 64], {}
+
+    def first(tick):
+        def execute(cap, parallel):
+            if cap['name'] == 'slow':
+                source[0] = 'b' * 64  # the author edits while this grade is still admitting
+                assert newer_ran.wait(3), 'the edited source was not graded beside the admitting grade'
+            return {'capsule': cap['name'], 'status': 'pass'}
+
+        rows = run_pipelined([{'name': 'slow'}, {'name': 'x'}, {'name': 'y'}], execute, max_workers=1)
+        results['old'] = {row['capsule']: row for row in rows}
+        stop.set()
+        return {'per_capsule': rows}
+
+    def second(tick):
+        rows = run_pipelined([{'name': 'x'}], lambda cap, n: {'capsule': cap['name'], 'status': 'pass'},
+                             max_workers=1)
+        results['new'] = {row['capsule']: row for row in rows}
+        newer_ran.set()
+        return {'per_capsule': rows}
+
+    dual_snapshots.run(ws, run, stop, interval_s=0, first_grade=first, grade=second,
+                       source_identity=lambda: source[0], poll_s=.002)
+    old, new = results['old'], results['new']
+    assert new['x']['status'] == 'pass'
+    assert old['slow']['status'] == 'pass'  # the started case drains on its own snapshot
+    # Workers go to the newest compiler: the older grade admits nothing more.
+    for name in ('x', 'y'):
+        assert old[name]['status'] == 'gated' and old[name]['admission_deferred'] is True
+        assert old[name]['failure']['detail'] == 'snapshot owner stopped new admission'
+    owners = sorted((json.loads(p.read_text()) for p in
+                     (run / '_qa_work/background_snapshot_owners').glob('*.json')), key=lambda x: x['tick'])
+    assert [owner['source'] for owner in owners] == ['a' * 64, 'b' * 64]
+    queued = owners[0]['queued_admission']
+    assert queued['retirement_reason'] == dual_snapshots.SUPERSEDED and queued['retired_count_observed'] == 2
+    assert owners[1]['queued_admission']['retirement_reason'] is None
+
+
+@pytest.mark.parametrize('changed_source', [False, True])
+def test_successor_never_retires_an_older_admission_and_preserves_running_result(tmp_path, monkeypatch,
+                                                                                 changed_source):
+    from merlin.targetgen import capsule_scheduling as scheduling
+
+    # Close the first window deterministically after two members actually started.
+    clock = [0.0]
+    monkeypatch.setattr(scheduling, 'time', SimpleNamespace(monotonic=lambda: clock[0]))
+    monkeypatch.setenv('MERLIN_CAPSULE_ORDER', 'legacy')
+    ws, run = tmp_path / 'ws', tmp_path / 'run'
+    (ws / 'submission').mkdir(parents=True)
+    (ws / 'submission/manifest.yaml').write_text('{}')
+    stop, running, release, gate, drained = (threading.Event() for _ in range(5))
+    source = ['a' * 64]
+    started, completed = [], []
+
+    def first(tick):
+        def execute(cap, parallel):
+            name = cap['name']
+            started.append(name)
+            if name == 'running':
+                running.set()
+                assert release.wait(3), 'successor never released the original running member'
+            elif name == 'close_window':
+                assert running.wait(3)
+                if changed_source:
+                    source[0] = 'b' * 64
+                clock[0] = 2.0
+            completed.append(name)
+            return {'capsule': name, 'status': 'pass'}
+
+        rows = run_pipelined([{'name': name} for name in ('running', 'close_window', 'held')],
+            execute, max_workers=2, admission_window_s=1,
+            can_start=lambda cap: cap['name'] != 'held' or gate.is_set(),
+            admission_hold=lambda cap: cap['name'] == 'held')
+        drained.set()
+        return {'per_capsule': rows}
+
+    def successor(tick):
+        assert running.is_set() and not drained.is_set()
+        gate.set()  # Legal now; the original owner's window closed by its own deadline, not by this grade.
+        release.set()
+        assert drained.wait(3)
+        stop.set()
+        return {'all_pass': False}
+
+    dual_snapshots.run(ws, run, stop, interval_s=0, first_grade=first, grade=successor,
+                       source_identity=lambda: source[0], poll_s=.002)
+    assert started == ['running', 'close_window']
+    assert completed == ['close_window', 'running']
+    owners = sorted((json.loads(p.read_text()) for p in
+                     (run / '_qa_work/background_snapshot_owners').glob('*.json')), key=lambda x: x['tick'])
+    assert len(owners) == 2 and all(row['state'] == 'complete' for row in owners)
+    old, new = owners
+    assert old['error'] is None and old['source'] == 'a' * 64
+    assert new['source'] == ('b' if changed_source else 'a') * 64
+    queued = old['queued_admission']
+    assert queued['superseded_by'] == {'token': new['token'], 'source': new['source']}
+    assert queued['retirement_reason'] is None  # a newer owner (an edit) never stops this snapshot
+    assert queued['deferred_count_observed'] == 1 and queued['retired_count_observed'] == 0
+    assert new['queued_admission']['deferred_count_observed'] is None
 
 
 def test_stale_live_verdict_is_ignored_but_owned_archive_is_retained(tmp_path, monkeypatch):
@@ -354,3 +478,133 @@ def test_a_third_owner_needs_plentiful_free_slots(monkeypatch):
     monkeypatch.setenv("MERLIN_BACKGROUND_MAX_OWNERS", "4")
     monkeypatch.setenv("MERLIN_BACKGROUND_EXTRA_OWNER_FREE_SLOTS", "10")
     assert D.max_owners(9, 20) == 2 and D.max_owners(10, 20) == 4
+
+
+def _quiet_workspace(tmp_path, monkeypatch, *, quiet_s):
+    from merlin_experiments.phase1.feedback import source_quiet
+
+    monkeypatch.setenv('MERLIN_GRADE_QUIET_S', str(quiet_s))
+    monkeypatch.setenv('MERLIN_GRADE_QUIET_MAX_DELAY_S', '30')
+    changed = [time.time() - 600]  # the newest edit; the stat walk itself is covered in test_grade_source_quiet
+    monkeypatch.setattr(source_quiet, 'latest_change_epoch', lambda root: changed[0])
+    ws, run = tmp_path / 'ws', tmp_path / 'run'
+    (ws / 'submission').mkdir(parents=True)
+    (ws / 'submission/manifest.yaml').write_text('{}')
+    return ws, run, changed
+
+
+def _manage(ws, run, stop, grade, identity, *, interval_s):
+    manager = threading.Thread(target=lambda: dual_snapshots.run(
+        ws, run, stop, interval_s=interval_s, first_grade=grade, grade=grade, source_identity=identity,
+        poll_s=.01))
+    manager.start()
+    return manager
+
+
+def test_an_edit_after_the_admission_stopped_is_graded_once_quiet_not_at_the_cadence(tmp_path, monkeypatch):
+    ws, run, changed = _quiet_workspace(tmp_path, monkeypatch, quiet_s=0.3)
+    stop, release, started, reads = threading.Event(), threading.Event(), [], []
+    source = ['a' * 64]
+
+    def identity():
+        reads.append(time.monotonic())
+        return source[0]
+
+    def grade(tick):
+        started.append(time.monotonic())
+
+        def execute(cap, parallel):  # admitted at once, then drains: the admission has stopped
+            assert release.wait(5)
+            return {'capsule': cap['name'], 'status': 'pass'}
+
+        run_pipelined([{'name': f'case{len(started)}'}], execute, max_workers=2)
+        return {'all_pass': False}
+
+    manager = _manage(ws, run, stop, grade, identity, interval_s=3600)
+    try:
+        deadline = time.monotonic() + 3
+        while not started and time.monotonic() < deadline:
+            time.sleep(.01)
+        time.sleep(.5)
+        assert len(started) == 1
+        # Unchanged source and metadata: no read of the source between grades.
+        quiet_reads = len(reads)
+        time.sleep(.3)
+        assert len(reads) == quiet_reads
+        edited = time.monotonic()
+        source[0], changed[0] = 'b' * 64, time.time()
+        while len(started) < 2 and time.monotonic() < edited + 3:
+            time.sleep(.01)
+        assert len(started) == 2, 'the edit waited for the 3600 s cadence'
+        assert 0.25 <= started[1] - edited < 2  # after the quiet period, not before
+    finally:
+        release.set()
+        stop.set()
+        manager.join(5)
+    assert not manager.is_alive()
+
+
+def test_an_edit_while_a_grade_admits_waits_for_the_cadence(tmp_path, monkeypatch):
+    monkeypatch.setenv('MERLIN_CAPSULE_ORDER', 'legacy')
+    ws, run, changed = _quiet_workspace(tmp_path, monkeypatch, quiet_s=0.05)
+    stop, release, started = threading.Event(), threading.Event(), []
+    source = ['a' * 64]
+
+    def grade(tick):
+        started.append(tick)
+
+        def execute(cap, parallel):
+            if cap['name'] == 'slow':
+                source[0], changed[0] = 'b' * 64, time.time()  # edited while 'x' still waits for admission
+                assert release.wait(5)
+            return {'capsule': cap['name'], 'status': 'pass'}
+
+        run_pipelined([{'name': 'slow'}, {'name': 'x'}], execute, max_workers=1)
+        return {'all_pass': False}
+
+    manager = _manage(ws, run, stop, grade, lambda: source[0], interval_s=3600)
+    try:
+        time.sleep(1.0)
+        assert len(started) == 1  # one development grade admits at a time
+    finally:
+        release.set()
+        stop.set()
+        manager.join(5)
+    assert not manager.is_alive()
+
+
+def test_superseded_grades_that_only_drain_do_not_hold_a_newer_grade_back(tmp_path, monkeypatch):
+    monkeypatch.setenv('MERLIN_CAPSULE_ORDER', 'legacy')
+    ws, run = tmp_path / 'ws', tmp_path / 'run'
+    (ws / 'submission').mkdir(parents=True)
+    (ws / 'submission/manifest.yaml').write_text('{}')
+    stop, release = threading.Event(), threading.Event()
+    edits, source, started = iter(['b', 'c', 'd']), ['a' * 64], []
+
+    def grade(tick):
+        started.append(source[0])
+
+        def execute(cap, parallel):
+            if cap['name'] == 'slow':
+                source[0] = next(edits, source[0][0]) * 64  # the author edits during each grade
+                assert release.wait(5)
+            return {'capsule': cap['name'], 'status': 'pass'}
+
+        run_pipelined([{'name': 'slow'}, {'name': 'queued'}], execute, max_workers=1)
+        return {'all_pass': False}
+
+    manager = _manage(ws, run, stop, grade, lambda: source[0], interval_s=0)
+    try:
+        deadline = time.monotonic() + 3
+        while len(started) < 4 and time.monotonic() < deadline:
+            time.sleep(.01)
+        # Three superseded grades still drain their started case (no slot pool: a two-owner limit).
+        assert [s[0] for s in started] == ['a', 'b', 'c', 'd']
+    finally:
+        release.set()
+        stop.set()
+        manager.join(5)
+    assert not manager.is_alive()
+    owners = sorted((json.loads(p.read_text()) for p in
+                     (run / '_qa_work/background_snapshot_owners').glob('*.json')), key=lambda x: x['tick'])
+    assert [o['queued_admission']['retirement_reason'] for o in owners[:3]] == [dual_snapshots.SUPERSEDED] * 3

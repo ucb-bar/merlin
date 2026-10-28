@@ -58,7 +58,8 @@ def classify(member, *, selection=None):
     return dict(workload_role=role, role_basis=basis,
                 performance_priority='primary' if role in PRIMARY else 'diagnostic',
                 optimization_goal=('reduce complete elapsed cycles after correct execution' if role in PRIMARY
-                                   else 'pass and retain matching evidence; optimize only as a diagnostic'),
+                                   else ('pass, detect regressions and retain calibration evidence; '
+                                         'no routine performance tuning')),
                 engine_authorization_changed=False)
 
 
@@ -73,8 +74,8 @@ def filter_primary(cohorts, roles):
 def workspace_roles(workspace):
     """Read only the staged public planning inventory, never result labels.
 
-    Legacy consumers without a role-bearing inventory retain their diagnostic
-    view. A prospective role-bearing inventory treats absent cases as unranked.
+    Consumers without a role-bearing inventory retain diagnostics only.
+    Missing cases need classification before entering performance rankings.
     """
     path = Path(workspace) / 'PUBLIC_CAPABILITIES.json'
     if not path.is_file() or path.is_symlink() or path.stat().st_size > 16 << 20:

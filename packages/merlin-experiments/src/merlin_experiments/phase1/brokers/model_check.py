@@ -29,6 +29,40 @@ _GROUP = re.compile(r"[A-Za-z0-9_.@-]+\Z")
 REPORT_SCHEMA = "merlin.model_check.report.v1"
 
 
+#: Modules the full-mode child loads under the model2MLIR capture interpreter. Package manifest
+#: validation imports jsonschema lazily, once per kernel, so an interpreter without it refuses
+#: every kernel of every model while the run itself looks healthy.
+FULL_CHILD_IMPORTS = ("merlin_experiments.phase1.brokers.model_check_worker", "jsonschema", "referencing")
+_PROBE = "from merlin_experiments.phase1.brokers.model_check import import_probe; import_probe()"
+_READY: set[str] = set()
+
+
+def import_probe() -> None:
+    """Import every full-mode child dependency in this interpreter; raise on the first missing one."""
+    import importlib
+
+    for name in FULL_CHILD_IMPORTS:
+        importlib.import_module(name)
+
+
+def capture_import_failure(python: str, *, cwd: Path | None = None, env: dict | None = None,
+                           timeout_s: float = 300) -> str | None:
+    """None when ``python`` can import the full-mode child's dependencies, else the reason."""
+    if python in _READY and env is None:
+        return None
+    try:
+        done = subprocess.run([python, "-c", _PROBE], cwd=cwd, env=env, capture_output=True,
+                              text=True, timeout=timeout_s)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"{type(exc).__name__}: {exc}"
+    if done.returncode == 0:
+        if env is None:
+            _READY.add(python)
+        return None
+    lines = [line for line in done.stderr.splitlines() if line.strip()]
+    return lines[-1] if lines else f"import probe exited {done.returncode}"
+
+
 def _safe_report(report: object) -> bool:
     text = json.dumps(report, ensure_ascii=True).lower()
     return not any(token in text for token in (
@@ -110,6 +144,11 @@ def execute_visible(ws: Path, request: dict, *, timeout_s: int = 7200, stop=None
             models = bundle / "configuration" / "models.yaml"
             if not models.is_file():
                 return {"status": "error", "error": "full model bundle has no bound models configuration"}
+            missing = capture_import_failure(python, cwd=ws)
+            if missing is not None:
+                return {"status": "error", "model": model, "source_sha256": digest,
+                        "error": f"model2MLIR capture interpreter {python} cannot run the model-check "
+                                 f"child ({missing}); install the missing package into that environment"}
         # A subprocess cannot inherit context-local compiler owners. Carry the
         # original reviewed library and profile explicitly, as selfcheck does.
         from merlin.targetgen.compiler_library import active_compiler_library

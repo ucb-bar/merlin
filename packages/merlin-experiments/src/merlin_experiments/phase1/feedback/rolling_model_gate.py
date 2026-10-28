@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 
-from . import model_gate_vouchers as vouchers, promotion, tier_boundary_join
+from . import model_gate_vouchers as vouchers, promotion, setup_timing, tier_boundary_join
 
 _LIVE = ContextVar("rolling_model_gate_completion_owner", default=None)
 
@@ -48,7 +48,7 @@ def _qualified(path, capsule, scope, live_l2=None):
         return None
     if live_l2 is not None:
         _reopen_live_l2(live_l2)
-        if (live_l2["common"] != right["common"]
+        if (not tier_boundary_join.same_boundary(live_l2["common"], right["common"])
                 or live_l2["tier_result"] != tiers["L2"]):
             raise ValueError("live L2 numerical/product boundary changed before full completion")
         joined = {"schema": "private_live_l2_complete_grade.v1", "common": right["common"],
@@ -96,6 +96,13 @@ def _reopen_live_l2(record):
                 raise ValueError("live L2 retained input differs from original producer")
         elif I._pin(Path(pin["path"])) != pin:
             raise ValueError("live L2 invocation dependency or output changed")
+
+
+@setup_timing.measured("capture_tier")
+def needs_original_execution(name, tier):
+    """Whether :func:`capture_tier` needs this tier executed now (a carried verdict retains no custody)."""
+    store = _LIVE.get()
+    return store is not None and tier == "L2" and name in store.gate.denominator
 
 
 def capture_tier(name, tier, result, *, generated, package_dir, shas):

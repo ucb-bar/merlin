@@ -389,7 +389,7 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
 
     def grade(*args, **kwargs):
         (ws / "submission/manifest.yaml").write_text("language: python\nrevision: replaced\n")
-        assert kwargs["defer_pending"]() == "background source superseded"
+        assert kwargs["defer_pending"]() is None  # an edit never closes admission; the verdict is labelled
         assert kwargs["defer_running"] is False
         return {
             "per_capsule": [
@@ -410,7 +410,7 @@ def test_fast_grade_archives_unknown_rows_without_overwriting_current_feedback(t
     assert archived["graded_request_sha256"] == result["graded_request_sha256"]
 
 
-def test_bounded_snapshot_stops_new_admission_after_edits_and_honors_deadline(tmp_path, monkeypatch):
+def test_bounded_snapshot_keeps_admitting_after_edits_and_honors_deadline(tmp_path, monkeypatch):
     from merlin_experiments.phase1 import joint_control
 
     ws = tmp_path / "workspace"
@@ -421,62 +421,52 @@ def test_bounded_snapshot_stops_new_admission_after_edits_and_honors_deadline(tm
                                       finish_bounded_snapshot=True)
     source.write_text("new")
     monkeypatch.setattr(joint_control, "remaining", lambda: 10)
-    assert guard.reason() == "background source superseded"
-    assert guard.pending_reason() == "background source superseded"
+    monkeypatch.setattr(joint_control, "stop_reason", lambda: None)
+    assert guard.reason() == "background source superseded"  # a label for the verdict ...
+    assert guard.pending_reason() is None  # ... never a reason to stop admitting
     assert not guard.current()
     monkeypatch.setattr(joint_control, "remaining", lambda: 0)
     assert guard.pending_reason() == "joint campaign deadline reached"
-    assert not guard.current()
     monkeypatch.setattr(joint_control, "remaining", lambda: 10)
     monkeypatch.setattr(joint_control, "stop_reason", lambda: "reviewed evaluator epoch handoff")
     assert guard.pending_reason() == "reviewed evaluator epoch handoff"
     assert guard.reason() == "background source superseded"
 
 
-def test_pending_admission_ignores_inert_notes_but_stops_for_real_dependencies(tmp_path, monkeypatch):
+def test_reconcile_identity_ignores_inert_notes_and_in_tree_builds_but_not_real_dependencies(tmp_path):
     import shutil
-    from merlin_experiments.phase1 import joint_control
-    from merlin_experiments.phase1.feedback import promotion
+    from merlin_experiments.phase1.feedback import reconcile
 
-    monkeypatch.setenv("MERLIN_BACKGROUND_FINISH_SNAPSHOT", "1")
-    monkeypatch.setattr(joint_control, "remaining", lambda: 100)
-    monkeypatch.setattr(joint_control, "stop_reason", lambda: None)
     ws = tmp_path / "workspace"
     source = ws / "submission"
     source.mkdir(parents=True)
     (source / "manifest.yaml").write_text(
-        "language: python\ncommands:\n  parse:\n    argv: [python3, compiler.py]\n"
-        "components:\n  parse: [compiler.py, helper.py]\n")
-    (source / "compiler.py").write_text("import helper\nprint(helper.VALUE)\n")
+        "language: python\ncommands:\n  parse:\n    argv: [python3, compiler.py]\n")
+    (source / "compiler.py").write_text("import helper\nprint(helper.VALUE, open('tuning.json').read())\n")
     (source / "helper.py").write_text("VALUE=1\n")
+    (source / "tuning.json").write_text("{}")  # a data file read at a literal path: JSON is reachable code
     (source / "NOTES.md").write_text("plan one\n")
     candidate = tmp_path / "snapshot" / "submission"
     shutil.copytree(source, candidate)
-    guard = admission.BackgroundGuard(ws, tmp_path, None, admission.source_digest(ws),
-                                      finish_bounded_snapshot=True)
+    guard = admission.BackgroundGuard(ws, tmp_path, None, admission.source_digest(ws))
     guard.bind_snapshot(candidate)
-    original = promotion.submission_digests
-    calls = []
-    def counted(path):
-        calls.append(path)
-        return original(path)
-    monkeypatch.setattr(promotion, "submission_digests", counted)
-    assert guard.pending_reason() is None
-    assert guard.pending_reason() is None
-    assert len(calls) == 1  # unchanged refill does not hash source or acquire a CPU lease
+    snapshot = guard.reach_identity()
+    assert snapshot is not None and reconcile.current_reach(ws) == snapshot
     (source / "NOTES.md").write_text("plan two\n")
-    assert guard.pending_reason() is None
-    assert not guard.current()  # no reattribution of old results to changed bytes
-    old = (source / "helper.py").stat()
+    # An in-tree build the snapshot copy never carries: its JSON report is no dependency of any case.
+    (source / "build/tiny").mkdir(parents=True)
+    (source / "build/tiny/report.json").write_text('{"cycles": 1}')
+    assert reconcile.current_reach(ws) == snapshot
+    (source / "loose.json").write_text("{}")  # an unreached file a loader could still read: unattributed
+    assert reconcile.current_reach(ws) != snapshot
+    (source / "loose.json").unlink()
     (source / "helper.py").write_text("VALUE=2\n")
-    os.utime(source / "helper.py", ns=(old.st_atime_ns, old.st_mtime_ns))
-    assert guard.pending_reason() == "background source superseded"
-    (source / "helper.py").write_text("VALUE=1\n")
-    assert guard.pending_reason() == "background source superseded"  # closed queue stays closed
+    assert reconcile.current_reach(ws) != snapshot
+    assert guard.pending_reason() is None
     assert (candidate / "helper.py").read_text() == "VALUE=1\n"
 
 
-def test_pending_dependency_binding_uses_copied_snapshot_and_unknown_falls_back(tmp_path):
+def test_an_undecomposable_snapshot_has_no_reach_and_never_closes_admission(tmp_path):
     import shutil
     ws = tmp_path / "workspace"
     source = ws / "submission"
@@ -488,10 +478,11 @@ def test_pending_dependency_binding_uses_copied_snapshot_and_unknown_falls_back(
     guard = admission.BackgroundGuard(ws, tmp_path, None, admission.source_digest(ws))
     (source / "config.json").write_text('{"mode": 2}')
     guard.bind_snapshot(candidate)
-    assert guard.pending_reason() == "background source superseded"
+    assert guard.reach_identity() is None and guard.case_reach({"name": "x"}) is None
+    assert guard.pending_reason() is None
 
 
-def test_real_dependency_change_drains_running_queue_without_dropping_obligations(tmp_path, monkeypatch):
+def test_a_dependency_change_mid_grade_drops_no_case(tmp_path, monkeypatch):
     import shutil
     from merlin_experiments.phase1 import joint_control
 
@@ -513,7 +504,8 @@ def test_real_dependency_change_drains_running_queue_without_dropping_obligation
     finished = []
     def run(cap, parallel):
         assert active_defer_probe() is None  # admitted work is not interrupted
-        started.wait(timeout=2)
+        if cap['name'] in ('a', 'b'):
+            started.wait(timeout=2)
         if cap['name'] == 'a':
             program.write_text('value=2\n')
             changed.set()
@@ -522,8 +514,6 @@ def test_real_dependency_change_drains_running_queue_without_dropping_obligation
     rows = run_pipelined([{'name': n, 'kind': 'operator'} for n in ('a', 'b', 'c', 'd')],
                         run, max_workers=2, defer_pending=guard.pending_reason, defer_running=False,
                         on_complete=lambda row: finished.append(row['capsule']))
-    assert set(finished) == {'a', 'b'}
-    assert len(rows) == 4
-    assert all(row['status'] == 'pass' for row in rows[:2])
-    assert all(row['status'] == 'gated' and row['background_deferred'] for row in rows[2:])
+    assert set(finished) == {'a', 'b', 'c', 'd'}  # admission continued on the immutable snapshot
+    assert all(row['status'] == 'pass' for row in rows)
     assert (candidate / 'compiler.py').read_text() == 'value=1\n'

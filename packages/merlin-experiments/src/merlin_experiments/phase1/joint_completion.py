@@ -27,8 +27,8 @@ def complete(prepared, *, verdict, rounds, workflow_conformant, final_coverage=N
     prepared.verify_inputs()
     if destination.exists():
         raise ValueError("joint completion already froze a submission")
-    shutil.copytree(source, destination, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
-    from .run_inputs import strip_build_state
+    from .run_inputs import SNAPSHOT_IGNORED, strip_build_state
+    shutil.copytree(source, destination, ignore=shutil.ignore_patterns(*SNAPSHOT_IGNORED))
     strip_build_state(destination)
     digest = hash_tree(destination)["sha256"]
     for member in destination.rglob("*"):

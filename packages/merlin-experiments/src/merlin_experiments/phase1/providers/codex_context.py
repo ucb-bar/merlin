@@ -60,7 +60,12 @@ LIBRARY_INVENTORY_NOTE = (
     "offers (scheduling_capabilities, composition capabilities, catalogue mechanisms) and which of it your "
     "files import, plus a per-family table you keep current (used / tried-rejected with evidence / n/a). A "
     "slow self-check case with a matching library mechanism carries `optimization_next.library_pass`: "
-    "bottleneck, mechanism and a paste-ready A/B. Both are aids, not gates.")
+    "bottleneck, mechanism and a paste-ready A/B. A case whose declaration or IR chains a product into a "
+    "pool, readout epilogue or residual add, or shares an input among products, carries "
+    "`optimization_next.composition`: the composition-catalog route, its library symbol and a run command "
+    "(`python3 .agents/skills/heavy-pass-recipes/scripts/composition_routes.py --case NAME` lists them); "
+    "model and program cases also name `source_composition.json` options in "
+    "`optimization_next.source_composition_request`. All of these are aids, not gates.")
 _SWITCH = {"on": True, "off": False, "true": True, "false": False}
 
 

@@ -81,16 +81,37 @@ def test_final_pass_cannot_drop_failed_or_unmeasured_obligations():
     assert F._rollup({"groups": {"core": group}})["passed"] is True
 
 
-def test_withheld_native_passes_stay_counted_when_closure_fails():
+@pytest.mark.parametrize("veto", [
+    {"structural_evidence_all_pass": False}, {"numeric_all_exact": False}, {"gradeable": False},
+    {"functional_public_evidence": {}},
+])
+def test_group_veto_keeps_each_rows_native_verdict(veto):
     caps = [{"name": "a"}, {"name": "b"}]
     score, group = _score(["a", "b"]), F._capsule_group(caps)
     score["per_capsule"][1].update(status="fail")
-    score.update(structural_evidence_all_pass=False)
+    score.update(veto)
     F._apply_score(group, score)
     report = F._rollup({"groups": {"core": group}})
-    assert report["passed"] is False and report["n_passed"] == 0 and report["n_failed"] == 1
-    assert group["obligations"]["a"]["status"] == "skipped"
-    assert report["n_native_passed"] == 1 and report["n_closure_withheld"] == 1
+    # One failing case and a group veto keep the group and the coverage from passing ...
+    assert report["passed"] is False and group["passed"] is False and group["closure_vetoes"]
+    # ... but never turn the case that passed into an unexplained skip.
+    assert group["obligations"]["a"]["status"] == "pass"
+    assert report["n_passed"] == 1 and report["n_failed"] == 1
+    assert report["n_native_passed"] == 1 and report["n_closure_withheld"] == 0
+
+
+def test_passing_group_records_no_closure_veto():
+    group = F._capsule_group([{"name": "a"}, {"name": "b"}])
+    F._apply_score(group, _score(["a", "b"]))
+    assert group["passed"] is True and group["closure_vetoes"] == []
+
+
+def test_custody_failure_still_withholds_passes():
+    group = F._capsule_group([{"name": "a"}])
+    F._apply_score(group, _score(["a"]))
+    group["obligations"]["a"].update(status="skipped", reason="final input/compiler custody check failed")
+    report = F._rollup({"groups": {"core": group}})
+    assert report["n_passed"] == 0 and report["n_closure_withheld"] == 1
 
 
 @pytest.mark.parametrize("labels,engine,tier,no_oracle", [
@@ -167,6 +188,8 @@ def test_native_callback_requests_all_246_obligations_including_final_only(tmp_p
     assert len(report["final_only"]) == 6 and len(calls) == 5
     assert report["deadline_epoch"] == 43201
     assert report["rtl_qualified"] is False
+    # The fixture writes no executables: the after-coverage race check reports that, changing no row.
+    assert report["completion_order"]["status"] == "not_run" and report["passed"] is True
 
 
 def test_expired_deadline_keeps_complete_denominator_without_native_launch(tmp_path, monkeypatch):
@@ -176,6 +199,53 @@ def test_expired_deadline_keeps_complete_denominator_without_native_launch(tmp_p
     assert calls == []
     assert report["n_required"] == 246 and report["n_unfinished"] == 246
     assert report["passed"] is False and report["complete"] is False
+
+
+def test_visible_models_run_beside_scalability_and_programs_before_it(tmp_path, monkeypatch):
+    import threading
+
+    import merlin_experiments.phase1.joint_model_activation as JMA
+    from merlin_experiments.phase1.brokers import model_check as MC
+    from merlin_experiments.phase1.feedback import public_programs as PP
+
+    prepared, inputs, frozen, digest, calls = _native_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(PP, "selected", lambda context: (None, None, ["prog0"]))
+    monkeypatch.setattr(JMA, "grade_model_scope", lambda grade: grade)
+
+    def programs(frozen_, **kw):
+        calls.append(("programs", None))
+        return {"observed": {}, "expected_cases": ["prog0"], "requested_cases": ["prog0"]}
+
+    monkeypatch.setattr(PP, "_grade", programs)
+    model_started, scale_done = threading.Event(), threading.Event()
+    original_grade, original_model = CG.grade, MC.execute_visible
+
+    def grade(candidate, **kw):
+        if str(kw["capsules_root"]).endswith("cases"):
+            # The large suite runs after the programs, while the full models already execute.
+            assert model_started.wait(10)
+            assert ("programs", None) in calls
+            score = original_grade(candidate, **kw)
+            # The suite then exhausts the shared deadline ...
+            monkeypatch.setattr(F.joint_control, "remaining", lambda **k: 0)
+            scale_done.set()
+            return score
+        return original_grade(candidate, **kw)
+
+    def model(ws, request, **kw):
+        model_started.set()
+        return original_model(ws, request, **kw)
+
+    monkeypatch.setattr(CG, "grade", grade)
+    monkeypatch.setattr(MC, "execute_visible", model)
+    report = F.validate(prepared, inputs=inputs, frozen=frozen, compiler_sha256=digest)
+    assert scale_done.is_set()
+    assert calls[0] == ("capsules", str(tmp_path / "core"))
+    # ... but the model that started beside it still closed its rows.
+    assert ("model", "resnet50") in calls
+    assert report["groups"]["models"]["obligations"]["resnet50/model"]["status"] == "pass"
+    assert report["groups"]["scalability"]["obligations"]["scale0"]["status"] == "pass"
+    assert all(row["status"] != "pending" for row in report["groups"]["models"]["obligations"].values())
 
 
 def test_budget_exhausted_during_core_cancels_following_work_without_new_clock(tmp_path, monkeypatch):

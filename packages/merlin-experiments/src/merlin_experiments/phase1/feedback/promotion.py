@@ -44,7 +44,7 @@ from merlin.targetgen.oracle_schedule import FAIL as _FAIL
 from merlin.targetgen.oracle_schedule import PASS as _PASS
 from merlin_experiments.phase1.context import InvocationContext
 from merlin_experiments.phase1.feedback import snapshots
-
+from merlin_experiments.phase1.feedback import pending_retirement, promotion_verdicts
 from merlin_experiments.phase1.feedback.promotion_verdicts import row_status as row_status
 from merlin_experiments.phase1.feedback.promotion_verdicts import cert_already_executed as cert_already_executed
 from merlin_experiments.phase1.feedback.dispatch import cert_sim
@@ -399,11 +399,12 @@ def derived_components(ws):
 
     claimed = set().union(*comps.values()) if comps else set()
     unattributed, inert = set(), set()
+    from merlin_experiments.phase1.run_inputs import outside_snapshot  # bytes no grade copies (build/)
     for f in every:
         rel = f.relative_to(sub).as_posix()
         if rel in claimed:
             continue
-        (unattributed if f.suffix in kind_sufs else inert).add(rel)
+        (unattributed if f.suffix in kind_sufs and not outside_snapshot(Path(rel).parts) else inert).add(rel)
     out = (comps, frozenset(unattributed), frozenset(inert))
     # Bounded: a broker lives for the whole run and the agent edits continuously, so an unbounded map
     # keyed by submission state grows one entry per edit for hours. Only the current state is ever a hit.
@@ -480,15 +481,15 @@ def decomposition(ws) -> dict:
 
 
 def _submission_file_bytes(sub):
-    """The original ledger's canonical source stream, independent of tree location.
-
-    A file's bytes are reused while it keeps its stat identity (:mod:`merlin.common.stat_memo`): the
-    agent edits a few files between completions, and every completion re-read all of them."""
+    """The ledger's canonical source stream, independent of tree location and of ``build/`` state
+    (``run_inputs.outside_snapshot``), which no grade or frozen copy carries. Bytes are reused while a file
+    keeps its stat identity (:mod:`merlin.common.stat_memo`); each completion used to re-read every file."""
     from merlin.common import stat_memo
+    from merlin_experiments.phase1.run_inputs import outside_snapshot
 
     sub = Path(sub)
     for path in sorted(sub.rglob("*")):
-        if path.is_file() and "__pycache__" not in path.parts:
+        if path.is_file() and not outside_snapshot(path.relative_to(sub).parts):
             body = stat_memo.cached("file_bytes", str(path.absolute()),
                                     lambda path=path: stat_memo.file_signature(path), path.read_bytes)
             yield path, ("submission/" + path.relative_to(sub).as_posix()).encode(), body
@@ -796,7 +797,7 @@ def _log_invalidations(states, executions, components, loop_tier, cert_tier, log
     comparing them to this source cannot establish that their code changed.
     Scheduling, evidence retention and ordinary non-joint diagnostics are untouched.
     """
-    from merlin.targetgen.oracle_schedule import WHOLE_SUBMISSION
+    from merlin.targetgen.oracle_schedule import UNATTRIBUTED_RESULT, WHOLE_SUBMISSION
 
     unobserved = 0
     for state in states:
@@ -807,7 +808,9 @@ def _log_invalidations(states, executions, components, loop_tier, cert_tier, log
         for tier in (loop_tier, cert_tier):
             for why in state.invalidated_by(tier) if tier in state.verdicts else ():
                 extra = f"; no narrower cause: {broad}" if why.component == WHOLE_SUBMISSION and broad else ""
-                print(f"[promote] {state.name} {tier} invalidated by {why}{extra}", file=log, flush=True)
+                retried = getattr(why, "reason", None) == UNATTRIBUTED_RESULT  # not a changed program
+                said = "requeued: earlier job unattributed" if retried else f"invalidated by {why}"
+                print(f"[promote] {state.name} {tier} {said}{extra}", file=log, flush=True)
     if unobserved:
         print(f"[promote] {unobserved} historical capsule(s) not re-observed by this callback; "
               "no new invalidation diagnosis for them", file=log, flush=True)
@@ -878,6 +881,7 @@ def _ledger_transaction(function):
 
 
 @_ledger_transaction
+@pending_retirement.completed_request
 def record_cert(ws, verdict, cert_tier, log=None, identity=None, source_identity_verified: bool = False) -> list[str]:
     """Write a COMPLETED promotion's result into the tier state, against the bytes that earned it.
 
@@ -1168,6 +1172,7 @@ def promote(
     the same path an agent request takes, so it inherits the constrained-runner validation rather than
     routing around it.
     """
+    verdict = promotion_verdicts.hydrated(ws, verdict)  # compact rows hold their boundary in the case store
     from .. import joint_control
     from . import joint_physical_correctness as physical
     joint_required = physical.roster() if joint_control.selected() is not None else None
@@ -1335,9 +1340,9 @@ def promote(
             want, cert_tier=cert_tier, log=log, context=context, capsules_root=capsules_root
         )
     else:
-        # Correctness has its own explicitly selected budget, never a calibration
-        # price/affordability model. Only this closed receipt can unlock a case.
-        want = [w for w in want if w.capsule in ready]
+        # Own correctness budget, never a calibration price; only a closed receipt unlocks a case, and
+        # only under continuous promotion (off by default: L3 is then a best-effort final step).
+        want = [w for w in want if w.capsule in ready and joint_control.continuous_l3_promotion()]
 
     # WHAT THIS VERDICT ACTUALLY SAID, every time, in one line. An idle promotion and a broken one are
     # indistinguishable by design -- the call is wrapped in a try/except so it can never gate a run -- so
@@ -1414,11 +1419,10 @@ def promote(
             import hashlib
             token = hashlib.sha256(f'{token}:{_instrument}'.encode()).hexdigest()[:16]
         key = identity_by_name.get(w.capsule) or current_identity(execution_digest, digest)
-        if key in _slots_ro(st, w.capsule, cert_tier):
-            # These exact bytes already hold a cert-tier record -- outstanding, passed, or failed. Buying
-            # a second copy of a verdict we already own is the 17-jobs-for-two-capsules waste itself.
+        attempt = pending_retirement.requeue_attempt(_slots_ro(st, w.capsule, cert_tier), key)
+        if attempt is None:
             continue
-        jid = f"promo{len(promoted)}_{token}_{w.capsule}"[:80]
+        jid = f"promo{len(promoted)}_{token}_r{attempt}_{w.capsule}"[:80]
         req = ch / f"simreq_{jid}.json"
         if req.exists():
             # The ledger says these bytes hold no record, yet a request for them is on the queue. That is
@@ -1469,7 +1473,8 @@ def promote(
                 _shutil.rmtree(_snapshot_path, ignore_errors=True)
             raise
         # Mark pending only once the request is actually on the queue.
-        pending = {"status": "pending", "digest": digest, "components": dict(comps)}
+        pending = {"status": "pending", "digest": digest, "components": dict(comps),
+                   "request": jid, "attempt": attempt}
         if boundary_by_name.get(w.capsule) is not None:
             pending['tier_boundary'] = boundary_by_name[w.capsule]
         if execution_digest is not None:
@@ -1479,6 +1484,8 @@ def promote(
         # decide whether the verdict still describes its own instrument instead of assuming it does.
         if _instrument is not None:
             pending["instrument"] = _instrument
+        if _loop_instrument is not None:
+            pending["loop_instrument"] = _loop_instrument
         _why_broad = _no_narrower_cause(execution_digest, comps)
         if _why_broad:
             pending["fallback_reason"] = _why_broad

@@ -11,7 +11,7 @@ from test_current_source_promotions import workspace
 
 
 def setup(tmp_path,monkeypatch):
-    monkeypatch.setattr(joint_control,'selected',lambda:{'policy':{'gsim_correctness':{'capsules':['A','B','refuse']}}})
+    monkeypatch.setattr(joint_control,'selected',lambda:{'policy':{'gsim_correctness':{'capsules':['A','B','refuse'],'continuous_promotion':True}}})
     monkeypatch.setattr(P,'cert_sim',lambda *a,**k:'gsim')
     monkeypatch.setattr(P,'cert_instrument',lambda *a,**k:'a'*64)
     ws=workspace(tmp_path/'ws');(ws/'.qa_channel').mkdir()

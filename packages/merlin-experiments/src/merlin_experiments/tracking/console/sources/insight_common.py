@@ -318,7 +318,7 @@ class AgentActivity:
                 self._touch(when, path + "\n" + (text if isinstance(text, str) else ""))
                 if isinstance(text, str) and ("merlin.sched" in text or "merlin.compile.scheduling" in text):
                     self.events.append((when, "sched_library", "edit"))
-                if path.endswith("iteration_notes.md"):
+                if path.lower().endswith("iteration_notes.md"):  # ITERATION_NOTES.md, or the legacy name
                     self.events.append((when, "iteration_notes", ""))
 
     def counts(self, now: float, window_s: float | None) -> dict[str, int]:

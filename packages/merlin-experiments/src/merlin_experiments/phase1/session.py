@@ -33,12 +33,12 @@ from . import corpus_inputs as CI
 from . import fresh_backend as FB
 from . import oot_history as _oot_history
 from . import run_inputs as RI
+from . import skill_staging as SK
 from . import source_inputs as SI
 from . import treatments as T
 from .context import InvocationContext, readback_record, verify_readback_record
 from .options import RunOptions
 from .providers import codex_context as CTX
-from . import skill_staging as SK
 from .workspaces import select_workspace_root
 
 if TYPE_CHECKING:
@@ -131,14 +131,17 @@ class RunRequest:
     @property
     def run_config(self) -> dict:
         a = self.options
-        from .telemetry import token_budget
         from .construction_study import selection as study_selection
+        from .telemetry import token_budget
 
         return {
             "schedule": a.schedule,
             "compiler_execution": a.compiler_execution,
+            "sandbox_reuse": getattr(a, "sandbox_reuse", "per_call"),
             "compiler_access": a.compiler_access,
             "full_compiler_manifest_sha256": a.full_compiler_manifest_sha256,
+            "reference_experiments_sha256": a.reference_experiments_sha256,
+            **({"reference_experiments_tasks": "off"} if a.reference_experiments_tasks == "off" else {}),
             "session_mode": (
                 "offline_construction_study"
                 if getattr(a, "offline_actions", "")
@@ -460,6 +463,14 @@ def phase_run_dir(context, arm: str, run_id: str, *, resume: bool) -> Path:
 
 def validate_preflight_options(a: RunOptions) -> None:
     """Pure selection checks, before native probes and when reopening preparation."""
+    reference = (a.reference_experiments, a.reference_experiments_sha256)
+    if any(reference):
+        if (not all(reference) or len(reference[1]) != 64
+                or any(char not in "0123456789abcdef" for char in reference[1])):
+            raise ValueError("reference experiment feedback requires its explicit selection and exact SHA256")
+    if a.reference_experiments_tasks not in ("on", "off") or (
+            a.reference_experiments_tasks == "off" and not a.reference_experiments):
+        raise ValueError("withheld reference experiment tasks require an explicit selection")
     if a.compiler_execution == "snapshot_external_v1" and a.sandbox != "bwrap":
         raise ValueError("snapshot_external_v1 requires bwrap isolation")
     full_sources = (a.full_compiler_root, a.full_compiler_manifest, a.full_compiler_manifest_sha256)
@@ -632,13 +643,24 @@ def _prepare(
             raise RuntimeError(f"resume refused: environment record unreadable: {exc}") from exc
         if not isinstance(_environment_record, dict):
             raise RuntimeError("resume refused: environment record is not a mapping")
+        from .feedback import sandbox_pool
+
+        # A resumed run keeps the sandbox mechanism it started with (none recorded: one per call).
+        _run_config["sandbox_reuse"] = sandbox_pool.adopt_recorded(_environment_record.get("run_config"))
         prior_mode = (_environment_record.get("run_config") or {}).get("compiler_execution", "profile_strict_v1")
         if prior_mode != a.compiler_execution:
-            raise RuntimeError("resume refused: compiler execution treatment changed; use a new checkpoint continuation")
+            raise RuntimeError(
+                "resume refused: compiler execution treatment changed; use a new checkpoint continuation")
         prior_access = (_environment_record.get("run_config") or {}).get("compiler_access", "selected_library")
         prior_manifest = (_environment_record.get("run_config") or {}).get("full_compiler_manifest_sha256", "")
         if (prior_access, prior_manifest) != (a.compiler_access, a.full_compiler_manifest_sha256):
             raise RuntimeError("resume refused: editable compiler source selection changed")
+        prior_reference = (_environment_record.get("run_config") or {}).get("reference_experiments_sha256", "")
+        if prior_reference != a.reference_experiments_sha256:
+            raise RuntimeError("resume refused: reference experiment feedback selection changed")
+        prior_tasks = (_environment_record.get("run_config") or {}).get("reference_experiments_tasks", "on")
+        if prior_tasks != a.reference_experiments_tasks:
+            raise RuntimeError("resume refused: reference experiment task serving changed")
         from .feedback.capsule_certification import verify_scope
 
         verify_scope(getattr(a, "validation_scope", "full"), _environment_record)
@@ -765,7 +787,8 @@ def _prepare(
         selection = FCW.select(a.full_compiler_root, a.full_compiler_manifest, a.full_compiler_manifest_sha256)
         if _resuming:
             _full_compiler_record = _environment_record.get("full_compiler_workspace")
-            if not isinstance(_full_compiler_record, dict) or _full_compiler_record.get("selection") != selection.record():
+            if (not isinstance(_full_compiler_record, dict)
+                    or _full_compiler_record.get("selection") != selection.record()):
                 raise RuntimeError("resume refused: full compiler baseline selection changed")
         else:
             _full_compiler_record = FCW.stage(selection, ws / "submission")
@@ -1032,6 +1055,11 @@ def _prepare(
         )
     if not _resuming:
         from .construction_study import stage as stage_study
+        from .feedback.reference_experiments import stage_guidance
+        from .feedback.reference_map import stage as stage_reference_map
+
+        stage_reference_map(ws, run_dir)  # the same pinned map in every arm, before the selection's section
+        stage_guidance(ws, run_dir)
         stage_study(ws, run_dir, a)
         _skills_record = _run_config.get(SK.KEY) or {}
         if (CTX.selection(a) or {}).get("task_skills"):

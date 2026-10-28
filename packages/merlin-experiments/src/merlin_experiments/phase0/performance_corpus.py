@@ -96,7 +96,8 @@ def derive_demand(programs: list[str], *, policy: Path, facts: Path, template: P
                          for k, v in plan["coverage"].items()}}
 
 
-def _release_rows(release: Path, sources: Path | None) -> tuple[list[dict], dict[str, str]]:
+def _release_rows(release: Path, sources: Path | None,
+                  extra_sources: tuple[Path, ...] = ()) -> tuple[list[dict], dict[str, str]]:
     preparation = json.loads((release / "private/preparation.json").read_text())
     supplement = set((preparation["assembly"].get("public_supplement") or {}).get("members") or ())
     corpus = release / "payload/corpus"
@@ -108,7 +109,8 @@ def _release_rows(release: Path, sources: Path | None) -> tuple[list[dict], dict
         cohort = "supplement" if member in supplement else "generated"
         rows.append(_row(path, member, cohort))
         origin[rows[-1]["name"]] = cohort
-    for cohort, root in (("scalability", corpus / "_public_scalability/cases"), ("derived", sources)):
+    for cohort, root in (("scalability", corpus / "_public_scalability/cases"), ("derived", sources),
+                         *(("derived", extra) for extra in extra_sources)):
         for path in sorted(Path(root).glob("*/capsule.yaml")) if root is not None else ():
             rows.append(_row(path, path.parent.name, "scalability"))
             origin[rows[-1]["name"]] = cohort
@@ -140,8 +142,13 @@ def _copy_scoped(source: Path, destination: Path, scope: str) -> str:
 
 
 def assemble_epoch(previous: Path, *, plan: Path, sources: Path, output: Path, evidence_root: Path,
-                   target: str) -> dict[str, Any]:
-    """Next scalability suite and supplement selections with redundancy applied; see the module doc."""
+                   target: str, chain_plan: Path | None = None, chain_sources: Path | None = None) -> dict[str, Any]:
+    """Next scalability suite and supplement selections with redundancy applied; see the module doc.
+
+    ``chain_plan``/``chain_sources`` add a chain-demand stage's performance members
+    (:mod:`.chain_corpus`): their connected cases are admitted through the same intake as the derived
+    contractions and, like them, are preferred as scorers of their own work.
+    """
     from merlin.common.digest import sha256_file
 
     from ..corpus.public_scalability import read as read_suite
@@ -151,8 +158,22 @@ def assemble_epoch(previous: Path, *, plan: Path, sources: Path, output: Path, e
 
     if output.exists():
         raise ValueError("epoch assembly needs a fresh output directory")
+    if (chain_plan is None) != (chain_sources is None):
+        raise ValueError("select both a chain plan and its sources, or neither")
     demand = json.loads(plan.read_text())
-    rows, origin = _release_rows(previous, sources)
+    chains = json.loads(chain_plan.read_text()) if chain_plan is not None else None
+    if chains is not None:
+        from .chain_demand import PLAN_SCHEMA
+
+        if chains.get("schema") != PLAN_SCHEMA:
+            raise ValueError("chain plan has an unknown schema")
+        written = {path.parent.name for path in Path(chain_sources).glob("*/capsule.yaml")}
+        expected = {m["name"] for m in chains["members"] if m["role"] == "performance"}
+        if written != expected:
+            raise ValueError("chain sources differ from the plan's performance members")
+        chained = [{"name": name, "split": "public", "represents": []} for name in sorted(expected)]
+        demand = {**demand, "members": [*demand["members"], *chained]}
+    rows, origin = _release_rows(previous, sources, (chain_sources,) if chain_sources is not None else ())
     # Operator-staged sweep members lost their ``performance`` block at intake; their sweep role still
     # marks a point of a fitted or paired family, so none of them is collapsed.
     protected = {row["name"] for row in rows if origin[row["name"]] in {"supplement", "scalability"}
@@ -185,6 +206,7 @@ def assemble_epoch(previous: Path, *, plan: Path, sources: Path, output: Path, e
         "schema": "merlin.phase0.performance_epoch.v1", "previous_release": str(previous),
         "previous_suite": staged["source"]["selection"], "demand_plan": {"path": str(plan),
                                                                       "sha256": sha256_file(plan)},
+        **({"chain_plan": {"path": str(chain_plan), "sha256": sha256_file(chain_plan)}} if chain_plan else {}),
         "case_redundancy_sha256": record["sha256"], "members": lineage,
         "collapsed": [row for row in record["collapsed"] if origin.get(row["removed"]) != "generated"],
     }, indent=2) + "\n")

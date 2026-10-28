@@ -78,6 +78,8 @@ def _case_line(row: dict, newest_token) -> str:
     failure = f"{plane}/{category}" if plane or category else "-"
     graded = row.get("graded") if isinstance(row.get("graded"), dict) else {}
     origin = "" if str(graded.get("token")) == str(newest_token) else f" graded={graded.get('token')}"
+    if graded.get("currency") == "older_version":  # reconciled: the bytes this case reaches changed since
+        origin += f" older_version={str(graded.get('graded_source_sha256'))[:12]}"
     withheld = trace_withheld(row)
     trace = f" trace={withheld}" if withheld else ""
     return f"{row.get('capsule')} {row.get('status')} {_tiers(row)} {failure}{_performance(row)}{trace}{origin}"
@@ -97,13 +99,16 @@ def render(document: dict) -> str:
 
     lines = [
         *render_headline(document.get(HEADLINE)),
-        f"# One line per test case from qa/{FULL} (rewritten with it). Full rows: per_capsule there;",
+        f"# One line per test case from qa/{FULL} (rewritten with it). Full rows: each per_capsule detail.path;",
         f"# failure groups: {CLUSTERS}; ranked performance: feedback_brief.performance_priority.",
         f"newest grade token={pointer.get('token')} graded_at={pointer.get('graded_at')} "
         f"source_sha256={pointer.get('graded_source_sha256')} snapshot_current={document.get('snapshot_current')}",
         f"current_source_sha256={counts.get('current_source_sha256')} rows={counts.get('rows', len(rows))} "
         f"executed={counts.get('executed')} passed={counts.get('passed')} "
         f"from_newest_grade={counts.get('from_newest_grade')} from_current_source={counts.get('from_current_source')}",
+        f"reconciled with your current source: current_passed={counts.get('current_passed')} "
+        f"current_rows={counts.get('current_rows')} older_version_rows={counts.get('older_version_rows')} "
+        f"(older_version = a result for the older source it names; rerun queued on the newest grade)",
         f"newest grade only: n_passed={document.get('n_passed')} n_capsules={document.get('n_capsules')} "
         f"all_pass={document.get('all_pass')} tiers_graded={document.get('tiers_graded')} "
         f"tiers_not_run={document.get('tiers_not_run')}",

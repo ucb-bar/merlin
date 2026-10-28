@@ -34,9 +34,19 @@ def test_missing_and_distinct_tier_counts():
     row = {'capsule': 'original_correctness-0', 'status': 'pass',
            'tiers': {'L2': {'status': 'pass'}, 'L3': {'status': 'unavailable'}}}
     text = render(inv, {'per_capsule': [row]})
-    assert '| original_correctness | 1 / 153 | 1 | 1 | 0 |' in text
-    assert '| calibration | 0 / 20 | 0 | 0 | 0 |' in text
+    assert '| original_correctness | 1 / 153 | 1 | 1 | 1 | 0 |' in text
+    assert '| calibration | 0 / 20 | 0 | 0 | 0 | 0 |' in text
     assert 'unobserved' in text
+
+
+def test_a_pass_reconciled_as_an_older_version_is_reported_but_not_current():
+    inv = inventory()
+    older = {'capsule': 'original_correctness-0', 'status': 'pass', 'tiers': {'L2': {'status': 'pass'}},
+             'graded': {'token': '1', 'graded_source_sha256': 'old', 'currency': 'older_version'}}
+    current = {'capsule': 'original_correctness-1', 'status': 'pass', 'tiers': {'L2': {'status': 'pass'}},
+               'graded': {'token': '2', 'graded_source_sha256': 'new', 'currency': 'current'}}
+    text = render(inv, {'per_capsule': [older, current]})
+    assert '| original_correctness | 2 / 153 | 2 | 1 | 2 | 0 |' in text
 
 
 def test_joint_brief_handles_continuous_keys_and_keeps_errata(tmp_path):

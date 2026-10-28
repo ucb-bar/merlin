@@ -26,7 +26,7 @@ def policy(path):
     if value.get("version") != 1:
         raise ValueError("joint campaign policy must have version 1")
     for key, default, low, high in (
-        ("duration_s", 43200, 3600, 43200),
+        ("duration_s", 43200, 300, 43200),
         ("final_model_s", 10800, 1, 14400),
         ("drain_s", 1800, 1, 3600),
     ):
@@ -67,6 +67,8 @@ def policy(path):
         original = value.get("correctness_curriculum", {}).get("original_capsules")
         if original is not None and set(names) != set(original):
             raise ValueError("physical correctness must retain every original correctness capsule")
+        if type(correctness.get("continuous_promotion", False)) is not bool:
+            raise ValueError("joint gSIM correctness continuous_promotion must be a boolean")
         for key, default, maximum in (
             ("max_jobs", 20, 20),
             ("per_job_s", 1200, 1200),
@@ -260,6 +262,13 @@ def correctness_capsules(value=None):
     return frozenset((value or {}).get("policy", {}).get("gsim_correctness", {}).get("capsules", ()))
 
 
+def continuous_l3_promotion(value=None):
+    """Whether an L2 pass enqueues its L3 certificate during the run (``gsim_correctness``
+    ``continuous_promotion``; off unless a policy selects it). Off, L3 is a best-effort final step."""
+    value = selected() if value is None else value
+    return (value or {}).get("policy", {}).get("gsim_correctness", {}).get("continuous_promotion") is True
+
+
 def held_capsules(value=None):
     value = selected() if value is None else value
     return set((value or {}).get("policy", {}).get("final_only_capsules", ())) - correctness_capsules(value)
@@ -364,7 +373,8 @@ def physical_correctness(capsule, *, wait=None, progress=None, queue=None, poll_
                         f"+ {reservation:.0f} s for this job > {spec['worker_budget_s']} s); "
                         "obligation remains pending"
                     )
-                Q.enqueue(data, token, capsule=capsule, request_class=request_class, now=time.time())
+                Q.enqueue(data, token, capsule=capsule, request_class=request_class, now=time.time(),
+                          requester=Q.requester())
                 state = Q.describe(data, token, spec["max_jobs"])
                 if Q.admissible(data, token, spec["max_jobs"]):
                     Q.leave(data, token)
@@ -598,6 +608,17 @@ def prompt_block():
     return _campaign_prompt_block(value["policy"]) + instruction_policy_line(value["policy"])
 
 
+def _l3_schedule_text(p):
+    """Author-facing: when L3 certification runs, and which engine measures performance."""
+    if (p.get("gsim_correctness") or {}).get("continuous_promotion") is True:
+        return ("Every original capsule selected in gsim_correctness retains both Spike and gSIM "
+                "correctness obligations; the native queue promotes eligible exact snapshots after cheap "
+                "prerequisites and reuses matching native evidence.")
+    return ("L3 gSIM certification of the selected correctness cases runs at the end, best-effort, on "
+            "the final compiler; development grades stop at Spike L0-L2. Performance is measured on the "
+            "Spike cycle model by default; ask for gSIM cycles with --sim gsim.")
+
+
 def _campaign_prompt_block(p):
     from .full_compiler_workspace import selected as full_selection
 
@@ -625,9 +646,7 @@ def _campaign_prompt_block(p):
         "Unknown impact uses original correctness prerequisites and actual-admission fairness. Run full required coverage at explicit milestones and final validation, "
         "not after every edit. Read feedback_brief first; unselected cases remain pending. "
         "Check large capsules and connected cuts early using --suite scalability --sim spike. "
-        "Default selfchecks use Spike. Every original capsule selected in gsim_correctness retains "
-        "both Spike and gSIM correctness obligations; the native queue promotes eligible exact "
-        "snapshots after cheap prerequisites and reuses matching native evidence. Timeouts and "
+        "Default selfchecks use Spike. " + _l3_schedule_text(p) + " Timeouts and "
         "unrun cases remain pending, never passes. Inspect each required numerical/structural tier. "
         "Read pinned examples under reference-kernels when that readonly input is declared; they are "
         "references, while your target backend starts empty and evolves with your own general passes. "
@@ -644,7 +663,9 @@ def _campaign_prompt_block(p):
         "Reuse matching evidence first; stop when uncertainty cannot change schedule ranking. "
         "At most two initial diagnostics run before further question-labelled operator authorization; "
         "bootstrap has at most eight observations and later batches have at most four. "
-        "Unknown timing qualification stays provisional; never claim physical speedup from it. "
+        "Estimates (complete timing-model estimates, else the calibrated fast estimate each passing case "
+        "carries) are the basis for optimization decisions: prefer the change the estimate favors, label "
+        "its evidence kind, and revert if a later measurement disagrees. "
         "Shared library bytes are immutable within an epoch; "
         "record generic pass improvements for an operator-reviewed library epoch that preserves your compiler. "
         f"Full model development prevalidation uses Spike in the final {p['final_model_s'] / 3600:g} hours. "
@@ -691,6 +712,8 @@ def stage_evidence(verdict):
             "physical_certificate": False,
             "final_only_pending": sorted(held_capsules(value)),
             "physical_correctness_required": sorted(correctness_capsules(value)),
+            "physical_correctness_schedule": "during the run" if continuous_l3_promotion(value)
+            else "L3 is certified at the end, best-effort; development rows are not L3 failures",
             "performance_qualification": "unknown",
         }
     return verdict
@@ -727,10 +750,11 @@ def _full_compiler_prompt_block(policy):
         + "\n\n"
         f"Selected campaign duration: {policy['duration_s'] / 3600:g} hours from author launch; "
         f"editing stops {policy['drain_s'] / 60:g} minutes before deadline for freeze/drain. "
-        f"Required gSIM correctness: {len(correctness.get('capsules', ()))} declared cases, "
-        f"concurrency {correctness.get('max_jobs', 'unselected')}, "
-        f"per-job budget {correctness.get('per_job_s', 'unselected')} seconds. "
-        f"Selective calibration gSIM concurrency {witness.get('max_jobs', 'unselected')}, "
+        + (f"Required gSIM correctness: {len(correctness.get('capsules', ()))} declared cases, "
+           f"concurrency {correctness.get('max_jobs', 'unselected')}, "
+           f"per-job budget {correctness.get('per_job_s', 'unselected')} seconds. "
+           if correctness.get("continuous_promotion") is True else _l3_schedule_text(policy) + " ")
+        + f"Selective calibration gSIM concurrency {witness.get('max_jobs', 'unselected')}, "
         f"per-job budget {witness.get('per_job_s', 'unselected')} seconds; "
         f"initial diagnostics {bounds['initial_diagnostics_max']}, bootstrap observations "
         f"{bounds['bootstrap_observations_max']}, later authorized batch limit {bounds['later_batch_max']}. "

@@ -20,6 +20,23 @@ from merlin_experiments.phase1.generated_isa_library import prepare_library
 from merlin_experiments.phase2.compiler_library_state import load_selection
 
 
+def _require_source_revision(repo: Path, expected: str) -> None:
+    """Bind the selected tree itself; an archive must never inherit its parent's moving HEAD."""
+    if (repo / ".git").exists():
+        actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
+        if actual != expected:
+            raise ValueError("source revision must match the selected repository HEAD")
+        if subprocess.check_output(["git", "diff", "HEAD", "--", "src"], cwd=repo):
+            raise ValueError("compiler source release contains uncommitted edits")
+        return
+    from merlin.common.provenance import UNKNOWN
+    from merlin.targetgen.provenance import source_revision
+
+    actual = source_revision(repo)
+    if actual == UNKNOWN or actual != expected:
+        raise ValueError("source revision must match the selected export's own source record")
+
+
 def prepare(
     *,
     repo,
@@ -38,13 +55,9 @@ def prepare(
     library_version=21,
 ):
     repo, output = Path(repo).resolve(), Path(output).absolute()
-    if type(library_version) is not int or library_version not in (8, 16, 17, 18, 19, 20, 21, 22):
-        raise ValueError("author library preparation requires explicit inventory version 8 or 16 through 22")
-    actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip()
-    if actual != source_revision:
-        raise ValueError("source revision must match the selected repository HEAD")
-    if subprocess.check_output(["git", "diff", "HEAD", "--", "src"], cwd=repo):
-        raise ValueError("compiler source release contains uncommitted edits")
+    if type(library_version) is not int or library_version not in (8, 16, 17, 18, 19, 20, 21, 22, 23, 24):
+        raise ValueError("author library preparation requires explicit inventory version 8 or 16 through 24")
+    _require_source_revision(repo, source_revision)
     base = load_selection(root=previous_root, contract_path=previous_contract, contract_sha256=previous_sha256)
     if base is None or not enabled(base):
         raise ValueError("explicit reviewed editable generic compiler selection required")
@@ -72,7 +85,9 @@ def prepare(
         source_modules={member.module for member in base.contract.members},
         enabled=reviewed_tensor_views,
     )
-    additions = reviewed_modules(requested, existing=base.contract.public_modules)
+    additions = reviewed_package_sources(
+        reviewed_modules(requested, existing=base.contract.public_modules), repo / "src"
+    )
     sources = {member.path: member.module for member in base.contract.members}
     sources.update(additions)
     for row in manifest["members"]:
@@ -84,7 +99,7 @@ def prepare(
     changed, hashes = [], {}
     for path, module in sources.items():
         source = sdk / path
-        if path.endswith("/__init__.py") and path not in sdk_paths:
+        if path.endswith("/__init__.py") and path not in sdk_paths and path not in additions:
             source = base.root / path
         elif not source.is_file():
             source = repo / "src" / path if module else base.root / path
@@ -100,7 +115,9 @@ def prepare(
     contract = freeze_compiler_library(
         library,
         review_id=REVIEW_PREFIX + "coevolution-readiness:" + source_revision[:12],
-        public_modules=(*base.contract.public_modules, *additions.values()),
+        # A reviewed package contributes its initializer as a source only; public APIs stay leaves.
+        public_modules=(*base.contract.public_modules,
+                        *(module for path, module in additions.items() if not path.endswith("/__init__.py"))),
         sources=tuple(sources.items()),
     )
     selection = CompilerLibrarySelection(contract, library)
@@ -201,6 +218,23 @@ def reviewed_modules(modules, *, existing):
     return selected
 
 
+def reviewed_package_sources(additions, source_root):
+    """A reviewed name that is a package, not a leaf, selects that package's own initializer.
+
+    A reviewed leaf can import a module of a package the previous library does not contain (SDK V24's
+    ``merlin.transforms.head_batching`` imports ``merlin.compile.analysis.contraction_shapes``). The
+    library's ``merlin`` tree shadows the SDK's, so that package needs its initializer in the library;
+    the operator names the package explicitly, exactly like a leaf. Nothing is added implicitly.
+    """
+    selected = {}
+    for path, module in additions.items():
+        package = path.removesuffix(".py") + "/__init__.py"
+        if not (Path(source_root) / path).is_file() and (Path(source_root) / package).is_file():
+            path = package
+        selected[path] = module
+    return selected
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("repo", "previous-root", "previous-contract", "output"):
@@ -208,7 +242,7 @@ def main():
     for name in ("source-revision", "previous-sha256"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--generated-package", type=Path)
-    parser.add_argument("--library-version", type=int, choices=(8, 16, 17, 18, 19, 20, 21, 22), default=21,
+    parser.add_argument("--library-version", type=int, choices=(8, 16, 17, 18, 19, 20, 21, 22, 23, 24), default=21,
                         help="prospective reviewed source inventory; existing library grants remain explicit")
     parser.add_argument(
         "--reviewed-rtl-discovery-dependencies", action="store_true",

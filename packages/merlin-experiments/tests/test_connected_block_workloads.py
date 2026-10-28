@@ -115,3 +115,41 @@ def test_zero_prefix_and_identity_shortcut_are_valid_semantic_variants():
     model, inputs = loader.build(dict(**common, kind="residual", channels=8, out_channels=8, stride=1))
     assert isinstance(model.blocks[0].shortcut, torch.nn.Identity)
     assert model(*inputs)[0].shape == inputs[0].shape
+
+
+@pytest.mark.parametrize('size', ['small', 'representative'])
+def test_conv_relu_pool_profiles_are_real_connected_sources_with_all_outputs(staged, size):
+    root = Path(staged['conv_pool_'+size]['workload_root'])
+    loader = _load(root)
+    profile = loader.validate_profile(json.loads((root/'profile.json').read_text()))
+    model, inputs = loader.get_model_and_inputs()
+    with torch.no_grad():
+        output, = model(*inputs)
+        expected = torch.nn.functional.max_pool2d(torch.relu(torch.nn.functional.conv2d(
+            inputs[0], model.convolution.weight, stride=profile['conv_stride'], padding=profile['conv_padding'])),
+            profile['pool_kernel'], stride=profile['pool_stride'], padding=profile['pool_padding'])
+    torch.testing.assert_close(output, expected, rtol=0, atol=0)
+    assert output.shape == ((1, 16, 5, 6) if size == 'small' else (1, 64, 56, 56))
+    exported = torch.export.export(model, inputs)
+    calls = [node for node in exported.graph.nodes if node.op == 'call_function']
+    convolution = next(node for node in calls if 'conv2d' in str(node.target))
+    relu = next(node for node in calls if 'relu' in str(node.target))
+    pool = next(node for node in calls if 'max_pool2d' in str(node.target))
+    assert relu.args[0] is convolution and pool.args[0] is relu
+    with torch.no_grad():
+        actual, = exported.module()(*inputs)
+    torch.testing.assert_close(actual, output, rtol=0, atol=0)
+
+
+def test_conv_pool_geometry_is_not_tied_to_three_by_three_stride_two():
+    loader = _load(ROOT)
+    profile = dict(schema=loader.PROFILE_SCHEMA, workload_id=loader.WORKLOAD_ID, kind='conv_pool',
+                   channels=2, out_channels=5, height=11, width=13, conv_kernel=5, conv_padding=2,
+                   conv_stride=1, pool_kernel=2, pool_stride=1, pool_padding=0)
+    model, inputs = loader.build(profile)
+    output, = model(*inputs)
+    assert output.shape == (1, 5, 10, 12)
+    for change in ({'conv_kernel': 19, 'conv_padding': 0}, {'pool_padding': 2},
+                   {'conv_stride': 0}, {'height': True}, {'out_channels': 8192, 'channels': 8192}):
+        with pytest.raises(ValueError):
+            loader.validate_profile({**profile, **change})

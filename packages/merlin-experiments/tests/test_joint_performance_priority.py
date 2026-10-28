@@ -2,7 +2,6 @@
 import copy
 
 import pytest
-
 from merlin_experiments.phase1.feedback import joint_performance_priority as P
 
 
@@ -58,7 +57,7 @@ def test_impact_weight_and_model_confidence_separate_lanes():
     provisional.update(status='PROVISIONAL', timing_qualified=False)
     provisional['search_priority'] = P.project(result, provisional)
     rows.append({'capsule': 'provisional', 'performance': provisional})
-    summary = P.summarize(rows)
+    summary = P.summarize(rows, roles={r['capsule']: 'large_kernel' for r in rows})
     group, = summary['comparison_groups']
     assert [row['capsule'] for row in group['qualified']] == ['large_impact', 'small_impact']
     assert group['qualified'][0]['qualified_advisory_score'] == 800

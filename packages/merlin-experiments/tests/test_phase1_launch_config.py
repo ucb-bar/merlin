@@ -298,6 +298,64 @@ def test_helper_effort_renders_the_controller_option_only_when_declared(tmp_path
             lc.load(_checkout(tmp_path / message.replace(" ", "-"), edit))
 
 
+def _reference_experiments(world):
+    path = _json(world.prep / "reference-experiments.json", {"fixture": "operator-selected reference metadata"})
+    document = yaml.safe_load(world.config_path.read_text())
+    document["reference_experiments"] = {"path": "${PREP}/reference-experiments.json", "sha256": sha256_file(path)}
+    world.config_path.write_text(yaml.safe_dump(document, sort_keys=False))
+    return path
+
+
+def test_reference_experiments_selects_exact_controller_flags_without_environment_or_grant_changes(world):
+    from merlin_experiments.phase1 import options
+
+    plain, original = world.build(), world.config_path.read_bytes()
+    environment = lc.environment_script(plain)
+    grant = world.bundle_manifest.read_bytes()
+    path = _reference_experiments(world)
+    selected = world.build()
+    digest = sha256_file(path)
+    flags = lc.split_argv(selected.argv)[1]
+    assert flags["--reference-experiments"] == [str(path)]
+    assert flags["--reference-experiments-sha256"] == [digest]
+    assert selected.pins["reference_experiments"] == (str(path), digest)
+    parsed, _context_options = options.build_parser().parse_known_args(list(selected.argv[3:]))
+    assert parsed.reference_experiments == str(path) and parsed.reference_experiments_sha256 == digest
+    assert selected.environment == plain.environment and selected.launch_environment == plain.launch_environment
+    assert lc.release_prepare_call(selected) == lc.release_prepare_call(plain)
+    assert world.bundle_manifest.read_bytes() == grant
+    assert "--reference-experiments" not in plain.argv and "reference_experiments" not in plain.pins
+    world.config_path.write_bytes(original)
+    restored = world.build()
+    assert restored.argv == plain.argv and restored.pins == plain.pins
+    assert lc.environment_script(restored) == environment
+
+
+@pytest.mark.parametrize("drift", ["changed", "missing"])
+def test_reference_experiments_uses_existing_pin_verification(world, drift):
+    path = _reference_experiments(world)
+    selected = world.build()
+    lc.render(selected, world.prep, plan_template=world._template(), force=True)
+    assert not world.verify().drifts
+    if drift == "changed":
+        path.write_text('{"fixture": "different selection"}\n')
+        expected = ("hash", "reference_experiments sha256")
+    else:
+        path.unlink()
+        expected = ("missing_file", "reference_experiments")
+    assert _kinds(world.verify()) == [expected]
+
+
+@pytest.mark.parametrize("selection", [
+    None, {"path": "selection.json"}, {"sha256": "a" * 64},
+    {"path": "", "sha256": "a" * 64}, {"path": "selection.json", "sha256": "not-a-pin"},
+    {"path": "selection.json", "sha256": "a" * 64, "grant": "private"},
+])
+def test_reference_experiments_requires_only_an_explicit_complete_pin(tmp_path, selection):
+    with pytest.raises(lc.ConfigError, match="reference_experiments"):
+        lc.load(_checkout(tmp_path, lambda doc: doc.update(reference_experiments=selection)))
+
+
 @pytest.mark.parametrize(
     ("edit", "message"),
     [

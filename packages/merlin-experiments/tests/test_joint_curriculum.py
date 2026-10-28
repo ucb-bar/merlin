@@ -79,6 +79,19 @@ def test_incomplete_and_gated_results_never_advance_correctness(tmp_path):
     assert json.loads((p.root/'progress.json').read_text())==before
 
 
+def test_report_reuses_source_digests_only_after_original_immutable_custody_check(tmp_path, monkeypatch):
+    records = corpus(tmp_path)
+    checked = []
+    progress = C.Progress(tmp_path / 'progress', identity={'compiler': 'same'}, runs_root=tmp_path / 'runs',
+                          verify_reuse=lambda: checked.append('checked'), immutable_sources=True)
+    progress.select(records, policy=policy(), hint=[])
+    monkeypatch.setattr(C, '_source', lambda path: (_ for _ in ()).throw(AssertionError('rehashed immutable source')))
+    assert progress.report()['pending'] and checked == ['checked']
+    progress.verify_reuse = lambda: (_ for _ in ()).throw(ValueError('source changed'))
+    with pytest.raises(ValueError, match='source changed'):
+        progress.report()
+
+
 def test_curriculum_hook_keeps_milestone_and_original_denominator(tmp_path,monkeypatch):
     records=corpus(tmp_path);candidate=tmp_path/'submission';candidate.mkdir()
     (candidate/'joint-test-scope.json').write_text('{"capsules":["case19"]}')

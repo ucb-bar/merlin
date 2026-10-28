@@ -18,7 +18,7 @@ import threading
 
 from merlin.targetgen import package_runtime as P
 from merlin.common.guarded_file_digest import GuardedDigests
-from . import setup_timing
+from . import sandbox_pool, setup_timing
 
 ENV = "MERLIN_COMPILER_EXECUTION_MODE"
 STRICT = "profile_strict_v1"
@@ -78,6 +78,9 @@ class SnapshotExecutor:
             "input_owner": service.record() if hasattr(service, "record") else None,
             "scope": "isolated compiler execution; external grading required; no pass-proof authority"}, sort_keys=True))
         self.selected_source_digests = GuardedDigests()
+        self.sandboxes = None
+        if sandbox_pool.selected():
+            self.sandboxes = sandbox_pool.SandboxPool(self.work_root / "sandboxes", self.template, self._launch)
 
     def _package(self, pkg):
         if not self.live or self.pid != os.getpid() or Path(pkg.directory) != self.candidate:
@@ -131,13 +134,51 @@ class SnapshotExecutor:
             if source_identity(self.candidate) != self.source_sha256:
                 raise ValueError("admitted compiler snapshot changed during evaluation")
         finally:
+            if self.sandboxes is not None:
+                self.sandboxes.close()
             if self.source_evidence is not None:
                 self.source_evidence.close()
             self.live = False
             self.selected_source_digests.close()
 
+    def _payload(self):
+        return ["--chdir", str(self.candidate), "bash", "-c",
+                self.policy.env_prefix + f"export TMPDIR={shlex.quote(str(self.template))}; " + 'exec "$@"',
+                "snapshot-external-package"]
+
+    def _launch(self, io, boundary, stack):
+        from merlin_experiments.phase2 import normal_resource_launch as resources
+        prefix = [*self.policy.argv, "--bind", str(io), str(self.template)]
+        bounded = stack.enter_context(resources.bounded_normal_scratch(prefix, owner=io.parent, boundary=boundary))
+        payload = self._payload()
+        return [*bounded, *payload[:2]], payload[2:]
+
+    def _invoke_reused(self, argv, scratch, *, timeout, evidence, inputs, outputs):
+        from merlin.common import invocation_record
+        from merlin_experiments.phase2 import normal_resource_launch as resources
+        dependencies = (Path(__file__), Path(sandbox_pool.__file__))
+        if evidence is not None:
+            retained = scratch / "snapshot-admission.json"
+            retained.write_bytes(self.receipt.read_bytes())
+            dependencies = (retained, *dependencies)
+        with self.sandboxes.box(resources.resources.active_resource_boundary()) as box:
+            observation = contextlib.nullcontext(None) if evidence is None else invocation_record.observe(
+                evidence, stage="snapshot_external_package", argv=box.logical_argv(argv), env=dict(os.environ),
+                inputs=inputs, outputs=outputs, dependencies=dependencies)
+            with observation as record, setup_timing.stage("compiler_command"):
+                if record is not None:
+                    record.document.update(argument_transport=box.transport, sandbox_reuse=box.record())
+                result = box.run(argv, scratch, cwd=self.candidate, timeout=timeout)
+                if record is not None:
+                    record.complete(result)
+                return result
+
     def _invoke(self, argv, scratch, *, timeout, evidence=None, inputs=(), outputs=(), build=False):
         from merlin.common import bwrap_args
+        if self.sandboxes is not None and not build and not self.sandboxes.disabled:
+            with contextlib.suppress(sandbox_pool.Unavailable):
+                return self._invoke_reused(argv, scratch, timeout=timeout, evidence=evidence,
+                                           inputs=inputs, outputs=outputs)
         from merlin_experiments.phase2 import normal_resource_launch as resources
         prefix = [*self.policy.argv, "--bind", str(scratch), str(self.template)]
         if build:

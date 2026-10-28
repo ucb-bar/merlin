@@ -17,8 +17,11 @@ from author_skill_fixtures import assert_generic_skill, front_matter, load_scrip
 from merlin.common.paths import module_source_path
 
 SKILL = "ab-library-pass"
-GSIM = {"engine": "sim-a", "simulator_sha256": "s" * 64}
-MODEL = {"model_sha256": "m" * 64, "timing_mode": "untuned", "timing_epoch": 0}
+GSIM = {"engine": "sim-a", "simulator_sha256": "1" * 64}
+MODEL = {key: str(index) * 64 for index, key in enumerate((
+    "selection_sha256", "model_sha256", "facts_sha256", "comparison_domain_sha256",
+    "scope_sha256", "capsule_sha256"), start=1)}
+MODEL.update(timing_mode="untuned", timing_epoch=0)
 
 
 @pytest.fixture(scope="module")
@@ -43,7 +46,8 @@ def _core_row(name, cycles, *, passed=True, modeled=None, identity=GSIM, model=M
 def _scalability_row(name, cycles, *, passed=True, model=MODEL):
     return {"capsule": name, "status": "pass" if passed else "fail",
             "tiers": {"L0": "pass", "L1": "pass", "L2": "pass" if passed else "fail"},
-            "performance": {"status": "PROVISIONAL", "estimated_whole_soc_cycles": cycles, **model}}
+            "performance": {"status": "PROVISIONAL", "complete_event_accounting": True,
+                            "estimated_whole_soc_cycles": cycles, **model}}
 
 
 def _response(rows, *, tree="submission", digest="a" * 64, at=1, key="per_capsule", overrides=None):
@@ -66,10 +70,10 @@ def _channel(tmp_path: Path, **responses) -> Path:
 
 
 def test_skill_is_generic_bounded_and_self_describing():
-    assert_generic_skill(SKILL)
+    assert_generic_skill(SKILL, allowed_imports=frozenset({'merlin'}))
     fields, body = front_matter(SKILL)
     assert "suggested_mechanisms" in fields["description"] and "ab_compare.py" in fields["description"]
-    for script in ("ab_compare.py", "mechanism_api.py"):
+    for script in ("ab_compare.py", "mechanism_api.py", "apply_library_pass.py"):
         assert f"$SKILL/scripts/{script}" in body
 
 
@@ -84,6 +88,7 @@ def test_named_selfcheck_flags_and_brief_fields_exist():
     assert all(f'"{flag}"' in shim for flag in flags), sorted(f for f in flags if f'"{f}"' not in shim)
     brief = module_source_path("merlin_experiments.phase1.feedback.performance_brief").read_text()
     tuning = module_source_path("merlin_experiments.phase1.feedback.idle_tuning").read_text()
+    tuning += module_source_path("merlin_experiments.phase1.feedback.idle_tuning_results").read_text()
     for field in ("largest_headroom", "lowest_utilization", "suggested_mechanisms", "workload_check",
                   "dominant_modeled_resource", "test_case"):
         assert f'"{field}"' in brief and field in body, field
@@ -127,12 +132,79 @@ def test_cycles_of_other_simulators_or_models_are_never_compared(tmp_path, ab):
     assert "different" in result["cases"][0]["status"] and result["verdict"]["decision"] == "inconclusive"
 
 
+@pytest.mark.parametrize('field,value', [
+    ('status', 'UNKNOWN'), ('status', 'FAILED'), ('status', 'PARTIAL'),
+    ('complete_event_accounting', False), ('complete_event_accounting', None),
+    ('model_sha256', None), ('facts_sha256', None), ('scope_sha256', 'not-a-digest'),
+    ('selection_sha256', None), ('comparison_domain_sha256', None), ('capsule_sha256', None),
+    ('estimated_whole_soc_cycles', float('inf')), ('estimated_whole_soc_cycles', float('nan')),
+])
+def test_unknown_partial_or_unidentified_model_never_keeps_variant(tmp_path, ab, field, value):
+    base = _response([_scalability_row('case', 100)])
+    row = _scalability_row('case', 50)
+    row['performance'][field] = value
+    result = ab.compare(_response([row]), base, channel=_channel(tmp_path))
+    assert result['verdict']['decision'] == 'inconclusive'
+    assert result['verdict']['exit'] == 2
+
+
+@pytest.mark.parametrize('pin', tuple(key for key in MODEL if key.endswith('_sha256')))
+def test_model_domain_changes_are_not_compared(tmp_path, ab, pin):
+    base = _response([_scalability_row('case', 100)])
+    after = _response([_scalability_row('case', 50, model={**MODEL, pin: 'f' * 64})])
+    result = ab.compare(after, base, channel=_channel(tmp_path))
+    assert result['verdict']['decision'] == 'inconclusive'
+
+
+@pytest.mark.parametrize('base_pass,after_pass', [(False, False), (False, True), (True, False)])
+def test_keep_requires_both_numerical_checks_to_pass(tmp_path, ab, base_pass, after_pass):
+    base = _response([_scalability_row('case', 100, passed=base_pass)])
+    after = _response([_scalability_row('case', 50, passed=after_pass)])
+    assert ab.compare(after, base, channel=_channel(tmp_path))['verdict']['decision'] != 'keep'
+    assert not ab.passed({'status': 'pass', 'pass': True, 'numerical_execution_passed': False})
+
+
+def test_one_winner_cannot_hide_another_cases_unknown_timing(tmp_path, ab):
+    base = _response([_scalability_row('win', 100), _scalability_row('pending', 100)])
+    pending = _scalability_row('pending', 50)
+    pending['performance']['status'] = 'UNKNOWN'
+    after = _response([_scalability_row('win', 50), pending])
+    result = ab.compare(after, base, channel=_channel(tmp_path))
+    assert result['cases'][0]['status'] == 'compared'
+    assert result['verdict']['decision'] == 'inconclusive'
+
+
+def test_explicit_requested_missing_candidate_case_is_unranked_but_subsets_remain_valid(tmp_path, ab):
+    base = _response([_scalability_row('a', 100), _scalability_row('b', 100)])
+    after = _response([_scalability_row('a', 50)])
+    channel = _channel(tmp_path)
+    result = ab.compare(after, base, channel=channel, cases={'a', 'b'})
+    assert result['cases'][1] == {
+        'test_case': 'b', 'after_passed': None, 'status': 'no candidate row for requested case'}
+    assert result['verdict']['decision'] == 'inconclusive'
+    assert ab.compare(after, base, channel=channel, cases={'a'})['verdict']['decision'] == 'keep'
+    assert ab.compare(after, base, channel=channel)['verdict']['decision'] == 'keep'
+
+
+def test_missing_simulator_identity_is_not_matching_measured_evidence(tmp_path, ab):
+    base = _response([_core_row('case', 100, identity={})])
+    after = _response([_core_row('case', 50, identity={})])
+    assert ab.compare(after, base, channel=_channel(tmp_path))['verdict']['decision'] == 'inconclusive'
+
+
+def test_two_missing_model_identities_do_not_match(tmp_path, ab):
+    base = _response([_scalability_row('case', 100, model={})])
+    after = _response([_scalability_row('case', 50, model={})])
+    assert ab.compare(after, base, channel=_channel(tmp_path))['verdict']['decision'] == 'inconclusive'
+
+
 def test_scalability_rows_and_knob_copies_compare_by_the_timing_model(tmp_path, ab):
     base = _response([_scalability_row("big", 10_000)], key="cases")
     knob = _response([_scalability_row("big", 9_000)], key="cases", overrides={"overlap": "on"})
     result = ab.compare(knob, base, channel=_channel(tmp_path))
     assert result["after"] == 'knobs {"overlap": "on"}'
     assert result["cases"][0]["kind"] == "modeled" and result["cases"][0]["delta_pct"] == -10.0
+    assert result["cases"][0]["evidence"] == "timing model (provisional)"
     assert result["verdict"]["decision"] == "keep"
 
 

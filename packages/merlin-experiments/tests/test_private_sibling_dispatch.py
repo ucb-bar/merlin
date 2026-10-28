@@ -10,6 +10,38 @@ from merlin.targetgen.owned_host_model_execution import _mandatory_source_comman
 from merlin.targetgen.private_sibling_dispatch import borrowed_host_chain, mandatory_member_commands
 
 
+def test_shared_head_kernel_keeps_distinct_original_call_groups():
+    from copy import deepcopy
+
+    from merlin.targetgen.private_sibling_dispatch import component_for_symbol, composition_members
+
+    components = [
+        {"physical_symbol": "reused", "physical_group": group, "matrix_invocations": 2,
+         "members": [{"head": head, "source_group": index * 2 + head} for head in range(2)]}
+        for index, group in enumerate((5, 9))
+    ]
+    composition = {"schema": "merlin.original_head_source_composition.v1",
+                   "components": components, "ordinary_joined_groups": {},
+                   "required_source_groups": [0, 1, 2, 3]}
+    assigned = [{"symbol": "reused", "group": group} for group in (5, 9)]
+    assert [m["source_group"] for m in composition_members(composition, assigned=assigned)] == [0, 1, 2, 3]
+    for component in components:
+        assert component_for_symbol(composition, "reused", group=component["physical_group"]) is component
+    assert component_for_symbol(composition, "reused", group=99) is None
+    with pytest.raises(ValueError, match="unambiguous"):
+        component_for_symbol(composition, "reused")
+    with pytest.raises(ValueError, match="per-slice invocation custody"):
+        composition_members(composition, assigned=[*assigned, assigned[0]])
+    omitted = deepcopy(composition)
+    omitted["components"] = omitted["components"][:1]
+    with pytest.raises(ValueError, match="omits or duplicates"):
+        composition_members(omitted, assigned=assigned)
+    duplicated = deepcopy(composition)
+    duplicated["components"][1]["members"][0]["source_group"] = 0
+    with pytest.raises(ValueError, match="omits or duplicates"):
+        composition_members(duplicated, assigned=assigned)
+
+
 def parsed(source):
     return Parser(make_llvm_context(), source).parse_module()
 

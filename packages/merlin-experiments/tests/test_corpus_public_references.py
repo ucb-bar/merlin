@@ -112,3 +112,35 @@ def test_user_permitted_archive_requires_exact_container_and_member_hash(tmp_pat
     manifest.write_text(json.dumps(document))
     with pytest.raises(SpecError, match="authorized identity"):
         R.stage(manifest, tmp_path / "changed")
+
+
+def test_v2_raw_evidence_is_opt_in_and_cannot_be_public_repository(tmp_path):
+    manifest = source(tmp_path)
+    payload = b"\x7fELF\x00\xff"
+    archive = manifest.parent / "raw.zip"
+    with zipfile.ZipFile(archive, "w") as stream:
+        stream.writestr("image.elf", payload)
+    document = {"schema": R.SCHEMA, "review_id": "raw-user-review", "origins": [{
+        "name": "raw_example", "kind": "user_permitted_archive", "container": "raw.zip",
+        "identity": hashlib.sha256(archive.read_bytes()).hexdigest(), "license": "user-provided artifact",
+        "user_authorization": "explicit raw evidence permission", "allowed_purpose": "reference_reading",
+        "files": [{"member": "image.elf", "destination": "image.elf",
+                   "sha256": hashlib.sha256(payload).hexdigest()}]}]}
+    manifest.write_text(json.dumps(document))
+    with pytest.raises(SpecError, match="source text|binary payload"):
+        R.stage(manifest, tmp_path / "default")
+    assert not (tmp_path / "default").exists()
+    document["origins"][0]["content_kind"] = "raw_evidence"
+    manifest.write_text(json.dumps(document))
+    result = R.stage(manifest, tmp_path / "raw")
+    leaf = tmp_path / "raw/raw_example/image.elf"
+    assert leaf.read_bytes() == payload
+    assert stat.S_IMODE(leaf.stat().st_mode) == 0o444
+    assert result["origins"][0]["content_kind"] == "raw_evidence"
+    public = json.loads(manifest.read_text())
+    public["origins"][0].update(kind="public_repository", public_url="https://example.org/compiler")
+    del public["origins"][0]["user_authorization"]
+    manifest.write_text(json.dumps(public))
+    with pytest.raises(SpecError, match="explicit user-permitted"):
+        R.stage(manifest, tmp_path / "public-raw")
+    assert not (tmp_path / "public-raw").exists()

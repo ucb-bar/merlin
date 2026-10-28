@@ -18,13 +18,26 @@ from pathlib import Path
 
 import yaml
 
+#: Names a grade's snapshot copy never carries (``shutil.ignore_patterns``: any depth, file or directory).
+SNAPSHOT_IGNORED = ("build", "__pycache__", ".git")
+#: Build-state names :func:`strip_build_state` deletes from a snapshot copy.
+BUILD_STATE = ("CMakeCache.txt", "CMakeFiles", "build.ninja", ".ninja_deps", ".ninja_log", "cmake_install.cmake")
+
+
+def outside_snapshot(relative_parts) -> bool:
+    """Whether a submission-relative path is one a grade's snapshot copy omits or strips.
+
+    The grader never sees such bytes, so they cannot be what a graded command read.
+    """
+    return any(part in SNAPSHOT_IGNORED or part in BUILD_STATE for part in relative_parts)
+
 
 def strip_build_state(root: Path) -> None:
     """Delete all cmake/ninja build state under `root` so a graded copy builds from scratch in its OWN
     path. Excluding a dir named 'build' is not enough — a stale CMakeCache / ninja state elsewhere pins the
     original source dir and makes cmake error ('source does not match cache'). The abc9 baseline L3-0/20
     'build' bug. Guarantees a clean, relocatable build for every grade."""
-    for pat in ("CMakeCache.txt", "CMakeFiles", "build.ninja", ".ninja_deps", ".ninja_log", "cmake_install.cmake"):
+    for pat in BUILD_STATE:
         for p in list(Path(root).rglob(pat)):
             try:
                 shutil.rmtree(p) if p.is_dir() else p.unlink()
@@ -360,7 +373,8 @@ def treatment_snapshot_record(ws: Path, run_dir: Path, bundle_dir: Path, resolve
         specs.extend((f"{kind}/{name}", root / name, True)
                      for kind, root in (("served", ws), ("archived", run_dir))
                      for name in capability_docs)
-    for name in ("construction_actions.py", "CONSTRUCTION_ACTIONS.json", "OPTIMIZATION_BY_OPERATION.json"):
+    for name in ("construction_actions.py", "CONSTRUCTION_ACTIONS.json", "OPTIMIZATION_BY_OPERATION.json",
+                 "COMMAND_ORDERING_SELECTION.json", "REFERENCE_EXPERIMENTS.json", "REFERENCE_MAP.json"):
         if any((root / name).exists() or (root / name).is_symlink() for root in (ws, run_dir)):
             specs.extend((f"{kind}/{name}", root / name, True)
                          for kind, root in (("served", ws), ("archived", run_dir)))

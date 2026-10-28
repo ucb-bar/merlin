@@ -5,9 +5,8 @@ description: "Which grading feedback file answers which question (newest result 
 
 # Feedback files
 
-Read the smallest file that answers the question. The large JSON files are for scripted queries
-(load with `json`, print only the keys you need), never whole reads. `SKILL_DIR` is this file's
-directory (`.agents/skills/feedback-files` or `.claude/skills/feedback-files`).
+Read the smallest file that answers the question. Query large JSON files with scripts that print
+only needed keys. `SKILL_DIR` is this skill's directory.
 
 `python SKILL_DIR/scripts/qa_status.py` prints every `qa/` file's age and size and the fields each
 carries about itself: grade time, `snapshot_current`, graded and current source digests, counts.
@@ -17,11 +16,15 @@ carries about itself: grade time, `snapshot_current`, graded and current source 
 - **Which cases pass, which fail, how failures group:** `qa/latest_grade_summary.txt`, one line per
   test case (status, tiers, failure plane/category, the grade a row came from when not the newest)
   and every failure cluster with members and reproduce command. Read it first.
-- **One case's full row** (detail, tiers, mismatch count, trace results): `per_capsule` in
-  `qa/latest_completed_grade.json`. Rows merge across grades: a case a newer grade did not run keeps
+- **One case's full row** (detail, tiers, mismatch count, trace results): find its compact `per_capsule`
+  entry in `qa/latest_completed_grade.json`, then open its `detail.path` under `qa/cases/CASE/`.
+  Self-check rows use the same detail pointers. `qa_result_details.hydrate(document, workspace=".")`
+  opens complete rows; existing inline records still work. Performance and compiler diagnostics
+  retain their distinct `feedback_brief` records in the detail. Rows merge across grades: a case a newer grade did not run keeps
   its last result, and its `graded` names the grade and source digest it describes. Top-level counts
   are the newest grade's only; `completed_rows` counts the merged rows (`from_current_source` says
-  how many describe your current bytes).
+  how many describe your current bytes). Cases publish as they finish; large cases' modeled timing
+  (`performance`) may arrive later.
 - **Is the grade of my current bytes in:** `qa/verdict.json`. It is written only for a snapshot that
   is still current when the grade finishes, so while you keep editing it can lag far behind the
   completed grade. Compare its `graded_source_sha256` with `current_source_sha256`.

@@ -647,6 +647,11 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             t = t.relu()
         return {out_name: t.to_list()}
 
+    if op == "sibling_feed":
+        from merlin.targetgen.corpus_sibling_feed import golden as sibling_feed_golden
+
+        return sibling_feed_golden(capsule, env, apply_epilogue=_apply_epilogue, narrow=_narrow_to_dtype)
+
     if op == "residual_seam":
         # A contraction and a residual add as two regions. Deliberately assembled from the SAME two
         # implementations the fused and standalone branches above use -- `_apply_epilogue` for the

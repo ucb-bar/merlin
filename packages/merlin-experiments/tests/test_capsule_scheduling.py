@@ -568,3 +568,25 @@ def test_owner_stop_closes_new_admission_without_canceling_started_result():
     assert started == ['first'] and rows[0]['status'] == 'pass'
     assert rows[1]['execution_status'] == 'not_started'
     assert closed == ['snapshot owner stopped new admission']
+
+
+@pytest.mark.parametrize('stopped', [False, True])
+def test_stop_overrides_expired_gate_hold_but_unreplaced_explicit_owner_still_admits(stopped):
+    from merlin.targetgen.capsule_scheduling import observe_admission
+
+    closed, started = [], []
+
+    def run(cap, workers):
+        started.append(cap['name'])
+        return {'capsule': cap['name'], 'status': 'pass'}
+
+    # An explicit caller outside dual_snapshots retains its own admission decision.
+    with observe_admission(closed.append, stop_requested=lambda: stopped, current=lambda: True):
+        rows = run_pipelined([_cap('held')], run, max_workers=2,
+                            admission_deadline_monotonic=0, admission_hold=lambda cap: True)
+    if stopped:
+        assert started == [] and rows[0]['execution_status'] == 'not_started'
+        assert closed == ['snapshot owner stopped new admission']
+    else:
+        assert started == ['held'] and rows[0]['status'] == 'pass'
+        assert closed == ['snapshot admission deadline reached']

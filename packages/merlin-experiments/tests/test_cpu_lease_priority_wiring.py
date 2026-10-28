@@ -23,8 +23,13 @@ def pool(monkeypatch, tmp_path):
         monkeypatch.setenv("MERLIN_COMPUTE_CPUS", ",".join(map(str, range(size))))
         monkeypatch.setenv("MERLIN_COMPUTE_CPU_SLOTS", str(tmp_path / "slots"))
 
-    for key in ("MERLIN_COMPUTE_CPUS", "MERLIN_COMPUTE_CPU_SLOTS", "MERLIN_SELFCHECK_BROKER_JOBS",
-                "MERLIN_SELFCHECK_ORDINARY_JOBS", C.PRIORITY_ENV):
+    for key in (
+        "MERLIN_COMPUTE_CPUS",
+        "MERLIN_COMPUTE_CPU_SLOTS",
+        "MERLIN_SELFCHECK_BROKER_JOBS",
+        "MERLIN_SELFCHECK_ORDINARY_JOBS",
+        C.PRIORITY_ENV,
+    ):
         monkeypatch.delenv(key, raising=False)
     return select
 
@@ -50,16 +55,27 @@ def test_first_grade_leases_at_grade_class_with_no_foreground_skip(monkeypatch, 
         observed.append(C.lease_priority())
         return {"all_pass": None}
 
-    handle = L.start_background(tmp_path / "ws", tmp_path / "run", L.GradeCadence(60, False, 900),
-                                interval_grades=False, grade_callback=lambda *a, **k: pytest.fail("no interval"),
-                                fast_grade_callback=first)
+    handle = L.start_background(
+        tmp_path / "ws",
+        tmp_path / "run",
+        L.GradeCadence(60, False, 900),
+        interval_grades=False,
+        grade_callback=lambda *a, **k: pytest.fail("no interval"),
+        fast_grade_callback=first,
+    )
     handle[0].join(10)
     L.stop_background(handle)
     assert observed == [C.GRADE]
     with pytest.raises(TypeError):  # the foreground skip is gone, not silently ignored
-        L.start_background(tmp_path / "ws", tmp_path / "run", L.GradeCadence(60, False, 900),
-                           interval_grades=False, grade_callback=first, fast_grade_callback=first,
-                           foreground_has_priority=lambda: True)
+        L.start_background(
+            tmp_path / "ws",
+            tmp_path / "run",
+            L.GradeCadence(60, False, 900),
+            interval_grades=False,
+            grade_callback=first,
+            fast_grade_callback=first,
+            foreground_has_priority=lambda: True,
+        )
 
 
 def test_tick_telemetry_leases_at_auxiliary_class(monkeypatch, tmp_path):
@@ -90,10 +106,15 @@ def test_tick_telemetry_leases_at_auxiliary_class(monkeypatch, tmp_path):
 
     monkeypatch.setattr(threading, "Event", Stop)
     monkeypatch.setattr(threading, "Thread", Inline)
-    L.start_background(tmp_path / "ws", tmp_path / "run", L.GradeCadence(60, False, 30), interval_grades=True,
-                       grade_callback=lambda *a, **k: seen.append(("grade", C.lease_priority())) or {},
-                       fast_grade_callback=lambda *a: pytest.fail("a verdict already exists"),
-                       on_tick=lambda index: seen.append(("tick", C.lease_priority())))
+    L.start_background(
+        tmp_path / "ws",
+        tmp_path / "run",
+        L.GradeCadence(60, False, 30),
+        interval_grades=True,
+        grade_callback=lambda *a, **k: seen.append(("grade", C.lease_priority())) or {},
+        fast_grade_callback=lambda *a: pytest.fail("a verdict already exists"),
+        on_tick=lambda index: seen.append(("tick", C.lease_priority())),
+    )
     assert seen == [("grade", C.GRADE), ("tick", C.AUXILIARY)]
 
 
@@ -151,10 +172,62 @@ def test_author_broker_processes_export_the_author_class(module):
 
     source = repo_root() / "packages/merlin-experiments/src/merlin_experiments/phase1/brokers" / f"{module}.py"
     tree = ast.parse(Path(source).read_text())
-    guards = [node for node in tree.body
-              if isinstance(node, ast.If) and ast.unparse(node.test) == "__name__ == '__main__'"]
+    guards = [
+        node for node in tree.body if isinstance(node, ast.If) and ast.unparse(node.test) == "__name__ == '__main__'"
+    ]
     assert len(guards) == 1
     withs = [node for node in ast.walk(guards[0]) if isinstance(node, ast.With)]
     assert [ast.unparse(item.context_expr) for node in withs for item in node.items] == [
-        "cpu_priority(AUTHOR, export=True)"]
+        "cpu_priority(AUTHOR, export=True)"
+    ]
     assert "main()" in ast.unparse(withs[0])
+
+
+def test_promoted_simulation_jobs_lease_below_author_requests(pool, monkeypatch):
+    """A promotion certifies a verdict the author already has: it queues behind author work for CPUs."""
+    from merlin_experiments.phase1 import joint_gsim_queue as Q
+
+    pool(4)
+    inherited = {
+        C.PRIORITY_ENV: str(C.AUTHOR),
+        "MERLIN_COMPUTE_CPUS": "0,1,2,3",
+        "MERLIN_COMPUTE_CPU_SLOTS": "/nonexistent-slot-root",
+    }
+    promoted = simjob._job_classes(dict(inherited), promoted=True)
+    authored = simjob._job_classes(dict(inherited), promoted=False)
+    assert (promoted[C.PRIORITY_ENV], promoted[Q.CLASS_ENV]) == (str(C.GRADE), Q.BACKGROUND)
+    assert (authored[C.PRIORITY_ENV], authored[Q.CLASS_ENV]) == (str(C.AUTHOR), Q.AUTHOR)
+    with C.cpu_priority(C.AUTHOR):  # the broker's own class does not raise the promotion back
+        assert C.child_environment(promoted)[C.PRIORITY_ENV] == str(C.GRADE)
+    from merlin.common.paths import repo_root
+
+    source = (repo_root() / "packages/merlin-experiments/src/merlin_experiments/phase1/brokers/simjob.py").read_text()
+    calls = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call) and ast.unparse(node.func) == "_job_classes"
+    ]
+    assert [ast.unparse(node) for node in calls] == ["_job_classes(worker_env, promoted=bool(r.get('promoted')))"]
+
+
+def _lane(*, diagnostic=False, variant=False):
+    return {"diagnostic": diagnostic, "variant": variant}
+
+
+def test_author_requests_start_past_the_lanes_only_while_the_pool_serves_every_author_lease():
+    full = [_lane() for _ in range(4)]
+    lanes = dict(diagnostic=False, variant=False, ordinary_capacity=4, variant_capacity=2)
+    assert not B._lane_admits(full, **lanes)
+    # No author lease queued: one more author request would take a free CPU or a lower class's next one.
+    assert B._overflow_admits(full, ordinary_capacity=4, author_backlog=0, pool=4)
+    assert B._lane_admits(full, **lanes, overflow=True)
+    # Author leases already queue in the pool, or no pool is selected: the dispatcher keeps the order.
+    assert not B._overflow_admits(full, ordinary_capacity=4, author_backlog=1, pool=4)
+    assert not B._overflow_admits(full, ordinary_capacity=4, author_backlog=None, pool=0)
+    # At most one extra handler per pool CPU, for work that never shows up as a queued lease.
+    assert not B._overflow_admits(full * 2, ordinary_capacity=4, author_backlog=0, pool=4)
+    # The variant bound and the single diagnostic lane are unchanged by overflow.
+    variants = [_lane(variant=True), _lane(variant=True), *full]
+    assert not B._lane_admits(variants, **dict(lanes, variant=True), overflow=True)
+    assert B._lane_admits(full * 2, **dict(lanes, diagnostic=True))
+    assert not B._lane_admits([*full, _lane(diagnostic=True)], **dict(lanes, diagnostic=True), overflow=True)

@@ -13,6 +13,7 @@ covers every test case that passes L2, in any cohort, using the best bound evide
   measurement flagged ``measured_on_earlier_source``; advisory, like everything here;
 * modeled: the Spike timing model's estimate and structural floor attached to the verdict row, when the
   model accounted for every event;
+* estimated: the calibrated fast census estimate (:mod:`.fast_estimate`) when no complete estimate exists;
 * otherwise the case is counted as lacking evidence and named.
 
 Headroom is cycles minus the roofline bound. Ranked entries carry ``fence_overlap`` (fences, output
@@ -28,7 +29,7 @@ import json
 import math
 from pathlib import Path
 
-from . import capacity_use, reference_baselines, shape_classes
+from . import capacity_use, fast_estimate, reference_baselines, shape_classes
 
 SCHEMA = "merlin.development_performance_headroom.v1"
 #: Ranked entries kept in the brief; the counts cover the rest.
@@ -46,7 +47,9 @@ def _load(path: Path):
     try:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > _MAX_RECORD_BYTES:
             return None
-        return json.loads(path.read_text())
+        from .result_details import hydrate
+
+        return hydrate(json.loads(path.read_text()), document_path=path)
     except (OSError, ValueError):
         return None
 
@@ -194,6 +197,10 @@ def _entry(name, row, tier_state, measured, workspace, estimates=None, newest_di
         cycles, roofline = performance["estimated_whole_soc_cycles"], performance.get("structural_roofline") or {}
         evidence = "modeled: Spike timing model (self-check)"
         stale = newest_digest is not None and digest != newest_digest
+    elif fast_estimate.cycles_of(performance) is not None:
+        # No complete estimate yet: the calibrated census estimate ranks the case under its own label.
+        cycles, roofline = fast_estimate.cycles_of(performance), performance.get("structural_roofline") or {}
+        evidence, stale = fast_estimate.label(performance), False
     else:
         return None
     bound, limiter = _bound(roofline)
@@ -247,6 +254,9 @@ def build(workspace, verdict, *, limit=LIMIT, evidence=None, observe=None) -> di
     records it).
     """
     workspace = Path(workspace)
+    from .result_details import hydrate
+
+    verdict = hydrate(verdict, workspace=workspace)
     evidence = collect(workspace, verdict) if evidence is None else evidence
     tier_state, measured, estimates = evidence["tier_state"], evidence["measured"], evidence["estimates"]
     advisory = evidence.get("advisory_measured") or {}
@@ -269,15 +279,16 @@ def build(workspace, verdict, *, limit=LIMIT, evidence=None, observe=None) -> di
             missing.append(name)
         else:
             ranked.append(entry)
-    # The all-case headline reads every ranked case; the priority block ranks primary workload roles.
-    evidence["ranked"] = ranked
+    # Raw observations remain in their ledgers; headline rankings require public primary roles.
     from ..workload_roles import PRIMARY, workspace_roles
 
-    roles = workspace_roles(workspace)
-    diagnostics = []
-    if roles is not None:
-        diagnostics = [entry for entry in ranked if roles.get(entry["test_case"]) not in PRIMARY]
-        ranked = [entry for entry in ranked if roles.get(entry["test_case"]) in PRIMARY]
+    roles = workspace_roles(workspace) or {}
+    diagnostics = [entry for entry in ranked if roles.get(entry["test_case"]) not in PRIMARY]
+    ranked = [entry for entry in ranked if roles.get(entry["test_case"]) in PRIMARY]
+    evidence["ranked"] = ranked
+    unclassified = sorted(str(row.get('capsule', row.get('name'))) for row in passing
+                          if roles.get(row.get('capsule', row.get('name'))) not in
+                          PRIMARY | {'correctness', 'calibration', 'diagnostic_control'})
     ranked.sort(key=lambda e: (-e["headroom_cycles"], -e["gap_ratio"], str(e["test_case"])))
     # Operator-measured reference compilers on the same cases: cycles and same-engine ratios, advisory.
     baselines = evidence.get("reference_baselines")
@@ -294,8 +305,8 @@ def build(workspace, verdict, *, limit=LIMIT, evidence=None, observe=None) -> di
     rows = {str(row.get("capsule", row.get("name"))): row for row in passing}
     fences = {}
     for name, row in rows.items():
-        if name not in excluded:
-            fence = fence_overlap.for_entry(name, workspace, row.get("performance"), selection=selection)
+        if name not in excluded and roles.get(name) in PRIMARY:
+            fence = fence_overlap.for_entry(name, workspace, row.get("performance"), selection=selection, roles=roles)
             if fence is not None:
                 fences[name] = fence
     for entry in ranked[:limit]:
@@ -323,11 +334,8 @@ def build(workspace, verdict, *, limit=LIMIT, evidence=None, observe=None) -> di
         "schema": SCHEMA,
         "advisory_only": True,
         "promotion_authority": False,
-        "scope": (
-            "passing primary workload roles, except performance_scope excluded"
-            if roles is not None
-            else "every test case passing L2 in this grade, any cohort, except performance_scope excluded"
-        ),
+        "scope": "passing primary workload roles, except performance_scope excluded",
+        "classification_needed": {"count": len(unclassified), "cases": unclassified[:limit]},
         "diagnostic_controls": diagnostics[:limit],
         "diagnostic_control_count": len(diagnostics),
         "policy": (
@@ -341,6 +349,7 @@ def build(workspace, verdict, *, limit=LIMIT, evidence=None, observe=None) -> di
             "ranked": len(ranked),
             "measured": sum(e["evidence"].startswith("measured") for e in ranked),
             "modeled": sum(e["evidence"].startswith("modeled") for e in ranked),
+            "fast_estimate": sum(e["evidence"].startswith("estimated") for e in ranked),
             "without_evidence": len(missing),
             "performance_scope_excluded": len(excluded & {row.get("capsule", row.get("name")) for row in passing}),
         },

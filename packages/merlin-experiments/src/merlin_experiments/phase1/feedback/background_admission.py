@@ -4,7 +4,7 @@ An active marker identifies an authorized foreground full self-check, never
 numerical authority. It is issued by the real broker in private storage and
 expires with its actual process owners. Background grades no longer pause for
 it: CPU ordering between author and grade work is the shared pool's lease
-priority (``merlin.common.cpu_pool``); only a superseded source defers work.
+priority (``merlin.common.cpu_pool``); a source edit never defers or closes it either.
 """
 
 from __future__ import annotations
@@ -187,37 +187,37 @@ def source_digest(ws):
 
 
 class BackgroundGuard:
+    """One background grade's immutable snapshot: what it graded, what its cases reach, when it stops.
+
+    An edit never cancels, closes or narrows a grade's admission. Every grade runs its own snapshot to
+    the end, like a helper working on its own copy, and its per-case results are reconciled with the
+    current source when they are published (:mod:`.reconcile`). Measured on fresh7refcca: closing the
+    unstarted queue on every relevant edit gated all 306 cases of all 76 grades in 2.6 h, so the agent
+    received no grade results at all. Waste is avoided by lease priority and cross-snapshot
+    deduplication (:mod:`.grade_lanes`), not by cancellation. Only final handoff and the joint
+    campaign deadline stop new admission.
+    """
+
     def __init__(self, ws, public, inputs, source_sha256, *, finish_bounded_snapshot=False):
         self.ws, self.public, self.inputs, self.source = ws, public, inputs, source_sha256
         self.deferred = None
         self.finish_bounded_snapshot = finish_bounded_snapshot
-        self._dependency_identity = None
-        self._dependency_roster = None
-        self._pending_deferred = None
-        self._changed = frozenset()
+        self._components = None
         selected = os.environ.get('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '0')
         if selected not in {'0', '1'}:
             raise ValueError('MERLIN_BACKGROUND_FINISH_SNAPSHOT must be 0 or 1')
-        # Legacy selection remains accepted, but may never keep queuing obsolete work.
+        # Legacy selection remains accepted; every grade now finishes its snapshot.
 
     def bind_snapshot(self, candidate):
-        """Bind admission relevance to the copied compiler, never live edits.
-
-        Every capsule runs every declared command. The existing component closure
-        can exclude inert notes, but supplies no per-capsule dependency shortcut.
-        This identity only closes an old queue; it never reattributes its results.
-        """
+        """Bind reach and reconciliation identity to the copied compiler, never live edits."""
         from .promotion import submission_digests
         candidate = Path(candidate)
         if candidate.name != "submission":
             raise ValueError("background dependency binding requires original submission snapshot")
         try:
-            whole, components, _ = submission_digests(candidate.parent)
-            self._dependency_identity = (whole, components)
+            self._components = dict(submission_digests(candidate.parent)[1]) or None
         except (OSError, ValueError, TypeError):
-            self._dependency_identity = None
-        self._dependency_roster = None
-        self._changed = frozenset()
+            self._components = None
 
     def case_reach(self, capsule):
         """Components of the bound snapshot that ``capsule``'s commands reach; ``None`` is unknown.
@@ -226,69 +226,18 @@ class BackgroundGuard:
         reaches every component of the decomposition, ``UNATTRIBUTED`` included. A snapshot without
         a decomposition has no attributable reach.
         """
-        if self._dependency_identity is None or not self._dependency_identity[1]:
-            return None
-        return frozenset(self._dependency_identity[1])
+        return frozenset(self._components) if self._components else None
 
-    def shared_reach(self):
-        """Components every waiting case reaches: a change to one supersedes the whole queue."""
-        return self.case_reach(None)
+    def reach_identity(self):
+        """The snapshot's reconciliation identity (:func:`.reconcile.reach_identity`), or ``None``."""
+        from .reconcile import reach_identity
 
-    def member_reason(self, capsule):
-        """Why one unstarted member is superseded by an edit outside the shared reach, else ``None``.
-
-        Uses the change observed by the latest :meth:`pending_reason`; unknown reach fails closed.
-        A superseded member is withheld, never re-attributed: started work keeps its own snapshot.
-        """
-        if self._pending_deferred is not None:
-            return self._pending_deferred
-        if not self._changed:
-            return None
-        reach = self.case_reach(capsule)
-        known = set(self._dependency_identity[1]) if self._dependency_identity is not None else set()
-        if reach is None or self._changed & reach or self._changed - known:
-            return "background source superseded"
-        return None
-
-    def _pending_source_reason(self):
-        if self._pending_deferred is not None:
-            return self._pending_deferred
-        if self._dependency_identity is None:
-            return self.reason()  # unavailable narrowing retains original policy
-        from .promotion import submission_digests
-        try:
-            roster = _source_roster(Path(self.ws) / "submission")
-            if roster == self._dependency_roster:
-                return None
-            whole, components, _ = submission_digests(self.ws)
-            if roster != _source_roster(Path(self.ws) / "submission"):
-                self._pending_deferred = "background source changed during dependency check"
-            else:
-                old_whole, old_components = self._dependency_identity
-                if components and old_components:
-                    changed = frozenset(name for name in set(components) | set(old_components)
-                                        if components.get(name) != old_components.get(name))
-                else:
-                    changed = None if whole != old_whole else frozenset()  # None: unattributable
-                shared = self.shared_reach()
-                outside = set(old_components or ()) - set(shared or old_components or ())
-                if changed is None or not changed <= outside:
-                    # A change to a component every waiting case reaches (or to one this snapshot
-                    # cannot attribute) closes the whole queue, exactly as before.
-                    self._pending_deferred = "background source superseded"
-                else:
-                    self._changed = changed  # members reaching it are withheld by member_reason
-                    self._dependency_roster = roster
-        except (OSError, ValueError, TypeError):
-            self._pending_deferred = "background source dependencies unavailable"
-        return self._pending_deferred
+        return reach_identity(self._components)
 
     def pending_reason(self):
-        """Close only unstarted admission after relevant source changes.
+        """Why this grade admits no further case: final handoff or the joint deadline, else ``None``.
 
-        Running work drains on its immutable snapshot. Neither a bounded joint
-        window nor the legacy FINISH_SNAPSHOT flag permits queuing obsolete work.
-        Final handoff/deadline retains precedence over source-edit deferral.
+        Running work drains on its immutable snapshot either way. A source edit is never a reason.
         """
         if self.finish_bounded_snapshot:
             from .. import joint_control
@@ -297,12 +246,13 @@ class BackgroundGuard:
                 return stop
             if joint_control.remaining() <= 0:
                 return "joint campaign deadline reached"
-        return self._pending_source_reason()
+        return None
 
     def reason(self):
-        # Only obsolescence defers pending work. A concurrent same-source author
-        # self-check no longer pauses this grade: its leases outrank the grade's
-        # in the shared CPU pool (cpu_pool.AUTHOR before cpu_pool.GRADE).
+        """Whether the author edited since this snapshot: labels the verdict as an older version's.
+
+        Only a label: admission continues, and each case is reconciled when published.
+        """
         current = source_digest(self.ws)
         if (self.source is not None
                 and current is not None and current != self.source):
@@ -311,26 +261,3 @@ class BackgroundGuard:
 
     def current(self):
         return self.source is not None and source_digest(self.ws) == self.source
-
-
-def _source_roster(root):
-    """Cheap scheduling invalidation, not a substitute for source-byte grading.
-
-    ctime/inode plus membership detect restored mtime and atomic replacement.
-    Hashes are recomputed when metadata changes; no CPU lease or byte reread on
-    an unchanged scheduler refill. Unreadable/linked inputs refuse narrowing.
-    """
-    if not root.is_dir() or root.is_symlink():
-        raise ValueError("background source is missing or linked")
-    records = []
-    for path in sorted(root.rglob("*")):
-        relative = path.relative_to(root)
-        if "__pycache__" in relative.parts:
-            continue
-        if path.is_symlink():
-            raise ValueError("background source contains a link")
-        if path.is_file():
-            stat = path.stat()
-            records.append((relative.as_posix(), stat.st_dev, stat.st_ino, stat.st_size,
-                            stat.st_mtime_ns, stat.st_ctime_ns))
-    return tuple(records)

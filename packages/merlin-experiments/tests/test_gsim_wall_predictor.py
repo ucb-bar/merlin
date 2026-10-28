@@ -117,7 +117,7 @@ def test_the_campaign_model_refits_with_measured_outcomes_and_seeds_from_earlier
 
 def test_the_lane_does_not_launch_a_job_projected_over_the_cap(tmp_path, campaign, capsys):  # noqa: F811
     state = json.loads((campaign / "joint_campaign.json").read_text())
-    state["policy"]["gsim_measurement"] = {"max_job_wall_s": CAP}
+    state["policy"]["gsim_measurement"] = {"enabled": True, "max_job_wall_s": CAP}
     (campaign / "joint_campaign.json").write_text(json.dumps(state))
     with M._ledger() as data:
         data["jobs"].update(_ledger_jobs())
@@ -138,7 +138,7 @@ def test_the_lane_does_not_launch_a_job_projected_over_the_cap(tmp_path, campaig
 
 def test_a_launched_job_records_its_prediction_for_the_refit(tmp_path, campaign):  # noqa: F811
     state = json.loads((campaign / "joint_campaign.json").read_text())
-    state["policy"]["gsim_measurement"] = {"max_job_wall_s": CAP}
+    state["policy"]["gsim_measurement"] = {"enabled": True, "max_job_wall_s": CAP}
     (campaign / "joint_campaign.json").write_text(json.dumps(state))
     with M._ledger() as data:
         data["jobs"].update(_ledger_jobs())

@@ -1,9 +1,15 @@
 """Waiting order for the joint gSIM correctness slots, kept in the flock'd correctness ledger.
 
 A full concurrency cap with budget left is a queue, not a refusal: an author request waits for a
-slot in arrival order across every process that shares the ledger, and is served before background
-work (promotions, operator measurements) of other cases, because the author is blocked on it. The
-order is a priority, never a quota: background work still takes any slot no author is waiting for.
+slot across every process that shares the ledger, and is served before background work (promotions,
+operator measurements) of other cases, because the author is blocked on it. The order is a priority,
+never a quota: background work still takes any slot no author is waiting for.
+
+Within a class, waiting requests are interleaved across their requesters (the caller thread a
+self-check names, :data:`REQUESTER_ENV`): each requester's oldest waiting request goes first, then each
+one's second, and so on, each round in arrival order. A sweep of many single-case requests keeps its
+own order but no longer holds another requester's single check behind all of it. Requests that name
+no requester share one anonymous requester, which keeps arrival order among them.
 
 Background work does not wait inside its evaluation child (its broker keeps it queued until a slot
 is free, :func:`background_slots`); a background child that loses the race reports a retryable
@@ -22,6 +28,8 @@ from pathlib import Path
 CLASS_ENV = "MERLIN_JOINT_GSIM_QUEUE_CLASS"
 #: The broker's request id, recorded on the child's slot so its broker can tell a started job apart.
 REQUEST_ENV = "MERLIN_JOINT_GSIM_REQUEST"
+#: Who asked (a self-check's caller thread); waiting requests are interleaved across requesters.
+REQUESTER_ENV = "MERLIN_JOINT_GSIM_REQUESTER"
 AUTHOR = "author"
 BACKGROUND = "background"
 _RANK = {AUTHOR: 0, BACKGROUND: 1}
@@ -59,19 +67,46 @@ def settle(data: dict) -> None:
     data["waiting"] = [row for row in data.get("waiting", ()) if _alive(row.get("pid"))]
 
 
+def requester(env=None) -> str | None:
+    value = (os.environ if env is None else env).get(REQUESTER_ENV, "").strip()
+    return value[:128] or None
+
+
+def name_requester(env: dict, request: dict) -> dict:
+    """Set the evaluation child's requester from a self-check request's caller thread (else none).
+
+    Used only to interleave waiting requests; it grants nothing and a request without it waits as one
+    anonymous requester.
+    """
+    env.pop(REQUESTER_ENV, None)
+    caller = request.get("caller_thread_id") if isinstance(request, dict) else None
+    if isinstance(caller, str) and caller.strip():
+        env[REQUESTER_ENV] = caller.strip()[:128]
+    return env
+
+
 def _ordered(data: dict) -> list:
-    return sorted(data.get("waiting", ()), key=lambda row: (_RANK.get(row.get("class"), 1), row.get("seq", 0)))
+    """Class first; within a class, round-robin over requesters, each round in arrival order."""
+    rows = sorted(data.get("waiting", ()), key=lambda row: (_RANK.get(row.get("class"), 1), row.get("seq", 0)))
+    turns: dict[tuple, int] = {}
+    keyed = []
+    for row in rows:
+        rank = _RANK.get(row.get("class"), 1)
+        own = (rank, row.get("requester"))
+        keyed.append(((rank, turns.get(own, 0), row.get("seq", 0)), row))
+        turns[own] = turns.get(own, 0) + 1
+    return [row for _, row in sorted(keyed, key=lambda item: item[0])]
 
 
-def enqueue(data: dict, token: str, *, capsule: str, request_class: str, now: float) -> None:
-    """Add ``token`` at the back of its class (idempotent: an existing entry keeps its place)."""
+def enqueue(data: dict, token: str, *, capsule: str, request_class: str, now: float, requester=None) -> None:
+    """Add ``token`` behind its requester's earlier entries (idempotent: an entry keeps its place)."""
     waiting = data.setdefault("waiting", [])
     if any(row.get("token") == token for row in waiting):
         return
     seq = int(data.get("next_seq", 0))
     data["next_seq"] = seq + 1
     waiting.append({"token": token, "pid": os.getpid(), "capsule": capsule, "class": request_class,
-                    "seq": seq, "enqueued_at_epoch": now})
+                    "seq": seq, "enqueued_at_epoch": now, **({"requester": requester} if requester else {})})
 
 
 def leave(data: dict, token: str) -> None:

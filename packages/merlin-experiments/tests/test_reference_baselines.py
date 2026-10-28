@@ -201,6 +201,10 @@ def _workspace(tmp_path, corpus, document=None, *, pin=None):
     ws = tmp_path / "workspace"
     (ws / "qa").mkdir(parents=True)
     (ws / ".qa_channel").mkdir()
+    (ws / "PUBLIC_CAPABILITIES.json").write_text(json.dumps({
+        "schema": "merlin.public_capability_inventory.v1",
+        "members": {name: {"workload_role": "large_kernel"} for name in (BIG, SMALL)},
+    }))
     digest = "d" * 64
     cert = {"status": "pass", "digest": digest[:16], "execution_digest": digest, "components": {"p": "1"}}
     (ws / "qa" / "tier_state.json").write_text(json.dumps({BIG: {"L2": cert, "L3": cert}}))

@@ -9,21 +9,22 @@ The brief copies each ranked case's advice onto its row as ``optimization_next``
 
 * ``line`` -- one line: evidence kind, cycles, gap over the bound, compute-peak attainment |
   bottleneck class | library mechanism(s) with module:symbol and whether ``submission/`` imports them |
-  a paste-ready A/B (copy to ``variants/NAME``, variant self-check of the same case) | the
+  a paste-ready A/B (apply through an authored adapter, then self-check changed emission) | the
   ``ab_compare.py`` command | the skill and pass-library reference to read;
 * the same pieces as fields (``bottleneck``, ``mechanisms``, ``ab``, ``skill``, ``reference``).
 
 The bottleneck class comes from what the brief already computed for the case, in this order: a stream
 fenced after nearly every output tile (:mod:`.fence_overlap`); operand bytes read well beyond what the
 local capacity allows (:mod:`.capacity_use`); the busiest modeled resource; the limiting roofline bound.
-The mechanisms are :mod:`.mechanism_hints`' for that class (catalogue order, nothing ranked by what is
-known to win), each marked by whether the author's own files under ``submission/`` import its module
+The mechanisms are :mod:`.mechanism_hints`' for that class (untried applicable alternatives first,
+source calls distinguished from imports, no private performance ranking), each marked by whether the
+author's own files under ``submission/`` import its module
 (``ast``, the scheduling-api skill's inventory reader) and by the workload prerequisites
 ``OPTIMIZATION_SUGGESTIONS.json`` has not checked. The A/B starts from the first named mechanism without
 such a prerequisite (else the first named).
 
-Labels: evidence by kind (:func:`.shape_classes.evidence_kind`; only gSIM measurements and a calibrated
-model are cycle evidence, a provisional estimate or a Spike count says so); attainment is useful MACs /
+Labels: evidence by kind (:func:`.shape_classes.evidence_kind`; measured, calibrated and provisional
+cycle estimates remain distinct, and a Spike count is not cycles); attainment is useful MACs /
 (cycles x structural peak), compute-peak attainment, not physical PE occupancy; a request roofline is
 derived from the simulated memory path's bytes per cycle and is labelled gSIM-domain with that rate. No
 private reference or FireSim number is read here.
@@ -37,6 +38,7 @@ failure here leaves the response as it was.
 from __future__ import annotations
 
 import importlib.util
+import shlex
 import sys
 from pathlib import Path
 
@@ -52,7 +54,7 @@ RESTREAM_WORDS = ("resident", "retain", "retention", "reuse", "panel")
 EVIDENCE = {
     "gsim_measured": "gSIM-measured",
     "calibrated_model": "calibrated timing model",
-    "provisional_model": "provisional model estimate (not cycle evidence; confirm on gSIM)",
+    "provisional_model": "provisional cycle-model estimate (not measured hardware cycles)",
     "spike_count": "Spike count (not cycles)",
 }
 _FACET_CLASS = {
@@ -111,12 +113,13 @@ def _pct(value) -> str:
     return f"{round(100 * value)}%" if isinstance(value, int | float) else "?"
 
 
-def bottleneck(entry: dict, selection) -> tuple[str, list[dict]] | None:
+def bottleneck(entry: dict, selection, *, deprioritize=()) -> tuple[str, list[dict]] | None:
     """``(class text, mechanisms)`` for one brief entry, or None when the bottleneck is unknown."""
     fence = entry.get("fence_overlap") if isinstance(entry.get("fence_overlap"), dict) else {}
     if fence.get("fence_per_tile"):
         found, _ = mechanism_hints.fence_hints(
-            selection, why="a full-device fence after nearly every output tile serializes tiles"
+            selection, why="a full-device fence after nearly every output tile serializes tiles",
+            deprioritize=deprioritize,
         )
         text = f"fence-bound ({fence.get('fences')} fences, {fence.get('tiles_per_fence')} output tiles per fence)"
         return text, found
@@ -128,7 +131,8 @@ def bottleneck(entry: dict, selection) -> tuple[str, list[dict]] | None:
     ratio, allowed = reads.get("ratio"), reads.get("capacity_bound_ratio")
     if isinstance(ratio, int | float) and isinstance(allowed, int | float) and ratio > allowed * (1 + HEADROOM_SHARE):
         text = f"operand re-streaming (reads {ratio}x the compulsory bytes; local capacity allows ~{allowed}x)"
-        return text, mechanism_hints.hints(selection, bound_by="read requests", words=RESTREAM_WORDS, why=text)
+        return text, mechanism_hints.hints(selection, bound_by="read requests", words=RESTREAM_WORDS,
+                                          why=text, deprioritize=deprioritize)
     dominant = entry.get("dominant_modeled_resource")
     facets = mechanism_hints.resource_facets((dominant or {}).get("name")) if isinstance(dominant, dict) else None
     if facets is not None:
@@ -137,10 +141,12 @@ def bottleneck(entry: dict, selection) -> tuple[str, list[dict]] | None:
             f"{_FACET_CLASS.get(facets, 'resource')} (busiest modeled resource {dominant['name']}, "
             f"{_pct(dominant.get('modeled_activity'))} modeled activity" + (f", {unit}" if unit else "") + ")"
         )
-        return text, mechanism_hints.hints(selection, dominant=dominant, bound_by=entry.get("bound_by"))
+        return text, mechanism_hints.hints(selection, dominant=dominant, bound_by=entry.get("bound_by"),
+                                          deprioritize=deprioritize)
     bound = entry.get("bound_by")
     if mechanism_hints.bound_facets(bound) is not None:
-        return (f"{bound} roofline bound (no resource diagnostic)", mechanism_hints.hints(selection, bound_by=bound))
+        return (f"{bound} roofline bound (no resource diagnostic)", mechanism_hints.hints(
+            selection, bound_by=bound, deprioritize=deprioritize))
     return None
 
 
@@ -149,12 +155,22 @@ def _variant(mechanism: str) -> str:
     return name[:64].rstrip("-.")
 
 
-def ab_command(case: str, variant: str, suite: str) -> str:
-    """The paste-ready variant self-check of one case (same route as the ab-library-pass skill)."""
-    route = "--suite scalability" if suite == "scalability" else "--sim gsim"
+def ab_command(case: str, variant: str, suite: str, *, mechanism: str, workspace: Path) -> str:
+    """Apply through an authored adapter before self-checking a changed variant.
+
+    The preparation tool refuses missing hooks, unchanged products and a
+    disconnected manifest emitter; copying a submission alone is not an A/B.
+    """
+    route = {"scalability": "--suite scalability", "programs": "--suite programs --sim spike"}.get(suite, "--sim spike")
+    script = f"{skill_root(workspace)}/{SKILL}/scripts/apply_library_pass.py"
+    prepare = shlex.join([
+        "python", script, "--submission", "submission", "--variant", f"variants/{variant}",
+        "--adapter", "tools/library_pass_adapter.py", "--mechanism", mechanism,
+        "--case", case, "--receipt", f"ab/{variant}-application.json",
+    ])
     return (
-        f"cp -r submission variants/{variant} && python agent_selfcheck.py --submission variants/{variant} "
-        f"--capsules {case} {route} --wait-budget 5"
+        f"{prepare} && python agent_selfcheck.py --submission {shlex.quote(f'variants/{variant}')} "
+        f"--capsules {shlex.quote(case)} {route} --wait-budget 5"
     )
 
 
@@ -176,16 +192,27 @@ def bound_text(bound_by, roofline) -> str:
     return f"the {bound_by} bound (gSIM-domain memory path{shown})"
 
 
-def block(entry: dict, *, selection, suite: str, imports: dict, workspace: Path, roofline=None) -> dict | None:
+def block(
+    entry: dict, *, selection, suite: str, imports: dict, workspace: Path, roofline=None, roles=None
+) -> dict | None:
     """``optimization_next["library_pass"]`` for one brief entry (module docstring), or None."""
+    from ..workload_roles import PRIMARY, workspace_roles
+
+    roles = workspace_roles(workspace) if roles is None else roles
     case = entry.get("test_case")
-    if not isinstance(case, str) or not case or suite not in ("core", "scalability") or not has_headroom(entry):
+    if (roles or {}).get(case) not in PRIMARY:
         return None
+    if (not isinstance(case, str) or not case or suite not in ("core", "scalability", "programs")
+            or not has_headroom(entry)):
+        return None
+    if selection and 'source_calls' not in selection:
+        selection = mechanism_hints.with_source_evidence(selection, workspace)
+    selection = mechanism_hints.for_case(selection, case, workspace)
+    script = inventory_script()
     found = bottleneck(entry, selection)
     if found is None or not found[1]:
         return None
     text, mechanisms = found
-    script = inventory_script()
     workload = {
         row.get("id"): sorted(
             k for k, v in (row.get("requirements") or {}).items() if k.startswith("workload.") and v != "supported"
@@ -196,7 +223,8 @@ def block(entry: dict, *, selection, suite: str, imports: dict, workspace: Path,
     shown = mechanisms[:PER_LINE]
     # The A/B starts from the first shown mechanism with no unchecked workload prerequisite, so it does not
     # begin with a pass whose workload the case may not have; the order shown stays the hints' own.
-    first = next((hint for hint in shown if not workload.get(hint.get("id"))), shown[0])
+    first = next((hint for hint in shown if hint['opportunity_status'] in ('candidate', 'missing_adapter')
+                  and not workload.get(hint.get("id"))), shown[0])
     named, fields = [], []
     for hint in shown:
         module, _, symbol = str(hint.get("api") or "").partition(":")
@@ -205,6 +233,7 @@ def block(entry: dict, *, selection, suite: str, imports: dict, workspace: Path,
         named.append(
             f"{hint.get('id')} ({hint.get('api')}; "
             + (f"applies if {', '.join(unchecked)}; " if unchecked else "")
+            + f"{hint['opportunity_status']}; "
             + f"{'imported by submission/' if imported else 'not imported by submission/'})"
         )
         fields.append(
@@ -213,6 +242,9 @@ def block(entry: dict, *, selection, suite: str, imports: dict, workspace: Path,
                 "api": hint.get("api"),
                 "facet": hint.get("facet"),
                 "imported_by_submission": imported,
+                "application_status": "unknown; neither imports nor source calls establish runtime execution",
+                **{key: hint[key] for key in ('opportunity_status', 'source_call_sites', 'observation_basis',
+                                              'prerequisites', 'next_action', 'recipe')},
                 "applies_if": unchecked,
             }
         )
@@ -225,26 +257,40 @@ def block(entry: dict, *, selection, suite: str, imports: dict, workspace: Path,
     )
     if attainment is not None:
         measured += f", {attainment}% compute-peak attainment"
-    check = ab_command(case, variant, suite)
+    check = ab_command(case, variant, suite, mechanism=str(first.get("id")), workspace=workspace)
     compare = f"python {skill_root(workspace)}/{SKILL}/scripts/ab_compare.py variants/{variant}"
     reference = f"pass-library reference/{first.get('facet')}.md"
+    unconfirmed = []
+    if (entry.get("fence_overlap") or {}).get("fence_per_tile"):
+        _, unconfirmed = mechanism_hints.fence_hints(selection, why=text)
     return {
         "line": (
-            f"{measured} | bottleneck: {text} | library: {', '.join(named)} | A/B: {check} | then: {compare} | "
+            f"{measured} | bottleneck: {text} | library: {', '.join(named)} | "
+            f"next: {first['next_action']} | A/B after prerequisites: {check} | then: {compare} | "
             f"read: {SKILL}, {reference}"
+            + (" | unresolved effect/capability contracts: "
+               + ", ".join(str(row["id"]) for row in unconfirmed[:2]) if unconfirmed else "")
         ),
         "evidence_kind": kind,
         "bottleneck": text,
         "mechanisms": fields,
-        "ab": {"variant": f"variants/{variant}", "mechanism": first.get("id"), "check": check, "compare": compare},
+        "related_capability_unconfirmed": unconfirmed,
+        "unconfirmed_action": "establish the named effect/capability contracts before applying those mechanisms",
+        "ab": {"variant": f"variants/{variant}", "mechanism": first.get("id"), "check": check, "compare": compare,
+               "adapter": "tools/library_pass_adapter.py", "application_status": "not_run",
+               "requires": "authored adapter, executed registered pipeline and changed manifest-emitted product",
+               "missing_adapter_action": "construct the generic prepare/source hooks described in ab-library-pass; "
+                                         "do not grade an unchanged copy"},
         "skill": SKILL,
         "reference": reference,
-        "basis": "advisory: the bottleneck is a diagnostic hypothesis; keep the pass only if cycles fall "
-        "with numerics unchanged on the same cases",
+        "basis": "advisory: the bottleneck is a diagnostic hypothesis; keep the pass when its cycle estimate "
+        "falls with numerics unchanged in the same provider/ROI. Estimates (the complete timing model, else the "
+        "calibrated fast estimate) are the basis for the decision: prefer the change the estimate favors and "
+        "revert if a later measurement disagrees. Final required gSIM gates are unchanged.",
     }
 
 
-def annotate(rows, brief, *, workspace=None, suite: str | None) -> int:
+def annotate(rows, brief, *, workspace=None, suite: str | None, context=None) -> int:
     """Add :data:`KEY` to the ``per_case_advice`` (copied onto each row as ``optimization_next``) of each
     ranked case that gets one; returns how many.
 
@@ -254,10 +300,11 @@ def annotate(rows, brief, *, workspace=None, suite: str | None) -> int:
         return 0
     try:
         workspace = Path(workspace) if workspace is not None else Path.cwd()
-        selection = mechanism_hints.load_selection(workspace)
+        selection = (context.selection if context is not None else mechanism_hints.with_source_evidence(
+            mechanism_hints.load_selection(workspace), workspace))
         if not selection:
             return 0
-        imports = inventory_script().imported_modules(workspace / "submission")
+        imports = selection.get('source_imports', {})
         by_name = {str(r.get("capsule") or r.get("name") or ""): r for r in rows or () if isinstance(r, dict)}
         written = 0
         for entry in brief.get("largest_headroom") or ():
@@ -268,7 +315,8 @@ def annotate(rows, brief, *, workspace=None, suite: str | None) -> int:
             row = by_name.get(name) or {}
             roofline = (row.get("performance") or {}).get("structural_roofline") if isinstance(row, dict) else None
             found = block(
-                entry, selection=selection, suite=suite, imports=imports, workspace=workspace, roofline=roofline
+                entry, selection=selection, suite=suite, imports=imports, workspace=workspace, roofline=roofline,
+                roles=context.roles if context is not None else None
             )
             if found:
                 target[KEY] = found

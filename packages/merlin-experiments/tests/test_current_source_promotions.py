@@ -214,5 +214,7 @@ def test_frozen_producer_retains_loop_evidence_but_only_enqueues_reusable_source
     assert bool(result) == (change == "inert")
     assert bool(list(channel.glob("simreq*"))) == (change == "inert")
     assert promotion._tier_state(ws)["case"]["L2"]["status"] == "pass"
+    if change == "inert":
+        assert promotion._tier_state(ws)["case"]["L3"]["loop_instrument"] == INSTRUMENT
     if change == "reachable":
         assert "auto promotion deferred" in out.getvalue()

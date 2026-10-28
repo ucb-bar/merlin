@@ -34,6 +34,7 @@ GAP = {'plane': 'candidate_model_execution', 'category': 'NOT_RUN_IS_NOT_PASS',
 @pytest.fixture
 def ws(tmp_path, monkeypatch):
     policy = {'gsim_correctness': {'capsules': ['MODEL', 'OP'], 'max_jobs': 20, 'per_job_s': 1200,
+                                   'continuous_promotion': True,
                                    'worker_budget_s': 864000}}
     monkeypatch.setattr(joint_control, 'selected', lambda: {'policy': policy})
     monkeypatch.setattr(P, 'cert_sim', lambda *a, **k: 'gsim')
@@ -82,6 +83,54 @@ def test_spike_passing_model_is_promoted_to_its_physical_l3(ws, tmp_path, monkey
     assert P.record_cert(ws, native, 'L3', identity=request['identity'], source_identity_verified=True) == [
         'MODEL=pass']
     assert report(ws)['obligations']['MODEL']['status'] == 'pass'
+
+
+@pytest.fixture
+def default_policy(ws, monkeypatch):
+    """A policy that does not select continuous promotion: the default for new specs."""
+    policy = {'gsim_correctness': {'capsules': ['MODEL', 'OP'], 'max_jobs': 20, 'per_job_s': 1200,
+                                   'worker_budget_s': 864000}}
+    monkeypatch.setattr(joint_control, 'selected', lambda: {'policy': policy})
+    return ws
+
+
+def test_an_l2_pass_enqueues_no_l3_during_the_run_by_default(default_policy):
+    ws = default_policy
+    assert not joint_control.continuous_l3_promotion()
+    log = io.StringIO()
+    assert P.promote(ws, ws / '.qa_channel', {'per_capsule': [{'capsule': 'MODEL', 'pass': True}]}, 'L2', 'L3',
+                     set(), log, context=None, closed_loop_rows={'MODEL': model_row(ws / 'submission')}) == []
+    assert not list((ws / '.qa_channel').glob('simreq*.json'))
+    assert '0 capsule(s) want L3' in log.getvalue()
+    state = P._tier_state(ws)
+    assert P._slots_ro(state, 'MODEL', 'L2') and not P._slots_ro(state, 'MODEL', 'L3')  # L2 still recorded
+
+
+def test_continuous_promotion_must_be_a_boolean(tmp_path):
+    path = tmp_path / 'policy.json'
+    for value, accepted in (('yes', False), (True, True)):
+        path.write_text(json.dumps({'version': 1, 'gsim_correctness': {
+            'capsules': ['A'], 'continuous_promotion': value}}))
+        if accepted:
+            assert joint_control.policy(path)['gsim_correctness']['continuous_promotion'] is True
+        else:
+            with pytest.raises(ValueError, match='continuous_promotion'):
+                joint_control.policy(path)
+
+
+def test_without_continuous_promotion_a_missing_final_l3_is_reported_not_run_and_never_gates(
+        default_policy, tmp_path):
+    closed = _final(tmp_path, default_policy)
+    assert closed['MODEL'] == {'not_run': M.NOT_RUN_REASON}
+    group = F._capsule_group([{'name': 'a'}, {'name': 'm'}])
+    F._apply_score(group, _score(['a'], 'm'), {'m': closed['MODEL']})
+    rollup = F._rollup({'groups': {'core': group}})
+    row = group['obligations']['m']
+    assert row['status'] == 'pass' and row['l3'] == 'not_run' and row['reason'].startswith('L3 not run')
+    assert group['model_l3'] == {'certified': [], 'not_run': ['m'], 'missing': []} and group['passed'] is True
+    assert rollup['n_l3_not_run'] == 1 and rollup['n_l3_evidence_missing'] == 0 and rollup['passed'] is True
+    # A certificate the run did earn (an author gSIM request) is still taken.
+    assert 'certificate' in _final(tmp_path / 'again', default_policy, cert={})['MODEL']
 
 
 @pytest.mark.parametrize('mutate', [
@@ -202,7 +251,31 @@ def test_final_model_row_takes_the_exact_byte_l3_certificate(ws, tmp_path):
     assert set(closed) == {'MODEL'}
 
 
-@pytest.mark.parametrize('cert', [None, {'digest': 'other'}, {'instrument': 'b' * 64}, {'status': 'pending'},
+def test_final_model_row_takes_a_certificate_keyed_on_the_live_tree_with_build_state(ws, tmp_path):
+    # fresh7refcca: the live tree held build/ outputs its frozen copy drops. A certificate recorded
+    # against the live workspace must still name the frozen bytes.
+    from merlin_experiments.phase1.run_inputs import SNAPSHOT_IGNORED, strip_build_state
+
+    (ws / 'submission' / 'build' / 'tiny').mkdir(parents=True)
+    (ws / 'submission' / 'build' / 'tiny' / 'kernel.o').write_bytes(b'object')
+    frozen = tmp_path / 'frozen'
+    shutil.copytree(ws / 'submission', frozen, ignore=shutil.ignore_patterns(*SNAPSHOT_IGNORED))
+    strip_build_state(frozen)
+    runs = tmp_path / 'core'
+    result = runs / 'runs/suite/MODEL/capsule_result.json'
+    result.parent.mkdir(parents=True)
+    result.write_text(json.dumps(model_row(frozen)))
+    state = P._tier_state(ws)
+    P._record(state, 'MODEL', 'L3', {'status': 'pass', 'digest': P.submission_digests(ws)[0],
+                                     'instrument': INSTRUMENT})
+    P._save_tier_state(ws, state)
+    score = {'per_capsule': [{'capsule': 'MODEL', 'kind': 'model', 'status': 'incomplete'}]}
+    closed = M.close(score, runs=runs, workspace=ws, frozen=frozen, compiler_sha256=hash_tree(frozen)['sha256'],
+                     context=None)
+    assert closed['MODEL']['certificate']['instrument'] == INSTRUMENT
+
+
+@pytest.mark.parametrize('cert', [None, {'digest': 'other'},{'instrument': 'b' * 64}, {'status': 'pending'},
                                   {'status': 'fail'}], ids=['none', 'other_bytes', 'other_judge', 'pending', 'fail'])
 def test_final_model_row_without_that_certificate_says_l3_evidence_missing(ws, tmp_path, cert):
     closed = _final(tmp_path, ws, cert=cert)
@@ -238,13 +311,43 @@ def test_a_model_row_without_l3_evidence_is_reported_not_unfinished():
     rollup = F._rollup({'groups': {'core': group}})
     assert group['obligations']['m'] == {**group['obligations']['m'], 'status': M.MISSING,
                                          'reason': 'L3 evidence missing: none recorded'}
-    assert group['model_l3'] == {'certified': [], 'missing': ['m']}
+    assert group['model_l3'] == {'certified': [], 'not_run': [], 'missing': ['m']}
     assert rollup['n_l3_evidence_missing'] == 1 and rollup['n_unfinished'] == 0
     assert rollup['passed'] is False and group['passed'] is False
-    # Without any closure the native veto is unchanged: the row stays an unexplained skip.
+    # Without any closure the incomplete model row is not a pass, and the group cannot pass; the
+    # passing operator row keeps its own verdict.
     group = F._capsule_group([{'name': 'a'}, {'name': 'm'}])
     F._apply_score(group, _score(['a'], 'm'))
     assert group['obligations']['m']['status'] == 'skipped' and group['passed'] is False
+    assert group['obligations']['a']['status'] == 'pass'
+
+
+def _native_incomplete(score):
+    """The native grader's own flags while a mandatory tier is unavailable (capsule_grade)."""
+    return dict(score, gradeable=False, measurement_incomplete={'n': score['n_incomplete']})
+
+
+def test_certified_model_rows_make_the_closed_core_score_gradeable():
+    score = _native_incomplete(_score(['a'], 'm'))
+    closed = M.cohort_score(score, {'m'})
+    assert closed['gradeable'] is True and closed['n_incomplete'] == 0 and 'measurement_incomplete' not in closed
+    assert score['gradeable'] is False  # the native score itself is never rewritten
+    group = F._capsule_group([{'name': 'a'}, {'name': 'm'}])
+    F._apply_score(group, score, {'m': {'certificate': {'identity': 'submission:x'}}})
+    assert group['passed'] is True and group['closure_vetoes'] == []
+    assert F._rollup({'groups': {'core': group}})['n_passed'] == 2
+
+
+@pytest.mark.parametrize('other', [{'n_infrastructure_fault': 1}, {'n_not_gradeable_no_oracle': 1},
+                                   {'n_incomplete': 2}],
+                         ids=['infrastructure', 'no_oracle', 'another_incomplete_row'])
+def test_closed_score_stays_ungradeable_for_any_other_reason(other):
+    score = dict(_native_incomplete(_score(['a'], 'm')), **other)
+    closed = M.cohort_score(score, {'m'})
+    assert closed['gradeable'] is False
+    group = F._capsule_group([{'name': 'a'}, {'name': 'm'}])
+    F._apply_score(group, score, {'m': {'certificate': {'identity': 'submission:x'}}})
+    assert group['passed'] is False and group['obligations']['a']['status'] == 'pass'
 
 
 def test_final_coverage_closes_core_model_rows(tmp_path, monkeypatch):
@@ -271,3 +374,13 @@ def test_model_l3_predicate_matches_the_grader_gap_text():
     source = Path(CG.__file__).read_text()
     assert repr(GAP['detail'])[1:-1] in source and Q._MODEL_NATIVE_TIER_GAP == GAP
     assert deepcopy(GAP) == Q._MODEL_NATIVE_TIER_GAP
+
+
+def test_author_text_says_l3_runs_at_the_end_and_performance_uses_the_spike_cycle_model():
+    from merlin_experiments.phase1 import joint_control
+
+    text = joint_control._l3_schedule_text({"gsim_correctness": {"capsules": ["a"], "max_jobs": 4}})
+    assert "at the end, best-effort" in text and "Spike cycle model by default" in text
+    assert "concurrency" not in text
+    continuous = joint_control._l3_schedule_text({"gsim_correctness": {"continuous_promotion": True}})
+    assert "native queue promotes" in continuous

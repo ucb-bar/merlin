@@ -442,3 +442,31 @@ def test_retained_tier_programs_join_both_engines_and_enter_the_training_archive
     with tarfile.open(A.training_archive(tmp_path, tmp_path / "training.tar")["archive"]) as tar:
         member = tar.extractfile("run/" + row["artifacts"]["L2_executed_elf"]["path"])
         assert member.read() == b"console caller program"
+
+
+def test_archive_reads_shapes_from_a_stored_buffer_summary_without_the_buffer(tmp_path):
+    """A result whose expanded buffer is stored beside it indexes the same shapes from its summary."""
+    from merlin.perf.command_buffer_store import REFERENCE_KEY, SUMMARY_KEY
+
+    capsule = _capsule(tmp_path, "runs_r0000_t000001", "A", 1024)
+    path = capsule / "capsule_result.json"
+    document = json.loads(path.read_text())
+    document["command_buffer_artifact"] = {
+        "artifact_sha256": "c" * 64,
+        # Deliberately unresolvable: shapes must come from the summary, never from opening the file.
+        REFERENCE_KEY: {
+            "path": str(tmp_path / "absent.json"),
+            "name": "absent.json",
+            "sha256": "c" * 64,
+            "bytes": 1,
+            "commands": 0,
+        },
+        SUMMARY_KEY: {"tensors": {"input": {"dtype": "i8", "shape": [4, 8], "role": "input"}}, "commands": 0},
+    }
+    path.write_text(json.dumps(document))
+    output = tmp_path / "capsules.tar"
+    A.archive(tmp_path, output)
+    with tarfile.open(output) as tar:
+        index = json.load(tar.extractfile("index.json"))
+    assert [row["shape"] for row in index["records"]] == [{"input": {"dtype": "i8", "shape": [4, 8]}}]
+    assert [row["command_buffer_sha256"] for row in index["records"]] == ["c" * 64]

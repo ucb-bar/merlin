@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import contextvars
 import json
+import os
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -97,8 +98,13 @@ def _performance_guidance(workspace, run_dir, inventory, *, repo=None, descripto
 
         from .optimization_suggestions import prepare
 
+        from merlin.targetgen.rtl.command_ordering_selection import ENV as ORDERING_ENV
+
         contract = load_target_experiment(descriptor).declared_contract_path() if descriptor else None
-        added = prepare(workspace, run_dir, repo=repo, inventory=inventory, contract_path=contract)
+        # The run's ordering selection (pinned by the launch plan) settles ordering capabilities.
+        ordering = json.loads(os.environ[ORDERING_ENV]) if os.environ.get(ORDERING_ENV) else None
+        added = prepare(workspace, run_dir, repo=repo, inventory=inventory, contract_path=contract,
+                        ordering=ordering)
     except Exception as error:  # noqa: BLE001 -- advice only; never fails the launch
         print(f"[optimization-suggestions] unavailable: {type(error).__name__}: {error}", flush=True)
         return text
@@ -124,10 +130,12 @@ def append_guidance(workspace, run_dir, record, selection, *, repo=None, descrip
             "Evaluate useful independent cases concurrently against immutable snapshots while continuing "
             "edits and integrating completed helper work; there is no all-153 prerequisite for larger cases. "
             "Private numerical, ISA, timing and isolation grading uses independent evaluator code; editing "
-            "compiler-side checks does not edit those gates. Do not add CPU fallbacks to evade acceleration obligations.\n\n"
+            "compiler-side checks does not edit those gates. Do not add CPU fallbacks to evade "
+            "acceleration obligations.\n\n"
             "Public source inventory and explicitly unavailable dependencies: `FULL_COMPILER_SOURCE_SELECTION.json`. "
             "Unavailable private evaluators are not compiler dependencies you may read; use public interfaces "
-            "or implement the required compiler behavior. No known target backend or private performance reference is seeded.\n"
+            "or implement the required compiler behavior. No known target backend or private performance "
+            "reference is seeded.\n"
         )
         versions = (staging_record or {}).get('source_versions')
         if versions is not None:
@@ -246,9 +254,11 @@ def _check_contract(selection, path):
 
 def child_arguments():
     """Original launcher's explicit CLI grant, never request or environment data."""
+    from .feedback import reference_experiments
+    reference = reference_experiments.child_arguments()
     selected = _INITIAL.get()
     if selected is None:
-        return ()
+        return reference
     library, contract = selected
     if active_compiler_library() is not library:
         raise ValueError("initial compiler library child lost its original selected owner")
@@ -260,7 +270,7 @@ def child_arguments():
         str(contract),
         "--compiler-library-contract-sha256",
         library.contract.sha256,
-    ) + _shared_pass_arguments(contract)
+    ) + _shared_pass_arguments(contract) + reference
 
 
 def _shared_pass_file(path, digest, *, expected=None):
@@ -346,13 +356,16 @@ def selected_child(function):
                 finally:
                     _INITIAL.reset(token)
 
-    return call
+    from .feedback import reference_experiments
+    return reference_experiments.selected_child(call)
 
 
 def background_target(function):
     """Carry the live original owner into one thread, retaining join failures."""
+    from .feedback import reference_experiments
+    function, reference_joined = reference_experiments.background_target(function)
     if _INITIAL.get() is None:
-        return function, None
+        return function, reference_joined
     child_arguments()
     from merlin.targetgen.shared_pass_context import active_shared_pass_requirement, scoped_shared_pass_requirement
 
@@ -383,6 +396,8 @@ def background_target(function):
 
     def joined():
         child_arguments()
+        if reference_joined is not None:
+            reference_joined()
         if failures:
             raise RuntimeError("initial compiler library background owner failed") from failures[0]
 

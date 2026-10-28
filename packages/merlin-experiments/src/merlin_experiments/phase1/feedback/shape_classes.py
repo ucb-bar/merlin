@@ -230,9 +230,10 @@ def tile_edge(target: str | None) -> tuple[int | None, str | None]:
 
 
 #: Preserve measured/qualified and provisional evidence kinds separately.
-KINDS = ("gsim_measured", "calibrated_model", "provisional_model", "spike_count")
+KINDS = ("gsim_measured", "calibrated_model", "provisional_model", "fast_estimate", "spike_count")
 CYCLE_ACCURATE = ("gsim_measured", "calibrated_model")
-RANKABLE = (*CYCLE_ACCURATE, "provisional_model")
+#: Estimates are the basis for decisions: a fast census estimate ranks too, under its own kind.
+RANKABLE = (*CYCLE_ACCURATE, "provisional_model", "fast_estimate")
 NO_EVIDENCE = "no cycle-accurate evidence for this class"
 
 
@@ -252,7 +253,8 @@ def evidence_kind(label) -> str | None:
     """The evidence kind of a cycles label, for response rows and ``qa/perf_history.jsonl`` alike.
 
     ``measured: ... gSIM ...`` is a gSIM measurement; ``modeled: ... (qualified)`` a calibrated timing
-    model; any other ``modeled:`` label a provisional estimate; ``spike count:`` (or any other
+    model; any other ``modeled:`` label a provisional estimate; ``estimated:`` the calibrated fast census
+    estimate (:mod:`.fast_estimate`); ``spike count:`` (or any other
     ``measured:`` label) a functional simulator count. Spike counts under-state hardware cycles by a
     factor that varies by shape class (measured 1.5x for convolution to 11-20x for single-row decode),
     so they are never cycle evidence.
@@ -265,6 +267,8 @@ def evidence_kind(label) -> str | None:
         return "gsim_measured" if "gsim" in tail else "spike_count"
     if head == "modeled":
         return "calibrated_model" if "(qualified)" in tail else "provisional_model"
+    if head == "estimated":
+        return "fast_estimate"
     if head == "spike count":
         return "spike_count"
     return None
@@ -339,7 +343,7 @@ def compare(name: str, cycles, kind, best: dict, klass: str, *, domain=None) -> 
     if kind in ("calibrated_model", "provisional_model") and domain is None:
         return {"best_cycles": None, "ratio_vs_best": None,
                 "verdict": f"missing complete model/facts/scope identity ({klass})"}
-    earlier = best.get((name, kind) if kind == "gsim_measured" else (name, kind, domain))
+    earlier = best.get((name, kind) if kind in ("gsim_measured", "fast_estimate") else (name, kind, domain))
     if earlier is None:
         return {
             "best_cycles": None,
@@ -348,8 +352,8 @@ def compare(name: str, cycles, kind, best: dict, klass: str, *, domain=None) -> 
         }
     ratio = round(cycles / earlier["cycles"], 3)
     reading = verdict(ratio, klass)
-    if kind == "provisional_model":
-        reading += "; provisional model comparison, not measured speedup"
+    if kind in ("provisional_model", "fast_estimate"):
+        reading += f"; {kind.replace('_', ' ')} comparison, not measured speedup"
     return {"best_cycles": earlier["cycles"], "ratio_vs_best": ratio, "verdict": reading}
 
 

@@ -266,6 +266,37 @@ def audit_built_device_host_compute(
 
 def _composed_source_metrics(assigned, source, composition):
     """Budget one actual object from every independently rederived raw product."""
+    if isinstance(composition, Mapping) and composition.get("schema") == "merlin.original_head_source_composition.v1":
+        from .private_head_provenance import source_metrics
+
+        return source_metrics(assigned, source, composition)
+    if isinstance(composition, Mapping) and composition.get("schema") == "merlin.original_sibling_source_components.v1":
+        from .private_component_provenance import source_subset
+
+        groups, metrics, covered = {}, {}, set()
+        for component in composition["components"]:
+            members = set(component["covered_source_groups"])
+            if covered.intersection(members):
+                raise ValueError("component audit duplicates original work")
+            covered.update(members)
+            subsource = source_subset(source, set(source["eligible_groups"] + source.get("optional_groups", [])) - members)
+            rows = [r for r in assigned if r["symbol"] == component["physical_symbol"]]
+            subgroups, submetrics = _composed_source_metrics(rows, subsource, component)
+            if set(groups).intersection(subgroups):
+                raise ValueError("component audit duplicates physical work")
+            groups.update(subgroups)
+            metrics.update(submetrics)
+        ordinary = [r for r in assigned if r["symbol"] not in {c["physical_symbol"] for c in composition["components"]}]
+        joined = _join_routed_source_groups(ordinary, source_subset(source, covered))
+        if joined != composition["ordinary_joined_groups"] or set(groups).intersection(joined):
+            raise ValueError("unmatched original source join changed")
+        original_metrics = {**source.get("optional_group_metrics", {}), **source["eligible_group_metrics"]}
+        for physical, original in joined.items():
+            groups[physical] = (original,)
+            metrics[physical] = original_metrics[original]
+        if not set(source["eligible_groups"]) <= covered | set(joined.values()):
+            raise ValueError("component audit omits original required work")
+        return groups, metrics
     if (not isinstance(composition, Mapping)
         or composition.get("schema") != "merlin.original_sibling_source_composition.v1"
         or composition.get("original_source_denominator_unchanged") is not True

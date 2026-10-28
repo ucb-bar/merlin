@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 
+import pytest
 from merlin_experiments.phase1.brokers import selfcheck as selfcheck_broker
 from merlin_experiments.phase1.feedback import lifecycle, selfcheck
 
@@ -53,6 +54,52 @@ def test_staged_client_runs_with_site_packages_disabled(tmp_path):
     )
     assert refused.returncode == 2, refused.stderr
     assert json.loads(refused.stdout)["all_pass"] is False
+    assert not (tmp_path / ".qa_channel").exists()
+
+
+@pytest.mark.parametrize("overrides", [None, {"retain": True, "tile": 4}])
+def test_copied_client_submits_reference_trial_through_existing_channel(tmp_path, overrides):
+    client = tmp_path / "agent_selfcheck.py"
+    shutil.copyfile(module_source_path("merlin_experiments.phase1.tools.selfcheck"), client)
+    compiler = tmp_path / "submission"
+    compiler.mkdir()
+    (compiler / "settings.json").write_text('{"retain": false, "tile": 2}')
+    before = (compiler / "settings.json").read_bytes()
+    argv = [sys.executable, "-I", "-S", str(client), "--sim", "spike", "--suite", "scalability",
+            "--capsules", "declared-case", "--wait-budget", "1", "--reference-request", "ref-123"]
+    if overrides:
+        argv.extend(["--tuning-overrides", json.dumps(overrides)])
+    result = subprocess.run(argv, cwd=tmp_path, capture_output=True, text=True, timeout=10)
+    assert result.returncode == 3, result.stderr
+    rid = json.loads(result.stdout)["request_id"]
+    request = json.loads((tmp_path / ".qa_channel" / f"req_{rid}.json").read_text())
+    assert request["reference_experiment_request_id"] == "ref-123"
+    assert request.get("tuning_overrides") == overrides
+    assert request["submission"] == "submission"
+    assert request["suite"] == "scalability" and request["sim"] == "spike"
+    assert (compiler / "settings.json").read_bytes() == before
+
+
+@pytest.mark.parametrize("options", [
+    ["--tuning-overrides", "[]"],
+    ["--tuning-overrides", "{}"],
+    ["--tuning-overrides", '{"k":NaN}'],
+    ["--tuning-overrides", '{"k":Infinity}'],
+    ["--tuning-overrides", '{"k":{}}'],
+    ["--tuning-overrides", json.dumps(dict.fromkeys("abcde", 1))],
+    ["--tuning-overrides", json.dumps({"k": "x" * 65})],
+    ["--tuning-overrides", " " * 8193],
+    ["--reference-request", "../outside"],
+    ["--reference-request", "x" * 161],
+    ["--reference-request", "ref-123", "--attach", "old-id"],
+    ["--tuning-overrides", '{"k":true}', "--list"],
+])
+def test_copied_client_refuses_malformed_or_resumed_trial_before_channel_work(tmp_path, options):
+    client = tmp_path / "agent_selfcheck.py"
+    shutil.copyfile(module_source_path("merlin_experiments.phase1.tools.selfcheck"), client)
+    result = subprocess.run([sys.executable, "-I", "-S", str(client), *options], cwd=tmp_path,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 2
     assert not (tmp_path / ".qa_channel").exists()
 
 

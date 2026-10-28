@@ -1,5 +1,22 @@
 # A connected chain through the composition catalog (`spatial_chain_recipe.py`)
 
+## Which routes apply to one case
+
+```
+python .agents/skills/heavy-pass-recipes/scripts/composition_routes.py --case NAME
+```
+
+reads the case's public declaration (and, for a model or program, its interface IR) and lists the
+producer -> consumer chains it shows: product -> pool (`producer_pool`), product -> bias, scale,
+activation or requantization (`producer_epilogue`), residual add (`residual_add`), sibling
+products sharing an input (`shared_input_siblings`), per-head slices (`independent_heads`),
+connected stages, and parameters prepared on every call. Each route names its catalog rows and
+their roster status, one `module:symbol` to start from, whether a file under `submission/`
+imports it, and a command (the route's recipe, else the symbol's contract). For models and
+programs it also lists matching `source_composition.json` options
+(`reference/source-composition.md`). Without `--case` it lists every route. Self-check rows carry
+the same pointer as `optimization_next.composition`.
+
 ## Discover what you can compose
 
 ```python

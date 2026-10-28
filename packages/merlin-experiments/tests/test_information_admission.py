@@ -1,10 +1,11 @@
-"""A background grade admits by information value and withholds only the members an edit reached."""
+"""A background grade admits by information value; an edit never withholds or closes its admission."""
 
 import json
 import os
 import shutil
 
 import pytest
+from merlin_experiments.phase1.feedback import background_admission as admission
 
 from merlin.targetgen.capsule_scheduling import (
     admission_relevance,
@@ -15,7 +16,6 @@ from merlin.targetgen.capsule_scheduling import (
     run_pipelined,
     timing_history,
 )
-from merlin_experiments.phase1.feedback import background_admission as admission
 
 SOURCE = "a" * 64
 OTHER = "b" * 64
@@ -59,12 +59,13 @@ def _order(caps, **kwargs):
 NAMES = ("failing_long", "current_pass", "missing", "stale_pass", "failing_cheap")
 
 
-def test_failing_missing_and_stale_results_go_first_cheapest_first_and_current_passes_last(monkeypatch, history):
+def test_failing_and_missing_go_first_then_stale_passes_then_current_passes(monkeypatch, history):
     monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "information-first")
     with timing_history(history), admission_relevance(source_sha256=SOURCE):
         order, rows = _order([_cap(n) for n in NAMES])
     # "missing" has no measured cost: it ranks as the median priced member (16 s), never as free.
-    assert order == ["failing_cheap", "missing", "stale_pass", "failing_long", "current_pass"]
+    # A pass earned on older source waits behind every failing or never-graded member, however long.
+    assert order == ["failing_cheap", "missing", "failing_long", "stale_pass", "current_pass"]
     assert [row["capsule"] for row in rows] == list(NAMES), "start order never moves a result"
 
 
@@ -72,9 +73,11 @@ def test_unknown_graded_source_makes_every_result_stale(monkeypatch, history):
     monkeypatch.setenv("MERLIN_CAPSULE_ORDER", "information-first")
     with timing_history(history), admission_relevance(source_sha256=None):
         order, _ = _order([_cap(n) for n in NAMES])
-    assert order == ["current_pass", "failing_cheap", "missing", "stale_pass", "failing_long"]
-    assert information_rank({"passed": True, "source_sha256": SOURCE}, SOURCE) == 1
-    assert information_rank({"passed": True, "source_sha256": None}, SOURCE) == 0
+    assert order == ["failing_cheap", "missing", "failing_long", "current_pass", "stale_pass"]
+    assert information_rank({"passed": True, "source_sha256": SOURCE}, SOURCE) == 2
+    assert information_rank({"passed": True, "source_sha256": None}, SOURCE) == 1
+    assert information_rank({"passed": True, "source_sha256": SOURCE}, None) == 1
+    assert information_rank({"passed": False, "source_sha256": SOURCE}, SOURCE) == 0
     assert information_rank(None, SOURCE) == 0
 
 
@@ -117,7 +120,8 @@ def test_caller_admission_priority_still_leads_the_information_order(monkeypatch
             rolling_admission(admission_priority=lambda c: attempts[c["name"]],
                               admission_costs={"failing_cheap": 2.0, "failing_long": 500.0, "stale_pass": 30.0}):
         order, _ = _order([_cap(n) for n in ("failing_long", "failing_cheap", "stale_pass")])
-    assert order == ["stale_pass", "failing_long", "failing_cheap"]
+    # Priority leads (failing_cheap last); within one priority a failing member precedes a stale pass.
+    assert order == ["failing_long", "stale_pass", "failing_cheap"]
 
 
 def test_newest_outcome_skips_a_result_being_written_and_a_foreign_row(tmp_path):
@@ -179,59 +183,54 @@ def _workspace(tmp_path):
     return ws, source, candidate
 
 
-def test_every_case_reaches_every_component_so_any_closure_edit_still_closes_the_queue(tmp_path):
+def test_every_case_reaches_every_component_and_no_edit_closes_admission(tmp_path):
     ws, source, candidate = _workspace(tmp_path)
     guard = admission.BackgroundGuard(ws, tmp_path, None, admission.source_digest(ws))
     guard.bind_snapshot(candidate)
+    from merlin_experiments.phase1.feedback import reconcile
+
     from merlin.targetgen.oracle_schedule import UNATTRIBUTED
 
     # The manifest no declared prefix claims is UNATTRIBUTED: every case depends on it too.
-    assert guard.case_reach(_cap("x")) == guard.shared_reach() == {"parse", "lower_interface_to_target", UNATTRIBUTED}
+    assert guard.case_reach(_cap("x")) == {"parse", "lower_interface_to_target", UNATTRIBUTED}
+    snapshot = guard.reach_identity()
     (source / "NOTES.md").write_text("plan two\n")
-    assert guard.pending_reason() is None and guard.member_reason(_cap("x")) is None
-    (source / "lower.py").write_text("print(3)\n")
-    assert guard.pending_reason() == "background source superseded"
-    assert guard.member_reason(_cap("x")) == "background source superseded"
+    assert guard.pending_reason() is None and reconcile.current_reach(ws) == snapshot  # inert: still current
+    (source / "compiler.py").write_text("print(3)\n")  # the entry every case reaches
+    assert guard.pending_reason() is None  # an edit never closes admission ...
+    assert guard.reason() == "background source superseded" and not guard.current()  # ... it labels the grade
+    assert reconcile.current_reach(ws) != snapshot  # and its rows reconcile as an older version
 
 
-class _NarrowGuard(admission.BackgroundGuard):
-    """A guard whose cases reach different components (no such ABI today; the scheduler path is generic)."""
-
-    def case_reach(self, capsule):
-        if capsule is None or capsule["name"] == "parse_only":
-            return frozenset({"parse"})
-        if capsule["name"] == "unknown":
-            return None
-        return frozenset({"parse", "lower_interface_to_target"})
-
-
-def test_an_edit_outside_the_shared_reach_withholds_only_the_members_that_reach_it(tmp_path):
+def test_continuous_edits_to_the_shared_entry_still_grade_every_case(tmp_path):
     ws, source, candidate = _workspace(tmp_path)
-    guard = _NarrowGuard(ws, tmp_path, None, admission.source_digest(ws))
+    guard = admission.BackgroundGuard(ws, tmp_path, None, admission.source_digest(ws))
     guard.bind_snapshot(candidate)
-    (source / "lower.py").write_text("print(3)\n")
+    edits = []
+
+    def execute(cap, parallel):
+        edits.append(cap["name"])
+        (source / "compiler.py").write_text(f"print({len(edits)})\n")  # edited between every admission
+        return {"capsule": cap["name"], "status": "pass"}
+
+    rows = run_pipelined([_cap(n) for n in ("a", "b", "c", "d")], execute, max_workers=2,
+                         defer_pending=guard.pending_reason, defer_running=False)
+    assert sorted(edits) == ["a", "b", "c", "d"]
+    assert [row["status"] for row in rows] == ["pass"] * 4
+    assert (candidate / "compiler.py").read_text() == "print(1)\n"  # each result belongs to its snapshot
+
+
+def test_the_joint_deadline_still_stops_new_admission(tmp_path, monkeypatch):
+    from merlin_experiments.phase1 import joint_control
+
+    ws, source, candidate = _workspace(tmp_path)
+    guard = admission.BackgroundGuard(ws, tmp_path, None, admission.source_digest(ws), finish_bounded_snapshot=True)
+    guard.bind_snapshot(candidate)
+    monkeypatch.setattr(joint_control, "stop_reason", lambda: None)
+    monkeypatch.setattr(joint_control, "remaining", lambda **kwargs: 10.0)
+    (source / "compiler.py").write_text("print(9)\n")
     assert guard.pending_reason() is None
-    assert guard.member_reason(_cap("parse_only")) is None
-    assert guard.member_reason(_cap("both")) == "background source superseded"
-    assert guard.member_reason(_cap("unknown")) == "background source superseded"  # unknown reach
-    assert not guard.current(), "an unaffected member still runs on, and is attributed to, its snapshot"
-
-    finished = []
-    with admission_relevance(superseded=guard.member_reason):
-        rows = run_pipelined([_cap(n) for n in ("both", "parse_only", "unknown")],
-                             lambda c, n: finished.append(c["name"]) or {"capsule": c["name"], "status": "pass"},
-                             max_workers=1, defer_pending=guard.pending_reason, defer_running=False)
-    assert finished == ["parse_only"]
-    assert [row["status"] for row in rows] == ["gated", "pass", "gated"]
-    (source / "compiler.py").write_text("print(4)\n")  # the shared component: the whole queue closes
-    assert guard.pending_reason() == "background source superseded"
-    assert guard.member_reason(_cap("parse_only")) == "background source superseded"
-    assert (candidate / "lower.py").read_text() == "print(2)\n"
-
-
-def test_a_component_the_snapshot_did_not_have_is_unattributable(tmp_path):
-    ws, source, candidate = _workspace(tmp_path)
-    guard = _NarrowGuard(ws, tmp_path, None, admission.source_digest(ws))
-    guard.bind_snapshot(candidate)
-    guard._changed = frozenset({"emit_command_buffer"})  # observed by a later pending_reason
-    assert guard.member_reason(_cap("parse_only")) == "background source superseded"
+    monkeypatch.setattr(joint_control, "remaining", lambda **kwargs: 0.0)
+    assert guard.pending_reason() == "joint campaign deadline reached"
+    monkeypatch.setattr(joint_control, "stop_reason", lambda: "final handoff")
+    assert guard.pending_reason() == "final handoff"

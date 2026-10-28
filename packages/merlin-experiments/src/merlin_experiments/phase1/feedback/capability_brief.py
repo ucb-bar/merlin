@@ -7,6 +7,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from ..brokers.selfcheck_tuning import DECLARATION as TUNING_DECLARATION
+from . import reconcile
 from .completed_grade import FILENAME as COMPLETED_FILENAME
 from .completed_grade import POINTER, SUMMARY_FILENAME
 
@@ -14,7 +15,9 @@ from .completed_grade import POINTER, SUMMARY_FILENAME
 def _read(path):
     try:
         data = Path(path).read_text()
-        return json.loads(data)
+        from .result_details import hydrate
+
+        return hydrate(json.loads(data), document_path=path)
     except (OSError, ValueError):
         return None
 
@@ -62,21 +65,27 @@ def render(inventory, latest, previous=None):
              'These are per-case recorded observations, not automatically current-source qualification.',
              "Merged rows can describe different sources; each row's `graded` records its identity.",
              f"Compiler snapshot: `{_text(source or 'unavailable', 64)}`.", '',
-             '| Public class | Observed / required | Reported pass | L2 pass | L3 pass |',
-             '|---|---:|---:|---:|---:|']
+             "Current pass counts only rows reconciled as `current` (the bytes the case reaches are unchanged "
+             "since its grade); an `older_version` row is evidence for the older source it names.", '',
+             '| Public class | Observed / required | Reported pass | Current pass | L2 pass | L3 pass |',
+             '|---|---:|---:|---:|---:|---:|']
     cohorts = sorted({row['cohort'] for row in members.values()})
     for cohort in cohorts:
         names = {name for name, member in members.items() if member["cohort"] == cohort}
         seen = [rows[name] for name in names if name in rows]
         lines.append(f"| {_text(cohort)} | {len(seen)} / {len(names)} | "
                      f"{sum(row.get('status') == 'pass' for row in seen)} | "
+                     f"{sum(row.get('status') == 'pass' and not reconcile.is_older(row) for row in seen)} | "
                      f"{sum(_tier(row, 'L2') for row in seen)} | {sum(_tier(row, 'L3') for row in seen)} |")
     if any('workload_role' in member for member in members.values()):
         lines += ['', '| Search role | Cases | Reported pass |', '|---|---:|---:|']
         for role in sorted({m.get('workload_role', 'unclassified') for m in members.values()}):
             names = [n for n, m in members.items() if m.get('workload_role', 'unclassified') == role]
             lines.append(f"| {role} | {len(names)} | {sum(rows.get(n, {}).get('status') == 'pass' for n in names)} |")
-        lines += ['', 'Small controls provide correctness and mechanism diagnostics; primary ranking excludes them.']
+        lines += ['', 'Small controls provide correctness and mechanism diagnostics; no routine performance tuning.']
+    else:
+        lines += ['', 'Workload classification needed: no performance ranking or routine tuning '
+                  'without selected roles.']
     lines += ['', 'Missing tier records remain unobserved; reported passes do not manufacture L3 evidence.', '']
     groups = defaultdict(list)
     old_keys = {_failure_key(row, members[name]) for name, row in prior.items() if row.get("status") != "pass"}
@@ -110,7 +119,8 @@ def render(inventory, latest, previous=None):
               'read it before querying the full file.', '',
               '## Performance work', '',
               'Performance is part of every change, not a final phase. `performance_priority.development_headroom` '
-              'in `qa/verdict.json` ranks every passing test case by cycles above its roofline bound; work the '
+              'in `qa/verdict.json` ranks only primary-role passing test cases by cycles above their roofline bounds; '
+              'work the '
               'largest headroom alongside correctness. Calibration cases diagnose unresolved model mechanisms.',
               'Passing code may be improved through reusable passes and shape/resource policies. '
               'Retain a working checkpoint and check affected semantic boundaries before merging.',
@@ -126,8 +136,7 @@ def render(inventory, latest, previous=None):
                                     ('correctness_regression', 'original_correctness'),
                                     ('calibration_diagnostics', 'calibration')]}
     ranked = summarize(list(rows.values()), cohorts=cohorts,
-                       roles={name: member.get("workload_role") for name, member in members.items()}
-                       if any("workload_role" in member for member in members.values()) else None)
+                       roles={name: member.get("workload_role", "unclassified") for name, member in members.items()})
     for group in ranked['comparison_groups'][:3]:
         lane = 'qualified' if group['qualified'] else 'provisional_diagnostics'
         if not group[lane]:
@@ -182,12 +191,13 @@ def build_if_selected(run_dir, workspace, *, errata=(), notes_stale=False):
     latest = records[-1] if records else {}
     previous = records[-2] if len(records) >= 2 else None
     result = "\n".join(errata) + "\n" + render(inventory, latest, previous)
-    notes = Path(workspace) / "submission/docs/iteration_notes.md"
-    body = notes.read_text(errors="replace") if notes.is_file() else ""
+    from ..iteration_notes import NOTES_NAME, read_notes
+
+    body = read_notes(workspace)
     result += "\n## Compiler approach ledger\n\n"
     result += (
         "Record hypothesis, changed passes/options, exact snapshot, affected capabilities, "
-        "observed outcomes and next decision in `submission/docs/iteration_notes.md`. "
+        f"observed outcomes and next decision in `{NOTES_NAME}` (workspace root, outside submission/). "
         "Keep complete artifacts on disk; include their paths in bounded helper briefs.\n"
     )
     if body.strip():
@@ -200,6 +210,7 @@ def build_if_selected(run_dir, workspace, *, errata=(), notes_stale=False):
 def refresh_completed(workspace, document):
     """Refresh existing joint-session memory from the durable merged grade, without grading authority."""
     from .brief import _leading_resume_note
+    from .reference_experiments import brief_lines
 
     workspace = Path(workspace)
     inventory = _read(workspace / 'PUBLIC_CAPABILITIES.json')
@@ -214,7 +225,8 @@ def refresh_completed(workspace, document):
     prefix = prefix if marker else _leading_resume_note(existing)
     ledger_marker = '\n## Compiler approach ledger'
     _, has_ledger, ledger = prior.partition(ledger_marker)
-    text = (prefix + render(inventory, document)
+    reference = "\n".join(brief_lines(workspace))
+    text = (prefix + (reference + "\n" if reference else "") + render(inventory, document)
             + f"\nCompleted-grade token: `{_text(pointer.get('token', 'unavailable'))}`. "
             + f"Read `qa/{SUMMARY_FILENAME}` for per-case source/tier identities.\n")
     if has_ledger:

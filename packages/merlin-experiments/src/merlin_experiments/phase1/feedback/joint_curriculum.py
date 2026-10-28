@@ -34,6 +34,40 @@ def _pin(path):
     return {"path": str(path.resolve()), "sha256": digest(path)}
 
 
+def _result(path):
+    """A completed result's pin and its bytes, both from ONE full read.
+
+    ``capsule_result.json`` is grade output that later stages of the same grade rewrite in place
+    (the suite-level model check persists each model row again). Admitting it to the read-lease
+    cache, which is for immutable inputs, turned that ordinary rewrite into a custody refusal on the
+    next pin. A full read makes a rewrite a plain digest mismatch, and parsing the same bytes that
+    were hashed means a pass is never read from a different version than the one pinned.
+    """
+    path = Path(path)
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("curriculum evidence must be a direct regular file")
+    data = path.read_bytes()
+    return {"path": str(path.resolve()), "sha256": sha256(data).hexdigest()}, data
+
+
+_REUSE_NOTES: set[tuple[str, str, str]] = set()
+_REUSE_NOTES_MAX = 4096
+
+
+def _reuse_dropped(name, saved, reason):
+    """One line per (case, recorded result, reason): this saved pass is not reused, so it is graded."""
+    note = (str(name), str(saved.get("path") if isinstance(saved, dict) else saved), str(reason))
+    if note in _REUSE_NOTES:
+        return
+    if len(_REUSE_NOTES) >= _REUSE_NOTES_MAX:
+        _REUSE_NOTES.clear()
+    _REUSE_NOTES.add(note)
+    print(
+        f"[curriculum] saved pass for {note[0]} not reused ({note[2]}): {note[1]}; the case is graded again",
+        flush=True,
+    )
+
+
 def _source(path):
     leaves = sorted(Path(path).rglob("*"))
     if any(p.is_symlink() for p in leaves):
@@ -188,7 +222,15 @@ def plan(records, *, policy, attempts, passed, hint=(), limit=None):
 
 class Progress:
     def __init__(
-        self, root, *, identity, runs_root, original_capsules=None, verify_reuse=None, ownership_identity=None
+        self,
+        root,
+        *,
+        identity,
+        runs_root,
+        original_capsules=None,
+        verify_reuse=None,
+        ownership_identity=None,
+        immutable_sources=False,
     ):
         self.root, self.identity, self.runs_root = Path(root), identity, Path(runs_root)
         self.original_capsules = original_capsules
@@ -200,6 +242,8 @@ class Progress:
             self.ownership_identity = {"conservative_unqualified_run": str(self.root.resolve())}
         self.ownership_keys = {}
         self.verify_reuse = verify_reuse
+        self.immutable_sources = immutable_sources
+        self.source_digests = None
         self.paths = {}
         self.admitted = set()
         self.priorities = {}
@@ -259,7 +303,7 @@ class Progress:
             closures_now=self.closures, docs=docs, tier_state=tier_state, outcomes=outcomes, remaining_s=remaining
         )
 
-    def select(self, records, *, policy, hint):
+    def select(self, records, *, policy, hint, _source_digests=None):
         if self.original_capsules is not None:
             policy = dict(policy, correctness_curriculum={"original_capsules": self.original_capsules})
         self.records, self.policy, self.hint = records, policy, hint
@@ -267,7 +311,8 @@ class Progress:
         # Both key spaces describe this same selection observation. Reuse the
         # observed digest within this call; completion and later selections
         # still reopen source identity through their original custody checks.
-        source_digests = {name: _source(path) for name, path in self.paths.items()}
+        source_digests = _source_digests or {name: _source(path) for name, path in self.paths.items()}
+        self.source_digests = source_digests
         self.keys = (
             {name: _key({"context": self.identity, "source": source_digests[name]}) for name in self.paths}
             if self.identity is not None
@@ -306,12 +351,18 @@ class Progress:
                     if not reuse_allowed:
                         continue
                     pin = saved["result"]
-                    if _pin(pin["path"]) == pin:
-                        kind = _passed(json.loads(Path(pin["path"]).read_text()))
-                        if kind:
-                            passed[name] = kind
-                except (OSError, ValueError, KeyError, TypeError):
-                    pass  # Missing/changed evidence schedules ordinary native grading.
+                    current, data = _result(pin["path"])
+                    if current != pin:
+                        _reuse_dropped(name, pin, "its recorded result bytes changed")
+                        continue
+                    kind = _passed(json.loads(data))
+                    if kind:
+                        passed[name] = kind
+                except (OSError, ValueError, KeyError, TypeError, RuntimeError) as error:
+                    # Missing/changed evidence (including a lost read lease) schedules ordinary
+                    # native grading; it never fails the grade that asked.
+                    recorded = saved.get("result") if isinstance(saved, dict) else None
+                    _reuse_dropped(name, recorded, f"{type(error).__name__}: {error}")
         chosen, report = plan(records, policy=policy, attempts=attempts, passed=passed, hint=hint)
         carried, sampling = self.sampling or ({}, None)
         chosen = [r for r in chosen if r[2] not in active and r[2] not in carried]
@@ -356,7 +407,14 @@ class Progress:
 
     def report(self):
         # Reopen completed native receipts after the batch; no new execution.
-        return self.select(self.records, policy=self.policy, hint=self.hint)[1]
+        sources = None
+        if self.immutable_sources and self.verify_reuse is not None:
+            # The original live frozen-input owner independently reopens custody.
+            # Only its unchanged immutable selection can reuse source digests;
+            # mutable/diagnostic callers retain the ordinary full-tree hashing.
+            self.verify_reuse()
+            sources = self.source_digests
+        return self.select(self.records, policy=self.policy, hint=self.hint, _source_digests=sources)[1]
 
     def started(self, capsule):
         """Called only by the original scheduler when it submits this member."""
@@ -404,8 +462,8 @@ class Progress:
         matches = list((self.runs_root / "runs").glob(f"*/{name}/capsule_result.json"))
         if len(matches) != 1:
             return
-        pin = _pin(matches[0])
-        row = json.loads(matches[0].read_text())
+        pin, data = _result(matches[0])
+        row = json.loads(data)
         if row.get("capsule", name) != name or row.get("background_deferred"):
             return
         with self._ledger() as ledger:
@@ -540,6 +598,7 @@ def native(
         runs_root=runs_root,
         original_capsules=original,
         verify_reuse=verify_reuse,
+        immutable_sources=inputs.verify_grade_inputs is not None,
         ownership_identity={
             "compiler_sha256": compiler_sha256,
             "descriptor": _pin(inputs.context.descriptor),

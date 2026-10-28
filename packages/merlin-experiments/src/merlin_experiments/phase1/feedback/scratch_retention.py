@@ -11,7 +11,14 @@ What the readers that outlive a grade actually open, and so what is kept:
 
 * ``capsule_result.json``, byte-identical: the correctness curriculum reuses a pass only when its
   pinned result still verifies, scheduling history prices capsules from it, and the operator audits,
-  convergence report and calibration-index readers count from it;
+  convergence report and calibration-index readers count from it -- together with the expanded command
+  buffer it references (:mod:`merlin.perf.command_buffer_store`), which used to be embedded in it.
+  A finished self-check drops that buffer: its only reader was the check itself, which has written its
+  response by then, and every later reader of the result (audits, timing archives) takes the tensor
+  shapes from the inline summary. It was 90% of a retained scalability check -- 1.1 GB of the 1.2 GB a
+  132-case check kept, once per check -- while the bytes it encodes are the inputs of the public suite
+  and the compiler's commands, both reproducible from the pinned source. Measured buffers (an RTL tier
+  ran) stay with the rest of their capsule directory, below;
 * every small file (receipts, reports, timing records, logs up to :data:`KEEP_FILE_BYTES`), and the
   issued scalability qualification beside them;
 * every capsule directory holding paid RTL evidence (a tier derived from RTL that passed or failed),
@@ -40,6 +47,8 @@ import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
+
+from merlin.perf.command_buffer_store import is_stored_name
 
 SCHEMA = "merlin.scratch_retention.v1"
 MARKER = "retention.json"
@@ -181,11 +190,13 @@ def _remove_tree(path: Path) -> int:
     return freed
 
 
-def slim_tree(root, *, citing: tuple[Path, ...] = ()) -> int:
+def slim_tree(root, *, citing: tuple[Path, ...] = (), keep_command_buffers: bool = True) -> int:
     """Remove build products under ``root`` and keep its evidence (see the module); returns bytes freed.
 
     Directory times are restored, so readers that date a check by its directories see the same times.
     Links are removed as names, never followed. ``citing`` adds trees whose records may cite ``root``.
+    ``keep_command_buffers=False`` also removes stored expanded command buffers outside capsule
+    directories with RTL-tier evidence (a finished self-check; a grade keeps them).
     """
     root = Path(root)
     if root.is_symlink() or not root.is_dir():
@@ -218,6 +229,10 @@ def slim_tree(root, *, citing: tuple[Path, ...] = ()) -> int:
             entry = here / name
             if name in KEPT_NAMES or kept.cited(entry):
                 continue
+            if is_stored_name(name):
+                if not keep_command_buffers:
+                    freed += _remove(entry)
+                continue
             try:
                 size = entry.lstat().st_size
             except OSError:
@@ -232,7 +247,7 @@ def slim_tree(root, *, citing: tuple[Path, ...] = ()) -> int:
     return freed
 
 
-def slim_once(root, *, scope: str, citing: tuple[Path, ...] = ()) -> int:
+def slim_once(root, *, scope: str, citing: tuple[Path, ...] = (), keep_command_buffers: bool = True) -> int:
     """:func:`slim_tree` a finished scratch root and mark it, so later passes skip it."""
     root = Path(root)
     marker = root / MARKER
@@ -241,7 +256,7 @@ def slim_once(root, *, scope: str, citing: tuple[Path, ...] = ()) -> int:
     if not _Kept(root, citing).readable:
         return 0  # leave it unmarked so a later pass with a readable registry slims it
     started = time.time()
-    freed = slim_tree(root, citing=citing)
+    freed = slim_tree(root, citing=citing, keep_command_buffers=keep_command_buffers)
     try:
         stat = root.stat()
         marker.write_text(
@@ -251,8 +266,9 @@ def slim_once(root, *, scope: str, citing: tuple[Path, ...] = ()) -> int:
                     "scope": scope,
                     "slimmed_at_epoch": started,
                     "bytes_freed": freed,
-                    "kept": f"capsule_result.json, files up to {KEEP_FILE_BYTES} bytes, issued qualifications, and "
-                    "every capsule directory with RTL-tier evidence",
+                    "kept": f"capsule_result.json, files up to {KEEP_FILE_BYTES} bytes, issued qualifications, "
+                    + ("stored command buffers, " if keep_command_buffers else "")
+                    + "and every capsule directory with RTL-tier evidence",
                 },
                 indent=2,
             )
@@ -286,7 +302,8 @@ def selfcheck_scratch():
     """Own the scratch a self-check registers; released after its response is written.
 
     Nothing reads these after the check returns: the broker reads only the response the check wrote,
-    and promotion freezes its own source copy before it enqueues.
+    and promotion freezes its own source copy before it enqueues. So the raw runs also lose their
+    stored command buffers (the module docstring says why that is safe).
     """
     held: list = []
     token = _SELFCHECK_SCRATCH.set(held)
@@ -302,7 +319,7 @@ def selfcheck_scratch():
                     if not _Kept(path).cited(path):
                         _remove_tree(path)
                 else:
-                    slim_once(path, scope="completed self-check")
+                    slim_once(path, scope="completed self-check", keep_command_buffers=False)
             except Exception as error:  # noqa: BLE001 -- cleanup never replaces the check's own outcome
                 say(f"[retention] self-check scratch kept: {type(error).__name__}: {error}")
 
@@ -333,8 +350,12 @@ def prune_superseded_grades(run_dir, workspace=None, *, keep_newest: int = KEEP_
     """Slim every finished background grade older than the newest ``keep_newest`` and unpublished.
 
     Only grades whose owner record says ``complete`` or ``deferred`` are touched; one still admitting or
-    draining, or with no owner record, is left whole. Returns bytes freed.
+    draining, or with no owner record, is left whole, and so is one whose advisory timing is still
+    being observed (:func:`.rolling_scalability.busy_runs`: it reads that grade's executables). Returns
+    bytes freed.
     """
+    from .rolling_scalability import busy_runs
+
     work = Path(run_dir) / "_qa_work"
     owners = work / "background_snapshot_owners"
     records = {}
@@ -356,12 +377,15 @@ def prune_superseded_grades(run_dir, workspace=None, *, keep_newest: int = KEEP_
     published = _published_token(workspace)
     if published is not None:
         protected.add(published)
+    observed = busy_runs(run_dir)
     freed = 0
     for token in newest:
         record = records[token]
         if token in protected or record.get("state") not in ("complete", "deferred"):
             continue
         runs = work / f"fruns_{token}"
+        if str(runs.resolve()) in observed or str(runs) in observed:
+            continue
         if record.get("runs_dir") not in (None, str(runs)):
             continue  # an owner naming another directory is not this run's scratch
         freed += slim_once(runs, scope="superseded background grade", citing=(Path(run_dir),))

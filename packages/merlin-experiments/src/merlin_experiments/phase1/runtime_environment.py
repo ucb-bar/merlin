@@ -92,6 +92,11 @@ def prepare_runtime_environment(
     if mode == "snapshot_external_v1" and options.sandbox != "bwrap":
         return result(7, "snapshot_external_v1 requires the isolated bwrap compiler workspace")
     set_value("MERLIN_COMPILER_EXECUTION_MODE", mode)
+    from .feedback import sandbox_pool
+
+    if getattr(options, "sandbox_reuse", sandbox_pool.PER_CALL) not in sandbox_pool.CHOICES:
+        return result(7, "unknown sandbox reuse selection")
+    set_value(sandbox_pool.ENV, getattr(options, "sandbox_reuse", sandbox_pool.PER_CALL))
     if options.compiler_access == "full_compiler":
         if mode != "snapshot_external_v1" or not all((options.full_compiler_root, options.full_compiler_manifest,
                                                      options.full_compiler_manifest_sha256)):

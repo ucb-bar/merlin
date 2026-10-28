@@ -137,3 +137,14 @@ def test_previous_session_note_is_bounded_scrubbed_and_read_only(seeded):
 def test_previous_session_missing_inputs_say_not_recorded(tmp_path):
     text = H.render(tmp_path / "none-run", tmp_path / "none-ws", tmp_path / "none-sub")
     assert text.count("not recorded") >= 3
+
+
+def test_previous_session_prefers_the_root_notes_of_the_previous_workspace(tmp_path):
+    previous_ws, seed = tmp_path / "prev-ws", tmp_path / "seed"
+    (seed / "docs").mkdir(parents=True)
+    (seed / "docs/iteration_notes.md").write_text("legacy note\n")
+    previous_ws.mkdir()
+    assert "legacy note" in H.render(tmp_path / "run", previous_ws, seed)
+    (previous_ws / "ITERATION_NOTES.md").write_text("root note: try epochs next\n")
+    text = H.render(tmp_path / "run", previous_ws, seed)
+    assert "root note: try epochs next" in text and "legacy note" not in text

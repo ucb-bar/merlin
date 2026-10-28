@@ -9,8 +9,9 @@ compared with the newest ``submission/`` response row that has comparable cycles
 
 Cycles are compared only within one kind and identity: measured simulator cycles of the certifying
 tier (``barrier_cycles`` at L3, same simulator) first, else the timing model estimate
-(``performance.estimated_whole_soc_cycles``, same model, timing mode and epoch). Numerics are each
-row's own numerical check. Exit status: 0 keep (total cycles fall, no case slower, numerics
+(``performance.estimated_whole_soc_cycles``, complete provisional/qualified accounting with matching
+selection/model/facts/domain/scope/case pins, timing mode and epoch). Numerics are each
+row's own numerical check. Exit status: 0 keep (every case comparable, total cycles fall, no case slower, numerics
 unchanged), 1 do not keep or mixed, 2 nothing comparable or unreadable input.
 """
 
@@ -18,21 +19,36 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
-_MODEL_IDENTITY = ("model_sha256", "timing_mode", "timing_epoch")
+_MODEL_PINS = ("selection_sha256", "model_sha256", "facts_sha256", "comparison_domain_sha256",
+               "scope_sha256", "capsule_sha256")
+_MODEL_IDENTITY = (*_MODEL_PINS, "timing_mode", "timing_epoch")
 
 
 def _load(path: Path):
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(document, dict) and document.get("result_index"):
+            for parent in Path(path).resolve().parents:
+                helper = parent / "qa_result_details.py"
+                if helper.is_file():
+                    namespace = {"__name__": "_public_result_details"}
+                    exec(compile(helper.read_bytes(), str(helper), "exec"), namespace)
+                    return namespace["hydrate"](document, workspace=parent)
+        return document
     except (OSError, ValueError):
         return None
 
 
 def _positive(value) -> bool:
-    return type(value) in (int, float) and value > 0
+    return type(value) in (int, float) and math.isfinite(value) and value > 0
+
+
+def _digest(value) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(c in '0123456789abcdef' for c in value)
 
 
 def tree(document: dict) -> str:
@@ -52,7 +68,9 @@ def passed(row: dict) -> bool:
     if isinstance(tiers, dict) and "L2" in tiers:
         tier = tiers["L2"]
         return (tier.get("status") if isinstance(tier, dict) else tier) == "pass"
-    return row.get("pass") is True or row.get("numerical_execution_passed") is True or row.get("status") == "pass"
+    if type(row.get("numerical_execution_passed")) is bool:
+        return row["numerical_execution_passed"]
+    return row.get("pass") is True or row.get("status") == "pass"
 
 
 def evidence(row: dict) -> dict:
@@ -60,13 +78,17 @@ def evidence(row: dict) -> dict:
     found = {}
     if row.get("barrier_tier") == "L3" and _positive(row.get("barrier_cycles")) and row.get("pass") is True:
         timing = row.get("barrier_timing_identity") if isinstance(row.get("barrier_timing_identity"), dict) else {}
-        engine = timing.get("engine") or "simulator"
-        found["measured"] = (row["barrier_cycles"], (engine, timing.get("simulator_sha256")),
-                             f"measured {engine} cycles")
+        engine = timing.get("engine")
+        if isinstance(engine, str) and engine and _digest(timing.get("simulator_sha256")):
+            found["measured"] = (row["barrier_cycles"], (engine, timing["simulator_sha256"]),
+                                 f"measured {engine} cycles")
     performance = row.get("performance") if isinstance(row.get("performance"), dict) else {}
-    if _positive(performance.get("estimated_whole_soc_cycles")):
+    status = str(performance.get("status") or "unknown").lower()
+    if (status in ("provisional", "qualified")
+            and performance.get("complete_event_accounting") is True
+            and all(_digest(performance.get(key)) for key in _MODEL_PINS)
+            and _positive(performance.get("estimated_whole_soc_cycles"))):
         identity = tuple(performance.get(key) for key in _MODEL_IDENTITY)
-        status = str(performance.get("status") or "unknown").lower()
         found["modeled"] = (performance["estimated_whole_soc_cycles"], identity, f"timing model ({status})")
     return found
 
@@ -142,10 +164,15 @@ def _numerics(before_ok: bool, after_ok: bool) -> str:
 def compare(after: dict, before: dict | None, *, channel: Path, cases=None) -> dict:
     after_rows = rows(after)
     names = [n for n in after_rows if not cases or n in cases]
+    if cases:
+        names.extend(sorted(set(cases) - set(after_rows)))
     history = _baseline_rows(channel, set(names)) if before is None else {}
     before_rows = rows(before) if before is not None else {}
     report = []
     for name in names:
+        if name not in after_rows:
+            report.append({"test_case": name, "after_passed": None, "status": "no candidate row for requested case"})
+            continue
         row = after_rows[name]
         candidates = ([(before_rows[name], before.get("submission_sha256"))] if name in before_rows
                       else list(reversed(history.get(name, ()))))
@@ -181,11 +208,18 @@ def compare(after: dict, before: dict | None, *, channel: Path, cases=None) -> d
 
 def verdict(report: list[dict]) -> dict:
     compared = [e for e in report if e.get("status") == "compared"]
-    broken = [e["test_case"] for e in report if e.get("before_passed") and not e.get("after_passed")]
+    broken = [e["test_case"] for e in report if e.get("after_passed") is False]
     if broken:
-        return {"decision": "do not keep", "exit": 1, "why": f"numerics changed: candidate fails {broken}"}
+        return {"decision": "do not keep", "exit": 1, "why": f"candidate numerical check did not pass: {broken}"}
+    if any(e.get("after_passed") is None for e in report):
+        return {"decision": "inconclusive", "exit": 2, "why": "some requested cases have no candidate result"}
+    if any(e.get("before_passed") is not True for e in report):
+        return {"decision": "inconclusive", "exit": 2, "why": "every baseline numerical check must pass"}
     if not compared:
         return {"decision": "inconclusive", "exit": 2, "why": "no case has comparable cycles on both sides"}
+    if len(compared) != len(report):
+        return {"decision": "inconclusive", "exit": 2,
+                "why": "some cases lack complete, identity-matched cycle evidence on both sides"}
     total_before = sum(e["cycles_before"] for e in compared)
     total_after = sum(e["cycles_after"] for e in compared)
     slower = [e["test_case"] for e in compared if e["delta"] > 0]

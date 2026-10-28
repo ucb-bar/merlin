@@ -1,6 +1,6 @@
-"""Accumulator-bound GEMM: readout modes of schedule_dense_pipeline compared on one segmented block.
+"""Dense readout alternatives on one capacity-legal segmented or full-K block.
 
-    python dense_readout_recipe.py [--facts rtl_facts/facts.json] [--shape M,K,N] [--library DIR]
+    python dense_readout_recipe.py [--facts rtl_facts/facts.json] [--shape M,K,N] [--family segmented|retained] [--library DIR]
 
 When the whole output needs more accumulator rows than the store has, every output group is computed,
 read out and drained before the next one starts, and the readouts serialize behind compute. The single
@@ -12,6 +12,12 @@ explicit readout mode, each with its own law:
   other (``disjoint_readout_epochs``);
 * ``ready`` (``dense_ready_readout``): store each output right after its final K reduction, inside the
   compute epoch, under a causal producer-to-readout law (``causal_ready_epochs``).
+
+``--family retained`` compares separate, batched and causal readouts on a full-K panel. It accepts
+even one K tile, needs only one accumulator window, and refuses when full K does not fit. The
+neutral adapter and test-only execution laws must be replaced by your backend's selected contracts.
+``--input-pipeline`` additionally compares alternating input slots with invariant weights, deriving
+the second slot from the panel footprint. Every control uses that same block and retained operand.
 
 The shape-schedule-selection cookbook (``capacity_pipeline_example.py``) shows each family once; this
 recipe derives the shape where readout serialization matters -- the output overflows the accumulator
@@ -38,23 +44,27 @@ def _support():
     return sys.modules["recipe_support"]
 
 
-def derived_shape(caps) -> tuple[int, int, int]:
+def derived_shape(caps, family="segmented") -> tuple[int, int, int]:
     """Two M tiles and one N tile more than the accumulator holds for them, K over three tiles."""
     edge_k, edge = caps["array"]
     m_tiles = 2
     n_tiles = caps["accumulator"]["rows"] // (m_tiles * edge) + 1
-    return m_tiles * edge - 1, 3 * edge_k, n_tiles * edge - 1
+    return m_tiles * edge - 1, (1 if family == "retained" else 3) * edge_k, n_tiles * edge - 1
 
 
-def recipe(facts: str | None = None, shape=None) -> dict:
+def recipe(facts: str | None = None, shape=None, *, family="segmented", input_pipeline=False) -> dict:
+    if family not in ("segmented", "retained"):
+        raise ValueError("family must be segmented or retained")
+    if input_pipeline and family != "retained":
+        raise ValueError("input pipeline requires the retained family")
     S = _support()
     caps = S.capacities(facts)
-    shape = tuple(shape or derived_shape(caps))
+    shape = tuple(shape or derived_shape(caps, family))
     p, s, r = S.dense_view(shape, caps)
     a = S.adapter()
     needed = S.output_rows(p)
-    window = s.accumulator.capacity // 2
-    if p.tiles[1] < 2:
+    window = s.accumulator.capacity // (2 if family == "segmented" else 1)
+    if family == "segmented" and p.tiles[1] < 2:
         raise SystemExit("one K tile: there is no K segment to pipeline; use the compact plan")
 
     def accepts(b):
@@ -63,24 +73,40 @@ def recipe(facts: str | None = None, shape=None) -> dict:
 
     from dataclasses import replace
 
-    block = S.pick(S.blocks(p, s, replace(r, max_k_blocks=p.tiles[1] - 1)), accepts)
+    if family == "segmented":
+        block = S.pick(S.blocks(p, s, replace(r, max_k_blocks=p.tiles[1] - 1)), accepts)
+        pipeline = S.segmented_pipeline
+        modes = (("segmented", False, "separate"), ("batched_readouts", True, "separate"),
+                 ("readout_overlap", True, "disjoint"), ("ready_readout", True, "ready"))
+    else:
+        def full_k(b):
+            return b.k == p.tiles[1] and (not input_pipeline or (
+                p.tiles[0] // b.m >= 2 and 2 * b.m * b.k * p.tile_m <= s.lhs.capacity
+                and 2 * b.m * b.k * p.tile_m * s.lhs.unit_bytes
+                    + b.k * b.n * p.tile_k * s.rhs.unit_bytes <= r.operand_bytes))
+        block = S.pick(S.blocks(p, s, r), full_k)
+        pipeline = S.retained_pipeline
+        modes = (("retained", False, "separate"), ("batched_readouts", True, "separate"),
+                 ("ready_readout", True, "ready"))
+        if input_pipeline:
+            modes += (("input_pipeline", True, "ready"),)
     variants = {}
-    for name, batch, mode in (
-        ("segmented", False, "separate"),
-        ("batched_readouts", True, "separate"),
-        ("readout_overlap", True, "disjoint"),
-        ("ready_readout", True, "ready"),
-    ):
-        result, _ = S.segmented_pipeline(p, s, r, a, block, name=name, batch=batch, readout_mode=mode)
+    for name, batch, mode in modes:
+        options = (dict(retained_operand="weight", input_pipeline=name == "input_pipeline")
+                   if input_pipeline else {})
+        result, _ = pipeline(p, s, r, a, block, name=name, batch=batch, readout_mode=mode, **options)
         epochs = result.realization.get("epochs", ())
         variants[name] = {
             "calls": S.execute_dense(result.kernel, a, p),
             "epoch_drains": result.realization["dynamic_epoch_drains"],
             "disjoint_readout_epochs": sum(1 for e in epochs if e.get("disjoint_readout_compute")),
             "causal_ready_epochs": sum(1 for e in epochs if e.get("causal_ready_readout_compute")),
+            "input_pipeline": result.realization.get("input_pipeline", []),
         }
     return {
         "facts": caps["source"],
+        "family": family,
+        "retained_operand": "weight" if input_pipeline else "lhs",
         "capacities": caps,
         "shape": shape,
         "tile": (p.tile_m, p.tile_k, p.tile_n),
@@ -92,6 +118,7 @@ def recipe(facts: str | None = None, shape=None) -> dict:
         "accumulator_window_rows": window,
         "variants": variants,
         "verified": "every variant reproduced the source product from its projected calls",
+        "cycles": "UNKNOWN: host integer execution checks products, not target timing",
     }
 
 
@@ -101,13 +128,19 @@ def main(argv=None) -> int:
     )
     ap.add_argument("--facts", default=None, help="RTL facts JSON (default: rtl_facts/facts.json if present)")
     ap.add_argument("--shape", default=None, help="M,K,N (default: derived so the output overflows the accumulator)")
+    ap.add_argument("--family", choices=("segmented", "retained"), default="segmented",
+                    help="retained also supports one K tile; all full-K panels must fit")
+    ap.add_argument("--input-pipeline", action="store_true",
+                    help="retained family: compare two advancing LHS slots with invariant weights")
     ap.add_argument("--library", default=None, help="editable compiler library (default: submission/compiler_library)")
     a = ap.parse_args(argv)
     _support().use_library(a.library)
     shape = tuple(int(x) for x in a.shape.split(",")) if a.shape else None
     if shape is not None and len(shape) != 3:
         ap.error("--shape is M,K,N")
-    print(json.dumps(recipe(a.facts, shape), indent=1, default=str))
+    if a.input_pipeline and a.family != "retained":
+        ap.error("--input-pipeline requires --family retained")
+    print(json.dumps(recipe(a.facts, shape, family=a.family, input_pipeline=a.input_pipeline), indent=1, default=str))
     return 0
 
 

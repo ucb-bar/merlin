@@ -10,7 +10,10 @@ ratio. Operator-private reference targets (for example a study's ``pairs`` of ag
 reference kernel cycles) appear only with ``operator_private``. Display telemetry; it grades nothing.
 
 Panel fields beyond the shared shape: ``families`` [{family, cases, speedup, util_median_pct}],
-``movers`` {up, down}, ``model_gap`` {compared, median_ratio, over_2x}, ``targets`` [...].
+``movers`` {up, down}, ``model_gap`` {compared, median_ratio, over_2x}, ``targets`` [...],
+``readiness`` {line, ready_bundles, cases_left}: the newest completed grade's per-family roll-up
+(``performance_headline.families``, :mod:`...phase1.feedback.family_rollup`), shown as the
+``families correct`` line and the ``ready for performance`` bundles.
 """
 
 from __future__ import annotations
@@ -145,6 +148,25 @@ def _targets(ctx) -> list[dict[str, Any]]:
     return found
 
 
+def _texts(value: Any, limit: int = 6) -> list[str]:
+    return [clean(text, 240) for text in value[:limit] if isinstance(text, str)] if isinstance(value, list) else []
+
+
+def _readiness(ctx) -> dict[str, Any]:
+    """The newest completed grade's family roll-up (prefetched with the grade; nothing recomputed here)."""
+    workspace = ctx.experiment.get("workspace")
+    if not workspace:
+        return {}
+    grade = ctx.reader.document(Path(workspace) / "qa" / "latest_completed_grade.json", limit=64 << 20, stale_ok=True)
+    found = obj(obj(obj(grade).get("performance_headline")).get("families"))
+    return {
+        "line": clean(found.get("line"), 400) or None,
+        "ready_bundles": _texts(found.get("ready_bundles")),
+        "cases_left": _texts(found.get("cases_left")),
+        "bundle_count": found.get("bundle_count"),
+    }
+
+
 def read(ctx) -> dict[str, Any]:
     now = ctx.now
     store = ctx.state.setdefault("current", {})
@@ -241,8 +263,20 @@ def read(ctx) -> dict[str, Any]:
         )
 
     private = ctx.operator_private
+    readiness = _readiness(ctx)
     summary = [
         line("test cases measured", len(latest)),
+        line(
+            "families correct",
+            readiness.get("line", "").partition(": ")[2] if readiness.get("line") else None,
+            key="readiness",
+        ),
+        line(
+            "ready for performance",
+            readiness["ready_bundles"][0] if readiness.get("ready_bundles") else None,
+            "ok" if readiness.get("ready_bundles") else None,
+            key="readiness",
+        ),
         line(
             f"speedup vs first (n={len(multi)})",
             ratio_text(speedup) if multi else "no case re-measured yet",
@@ -331,6 +365,7 @@ def read(ctx) -> dict[str, Any]:
         speedup=speedup,
         vs_previous=vs_prev,
         median_utilization_pct=median_util,
+        readiness=readiness,
         chain_manifest=chain(ctx).get("manifest") if private else None,
     )
 
@@ -351,6 +386,18 @@ def inspect(ctx, key: str) -> dict[str, Any]:
                         "A ratio far from 1 means the fast cycle model misleads tuning decisions on that case.",
                     ],
                 }
+            ],
+            "paths": [],
+        }
+    if key == "readiness":
+        readiness = obj(section.get("readiness"))
+        return {
+            "title": "performance readiness by family",
+            "sections": [
+                {"title": "ready for performance (bundles of passing cases)",
+                 "lines": readiness.get("ready_bundles") or []},
+                {"title": "correctness left", "lines": readiness.get("cases_left") or []},
+                {"title": "families", "lines": [readiness["line"]] if readiness.get("line") else []},
             ],
             "paths": [],
         }

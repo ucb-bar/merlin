@@ -88,7 +88,7 @@ def recover(ws: Path, *, cert_tier: str, instrument: str | None, log=None,
                     or hashlib.sha256(_encoded(verdict)).hexdigest() != record.get("verdict_sha256")):
                 continue
             recorded.extend(promotion.record_cert(ws, verdict, cert_tier, log, identity=identity,
-                                                 source_identity_verified=True))
+                                                 source_identity_verified=True, request=job_id))
             if recovered_results is not None:
                 recovered_results[job_id] = verdict
         except (OSError, ValueError, KeyError, TypeError):

@@ -1,6 +1,8 @@
 """Idle reserved CPUs refresh the performance cohort's timing estimates, behind every other kind of work."""
 
 import json
+import os
+import time
 
 import pytest
 from merlin_experiments.phase1.feedback import idle_performance as I
@@ -13,7 +15,11 @@ def _run(tmp_path, cohort=("big", "small", "never"), passing=("big", "small", "n
     (ws / ".qa_channel").mkdir(parents=True)
     (ws / "submission").mkdir()
     (run / "qa_history").mkdir(parents=True)
-    verdict = {"joint_test_selection": {"performance_cohorts": {"primary": list(cohort)}},
+    roles = {name: 'large_kernel' for name in cohort}
+    (ws / 'PUBLIC_CAPABILITIES.json').write_text(json.dumps({
+        'schema': 'merlin.public_capability_inventory.v1',
+        'members': {name: {'workload_role': role} for name, role in roles.items()}}))
+    verdict = {"joint_test_selection": {"performance_cohorts": {"primary": list(cohort)}, 'workload_roles': roles},
                "per_capsule": [{"capsule": n, "tiers": {"L2": "pass" if n in passing else "fail"}} for n in cohort]}
     (run / "qa_history" / "verdict_fast_1.json").write_text(json.dumps(verdict))
     return ws, run
@@ -50,9 +56,11 @@ def test_gates_only_avoid_adding_work(tmp_path, monkeypatch, open_gates):
     monkeypatch.setattr(I, "free_slots", lambda environ=None: 20)
     clock[0] += I.knob("MERLIN_IDLE_PERF_CHECK_S")
     (ws / ".qa_channel" / "req_3_1_a.json").write_text(json.dumps({"deadline_unix_ns": 2**62}))
-    assert measurer.tick(grading=False) == "author request waiting"
+    # A queued author request is served first and keeps the CPUs it is about to take (here: all).
+    assert measurer.tick(grading=False) == "cpus promised to queued requests"
     monkeypatch.setattr(I, "free_slots", lambda environ=None: 0)
-    (ws / ".qa_channel" / "claimed_3_1_a").write_text("{}")  # a running author check is not waiting
+    (ws / ".qa_channel" / "claimed_3_1_a").write_text("{}")  # a running author check holds its own CPUs
+    (ws / ".qa_channel" / "progress_3_1_a.json").write_text("{}")
     clock[0] += I.knob("MERLIN_IDLE_PERF_CHECK_S")
     assert measurer.tick(grading=False) == "cpus busy"
     monkeypatch.setattr(I, "free_slots", lambda environ=None: None)
@@ -92,14 +100,24 @@ def test_work_is_sized_from_free_capacity(tmp_path, monkeypatch, open_gates):
     ws, run = _run(tmp_path, cohort=names, passing=names)
     monkeypatch.setattr(I, "free_slots", lambda environ=None: 8)
     measurer, clock = _measurer(ws, run)
-    statuses = []
-    for _ in range(4):
-        statuses.append(measurer.tick(grading=False))
-        clock[0] += I.knob("MERLIN_IDLE_PERF_INTERVAL_S")
-    requests = [json.loads(p.read_text()) for p in (ws / ".qa_channel").glob("req_op_idle_*.json")]
-    # 8 free slots: 4 cases per request (the cap) and at most 8 // 4 = 2 requests in flight.
-    assert statuses.count("submitted") == 2 and statuses[-1] == "background requests in flight"
-    assert all(len(r["capsules"].split(",")) == 4 for r in requests)
+
+    def requests():
+        return [json.loads(p.read_text()) for p in (ws / ".qa_channel").glob("req_op_idle_*.json")]
+
+    # 8 free CPUs: requests of 4 cases (the cap) until they are spoken for, in one tick.
+    assert measurer.tick(grading=False) == "submitted"
+    assert sorted(len(r["capsules"].split(",")) for r in requests()) == [4, 4]
+    clock[0] += I.knob("MERLIN_IDLE_PERF_INTERVAL_S")
+    assert measurer.tick(grading=False) == "cpus promised to queued requests"
+    for body in requests():  # the broker started them: their handlers hold their own leases now
+        (ws / ".qa_channel" / f"claimed_{body['request_id']}").write_text("{}")
+        (ws / ".qa_channel" / f"progress_{body['request_id']}.json").write_text("{}")
+    clock[0] += I.knob("MERLIN_IDLE_PERF_INTERVAL_S")
+    assert measurer.tick(grading=False) == "submitted"
+    assert sorted(len(r["capsules"].split(",")) for r in requests()) == [4, 4, 4]
+    monkeypatch.setenv("MERLIN_IDLE_PERF_MAX_REQUESTS", "3")  # an optional operator cap
+    clock[0] += I.knob("MERLIN_IDLE_PERF_INTERVAL_S")
+    assert measurer.tick(grading=False) == "background requests in flight"
     monkeypatch.setenv("MERLIN_IDLE_PERF_MAX_CASES", "2")
     assert I.knob("MERLIN_IDLE_PERF_MAX_CASES") == 2
     monkeypatch.setenv("MERLIN_IDLE_PERF_MAX_CASES", "nonsense")
@@ -196,3 +214,260 @@ def test_idle_model_identity_reads_latest_owner_selection_without_environment_mu
     initial = P.environment()
     assert I._selection_identity() == pin['sha256']
     assert seen == [pin] and P.environment() == initial
+
+
+def _declared_dense(ws, dimensions):
+    path = ws / "PUBLIC_CAPABILITIES.json"
+    document = json.loads(path.read_text())
+    for name, (m, k, n) in dimensions.items():
+        document["members"][name].update(declared_operation="matmul", family="contraction",
+            selfcheck_suite="scalability", input_tensors=[
+            {"name": "A", "role": "input", "shape": [m, k], "dtype": "i8"},
+            {"name": "B", "role": "weight", "shape": [k, n], "dtype": "i8"}])
+    path.write_text(json.dumps(document))
+
+
+def test_largest_dense_slot_uses_declared_work_not_case_names_or_cohort_order(tmp_path):
+    ws, _ = _run(tmp_path, cohort=("dense_largest", "z", "a", "missing"))
+    _declared_dense(ws, {"dense_largest": (2, 2, 2), "z": (64, 64, 64), "a": (32, 32, 32)})
+    # A very large noncontraction is not a dense target, regardless of its name.
+    document = json.loads((ws / "PUBLIC_CAPABILITIES.json").read_text())
+    document["members"]["dense_largest"].update(declared_operation="relu", family="elementwise_map")
+    (ws / "PUBLIC_CAPABILITIES.json").write_text(json.dumps(document))
+    assert I._largest_dense(ws, document["members"]) == ["z", "a"]
+
+
+def test_largest_dense_gets_sole_idle_slot_before_gsim_and_tuning(tmp_path, monkeypatch, open_gates):
+    ws, run = _run(tmp_path, cohort=("small", "large"), passing=("small", "large"))
+    _declared_dense(ws, {"small": (2, 2, 2), "large": (1024, 1024, 1024)})
+    monkeypatch.setattr(I, "free_slots", lambda environ=None: 1)
+    measurer, _ = _measurer(ws, run)
+    measurer._timing_turn = False  # ordinary admission would try a tuning experiment first
+    offered = []
+    monkeypatch.setattr(measurer.gsim, "tick", lambda *a, **k: offered.append(k["free"]))
+    monkeypatch.setattr(measurer.tuner, "refresh", lambda *a, **k: None)
+    monkeypatch.setattr(measurer.tuner, "plan", lambda *a, **k: [{"must_not_run_before_baseline": True}])
+    assert measurer.tick(grading=False) == "submitted"
+    (path,) = (ws / ".qa_channel").glob("req_op_idle_*.json")
+    body = json.loads(path.read_text())
+    assert body["capsules"] == "large" and body["sim"] == "spike" and body["origin"] == I.ORIGIN
+    assert body["timeout"] == I.knob("MERLIN_IDLE_PERF_TIMEOUT_S")
+    assert offered == [0]  # gSIM still uses its original policy and only remaining free capacity
+
+
+def test_early_allowance_survives_source_edits_then_normal_coverage_resumes(tmp_path, monkeypatch, open_gates):
+    names = ("small", "medium", "largest", "second")
+    ws, run = _run(tmp_path, cohort=names, passing=names)
+    _declared_dense(ws, {"small": (2, 2, 2), "medium": (4, 4, 4),
+                         "largest": (1024, 1024, 1024), "second": (512, 512, 512)})
+    monkeypatch.setattr(I, "free_slots", lambda environ=None: 1)
+    selected, digest = ["model-1"], ["d1"]
+    monkeypatch.setattr(I, "_selection_identity", lambda: selected[0])
+    measurer, clock = _measurer(ws, run)
+    measurer._digest = lambda _root: digest[0]
+    offered = []
+    monkeypatch.setattr(measurer.gsim, "tick", lambda *a, **k: offered.append(k["free"]))
+    monkeypatch.setattr(measurer.tuner, "refresh", lambda *a, **k: None)
+    monkeypatch.setattr(measurer.tuner, "plan", lambda *a, **k: [])
+
+    def tick():
+        before = set((ws / ".qa_channel").glob("req_op_idle_*.json"))
+        assert measurer.tick(grading=False) == "submitted"
+        (path,) = set((ws / ".qa_channel").glob("req_op_idle_*.json")) - before
+        body = json.loads(path.read_text())
+        # A refusal/no timing result still spends the finite early allowance.
+        (path.parent / ("resp_" + body["request_id"] + ".json")).write_text("{}")
+        clock[0] += I.knob("MERLIN_IDLE_PERF_INTERVAL_S")
+        digest[0] += "x"
+        return body["capsules"]
+
+    # Normal coverage then times the untimed cases largest declared work first (every edit makes all
+    # of them untimed again here: no response carried an estimate).
+    assert [tick(), tick(), tick()] == ["largest", "second", "largest"]
+    assert offered == [0, 0, 1]  # the gSIM lane's normal opportunity resumes too
+    assert measurer._early_dense_attempted == {"largest", "second"}
+    # A newly selected timing epoch gets its own bounded first-evidence allowance.
+    selected[0] = "model-2"
+    assert tick() == "largest"
+
+
+@pytest.mark.parametrize("numerical_pass", [True, False])
+def test_early_dense_slot_requires_l2_and_does_not_credit_failed_timing(tmp_path, monkeypatch, open_gates,
+                                                                      numerical_pass):
+    names = ("small", "largest", "second")
+    ws, run = _run(tmp_path, cohort=names, passing=("small", "second"))
+    _declared_dense(ws, {"small": (2, 2, 2), "largest": (1024, 1024, 1024), "second": (512, 512, 512)})
+    _response(ws, "previous", "old", {"second": 1000})
+    response = ws / ".qa_channel/resp_previous.json"
+    document = json.loads(response.read_text())
+    document["cases"][0]["numerical_execution_passed"] = numerical_pass
+    response.write_text(json.dumps(document))
+    monkeypatch.setattr(I, "free_slots", lambda environ=None: 1)
+    measurer, _ = _measurer(ws, run)
+    monkeypatch.setattr(measurer.gsim, "tick", lambda *a, **k: None)
+    assert measurer.tick(grading=False) == "submitted"
+    (path,) = (ws / ".qa_channel").glob("req_op_idle_*.json")
+    assert json.loads(path.read_text())["capsules"] == ("small" if numerical_pass else "second")
+    assert measurer._early_dense_attempted == (set() if numerical_pass else {"second"})
+
+
+def _completed_l2(ws, rid, *, status="pass", complete=True, stamp=1):
+    from merlin_experiments.phase1.brokers.selfcheck import _submission_digest
+
+    channel = ws / ".qa_channel"
+    digest = _submission_digest(ws / "submission")
+    (channel / f"req_{rid}.json").write_text(json.dumps(dict(submission="submission")))
+    (channel / f"resp_{rid}.json").write_text(json.dumps(dict(
+        selfcheck_request_id=rid, selfcheck_submission="submission", submission_sha256=digest,
+        graded_at_unix_ns=stamp, per_capsule=[dict(capsule="large", tiers=dict(L2=status))])))
+    if complete:
+        (channel / f"done_{rid}").write_text("ok")
+    return digest
+
+
+def test_selfcheck_only_readiness_invalidates_both_idle_caches_and_source_edits_remove_it(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import family_rollup
+
+    ws, run = _run(tmp_path, cohort=("small", "large"), passing=())
+    _declared_dense(ws, {"small": (2, 2, 2), "large": (1024, 1024, 1024)})
+    (ws / "submission/backend.py").write_text("import json\n")
+    (run / "qa_history/verdict_fast_1.json").unlink()
+    monkeypatch.setattr(family_rollup, "_edge", lambda: 16)
+    measurer, _ = _measurer(ws, run)
+
+    def readiness():
+        cohort, l2 = I._cohort_l2([], workspace=ws)
+        return l2, measurer._preferred(cohort), measurer.tuner._rollup_bundles(cohort, l2, {})
+
+    _completed_l2(ws, "new", complete=False)
+    assert readiness() == ({}, frozenset(), [])
+    # No grade or source changed: only the completed channel join becomes available.
+    (ws / ".qa_channel/done_new").write_text("ok")
+    l2, preferred, bundles = readiness()
+    assert l2 == {"large": "pass"} and preferred == {"large"}
+    assert bundles[0]["representative"] == "large" and bundles[0]["label"] != "largest headroom"
+    _completed_l2(ws, "failure", status="fail", stamp=2)
+    assert readiness() == ({"large": "fail"}, frozenset(), [])
+    (ws / "submission/backend.py").write_text("import math\n")
+    assert readiness() == ({}, frozenset(), [])
+
+
+def test_current_selfcheck_gets_early_slot_without_any_grade_and_only_on_public_scalability(tmp_path, monkeypatch,
+                                                                                        open_gates):
+    ws, run = _run(tmp_path, cohort=("small", "large", "core"), passing=())
+    _declared_dense(ws, {"small": (2, 2, 2), "large": (1024, 1024, 1024), "core": (2048, 2048, 2048)})
+    (ws / "submission/backend.py").write_text("import json\n")
+    (run / "qa_history/verdict_fast_1.json").unlink()
+    inventory = ws / "PUBLIC_CAPABILITIES.json"
+    document = json.loads(inventory.read_text())
+    document["members"]["core"]["selfcheck_suite"] = "core"
+    inventory.write_text(json.dumps(document))
+    digest = _completed_l2(ws, "baseline")
+    monkeypatch.setattr(I, "free_slots", lambda environ=None: 1)
+    measurer, clock = _measurer(ws, run, digest=digest)
+    monkeypatch.setattr(measurer.gsim, "tick", lambda *a, **k: None)
+    assert measurer.tick(grading=False) == "submitted"
+    (path,) = (ws / ".qa_channel").glob("req_op_idle_*.json")
+    body = json.loads(path.read_text())
+    assert body["capsules"] == "large" and body["submission_sha256"] == digest
+    assert I._cohort_l2([], workspace=ws)[0] == ["small", "large"]
+    (path.parent / f"resp_{body['request_id']}.json").write_text("{}")
+    (ws / "submission/backend.py").write_text("import math\n")
+    clock[0] += I.knob("MERLIN_IDLE_PERF_INTERVAL_S")
+    measurer.tick(grading=False)
+    assert len(list((ws / ".qa_channel").glob("req_op_idle_*.json"))) == 1
+
+
+def _author_request(ws, rid, capsules, *, claimed_s_ago=None):
+    channel = ws / ".qa_channel"
+    (channel / f"req_{rid}.json").write_text(json.dumps(
+        {"deadline_unix_ns": 2**62, "capsules": capsules, "submission": "variants/v", "suite": "scalability"}))
+    if claimed_s_ago is not None:
+        marker = channel / f"claimed_{rid}"
+        marker.write_text("{}")
+        at = time.time() - claimed_s_ago
+        os.utime(marker, (at, at))
+
+
+def test_a_long_running_author_check_without_progress_does_not_keep_idle_cpus_shut(tmp_path, monkeypatch,
+                                                                                   open_gates):
+    # Measured on two live runs: variant checks publish no progress record while they run, so counting
+    # each claimed one as "about to lease" (26 and 2**20 CPUs on 20-CPU pools) shut this lane for hours.
+    names = tuple(f"c{i}" for i in range(6))
+    ws, run = _run(tmp_path, cohort=names, passing=names)
+    monkeypatch.setattr(I, "free_slots", lambda environ=None: 8)
+    _author_request(ws, "3_1_running", ",".join(f"x{i}" for i in range(13)), claimed_s_ago=600)
+    _author_request(ws, "3_2_corpus", "all", claimed_s_ago=I.CLAIM_GRACE_S + 5)
+    assert I.queued(ws / ".qa_channel")["author_cases"] == 0
+    _author_request(ws, "3_3_starting", "x1,x2", claimed_s_ago=1)  # still starting: its CPUs are promised
+    _author_request(ws, "3_4_waiting", "x3")  # not claimed yet
+    assert I.queued(ws / ".qa_channel")["author_cases"] == 3
+    measurer, _ = _measurer(ws, run)
+    assert measurer.tick(grading=False) == "submitted"
+    sizes = [len(json.loads(p.read_text())["capsules"].split(","))
+             for p in (ws / ".qa_channel").glob("req_op_idle_*.json")]
+    assert sum(sizes) == 8 - 3
+
+
+def test_timing_yields_to_higher_priority_waiters_and_is_retried_when_cpus_are_idle(tmp_path, monkeypatch,
+                                                                                  open_gates):
+    names = tuple(f"c{i}" for i in range(8))
+    ws, run = _run(tmp_path, cohort=names, passing=names)
+    channel = ws / ".qa_channel"
+    monkeypatch.setattr(I, "free_slots", lambda environ=None: 8)
+    measurer, clock = _measurer(ws, run)
+    assert measurer.tick(grading=False) == "submitted"
+    timing = sorted(channel.glob("req_op_idle_*.json"),
+                    key=lambda p: json.loads(p.read_text())["requested_at_unix_ns"])
+    assert len(timing) == 2
+    others = []
+    for origin in (I.TUNING_ORIGIN, I.GSIM_ORIGIN):  # their lanes keep their own rules
+        rid = I.submit(channel, ["c0"], "d1", origin=origin, prefix=I.REQUEST_PREFIX, timeout=60,
+                       extra={"sim": "gsim"} if origin == I.GSIM_ORIGIN else None)
+        others.append(channel / f"req_{rid}.json")
+    started = time.time() - I.CLAIM_GRACE_S - 1
+    for path in [*timing, *others]:  # the broker started every request a while ago
+        marker = channel / ("claimed_" + path.name[len("req_"):-len(".json")])
+        marker.write_text("{}")
+        os.utime(marker, (started, started))
+    newest = json.loads(timing[1].read_text())["capsules"].split(",")
+    contended = [3]  # a grade, an author check and a draining grade wait while no slot is free
+    monkeypatch.setattr(I, "contention", lambda environ=None: contended[0])
+    monkeypatch.setattr(I, "free_slots", lambda environ=None: 0)
+    assert measurer.tick(grading=True) == "yielded"
+    assert not timing[1].exists() and timing[0].exists()  # the newest request covers the three waiters
+    assert all(path.exists() for path in others)
+    assert not any((name, "d1") in measurer.requested for name in newest)
+    contended[0] = 0
+    monkeypatch.setattr(I, "free_slots", lambda environ=None: 4)
+    clock[0] += I.knob("MERLIN_IDLE_PERF_INTERVAL_S")
+    assert measurer.tick(grading=False) == "submitted"
+    retried = [json.loads(p.read_text()) for p in channel.glob("req_op_idle_*.json")
+               if json.loads(p.read_text())["origin"] == I.ORIGIN and p != timing[0]]
+    assert len(retried) == 1 and sorted(retried[0]["capsules"].split(",")) == sorted(newest)
+    assert retried[0]["sim"] == "spike"  # timing never asks for gSIM
+
+
+def test_contention_counts_only_waiters_ranked_above_idle_timing(tmp_path, monkeypatch):
+    from merlin.common import cpu_pool
+
+    keys = [(level, 1, 2, 3, "n") for level in (cpu_pool.AUTHOR, cpu_pool.GRADE, cpu_pool.PREPARATION,
+                                                cpu_pool.AUXILIARY, cpu_pool.VERIFICATION)]
+    free = [()]
+    monkeypatch.setattr(cpu_pool, "_shared_compute_selection", lambda environ: ((0, 1), tmp_path))
+    monkeypatch.setattr(cpu_pool, "_free_cpus", lambda root, cpus, fresh=False: free[0])
+    monkeypatch.setattr(cpu_pool, "_queued_keys", lambda directory: keys)
+    assert I.contention() == 3
+    free[0] = (1,)  # a free slot goes to the waiters without withdrawing anything
+    assert I.contention() == 0
+    monkeypatch.setattr(cpu_pool, "_shared_compute_selection", lambda environ: None)
+    assert I.contention() == 0
+
+
+def test_untimed_cases_are_timed_largest_declared_work_first(tmp_path):
+    names = ("small", "largest", "middle", "undeclared")
+    ws, run = _run(tmp_path, cohort=names, passing=names)
+    _declared_dense(ws, {"small": (2, 2, 2), "largest": (256, 256, 256), "middle": (16, 16, 16)})
+    cohort, l2 = I._cohort_l2(I._verdicts(run))
+    work = I._declared_work(ws, cohort)
+    assert I.select(cohort, l2, {}, "d1", set(), limit=4, work=work) == ["largest", "middle", "small", "undeclared"]

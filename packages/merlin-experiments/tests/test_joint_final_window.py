@@ -38,3 +38,29 @@ def test_larger_or_out_of_window_drain_still_refuses(tmp_path, drain, final):
     path.write_text(json.dumps({'version': 1, 'duration_s': 21600,
                                'final_model_s': final, 'drain_s': drain}))
     with pytest.raises(ValueError): C.policy(path)
+
+
+def test_short_seeded_study_has_thirty_author_minutes_then_five_minute_drain(tmp_path, monkeypatch):
+    path = tmp_path / 'policy.json'
+    path.write_text(json.dumps({'version': 1, 'duration_s': 2100,
+                               'final_model_s': 300, 'drain_s': 300}))
+    state = {'policy': C.policy(path), 'started_at_epoch': 1000.0}
+    monkeypatch.setattr(C, 'selected', lambda: state)
+    monkeypatch.setenv(C.ENV, str(tmp_path / 'state.json'))
+    monkeypatch.setattr(joint_epochs, 'stop_reason', lambda _: None)
+    now = [2799.0]
+    monkeypatch.setattr(C.time, 'time', lambda: now[0])
+    assert C.remaining(drain=True) == 1 and C.stop_reason() is None
+    now[0] = 2800.0
+    assert C.remaining(drain=True) == 0
+    assert C.stop_reason() == 'joint campaign freeze/drain boundary reached'
+    assert C.require_full_model() == 300
+
+
+@pytest.mark.parametrize('duration', [0, 299, 43201])
+def test_campaign_duration_remains_bounded(tmp_path, duration):
+    path = tmp_path / 'policy.json'
+    path.write_text(json.dumps({'version': 1, 'duration_s': duration,
+                               'final_model_s': 100, 'drain_s': 50}))
+    with pytest.raises(ValueError, match='duration_s'):
+        C.policy(path)

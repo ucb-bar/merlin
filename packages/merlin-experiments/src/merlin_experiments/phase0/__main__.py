@@ -44,6 +44,7 @@ def main(argv=None) -> int:
     ap.add_argument("--generation-scope", choices=("full", "phase1-functional"), default="full")
     ap.add_argument("--synth-profile", type=Path, help="explicit optional generated synthesis sidecar")
     ap.add_argument("--smt-profile", type=Path, help="explicit optional solver-generated sidecar")
+    ap.add_argument("--chain-profile", type=Path, help="explicit optional chain-demand sidecar (public)")
     ap.add_argument("--hidden-profile", type=Path, help="explicit optional private holdout sidecar (host only)")
     ap.add_argument(
         "--component-only",
@@ -93,6 +94,7 @@ def main(argv=None) -> int:
             "conformance_spec",
             "synth_profile",
             "smt_profile",
+            "chain_profile",
             "hidden_profile",
         )
     }

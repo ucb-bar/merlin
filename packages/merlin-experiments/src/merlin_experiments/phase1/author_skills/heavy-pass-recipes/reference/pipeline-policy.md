@@ -57,8 +57,10 @@ session knows) and `observation` (`CompletedObservation` fields). `pins.json` su
 `roi_sha256`, `artifact_format` and `implementation_sha256` (your full compiler source digest),
 plus `facts_sha256`/`scope_sha256`/`basis` if the response lacks them. The script derives
 `source_sha256` and `context_sha256` from its own session for that shape; observations of one
-geometry must share one identity to be paired. Only cycle evidence has `timing_status: complete`; a
-Spike count or a provisional estimate is `unknown` and never ranks.
+geometry must share one identity to be paired. Only complete cycle evidence has
+`timing_status: complete`; a Spike instruction count or unsupported estimate is `unknown`
+and never ranks. An admitted complete provisional model observation can support a model-only
+choice; it grants no physical accuracy qualification.
 
 ## Reading the report
 
@@ -92,3 +94,30 @@ compiler, the old selection is not used (incumbent) until the panel is rerun.
 The demo (no `--panel`) builds a SYNTHETIC panel in the record form above so both outcomes show:
 the overflow class switches to `segmented`; the fit class keeps `compact` because `retained` lacks a
 complete pair on one held-out case. Its cycles are a toy table, never evidence.
+
+## Binding the actual target emitter and cycle owner
+
+The neutral recipe registry is an example, not a substitute for your compiler's observed paths.
+Use `python SKILL_DIR/scripts/library_pipeline_policy.py --adapter tools/policy_owner.py
+--library submission/compiler_library` for the original target binding. The adapter implements:
+
+* `prepare()` returns `training` (typed `ShapeCaseFeedback`), `alternatives`, a frozen
+  `ValidationPartition` as `design`, `incumbent`, and optional `axes`/`features` for
+  `propose_shape_policies`. Inputs/reference pins belong to each geometry, never one global
+  invented input pin. Keep the selected source/library/provider/scope identities exact.
+* Optional `boundaries(requests)` returns source `PolicyFacts` for missing cutoffs, before
+  evaluation. `evaluate(requests)` returns the requested heldout/boundary feedback through
+  your ordinary numerical and cycle owner. Training chooses the first proposal; heldout
+  evidence can only veto it. Missing/UNKNOWN feedback keeps the incumbent.
+* `binding(geometry)` returns a fresh `session`, `registry`, original `facts` and `output` name.
+  Register the actual shared transformations and the same target effect encoder. The terminal
+  pass returns `EmittedProgram` at the observation's exact artifact boundary. For retained
+  evidence, reopen the source/inputs/reference/ELF/normal compilation record joining those
+  emitted bytes to the original complete numerical and timing receipt.
+
+The recipe executes incumbent and selected paths and checks each emitted byte digest against
+the original observation. A changed or mismatched emitter refuses; naming a variant is insufficient.
+This establishes routing on the declared panel only. It creates no timing measurements, target
+legality proof, independent accuracy qualification or campaign activation. The adapter still owns
+its authentic numerical/cycle callback and normal shared CPU leases. Compilation alone is not
+a numerical or performance pass.

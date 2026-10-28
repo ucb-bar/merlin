@@ -955,6 +955,7 @@ def validate_profile_inputs(
     smt_profile=None,
     hidden_profile=None,
     software_spec=None,
+    chain_profile=None,
 ) -> None:
     """Reject mixed ownership modes without touching any input, especially private sidecars."""
     if recipe is not None:
@@ -964,9 +965,44 @@ def validate_profile_inputs(
             raise ValueError("explicit recipe requires performance_template")
     elif any(
         value is not None
-        for value in (performance_template, conformance_spec, synth_profile, smt_profile, hidden_profile, software_spec)
+        for value in (performance_template, conformance_spec, synth_profile, smt_profile, hidden_profile, software_spec,
+                      chain_profile)
     ):
         raise ValueError("explicit performance_template and sidecar paths require recipe")
+
+
+def chain_profile_entries(path: str | Path) -> list[dict]:
+    """The public correctness members a chain-demand stage derived (:mod:`.chain_demand`).
+
+    A CHAIN PROFILE IS PUBLIC AND DERIVED. Each entry is a model-derived connected case of the
+    generated cohort, bound to its digest-bound plan; nothing here is a holdout, so it is read for
+    public outputs too, and an entry that claims another origin or category is refused rather than
+    published under the chain stage's name.
+    """
+    from .chain_demand import BLOCK
+
+    selected = Path(path).expanduser().absolute()
+    if selected.is_symlink() or not selected.is_file():
+        raise ValueError(f"declared chain profile is not an ordinary file: {selected}")
+    doc = yaml.safe_load(selected.read_text(encoding="utf-8")) or {}
+    if not isinstance(doc, dict) or set(doc) != {"capsules"} or not isinstance(doc["capsules"], list):
+        raise ValueError(f"{selected}: a chain profile holds exactly a capsules list")
+    entries = []
+    for entry in doc["capsules"]:
+        block = entry.get(BLOCK) if isinstance(entry, dict) else None
+        if (
+            not isinstance(block, dict)
+            or len(str(block.get("plan_sha256") or "")) != 64
+            or entry.get("source_role") != "model_derived"
+            or entry.get("label") != "public"
+            or entry.get("cat") in {None, "hidden"}
+            or str(entry.get("cat")).startswith("_")
+        ):
+            label = entry.get("name") if isinstance(entry, dict) else entry
+            raise ValueError(f"{selected}: chain profile entry {label!r} "
+                             "must be a public model-derived member bound to its chain plan")
+        entries.append(copy.deepcopy(entry))
+    return entries
 
 
 def load_profile(
@@ -983,6 +1019,7 @@ def load_profile(
     descriptor: str | Path | None = None,
     software_spec: str | Path | None = None,
     diagnostic: bool = False,
+    chain_profile: str | Path | None = None,
 ) -> dict:
     """The target's functional profile plus shared perf and the private holdout sidecar.
 
@@ -1009,6 +1046,7 @@ def load_profile(
         smt_profile=smt_profile,
         hidden_profile=hidden_profile,
         software_spec=software_spec,
+        chain_profile=chain_profile,
     )
     if recipe is None:
         profiles = _profiles_root(profiles_root)
@@ -1138,6 +1176,8 @@ def load_profile(
         if extra:
             prof["capsules"] = list(prof.get("capsules") or []) + extra
 
+    if chain_profile is not None:
+        prof["capsules"] = list(prof.get("capsules") or []) + chain_profile_entries(chain_profile)
     if include_holdouts and side is not None and side.is_file():
         held = yaml.safe_load(side.read_text(encoding="utf-8")) or {}
         misplaced = _target_local_perf_declarations(held)

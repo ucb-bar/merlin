@@ -106,12 +106,32 @@ def test_zero_disables_the_debounce(monkeypatch):
     assert gate.ready() == (True, 'a') and gate.ready() == (True, 'a') and len(calls) == 2
 
 
-def test_the_debounce_is_off_unless_an_operator_sets_a_quiet_period(monkeypatch):
-    # A replay of two recorded runs made a 30 s quiet period a net loss (more idle time, later
-    # feedback) for an author editing in bursts, so an unset knob launches due grades at once.
+def test_the_default_quiet_period_is_a_few_seconds_not_a_settle(monkeypatch):
+    # A replay of two recorded runs made a 30 s quiet period a net loss for an author editing in
+    # bursts 15-21 s apart; the default only skips the writes of one edit, and is capped.
     monkeypatch.delenv('MERLIN_GRADE_QUIET_S', raising=False)
+    monkeypatch.delenv('MERLIN_GRADE_QUIET_MAX_DELAY_S', raising=False)
     gate = source_quiet.for_workspace('/nonexistent', lambda: 'a', poll_s=1.0)
-    assert not gate.enabled and gate.ready() == (True, 'a')
+    assert gate.enabled and 0 < gate.quiet <= 5 and gate.max_delay <= 30
+    clock = Clock()
+    gate = _gate(lambda: 'a' * 64, clock, changed_at=[0.0], quiet=gate.quiet, cap=gate.max_delay)
+    at, source = _poll_until_ready(gate, clock)
+    assert source == 'a' * 64 and at < 15  # well inside the gap between two edits
+
+
+def test_may_differ_reads_metadata_not_the_source():
+    clock, changed_at, calls = Clock(), [0.0], []
+    gate = _gate(lambda: calls.append(1) or 'a', clock, changed_at=changed_at, quiet=5)
+    assert gate.may_differ('a')  # nothing sampled yet
+    clock.now = 100.0
+    assert gate.ready() == (True, 'a') and len(calls) == 1
+    clock.now = 200.0
+    assert not gate.may_differ('a') and len(calls) == 1  # unchanged since the sample: no read
+    assert gate.may_differ('b')  # the newest grade is not of the sampled source
+    changed_at[0] = 150.0  # an edit after the sample began
+    assert gate.may_differ('a') and len(calls) == 1
+    gate.last_change = lambda: None  # unreadable metadata never hides an edit
+    assert gate.may_differ('a')
 
 
 def test_knobs_parse_non_negative_seconds_and_keep_defaults_otherwise(monkeypatch):
@@ -123,7 +143,7 @@ def test_knobs_parse_non_negative_seconds_and_keep_defaults_otherwise(monkeypatc
         assert source_quiet.quiet_s() == source_quiet.QUIET_DEFAULT_S
     monkeypatch.delenv('MERLIN_GRADE_QUIET_S')
     monkeypatch.delenv('MERLIN_GRADE_QUIET_MAX_DELAY_S')
-    assert (source_quiet.quiet_s(), source_quiet.max_delay_s()) == (0.0, 120.0)
+    assert (source_quiet.quiet_s(), source_quiet.max_delay_s()) == (5.0, 30.0)
 
 
 def test_latest_change_skips_build_state_and_dates_deletions(tmp_path):

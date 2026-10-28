@@ -39,6 +39,7 @@ def campaign(tmp_path, monkeypatch):
         "final_model_s": 7200,
         "drain_s": 900,
         "gsim": {"max_jobs": 20, "per_job_s": 1200, "worker_budget_s": 20000, "witness_capsules": []},
+        "gsim_measurement": {"enabled": True},  # the lane is off unless a campaign enables it
     }
     state = run / "joint_campaign.json"
     state.write_text(

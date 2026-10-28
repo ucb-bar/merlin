@@ -70,6 +70,8 @@ from merlin.targetgen.tier_integrity import CERT_NOT_MEASURED
 from ..runtime import commandbuffer as _CB
 from ..runtime.backends import base as _backends_mod
 from . import capsule_golden as CG
+from . import seeded_grade as _seeded_grade
+from . import tier_cache as _TC
 from . import completion_order_gate as _CO_GATE
 from . import oracle_policy as _oracle_policy
 from . import partial_console as _partial_console
@@ -137,7 +139,6 @@ from .runner_config import (
 _CALIBRATION_CAP = 3
 
 _oracle_policy.bind_sim_oracle_adapters("chipyard", lambda target: _sim_engine_adapters("chipyard", target))
-
 
 
 def _grade_cpu_step(function, /, *args, **kwargs):
@@ -358,14 +359,17 @@ _PREPARED_EXECUTION_OBSERVER = ContextVar("capsule_prepared_execution_observer",
 
 
 class _CarriedPreparedTier(Exception):
-    def __init__(self, result):
-        self.result = result
+    def __init__(self, result, built=False):
+        self.result, self.built = result, built  # built: this run's build keyed it (a seeded screen)
 
 
 @contextmanager
 def _prepared_tier_reuse(capsule_name, tier, mandatory, *, target, generated, shas, from_rtl,
-                         simulation_context):
-    """Look up an exact semantic certificate after this engine builds its ELF."""
+                         simulation_context, first=False):
+    """Look up an exact semantic certificate after this engine builds its ELF.
+
+    A seeded grade (:mod:`.seeded_grade`) also looks up its ``first`` executed tier, the screen."""
+    screen = first and _seeded_grade.screen_carry(capsule_name, tier)
     def observe(elf):
         from .elf_lanes import PACKAGE_ELF_NAME
 
@@ -374,9 +378,9 @@ def _prepared_tier_reuse(capsule_name, tier, mandatory, *, target, generated, sh
         result, _ = carried_tier_result(capsule_name, tier, mandatory, target=target,
             generated=generated, shas=shas(), from_rtl=from_rtl, simulation_context=simulation_context)
         if result is not None:
-            raise _CarriedPreparedTier(result)
+            raise _CarriedPreparedTier(result, built=screen)
 
-    token = _PREPARED_EXECUTION_OBSERVER.set(observe if simulation_context is not None else None)
+    token = _PREPARED_EXECUTION_OBSERVER.set(observe if simulation_context is not None or screen else None)
     try:
         yield
     finally:
@@ -528,6 +532,7 @@ def _cb_with_leaf_values(cb: dict) -> dict:
 #    eliminate and still may never certify.
 
 
+@_host_timing.measured("order_after_certificate")
 def _order_after_certificate(target, cfg, tiers, trace, generated, *, gold, policy, gsource, trigger=None):
     """The opt-in memory-order tier (:mod:`merlin.targetgen.load_order`), judged by this capsule's golden.
 
@@ -643,8 +648,6 @@ def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, sh
     were all spelled ``None``, which a caller can only render as "nothing was carried", and that is
     how a cache which had never once fired for two of three targets went unnoticed.
     """
-    from . import tier_cache as _TC
-
     executables = run_executables(generated)
     if simulation_context is not None:
         from .simulation_certificate import key
@@ -704,8 +707,6 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
     missed, which is ordinary; a non-empty one means it could not be asked at all, which is the state
     that used to be invisible.
     """
-    from . import tier_cache as _TC
-
     identity, instrument, why = _tier_certificate_key(
         capsule_name, tier, target=target, generated=generated, shas=shas, from_rtl=from_rtl,
         simulation_context=simulation_context,
@@ -752,6 +753,7 @@ def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target
     ), ""
 
 
+@_host_timing.measured("tier_certificate")
 def record_tier_certificate(
     capsule_name: str,
     tier: str,
@@ -771,8 +773,6 @@ def record_tier_certificate(
     established, because the only consequence is that the tier runs again.
     """
     try:
-        from . import tier_cache as _TC
-
         identity, instrument, _why = _tier_certificate_key(
             capsule_name, tier, target=target, generated=generated, shas=shas, from_rtl=from_rtl,
             simulation_context=simulation_context,
@@ -1450,7 +1450,6 @@ def lane_report(
     )
 
 
-
 def forbids_accelerator(capsule: dict) -> bool:
     """Does this capsule declare that work must NOT reach the accelerator?"""
     return _ACCELERATOR_LANE in [str(x) for x in ((capsule.get("lanes") or {}).get("forbid") or ())]
@@ -1534,8 +1533,6 @@ def graded_execution_identity(*, target, generated, shas) -> str | None:
     own claim. ``None`` on any refusal (no readable executable, an unidentifiable device), which callers
     must treat as "not attributable".
     """
-    from . import tier_cache as _TC
-
     try:
         return _TC.execution_identity(target=target, executables=run_executables(generated), toolchain_shas=shas)
     except Exception:  # noqa: BLE001 -- an identity we cannot form credits nothing
@@ -2374,6 +2371,8 @@ def _grade_model_capsule_unlocked(
                 start_new_session=True,
                 **({"pass_fds": transport.pass_fds} if transport else {}),
             )
+            if transport is not None:
+                transport.launched(proc, proc.args)
             try:
                 tail = (proc.communicate(timeout=budget)[0] or "")[-2000:]
             except _sp.TimeoutExpired:
@@ -2398,7 +2397,7 @@ def _grade_model_capsule_unlocked(
                 return _stopped(f"whole-model grade process exited {proc.returncode} without a result: {tail[-400:]}")
             try:
                 result = json.loads(out_p.read_text(encoding="utf-8"))
-                return transport.verify_result(result) if transport else result
+                return transport.verify_result(result, completed_process=proc) if transport else result
             except (OSError, json.JSONDecodeError) as exc:
                 return _stopped(f"whole-model grade result unreadable: {type(exc).__name__}: {exc}")
 
@@ -2660,6 +2659,7 @@ def _grade_public_program_capsule_inline(
         result["work_volume"], result["command_buffer_artifact"] = command_buffer_evidence(
             candidate_cb,
             compiler_provenance="actual submitted whole-program command buffer; physical pricing remains independent",
+            store=str(paths.run_path),
         )
         bundle_kwargs = {"artifact_root": paths.run_path / ".private_runtime_bundle"} if (
             selection is not None or diagnostic_selection is not None) else {}
@@ -4545,9 +4545,9 @@ def _finalize_capsule_result(
     # same executable on the same instrument. Emitted on EVERY result, including one where nothing was
     # carried: a saving and a lie differ only in whether the reuse is stated, and a reader must never
     # have to infer "freshly measured" from the absence of a block. See merlin.targetgen.tier_cache.
-    from . import tier_cache as _TC
-
     result["tier_reuse"] = _TC.reuse_block(result["tiers"])
+    if _seeded_grade.seed_run() and (_from := _seeded_grade.label(result, getattr(cfg, "oracle_tiers", None))):
+        result["tier_reuse"]["carried_from"] = _from  # a seeded grade's pass, carried in full
     # Advisory RTL-executability smoke (never a gate): record it as its own field when one ran, so a
     # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.
     if executability:
@@ -5331,6 +5331,7 @@ def run_capsule(
             }
         _tier_seq = _tier_policy.tier_order(str(cfg.target or target or ""), _available_tiers)
         _screen_tier = _tier_seq[0] if _tier_seq else None
+        _co_step = _CO_GATE.stepper(eff_target, _tier_seq, cfg.rtl_tiers, adapters)  # no RTL adapter: defer
         # When set, a mandatory tier failure does not abort the ladder: the remaining tiers still run and
         # record, and the FIRST failure is raised once the loop completes. Costs the later tiers on a
         # failing capsule, which is the price of being able to say what every tier thought.
@@ -5498,13 +5499,13 @@ def run_capsule(
                         raise ValueError("evaluation_stage with predecessor cycles requires cycle_budget policy")
                     oracle_cb["_oracle_gsim_cycle_policy"] = dict(_cycle_policy)
                 with _prepared_tier_reuse(name, tier, mand, target=eff_target, generated=paths.generated,
-                        shas=_pin_shas, from_rtl=tier in cfg.rtl_tiers,
-                        simulation_context=_simulation_context):
+                        shas=_pin_shas, from_rtl=tier in cfg.rtl_tiers, simulation_context=_simulation_context,
+                        first=not _executed_here and tier not in adapter_managed_tiers):
                     with oracle_source_scope(capsule, oracle_cb, llvm_text, target=eff_target):
                         with _host_timing.stage("oracle_adapter." + str(tier)):
                             res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
             except _CarriedPreparedTier as carried:
-                tiers[tier] = carried.result
+                tiers[tier], _executed_here = carried.result, _executed_here or carried.built
                 continue
             except _PODidNotHalt as e:
                 # The oracle RAN and returned a verdict: the program never halted. That is the AGENT's
@@ -5941,10 +5942,9 @@ def run_capsule(
                 run_id=run_id,
                 simulation_context=_simulation_context,
             )
-            # COMPLETION ORDER, L2 structural evidence: does this functional pass rely on two commands
-            # completing in an order the hardware does not keep? (merlin.targetgen.completion_order)
+            # COMPLETION ORDER: does this pass rely on commands completing in an order the hardware lacks?
             if okt and mand and tier not in cfg.rtl_tiers and completion_order is None:
-                completion_order, _co_fail = _CO_GATE.ladder_step(eff_target, tier, tiers, paths.generated)
+                completion_order, _co_fail = _co_step(tier, tiers, paths.generated)
                 if _co_fail is not None and not _complete_ladder:
                     _CO_GATE.suppress_later(tiers, _tier_seq, tier, required, cfg.rtl_tiers, suppressed_tier_result)
                     _stamp_cache_refusals()
@@ -5986,7 +5986,7 @@ def run_capsule(
 
         _stamp_cache_refusals()
         if _first_cert_failure is None and completion_order is None:  # a carried functional tier: check it here
-            completion_order, _first_cert_failure = _CO_GATE.ladder_step(eff_target, None, tiers, paths.generated, cfg)
+            completion_order, _first_cert_failure = _co_step(None, tiers, paths.generated, cfg)
         if _first_cert_failure is None:
             # MEMORY ORDER (opt-in): a certificate earned on an in-order memory model says nothing about a
             # program whose answer depends on two loads completing in issue order. Its trigger is the
@@ -6044,8 +6044,8 @@ def run_capsule(
     # program does no work", which on a perf bench means "infinitely fast". Both are lies.
     from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
 
-    _work_volume, _cb_artifact = _grade_cpu_step(
-        _cb_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint")
+    _work_volume, _cb_artifact = _grade_cpu_step(  # raw buffer stored beside the result, referenced
+        _cb_evidence, cb, compiler_provenance="submission command-buffer contract entrypoint", store=paths.run_path)
     _lane_extra: dict[str, Any] = {}
     if (
         whole_program

@@ -22,8 +22,8 @@ EVIDENCE IS NEVER MIXED. Functional Spike counts are not target cycle estimates.
 Complete provisional model observations can guide exploration when model, facts,
 scope and capsule identities match. They remain provisional and cannot establish
 physical speedups or calibration accuracy. UNKNOWN observations stay unranked.
-The panel defaults to gSIM for the core roster; use ``--sim spike`` to include
-large scalability cases and use the selected cycle model without large gSIM runs.
+The panel defaults to Spike: it includes large scalability cases and uses the selected cycle model
+without gSIM runs; ``--sim gsim`` asks for RTL cycles on the core roster.
 
 FEEDS A SHAPE POLICY. Each graded class also carries a ``shape_policy`` record in the vocabulary of
 :mod:`merlin.transforms.shape_policy` (``ExplorationGeometry`` fields and ``CompletedObservation``
@@ -50,8 +50,9 @@ PREFIX = "panel:"
 SCHEMA = "merlin.selfcheck_shape_panel.v1"
 RULE = (
     "Compare the same case and evidence kind; modeled comparisons also require matching model/facts/scope "
-    "identities and complete accounting. Provisional estimates guide exploration but do not establish "
-    "physical speedups. Functional Spike counts and UNKNOWN timing remain unranked. Compare affected "
+    "identities and complete accounting. Estimates (provisional model, else the calibrated fast estimate) "
+    "are the basis for decisions: prefer the change they favor and revert if a later measurement "
+    "disagrees. Functional Spike counts are not cycles. Compare affected "
     "shape classes before changing their defaults."
 )
 
@@ -377,7 +378,7 @@ def cli(argv, a, *, context, root=None, contract=None, run=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     capsules_root, contract = root, a.contract if a.contract is not None else contract
     family = requested_family(a.capsules)
-    sim = "spike" if a.sim == "spike" else "gsim"
+    sim = "gsim" if a.sim == "gsim" else "spike"  # the selected Spike cycle model unless gSIM is asked
     if capsules_root is None:
         from .selfcheck import _public_capsules
 

@@ -302,8 +302,10 @@ def _row(root: Path, path: Path, area: str, visibility: str) -> dict:
         raise TimingArchiveError(f"invalid L3 tier: {path}")
     cycles = tier.get("cycles")
     measured = type(cycles) is int and cycles > 0
-    command_buffer = (document.get("command_buffer_artifact") or {}).get("command_buffer") or {}
-    tensors = command_buffer.get("tensors") or {}
+    from merlin.perf.command_buffer_store import command_buffer_tensors
+
+    # Shapes only: a stored expanded buffer is never opened for them (its inline summary carries them).
+    tensors = command_buffer_tensors(document.get("command_buffer_artifact"))
     generated = path.parent / "generated"
     receipt = {}
     try:

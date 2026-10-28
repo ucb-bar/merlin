@@ -20,7 +20,7 @@ import os
 import secrets
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 _SIMS = ("spike", "verilator", "gsim", "vcs")
 PROTOCOL_VERSION = 3
@@ -41,6 +41,10 @@ _PANEL_CASES = 6
 #: Progress a child publishes while it waits for a gSIM correctness slot (the broker's
 #: ``joint_gsim_queue.WAITING_STATUS``; restated because this shim imports nothing from merlin).
 _GSIM_QUEUE_STATUS = "queued_for_gsim_slot"
+_SWEEP_SCHEMA = "merlin.selfcheck_sweep.v1"
+_EXPERIMENT_SCHEMA = "merlin.idle_tuning_experiment.v1"
+_MODEL_KEYS = ("selection_sha256", "model_sha256", "timing_mode", "timing_epoch",
+               "scope_sha256", "comparison_domain_sha256")
 
 
 def _gsim_queue(progress) -> dict | None:
@@ -53,6 +57,37 @@ def _gsim_queue(progress) -> dict | None:
 
 def _gsim_queue_note(queue: dict) -> str:
     return f"queued for a gSIM slot ({queue.get('ahead', '?')} ahead)"
+
+
+def _case_rows(progress) -> list:
+    rows = progress.get("per_capsule") if isinstance(progress, dict) else None
+    return [row for row in rows or () if isinstance(row, dict) and isinstance(row.get("capsule"), str)]
+
+
+def _case_line(row: dict) -> str:
+    """One case's correctness as the grader has decided it so far."""
+    name, status = row["capsule"], str(row.get("status"))
+    if status == "running":
+        return (f"[self-check] {name}: numerics {row.get('numerics')} (provisional: later checks still "
+                "running and can still fail it)")
+    why = "/".join(str(row[key]) for key in ("failure_plane", "failure_category") if row.get(key))
+    numerics = f"; numerics {row['numerics']}" if row.get("numerics") else ""
+    return f"[self-check] {name}: {status}" + (f" ({why})" if why else "") + numerics
+
+
+def _new_case_lines(seen: dict, progress) -> list:
+    """Lines for cases whose row is new or changed since ``seen`` (updated in place).
+
+    Each case is reported as soon as its numerics are decided and again when it finishes, so a large
+    suite never hides its decided cases behind its slowest one."""
+    lines = []
+    for row in _case_rows(progress):
+        state = tuple(row.get(key) for key in ("status", "numerics", "failure_plane", "failure_category"))
+        if seen.get(row["capsule"]) != state:
+            seen[row["capsule"]] = state
+            lines.append(_case_line(row))
+    return lines
+
 
 _WORKFLOW = """\
 keep working while checks run:
@@ -70,11 +105,27 @@ re-checks what did not pass in your most recent completed check.
 
 Before changing a default that governs many shapes: `python agent_selfcheck.py --panel dense
 --wait-budget 5` checks one case per shape class (square, tall, wide, thin M=1, ragged, a model
-layer) on gSIM and compares each with its own best earlier cycles of the same evidence kind.
+layer) on the Spike cycle model and compares each with its own best earlier cycles of the same
+evidence kind. Performance is measured on the Spike cycle model by default; add --sim gsim for RTL cycles.
 
 variants: copy submission/ to variants/NAME/, change it, and check it with --submission variants/NAME.
 A variant result is labelled with its name and digest and is a self-check only: only submission/ is
 graded officially or counts toward convergence, so copy the winner into submission/.
+
+Time alternatives together: --sweep variants/a,variants/b --capsules A,B [--knob NAME=false,true].
+This submits parallel scalability requests, including submission/ as the baseline, and returns ranked
+model estimates. --bundle REPRESENTATIVE selects a bundle in qa/idle_tuning.json. --attach SWEEP_ID
+collects the same sweep later; full results and immutable source identities are retained.
+
+When reference guidance is selected, pin completed source/command/emission views without a broker call:
+  python agent_selfcheck.py --write-reference-views artifacts/views.json artifacts/source.mlir \\
+    artifacts/commands.json artifacts/emitted.mlir
+  python agent_selfcheck.py --reference-analysis candidate --reference-path artifacts/views.json
+The source is the original interface contract; emitted LLVM is not schedule.plan. Inspect an actual
+schedule separately with --reference-format schedule_mlir. Compare owned before/after disassemblies:
+  python agent_selfcheck.py --reference-analysis compare --reference-path artifacts/before.dis \\
+    --reference-symbol kernel_entry --candidate-path artifacts/after.dis --candidate-symbol kernel_entry
+Pins and static comparisons do not qualify source equivalence, scheduling realization or performance.
 """
 
 
@@ -234,9 +285,15 @@ def _capacity_note(ch: Path) -> str:
     if not isinstance(ordinary, int) or ordinary < 1:
         return "this grader serves one request at a time, in arrival order, and yours is waiting for the slot"
     variants, active = health.get("variant_capacity"), health.get("active_handlers")
+    overflow = health.get("overflow_capacity")
     return (
         f"the grader runs up to {ordinary} self-check request(s) at once plus one diagnostic probe"
         + (f" (at most {variants} of them variants)" if isinstance(variants, int) else "")
+        + (
+            f", and up to {overflow} more while the reserved CPUs have room for author work"
+            if isinstance(overflow, int) and overflow > 0
+            else ""
+        )
         + (f"; {active} running now" if isinstance(active, int) else "")
         + "; yours starts when a slot frees"
     )
@@ -360,6 +417,38 @@ def _atomic_write(path: Path, text: str) -> None:
         tmp.unlink(missing_ok=True)
 
 
+#: The reply's ranked next steps (``feedback.next_steps``): printed after the reply, bounded.
+_NEXT_STEPS_KEY = "next_steps"
+_NEXT_STEPS_LINES = 8
+_NEXT_STEPS_BYTES = 6000
+
+
+def _next_steps_text(verdict) -> str:
+    """The reply's ``next_steps`` lines as one bounded block, or '' when it carries none."""
+    block = verdict.get(_NEXT_STEPS_KEY) if isinstance(verdict, dict) else None
+    lines = block.get("lines") if isinstance(block, dict) else None
+    if not isinstance(lines, list):
+        return ""
+    kept, size = [], 0
+    for line in lines[:_NEXT_STEPS_LINES]:
+        if not isinstance(line, str) or not line.strip():
+            continue
+        text = " ".join(line.split())
+        if size + len(text.encode()) + 1 > _NEXT_STEPS_BYTES:
+            break
+        kept.append(text)
+        size += len(text.encode()) + 1
+    return "\n".join(kept) if len(kept) > 1 else ""
+
+
+def _print_next_steps(verdict) -> None:
+    """Print the next steps on stderr: shown in a terminal even when stdout is piped to a JSON reader,
+    and never appended to the JSON a script parses from stdout."""
+    text = _next_steps_text(verdict)
+    if text:
+        print("\n[self-check] " + text, file=sys.stderr, flush=True)
+
+
 def _verdict(txt: str):
     """The verdict object out of the broker's reply, or ``None`` if there isn't one.
 
@@ -385,6 +474,271 @@ def _verdict(txt: str):
     return None
 
 
+def _sweep_candidates(ws: Path, variants: str, knobs: list[str]) -> list[dict]:
+    """Validate the complete candidate list before making any request visible."""
+    candidates = []
+    for value in variants.split(",") if variants else ():
+        label, error = _source_label(ws, value.strip())
+        error = error or (_variant_error(ws, label) if label != _SUBMISSION else "--sweep names variants/")
+        if error:
+            raise ValueError(error)
+        candidates.append({"submission": label, "key": "variant:" + label.partition("/")[2]})
+    if knobs:
+        declared = _read_json(ws / _SUBMISSION / "TUNING_KNOBS.json")
+        if not isinstance(declared, dict) or declared.get("schema") != "merlin.tuning_knobs.v1":
+            raise ValueError("--knob needs submission/TUNING_KNOBS.json (merlin.tuning_knobs.v1)")
+        for text in knobs:
+            name, equals, raw = text.partition("=")
+            try:
+                values = json.loads("[" + raw + "]") if equals else []
+            except ValueError as exc:
+                raise ValueError("--knob takes NAME=V1,V2 with JSON scalar values") from exc
+            spec = (declared.get("knobs") or {}).get(name)
+            allowed = spec.get("values") if isinstance(spec, dict) else None
+            if not values or not isinstance(allowed, list):
+                raise ValueError("--knob needs a declared knob and at least one JSON scalar value")
+            for value in values:
+                if not any(type(value) is type(v) and value == v for v in allowed):
+                    raise ValueError(f"--knob {name}: value is not declared in TUNING_KNOBS.json")
+                candidates.append({"submission": _SUBMISSION, "tuning_overrides": {name: value},
+                                   "key": "knob:" + name + "=" + json.dumps(value)})
+    unique = {c["key"]: c for c in candidates}
+    if not unique:
+        raise ValueError("--sweep needs variant trees or --knob NAME=V1,V2")
+    return list(unique.values())
+
+
+def _sweep_cases(ws: Path, capsules: str, bundle: str) -> str:
+    if bundle:
+        if capsules != "all":
+            raise ValueError("--bundle selects its own cases; drop --capsules")
+        ledger = _read_json(ws / "qa" / "idle_tuning.json") or {}
+        chosen = next((b for b in ledger.get("bundles") or () if b.get("representative") == bundle), None)
+        if chosen is None:
+            raise ValueError("no matching bundle in qa/idle_tuning.json; use --capsules X,Y")
+        capsules = ",".join([chosen["representative"], *chosen.get("siblings", [])])
+    names = [name.strip() for name in capsules.split(",") if name.strip()]
+    if not names or any(name in ("all", "changed", "failing") or ":" in name for name in names):
+        raise ValueError("--sweep needs named --capsules X,Y or --bundle REPRESENTATIVE")
+    return ",".join(dict.fromkeys(names))
+
+
+def _sweep_rows(ws: Path, document: dict) -> dict:
+    """Read verified public detail pointers; incomplete or altered details never supply cycle evidence."""
+    found = {}
+    for row in document.get("cases") or document.get("per_capsule") or ():
+        if not isinstance(row, dict):
+            continue
+        detail = row.get("detail")
+        if isinstance(detail, dict):
+            raw_path = detail.get("path")
+            path = ws / raw_path if isinstance(raw_path, str) else ws
+            try:
+                path.resolve().relative_to(ws.resolve())
+                data = path.read_bytes()
+                if hashlib.sha256(data).hexdigest() != detail.get("sha256"):
+                    continue
+                full = json.loads(data)
+                if not isinstance(full, dict) or full.get("capsule") != row.get("capsule"):
+                    continue
+                row = full
+            except (OSError, ValueError):
+                continue
+        name = row.get("capsule")
+        if isinstance(name, str):
+            found[name] = row
+    return found
+
+
+def _sweep_passed(row: dict) -> bool:
+    tier = (row.get("tiers") or {}).get("L2")
+    if tier is not None:
+        return (tier.get("status") if isinstance(tier, dict) else tier) == "pass"
+    return row.get("pass") is True or row.get("status") == "pass"
+
+
+def _sweep_rank(ws: Path, manifest: dict, responses: dict) -> tuple[list, list]:
+    """Compare each member with this sweep's baseline only, under identical case/model scopes."""
+    baseline = responses.get(manifest["baseline_request_id"]) or {}
+    before_rows = _sweep_rows(ws, baseline)
+    comparisons, rankings = [], []
+    for request in manifest["requests"][1:]:
+        document = responses.get(request["request_id"])
+        if not isinstance(document, dict):
+            continue
+        group = []
+        candidate_sha = (document.get("variant") or {}).get("sha256") or document.get("submission_sha256")
+        for name, row in _sweep_rows(ws, document).items():
+            before = before_rows.get(name) or {}
+            bp, cp = before.get("performance") or {}, row.get("performance") or {}
+            before_cycles, after_cycles = bp.get("estimated_whole_soc_cycles"), cp.get("estimated_whole_soc_cycles")
+            reason = next(("estimates differ in " + k for k in _MODEL_KEYS if bp.get(k) != cp.get(k)), None)
+            required = ("model_sha256", "timing_mode", "scope_sha256", "comparison_domain_sha256", "elf_sha256")
+            if reason is None and (any(not p.get(k) for p in (bp, cp) for k in required)
+                                   or any(type(p.get("timing_epoch")) is not int for p in (bp, cp))):
+                reason = "incomplete model, case scope or executable identity"
+            if any(type(c) not in (int, float) or not math.isfinite(c) or c <= 0
+                   for c in (before_cycles, after_cycles)):
+                reason = "no complete model estimate on both sides"
+            unchanged = _sweep_passed(before) and _sweep_passed(row)
+            identity = {"candidate_sha256": candidate_sha, "baseline_sha256": baseline.get("submission_sha256"),
+                        "case": name, "candidate_elf_sha256": cp.get("elf_sha256"),
+                        "baseline_elf_sha256": bp.get("elf_sha256"),
+                        "model": {k: cp.get(k) for k in _MODEL_KEYS},
+                        "baseline_model": {k: bp.get(k) for k in _MODEL_KEYS}}
+            comparison = {"test_case": name, "candidate": request["key"], "identity": identity,
+                          "numerics": "unchanged" if unchanged else "changed_or_unknown",
+                          "cycles_before": before_cycles, "cycles_after": after_cycles,
+                          "delta_pct": round(100 * (after_cycles / before_cycles - 1), 2) if reason is None else None,
+                          "ratio": after_cycles / before_cycles if reason is None else None,
+                          "request_id": request["request_id"]}
+            if reason:
+                comparison["not_compared"] = reason
+            comparisons.append(comparison)
+            group.append(comparison)
+        usable = [c for c in group if c["numerics"] == "unchanged" and c["ratio"] is not None]
+        rankings.append({"candidate": request["key"], "candidate_sha256": candidate_sha,
+                         "geomean_ratio": round(math.exp(sum(math.log(c["ratio"]) for c in usable)
+                                                          / len(usable)), 4) if usable else None,
+                         "cases_compared": len(usable), "faster": sum(c["ratio"] < 1 for c in usable),
+                         "slower": sum(c["ratio"] > 1 for c in usable),
+                         "numerics_changed_or_unknown": sum(c["numerics"] != "unchanged" for c in group),
+                         "error": document.get("error"), "request_id": request["request_id"]})
+    rankings.sort(key=lambda r: (r["numerics_changed_or_unknown"] > 0, r["geomean_ratio"] is None,
+                                 r["geomean_ratio"] or 0, r["candidate"]))
+    comparisons.sort(key=lambda c: (c["numerics"] != "unchanged", c["delta_pct"] is None,
+                                   c["delta_pct"] or 0, c["test_case"]))
+    return rankings, comparisons
+
+
+def _run_sweep(a, ws: Path, ch: Path, manifest: dict | None = None) -> int:
+    if manifest is None:
+        candidates = _sweep_candidates(ws, a.sweep or "", a.knob)
+        cases = _sweep_cases(ws, a.capsules, a.bundle)
+        sid = "sweep_" + _request_id()
+        base = _submission_digest(ws / _SUBMISSION)
+        now = time.time_ns()
+        deadline = time.time() + _request_budget_seconds(a.timeout, capsules=cases, workers=a.workers)
+        caller = os.environ.get("CODEX_THREAD_ID", "").strip()[:128]
+        requests, bodies = [], []
+        for index, candidate in enumerate([{"submission": _SUBMISSION, "key": "baseline"}, *candidates]):
+            label, rid = candidate["submission"], f"{sid}_{index}"
+            digest = base if label == _SUBMISSION else _submission_digest(ws / label)
+            member = {**candidate, "request_id": rid, "submission_sha256": digest}
+            requests.append(member)
+            body = {"protocol": PROTOCOL_VERSION, "request_id": rid, "requested_at_unix_ns": now,
+                    "requester": _requester_identity(), "deadline_unix_ns": int(deadline * 1e9),
+                    "submission": label, "submission_sha256": digest, "suite": "scalability", "sim": "spike",
+                    "capsules": cases, "workers": a.workers, "timeout": a.timeout,
+                    **({"caller_thread_id": caller} if caller else {})}
+            if index:
+                kind = "knob" if candidate.get("tuning_overrides") else "variant"
+                body["tuning_experiment"] = {"schema": _EXPERIMENT_SCHEMA, "base_sha256": base,
+                    "candidate": {"kind": kind, "key": candidate["key"]}, "test_cases": cases.split(","),
+                    "origin": "author_sweep", "sweep": sid}
+                if kind == "knob":
+                    body["tuning_overrides"] = candidate["tuning_overrides"]
+            bodies.append(body)
+        manifest = {"schema": _SWEEP_SCHEMA, "sweep_id": sid, "baseline_request_id": requests[0]["request_id"],
+                    "requests": requests, "capsules": cases, "deadline_unix_ns": int(deadline * 1e9)}
+        _atomic_write(ch / f"{sid}.json", json.dumps(manifest))
+        for body in bodies:
+            rid = body["request_id"]
+            _atomic_write(ch / f"detached_{rid}", json.dumps({"sweep": sid, "at_unix_ns": now}))
+            _atomic_write(ch / f"req_{rid}.json", json.dumps(body))
+    sid = manifest["sweep_id"]
+    until = manifest["deadline_unix_ns"] / 1e9
+    if a.wait_budget > 0:
+        until = min(until, time.time() + a.wait_budget)
+    responses, faults = {}, {}
+    while True:
+        for request in manifest["requests"]:
+            rid = request["request_id"]
+            if rid in responses or rid in faults or not (ch / f"done_{rid}").exists():
+                continue
+            doc = _read_json(ch / f"resp_{rid}.json")
+            if not isinstance(doc, dict):
+                faults[rid] = "unparseable self-check response"
+                continue
+            ok, why = _reply_is_usable(doc, rid, request["submission_sha256"], label=request["submission"])
+            if ok and request.get("tuning_overrides"):
+                variant = doc.get("variant") or {}
+                if (variant.get("kind") != "knob_overrides" or variant.get("applied") is not True
+                        or variant.get("tuning_overrides") != request["tuning_overrides"]):
+                    ok, why = False, "response does not bind the requested private knob copy"
+            if ok:
+                responses[rid] = doc
+            else:
+                faults[rid] = why
+        complete = len(responses) + len(faults) == len(manifest["requests"])
+        if complete or time.time() >= until:
+            break
+        time.sleep(0.4)
+    rankings, comparisons = _sweep_rank(ws, manifest, responses)
+    path = ws / "selfcheck_out" / f"{sid}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    report = {"schema": _SWEEP_SCHEMA, "sweep_id": sid, "official": False, "advisory_only": True,
+              "status": "complete" if complete else "in_progress", "n_completed": len(responses),
+              "baseline_status": ("current" if _submission_digest(ws / _SUBMISSION) ==
+                  (responses.get(manifest["baseline_request_id"]) or {}).get("submission_sha256") else "older_source"),
+              "n_expected": len(manifest["requests"]), "errors": faults,
+              "all_pass": (all(d.get("all_pass") is True for d in responses.values())
+                           if complete and not faults else None),
+              "ranked_candidates": rankings, "comparisons": comparisons,
+              "responses": [f".qa_channel/resp_{r['request_id']}.json" for r in manifest["requests"]],
+              "resume_with": f"python agent_selfcheck.py --attach {sid}", "all": path.relative_to(ws).as_posix()}
+    _atomic_write(path, json.dumps(report, indent=2))
+    compact = {**report, "ranked_candidates": rankings[:12], "comparisons": comparisons[:12]}
+    text = json.dumps(compact, indent=2)
+    print(text)
+    if a.out:
+        Path(a.out).write_text(text)
+    if complete:
+        return 2 if faults else (0 if report["all_pass"] else 1)
+    return 3 if time.time() < manifest["deadline_unix_ns"] / 1e9 else 2
+
+
+def _write_reference_views(workspace, arguments, *, entry_symbol="kernel_entry"):
+    """Pin existing author-owned artifacts; never execute or qualify their code."""
+    workspace = Path(workspace).resolve()
+
+    def owned(value):
+        relative = PurePosixPath(value)
+        if (relative.is_absolute() or str(relative) != value or "\\" in value
+                or any(part in (".", "..") for part in relative.parts)
+                or not relative.parts or relative.parts[0] not in
+                ("submission", "variants", "selfcheck_out", "artifacts")):
+            raise ValueError("use workspace-relative submission/, variants/, selfcheck_out/ or artifacts/ paths")
+        path = workspace / relative
+        if any(p.is_symlink() for p in (path, *path.parents)) or not path.resolve().is_relative_to(workspace):
+            raise ValueError("artifact views require ordinary author-owned paths")
+        return path, relative.as_posix()
+
+    if not entry_symbol or len(entry_symbol) > 512:
+        raise ValueError("entry symbol must be nonempty and bounded")
+    destination, label = owned(arguments[0])
+    bundle = dict(schema="merlin.reference_artifact_views.v1", entry_symbol=entry_symbol)
+    for role, value in zip(("source", "command_buffer", "emitted"), arguments[1:], strict=True):
+        path, relative = owned(value)
+        before = path.stat()
+        if not path.is_file() or not 0 < before.st_size <= 8 << 20 or path == destination:
+            raise ValueError("each completed artifact must be an ordinary nonempty file <=8MiB")
+        raw = path.read_bytes()
+        after = path.stat()
+        if any(getattr(before, key) != getattr(after, key) for key in
+               ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")) or len(raw) != before.st_size:
+            raise ValueError("artifact changed while pinning; finish compilation and retry")
+        bundle[role] = dict(path=relative, sha256=hashlib.sha256(raw).hexdigest())
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write(destination, json.dumps(bundle, indent=2, sort_keys=True) + "\n")
+    return dict(status="artifact_views_written", manifest=label,
+        sha256=hashlib.sha256(destination.read_bytes()).hexdigest(), qualification_issued=False,
+        next_argv=[sys.executable, Path(__file__).name, "--reference-analysis", "candidate",
+                   "--reference-path", label, "--reference-format", "artifact_views"],
+        note="Pins identify supplied bytes only. Source binding, emitted mechanism, numerics and timing "
+             "require the selected analysis and original executable checks.")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Agent self-check (redacted; routed to the driver-side broker).",
@@ -394,7 +748,8 @@ def main(argv=None):
     ap.add_argument(
         "--submission",
         default=_SUBMISSION,
-        help="tree to check: submission (default; the only tree graded officially) or variants/NAME",
+        help="tree to check: submission (default; the only tree graded officially) or variants/NAME "
+        "(a variant runs on the Spike cycle model unless --sim names another engine)",
     )
     ap.add_argument(
         "--suite",
@@ -426,7 +781,7 @@ def main(argv=None):
         metavar="FAMILY",
         help="check one representative per shape class (square, tall, wide, thin M=1, ragged, a "
         "model layer) of FAMILY (dense, conv, gemv, ...) and compare each with its best earlier cycles "
-        "of the same evidence kind; gSIM by default",
+        "of the same evidence kind; the Spike cycle model by default (--sim gsim for RTL cycles)",
     )
     ap.add_argument("--workers", type=int, default=0, help="0 uses the host's selected grading worker count")
     # This bounds the entire capsule check, including source setup, object builds,
@@ -490,10 +845,123 @@ def main(argv=None):
         help="collect (or keep waiting on) a request id instead of submitting a new one",
     )
     ap.add_argument("--list", action="store_true", help="list in-flight and recent requests, then exit")
-    ap.add_argument("--mechanism-question", default="", help="propose a public model question to the trusted diagnostic owner; does not grade or grant gSIM")
+    ap.add_argument("--sweep", nargs="?", const="", default=None, metavar="VARIANTS",
+                    help="time comma-separated variants together with submission/ and return model rankings")
+    ap.add_argument("--knob", action="append", default=[], metavar="NAME=V1,V2",
+                    help="add independent declared knob values (JSON scalars) to --sweep")
+    ap.add_argument("--bundle", default="", metavar="REPRESENTATIVE", help="sweep a retained performance bundle")
+    ap.add_argument(
+        "--tuning-overrides", default="", metavar="JSON",
+        help="check a private copy with declared knob values changed; submission itself is unchanged",
+    )
+    ap.add_argument(
+        "--reference-request", default="", metavar="ID",
+        help="associate this check with an operator-selected reference experiment request",
+    )
+    ap.add_argument("--reference-analysis", choices=("inventory", "lift", "candidate", "compare"),
+                    help="selected guidance only: inspect visible references or candidate artifacts; no grading")
+    ap.add_argument("--write-reference-views", nargs=4, metavar=("MANIFEST", "SOURCE", "COMMAND_BUFFER", "EMITTED"),
+                    help="write pinned artifact_views from completed owned files; no request or execution. "
+                         "Use artifacts/ paths; --reference-symbol selects the emitted entry (default kernel_entry).")
+    ap.add_argument("--reference-path", default="", help="workspace-relative reference-kernels/ or owned artifact; "
+                    "compare accepts owned before/after files on both sides")
+    ap.add_argument("--reference-format", default="auto",
+                    choices=("auto", "c_source", "python_schedule", "listing", "disassembly", "elf",
+                             "schedule_mlir", "semantic_region", "interface_mlir", "command_buffer", "artifact_views"),
+                    help="schedule_mlir is an actual schedule.plan; for emitted LLVM use a pinned artifact_views "
+                         "manifest created with --write-reference-views")
+    ap.add_argument("--reference-member", default="", help="member of an already visible ZIP; no extraction")
+    ap.add_argument("--reference-entry", default="", help="pinned reference-map entry ID; selects its file/locator")
+    ap.add_argument("--reference-symbol", default="", help="exact source or disassembly function symbol")
+    ap.add_argument("--reference-offset", type=int, default=0)
+    ap.add_argument("--reference-limit", type=int, default=8)
+    ap.add_argument("--candidate-path", default="", help="compare only: owned submission/, variants/, "
+                    "selfcheck_out/ or artifacts/ file")
+    ap.add_argument("--candidate-format", default="auto",
+                    choices=("auto", "c_source", "python_schedule", "listing", "disassembly", "elf",
+                             "schedule_mlir", "semantic_region", "interface_mlir", "command_buffer", "artifact_views"))
+    ap.add_argument("--candidate-symbol", default="", help="compare only: exact emitted function symbol")
+    ap.add_argument("--candidate-offset", type=int, default=0)
+    ap.add_argument(
+        "--mechanism-question",
+        default="",
+        help="propose a public model question to the trusted diagnostic owner; does not grade or grant gSIM",
+    )
     ap.add_argument("--mechanism-discriminator", default="", help="what the proposed witnesses distinguish")
-    ap.add_argument("--mechanism-purpose", choices=("unresolved_cost", "structural_validation"), default="unresolved_cost")
+    ap.add_argument(
+        "--mechanism-purpose", choices=("unresolved_cost", "structural_validation"), default="unresolved_cost"
+    )
     a = ap.parse_args(argv)
+    if a.write_reference_views:
+        if (a.reference_analysis or a.attach or a.list or a.sweep is not None or a.panel or a.mechanism_question
+                or a.tuning_overrides or a.reference_request or a.reference_path or a.reference_entry
+                or a.reference_member or a.reference_format != "auto" or a.candidate_path
+                or a.candidate_format != "auto" or a.candidate_symbol or a.candidate_offset
+                or a.suite != "core" or a.capsules != "all" or a.knob or a.bundle
+                or a.reference_offset or a.reference_limit != 8 or a.submission != _SUBMISSION
+                or any(getattr(a, key) for key in ("candidate_diagnostics", "compile_only", "caller_layout",
+                    "shape_coverage", "offload_census", "model_layers", "dynamic_census", "scale_probe"))):
+            ap.error("--write-reference-views is a separate local artifact-pinning action")
+        try:
+            result = _write_reference_views(Path.cwd(), a.write_reference_views,
+                                             entry_symbol=a.reference_symbol or "kernel_entry")
+        except (OSError, ValueError) as error:
+            ap.error(str(error))
+        print(json.dumps(result, indent=2))
+        return 0
+    if a.reference_analysis:
+        if (a.attach or a.list or a.sweep is not None or a.panel or a.mechanism_question or a.tuning_overrides
+                or a.reference_request or a.suite != "core" or a.capsules != "all"
+                or any(getattr(a, key) for key in ("candidate_diagnostics", "compile_only", "caller_layout",
+                    "shape_coverage", "offload_census", "model_layers", "dynamic_census", "scale_probe"))):
+            ap.error("--reference-analysis is a separate read-only diagnostic action")
+        if not 0 <= a.reference_offset or not 0 <= a.candidate_offset or not 1 <= a.reference_limit <= 16:
+            ap.error("reference analysis requires a nonnegative offset and limit1..16")
+        a.reference_path = a.reference_path or ("reference-kernels" if a.reference_analysis == "inventory" else "")
+        if not a.reference_path and not a.reference_entry:
+            ap.error("reference analysis requires --reference-path or --reference-entry")
+        if a.reference_entry and a.reference_analysis not in ("lift", "compare"):
+            ap.error("--reference-entry selects a reference for lift/compare")
+        if a.reference_analysis == "compare":
+            if not a.candidate_path:
+                ap.error("--reference-analysis compare requires --candidate-path")
+        elif a.candidate_path or a.candidate_format != "auto" or a.candidate_symbol or a.candidate_offset:
+            ap.error("candidate comparison options require --reference-analysis compare")
+    elif (a.reference_path or a.reference_member or a.reference_format != "auto" or a.reference_offset
+          or a.reference_entry or a.reference_symbol or a.candidate_path or a.candidate_format != "auto"
+          or a.candidate_symbol or a.candidate_offset):
+        ap.error("reference input options require --reference-analysis")
+    if a.sweep is not None:
+        if (a.submission != _SUBMISSION or a.panel or a.attach or a.list or a.mechanism_question
+                or a.suite == "programs" or a.tuning_overrides or a.reference_request):
+            ap.error("--sweep uses submission/ as baseline and cannot combine with another action")
+        a.suite = "scalability"
+    elif (a.knob or a.bundle) and not a.attach:
+        ap.error("--knob and --bundle require --sweep")
+    if (a.tuning_overrides or a.reference_request) and (a.attach or a.list):
+        ap.error("tuning/reference options submit a new check; omit them with --attach or --list")
+    overrides = None
+    if a.tuning_overrides:
+        try:
+            if len(a.tuning_overrides.encode()) > 8192:
+                raise ValueError("request exceeds 8192 bytes")
+            overrides = json.loads(a.tuning_overrides)
+            if not isinstance(overrides, dict) or not 1 <= len(overrides) <= 4:
+                raise ValueError("expected one to four knob values")
+            for key, value in overrides.items():
+                if not 0 < len(key) <= 64 or not (
+                    value is None or type(value) in (bool, int)
+                    or (type(value) is float and math.isfinite(value))
+                    or (type(value) is str and len(value) <= 64)
+                ):
+                    raise ValueError("expected bounded knob names and finite JSON scalar values")
+        except (ValueError, RecursionError) as exc:
+            ap.error(f"--tuning-overrides: {exc}")
+    if a.reference_request and (
+        len(a.reference_request) > 160 or a.reference_request[0] not in _NAME_FIRST
+        or not all(c in _NAME_CHARS for c in a.reference_request)
+    ):
+        ap.error("--reference-request takes a bounded request ID, not a path")
     if a.panel:
         family = a.panel.strip().lower()
         if not family or not all(c in _NAME_CHARS for c in family) or len(family) > _VARIANT_NAME_MAX:
@@ -501,13 +969,22 @@ def main(argv=None):
         if a.capsules != "all" or a.suite != "core" or a.mechanism_question:
             ap.error("--panel selects its own cases; drop --capsules/--suite/--mechanism-question")
         a.capsules = _PANEL + family
-        # Cycle evidence by default: Spike counts are not cycles (see the panel's evidence rule).
+        # Performance on the selected Spike cycle model by default (model cycles, compared like with
+        # like); `--sim gsim` still asks for RTL cycles explicitly.
         if not any(v == "--sim" or v.startswith("--sim=") for v in (argv or sys.argv[1:])):
-            pinned = _required_rtl_engine()
-            a.sim = pinned if pinned in _SIMS and pinned != "spike" else "gsim"
+            a.sim = "spike"
+    elif (a.submission != _SUBMISSION or a.tuning_overrides) and not a.attach and not any(
+        v == "--sim" or v.startswith("--sim=") for v in (argv or sys.argv[1:])
+    ):
+        # A variant or tuning A/B is a performance comparison: the Spike cycle model by default.
+        a.sim = "spike"
     if a.mechanism_question:
-        if (not a.mechanism_discriminator.strip() or len(a.mechanism_question) + len(a.mechanism_discriminator) > 2000
-                or a.suite != "core" or a.capsules in ("all", "changed", "failing")):
+        if (
+            not a.mechanism_discriminator.strip()
+            or len(a.mechanism_question) + len(a.mechanism_discriminator) > 2000
+            or a.suite != "core"
+            or a.capsules in ("all", "changed", "failing")
+        ):
             ap.error("mechanism questions need named public capsules, a bounded discriminator, and the core suite")
         names = a.capsules.split(",")
         if not 1 <= len(names) <= 4 or len(set(names)) != len(names):
@@ -542,7 +1019,7 @@ def main(argv=None):
 
     policy_error = (
         None
-        if a.caller_layout or a.candidate_diagnostics or a.compile_only
+        if a.caller_layout or a.candidate_diagnostics or a.compile_only or a.reference_analysis
         else (_sim_policy_error(a.sim) if a.suite == "core" else None)
     )
     if policy_error:
@@ -560,6 +1037,13 @@ def main(argv=None):
     if a.list:
         print(json.dumps(_list_requests(ch), indent=2))
         return 0
+    manifest = _read_json(ch / f"{a.attach}.json") if a.attach and Path(a.attach).name == a.attach else None
+    if a.sweep is not None or (isinstance(manifest, dict) and manifest.get("schema") == _SWEEP_SCHEMA):
+        try:
+            return _run_sweep(a, ws, ch, manifest)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            print(json.dumps({"error": str(exc), "all_pass": False}))
+            return 2
     rid = _request_id()
     requested_at_ns = time.time_ns()
     label, source_error = _source_label(ws, a.submission)
@@ -604,7 +1088,8 @@ def main(argv=None):
     # Writing a second req_ for the same work would run a duplicate beside the first and double its cost.
     if not a.attach:
         # The Codex thread running this client (the lead or one of its sub-agents) exports its own id.
-        # Forwarded for operator accounting only; the broker neither reads nor trusts it.
+        # Forwarded for operator accounting; the broker trusts it for nothing and reads it only to
+        # interleave waiting gSIM requests across threads, so one thread's sweep does not hold another's.
         caller_thread = os.environ.get("CODEX_THREAD_ID", "").strip()[:128]
         _atomic_write(
             ch / f"req_{rid}.json",
@@ -617,6 +1102,16 @@ def main(argv=None):
                     "requested_at_unix_ns": requested_at_ns,
                     "submission": label,
                     "submission_sha256": submission_sha256,
+                    **({"tuning_overrides": overrides} if overrides else {}),
+                    **({"reference_experiment_request_id": a.reference_request} if a.reference_request else {}),
+                    **(dict(action="reference-analysis", reference_analysis=dict(
+                        operation=a.reference_analysis, path=a.reference_path, format=a.reference_format,
+                        member=a.reference_member, offset=a.reference_offset, limit=a.reference_limit,
+                        symbol=a.reference_symbol, entry=a.reference_entry,
+                        **(dict(candidate=dict(path=a.candidate_path, format=a.candidate_format,
+                            symbol=a.candidate_symbol, offset=a.candidate_offset))
+                           if a.reference_analysis == "compare" else {})))
+                       if a.reference_analysis else {}),
                     "deadline_unix_ns": int(deadline * 1_000_000_000),
                     # Omitted entirely when the caller named none: an ABSENT key lets the driver
                     # resolve the engine, where a present one is a choice the broker must honour.
@@ -634,10 +1129,20 @@ def main(argv=None):
                     "scale_probe": bool(a.scale_probe),
                     "dynamic_census": bool(a.dynamic_census),
                     "caller_layout": a.caller_layout,
-                    **({"action": "mechanism-question", "mechanism_question": {
-                        "schema": "merlin.mechanism_question_proposal.v1", "question": a.mechanism_question,
-                        "discriminator": a.mechanism_discriminator, "capsules": a.capsules.split(","),
-                        "purpose": a.mechanism_purpose}} if a.mechanism_question else {}),
+                    **(
+                        {
+                            "action": "mechanism-question",
+                            "mechanism_question": {
+                                "schema": "merlin.mechanism_question_proposal.v1",
+                                "question": a.mechanism_question,
+                                "discriminator": a.mechanism_discriminator,
+                                "capsules": a.capsules.split(","),
+                                "purpose": a.mechanism_purpose,
+                            },
+                        }
+                        if a.mechanism_question
+                        else {}
+                    ),
                 }
             ),
         )
@@ -645,6 +1150,7 @@ def main(argv=None):
     progress = ch / f"progress_{rid}.json"
     claimed = ch / f"claimed_{rid}"
     last_progress_finished = -1
+    reported_cases: dict = {}
     last_queue_note = None
     announced_claim = False
     waiting_since = time.time()
@@ -695,6 +1201,8 @@ def main(argv=None):
                         flush=True,
                     )
                     last_progress_finished = finished
+                for line in _new_case_lines(reported_cases, p) if queue is None else ():
+                    print(line, file=sys.stderr, flush=True)
             except (OSError, ValueError, TypeError):
                 pass
         if done.exists() and resp.exists():
@@ -731,6 +1239,7 @@ def main(argv=None):
                     file=sys.stderr,
                     flush=True,
                 )
+            _print_next_steps(_v)
             # the shape-coverage report has no `all_pass`; its verdict is `all_covered`
             if a.shape_coverage:
                 return 0 if _v.get("all_covered") else 1
@@ -743,6 +1252,8 @@ def main(argv=None):
                 return 0 if _v.get("schema") in supported else 2
             if a.mechanism_question or (original or {}).get("action") == "mechanism-question":
                 return 0 if _v.get("status") == "queued_for_trusted_diagnostic_review" else 1
+            if a.reference_analysis or (original or {}).get("action") == "reference-analysis":
+                return 0 if _v.get("schema") == "merlin.reference_analysis.v1" and _v.get("status") == "analyzed" else 2
             return 0 if _v.get("all_pass") else 1
         time.sleep(0.4)
     if a.wait_budget > 0 and time.time() < deadline:
@@ -775,11 +1286,19 @@ def main(argv=None):
                     "n_expected": snapshot.get("n_expected"),
                     "n_remaining": snapshot.get("n_remaining"),
                     "counts": snapshot.get("counts", {}),
+                    # Every case decided so far: finished rows, and rows whose numerics are decided
+                    # while later checks run ("status": "running", "final": false).
+                    "n_numerics_decided": snapshot.get("n_numerics_decided"),
+                    "numerics_counts": snapshot.get("numerics_counts", {}),
+                    "cases": _case_rows(snapshot),
                     **({"gsim_slot_queue": queue} if queue is not None else {}),
                     "resume_with": f"python agent_selfcheck.py --attach {rid}" + (f" --out {a.out}" if a.out else ""),
                     "note": (
-                        (f"{_gsim_queue_note(queue)}: the check waits for a free gSIM slot and then runs; "
-                         if queue is not None else "")
+                        (
+                            f"{_gsim_queue_note(queue)}: the check waits for a free gSIM slot and then runs; "
+                            if queue is not None
+                            else ""
+                        )
                         + "the check is STILL RUNNING broker-side; this is not a pass, a failure or a "
                         "timeout. Keep working and collect it with the command above -- do NOT write a "
                         "sleep/poll loop, and do not resubmit this same check (that only repeats it); "

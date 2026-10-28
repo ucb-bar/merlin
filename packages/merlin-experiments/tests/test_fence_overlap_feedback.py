@@ -147,7 +147,7 @@ def test_executed_census_of_a_large_gemm_names_the_fence_storm():
 def test_fence_hints_put_fence_and_readout_mechanisms_first_and_list_unconfirmed_apart(tmp_path):
     _suggestions(tmp_path)
     available, unconfirmed = MH.fence_hints(MH.load_selection(tmp_path), why="fenced per tile")
-    assert [hint["id"] for hint in available] == ["readout_frontier", "coalesce", "prefetch"]
+    assert [hint["id"] for hint in available] == ["readout_frontier", "loops", "coalesce", "prefetch"]
     assert available[0]["why"].startswith("names a fence/barrier/readout; fenced per tile")
     assert unconfirmed == [
         {
@@ -157,7 +157,7 @@ def test_fence_hints_put_fence_and_readout_mechanisms_first_and_list_unconfirmed
             "capability_unconfirmed": ["scheduling.queues"],
         }
     ]
-    assert MH.bound_facets(MH.FENCE_BOUND) == ("overlap", "synchronization", "movement")
+    assert MH.bound_facets(MH.FENCE_BOUND) == ("synchronization", "overlap", "issue", "movement")
 
 
 def test_brief_entry_reading_and_fence_bound_list(tmp_path):
@@ -171,6 +171,9 @@ def test_brief_entry_reading_and_fence_bound_list(tmp_path):
         {"capsule": "pipelined", "pass": True, "performance": _performance(900)},
         {"capsule": "large", "pass": True, "performance": {"feature_counts": census}},
     ]
+    (tmp_path / 'PUBLIC_CAPABILITIES.json').write_text(json.dumps({
+        'schema': 'merlin.public_capability_inventory.v1',
+        'members': {name: {'workload_role': 'large_kernel'} for name in ('fenced', 'pipelined', 'large')}}))
     brief = PB.build(rows, workspace=tmp_path, artifact_root="selfcheck_out")
     fenced, pipelined = brief["largest_headroom"]
     block = fenced["fence_overlap"]
@@ -194,6 +197,9 @@ def test_grade_headroom_and_headline_carry_the_fence_reading(tmp_path):
         "per_capsule": [{"capsule": "fenced", "tiers": {"L2": "pass"}, "performance": _performance(4800)}],
         "feedback_brief": {},
     }
+    (tmp_path / 'PUBLIC_CAPABILITIES.json').write_text(json.dumps({
+        'schema': 'merlin.public_capability_inventory.v1',
+        'members': {'fenced': {'workload_role': 'large_kernel'}}}))
     block = PR.build(tmp_path, verdict)
     (entry,) = block["largest_headroom"]
     assert entry["fence_overlap"]["fence_per_tile"] is True

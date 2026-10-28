@@ -127,8 +127,14 @@ def run(
         print(f"ERROR: {runtime.message}", file=sys.stderr)
         return runtime.refusal
     from . import workspace_transport
+    from .feedback.reference_experiments import invocation
 
-    with runtime_environment.applied_environment(runtime):
+    reference_scope = invocation(
+        options.reference_experiments or None,
+        options.reference_experiments_sha256 or None,
+        tasks=options.reference_experiments_tasks != "off",
+    )
+    with runtime_environment.applied_environment(runtime), reference_scope:
         request = session.RunRequest(
             context=context,
             options=options,

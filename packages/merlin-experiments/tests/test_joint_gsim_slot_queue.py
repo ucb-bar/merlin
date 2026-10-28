@@ -303,3 +303,91 @@ def test_the_simjob_reap_requeues_before_publishing():
     assert 'if not out.get("joint_policy_refused")' in reap  # a refusal is never a cached completion
     launch = source[source.index('if not _joint_gsim_launchable(r, sim, gsim_gate, running):'):]
     assert launch.index('continue') < launch.index('_reserve_veril_workers(')
+
+
+def test_waiting_authors_are_interleaved_across_requesters():
+    """A 140-case sweep from one thread waited ahead of every other thread's single check (fresh7ref)."""
+    data = {'active': [], 'waiting': []}
+    for i in range(5):
+        Q.enqueue(data, f'sweep{i}', capsule=f's{i}', request_class=Q.AUTHOR, now=i, requester='lead')
+    Q.enqueue(data, 'helper', capsule='h', request_class=Q.AUTHOR, now=6, requester='helper')
+    Q.enqueue(data, 'bg', capsule='b', request_class=Q.BACKGROUND, now=7)
+    Q.enqueue(data, 'later', capsule='l', request_class=Q.AUTHOR, now=8, requester='other')
+    order = sorted(data['waiting'], key=lambda row: Q.ahead(data, row['token']))
+    assert [row['token'] for row in order] == ['sweep0', 'helper', 'later', 'sweep1', 'sweep2', 'sweep3',
+                                               'sweep4', 'bg']
+    assert Q.admissible(data, 'helper', 2) and not Q.admissible(data, 'sweep1', 3)
+    # Unnamed requests are one anonymous requester: arrival order, as before.
+    plain = {'active': [], 'waiting': []}
+    for i in range(3):
+        Q.enqueue(plain, f'p{i}', capsule='c', request_class=Q.AUTHOR, now=i)
+    assert [Q.ahead(plain, f'p{i}') for i in range(3)] == [0, 1, 2]
+
+
+def test_a_self_check_names_its_caller_thread_as_requester(campaign, monkeypatch):
+    names, _, _ = campaign
+    env = {Q.REQUESTER_ENV: 'stale'}
+    assert Q.name_requester(env, {'caller_thread_id': ' t-1 '}) == {Q.REQUESTER_ENV: 't-1'}
+    assert Q.name_requester(env, {}) == {} and Q.name_requester({}, {'caller_thread_id': 7}) == {}
+    monkeypatch.setenv(Q.REQUESTER_ENV, 'helper-thread')
+    with J.physical_correctness(names[0]):
+        thread, _ = _waiter(names[1])
+        assert _until(lambda: len(_ledger()['waiting']) == 1)
+        assert _ledger()['waiting'][0]['requester'] == 'helper-thread'
+    thread.join(10)
+    assert not thread.is_alive()
+
+
+def test_a_promotion_backlog_delays_an_author_only_by_the_running_jobs(campaign, monkeypatch):
+    """However many promotions are queued, an author waits only for a slot a running job frees."""
+    from merlin_experiments.phase1.brokers import simjob
+
+    names, _, _ = campaign
+    backlog = [{'promoted': True, 'capsules': names[2 + i % 2]} for i in range(50)]
+
+    def broker_pass():
+        gate = {}
+        return sum(simjob._joint_gsim_launchable(request, 'gsim', gate, {}) for request in backlog)
+
+    monkeypatch.setenv(Q.CLASS_ENV, Q.BACKGROUND)
+    running = J.physical_correctness(names[0])
+    running.__enter__()  # the one slot is held by a promotion that was already running
+    monkeypatch.delenv(Q.CLASS_ENV)
+    progress = {}
+    author, outcome = _waiter(names[1], queue=progress)
+    assert _until(lambda: len(_ledger()['waiting']) == 1)
+    assert broker_pass() == 0  # nothing from the backlog starts while the author waits
+    assert author.is_alive() and 'error' not in outcome
+    running.__exit__(None, None, None)  # the running promotion ends: its slot goes to the author
+    author.join(10)
+    assert outcome == {'budget': 1200} and progress['ahead_at_enqueue'] == 0
+    assert [row['capsule'] for row in _ledger()['admissions']] == names[:2]
+    assert broker_pass() == 1  # with no author waiting the backlog takes every free slot again
+
+
+def test_first_certification_jobs_precede_re_promotions(tmp_path, monkeypatch):
+    from merlin.targetgen.oracle_schedule import CERT_LEDGER
+
+    from merlin_experiments.phase1.brokers import simjob
+
+    monkeypatch.setattr(simjob._TP, '_submission_digest', lambda _: 'current')
+    (tmp_path / 'qa').mkdir()
+    pending = {'status': 'pending', 'digest': 'current'}
+    (tmp_path / 'qa' / 'tier_state.json').write_text(json.dumps({
+        # Answered before (an unattributed or passed record for any bytes): a re-promotion.
+        'AGAIN': {CERT_LEDGER: {'L3': {'old': {'status': 'unattributed'}, 'new': pending}}},
+        'CERTIFIED': {CERT_LEDGER: {'L3': {'old': {'status': 'pass'}}}},
+        # Only outstanding records: its first gSIM run since it passed.
+        'FIRST': {CERT_LEDGER: {'L3': {'new': pending}}},
+    }))
+    paths = []
+    for index, name in enumerate(['AGAIN', 'CERTIFIED', 'FIRST', 'NEW']):
+        path = tmp_path / f'simreq_{index}.json'
+        path.write_text(json.dumps({'capsules': name, 'promoted': True, 'submission_digest': 'current'}))
+        paths.append(path)
+    stale = tmp_path / 'simreq_4.json'
+    stale.write_text(json.dumps({'capsules': 'NEW', 'promoted': True, 'submission_digest': 'old'}))
+    ordered = simjob._current_source_first(paths + [stale], tmp_path, cert_tier='L3')
+    assert ordered == [paths[2], paths[3], paths[0], paths[1], stale]
+    # Without a cert tier nothing is known about earlier runs: the established order holds.
+    assert simjob._current_source_first(paths, tmp_path) == paths

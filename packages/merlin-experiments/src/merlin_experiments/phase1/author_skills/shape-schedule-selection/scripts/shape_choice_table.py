@@ -60,7 +60,15 @@ def _library(path: str | None) -> None:
 
 def _read(path) -> object:
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"))
+        document = json.loads(Path(path).read_text(encoding="utf-8"))
+        if isinstance(document, dict) and document.get("result_index"):
+            for parent in Path(path).resolve().parents:
+                helper = parent / "qa_result_details.py"
+                if helper.is_file():
+                    namespace = {"__name__": "_public_result_details"}
+                    exec(compile(helper.read_bytes(), str(helper), "exec"), namespace)
+                    return namespace["hydrate"](document, workspace=parent)
+        return document
     except (OSError, ValueError) as exc:
         raise SystemExit(f"cannot read {path}: {exc}") from None
 

@@ -8,6 +8,50 @@ from pathlib import Path
 
 
 def composition_members(composition, *, assigned):
+    if isinstance(composition, dict) and composition.get("schema") == "merlin.original_head_source_composition.v1":
+        members, physical = [], set()
+        for component in composition["components"]:
+            rows = [r for r in assigned if r["symbol"] == component["physical_symbol"]
+                    and r["group"] == component["physical_group"]]
+            if component.get("schema") == "merlin.original_sibling_source_composition.v1":
+                members.extend(composition_members(component, assigned=rows))
+                if component["physical_group"] in physical:
+                    raise ValueError("joint dispatch repeats physical work")
+                physical.add(component["physical_group"])
+                continue
+            h = component["matrix_invocations"]
+            if (len(rows) != 1 or rows[0]["group"] != component["physical_group"]
+                    or type(h) is not int or h < 2 or len(component["members"]) != h
+                    or [m["head"] for m in component["members"]] != list(range(h))
+                    or component["physical_group"] in physical):
+                raise ValueError("head dispatch lost original per-slice invocation custody")
+            members.extend(component["members"])
+            physical.add(component["physical_group"])
+        ordinary = composition["ordinary_joined_groups"]
+        indices = [r["source_group"] for r in members]
+        if (len(set(indices)) != len(indices) or set(indices).intersection(ordinary.values())
+                or set(physical).intersection(ordinary)
+                or set(physical) | set(ordinary) != {r["group"] for r in assigned}
+                or not set(composition["required_source_groups"]) <= set(indices) | set(ordinary.values())):
+            raise ValueError("head dispatch omits or duplicates original source work")
+        return members
+    if isinstance(composition, dict) and composition.get("schema") == "merlin.original_sibling_source_components.v1":
+        members, physical = [], set()
+        for component in composition["components"]:
+            rows = [r for r in assigned if r["symbol"] == component["physical_symbol"]
+                    and r["group"] == component["physical_group"]]
+            members.extend(composition_members(component, assigned=rows))
+            if component["physical_group"] in physical:
+                raise ValueError("component dispatch repeats physical work")
+            physical.add(component["physical_group"])
+        ordinary = composition["ordinary_joined_groups"]
+        indices = [r["source_group"] for r in members]
+        if (len(set(indices)) != len(indices) or set(indices).intersection(ordinary.values())
+                or set(physical).intersection(ordinary)
+                or set(physical) | set(ordinary) != {r["group"] for r in assigned}
+                or not set(composition["required_source_groups"]) <= set(indices) | set(ordinary.values())):
+            raise ValueError("component dispatch omits or duplicates original source work")
+        return members
     if (not isinstance(composition, dict)
             or composition.get("schema") != "merlin.original_sibling_source_composition.v1"
             or composition.get("original_source_denominator_unchanged") is not True
@@ -66,7 +110,13 @@ def borrowed_host_chain(module, function, composition, *, mandatory):
     from merlin.verify.llvm_symbols import defined_function
 
     leaf = "_mlir_ciface_" + composition["borrowed_entry_symbol"]
-    arity = 2 * len(composition["members"]) + 1
+    members = len(composition["members"])
+    # A source-proved INT8 readout may add one immutable folded-bias input per
+    # member. The independent source join binds its complete logical arity;
+    # historical raw-only joins retain the original fixed ABI.
+    arity = composition.get("descriptor_arguments", 2 * members + 1)
+    if type(arity) is not int or not 2 * members + 1 <= arity <= 3 * members + 1:
+        raise ValueError("borrowed host chain lost its source-proved logical arity")
 
     def symbol(operation):
         return getattr(getattr(operation.properties.get("callee"), "root_reference", None), "data", None)
@@ -131,7 +181,7 @@ def borrowed_host_chain(module, function, composition, *, mandatory):
             "mandatory_call_roster": {composition["physical_symbol"]: 1}}
 
 
-def verify_descriptor_bridge(entry, composition, *, built, target):
+def verify_descriptor_bridge(entry, composition, *, built, target, collection=None):
     """Reproduce the stock C bridge and join its actual compile and final link."""
     import json
 
@@ -173,12 +223,43 @@ def verify_descriptor_bridge(entry, composition, *, built, target):
     if buffers is None:
         raise ValueError("sibling descriptor bridge lost logical buffer ABI: " + reason)
     call = sidecar["call_buffers"][symbol]
-    unit = emit_logical_translation_unit(target, {symbol: (buffers, call)},
-                                         kernel_symbol_for=lambda _: entry["kernel_symbol"])
-    output_positions = tuple(i for i, row in enumerate(call) if row["role"].startswith("out_"))
-    expected = unit.text + "\n" + borrowed_bridge_source(
-        symbol, composition["borrowed_entry_symbol"], call, output_positions)
-    if unit.symbols != (symbol,) or c_source.read_text() != expected:
+    if collection is not None and collection.get("schema") in {
+        "merlin.original_sibling_source_components.v1", "merlin.original_head_source_composition.v1",
+    }:
+        artifacts = built["device_artifacts"]
+        if artifacts.get("target") != target or not isinstance(artifacts.get("kernels"), dict):
+            raise ValueError("component actual kernel roster changed")
+        kernels = artifacts["kernels"]
+        symbols = {}
+        for row in sidecar["routed"]:
+            name = row["symbol"]
+            iface = Path(built["elf"]).parent / "device" / (name + ".iface.mlir")
+            actual_buffers, reason = logical_buffers(iface.read_text())
+            if actual_buffers is None:
+                raise ValueError("component shim lost actual ordinary interface: " + reason)
+            if (name in sidecar["expected_interfaces"]
+                    and iface.read_text() != sidecar["expected_interfaces"][name]["mlir"]):
+                raise ValueError("component actual interface differs from source-bound interface")
+            symbols[name] = actual_buffers, sidecar["call_buffers"][name]
+        unit = emit_logical_translation_unit(target, symbols,
+                                             kernel_symbol_for=lambda name: kernels[name]["kernel_symbol"])
+        expected = unit.text
+        for c in collection["components"]:
+            if c.get("schema") != "merlin.original_sibling_source_composition.v1":
+                continue
+            member_call = sidecar["call_buffers"][c["physical_symbol"]]
+            outputs = tuple(i for i, r in enumerate(member_call) if r["role"].startswith("out_"))
+            expected += "\n" + borrowed_bridge_source(
+                c["physical_symbol"], c["borrowed_entry_symbol"], member_call, outputs)
+        correct_symbols = set(symbols) == set(unit.symbols)
+    else:
+        unit = emit_logical_translation_unit(target, {symbol: (buffers, call)},
+                                             kernel_symbol_for=lambda _: entry["kernel_symbol"])
+        output_positions = tuple(i for i, row in enumerate(call) if row["role"].startswith("out_"))
+        expected = unit.text + "\n" + borrowed_bridge_source(
+            symbol, composition["borrowed_entry_symbol"], call, output_positions)
+        correct_symbols = unit.symbols == (symbol,)
+    if not correct_symbols or c_source.read_text() != expected:
         raise ValueError("actual sibling descriptor bridge differs from stock complete ABI transport")
     observed = invocation_record.verify(_pinned(bridge, "compilation"))
     def pin(path):
@@ -197,3 +278,18 @@ def verify_descriptor_bridge(entry, composition, *, built, target):
     return {"source": _digest(c_source), "object": _digest(obj),
             "compilation": _digest(_pinned(bridge, "compilation")),
             "scope": "stock pointer/identity-descriptor transport, observed compiler, actual final link input"}
+
+
+def component_for_symbol(composition, symbol, *, group=None):
+    if composition is None:
+        return None
+    if composition.get("schema") in {"merlin.original_sibling_source_components.v1",
+                                     "merlin.original_head_source_composition.v1"}:
+        components = composition["components"]
+    else:
+        components = [composition]
+    matches = [c for c in components if c["physical_symbol"] == symbol
+               and (group is None or c["physical_group"] == group)]
+    if len(matches) > 1:
+        raise ValueError("shared physical symbol needs an unambiguous original call group")
+    return matches[0] if matches else None

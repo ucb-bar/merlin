@@ -1,7 +1,7 @@
 """Cross-round MEMORY brief for the agentic loop.
 
 Each round is a FRESH agent session — its only memory of prior rounds is what lives on disk (its
-``submission/`` code + ``docs/iteration_notes.md``) plus whatever the harness injects. Left to itself a
+``submission/`` code + ``ITERATION_NOTES.md``) plus whatever the harness injects. Left to itself a
 weaker model lets its own notes go stale and re-derives (or undoes) what it already figured out. This
 module builds a compact **round brief** the harness writes every round and feeds into the next one, so
 cross-round learning does not depend on the model remembering to journal.
@@ -250,7 +250,7 @@ def _regression_section(verdicts: list[tuple[int, dict]]) -> list[str]:
         "",
         "Recovering these is worth MORE than new work: they are known-solvable by code you already "
         "wrote. Your `submission/` tree is the one that regressed, so read "
-        "`docs/iteration_notes.md` for what you changed after the good round and undo the part that "
+        "`ITERATION_NOTES.md` for what you changed after the good round and undo the part that "
         "broke them. If a change was needed for something else, make it ADDITIVE instead of a "
         "replacement.",
         "",
@@ -264,7 +264,7 @@ def _errata_section(run_dir: Path) -> list[str]:
     2026-09-01 on merlincirct_arm4_func_20260901_codex1: the `out_stride_bytes` advisory derived its
     `intended_value` from a packed row stride that did not match how the graded harness allocates the
     buffer. The agent emitted the correct value, the advisory contradicted it, and the agent complied --
-    recording the change in `docs/iteration_notes.md`, where it then reads as settled fact to every later
+    recording the change in `ITERATION_NOTES.md`, where it then reads as settled fact to every later
     round. Correcting the check is not enough on a resumed run: the false premise is already written into
     the agent's own carried memory, and the brief is the only channel that can retract it.
 
@@ -284,18 +284,21 @@ def _errata_section(run_dir: Path) -> list[str]:
 def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> str:
     """Markdown brief for the round ABOUT TO START (``rnd`` = the round just graded)."""
     from .capability_brief import build_if_selected
+    from .reference_experiments import brief_lines
 
     headline = _headline_section(ws)
+    reference = brief_lines(ws)
     joint = build_if_selected(run_dir, ws, errata=_errata_section(run_dir), notes_stale=notes_stale)
     if joint is not None:
-        return "\n".join(headline) + ("\n" if headline else "") + joint
+        return "\n".join([*headline, *reference]) + ("\n" if headline or reference else "") + joint
     verdicts = _load_verdicts(run_dir)
     L = [
         *headline,
+        *reference,
         "# Round brief — your progress so far (READ THIS FIRST)",
         "",
         "You are a FRESH session. Your ONLY memory of prior rounds is this brief, your `submission/` "
-        "code, and `docs/iteration_notes.md`. Build on them — do not re-derive what you already worked "
+        "code, and `ITERATION_NOTES.md`. Build on them — do not re-derive what you already worked "
         "out, and do NOT undo a change that improved a previous round.",
         "",
     ]
@@ -339,22 +342,24 @@ def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> st
         L += render_clusters(clusters(verdicts[-1][1].get("per_capsule"), workspace=ws))
     L += _public_build_section(run_dir)
 
-    notes = ws / "submission" / "docs" / "iteration_notes.md"
-    body = notes.read_text(encoding="utf-8", errors="replace") if notes.is_file() else ""
+    from ..iteration_notes import NOTES_NAME, read_notes
+
+    body = read_notes(ws)
     if body.strip():
-        L += ["## Your iteration_notes.md (carried from prior rounds)", "", "```markdown", body[-4000:], "```", ""]
+        L += [f"## Your {NOTES_NAME} (carried from prior rounds)", "", "```markdown", body[-4000:], "```", ""]
         if notes_stale:
             L += [
-                "> ⚠️ You did NOT update `docs/iteration_notes.md` last round — you are losing your own "
+                f"> ⚠️ You did NOT update `{NOTES_NAME}` last round — you are losing your own "
                 "findings across the round boundary. THIS ROUND: after each change, append what you "
                 "changed, what the verdict showed, and your next hypothesis.",
                 "",
             ]
     else:
         L += [
-            "## Your iteration_notes.md is EMPTY",
+            f"## Your {NOTES_NAME} is EMPTY",
             "",
-            "Create `submission/docs/iteration_notes.md` and append to it EVERY round: what you changed, "
+            f"Create `{NOTES_NAME}` (workspace root, outside submission/ so editing it never changes the "
+            "graded compiler) and append to it EVERY round: what you changed, "
             "what the grader verdict said, and your next hypothesis. It is your only cross-round memory.",
             "",
         ]
@@ -362,10 +367,9 @@ def build(run_dir: Path, ws: Path, rnd: int, *, notes_stale: bool = False) -> st
 
 
 def _notes_hash(ws: Path) -> str:
-    notes = ws / "submission" / "docs" / "iteration_notes.md"
-    if not notes.is_file():
-        return ""
-    txt = notes.read_text(encoding="utf-8", errors="replace")
+    from ..iteration_notes import read_notes
+
+    txt = read_notes(ws)
     return hashlib.sha256(txt.encode("utf-8")).hexdigest() if txt.strip() else ""
 
 

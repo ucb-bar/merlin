@@ -48,14 +48,20 @@ def _failed_without_results(update: dict) -> bool:
     return isinstance(update.get("grade_error"), dict) and not update.get("per_capsule") and "model_gate" not in update
 
 
-def publish(path: Path, update: dict) -> dict:
-    """Atomically merge capsule and model results without either writer erasing the other."""
+def publish(path: Path, update: dict, *, expect: Callable[[dict], bool] | None = None) -> dict | None:
+    """Atomically merge capsule and model results without either writer erasing the other.
+
+    ``expect(previous)`` guards a late update of the grade already shown (an advisory projection):
+    when it returns False the file is left as it is and None is returned.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     lock = path.parent / ".verdict.lock"
     with lock.open("a+b") as handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         try:
             previous = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+            if expect is not None and not expect(previous):
+                return None
             advisory_only = bool(update) and set(update) <= {"operator_epoch_notice", "package_failure_notice"}
             if _failed_without_results(update) and previous.get("per_capsule"):
                 # A grade that aborted before any test case finished carries no results. Keep the last

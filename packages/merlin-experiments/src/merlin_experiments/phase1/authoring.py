@@ -114,9 +114,9 @@ def finalize_report(
             if model_report
             else "   and its body honestly reflects the verified per-capsule pass + oracle tiers.\n"
         )
-        + "2. Update `submission/docs/iteration_notes.md` with the final converged state.\n"
+        + "2. Update `ITERATION_NOTES.md` (workspace root) with the final converged state.\n"
         + "DO NOT modify manifest.yaml, mlir_oot/, or any code — the package is frozen-pending and must\n"
-        + "keep passing. Touch only REPORT.md and docs/.\n"
+        + "keep passing. Touch only REPORT.md, docs/ and ITERATION_NOTES.md.\n"
     )
     tpath = run_dir / "rounds" / "finalize.transcript.jsonl"
     tpath.parent.mkdir(parents=True, exist_ok=True)
@@ -712,12 +712,10 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             )
             break
 
-        from . import joint_epochs
+        from . import joint_handoff
 
-        if joint and joint_epochs.stop_reason(run_dir) is not None:
-            from .joint_handoff import checkpoint
-
-            verdict = checkpoint(ws, run_dir, rnd)
+        if joint and joint_handoff.stop(run_dir)[0] is not None:  # epoch stop or the freeze: no new checks
+            verdict = joint_handoff.checkpoint(ws, run_dir, rnd)
         else:
             verdict = GR.post_turn_grade(
                 _driver_grade_receipt[0],

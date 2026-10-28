@@ -32,3 +32,17 @@ def cert_already_executed(verdict, cert_tier) -> bool:
     """
     tiers = verdict.get("oracle_tiers") if isinstance(verdict, dict) else None
     return isinstance(cert_tier, str) and isinstance(tiers, list) and cert_tier in tiers
+
+
+def hydrated(ws, verdict):
+    """``verdict`` with each compact index row reopened to its full public row.
+
+    A broker's verdict lists compact rows whose complete record (``tier_boundary`` among it) lives in
+    the workspace case store under a content digest (:mod:`..tools.result_details`). Reading the compact
+    row dropped every L3 boundary observation, so no physical pass could join its L2 record: measured on
+    fresh7ref, 227 passed gSIM jobs were retired as unattributable and re-run up to four times. A row
+    whose detail cannot be reopened (or whose digest differs) stays as it was: nothing is invented.
+    """
+    from ..tools import result_details
+
+    return result_details.hydrate(verdict, workspace=ws) if isinstance(verdict, dict) and ws is not None else verdict

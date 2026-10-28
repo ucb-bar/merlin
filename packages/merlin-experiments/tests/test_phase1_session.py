@@ -718,6 +718,58 @@ def test_treatment_gets_authored_bundle_and_resumes_without_restaging(project, m
     assert observed[0][1] == observed[1][1]
 
 
+def test_reference_guidance_reaches_fresh_author_and_resumes_as_sealed_prior(project, monkeypatch):
+    from merlin_experiments.phase1.brokers.selfcheck import _submission_digest
+    from merlin_experiments.phase1.feedback import reference_experiments as reference
+
+    from merlin.common.digest import sha256_file
+    from merlin.verify.lean_contract import document_digest
+
+    _external_substitutes(monkeypatch)
+    context = dict(compiler_sha256=_submission_digest(project / "unstarted"), source_sha256="a" * 64,
+                   environment_sha256="b" * 64, reference_sha256="c" * 64, visibility="public",
+                   evaluator=dict(identity="fixture-owner", sha256="d" * 64))
+    task = dict(task_id="schedule-consumer", kind="adapter_gap", status="blocked",
+                summary="Connect the scheduling dialect to actual emission", goals=["schedule.consumed"],
+                evidence=[dict(status="unknown", pointer="/gaps/0", value="RAW_EVIDENCE_CANARY")],
+                hypotheses=[dict(summary="A source/effect adapter may enable existing passes", basis="inferred")],
+                requests=[], acceptance=dict(mechanism_checks=["emitted_change"], held_out_required=True),
+                next_action=dict(route="adapter", action="construct_reconstruction_adapter", gaps=["binding.adapter"]))
+    packet = dict(schema=reference.PACKET_SCHEMA, context=context,
+                  execution_context_identity=document_digest(context), tasks=[task])
+    packet["identity"] = document_digest(packet)
+    packet_path = project / "reference-packet.json"
+    packet_path.write_text(json.dumps(packet))
+    selection = project / "reference-selection.json"
+    selection.write_text(json.dumps(dict(schema=reference.SCHEMA, current_context=context,
+        packet=dict(path=str(packet_path), sha256=sha256_file(packet_path)))))
+    sha = sha256_file(selection)
+    observed = []
+
+    def continuation(prepared):
+        prepared.verify_inputs()
+        path = prepared.workspace / "REFERENCE_EXPERIMENTS.json"
+        raw = path.read_bytes()
+        assert raw == (prepared.run_dir / path.name).read_bytes()
+        assert len(raw) <= 64 << 10 and b"RAW_EVIDENCE_CANARY" not in raw
+        assert "schedule.consumed" in raw.decode()
+        assert "REFERENCE_EXPERIMENTS.json" in (prepared.workspace / "TASK.md").read_text()
+        observed.append(raw)
+        (prepared.workspace / "submission/backend.py").write_text("# newly authored compiler\n")
+        guidance = reference.project(current_compiler_sha256=_submission_digest(prepared.workspace / "submission"))
+        assert guidance["status"] == "prior_reference_guidance"
+        assert guidance["required_selfchecks"] == []
+        return 0
+
+    with reference.invocation(selection, sha):
+        for resuming in (False, True):
+            request = _request(project, resume=resuming)
+            request = dataclasses.replace(request, options=dataclasses.replace(request.options,
+                reference_experiments=str(selection), reference_experiments_sha256=sha))
+            assert _run(request, continuation) == 0
+    assert observed[0] == observed[1]
+
+
 def test_admission_observation_order_remains_source_then_snapshot_task_receipt_probe(project, monkeypatch):
     _external_substitutes(monkeypatch)
     from merlin_experiments.phase1 import run_inputs, treatments
@@ -1055,7 +1107,8 @@ def test_guard_exhaustion_refuses_before_workspace_materialization(project, monk
 
     _external_substitutes(monkeypatch)
     record = {'selected': True, 'status': 'unavailable', 'reason': 'inotify_watch_limit',
-              'resource_errno': 28, 'fallback': 'Full independent snapshot payload and path verification remains required.'}
+              'resource_errno': 28,
+              'fallback': 'Full independent snapshot payload and path verification remains required.'}
     def refuse():
         raise preflight.SnapshotGuardUnavailable(record)
     monkeypatch.setattr(preflight, 'require_snapshot_guards', refuse)

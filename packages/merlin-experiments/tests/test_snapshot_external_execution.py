@@ -186,6 +186,7 @@ def test_sealed_external_model_transport_reaches_only_bound_child(snapshot, monk
     executor.inputs = object()
     monkeypatch.setattr(M.C, "_inputs_record", lambda value: {})
     executor.owner.record = lambda: {}
+    executor.owner._verify = lambda: None
     monkeypatch.setenv(S.ENV, S.MODE)
     spec = tmp_path / "model.json"
     spec.write_text(json.dumps({"package_dir": str(pkg.directory), "target": "fixture"}))

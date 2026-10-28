@@ -52,6 +52,7 @@ Details: [reference/trust.md](reference/trust.md).
 
 Use complete same-provider, same-model, same-ROI cycles for provisional A/B comparisons; preserve
 uncertainty. Seek admitted public witnesses to distinguish uncertain mechanisms. Only matched
-measurements establish a measured speedup in their hardware domain. UNKNOWN stays outside cycle
-rankings, while structural exploration and unrelated compiler work continue. Record the evidence
+measurements establish a measured speedup in their hardware domain. Where the complete model has
+not run, decide on the case's calibrated `fast_estimate` (labelled, with its band) and revert if a
+complete estimate or measurement later disagrees. Record the evidence
 and outstanding questions; background model improvements apply to future requests.

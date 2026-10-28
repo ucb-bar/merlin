@@ -33,6 +33,9 @@ def receipt(document):
 class Transport:
     def __init__(self, fd, document, executor):
         self.fd, self.document, self.executor = fd, document, executor
+        from .model_storage_completion import ModelStorageReturn
+
+        self.storage_return = ModelStorageReturn(document['host_sources'], document.get('storage_completion_key'))
 
     @property
     def argv(self):
@@ -42,14 +45,19 @@ class Transport:
     def pass_fds(self):
         return (self.fd,)
 
-    def verify_result(self, result):
+    def launched(self, process, command):
+        self.storage_return.launched(process, command)
+
+    def verify_result(self, result, *, completed_process=None):
         d = self.document
+        self.executor.owner._verify()
         if (S.active_snapshot() is not self.executor
                 or S.source_identity(d["candidate"]) != d["candidate_sha256"]
                 or C._pin(d["spec"]["path"]) != d["spec"]
+                or self.executor.owner.record() != d['owner']
                 or result.get(FIELD) != receipt(d)):
             raise ValueError("external model result lost its admitted snapshot/spec/receipt")
-        return result
+        return self.storage_return.verify_result(result, completed_process)
 
 
 @contextlib.contextmanager
@@ -66,6 +74,8 @@ def prepare(*, spec_path, environment, package_dir):
     library = active_compiler_library()
     editable = full.selected()
     boundary = C.resources.active_resource_boundary()
+    from .model_storage_completion import implementation_pins
+
     document = {"schema": SCHEMA, "parent": C._process(os.getpid()),
         "spec": C._pin(spec_path), "environment": invocation_record.environment_identity(environment),
         "candidate": str(executor.candidate), "candidate_sha256": executor.source_sha256,
@@ -77,7 +87,8 @@ def prepare(*, spec_path, environment, package_dir):
         "compiler_library": None if library is None else library.record(),
         "full_compiler": None if editable is None else editable.record(),
         "python": C._pin(Path(sys.executable).resolve()),
-        "host_sources": [C._pin(Path(module.__file__)) for module in (C, S, sys.modules[__name__])],
+        "host_sources": [C._pin(Path(module.__file__)) for module in (C, S, sys.modules[__name__])] + implementation_pins(),
+        "storage_completion_key": os.urandom(32).hex(),
         "work_root": str(Path(spec_path).resolve().parent / "compiler"), "resources": None}
     if boundary is not None:
         document["resources"] = {"cpu_ids": boundary.cpu_ids, "ram_bytes": boundary.ram_bytes,
@@ -113,7 +124,9 @@ def read_selection(fd, *, spec_path, spec_bytes):
             or document["environment"] != invocation_record.environment_identity(os.environ)
             or document["python"] != C._pin(Path(sys.executable).resolve())):
         raise ValueError("external model child parent/spec/environment identity changed")
-    expected = [C._pin(Path(module.__file__)) for module in (C, S, sys.modules[__name__])]
+    from .model_storage_completion import implementation_pins
+
+    expected = [C._pin(Path(module.__file__)) for module in (C, S, sys.modules[__name__])] + implementation_pins()
     if document["host_sources"] != expected or S.source_identity(document["candidate"]) != document["candidate_sha256"]:
         raise ValueError("external model child host or compiler source changed")
     return document
@@ -138,6 +151,9 @@ def restore(fd, *, spec_path, spec_bytes):
             or spec.get("target") != target.target or spec.get("package_dir") != document["candidate"]):
         raise ValueError("external model job changed target or compiler")
     with contextlib.ExitStack() as stack:
+        from .model_storage_completion import signing_scope
+
+        stack.enter_context(signing_scope(document.get('storage_completion_key')))
         editable = document["full_compiler"]
         selected_full = None if editable is None else full.select(
             editable["root"], editable["manifest_path"], editable["manifest_sha256"])

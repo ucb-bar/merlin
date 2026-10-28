@@ -161,6 +161,8 @@ def _dispatch(service, request, request_id, *, deadline, proof_root, package_sha
             "merlin.common_compiler_substrate.v13",
             "merlin.common_compiler_substrate.v14",
             "merlin.common_compiler_substrate.v15",
+            "merlin.common_compiler_substrate.v16",
+            "merlin.common_compiler_substrate.v17",
         ):
             raise FileNotFoundError("common check was not admitted by the original compiler profile")
         method = service.check if request["action"] == "common-check" else service.apply

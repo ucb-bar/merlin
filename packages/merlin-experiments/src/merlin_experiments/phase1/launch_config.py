@@ -241,6 +241,7 @@ def _check_author(document: dict) -> None:
     author = document["author"]
     if any(key in author for key in ("token_target", "token_reserve", "token_admission", "token_turn_allowance")):
         from types import SimpleNamespace
+
         from .telemetry.token_budget import selection
 
         try:
@@ -480,6 +481,10 @@ def _argv(document: dict, x: Callable[[str], str], run_id: str) -> tuple[str, ..
         pairs.append(("--operator-errata", x(document["errata"]["path"])))
     if document.get("instruction_selection"):
         pairs.append(("--instruction-selection", x(document["instruction_selection"]["path"])))
+    if document.get("reference_experiments"):
+        selection = document["reference_experiments"]
+        pairs += [("--reference-experiments", x(selection["path"])),
+                  ("--reference-experiments-sha256", selection["sha256"])]
     if origin["seed_submission"] is not None:
         pairs.append(("--seed-submission", x(origin["seed_submission"])))
     launcher = document["launcher"]
@@ -506,6 +511,9 @@ def _pins(config: LaunchConfig, x: Callable[[str], str]) -> dict[str, tuple[str,
     if selection:
         pins["instruction_selection"] = (x(selection["path"]), selection["sha256"])
         pins["instruction_selection.approval"] = (x(selection["approval"]["path"]), selection["approval"]["sha256"])
+    selection = document.get("reference_experiments")
+    if selection:
+        pins["reference_experiments"] = (x(selection["path"]), selection["sha256"])
     if document.get("errata"):
         pins["errata"] = (x(document["errata"]["path"]), document["errata"]["sha256"])
     release = config.release or {}

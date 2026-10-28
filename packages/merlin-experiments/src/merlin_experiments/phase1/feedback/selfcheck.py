@@ -43,6 +43,8 @@ from merlin_experiments.phase1.context import (
     resolve_context,
 )
 from merlin_experiments.phase1.feedback import qa as _qc
+from . import selfcheck_progress as SP
+from .result_details import compact_document
 from merlin_experiments.phase1.feedback.candidate_observations import _shape_coverage, diagnostics_cli
 from merlin_experiments.phase1.feedback.dispatch import REQUIRED_SIM
 from merlin_experiments.phase1.feedback.selfcheck_results import (
@@ -165,87 +167,14 @@ def _atomic_json(path: Path, doc: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     try:
-        tmp.write_text(json.dumps(doc, sort_keys=True), encoding="utf-8")
+        tmp.write_text(json.dumps(compact_document(doc, workspace=Path.cwd(), namespace="selfcheck"), sort_keys=True), encoding="utf-8")
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
 
 
-def _progress_snapshot(cb_root: Path, *, expected: int, started_ns: int) -> dict:
-    """A deliberately small, golden-free view of durable per-capsule results.
-
-    ``run_capsule`` writes ``capsule_result.json`` as soon as one worker finishes. A suite may still
-    spend another half hour waiting for a few cycle-cap cases, so hiding those durable results until
-    ``grade`` returns makes the compiler loop needlessly blind. This snapshot exposes only public
-    capsule names and their already-agent-visible status; numeric reference values never enter it.
-    """
-    rows: list[dict] = []
-    for result_path in sorted(Path(cb_root).glob("*/capsule_result.json")):
-        try:
-            result = json.loads(result_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue  # writer still publishing; the next snapshot will see it
-        if not isinstance(result, dict):
-            continue
-        row = {
-            "capsule": str(result.get("capsule") or result_path.parent.name),
-            "status": str(result.get("status") or "unknown"),
-        }
-        # Raw whole-model graph tiers do not qualify the submitted compiler's
-        # artifact. Model progress keeps its legacy status-only projection.
-        model = result.get("kind") == "model" or any(
-            key in result
-            for key in ("model_execution_check", "candidate_native_model_check", "candidate_native_execution")
-        )
-        recorded = result.get("tiers")
-        if not model and isinstance(recorded, dict):
-            tiers = {
-                tier: record["status"]
-                for tier, record in recorded.items()
-                if tier in {"L0", "L1", "L2", "L3"}
-                and isinstance(record, dict)
-                and isinstance(record.get("status"), str)
-                and record.get("status") in {"pass", "fail", "unverified", "unavailable", "incomplete", "skipped"}
-            }
-            if tiers:
-                row["tiers"] = tiers
-        rows.append(row)
-    counts: dict[str, int] = {}
-    for row in rows:
-        status = row["status"]
-        counts[status] = counts.get(status, 0) + 1
-    finished = len(rows)
-    return {
-        "status": "running",
-        "started_at_unix_ns": int(started_ns),
-        "updated_at_unix_ns": time.time_ns(),
-        "n_expected": int(expected),
-        "n_finished": finished,
-        "n_remaining": max(0, int(expected) - finished),
-        "counts": counts,
-        "per_capsule": rows,
-        "note": (
-            "Incremental self-check progress from completed capsule records. This is not a final "
-            "verdict and contains no golden/reference values. Reported tiers are observed public "
-            "operator screens, not full-case certification; raw model tiers are omitted."
-        ),
-    }
-
-
-def _progress_publisher(
-    path: Path, cb_root: Path, *, expected: int, started_ns: int, stop: threading.Event, poll_s: float = 0.5
-) -> None:
-    """Continuously publish changing progress until the grade's final roll-up is available."""
-    last_rows = None
-    while not stop.is_set():
-        doc = _progress_snapshot(cb_root, expected=expected, started_ns=started_ns)
-        if doc["per_capsule"] != last_rows:
-            _atomic_json(path, doc)
-            last_rows = doc["per_capsule"]
-        stop.wait(poll_s)
-    doc = _progress_snapshot(cb_root, expected=expected, started_ns=started_ns)
-    doc["status"] = "grading_complete"
-    _atomic_json(path, doc)
+# Per-case progress (finished rows, and provisional rows once numerics are decided): selfcheck_progress.
+_progress_snapshot, _progress_publisher = SP.progress_snapshot, SP.progress_publisher
 
 
 def _suite_size(capsules_root: Path) -> int:
@@ -587,7 +516,7 @@ def _model_layers(
             " Candidate whole-program rows use only submitted-artifact verification; "
             "the runner-owned functional layer screen cannot pass them."
         )
-    txt = json.dumps(report, indent=2)
+    txt = json.dumps(compact_document(report, workspace=Path.cwd(), namespace="selfcheck"), indent=2)
     print(txt)
     if out_path:
         Path(out_path).write_text(txt)
@@ -839,7 +768,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         adapters, sim = _adapters(a.sim, _tgt, _sim_via, **readback_kwargs(context))
     except ValueError as exc:
         out = {"error": str(exc), "all_pass": False, "sim": a.sim, "required_rtl_engine": _required_rtl_engine()}
-        txt = json.dumps(out, indent=2)
+        txt = json.dumps(compact_document(out, workspace=Path.cwd(), namespace="selfcheck"), indent=2)
         print(txt)
         if a.out:
             Path(a.out).write_text(txt)
@@ -857,7 +786,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             # Fail CLOSED and leave the reason on disk. Exiting without writing --out is what produced
             # the broker's contentless "no verdict produced".
             out = {"error": _tier_err, "all_pass": False, "sim": sim, "tiers_requested": a.tiers}
-            txt = json.dumps(out, indent=2)
+            txt = json.dumps(compact_document(out, workspace=Path.cwd(), namespace="selfcheck"), indent=2)
             print(txt)
             if a.out:
                 Path(a.out).write_text(txt)
@@ -1002,7 +931,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             "detail": f.get("detail"), **package_rejection.namespace_hint(f),
             "note": selfcheck_notes.package_failure_note(f),
         }
-        txt = json.dumps(out, indent=2)
+        txt = json.dumps(compact_document(out, workspace=Path.cwd(), namespace="selfcheck"), indent=2)
         print(txt)
         if a.out:
             Path(a.out).write_text(txt)
@@ -1313,7 +1242,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             "score_integrity_fault": True,
             "error": "self-check score does not match the selected public capsules and result rows",
         }
-        txt = json.dumps(out, indent=2)
+        txt = json.dumps(compact_document(out, workspace=Path.cwd(), namespace="selfcheck"), indent=2)
         print(txt)
         if a.out:
             Path(a.out).write_text(txt)
@@ -1337,7 +1266,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 "passing operation suite. Run the admitted operation suite first; use --model-layers "
                 "for a separate functional layer diagnostic. A gated model is not a compiler pass.",
             }
-            txt = json.dumps(out, indent=2)
+            txt = json.dumps(compact_document(out, workspace=Path.cwd(), namespace="selfcheck"), indent=2)
             print(txt)
             if a.out:
                 Path(a.out).write_text(txt)
@@ -1361,7 +1290,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             "grade wrote results somewhere this reader did not look. Report this; it is not "
             "something your dialect can fix.",
         }
-        txt = json.dumps(out, indent=2)
+        txt = json.dumps(compact_document(out, workspace=Path.cwd(), namespace="selfcheck"), indent=2)
         print(txt)
         if a.out:
             Path(a.out).write_text(txt)
@@ -1486,7 +1415,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 "reason": f"graded-artifact census failed: {type(exc).__name__}: {str(exc)[:200]}",
             }
     out = performance_brief.attach(selection.report(out), rows, artifact_root=a.artifact_root or None)
-    txt = json.dumps(out, indent=2)
+    txt = json.dumps(compact_document(out, workspace=Path.cwd(), namespace="selfcheck"), indent=2)
     print(txt)
     if a.out:
         _atomic_json(Path(a.out), out)

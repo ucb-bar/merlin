@@ -155,6 +155,8 @@ class Reader:
         self.priority = False
         self.notices: set[str] = set()
         self._documents: dict[str, tuple[tuple, Any]] = {}
+        self._detail_digests: dict[str, tuple[tuple, str]] = {}
+        self._result_indexes: dict[str, tuple[dict, dict]] = {}
         self._extracts: dict[tuple[str, str], tuple[tuple, Any]] = {}
         self._tails: dict[str, JsonlTail] = {}
 
@@ -207,6 +209,10 @@ class Reader:
             # Changed while read: the next refresh reads it whole.
             return self._previous(cached) if stale_ok else None
         self._documents[key] = (ident, document)
+        if path.parent.parent.name == "cases" and path.parent.parent.parent.name == "qa":
+            from hashlib import sha256
+
+            self._detail_digests[key] = (ident, sha256(data).hexdigest())
         return document
 
     def _previous(self, cached: tuple[tuple, Any] | None) -> Any:
@@ -243,6 +249,8 @@ class Reader:
             return cached[1]
         held = self._documents.get(str(path))
         if held and held[0] == ident:
+            if isinstance(held[1], dict) and held[1].get("result_index"):
+                return digest(self._details(held[1], path))
             value = digest(held[1])
             self._extracts[slot] = (ident, value)
             return value
@@ -268,17 +276,44 @@ class Reader:
             document = None
         if self.identity(path) != ident:
             return self.WAIT
-        value = digest(document)
-        self._extracts[slot] = (ident, value)
+        value = digest(self._details(document, path))
+        if not (isinstance(document, dict) and document.get("result_index")):
+            self._extracts[slot] = (ident, value)
         return value
 
     def json(self, path: Path, *, limit: int = 8 << 20, stale_ok: bool = False) -> Any:
         return self._load(path, limit, json.loads, stale_ok)
 
+    def _details(self, document, path):
+        """Expand public result indexes using this reader's ordinary IO budget."""
+        if isinstance(document, dict) and document.get("result_index"):
+            from ...phase1.feedback.result_details import hydrate
+
+            cached = self._result_indexes.get(str(path))
+            if cached and cached[0] is document:
+                return cached[1]
+            expanded = hydrate(document, document_path=path, reader=self.result_detail)
+            pending = any(
+                isinstance(row, dict) and row.get("detail") and row is opened
+                for key in ("per_capsule", "cases")
+                for row, opened in zip(document.get(key) or (), expanded.get(key) or ())
+            )
+            if not pending:
+                self._result_indexes[str(path)] = (document, expanded)
+            return expanded
+        return document
+
+    def result_detail(self, path: Path, *, limit: int):
+        """Public JSON plus its original raw-byte digest, charged to this reader."""
+        value = self.document(path, limit=limit)
+        pinned = self._detail_digests.get(str(path))
+        digest = pinned[1] if pinned and pinned[0] == self.identity(path) else None
+        return value, digest
+
     def document(self, path: Path, *, limit: int = 8 << 20, stale_ok: bool = False) -> dict | None:
         """A JSON object, or None for anything else (``stale_ok``: see :meth:`_previous`)."""
         value = self.json(path, limit=limit, stale_ok=stale_ok)
-        return value if isinstance(value, dict) else None
+        return self._details(value, path) if isinstance(value, dict) else None
 
     def parsed(self, path: Path, parse, *, limit: int = 8 << 20) -> Any:
         """``parse(bytes)`` of one file, cached by stat identity like :meth:`json` (one ``parse`` per path:

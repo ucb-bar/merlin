@@ -183,6 +183,9 @@ def build(rows, *, workspace=None, limit: int = LIMIT) -> dict | None:
     """The cluster section for a verdict's ``per_capsule`` rows; None when no row failed."""
     members = _inventory(workspace)
     failed = [row for row in rows or () if _failed(row) and (members is None or row["capsule"] in members)]
+    from .result_details import load_row
+
+    failed = [load_row(row, workspace=workspace) for row in failed]
     if not failed:
         return None
     groups: dict[tuple, list] = {}

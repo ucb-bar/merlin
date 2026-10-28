@@ -2,12 +2,14 @@
 """Bounded read-only Linux resource observations for an operator terminal.
 
 ``Sampler(task, operator_private=False).sample()`` returns JSON-compatible data.
-No commands, locks, or writes are performed. Resource observations are display
+No commands or writes are performed; held flocks are seen only
+through non-blocking shared probes that are released at once. Resource observations are display
 telemetry, never numerical or performance evidence. Core utilization comes from
 /proc/stat; thread last_cpu is only a point sample. Opaque worker attribution
 stays unknown. ``proc_root`` and ``cgroup_root`` support harmless fixtures.
 """
 
+import fcntl
 import hashlib
 import itertools
 import json
@@ -80,70 +82,28 @@ def cpu_counters(proc_root=Path("/proc")):
     return result
 
 
-#: How long one reading of ``/proc/locks`` answers every caller. A run's read leases put ~10^5
-#: entries there (11k per grading worker), and the kernel walks the list from its start on every
-#: read() of the file, so one reading costs seconds; a console refreshing every second re-read it
-#: twice per refresh (63 s each with 8 KiB reads at 267k entries) and stopped advancing.
-LOCKS_MAX_AGE_S = 20.0
-#: Bytes per read() of ``/proc/locks``: few large reads, since each one restarts the kernel's walk.
-LOCKS_READ_BYTES = 4 << 20
-_LOCKS_CACHE: dict[str, tuple[float, dict]] = {}
+def held(path):
+    """Whether some process holds a flock on ``path``: a non-blocking shared probe, released at once.
 
-
-def _read_locks(proc_root):
-    result = {}
-    tail = b""
+    The CPU pool probes its own slots and waiter tickets the same way. ``/proc/locks`` is never
+    read: walking it takes the kernel's global file-lock rwsem for write, and with a run's ~10^5
+    read leases every lease operation on the host stalled behind each read. The holder's PID is
+    not observable this way and is reported as unknown."""
     try:
-        with (proc_root / "locks").open("rb", buffering=0) as stream:
-            while True:
-                chunk = stream.read(LOCKS_READ_BYTES)
-                if not chunk:
-                    break
-                lines = (tail + chunk).split(b"\n")
-                tail = lines.pop()
-                for line in lines:
-                    _lock_line(line, result)
-        _lock_line(tail, result)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
     except OSError:
-        pass
-    return result
-
-
-def _lock_line(line, result):
-    f = line.split()
-    if len(f) < 8 or b"->" in f:
-        return
+        return False
     try:
-        major, minor, inode = f[5].split(b":")
-        key = (os.makedev(int(major, 16), int(minor, 16)), int(inode))
-        result.setdefault(key, []).append({"pid": int(f[4]), "lock_kind": f[1].decode(), "mode": f[3].decode()})
-    except (ValueError, IndexError):
-        pass
-
-
-def locks(proc_root=Path("/proc"), wanted=None, *, max_age_s=LOCKS_MAX_AGE_S):
-    """``{(dev, inode): [{pid, lock_kind, mode}]}`` from ``/proc/locks``.
-
-    The file has no useful size bound (10^5 lines on a busy host); a bounded whole-file read returned
-    nothing at all once it grew past the bound. ``wanted`` (a set of ``(dev, inode)``) keeps only those.
-    One reading serves every caller for ``max_age_s`` (see :data:`LOCKS_MAX_AGE_S`); 0 reads afresh."""
-    key = str(proc_root)
-    cached = _LOCKS_CACHE.get(key)
-    if cached is None or max_age_s <= 0 or time.monotonic() - cached[0] > max_age_s:
-        cached = (time.monotonic(), _read_locks(Path(proc_root)))
-        _LOCKS_CACHE[key] = cached
-    inventory = cached[1]
-    if wanted is None:
-        return {k: list(v) for k, v in inventory.items()}
-    return {k: list(v) for k, v in inventory.items() if k in wanted}
-
-
-def lock_rows(path, inventory):
-    try:
-        s = path.stat()
-        return inventory.get((s.st_dev, s.st_ino), [])
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
     except OSError:
-        return []
+        return False
+    else:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
 
 
 def classify(argv, selection):
@@ -467,19 +427,18 @@ class Sampler:
                     cpu_attribution_basis="last_cpu is a point sample; CPU-time delta is per-thread, not per-core",
                 )
                 threads.append(row)
-        inventory = locks(self.proc_root)
         jobs = []
         pool = Path(env["MERLIN_COMPUTE_CPU_SLOTS"]) if env.get("MERLIN_COMPUTE_CPU_SLOTS") else None
         if pool:
             for cpu in assigned:
-                for held in lock_rows(pool / f"cpu-{cpu}.lock", inventory):
+                if held(pool / f"cpu-{cpu}.lock"):
                     jobs.append(
                         {
                             "kind": "cpu_lease",
                             "state": "kernel_lock_held",
                             "cpu": cpu,
-                            **held,
-                            "basis": "/proc/locks inode match; PID owner, TID unknown; assignment is not utilization",
+                            "pid": None,
+                            "basis": "non-blocking flock probe; owner PID/TID unknown; assignment is not utilization",
                         }
                     )
             try:
@@ -498,11 +457,10 @@ class Sampler:
                     continue
                 priority, queued, pid, tid = map(int, fields[:4])
                 body = document(ticket, 4096) or {}
-                held = lock_rows(ticket, inventory)
                 jobs.append(
                     {
                         "kind": "cpu_waiter",
-                        "state": "locked_wait_ticket" if held else "ticket_liveness_unknown",
+                        "state": "locked_wait_ticket" if held(ticket) else "ticket_liveness_unknown",
                         "pid": pid,
                         "tid": tid,
                         "priority": priority,
@@ -599,7 +557,7 @@ class Sampler:
                     "utilization_basis": "/proc/stat busy delta; includes all work on this core",
                     "threads": [t for t in threads if t["last_cpu"] == cpu],
                     "sampled_tids": [t["tid"] for t in threads if t["last_cpu"] == cpu],
-                    "lease_owner_pids": [j["pid"] for j in jobs if j["kind"] == "cpu_lease" and j["cpu"] == cpu],
+                    "lease_owner_pids": [j["pid"] for j in jobs if j["kind"] == "cpu_lease" and j["cpu"] == cpu and j["pid"]],
                 }
             )
         self.previous_time, self.previous_cpus, self.previous_threads = started, counters, next_threads

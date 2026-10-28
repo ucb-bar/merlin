@@ -21,13 +21,16 @@ TRAITS = {
     'memory': 'explicit_local_storage scratchpad finite_register_files explicit_buffer_ownership explicit_DMA strided_local_rows local_memory resident_operands accumulator noncoherent_cached_host device_allocations',
     'scheduling': 'multiple_outstanding async_issue persistent_configuration queues dependency_tokens finite_queues',
     'runtime': 'repeat_invocations persistent_state async_transfers device_events',
-    'workload': 'immutable_weights graph_fanout static_temporaries immutable_tensor_views convolution independent_buffers tiling affine_tile_nests repeated_encoded_stream large_functions mixed_graph ranked_tensors pointwise_epilogue multiple_live_outputs adjacent_elementwise reductions row_reductions buffer_ownership source_graph rotating_buffers split_reduction shared_input multiple_shapes',
+    'workload': 'immutable_weights graph_fanout static_temporaries immutable_tensor_views convolution dense_contraction independent_buffers tiling affine_tile_nests repeated_encoded_stream large_functions mixed_graph ranked_tensors pointwise_epilogue multiple_live_outputs adjacent_elementwise reductions row_reductions buffer_ownership source_graph rotating_buffers split_reduction shared_input multiple_shapes',
     'compiler': 'editable_compiler selected_target_adapter whole_system_objective emitted_artifacts',
 }
 ALIASES = {term: f'{ns}.{term}' for ns, terms in TRAITS.items() for term in terms.split()}
 ALIASES.update({'scalar_host': 'host.scalar', 'CPU_issued': 'submission.cpu_issued',
                 'INT8_storage': 'numeric.int8_storage', 'INT32_accumulation': 'numeric.int32_accumulation',
                 'explicit_DMA': 'memory.explicit_dma'})
+#: Named linalg products without a window: a dense contraction (a matrix or matrix-vector product).
+DENSE_CONTRACTIONS = frozenset({'linalg.matmul', 'linalg.batch_matmul', 'linalg.matvec', 'linalg.vecmat',
+                                'linalg.batch_matvec', 'linalg.matmul_transpose_a', 'linalg.matmul_transpose_b'})
 EXTENSIONS = {
     'coherent_zero_copy': ['memory.host_coherence', 'memory.acquire_release_visibility'],
     'interrupt_completion': ['runtime.completion_interrupt', 'runtime.interrupt_abi', 'runtime.race_free_wakeup'],
@@ -137,6 +140,8 @@ intentionally not inferred. Absence of these patterns leaves broader traits unkn
     for op in operations:
         if op.name.startswith('linalg.conv_'):
             values['workload.convolution'] = 'supported'
+        if op.name in DENSE_CONTRACTIONS:
+            values['workload.dense_contraction'] = 'supported'
         if op.name == 'func.return' and len(op.operands) > 1:
             values['workload.multiple_live_outputs'] = 'supported'
         iterator_types = op.attributes.get('iterator_types', op.properties.get('iterator_types'))
@@ -215,8 +220,13 @@ def select(catalog, *, capabilities, public_modules, workload=None, limit=12):
             'catalog_sha256': hashlib.sha256(json.dumps(catalog, sort_keys=True).encode()).hexdigest()}
 
 
-def prepare(workspace, run_dir, *, repo, inventory, contract_path=None):
-    """Append-only initial prompt artifact, using already staged public data."""
+def prepare(workspace, run_dir, *, repo, inventory, contract_path=None, ordering=None):
+    """Append-only initial prompt artifact, using already staged public data.
+
+``ordering`` is an explicit command-ordering selection pin ({path, sha256}) derived from the same
+facts and contract; without one a derived ``command_ordering`` section of the facts is used. Either
+settles scheduling/memory capabilities only through the fact each derivation names.
+"""
     import yaml
     path = Path(repo) / 'docs/design/joint_optimization_catalog.json'
     software = Path(workspace) / 'public_declarations/software-spec.yaml'
@@ -234,8 +244,25 @@ def prepare(workspace, run_dir, *, repo, inventory, contract_path=None):
         contract_path = Path(contract_path)
         capabilities, evidence = contract_traits(yaml.safe_load(contract_path.read_text()))
     facts_path = Path(workspace) / 'rtl_facts/facts.json'
+    provenance, ordering_provenance, ordering_bytes = {}, None, None
     if facts_path.is_file():
-        observed, origins = storage_traits(json.loads(facts_path.read_text()))
+        from .capability_facts import derive, ordering_input
+
+        document = json.loads(facts_path.read_text())
+        observed, origins = storage_traits(document)
+        capabilities.update(observed)
+        evidence.update(origins)
+        record, ordering_provenance = ordering_input(ordering, facts_document=document, facts_path=facts_path,
+                                                     contract_path=contract_path)
+        if record is not None and (ordering_provenance or {}).get('selection'):
+            # Capabilities alone do not provide the source ordering needed by an
+            # authored schedule adapter. Carry the exact checked public record
+            # into the workspace; operator filesystem/environment are private.
+            pin = ordering_provenance['selection']
+            ordering_bytes = Path(pin['path']).read_bytes()
+            if hashlib.sha256(ordering_bytes).hexdigest() != pin['sha256']:
+                raise ValueError('command ordering selection changed during public staging')
+        observed, origins, provenance = derive(document, record, ordering_provenance=ordering_provenance)
         capabilities.update(observed)
         evidence.update(origins)
     capabilities.update(software_traits(spec))
@@ -247,20 +274,35 @@ def prepare(workspace, run_dir, *, repo, inventory, contract_path=None):
         result['input_pins']['target_contract_sha256'] = hashlib.sha256(contract_path.read_bytes()).hexdigest()
     if facts_path.is_file():
         result['input_pins']['rtl_facts_sha256'] = hashlib.sha256(facts_path.read_bytes()).hexdigest()
+    if ordering_provenance is not None and ordering_provenance.get('selection'):
+        result['input_pins']['command_ordering_selection_sha256'] = ordering_provenance['selection']['sha256']
     result['trait_evidence'] = evidence
+    result['capability_provenance'] = {'ordering': ordering_provenance, 'derived': provenance}
     files = {'OPTIMIZATION_SUGGESTIONS.json': json.dumps(result, indent=2) + '\n',
              'OPTIMIZATION_CATALOG.json': json.dumps(catalog, indent=2) + '\n',
              'optimization_suggest.py': Path(__file__).read_text(),
              'OPTIMIZATION_CAPABILITIES.json': json.dumps({'traits': capabilities, 'evidence': evidence,
+                                                           'provenance': result['capability_provenance'],
                                                            'pins': result['input_pins']}, indent=2) + '\n',
              'OPTIMIZATION_API_SELECTION.json': json.dumps({'public_modules': modules}) + '\n'}
     for root in (Path(workspace), Path(run_dir)):
         for name, text in files.items():
             (root / name).write_text(text)
+        if ordering_bytes is not None:
+            target = root / 'COMMAND_ORDERING_SELECTION.json'
+            if target.exists() and target.read_bytes() != ordering_bytes:
+                raise ValueError('staged public command ordering selection changed')
+            if not target.exists():
+                target.write_bytes(ordering_bytes)
+                target.chmod(0o444)
     return ('\n## Capability-selected optimization suggestions\n\n'
             'Read `OPTIMIZATION_SUGGESTIONS.json`: supported suggestions and unknown discovery '
             'questions are separate. This is advice, not pass order, legality or performance proof. '
             'The initial prompt has no workload IR and cannot establish its prerequisites. '
+            'When selected, `COMMAND_ORDERING_SELECTION.json` carries the exact public RTL-derived '
+            'ordering record for schedule law construction; the convolution/dense epoch recipes '
+            'discover it without access to operator paths or environment. This is source evidence, '
+            'not a selected schedule or permission to ignore dependencies. '
             'Recompute for the actual public source with `python optimization_suggest.py '
             '--ir PATH --output suggestions.json`. Only selected API modules are import grants; '
             'design starter sets grant no new implementation. Missing declarations remain unknown. '

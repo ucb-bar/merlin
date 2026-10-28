@@ -68,6 +68,34 @@ _PROGRAM_OPS = frozenset({"model", "component_program"})
 #: Families whose producer can carry an epilogue in its readout.
 _PRODUCERS = frozenset({"contraction", "matrix_vector", "convolution", "attention"})
 _SKILLS = Path(__file__).with_name("author_skills")
+#: The discovery command for composition routes (the heavy-pass-recipes skill's script).
+COMPOSITION_COMMAND = "python .agents/skills/heavy-pass-recipes/scripts/composition_routes.py --case NAME"
+#: Source-composition request options a model or program check accepts (``source_composition.json``).
+SOURCE_COMPOSITION_OPTIONS = (
+    "prepack_weights",
+    "share_exact_tensor_preparations",
+    "dense_input_views",
+    "propagate_layouts",
+    "reuse_intermediate_storage",
+    "shared_input_siblings",
+    "independent_heads",
+    "op_profile",
+)
+COMPOSITION_TEXT = (
+    "Compositions: the library's composition catalog (`merlin.compile.composition_catalog."
+    "composition_capabilities`) covers producer -> consumer chains: a product feeding bias, scale, "
+    "activation, requantization or a pool, residual adds, sibling products sharing an input and per-head "
+    f"slices. `{COMPOSITION_COMMAND}` lists the routes that apply to one case, each with its catalog rows, "
+    "a library `module:symbol`, whether `submission/` imports it and a recipe or contract command; "
+    "self-check rows carry the same pointer as `optimization_next.composition`. Model and program checks "
+    "also accept `submission/source_composition.json` requests ("
+    + ", ".join(f"`{name}`" for name in SOURCE_COMPOSITION_OPTIONS)
+    + "): the original owner applies a request only where the source proves it and keeps the ordinary "
+    "route elsewhere, and each row's `source_composition` reports what was requested, selected and "
+    "applied (`optimization_next.source_composition_request` names options a case may use). The "
+    "heavy-pass-recipes skill's `reference/source-composition.md` gives the schema. Neither a route nor "
+    "a request establishes a speedup: compare cycles on the same cases."
+)
 _MAX_BYTES = 8 << 20
 
 
@@ -390,7 +418,7 @@ def task_section(selection: dict) -> str:
     )
     if selection["prohibited_instruction_roles"]:
         text += " Principles that need an instruction role the run policy prohibits are left out."
-    return text + "\n"
+    return text + "\n\n" + COMPOSITION_TEXT + "\n"
 
 
 def stage(workspace, run_dir, *, declarations, policy=None, repo) -> dict:

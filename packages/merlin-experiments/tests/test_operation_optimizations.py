@@ -332,3 +332,34 @@ def test_no_staged_file_means_no_link(tmp_path):
     rows = [{"capsule": "mm_m64", "pass": True}]
     document = PB.attach({"per_capsule": rows}, rows, workspace=ws)
     assert "operation" not in (document["per_capsule"][0].get("optimization_next") or {})
+
+
+# --- composition routes and source-composition requests -----------------------------------------------
+
+
+def test_task_section_names_the_composition_command_and_every_request_option(tmp_path):
+    from author_skill_fixtures import load_script
+
+    routes = load_script("heavy-pass-recipes", "composition_routes")
+    assert O.SOURCE_COMPOSITION_OPTIONS == tuple(name for name, _ in routes.REQUESTS)
+    assert O.COMPOSITION_COMMAND == routes.discovery_command("NAME")
+    ws, run = _roots(tmp_path)
+    O.stage(ws, run, declarations=[matmul(64)], policy={}, repo=ROOT)
+    section = (ws / "TASK.md").read_text().split(O.HEADING)[1]
+    assert O.COMPOSITION_COMMAND in section and "submission/source_composition.json" in section
+    assert all(f"`{name}`" in section for name in O.SOURCE_COMPOSITION_OPTIONS)
+    assert "optimization_next.composition" in section and "reference/source-composition.md" in section
+    assert "speedup" in section
+
+
+def test_chain_families_point_at_the_composition_routes_recipe():
+    recipe = "heavy-pass-recipes/composition_routes.py"
+    entries = {entry["id"]: entry for entry in CATALOG["families"]}
+    for name in ("connected_chain", "elementwise_epilogue", "convolution", "attention"):
+        assert any(m["kind"] == "recipe" and m["id"] == recipe for m in entries[name]["mechanisms"]), name
+    assert any(m["id"] == recipe for m in CATALOG["general"]["mechanisms"])
+    assert "chains_have_composition_routes" in {p["id"] for p in CATALOG["general"]["principles"]}
+    requests = next(p for p in entries["connected_chain"]["principles"] if p["id"] == "source_composition_requests")
+    assert "requested, selected and applied" in requests["text"]
+    staged = O.select(CATALOG, {"connected_chain": 1})
+    assert any(m["id"] == recipe for m in staged["entries"][0]["mechanisms"])

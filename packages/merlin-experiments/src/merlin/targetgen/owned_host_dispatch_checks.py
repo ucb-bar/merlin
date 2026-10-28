@@ -117,7 +117,23 @@ def _host_call_proof(host_ir, *, assigned, output, source_composition=None):
         # The fixed host's selected wide-C-interface legalization can inline
         # the implementation into the C entry. Audit that actual entry body.
         function = wrapper
-    if source_composition is not None:
+    component_chains = []
+    if (source_composition is not None
+            and source_composition.get("schema") in {
+                "merlin.original_sibling_source_components.v1", "merlin.original_head_source_composition.v1",
+            }):
+        from .private_sibling_dispatch import borrowed_host_chain, composition_members
+
+        composition_members(source_composition, assigned=assigned)
+        siblings = [c for c in source_composition["components"]
+                    if c.get("schema") == "merlin.original_sibling_source_composition.v1"]
+        component_chains = [borrowed_host_chain(module, function, c, mandatory=_mandatory_command_blocks)
+                            for c in siblings]
+        composed = {c["physical_symbol"] for c in siblings}
+        # Head-family calls remain direct and unavoidable. Their stock shim's
+        # full slice multiplicity is independently checked at the bridge.
+        assigned = [row for row in assigned if row["symbol"] not in composed]
+    elif source_composition is not None:
         from .private_sibling_dispatch import borrowed_host_chain, composition_members
 
         composition_members(source_composition, assigned=assigned)
@@ -151,7 +167,9 @@ def _host_call_proof(host_ir, *, assigned, output, source_composition=None):
         "imported_cfg": _digest(translated),
         "generic_printer": printer_before,
         "generic_cfg": _digest(generic),
-        "mandatory_call_roster": dict(required),
+        "mandatory_call_roster": dict(required + Counter(
+            {symbol: count for chain in component_chains for symbol, count in chain["mandatory_call_roster"].items()})),
+        **({"component_chains": component_chains} if component_chains else {}),
         "scope": "actual final LLVM source-call dominance; not hardware commit trace",
     }
 
@@ -193,10 +211,12 @@ def _verify_device_custody(entry, *, artifact, llvm_ir, obj, original_symbol, ke
 
     custody = entry.get("custody")
     if source_composition is not None:
-        if not isinstance(custody, dict) or "sibling_source" not in custody:
+        role = ("head_source" if source_composition.get("schema") == "merlin.original_head_family.v1"
+                else "sibling_source")
+        if not isinstance(custody, dict) or role not in custody:
             raise ValueError("actual sibling device object lacks source-owned descriptor custody")
         # Its exact source/ABI/bridge is independently reopened by dispatch.
-        custody = {key: value for key, value in custody.items() if key != "sibling_source"}
+        custody = {key: value for key, value in custody.items() if key != role}
     original_roles = {"translation", "compilation", "rename"}
     optimized_roles = original_roles | {"optimization", "optimized_import"}
     if not isinstance(custody, dict) or set(custody) not in (original_roles, optimized_roles):

@@ -109,6 +109,11 @@ def _observed_result(row):
     from .selfcheck_results import _public_candidate_emission_failure
 
     observed = {key: row.get(key) for key in ("capsule", "status", "tiers", "numeric", "failure", "performance")}
+    from .composition_brief import from_case
+
+    composition = from_case(row)
+    if composition is not None:
+        observed["source_composition"] = composition
     if row.get("status") != "pass":
         failure = _public_candidate_emission_failure(row)
         if failure is not None:
@@ -451,6 +456,7 @@ def public_result(result):
             **failure(row),
             "tiers": {t: tier_status(record) for t, record in (row.get("tiers") or {}).items()},
             **({"performance": row["performance"]} if row.get("performance") is not None else {}),
+            **({"source_composition": row["source_composition"]} if row.get("source_composition") is not None else {}),
         }
         for name, row in sorted(result["observed"].items())
     ]

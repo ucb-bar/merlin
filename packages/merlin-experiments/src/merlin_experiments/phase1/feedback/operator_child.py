@@ -113,9 +113,13 @@ def _open_grade_entry(executor):
 
 
 def _publish(path, row):
+    from merlin.common.jsonio import readable_json
+
     temporary = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     try:
-        temporary.write_text(json.dumps(row, indent=2), encoding="utf-8")
+        # The runner's own result layout: objects indented, plain arrays compact. ``indent=2`` alone
+        # puts every element of an embedded array on its own line and runs the pure-Python encoder.
+        temporary.write_text(readable_json(row), encoding="utf-8")
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -365,5 +369,6 @@ def main(argv):
         result["operator_child_costs_s"] = completed_tier_costs(result)
         result["operator_child_spend_s"] = tier_policy.spent(target)
     result["original_compiler_child"] = receipt
-    args.operator_grade_out.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    # Process transport, read back only by the parent: compact (C encoder), never indented.
+    args.operator_grade_out.write_text(json.dumps(result), encoding="utf-8")
     return 0

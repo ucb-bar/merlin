@@ -552,8 +552,28 @@ def main(argv: list[str] | None = None) -> int:
     epoch.add_argument("--plan", type=Path, required=True, help="performance-demand plan.json")
     epoch.add_argument("--sources", type=Path, required=True, help="performance-demand sources/ directory")
     epoch.add_argument("--evidence", type=Path, required=True, help="exported Phase 0 evidence root")
+    epoch.add_argument("--chain-plan", type=Path, help="chain-demand plan.json (with --chain-sources)")
+    epoch.add_argument("--chain-sources", type=Path, help="chain-demand sources/ directory")
     epoch.add_argument("--target", required=True)
     epoch.add_argument("--output", type=Path, required=True, help="fresh directory")
+    chains = operations.add_parser(
+        "chain-demand",
+        help="derive connected chain cases (fusion, shared inputs) from captured programs' graph structure",
+    )
+    chains.add_argument(
+        "--program",
+        action="append",
+        required=True,
+        metavar="MODEL/PROGRAM=TRACE@SHA256",
+        help="pinned frontend trace of one captured program (value-free structure only)",
+    )
+    chains.add_argument("--policy", type=Path, required=True, help="merlin.phase0.chain_demand_policy.v1")
+    chains.add_argument("--rtl-facts", type=Path, required=True, help="exact extraction artifact (tile edge)")
+    chains.add_argument("--descriptor", type=Path, required=True, help="target descriptor (claim models, binding)")
+    chains.add_argument("--recipe", type=Path, required=True, help="Phase 0 recipe (datapath)")
+    chains.add_argument("--performance-template", type=Path, required=True, help="shared performance template")
+    chains.add_argument("--software-spec", type=Path, required=True, help="selected software spec")
+    chains.add_argument("--output", type=Path, required=True, help="fresh directory")
     heldout = operations.add_parser(
         "heldout-layers",
         help="OPERATOR: write the private held-out layer-shape file from per-program inventories",
@@ -690,6 +710,24 @@ def main(argv: list[str] | None = None) -> int:
                     raise SpecError(str(exc)) from exc
                 print(json.dumps(result, indent=2))
                 return 0
+            if args.operation == "chain-demand":
+                from .phase0.chain_corpus import derive_chains
+
+                try:
+                    result = derive_chains(
+                        args.program,
+                        policy=args.policy,
+                        facts=args.rtl_facts,
+                        descriptor=args.descriptor,
+                        recipe=args.recipe,
+                        performance_template=args.performance_template,
+                        software_spec=args.software_spec,
+                        output=args.output,
+                    )
+                except ValueError as exc:
+                    raise SpecError(str(exc)) from exc
+                print(json.dumps(result, indent=2))
+                return 0
             if args.operation == "performance-epoch":
                 from .phase0.performance_corpus import assemble_epoch
 
@@ -701,6 +739,8 @@ def main(argv: list[str] | None = None) -> int:
                         output=args.output,
                         evidence_root=args.evidence,
                         target=args.target,
+                        chain_plan=args.chain_plan,
+                        chain_sources=args.chain_sources,
                     )
                 except ValueError as exc:
                     raise SpecError(str(exc)) from exc

@@ -155,7 +155,7 @@ def _diagnostic_request(request: Path, *, request_bytes=None) -> bool:
     try:
         body = json.loads(request.read_bytes() if request_bytes is None else request_bytes)
         return bool(
-            body.get("action") == "mechanism-question"
+            body.get("action") in ("mechanism-question", "reference-analysis")
             or body.get("caller_layout")
             or any(body.get(key) for key in _forwarded_probes())
         )
@@ -163,18 +163,49 @@ def _diagnostic_request(request: Path, *, request_bytes=None) -> bool:
         return False  # The unchanged handler reports the malformed request.
 
 
-def _lane_admits(active, *, diagnostic: bool, variant: bool, ordinary_capacity: int, variant_capacity: int) -> bool:
+def _lane_admits(
+    active, *, diagnostic: bool, variant: bool, ordinary_capacity: int, variant_capacity: int, overflow: bool = False
+) -> bool:
     """Whether one more handler of this kind may start beside the ``active`` ones.
 
     Up to ``ordinary_capacity`` numerical requests run at once plus one diagnostic probe. Variant
     requests share the numerical lane, at most ``variant_capacity`` of them, so a queue of variants
     never holds every slot a ``submission/`` check could use. A request skipped here stays queued in
-    arrival order without blocking a later request of another kind.
+    arrival order without blocking a later request of another kind. ``overflow`` (see
+    :func:`_overflow_admits`) lets one numerical request start past the ordinary lanes.
     """
     active = tuple(active)
-    if len(active) >= ordinary_capacity + 1:
-        return False
-    if sum(job["diagnostic"] == diagnostic for job in active) >= (1 if diagnostic else ordinary_capacity):
-        return False
+    if diagnostic:
+        return sum(job["diagnostic"] for job in active) < 1
     variants = sum(job["variant"] and not job["diagnostic"] for job in active)
-    return not (variant and not diagnostic and variants >= variant_capacity)
+    if variant and variants >= variant_capacity:
+        return False
+    return overflow or sum(not job["diagnostic"] for job in active) < ordinary_capacity
+
+
+def _author_cpu_backlog() -> int | None:
+    """Author-class leases queued in the shared compute pool now; ``None`` without a pool."""
+    from merlin.common.cpu_pool import AUTHOR, queued_waiters
+
+    return queued_waiters(AUTHOR)
+
+
+def _overflow_admits(active, *, ordinary_capacity: int, author_backlog: int | None, pool: int) -> bool:
+    """Whether one author request may start past the ordinary lanes now.
+
+    A handler leases a CPU only for its build and simulator steps and spends the rest of its life
+    copying, starting interpreters and waiting on children, so a lane count equal to the CPU count
+    keeps only part of the pool busy with author work. Measured on one run: with every lane held and
+    96 requests queued at the dispatcher, self-checks used about 8 of 20 reserved CPUs while
+    background grading and promotions used 7 and 4 sat idle. A request queued here is invisible to
+    the pool's priority order, so those CPUs went to lower classes.
+
+    While no author lease is queued in the pool (``author_backlog == 0``), every admitted author step
+    is being served and one more author request would take a free CPU, or the next one a lower class
+    releases. Once author leases queue, admission stops and the pool orders the backlog. Work that
+    runs without a lease cannot appear as a backlog, so the extra handlers are bounded by the pool's
+    own size (``pool``): at most one more handler per reserved CPU.
+    """
+    if author_backlog != 0 or pool < 1:
+        return False
+    return sum(not job["diagnostic"] for job in tuple(active)) < ordinary_capacity + pool

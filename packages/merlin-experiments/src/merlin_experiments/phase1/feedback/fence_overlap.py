@@ -315,7 +315,9 @@ def mechanisms(profile: dict, selection) -> dict:
     found = {}
     if available:
         found["suggested_mechanisms"] = [
-            {key: hint.get(key) for key in ("id", "api", "facet", "workload_check")} for hint in available
+            {key: hint.get(key) for key in ("id", "api", "facet", "workload_check", "opportunity_status",
+                                          "source_call_sites", "prerequisites", "next_action")}
+            for hint in available
         ]
     if unconfirmed:
         found["related_capability_unconfirmed"] = unconfirmed
@@ -339,7 +341,7 @@ def compact(profile: dict) -> dict:
 
 
 def for_entry(
-    name: str, workspace, performance=None, *, artifact_root=None, selection=None, target: str | None = None
+    name: str, workspace, performance=None, *, artifact_root=None, selection=None, target: str | None = None, roles=None
 ) -> dict | None:
     """``fence_overlap`` for one ranked entry, with mechanisms when the case is fence-bound; never raises."""
     try:
@@ -362,8 +364,13 @@ def for_entry(
             }
         if profile.get("dynamic"):
             block["dynamic"] = profile["dynamic"]
-        if profile.get("fence_per_tile"):
-            block.update(mechanisms(profile, selection))
+        from ..workload_roles import PRIMARY, workspace_roles
+
+        roles = workspace_roles(workspace) if roles is None else roles
+        if profile.get("fence_per_tile") and (roles or {}).get(name) in PRIMARY:
+            from . import mechanism_hints
+
+            block.update(mechanisms(profile, mechanism_hints.for_case(selection, name, workspace)))
         return block
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return None

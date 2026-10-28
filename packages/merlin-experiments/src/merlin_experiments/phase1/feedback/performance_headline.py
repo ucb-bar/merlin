@@ -17,7 +17,10 @@ block repeats, in a few hundred bytes, what that evidence already says:
   same kind (retained gSIM certificates; self-check estimates of the same timing model);
 * the largest-headroom cases with their bound, busiest unit, gap to the roofline and the catalogue
   mechanisms the headroom block already matched (for a case fenced after nearly every output tile, its
-  fence reading and the fence mechanisms first), plus where the skills and idle-tuning results are.
+  fence reading and the fence mechanisms first), plus where the skills and idle-tuning results are;
+  each case also carries ``next_step`` (:mod:`.next_steps`): one ranked, workload-scoped choice its
+  compiler does not already use, with the command applying it, which the rendered line shows in place
+  of the bare mechanism ids.
 
 Information only: it imposes no threshold on the author and changes no grade, gate or ranking. Every
 number is recomputed from evidence the grade already holds. No target name, no ``re``.
@@ -258,7 +261,33 @@ def _speedups(entries: list[dict], measured_first: dict, modeled_first: dict, mo
     return out
 
 
-def _top(block: dict) -> list[dict]:
+def _next_steps(workspace, verdict: dict):
+    """A :class:`.next_steps.Context` for ranking each case's one next step, or None when unavailable."""
+    if workspace is None:
+        return None
+    try:
+        from .next_steps import Context
+
+        return Context(workspace, verdict, verdict.get("per_capsule") or ())
+    except Exception:  # noqa: BLE001 -- the headline keeps its catalogue ids without a ranked step
+        return None
+
+
+def _step(entry: dict, context) -> dict | None:
+    if context is None:
+        return None
+    try:
+        from .next_steps import choose
+
+        found = choose(entry, context, suite="core")
+    except Exception:  # noqa: BLE001 -- advisory only
+        return None
+    if found is None:
+        return None
+    return {key: found[key] for key in ("kind", "choice", "api", "choice_text", "apply", "read")}
+
+
+def _top(block: dict, context=None) -> list[dict]:
     out = []
     for entry in (block.get("largest_headroom") or ())[:TOP]:
         busiest = (entry.get("dominant_modeled_resource") or {}).get("name")
@@ -283,8 +312,37 @@ def _top(block: dict) -> list[dict]:
             item["measured_on_earlier_source"] = True
         if entry.get("reference_baselines"):
             item["vs_reference"] = reference_baselines.compact(entry["reference_baselines"])
+        step = _step(entry, context)
+        if step is not None:
+            item["next_step"] = step
         out.append({key: value for key, value in item.items() if value not in (None, [])})
     return out
+
+
+#: Bundle and family lines the headline repeats (the self-check brief carries every bundle).
+FAMILY_LINES = 6
+
+
+def _families(workspace, verdict: dict) -> dict | None:
+    """Passing cases bundled by family and shape class, and each family's cases left (:mod:`.family_rollup`)."""
+    if workspace is None:
+        return None
+    try:
+        from . import family_rollup
+
+        found = family_rollup.build(workspace, rows=verdict.get("per_capsule") or ())
+    except Exception:  # noqa: BLE001 -- advisory only
+        return None
+    if not found:
+        return None
+    left = [r for r in found["families"] if r["correct"] < r["cases"]]
+    left.sort(key=lambda r: (-r["left_large"], -(r["cases"] - r["correct"]), r["family"]))
+    return {
+        "line": found["family_line"],
+        "ready_bundles": found["lines"][:FAMILY_LINES],
+        "bundle_count": found["bundle_count"],
+        "cases_left": [family_rollup.correctness_text(r) for r in left[:FAMILY_LINES]],
+    }
 
 
 def _skills() -> list[str]:
@@ -368,7 +426,10 @@ def build(
             "by_label": compared.get("by_label"),
             "detail": f"{DETAIL}.reference_baselines and each entry's reference_baselines",
         }
-    headline["top_headroom"] = _top(block)
+    headline["top_headroom"] = _top(block, _next_steps(workspace, verdict))
+    families = _families(workspace, verdict)
+    if families:
+        headline["families"] = families
     headline["skills"] = _skills()
     tuning = _idle_tuning(Path(workspace))
     if tuning:
@@ -435,7 +496,12 @@ def render(headline) -> list[str]:
     for index, entry in enumerate(top, 1):
         tail = f"; busiest {entry['busiest_unit']}" if entry.get("busiest_unit") else ""
         tail += f"; {entry['fences']}" if entry.get("fences") else ""
-        tail += f"; try {', '.join(entry['mechanisms'])}" if entry.get("mechanisms") else ""
+        step = entry.get("next_step") if isinstance(entry.get("next_step"), dict) else None
+        if step and step.get("choice_text") and step.get("apply"):
+            # One ranked, workload-scoped choice not already in the compiler, with the command applying it.
+            tail += f"; next: {step['choice_text']} | apply: {step['apply']} | read: {step.get('read')}"
+        elif entry.get("mechanisms"):
+            tail += f"; try {', '.join(entry['mechanisms'])}"
         tail += "".join(
             f"; vs {label} {reference_baselines.times(value) if type(value) is float else value}"
             for label, value in (entry.get("vs_reference") or {}).items()
@@ -445,6 +511,16 @@ def render(headline) -> list[str]:
             f"cycles, {_number(entry.get('gap_to_roofline'))}x roofline ({entry.get('bound_by')}), "
             f"headroom {_number(entry.get('headroom_cycles'))}{tail}"
         )
+    families = headline.get("families") if isinstance(headline.get("families"), dict) else {}
+    if families.get("ready_bundles"):
+        lines.append("Ready for performance now (passing cases bundled by family and shape class: optimize the first "
+                     "case, check its siblings; no case waits for the rest of its family):")
+        lines += [f"- {text}" for text in families["ready_bundles"]]
+    if families.get("cases_left"):
+        lines.append("Correctness left, beside the performance work (build on the named library route):")
+        lines += [f"- {text}" for text in families["cases_left"]]
+    if families.get("line"):
+        lines.append(families["line"])
     pointers = []
     if headline.get("skills"):
         pointers.append("skills " + ", ".join(f"`{name}`" for name in headline["skills"]))

@@ -1,6 +1,6 @@
 ---
 name: shape-schedule-selection
-description: "Turn per-shape schedule choices (block policy, storage windows, retention, pipeline kind, transfer coalescing) into guarded per-class selections instead of hand-written if-thresholds and variant A/B directories judged on a few shapes: declare the alternatives as tuning knobs, freeze shape classes (square, long-M, long-N, M=1, ragged, model layer) as ExplorationGeometry/ValidationPartition hold-outs, find the capacity cutoff that separates the winners with scripts/shape_choice_table.py (ResourcePredicate guards over RTL-fact store fits), then let merlin.transforms.shape_policy keep each class incumbent until paired cycle feedback covers that cutoff. scripts/capacity_pipeline_example.py builds one dense kernel from RTL-fact capacities through the schedule IR, loop transforms, panel pipeline, array retention and readout overlap. Use when a lowering picks a schedule with an if on M, N or K, when a default was tuned on few shapes, or before changing a default schedule."
+description: "Organize shared schedule alternatives for dense, convolution and attention into a few geometry classes with layout, tail and residency modifiers. Use the existing shape/resource predicates and paired-cycle selector; keep lowering shared, derive storage legality from hardware facts, and validate empirical cutoffs on representatives and neighbors. No per-capsule lookup, new selector, startup profiling or simulation during ordinary compilation. The capacity_pipeline_example.py script exercises dense schedule IR, loop transformations, pipelines, retention and readout. Use before changing a global schedule default or when shapes need different reusable plans."
 ---
 
 `SKILL_DIR` = the directory holding this file. Run from the workspace root.
@@ -31,8 +31,9 @@ description: "Turn per-shape schedule choices (block policy, storage windows, re
    Per class: best candidate by paired ratio to the incumbent, and whether the winner of the other
    classes holds or regresses there. Per case: store fits and `PolicyFacts.resources` values. Last:
    each fit that decides a knob's winner, as two `ResourcePredicate` guards and the boundary cases the
-   panel still lacks. Never cut at the M or N where measurements changed; if nothing separates, keep
-   the per-class choice, add boundary cases or derive another fact.
+   panel still lacks. Performance cutoffs may use dimensions, aspect ratios or tile features;
+   explain the crossover and check neighbors rather than keying a rule to a measured case. If
+   nothing separates, retain the incumbent or derive another useful feature.
 6. **Select with shape_policy.** Put the table's resources in `PolicyFacts`, the guard in a
    `ShapeScheduleClass` with a frozen design and its incumbent, and paired `CompletedObservation`
    feedback in `ShapeCaseFeedback`; `assess_shape_policy` switches a class only when the panel covers
@@ -42,6 +43,31 @@ description: "Turn per-shape schedule choices (block policy, storage windows, re
    `heavy-pass-recipes` skill.
 7. **Confirm, then keep the alternatives.** Change a default only after `ab-library-pass` on every
    affected class; keep knobs declared so idle timing keeps covering other values.
+
+### Construction and feedback rules
+
+- Preserve source views, storage effects, configuration state and completion edges in the common
+  schedule representation before terminal instruction emission. Keep one target encoder across
+  alternatives; a new schedule should not require rewriting that encoder.
+- Explore residency as a spectrum: complete operands, capacity-bounded phases, then streaming.
+  Derive phase footprints from simultaneously live storage and the declared transfer limits.
+  Capacity establishes fit; source independence, observers and completion establish legality.
+- Put completion at proven ownership/reuse boundaries. Disjoint groups may share a phase only
+  after their actual storage assignments and every original operation are checked together.
+  Independent source operations do not automatically have independent physical buffers.
+- Check the emitted application receipt before interpreting a trial: selected family, storage,
+  loop/order changes and completion policy must match the requested alternative. An enabled flag
+  or an imported pass does not establish application. Keep unexpected-route trials as diagnostics.
+- Use same-window source-service overlap, traffic amplification, padding and capacity diagnostics
+  to choose experiments. Low useful compute attainment alone does not identify the cause; command
+  reductions or moved waits do not establish a cycle improvement.
+- Try interacting transformations in both legal orders. Unrolling, retention and wider movement
+  can change each other's input form; retain refusal reasons and a working incumbent. Prefer
+  bounded counted loops when expansion makes source checking or compilation expensive.
+- Promote understandable resource-relative predicates from paired shape panels and neighbors.
+  Rank UNKNOWN by `fast_estimate`; explore source-legal alternatives. For connected workloads,
+  include invocation frequency, preparation lifetime and complete-region latency before promoting
+  a kernel improvement as a model improvement.
 
 Library: `merlin.transforms.pass_exploration` (`ExplorationGeometry`, `ValidationPartition`,
 `explore_candidates`, `rank_observed_metrics`), `merlin.transforms.shape_policy`,

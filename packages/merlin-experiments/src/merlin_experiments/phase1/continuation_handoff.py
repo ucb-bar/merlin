@@ -6,7 +6,8 @@ at are gone, and the first part of the new session is spent rediscovering them. 
 is a compact, read-only summary built only from what the previous session itself wrote or was shown:
 
 * its last turn report (``rounds/*.final.txt``);
-* the tail of its own ``docs/iteration_notes.md`` from the seeded submission;
+* the tail of its own ``ITERATION_NOTES.md`` (workspace root; legacy: ``docs/iteration_notes.md`` in the
+  seeded submission);
 * the open failures and largest performance headroom of the newest grade it could see
   (``qa/latest_completed_grade.json``, else ``qa/verdict.json``).
 
@@ -31,6 +32,13 @@ def _tail(text: str, limit: int = SECTION_CHARS) -> str:
     cut = text[-limit:]
     newline = cut.find("\n")
     return "…\n" + (cut[newline + 1:] if 0 <= newline < len(cut) - 1 else cut)
+
+
+def _has_notes(previous_workspace, seed_submission) -> bool:
+    from .iteration_notes import existing_notes
+
+    return existing_notes(previous_workspace) is not None or (
+        Path(seed_submission) / "docs" / "iteration_notes.md").is_file()
 
 
 def _read(path: Path) -> str | None:
@@ -95,7 +103,10 @@ def render(previous_run_dir: Path, previous_workspace: Path, seed_submission: Pa
     from merlin.common.path_scrub import scrub_host_paths
 
     report = _last_turn_report(previous_run_dir)
-    notes = _read(seed_submission / "docs" / "iteration_notes.md")
+    from .iteration_notes import existing_notes
+
+    found = existing_notes(previous_workspace)
+    notes = _read(found) if found is not None else _read(seed_submission / "docs" / "iteration_notes.md")
     grade = _latest_grade(previous_workspace)
     parts = [
         "# Where the previous session left off",
@@ -139,5 +150,5 @@ def write(workspace, previous: dict, seed_submission) -> dict:
     target.chmod(0o444)
     return {"file": FILENAME, "bytes": len(text.encode("utf-8")),
             "inputs_found": {"turn_report": _last_turn_report(run_dir) is not None,
-                             "iteration_notes": (Path(seed_submission) / "docs" / "iteration_notes.md").is_file(),
+                             "iteration_notes": _has_notes(old_workspace, seed_submission),
                              "grade": _latest_grade(old_workspace) is not None}}

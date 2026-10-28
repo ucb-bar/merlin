@@ -14,6 +14,10 @@ operator review, and both default to off):
   differs is executed again. Verdict-level credit is still not inherited.
 * ``previous_session: {run_dir, workspace}`` stages ``PREVIOUS_SESSION.md``
   (:mod:`.continuation_handoff`), built from the previous session's own outputs.
+* ``seed_evidence: {path, sha256}`` stages an operator-prepared evidence directory (the seed
+  run's optimization rules, experiment records and notes moved out of the compiler) at the
+  workspace root, outside ``submission/``, after checking its tree digest. It is reference
+  material only and grants nothing.
 """
 from __future__ import annotations
 
@@ -26,6 +30,9 @@ from . import run_inputs
 SCHEMA = 'merlin.joint_reviewed_seed.v1'
 CARRY = 'inherit_certificates_for_identical_executables'
 PREVIOUS = 'previous_session'
+EVIDENCE = 'seed_evidence'
+#: Evidence entries the author keeps maintaining; everything else is staged read-only.
+EVIDENCE_EDITABLE = frozenset({'OPTIMIZATION_RULES.json'})
 
 
 def selected(options, policy=None):
@@ -66,7 +73,7 @@ def selected(options, policy=None):
     if (review.get('schema') != 'operator.joint_seed_review.v1'
             or review.get('approved') is not True
             or any(review.get(key) != origin[key] for key in ('review_id', 'source', 'sha256', 'inherit_clock', 'inherit_results', 'variants'))
-            or any(review.get(key) != origin.get(key) for key in (CARRY, PREVIOUS))):
+            or any(review.get(key) != origin.get(key) for key in (CARRY, PREVIOUS, EVIDENCE))):
         raise ValueError('joint seed review does not approve this exact source-only origin')
     if origin.get(CARRY) not in (None, False, True):
         raise ValueError('certificate carry-over approval must be a boolean')
@@ -75,6 +82,14 @@ def selected(options, policy=None):
             not isinstance(previous, dict) or set(previous) != {'run_dir', 'workspace'}
             or not all(isinstance(v, str) and Path(v).is_absolute() for v in previous.values())):
         raise ValueError('previous session handoff requires absolute run_dir and workspace')
+    evidence = origin.get(EVIDENCE)
+    if evidence is not None:
+        if (not isinstance(evidence, dict) or set(evidence) != {'path', 'sha256'}
+                or not isinstance(evidence['path'], str) or not Path(evidence['path']).is_absolute()):
+            raise ValueError('seed evidence requires one absolute path/sha256 pin')
+        from merlin.common.tree_hash import hash_tree
+        if hash_tree(Path(evidence['path']))['sha256'] != evidence['sha256']:
+            raise ValueError('reviewed seed evidence changed')
     variants = origin.get('variants')
     if not isinstance(variants, list) or len(variants) > 64:
         raise ValueError('joint seed authored alternatives must be bounded')
@@ -110,5 +125,31 @@ def stage(options, workspace, run_dir):
     if origin.get(PREVIOUS) is not None:
         from .continuation_handoff import write as write_handoff
         result['previous_session'] = write_handoff(workspace, origin[PREVIOUS], Path(workspace) / 'submission')
+    if origin.get(EVIDENCE) is not None:
+        result['seed_evidence'] = stage_evidence(origin[EVIDENCE], workspace)
     (Path(run_dir) / 'seed_submission.json').write_text(json.dumps(result, indent=2) + '\n')
     return result
+
+
+def stage_evidence(pin, workspace):
+    """Copy the reviewed evidence entries to the workspace root; never replaces a staged file."""
+    import shutil
+
+    source, root = Path(pin['path']), Path(workspace)
+    staged, skipped = [], []
+    for entry in sorted(source.iterdir()):
+        target = root / entry.name
+        if entry.is_symlink() or entry.name == 'submission' or target.exists() or target.is_symlink():
+            skipped.append(entry.name)
+            continue
+        if entry.is_dir():
+            shutil.copytree(entry, target, symlinks=False)
+        else:
+            shutil.copyfile(entry, target)
+        if entry.name not in EVIDENCE_EDITABLE:
+            # Files only: a read-only directory would make every later copy of the workspace undeletable.
+            for path in ([target, *target.rglob('*')] if target.is_dir() else [target]):
+                if path.is_file():
+                    path.chmod(0o444)
+        staged.append(entry.name)
+    return {'source': str(source), 'sha256': pin['sha256'], 'staged': staged, 'skipped': skipped}

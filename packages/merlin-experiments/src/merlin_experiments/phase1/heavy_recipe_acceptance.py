@@ -51,6 +51,30 @@ def _conv(out: dict) -> str | None:
     return None
 
 
+def _conv_epochs(out: dict) -> str | None:
+    routes = {(row.get("route"), row.get("compute_pairs")): row for row in out.get("routes") or ()}
+    if not any(route == "synchronous" for route, _ in routes):
+        return "the synchronous convolution route was not realized"
+    if out.get("epoch_law") != "admitted":
+        return None  # an UNKNOWN ordering flag keeps the drains; the flag table says which
+    base = next((row for (route, _), row in routes.items() if route == "drain_per_compute"), None)
+    epochs = [row for (route, _), row in routes.items() if route == "epochs"]
+    if base is None or not epochs or min(row["drains"] for row in epochs) >= base["drains"]:
+        return "admitted compute epochs did not remove a drain"
+    return None
+
+
+def _dense_epochs(out: dict) -> str | None:
+    cases = out.get("cases") or ()
+    if not cases or any(set(c.get("routes") or {}) != {"drained", "epochs"} for c in cases):
+        return "the drained and epoch routes were not both realized"
+    if out.get("epoch_law") != "admitted":
+        return None  # an UNKNOWN ordering flag keeps its drains; the flag table says which
+    if any(c["comparison"]["drains_after"] >= c["comparison"]["drains_before"] for c in cases):
+        return "an admitted epoch law removed no drain"
+    return None
+
+
 def _spatial(out: dict) -> str | None:
     storage, effects = out.get("storage") or {}, out.get("effects") or {}
     if (out.get("discovery") or {}).get("selected_row") != "bounded_spatial_packing_and_rolling":
@@ -78,6 +102,8 @@ RECIPES = (
     ("dense_readout_recipe.py", _dense_readout),
     ("long_k_recipe.py", _long_k),
     ("conv_window_recipe.py", _conv),
+    ("conv_epoch_recipe.py", _conv_epochs),
+    ("dense_epoch_recipe.py", _dense_epochs, ["--small"]),
     ("spatial_chain_recipe.py", _spatial),
     ("library_pipeline_policy.py", _policy),
 )
@@ -87,8 +113,8 @@ def check_heavy_pass_recipes(ctx):
     from .author_acceptance import FAIL, PASS, Check, _run_skill_script, _stdout_json, _tail
 
     detail, foreign, loaded = {}, set(), 0
-    for script, verify in RECIPES:
-        proc, result = _run_skill_script(ctx, SKILL, script, [])
+    for script, verify, *args in RECIPES:
+        proc, result = _run_skill_script(ctx, SKILL, script, args[0] if args else [])
         out = _stdout_json(proc) or {}
         detail[script] = {"child": result, "facts": out.get("facts")}
         if result is None or result["code"] != 0:

@@ -70,6 +70,8 @@ def test_final_model_uses_capture_python_and_bound_configuration(tmp_path, monke
     monkeypatch.setenv("MERLIN_MODEL_CHECK_BUNDLE", str(bundle))
     monkeypatch.setattr(model_check, "target_from_contract", lambda: "test")
     monkeypatch.setattr(model2mlir, "capture_python", lambda: Path("/selected/model/python"))
+    probed = []
+    monkeypatch.setattr(model_check, "capture_import_failure", lambda python, **_: probed.append(python))
     calls = []
 
     def launch(argv, **_):
@@ -91,3 +93,47 @@ def test_final_model_uses_capture_python_and_bound_configuration(tmp_path, monke
     assert argv[argv.index("--full-comparison") + 1] == "quantized-reference"
     assert argv[argv.index("--engine") + 1] == "spike"
     assert argv[argv.index("--timeout-s") + 1] == "120"
+    assert probed == ["/selected/model/python"]
+
+
+def test_final_model_without_child_dependencies_fails_fast_as_harness_error(tmp_path, monkeypatch):
+    from pathlib import Path
+    from merlin.integrations import model2mlir
+
+    owner = control(monkeypatch)
+    owner.require_full_model = lambda **_: 120
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    (submission / "manifest.yaml").write_text("version: 1\n")
+    bundle = tmp_path / "bundle"
+    (bundle / "configuration").mkdir(parents=True)
+    (bundle / "configuration" / "models.yaml").write_text("selected\n")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setenv("MERLIN_MODEL_CHECK_BUNDLE", str(bundle))
+    monkeypatch.setattr(model_check, "target_from_contract", lambda: "test")
+    monkeypatch.setattr(model2mlir, "capture_python", lambda: Path("/selected/model/python"))
+    monkeypatch.setattr(model_check, "capture_import_failure",
+                        lambda python, **_: "ModuleNotFoundError: No module named 'jsonschema'")
+    monkeypatch.setattr(model_check.subprocess, "Popen",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not launch")))
+    result = model_check.execute_visible(tmp_path, {"action": "check", "model": "resnet50",
+                                                    "split": "visible", "mode": "full"},
+                                         snapshot_source=submission)
+    assert result["status"] == "error" and result["model"] == "resnet50"
+    assert "jsonschema" in result["error"] and "/selected/model/python" in result["error"]
+
+
+def test_capture_import_probe_reports_the_missing_module(tmp_path, monkeypatch):
+    import os
+
+    model_check._READY.clear()
+    broken = tmp_path / "python"
+    broken.write_text("#!/bin/sh\necho \"ModuleNotFoundError: No module named 'jsonschema'\" >&2\nexit 1\n")
+    broken.chmod(0o755)
+    assert model_check.capture_import_failure(str(broken)) == "ModuleNotFoundError: No module named 'jsonschema'"
+    assert str(broken) not in model_check._READY
+    # The interpreter that runs these tests has every child dependency; success is remembered.
+    assert model_check.capture_import_failure(sys.executable, env=dict(os.environ)) is None
+    assert model_check.capture_import_failure(sys.executable) is None
+    assert sys.executable in model_check._READY
+    assert model_check.capture_import_failure(str(tmp_path / "missing")).startswith("FileNotFoundError")

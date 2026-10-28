@@ -27,6 +27,62 @@ def _capsule(root, name, *, rtl=None):
     return capsule
 
 
+def test_slim_keeps_the_stored_command_buffer_a_result_references(tmp_path):
+    from merlin.perf.command_buffer_store import REFERENCE_KEY, load_command_buffer
+    from merlin.perf.work_volume import command_buffer_evidence
+
+    capsule = _capsule(tmp_path, "stored_buffer")
+    big = {"tensors": {}, "commands": [], "canonical_inputs": {"W": list(range(400_000))}}
+    _, artifact = command_buffer_evidence(big, compiler_provenance="test", store=str(capsule))
+    stored = capsule / artifact[REFERENCE_KEY]["name"]
+    assert stored.stat().st_size > scratch_retention.KEEP_FILE_BYTES
+
+    scratch_retention.slim_tree(tmp_path)
+
+    assert stored.is_file()
+    assert load_command_buffer(artifact) == big
+    assert not (capsule / "generated" / "harness.c").exists()
+
+
+def _stored_buffer(capsule):
+    from merlin.perf.command_buffer_store import REFERENCE_KEY, command_buffer_tensors
+    from merlin.perf.work_volume import command_buffer_evidence
+
+    buffer = {"tensors": {"W": {"dtype": "int8", "shape": [4], "role": "input"}}, "commands": [{"op": "mm"}]}
+    _, artifact = command_buffer_evidence(buffer, compiler_provenance="test", store=str(capsule))
+    result = json.loads((capsule / "capsule_result.json").read_text())
+    result["command_buffer_artifact"] = artifact
+    (capsule / "capsule_result.json").write_text(json.dumps(result))
+    assert command_buffer_tensors(artifact) == {"W": {"dtype": "int8", "shape": [4], "role": "input"}}
+    return capsule / artifact[REFERENCE_KEY]["name"]
+
+
+def test_finished_selfcheck_drops_unmeasured_command_buffers_and_keeps_measured_ones(tmp_path):
+    raw = tmp_path / "selfchecks" / "selfcheck_y"
+    spike_only = _stored_buffer(_capsule(raw, "spike_only"))
+    measured = _stored_buffer(_capsule(raw, "measured", rtl="pass"))
+    result = (spike_only.parent / "capsule_result.json").read_bytes()
+
+    @scratch_retention.releases_selfcheck_scratch
+    def check():
+        scratch_retention.raw_runs(raw)
+
+    check()
+
+    assert not spike_only.exists() and measured.is_file()
+    # the result stays byte-identical; its readers take tensor shapes from the inline summary
+    assert (spike_only.parent / "capsule_result.json").read_bytes() == result
+    marker = json.loads((raw / scratch_retention.MARKER).read_text())
+    assert "stored command buffers" not in marker["kept"]
+
+
+def test_grade_slimming_keeps_stored_command_buffers(tmp_path):
+    stored = _stored_buffer(_capsule(tmp_path / "fruns_1", "spike_only"))
+    scratch_retention.slim_once(tmp_path / "fruns_1", scope="superseded background grade")
+    assert stored.is_file()
+    assert "stored command buffers" in json.loads((tmp_path / "fruns_1" / scratch_retention.MARKER).read_text())["kept"]
+
+
 def test_slim_keeps_results_and_receipts_and_removes_build_products(tmp_path):
     capsule = _capsule(tmp_path, "loop_only")
     result_bytes = (capsule / "capsule_result.json").read_bytes()

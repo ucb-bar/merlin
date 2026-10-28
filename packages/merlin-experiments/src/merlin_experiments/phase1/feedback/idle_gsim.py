@@ -1,8 +1,10 @@
 """The idle measurer's gSIM lane: measure passing scalability cases on gSIM.
 
 Order (:func:`order`): first, per family, the smallest case with no timing evidence at all, so every
-family gets cycles early; then largest headroom first. A job long relative to the smaller pending work
-runs only in the long lane (:func:`long_lane`).
+family gets cycles early; then largest headroom first. Within both, the representatives of the bundles of
+passing cases (:func:`.family_rollup.preferred_cases`: a newly passing large case of a family and shape
+class) go first, so evidence follows each case as it passes -- an ordering preference, never a skip. A
+job long relative to the smaller pending work runs only in the long lane (:func:`long_lane`).
 
 :class:`.idle_performance.IdleMeasurer` calls :meth:`GsimLane.tick` once its idle-capacity gates are open
 (no author request waiting, free shared CPU slots beyond an admitting grade's reserve, disk room). The
@@ -51,7 +53,9 @@ def _load(path: Path):
     try:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > (16 << 20):
             return None
-        return json.loads(path.read_text())
+        from .result_details import hydrate
+
+        return hydrate(json.loads(path.read_text()), document_path=path)
     except (OSError, ValueError):
         return None
 
@@ -105,7 +109,7 @@ def verdict_performance(verdicts) -> dict:
 
 def candidates(
     cohort, l2: dict, known: dict, digest, *, measured=frozenset(), attempted=frozenset(), records=None, model=None,
-    families=None,
+    families=None, preferred=frozenset(),
 ) -> list[dict]:
     """Passing cohort cases whose current executable lacks a gSIM measurement, in :func:`order`.
 
@@ -160,6 +164,7 @@ def candidates(
             # The case's own declared work (useful MACs / logical bytes over the target's rates).
             work_cycles=floor if floor is not None else entry["cycles"],
             structural_roofline=performance.get("structural_roofline"),
+            preferred=name in preferred,
         )
         out.append(entry)
     return order(out)
@@ -181,16 +186,17 @@ def order(entries: list[dict]) -> list[dict]:
     A family with no timing evidence gets its smallest such case measured before any long job, so
     every family has cycles within minutes. "Small" is relative: the case's declared work against the
     other untimed members of its family, never a constant. The rest keep the established order: never
-    measured first, then largest headroom; a changed executable rotates in after them."""
+    measured first, then largest headroom; a changed executable rotates in after them. A preferred entry
+    (a bundle representative) goes ahead of the others in both groups."""
     firsts: dict[str, dict] = {}
     for entry in sorted(entries, key=lambda c: (c["work_cycles"], c["capsule"])):
         if not entry["timing_evidence"]:
             firsts.setdefault(entry["family"], entry)
-    lead = sorted(firsts.values(), key=lambda c: (c["work_cycles"], c["capsule"]))
+    lead = sorted(firsts.values(), key=lambda c: (not c.get("preferred"), c["work_cycles"], c["capsule"]))
     chosen = {id(entry) for entry in lead}
     rest = sorted(
         (c for c in entries if id(c) not in chosen),
-        key=lambda c: (c["measured_before"], -c["headroom_cycles"], c["capsule"]),
+        key=lambda c: (not c.get("preferred"), c["measured_before"], -c["headroom_cycles"], c["capsule"]),
     )
     return lead + rest
 
@@ -255,13 +261,14 @@ class GsimLane:
         return count
 
     def tick(
-        self, channel: Path, *, cohort, l2: dict, known: dict, digest, free=None, records=None, final_reserve=0
+        self, channel: Path, *, cohort, l2: dict, known: dict, digest, free=None, records=None, final_reserve=0,
+        preferred=frozenset(),
     ) -> str | None:
         """One submission at most. ``free``: free shared slots beyond the grade reserve right now;
         ``final_reserve``: slots final grading keeps that ``free`` does not already exclude (a job still
         running in the final-model window starts only beyond them)."""
         try:
-            return self._tick(Path(channel), cohort, l2, known, digest, free, records, final_reserve)
+            return self._tick(Path(channel), cohort, l2, known, digest, free, records, final_reserve, preferred)
         except Exception as error:  # noqa: BLE001 -- the lane never reaches the grader
             from . import scratch_retention
 
@@ -269,7 +276,9 @@ class GsimLane:
             scratch_retention.say(f"[idle-gsim] skipped: {type(error).__name__}: {str(error)[:200]}")
             return None
 
-    def _tick(self, channel: Path, cohort, l2, known, digest, free, records, final_reserve=0) -> str | None:
+    def _tick(
+        self, channel: Path, cohort, l2, known, digest, free, records, final_reserve=0, preferred=frozenset()
+    ) -> str | None:
         from .. import gsim_engine_bound as E
         from .. import gsim_wall_cap as W
         from .. import joint_control
@@ -314,6 +323,7 @@ class GsimLane:
             attempted=attempted,
             records=records,
             model=model,
+            preferred=preferred,
         )
         if not ranked:
             self.last = "every passing case's current executable is measured or attempted"

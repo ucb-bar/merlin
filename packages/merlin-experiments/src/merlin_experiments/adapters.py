@@ -212,6 +212,7 @@ class Adapter:
                     "conformance_spec",
                     "synth_profile",
                     "smt_profile",
+                    "chain_profile",
                     "hidden_profile",
                 } & config.keys():
                     raise SpecError("component Phase 0 refuses application, capture and hidden inputs")
@@ -223,6 +224,7 @@ class Adapter:
                 "conformance_spec",
                 "synth_profile",
                 "smt_profile",
+                "chain_profile",
                 "hidden_profile",
                 "software_spec",
                 "capability_contract",
@@ -420,6 +422,7 @@ ADAPTERS = {
             "conformance_spec": Option("input"),
             "synth_profile": Option("input"),
             "smt_profile": Option("input"),
+            "chain_profile": Option("input"),
             "hidden_profile": Option("input"),
             "comparison_manifest": Option("bool"),
             "component_only": Option("bool"),

@@ -469,8 +469,7 @@ class DevelopmentGsimFeedback:
             )
         except Exception:  # noqa: BLE001 - roles remain unknown; counter values are retained
             kinds = None
-        command_artifact = measurement.get("command_buffer_artifact")
-        command = command_artifact.get("command_buffer") if isinstance(command_artifact, Mapping) else None
+        command = MS.raw_command_buffer(measurement.get("command_buffer_artifact"))
         declared_commands = None
         representation = None
         if isinstance(command, Mapping):

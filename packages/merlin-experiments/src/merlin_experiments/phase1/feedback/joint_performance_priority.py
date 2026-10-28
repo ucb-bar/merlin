@@ -108,16 +108,23 @@ def summarize(rows, *, cohorts=None, roles=None):
     """Keep the selected large-workload ranking primary in joint campaigns.
 
     ``cohorts`` is produced by native scope selection from the verified public
-    suite and operator policy. Per-result labels cannot select a cohort. Generic
-    non-joint callers retain the original single-cohort projection.
+    suite and operator policy. Per-result labels cannot select a cohort.
+    Missing workload roles retain diagnostics without performance ranking.
     """
-    if cohorts is None:
-        return _summarize(rows)
     rows = list(rows)
+    if cohorts is None:
+        from ..workload_roles import PRIMARY
+
+        result = _summarize([r for r in rows if (roles or {}).get(r.get('capsule', r.get('name'))) in PRIMARY])
+        result['correctness_first'] = _summarize(rows)['correctness_first']
+        result['classification_needed'] = sorted(r.get('capsule', r.get('name')) for r in rows
+                                                 if not (roles or {}).get(r.get('capsule', r.get('name'))))
+        return result
     controls = []
-    if roles is not None:
-        from ..workload_roles import filter_primary
-        cohorts, controls = filter_primary(cohorts, roles)
+    from ..workload_roles import PRIMARY, filter_primary
+
+    if isinstance(cohorts, dict) and isinstance(cohorts.get('primary'), (list, tuple)):
+        cohorts, controls = filter_primary(cohorts, roles or {})
     lanes = ('primary', 'correctness_regression', 'calibration_diagnostics')
     membership = {}
     valid = isinstance(cohorts, dict) and set(cohorts) == set(lanes)
@@ -151,18 +158,23 @@ def summarize(rows, *, cohorts=None, roles=None):
     # Correctness failures across ALL cohorts remain visible before optimization.
     result['correctness_first'] = _summarize(rows)['correctness_first']
     result.update(
-        primary_cohort='selected_representative_workloads' if roles is not None else 'selected_public_scalability',
+        primary_cohort='selected_representative_workloads',
         diagnostic_controls=_summarize([row for row in rows
             if row.get('capsule', row.get('name')) in controls]),
         cohort_selection_status='valid' if valid and not overlap else 'invalid_or_overlapping',
         correctness_regression=_summarize(selected['correctness_regression']),
         calibration_diagnostics=_summarize(selected['calibration_diagnostics']),
         unclassified=unclassified,
+        classification_needed=sorted(row.get('capsule', row.get('name')) for row in rows
+                                     if (roles or {}).get(row.get('capsule', row.get('name')))
+                                     not in {'correctness', 'calibration', 'diagnostic_control'}
+                                     and (roles or {}).get(row.get('capsule', row.get('name')))
+                                     not in PRIMARY),
         observed_members={lane: sorted({row.get('capsule', row.get('name')) for row in selected[lane]})
                           for lane in lanes},
-        policy='Primary performance ranking contains only the selected public scalability cohort. '
-               'Source-bound workload roles exclude small diagnostic controls when supplied. '
+        policy='Primary performance ranking requires selected representative workload roles. '
+               'Missing roles require classification; controls are diagnostics, not routine tuning targets. '
                'Original capsules retain correctness/regression feedback; calibration cases supply diagnostics. '
-               'Useful small-case improvements remain permitted. All original correctness gates are unchanged.',
+               'All original correctness gates are unchanged.',
     )
     return result

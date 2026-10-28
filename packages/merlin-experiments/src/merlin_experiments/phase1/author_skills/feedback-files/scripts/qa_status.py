@@ -23,7 +23,8 @@ FIELDS = ("schema", "state", "stage", "graded_at", "updated_at", "snapshot_curre
           "tiers_graded", "tiers_not_run")
 #: Nested summaries worth one line each: key -> fields.
 NESTED = {"latest_completed_grade": ("token", "graded_at", "snapshot_current"),
-          "completed_rows": ("rows", "executed", "passed", "from_newest_grade", "from_current_source"),
+          "completed_rows": ("rows", "executed", "passed", "from_newest_grade", "from_current_source",
+                             "current_passed", "older_version_rows"),
           "failure_clusters": ("failing_test_cases", "clusters_total")}
 
 

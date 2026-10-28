@@ -229,6 +229,7 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
     reason = "timing runtime not selected"
     unavailable_detail = None
     need = deferred = None
+    passed = False
     try:
         source_capsule = selected_capsule(selection, capsule)
         epoch = choose(selection, capsule_identity(source_capsule))
@@ -321,6 +322,13 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
     row["performance"]["model_review"] = model_review
     row["performance"]["untuned_fallback_permitted"] = False
     row["performance"]["facts_sha256"] = selection["facts"]["sha256"]
+    if passed:
+        # Every passing case carries a calibrated estimate from its emitted command census; a complete
+        # timing-model estimate stays preferred and also calibrates it (:mod:`.fast_estimate`).
+        from . import fast_estimate
+
+        fast_estimate.attach(row["performance"], root, structural,
+                             facts_sha256=(selection.get("facts") or {}).get("sha256"))
     row["performance"]["request_model_binding"] = (dict(
         channel=request_model["channel"], request_id=request_model["request_id"],
         request_sha256=request_model["request_sha256"],

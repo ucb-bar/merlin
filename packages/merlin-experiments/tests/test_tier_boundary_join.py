@@ -23,6 +23,20 @@ def observations():
     return left, right
 
 
+def test_framework_commit_is_provenance_while_hardware_and_executed_bytes_still_bind():
+    left, right = observations()
+    left['common']['toolchain_shas']['merlin'] = '1' * 40
+    right['common']['toolchain_shas']['merlin'] = '2' * 40
+    assert J.join(left, right)
+    right['common']['toolchain_shas']['fixture_rtl'] = '3' * 40
+    with pytest.raises(ValueError, match='boundary changed'):
+        J.join(left, right)
+    right['common']['toolchain_shas']['fixture_rtl'] = 'a' * 40
+    right['common']['kernel_object_sha256'] = '4' * 64
+    with pytest.raises(ValueError, match='boundary changed'):
+        J.join(left, right)
+
+
 def ledger(tmp_path, left):
     ws = tmp_path/'workspace'
     state = {}
@@ -49,6 +63,86 @@ def test_native_recorder_credits_actual_l3_key_without_spike_elf_alias(tmp_path)
     assert certs[right['execution_digest']]['boundary_join']['L2'] == left
     assert P.record_cert(ws, {'per_capsule':[row]}, 'L3', identity=left['execution_digest'],
         source_identity_verified=True) == []
+
+
+def test_a_compact_broker_row_is_reopened_so_its_l3_boundary_joins(tmp_path):
+    """The simjob broker returns compact index rows; the boundary lives only in the content-addressed case
+    store. Reading the compact row discarded every gSIM pass (fresh7ref: 227) as unattributable."""
+    from merlin_experiments.phase1.tools import result_details as RD
+
+    left, right = observations()
+    ws = ledger(tmp_path, left)
+    request = 'promo0_x_r0_A'
+    state = P._tier_state(ws)
+    P._slots(state, 'A', 'L3')[left['execution_digest']]['request'] = request
+    state['A']['L3']['request'] = request
+    P._save_tier_state(ws, state)
+    full = dict(capsule='A', **{'pass': True}, barrier_tier='L3', barrier_status='pass',
+        execution_digest=right['execution_digest'], tier_boundary=right)
+    compact = RD.compact_document({'per_capsule': [full]}, workspace=ws, namespace='selfcheck')
+    assert 'tier_boundary' not in compact['per_capsule'][0]  # what the broker hands the recorder
+    assert P.record_cert(ws, compact, 'L3', identity=left['execution_digest'],
+        source_identity_verified=True, request=request) == ['A=pass']
+    certs = P._slots_ro(P._tier_state(ws), 'A', 'L3')
+    assert certs[right['execution_digest']]['status'] == 'pass'
+    assert certs[left['execution_digest']]['status'] == 'joined'  # not retired as unattributed
+
+
+def test_promotion_reads_the_full_row_of_a_compact_loop_verdict(tmp_path):
+    from merlin_experiments.phase1.feedback.promotion_verdicts import hydrated
+    from merlin_experiments.phase1.tools import result_details as RD
+
+    left, _ = observations()
+    ws = tmp_path / 'workspace'
+    full = dict(capsule='A', **{'pass': True}, execution_digest=left['execution_digest'], tier_boundary=left)
+    compact = RD.compact_document({'per_capsule': [full]}, workspace=ws, namespace='selfcheck')
+    assert hydrated(ws, compact)['per_capsule'][0]['tier_boundary'] == left  # the L2 side of a later join
+    assert hydrated(ws, {'per_capsule': [full]})['per_capsule'][0] == full  # a full row passes through
+
+
+def test_a_compact_row_whose_detail_is_gone_or_altered_stays_unattributed(tmp_path):
+    from merlin_experiments.phase1.tools import result_details as RD
+
+    left, right = observations()
+    ws = ledger(tmp_path, left)
+    full = dict(capsule='A', **{'pass': True}, barrier_tier='L3', barrier_status='pass',
+        execution_digest=right['execution_digest'], tier_boundary=right)
+    compact = RD.compact_document({'per_capsule': [full]}, workspace=ws, namespace='selfcheck')
+    detail = ws / compact['per_capsule'][0]['detail']['path']
+    forged = json.loads(detail.read_text())
+    forged['tier_boundary'] = dict(right, execution_digest='9' * 64)
+    detail.write_text(json.dumps(forged))
+    RD._CACHE.clear()
+    assert P.record_cert(ws, compact, 'L3', identity=left['execution_digest'],
+        source_identity_verified=True) == []  # content digest differs: nothing reopened, nothing credited
+    assert P._slots_ro(P._tier_state(ws), 'A', 'L3')[left['execution_digest']]['status'] == 'pending'
+
+
+def test_a_certificate_survives_unrelated_edits_while_its_executed_bytes_are_unchanged(tmp_path):
+    """The scheduler judges the cert by the exact executable: unrelated source churn reconciles, never
+    invalidates; a changed executable re-queues the case."""
+    from merlin.targetgen.oracle_schedule import CapsuleState, Verdict, schedule
+
+    left, right = observations()
+    ws = ledger(tmp_path, left)
+    row = dict(capsule='A', **{'pass': True}, barrier_tier='L3', barrier_status='pass',
+        execution_digest=right['execution_digest'], tier_boundary=right)
+    assert P.record_cert(ws, {'per_capsule': [row]}, 'L3', identity=left['execution_digest'],
+        source_identity_verified=True) == ['A=pass']
+    state = P._tier_state(ws)
+
+    def wanted(execution, digest):
+        identity = P.current_identity(execution, digest)
+        verdicts = {}
+        for tier in ('L2', 'L3'):
+            v = P._verdict_for(state, 'A', tier, identity)
+            verdicts[tier] = Verdict(v['status'], v['digest'], dict(v.get('components') or {}),
+                                     v.get('execution_digest'))
+        st = CapsuleState('A', digest, verdicts, execution_digest=execution)
+        return [w.tier for w in schedule([st], tier_order=['L2', 'L3'], cert_tiers=('L3',))]
+
+    assert wanted(left['execution_digest'], 'edited-elsewhere') == []  # same executable: certificate holds
+    assert wanted('a' * 64, 'edited-here') == ['L2']  # changed executable: re-run, then re-certify
 
 
 @pytest.mark.parametrize('field', ['capsule','compiler_sha256','source_ir_sha256',

@@ -313,5 +313,10 @@ def oracle_source_scope(capsule, command_buffer, lowered_mlir, *, target=None):
         from merlin.targetgen.contract.harness_abi import lowered_plan_abi
         contract = load_capability_manifest(target).contract
         lowered_abi = lowered_plan_abi(contract, target=target)
-    return source_mutable_scope(source_path.read_bytes(), command_buffer, lowered_mlir=lowered_mlir,
-                                lowered_abi=lowered_abi)
+    # The plan names the bytes the compiler was given. For an enriched public
+    # source those are re-derived from the selected original here, so the plan
+    # is compared like with like and still bound to the selected source.
+    from merlin.targetgen.public_source_abi import compiler_source
+
+    return source_mutable_scope(compiler_source(capsule, source_path).compiler_bytes, command_buffer,
+                                lowered_mlir=lowered_mlir, lowered_abi=lowered_abi)

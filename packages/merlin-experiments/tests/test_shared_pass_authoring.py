@@ -107,8 +107,8 @@ def slots():
 @pytest.mark.parametrize(
     "experiment,digest",
     [
-        ("full", "370bbcbc0267f45f56ec86133091a9d51a0b25fae1ea85ff03d51deaa5dd3401"),
-        ("realistic", "ed007bc337c7d0441eb48b970f8ed7f697eeccae7fc935889b20aaf3f794c095"),
+        ("full", "2713258bd32ea5b97539320ea4e8f1cf3a8416dfd47f82d55c8e133099e014ce"),
+        ("realistic", "b1e2ac2c88e54de2bda481844786d84fc5dc53f4dba13fd40729fc48305c0fb7"),
     ],
 )
 def test_legacy_render_exact_prechange_bytes(monkeypatch, experiment, digest):

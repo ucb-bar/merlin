@@ -201,6 +201,11 @@ def _candidate_selfcheck_row(result: dict, closed: dict | None, *, name: str, ba
         emission_failure = _public_candidate_emission_failure(result)
         if emission_failure is not None:
             row["failure"] = emission_failure
+    from .composition_brief import from_case
+
+    composition = from_case(result)
+    if composition is not None:
+        row["source_composition"] = composition
     return row, certified
 
 

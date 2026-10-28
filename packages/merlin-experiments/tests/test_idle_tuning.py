@@ -1,16 +1,25 @@
-"""Idle reserved CPUs A/B-time candidate changes on the passing cases with the most headroom, as advice."""
+"""Idle reserved CPUs A/B-time candidate changes on the passing bundles with the most headroom, as advice.
+
+Measured on two runs: the tuner recorded no experiment at all although the authors built 38 variants,
+because it waited until every case had an estimate of the current source (which never held while eight
+authors edited) and dropped each result as soon as the source moved on. These tests hold the
+replacement: experiments start beside baseline timing, are sized from free CPUs, keep their results
+with a baseline label across edits, and every candidate the authors check is ranked.
+"""
 
 from __future__ import annotations
 
 import json
 import shutil
+import time
 
 import pytest
 from merlin_experiments.phase1.brokers import selfcheck_tuning as T
+from merlin_experiments.phase1.feedback import family_rollup, scratch_retention
 from merlin_experiments.phase1.feedback import idle_performance as I
 from merlin_experiments.phase1.feedback import idle_tuning as U
+from merlin_experiments.phase1.feedback import idle_tuning_results as R
 from merlin_experiments.phase1.feedback import performance_brief as PB
-from merlin_experiments.phase1.feedback import scratch_retention
 
 MODEL = {"model_sha256": "m1", "timing_mode": "untuned", "timing_epoch": 0}
 CATALOGUE = [
@@ -21,13 +30,13 @@ CATALOGUE = [
 ]
 
 
-def _performance(cycles, *, floor=100, model=MODEL):
+def _performance(cycles, *, floor=100, model=MODEL, elf="e1"):
     return {"status": "PROVISIONAL", "complete_event_accounting": True, "estimated_whole_soc_cycles": cycles,
             "structural_roofline": {"structural_compute_floor_cycles": floor, "useful_macs": 1000,
                                     "structural_peak_macs_per_cycle": 10},
             "scoped_resource_feedback": {"resources": [
                 {"name": "accelerator.storage.accumulator.all", "capacity_normalized_activity": 0.9}]},
-            **model}
+            "elf_sha256": elf, **model}
 
 
 def _workspace(tmp_path, cohort=("big", "mid", "small")):
@@ -36,6 +45,10 @@ def _workspace(tmp_path, cohort=("big", "mid", "small")):
     (ws / "submission").mkdir()
     (ws / "submission" / "backend.py").write_text("import os\n")
     (ws / "OPTIMIZATION_SUGGESTIONS.json").write_text(json.dumps({"all_mechanisms": CATALOGUE}))
+    (ws / "PUBLIC_CAPABILITIES.json").write_text(json.dumps({
+        "schema": "merlin.public_capability_inventory.v1",
+        "members": {name: {"workload_role": "large_kernel"} for name in cohort},
+    }))
     (run / "qa_history").mkdir(parents=True)
     verdict = {"joint_test_selection": {"performance_cohorts": {"primary": list(cohort)}},
                "per_capsule": [{"capsule": n, "tiers": {"L2": "pass"}} for n in cohort]}
@@ -43,11 +56,13 @@ def _workspace(tmp_path, cohort=("big", "mid", "small")):
     return ws, run
 
 
-def _baseline(ws, digest, cycles, rid="3_1_base"):
-    cases = [{"capsule": n, "status": "pass", "tiers": {"L2": "pass"}, "performance": _performance(c)}
+def _baseline(ws, digest, cycles, rid="3_1_base", graded=None, elf="e1"):
+    cases = [{"capsule": n, "status": "pass", "tiers": {"L2": "pass"}, "performance": _performance(c, elf=elf)}
              for n, c in cycles.items()]
     (ws / ".qa_channel" / f"resp_{rid}.json").write_text(json.dumps(
-        {"submission_sha256": digest, "graded_at_unix_ns": 1, "selfcheck_submission": "submission", "cases": cases}))
+        {"submission_sha256": digest, "graded_at_unix_ns": graded or time.time_ns(),
+         "selfcheck_submission": "submission",
+         "cases": cases}))
 
 
 def _variant(ws, name="alt", text="from lib.readout import propose\n"):
@@ -60,6 +75,13 @@ def _knobs(ws, values=(False, True), current=False):
     (ws / "submission" / T.DECLARATION).write_text(json.dumps({
         "schema": T.SCHEMA, "settings_file": "tuning.json",
         "knobs": {"ready_readout": {"values": list(values), "mechanism": "readout"}}}))
+
+
+def _bundles(ws, monkeypatch, bundles):
+    """The family roll-up's bundles (representative and siblings), as of one completed grade."""
+    (ws / "qa").mkdir(exist_ok=True)
+    (ws / "qa" / "latest_completed_grade.json").write_text("{}")
+    monkeypatch.setattr(family_rollup, "build", lambda workspace=None, **k: {"bundles": bundles})
 
 
 @pytest.fixture
@@ -85,22 +107,38 @@ def _measurer(ws, run, trees):
     return measurer, tick
 
 
-def _requests(ws):
+def _requests(ws, prefix=U.REQUEST_PREFIX):
     return {p.name[len("req_"):-len(".json")]: json.loads(p.read_text())
-            for p in (ws / ".qa_channel").glob(f"req_{U.REQUEST_PREFIX}*.json")}
+            for p in (ws / ".qa_channel").glob(f"req_{prefix}*.json")}
 
 
-def _answer(ws, rid, body, cycles, *, passed=True, graded=None, model=MODEL):
+def _timing(ws):
+    return {rid: body for rid, body in _requests(ws, I.REQUEST_PREFIX).items() if not rid.startswith(U.REQUEST_PREFIX)}
+
+
+def _running(ws):
+    """The broker claimed every request and its handlers started (they now hold their own leases)."""
+    for request in (ws / ".qa_channel").glob("req_*.json"):
+        rid = request.name[len("req_"):-len(".json")]
+        (ws / ".qa_channel" / f"claimed_{rid}").write_text("{}")
+        (ws / ".qa_channel" / f"progress_{rid}.json").write_text("{}")
+
+
+def _answer(ws, rid, body, cycles, *, passed=True, graded=None, model=MODEL, at=9):
     """The broker's response to one experiment request, as ``_decorate_response`` shapes it."""
     variant = body.get("submission", "submission") != "submission"
-    sha = graded or (body["submission_sha256"] if variant else "copy-sha")
+    sha = graded or (body["submission_sha256"] if variant else "copy-" + body["submission_sha256"])
     cases = [{"capsule": n, "status": "pass" if passed else "fail", "tiers": {"L2": "pass" if passed else "fail"},
-              "performance": _performance(cycles[n], model=model)} for n in body["capsules"].split(",")]
-    document = {"cases": cases, "selfcheck_request_id": rid, "graded_at_unix_ns": 9,
-                "submission_sha256": body["submission_sha256"] if not variant else sha,
-                "selfcheck_submission": body.get("submission", "submission"),
-                "variant": {"sha256": sha, "official": False}, "official": False,
+              "performance": _performance(cycles[n], model=model, elf="cand")} for n in body["capsules"].split(",")]
+    document = {"cases": cases, "selfcheck_request_id": rid, "graded_at_unix_ns": at,
+                "submission_sha256": sha if variant else body["submission_sha256"],
+                "selfcheck_submission": body.get("submission", "submission"), "official": False,
                 "tuning_experiment": body["tuning_experiment"]}
+    if variant:
+        document["variant"] = {"name": body["submission"].partition("/")[2], "sha256": sha, "official": False}
+    else:
+        document["variant"] = {"name": None, "path": "submission", "kind": "knob_overrides", "sha256": sha,
+                               "tuning_overrides": body[T.REQUEST_KEY], "settings_file": "tuning.json"}
     (ws / ".qa_channel" / f"resp_{rid}.json").write_text(json.dumps(document))
 
 
@@ -108,134 +146,240 @@ def _ledger(ws):
     return json.loads((ws / U.LEDGER).read_text())
 
 
-def test_tuning_runs_only_on_idle_capacity_once_estimates_are_current(tmp_path, gates):
+def test_reference_requests_reuse_private_knob_trials_and_do_not_repeat_as_generic_candidates(tmp_path, monkeypatch):
+    from merlin_experiments.phase1.feedback import reference_experiments
+
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    _knobs(tmp_path)
+    request = dict(
+        task_id="retention", request_id="controlled", packet_identity="a" * 64, context_identity="b" * 64,
+        role="variant", status="ready", split="training", sim="spike", tiers=None,
+        broker_payload=dict(suite="scalability"), tuning_overrides=dict(ready_readout=True),
+        settings=dict(ready_readout=True), capsule="public-case", owner_observed=False,
+    )
+    monkeypatch.setattr(reference_experiments, "pending_requests", lambda *a, **k: (request,))
+    tuner = U.IdleTuner(tmp_path)
+    proposed = tuner.candidates("a" * 64, None)
+    assert len(proposed) == 1 and proposed[0]["overrides"] == {"ready_readout": True}
+    assert proposed[0]["reference_experiment"]["request_id"] == "controlled"
+    request["owner_observed"] = True
+    assert tuner.candidates("a" * 64, None) == []
+
+
+@pytest.mark.parametrize("change", [
+    dict(split="held_out"), dict(sim="gsim"), dict(broker_payload=dict(suite="core")),
+    dict(tuning_overrides=dict(undeclared=True)), dict(settings=dict(ready_readout=True, unrelated="changed")),
+])
+def test_reference_request_cannot_change_idle_lane_or_undeclared_settings(tmp_path, monkeypatch, change):
+    from merlin_experiments.phase1.feedback import reference_experiments
+
+    (tmp_path / "submission").mkdir()
+    _knobs(tmp_path)
+    request = dict(
+        task_id="retention", request_id="controlled", packet_identity="a" * 64, context_identity="b" * 64,
+        role="variant", status="ready", split="training", sim="spike", tiers=None,
+        broker_payload=dict(suite="scalability"), tuning_overrides=dict(ready_readout=True),
+        settings=dict(ready_readout=True), capsule="public-case", owner_observed=False,
+    ) | change
+    monkeypatch.setattr(reference_experiments, "pending_requests", lambda *a, **k: (request,))
+    proposed = U.IdleTuner(tmp_path).candidates("a" * 64, None)
+    assert len(proposed) == 1 and "reference_experiment" not in proposed[0]
+
+
+def test_pending_or_refused_library_pass_variants_are_not_discovered(tmp_path):
+    for name in ('ready', 'pending', 'refused'):
+        _variant(tmp_path, name)
+    root = tmp_path / 'variants'
+    (root / (U.LIBRARY_PASS_PENDING_PREFIX + 'pending')).write_text('building')
+    (root / (U.LIBRARY_PASS_PENDING_PREFIX + 'refused')).symlink_to('missing-status-file')
+    assert U._variant_names(tmp_path, 8) == ['ready']
+
+
+def test_experiments_start_while_some_cases_lack_estimates(tmp_path, gates):
+    """The old tuner waited until every passing case had a current estimate, which never held."""
     ws, run = _workspace(tmp_path)
     _variant(ws)
     trees = {"submission": "d1", "variants/alt": "v1"}
+    _baseline(ws, "d0", {"big": 900})  # one case timed on older source; "mid" and "small" never timed
+    gates["slots"] = 12
     measurer, tick = _measurer(ws, run, trees)
-    assert tick() == "submitted"  # baseline timing comes first
-    assert not _requests(ws)
-    (timing,) = (ws / ".qa_channel").glob("req_op_idle_*.json")
-    _baseline(ws, "d1", {"big": 900, "mid": 500, "small": 200}, rid=timing.name[len("req_"):-len(".json")])
-    gates["slots"] = 2
-    assert tick(grading=True) == "cpus reserved for the admitting grade"  # the grade reserve is kept
-    (ws / ".qa_channel" / "req_3_5_author.json").write_text(json.dumps({"deadline_unix_ns": 2**62}))
-    gates["slots"] = 20
-    assert tick() == "author request waiting"
-    (ws / ".qa_channel" / "req_3_5_author.json").unlink()
-    assert not _requests(ws)
-    gates["slots"] = 2
-    assert tick() == "tuning submitted"
+    status = tick()
+    assert "submitted" in status and "tuning submitted" in status
     ((rid, body),) = _requests(ws).items()
-    # Sized from free capacity: two free slots, two cases (largest headroom first), one in flight.
-    assert body["capsules"] == "big,mid" and body["origin"] == U.ORIGIN == I.TUNING_ORIGIN
-    assert rid.startswith(I.REQUEST_PREFIX) and body["suite"] == "scalability" and body["sim"] == "spike"
     assert body["submission"] == "variants/alt" and body["submission_sha256"] == "v1"
+    assert body["origin"] == U.ORIGIN == I.TUNING_ORIGIN and rid.startswith(I.REQUEST_PREFIX)
+    assert body["suite"] == "scalability" and body["sim"] == "spike"
+    assert body["capsules"] == "big,mid,small"  # the bundle: representative first, then siblings
     experiment = body["tuning_experiment"]
     assert experiment["base_sha256"] == "d1" and experiment["mechanism_ids"] == ["readout"]
-    assert experiment["api"] == "lib.readout:propose" and "readout" in experiment["suggested_for_these_cases"]
+    assert experiment["api"] == "lib.readout:propose" and experiment["origin"] == "idle_tuning"
+    # The baselines the experiment needs were timed beside it, and the timing lane took the rest.
+    timed = sorted(name for body in _timing(ws).values() for name in body["capsules"].split(","))
+    assert timed == ["big", "mid", "small"]
     assert (ws / ".qa_channel" / f"detached_{rid}").exists()
-    assert tick() in ("background requests in flight", "tuning experiments in flight")
-    assert len(_requests(ws)) == 1
 
 
-def test_in_flight_and_per_source_bounds_follow_free_slots_and_knobs(tmp_path, gates, monkeypatch):
+def test_in_flight_work_is_sized_from_free_cpus(tmp_path, gates, monkeypatch):
     ws, run = _workspace(tmp_path)
-    for name in ("a", "b", "c"):
+    for name in ("a", "b", "c", "d"):
         _variant(ws, name, f"value = {name!r}\n")
-    trees = {"submission": "d1", "variants/a": "va", "variants/b": "vb", "variants/c": "vc"}
+    trees = {"submission": "d1", **{f"variants/{n}": f"v{n}" for n in "abcd"}}
     _baseline(ws, "d1", {"big": 900, "mid": 500, "small": 200})
-    gates["slots"] = 8
+    gates["slots"] = 7
     measurer, tick = _measurer(ws, run, trees)
-    statuses = [tick() for _ in range(4)]
-    # 8 free: three cases per experiment (the cap) and at most min(2, 8 // 3) = 2 experiments at once.
-    assert statuses[:2] == ["tuning submitted"] * 2 and "tuning submitted" not in statuses[2:]
-    assert all(len(b["capsules"].split(",")) == 3 for b in _requests(ws).values())
-    for rid, body in _requests(ws).items():
-        _answer(ws, rid, body, {"big": 800, "mid": 500, "small": 200})
-    monkeypatch.setenv("MERLIN_IDLE_TUNE_MAX_PER_SOURCE", "2")
-    assert tick() == "tuning budget for this source used"
-    monkeypatch.setenv("MERLIN_IDLE_TUNE_MAX_PER_SOURCE", "3")
     assert tick() == "tuning submitted"
-    for rid, body in _requests(ws).items():
-        _answer(ws, rid, body, {"big": 800, "mid": 500, "small": 200})
-    assert tick() == "tuning budget for this source used"
-    monkeypatch.setenv("MERLIN_IDLE_TUNE_MAX_PER_SOURCE", "4")
+    # Seven free CPUs: two experiments of three cases and one of the representative alone.
+    sizes = sorted(len(b["capsules"].split(",")) for b in _requests(ws).values())
+    assert sizes == [1, 3, 3]
+    assert tick() == "cpus promised to queued requests"  # queued requests own the CPUs they will take
+    _running(ws)
+    gates["slots"] = 3
+    assert tick() == "tuning submitted"
+    assert len(_requests(ws)) == 4  # every variant has one experiment now
+    _running(ws)
     assert tick() == "estimates current; no untried tuning candidate"
+    # The caps are optional: an operator may still bound experiments in flight.
+    monkeypatch.setenv("MERLIN_IDLE_PERF_MAX_REQUESTS", "2")
+    assert tick() == "background requests in flight"
 
 
-def test_results_are_advisory_bound_to_the_source_digest_and_dropped_when_it_moves(tmp_path, gates):
+def test_author_requests_keep_their_cpus_without_stopping_background_work(tmp_path, gates):
+    ws, run = _workspace(tmp_path)
+    _variant(ws)
+    _baseline(ws, "d1", {"big": 900, "mid": 500, "small": 200})
+    measurer, tick = _measurer(ws, run, {"submission": "d1", "variants/alt": "v1"})
+    author = ws / ".qa_channel" / "req_3_5_author.json"
+    author.write_text(json.dumps({"deadline_unix_ns": 2**62, "capsules": ",".join(f"c{i}" for i in range(20))}))
+    gates["slots"] = 20
+    assert tick() == "cpus promised to queued requests"  # all 20 free CPUs go to the author first
+    author.write_text(json.dumps({"deadline_unix_ns": 2**62, "capsules": "c1,c2"}))
+    assert tick() == "tuning submitted"  # the rest are used, not left idle
+    (body,) = _requests(ws).values()
+    assert body["origin"] == U.ORIGIN and len(body["capsules"].split(",")) == 3
+    author.write_text(json.dumps({"deadline_unix_ns": 2**62, "capsules": "all"}))
+    assert tick() == "cpus promised to queued requests"
+
+
+def test_small_pools_do_not_give_every_slot_to_missing_baselines(tmp_path, gates):
+    ws, run = _workspace(tmp_path, cohort=tuple(f"case{i}" for i in range(20)))
+    _variant(ws)
+    gates["slots"] = 4
+    _, tick = _measurer(ws, run, {"submission": "d1", "variants/alt": "v1"})
+    status = tick()
+    assert "submitted" in status and "tuning submitted" in status
+    assert _timing(ws) and _requests(ws)
+    assert sum(len(r["capsules"].split(",")) for r in [*_timing(ws).values(), *_requests(ws).values()]) <= 4
+
+
+def test_results_survive_a_source_change_with_their_baseline_label(tmp_path, gates):
     ws, run = _workspace(tmp_path)
     _variant(ws)
     trees = {"submission": "d1", "variants/alt": "v1"}
     _baseline(ws, "d1", {"big": 900, "mid": 500, "small": 200})
     measurer, tick = _measurer(ws, run, trees)
-    assert tick() == "tuning submitted"
+    assert "tuning submitted" in tick()
     ((rid, body),) = _requests(ws).items()
     _answer(ws, rid, body, {"big": 600, "mid": 550, "small": 200})
+    _running(ws)
     tick()
     ledger = _ledger(ws)
     assert ledger["advisory_only"] is True and ledger["promotion_authority"] is False
-    assert ledger["source_sha256"] == "d1"
     rows = {r["test_case"]: r for r in ledger["experiments"]}
     big = rows["big"]
     assert big["measured_cycles_before"] == 900 and big["measured_cycles_after"] == 600
     assert big["delta_pct"] == -33.33 and big["numerics"].startswith("unchanged")
+    assert big["baseline_status"] == "current" and big["baseline"]["sha256"] == "d1"
     assert big["mechanism"] == "readout" and big["api"] == "lib.readout:propose"
-    assert "on source d1" in big["evidence"] and big["candidate"]["graded_sha256"] == "v1"
-    assert big["how_to_apply"].startswith("compare variants/alt/")
+    assert big["candidate"]["graded_sha256"] == "v1" and big["how_to_apply"].startswith("compare variants/alt/")
     assert rows["mid"]["delta_pct"] == 10.0  # a slower candidate is reported like a faster one
-    assert [r["test_case"] for r in ledger["experiments"]][0] == "big"
     assert (ws / "submission" / "backend.py").read_text() == "import os\n"  # nothing applied
+    ranked = ledger["ranked_candidates"][0]
+    assert ranked["candidate"] == "variants/alt" and ranked["faster"] == 1 and ranked["slower"] == 1
+    assert ledger["ranked_cases"][0]["test_case"] == "big" and ledger["ranked_cases"][0]["best"]["delta_pct"] == -33.33
 
-    trees["variants/alt"] = "v2"  # the variant moved on: its old result no longer describes it
-    (ws / "variants" / "alt" / "backend.py").write_text("from lib.readout import propose\nchanged = 1\n")
-    tick()
-    assert _ledger(ws)["experiments"] == []
-    trees["variants/alt"] = "v1"
-    (ws / "variants" / "alt" / "backend.py").write_text("from lib.readout import propose\n")
-    tick()
-    assert len(_ledger(ws)["experiments"]) == 3
-    trees["submission"] = "d2"  # the source moved on: every result bound to d1 is dropped
-    tick()
-    assert _ledger(ws)["source_sha256"] == "d2" and _ledger(ws)["experiments"] == []
-    # Once d2 has its own estimates, the unchanged variant's timing is compared with them, not re-run.
-    timed_v1 = [b for b in _requests(ws).values() if b["submission_sha256"] == "v1"]
-    _baseline(ws, "d2", {"big": 1200, "mid": 500, "small": 200}, rid="3_2_base")
+    trees["submission"] = "d2"  # the author edits: results stay, labelled as an older baseline
     tick()
     rows = {r["test_case"]: r for r in _ledger(ws)["experiments"]}
-    assert rows["big"]["source_sha256"] == "d2" and rows["big"]["measured_cycles_before"] == 1200
-    assert rows["big"]["delta_pct"] == -50.0 and rows["big"]["candidate_timed_with_source"] == "d1"
+    assert len(rows) == 3 and rows["big"]["baseline_status"] == "older_source"
+    assert rows["big"]["baseline"]["sha256"] == "d1" and rows["big"]["baseline"]["age_s"] is not None
+    assert rows["big"]["delta_pct"] == -33.33
+    # d2 re-timed: "big" emits the same ELF (still a valid comparison, now current); "mid" changed.
+    _baseline(ws, "d2", {"big": 900}, rid="3_2_base")
+    _baseline(ws, "d2", {"mid": 400}, rid="3_3_base", elf="e2")
+    timed_v1 = [b for b in _requests(ws).values() if b["submission_sha256"] == "v1"]
+    tick()
+    rows = {r["test_case"]: r for r in _ledger(ws)["experiments"]}
+    assert rows["big"]["baseline_status"] == "current" and rows["big"]["source_sha256"] == "d2"
+    # A variant's estimate depends on its own bytes: it is re-compared with the newer baseline, not re-run.
+    assert rows["mid"]["baseline_status"] == "current" and rows["mid"]["measured_cycles_before"] == 400
+    assert rows["mid"]["delta_pct"] == 37.5 and rows["small"]["baseline_status"] == "older_source"
     assert [b for b in _requests(ws).values() if b["submission_sha256"] == "v1"] == timed_v1
 
-
-def test_numerical_changes_and_incomparable_estimates_are_stated_not_compared(tmp_path, gates):
-    ws, run = _workspace(tmp_path, cohort=("big",))
-    _variant(ws)
-    trees = {"submission": "d1", "variants/alt": "v1"}
-    _baseline(ws, "d1", {"big": 900})
-    measurer, tick = _measurer(ws, run, trees)
-    assert tick() == "tuning submitted"
-    ((rid, body),) = _requests(ws).items()
-    _answer(ws, rid, body, {"big": 100}, passed=False, model={**MODEL, "timing_epoch": 1})
+    trees["variants/alt"] = "v2"  # the variant itself moved on: its old result stays, marked as such
+    (ws / "variants" / "alt" / "backend.py").write_text("from lib.readout import propose\nchanged = 1\n")
     tick()
-    (record,) = _ledger(ws)["experiments"]
-    assert record["numerics"].startswith("changed") and record["delta_pct"] is None
-    assert record["measured_cycles_after"] is None and "timing_epoch" in record["not_compared"]
+    rows = {r["test_case"]: r for r in _ledger(ws)["experiments"]}
+    assert rows["big"]["candidate_current"] is False
 
 
-def test_declared_knob_values_are_timed_on_a_private_copy(tmp_path, gates):
-    ws, run = _workspace(tmp_path)
+def test_a_knob_copy_is_re_timed_only_when_the_case_emission_changes(tmp_path, gates, monkeypatch):
+    ws, run = _workspace(tmp_path, cohort=("big",))
     _knobs(ws)
-    _baseline(ws, "d1", {"big": 900, "mid": 500, "small": 200})
+    _baseline(ws, "d1", {"big": 900})
     trees = {"submission": "d1"}
     measurer, tick = _measurer(ws, run, trees)
     assert tick() == "tuning submitted"
     ((rid, body),) = _requests(ws).items()
     assert body["submission"] == "submission" and body["submission_sha256"] == "d1"
     assert body[T.REQUEST_KEY] == {"ready_readout": True}
-    assert body["tuning_experiment"]["candidate"]["kind"] == "knob"
+    _answer(ws, rid, body, {"big": 700})
+    _running(ws)
+    tick()
+    (record,) = _ledger(ws)["experiments"]
+    assert record["delta_pct"] == -22.22 and record["baseline_status"] == "current"
+    assert record["how_to_apply"] == "set ready_readout to true in submission/tuning.json"
+    trees["submission"] = "d2"
+    _baseline(ws, "d2", {"big": 900}, rid="3_2_base")  # same emitted ELF for this case
+    assert "tuning submitted" not in tick()
+    (record,) = _ledger(ws)["experiments"]
+    assert record["baseline_status"] == "current" and record["source_sha256"] == "d1"
+    trees["submission"] = "d3"
+    _baseline(ws, "d3", {"big": 800}, rid="3_3_base", elf="e3")  # the case's emission changed
+    assert tick() == "tuning submitted"
+    (record,) = _ledger(ws)["experiments"]
+    assert record["baseline_status"] == "superseded"
+    assert sorted(b["submission_sha256"] for b in _requests(ws).values()) == ["d1", "d3"]
 
+
+def test_numerical_changes_and_incomparable_estimates_are_stated_not_compared(tmp_path, gates):
+    ws, run = _workspace(tmp_path, cohort=("big",))
+    _variant(ws)
+    _baseline(ws, "d1", {"big": 900})
+    measurer, tick = _measurer(ws, run, {"submission": "d1", "variants/alt": "v1"})
+    assert tick() == "tuning submitted"
+    ((rid, body),) = _requests(ws).items()
+    _answer(ws, rid, body, {"big": 100}, passed=False)
+    _running(ws)
+    tick()
+    (record,) = _ledger(ws)["experiments"]
+    assert record["numerics"].startswith("changed") and record["delta_pct"] == -88.89
+    assert not R.usable(record) and _ledger(ws)["ranked_cases"][0].get("best") is None
+    _answer(ws, rid, body, {"big": 100}, model={**MODEL, "timing_epoch": 1})
+    measurer.tuner._responses.clear()
+    tick()
+    (record,) = _ledger(ws)["experiments"]
+    assert record["delta_pct"] is None and "comparable" in record["not_compared"]
+
+
+def test_declared_knob_values_are_timed_on_a_private_copy(tmp_path, gates):
+    ws, run = _workspace(tmp_path)
+    _knobs(ws)
+    _baseline(ws, "d1", {"big": 900, "mid": 500, "small": 200})
+    measurer, tick = _measurer(ws, run, {"submission": "d1"})
+    assert tick() == "tuning submitted"
+    ((rid, body),) = _requests(ws).items()
+    assert body["tuning_experiment"]["candidate"]["kind"] == "knob"
     # What the broker does with it: copy, verify, then set the value in the copy only.
     snapshot = tmp_path / "snapshot" / "submission"
     shutil.copytree(ws / "submission", snapshot)
@@ -252,17 +396,75 @@ def test_declared_knob_values_are_timed_on_a_private_copy(tmp_path, gates):
         T.apply_request(snapshot, {**body, T.REQUEST_KEY: {"undeclared": True}}, digest=str)
     assert T.apply_request(snapshot, {"x": 1, T.APPLIED_KEY: {"forged": True}}, digest=str) == {"x": 1}
 
-    _answer(ws, rid, body, {"big": 700, "mid": 500, "small": 210})
-    tick()
-    rows = {r["test_case"]: r for r in _ledger(ws)["experiments"]}
-    assert rows["big"]["delta_pct"] == -22.22 and rows["big"]["mechanism"] == "readout"
-    assert rows["big"]["how_to_apply"] == "set ready_readout to true in submission/tuning.json"
-    # A knob copy is made of one submission digest: a new digest drops the result and asks again.
-    trees["submission"] = "d2"
-    _baseline(ws, "d2", {"big": 900, "mid": 500, "small": 200}, rid="3_2_base")
+
+def test_author_variant_checks_are_ranked_and_not_timed_again(tmp_path, gates, monkeypatch):
+    ws, run = _workspace(tmp_path)
+    for name in ("mine", "other"):
+        _variant(ws, name, f"value = {name!r}\n")
+    _bundles(ws, monkeypatch, [{"label": "dense tall", "representative": "mid", "siblings": ["small"]},
+                               {"label": "dense wide", "representative": "big", "siblings": []}])
+    _baseline(ws, "d1", {"big": 900, "mid": 500, "small": 200})
+    # The author already checked variants/mine on "mid" with the timing model.
+    author = {"request_id": "3_7_a", "submission": "variants/mine", "submission_sha256": "vm",
+              "suite": "scalability", "capsules": "mid", "deadline_unix_ns": 2**62}
+    (ws / ".qa_channel" / "req_3_7_a.json").write_text(json.dumps(author))
+    _answer(ws, "3_7_a", {**author, "tuning_experiment": None}, {"mid": 450}, at=5)
+    gates["slots"] = 3
+    measurer, tick = _measurer(ws, run, {"submission": "d1", "variants/mine": "vm", "variants/other": "vo"})
     assert tick() == "tuning submitted"
-    assert _ledger(ws)["experiments"] == []
-    assert sorted(b["submission_sha256"] for b in _requests(ws).values()) == ["d1", "d2"]
+    jobs = sorted((b["submission"], b["capsules"]) for b in _requests(ws).values())
+    # Bundles in value order (newest variant first within one); "mine" is not timed again on "mid",
+    # where the author already timed it, so the first bundle gets only "other".
+    assert jobs == [("variants/other", "big"), ("variants/other", "mid,small")]
+    _running(ws)
+    gates["slots"] = 1
+    assert tick() == "tuning submitted"
+    assert ("variants/mine", "big") in [(b["submission"], b["capsules"]) for b in _requests(ws).values()]
+    rows = {(r["candidate"]["label"], r["test_case"]): r for r in _ledger(ws)["experiments"]}
+    assert rows[("variants/mine", "mid")]["delta_pct"] == -10.0 and rows[("variants/mine", "mid")]["origin"] == "author"
+    assert _ledger(ws)["bundles"][0] == {"label": "dense tall", "representative": "mid", "siblings": ["small"]}
+
+
+def test_comparison_history_survives_baseline_replacement_and_restart(tmp_path, gates):
+    ws, run = _workspace(tmp_path, cohort=("big",))
+    _variant(ws)
+    trees = {"submission": "d1", "variants/alt": "v1"}
+    _baseline(ws, "d1", {"big": 900}, graded=1)
+    _, tick = _measurer(ws, run, trees)
+    assert tick() == "tuning submitted"
+    ((rid, body),) = _requests(ws).items()
+    _answer(ws, rid, body, {"big": 600}, at=2)
+    tick()
+    (old,) = _ledger(ws)["comparison_history"]
+    trees["submission"] = "d2"
+    _baseline(ws, "d2", {"big": 800}, rid="3_2_base", graded=3, elf="new-baseline")
+    tick()
+    ledger = _ledger(ws)
+    assert len(ledger["experiments"]) == 1 and len(ledger["comparison_history"]) == 2
+    history = {r["baseline"]["sha256"]: r for r in ledger["comparison_history"]}
+    assert history["d1"]["identity"] == old["identity"]
+    assert history["d1"]["baseline_status"] == "superseded"
+    assert history["d2"]["baseline_status"] == "current"
+    _, restarted = _measurer(ws, run, trees)
+    restarted()
+    assert {r["identity"] for r in _ledger(ws)["comparison_history"]} == {
+        r["identity"] for r in ledger["comparison_history"]}
+
+
+def test_candidate_model_epochs_and_knob_copies_have_separate_immutable_results():
+    candidate = {"kind": "knob", "key": "knob:k=true", "overrides": {"k": True}, "settings_file": "t.json"}
+    base = {"candidate": candidate, "base": "d1", "graded": "copy-d1", "graded_at": 2,
+            "request_id": "r1", "rows": [{"test_case": "big", "passed": True,
+                                          "performance": _performance(600, elf="candidate-1")}]}
+    changed = {**base, "base": "d2", "graded": "copy-d2", "graded_at": 4, "request_id": "r2",
+               "rows": [{"test_case": "big", "passed": True,
+                         "performance": _performance(500, model={**MODEL, "model_sha256": "m2"},
+                                                     elf="candidate-2")}]}
+    known = {"big": [(3, "d2", _performance(800, model={**MODEL, "model_sha256": "m2"}, elf="e2"), True),
+                     (1, "d1", _performance(900), True)]}
+    rows = R.records([base, changed], known, "d2", variant_digests={})
+    assert len(rows) == 2 and len({r["identity"] for r in rows}) == 2
+    assert rows[0]["baseline_status"] == "current" and rows[1]["baseline_status"] == "superseded"
 
 
 def test_a_malformed_knob_declaration_offers_nothing(tmp_path):
@@ -284,7 +486,7 @@ def test_the_knob_disables_tuning_and_its_publication(tmp_path, gates, monkeypat
     _baseline(ws, "d1", {"big": 900, "mid": 500, "small": 200})
     monkeypatch.setenv(U.ENV, "0")
     measurer, tick = _measurer(ws, run, {"submission": "d1", "variants/alt": "v1"})
-    assert tick() == "estimates current; tuning disabled"
+    assert tick() == "estimates current; no untried tuning candidate"
     assert not _requests(ws) and not (ws / U.LEDGER).exists()
     document = {"submission_sha256": "d1", "performance_brief": {"largest_headroom": []}}
     assert "idle_tuning" not in U.attach(document, ws)["performance_brief"]
@@ -293,14 +495,16 @@ def test_the_knob_disables_tuning_and_its_publication(tmp_path, gates, monkeypat
     assert tick() == "disabled" and not _requests(ws)
 
 
-def test_the_brief_shows_only_results_of_its_own_source(tmp_path, gates):
+def test_the_brief_shows_results_whose_baseline_still_describes_the_case(tmp_path, gates):
     ws, run = _workspace(tmp_path)
     _variant(ws)
     _baseline(ws, "d1", {"big": 900, "mid": 500, "small": 200})
-    measurer, tick = _measurer(ws, run, {"submission": "d1", "variants/alt": "v1"})
+    trees = {"submission": "d1", "variants/alt": "v1"}
+    measurer, tick = _measurer(ws, run, trees)
     assert tick() == "tuning submitted"
     ((rid, body),) = _requests(ws).items()
     _answer(ws, rid, body, {"big": 600, "mid": 500, "small": 200})
+    _running(ws)
     tick()
     rows = [{"capsule": "big", "tiers": {"L2": "pass"}, "performance": _performance(900)}]
     document = PB.attach({"submission_sha256": "d1", "selfcheck_submission": "submission"}, rows, workspace=ws)
@@ -308,11 +512,18 @@ def test_the_brief_shows_only_results_of_its_own_source(tmp_path, gates):
     block = brief["idle_tuning"]
     assert block["advisory_only"] is True and block["promotion_authority"] is False
     assert block["count"] == 3 and block["experiments"][0]["test_case"] == "big"
-    assert "TUNING_KNOBS.json" in block["offer"] and block["all"] == "qa/idle_tuning.json"
+    assert block["experiments"][0]["baseline"].startswith("d1 (") and "current" in block["experiments"][0]["baseline"]
+    assert block["ranked_candidates"][0]["candidate"] == "variants/alt"
+    assert "TUNING_KNOBS.json" in block["offer"] and "--sweep" in block["offer"]
+    assert block["all"] == "qa/idle_tuning.json"
     (entry,) = brief["largest_headroom"]
     assert entry["idle_tuning_experiments"][0]["delta_pct"] == -33.33
-    other = PB.attach({"submission_sha256": "d0", "selfcheck_submission": "submission"}, rows, workspace=ws)
-    assert U.attach(other, ws)["performance_brief"]["idle_tuning"]["experiments"] == []
+    assert len(json.dumps(block)) < 8192  # lean: details stay in the ledger
+    trees["submission"] = "d2"
+    tick()
+    other = PB.attach({"submission_sha256": "d2", "selfcheck_submission": "submission"}, rows, workspace=ws)
+    shown = U.attach(other, ws)["performance_brief"]["idle_tuning"]["experiments"]
+    assert shown and all("older_source" in row["baseline"] for row in shown)
     variant = PB.attach({"submission_sha256": "v1", "variant": {"sha256": "v1"}}, rows, workspace=ws)
     assert "idle_tuning" not in U.attach(variant, ws)["performance_brief"]
     assert U.attach({"performance_brief": "broken"}, ws) == {"performance_brief": "broken"}
@@ -332,20 +543,20 @@ def test_variant_mechanisms_come_from_new_imports_in_changed_files(tmp_path):
 
 def test_a_failing_tuning_step_never_stops_baseline_timing(tmp_path, gates, monkeypatch):
     ws, run = _workspace(tmp_path)
-    measurer, tick = _measurer(ws, run, {"submission": "d1"})
+    _variant(ws)
+    measurer, tick = _measurer(ws, run, {"submission": "d1", "variants/alt": "v1"})
 
     def broken(*args, **kwargs):
         raise OSError("no space left on device")
 
     monkeypatch.setattr(measurer.tuner, "refresh", broken)
+    monkeypatch.setattr(measurer.tuner, "plan", broken)
     assert tick() == "submitted"  # the baseline timing request still goes out
-    _baseline(ws, "d1", {"big": 900, "mid": 500, "small": 200})
-    monkeypatch.setattr(measurer.tuner, "tick", broken)
-    assert tick() == "error"
+    assert not _requests(ws)
 
 
 @pytest.mark.parametrize('kind', ['knob', 'variant'])
-def test_new_model_renews_candidate_and_per_source_budget(tmp_path, gates, monkeypatch, kind):
+def test_new_model_renews_candidates(tmp_path, gates, monkeypatch, kind):
     ws, run = _workspace(tmp_path, cohort=('big',))
     trees = {'submission': 'd1'}
     if kind == 'knob':
@@ -353,24 +564,27 @@ def test_new_model_renews_candidate_and_per_source_budget(tmp_path, gates, monke
     else:
         _variant(ws)
         trees['variants/alt'] = 'v1'
-    monkeypatch.setenv('MERLIN_IDLE_TUNE_MAX_PER_SOURCE', '1')
+    selected = ['s1']
+    monkeypatch.setattr(I, '_selection_identity', lambda: selected[0])
     _baseline(ws, 'd1', {'big': 900})
+    path = ws / '.qa_channel' / 'resp_3_1_base.json'
+    doc = json.loads(path.read_text())
+    doc['cases'][0]['performance']['selection_sha256'] = 's1'
+    path.write_text(json.dumps(doc))
     _, tick = _measurer(ws, run, trees)
     assert tick() == 'tuning submitted'
     ((rid, body),) = _requests(ws).items()
-    _answer(ws, rid, body, {'big': 800})
-    assert tick() == 'tuning budget for this source used'
-    _baseline(ws, 'd1', {'big': 700}, rid='3_2_new_model')
-    path = ws / '.qa_channel' / 'resp_3_2_new_model.json'
-    doc = json.loads(path.read_text())
+    _answer(ws, rid, body, {'big': 800}, model={**MODEL, 'selection_sha256': 's1'})
+    _running(ws)
+    assert 'tuning submitted' not in tick()
+    selected[0] = 's2'
+    doc['cases'][0]['performance']['selection_sha256'] = 's2'
     doc['graded_at_unix_ns'] = 20
-    doc['cases'][0]['performance'].update(model_sha256='m2', timing_epoch=1)
-    path.write_text(json.dumps(doc))
-    assert tick() == 'tuning submitted'
+    (ws / '.qa_channel' / 'resp_3_2_new_model.json').write_text(json.dumps(doc))
+    assert 'tuning submitted' in tick()
     requests = list(_requests(ws).values())
     assert len(requests) == 2
     assert requests[0]['tuning_experiment']['identity'] != requests[1]['tuning_experiment']['identity']
-    assert all(row['tuning_experiment']['base_sha256'] == 'd1' for row in requests)
 
 
 @pytest.mark.parametrize('field', ['selection_sha256', 'scope_sha256', 'comparison_domain_sha256'])
@@ -388,6 +602,7 @@ def test_old_inflight_response_cannot_display_new_model_tuning_results(tmp_path,
     assert tick() == 'tuning submitted'
     ((rid, body),) = _requests(ws).items()
     _answer(ws, rid, body, {'big': 800})
+    _running(ws)
     tick()
     rows = [dict(capsule='big', tiers={'L2': 'pass'}, performance=_performance(
         100, model={**MODEL, 'model_sha256': 'older-model'}))]
@@ -395,3 +610,76 @@ def test_old_inflight_response_cannot_display_new_model_tuning_results(tmp_path,
     U.attach(response, ws)
     assert response['performance_brief']['idle_tuning']['experiments'] == []
     assert not response['performance_brief']['largest_headroom'][0].get('idle_tuning_experiments')
+
+
+def test_progress_distinguishes_missing_adapter_from_missing_declared_alternatives(tmp_path, gates):
+    ws, run = _workspace(tmp_path, cohort=('big',))
+    _baseline(ws, 'd1', {'big': 900})
+    _, tick = _measurer(ws, run, {'submission': 'd1'})
+    tick()
+    progress = _ledger(ws)['progress']
+    assert progress['ready_baselines'] == 1 and progress['declared_candidates'] == 0
+    assert progress['outstanding_candidate_cases'] == 0 and progress['requests_in_flight'] == 0
+    assert progress['status'] == 'construction_required'
+    task = progress['construction_task']
+    assert task['kind'] == 'bind_source_effects' and 'binding/identity/evaluate' in task['action']
+    assert '--adapter AUTHORED_OWNER.py' in task['command'] and '--facts SELECTED_FACTS.json' in task['command']
+    assert 'neutral compilation is not numerics or timing' in task['qualification']
+    # A declared custom path is discovered without importing it or prescribing
+    # a filename. Presence does not prove its action or legality contracts.
+    (ws/'submission'/'custom_adapter.py').write_text("raise RuntimeError('must never import in coordinator')")
+    (ws/'submission'/'LIBRARY_PASS_SELECTION.json').write_text(json.dumps({'adapter': 'custom_adapter.py'}))
+    tick()
+    task = _ledger(ws)['progress']['construction_task']
+    assert task['kind'] == 'declare_alternatives' and 'TUNING_KNOBS.json' in task['action']
+    assert task['adapter_discovery'] == 'file_present_mapping_unconfirmed'
+
+
+def test_progress_updates_immediately_and_is_bound_to_source_and_model(tmp_path, gates):
+    ws, run = _workspace(tmp_path, cohort=('big',))
+    _knobs(ws, values=(False, True, 'other'))
+    _baseline(ws, 'd1', {'big': 900})
+    _, tick = _measurer(ws, run, {'submission': 'd1'})
+    assert tick() == 'tuning submitted'
+    ledger = _ledger(ws)
+    progress = ledger['progress']
+    assert progress['ready_baselines'] == 1 and progress['declared_candidates'] == 2
+    assert progress['requests_in_flight'] == 2 and progress['outstanding_candidate_cases'] == 0
+    assert progress['status'] == 'running'
+    response = dict(submission_sha256='d1', cases=[dict(performance=_performance(900))])
+    assert U.matching_progress(ledger, response) == progress
+    assert U.matching_progress(ledger, {**response, 'submission_sha256': 'd2'}) is None
+    response['cases'][0]['performance']['model_sha256'] = 'old-model'
+    assert U.matching_progress(ledger, response) is None
+
+
+def test_registered_selection_alternatives_use_existing_broker_overrides(tmp_path, gates):
+    ws, run = _workspace(tmp_path, cohort=('big',))
+    root = ws/'submission'
+    (root/'LIBRARY_PASS_SELECTION.json').write_text(json.dumps({'mechanism': None}))
+    (root/T.DECLARATION).write_text(json.dumps({
+        'schema': T.SCHEMA, 'settings_file': 'LIBRARY_PASS_SELECTION.json',
+        'knobs': {'mechanism': {'values': [None, 'registered_a', 'registered_b']}}}))
+    _baseline(ws, 'd1', {'big': 900})
+    _, tick = _measurer(ws, run, {'submission': 'd1'})
+    assert tick() == 'tuning submitted'
+    requests = list(_requests(ws).values())
+    assert len(requests) == 2
+    assert {r[T.REQUEST_KEY]['mechanism'] for r in requests} == {'registered_a', 'registered_b'}
+    assert all(r['origin'] == I.TUNING_ORIGIN and r['sim'] == 'spike' for r in requests)
+    assert json.loads((root/'LIBRARY_PASS_SELECTION.json').read_text()) == {'mechanism': None}
+
+
+def test_partial_current_cohort_sweeps_while_refreshing_missing_baselines(tmp_path, gates):
+    ws, run = _workspace(tmp_path)
+    _knobs(ws)
+    _baseline(ws, 'd1', {'big': 900})
+    _, tick = _measurer(ws, run, {'submission': 'd1'})
+    status = tick()
+    assert 'submitted' in status and 'tuning submitted' in status
+    assert _requests(ws) and _timing(ws)
+    assert _ledger(ws)['progress']['ready_baselines'] == 1
+    timed = {n for r in _timing(ws).values() for n in r['capsules'].split(',')}
+    assert {'mid', 'small'} <= timed
+    work = [(r['submission_sha256'], n) for r in _requests(ws).values() for n in r['capsules'].split(',')]
+    assert len(work) == len(set(work))

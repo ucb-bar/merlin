@@ -138,6 +138,10 @@ def _workspace(tmp_path, *, failing=1):
         _row("tiny_pointwise", performance=_modeled(400, 4)),
         *[_row(f"failing_{index}", l2="fail") for index in range(failing)],
     ]
+    (ws / 'PUBLIC_CAPABILITIES.json').write_text(json.dumps({
+        'schema': 'merlin.public_capability_inventory.v1',
+        'members': {row['capsule']: {'workload_role': 'large_kernel', 'cohort': 'scalability_performance',
+                                     'family': 'declared_test_family'} for row in rows}}))
     verdict = {
         "per_capsule": rows,
         "graded_source_sha256": "a" * 64,
@@ -276,6 +280,7 @@ def test_a_published_grade_rewrites_the_brief_and_summary_with_its_identity(tmp_
 
 def test_brief_refresh_failure_leaves_the_grade_and_the_old_brief(tmp_path, monkeypatch):
     ws, verdict = _workspace(tmp_path)
+    (ws / "PUBLIC_CAPABILITIES.json").unlink()  # exercise the legacy brief refresh failure path
     run = tmp_path / "run"
     (ws / "qa" / "round_brief.md").write_text("previous brief\n")
     monkeypatch.setattr(brief, "build", lambda *a, **k: 1 / 0)

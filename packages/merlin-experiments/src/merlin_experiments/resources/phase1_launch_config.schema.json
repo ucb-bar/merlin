@@ -214,6 +214,10 @@
         "verify_report": {"$ref": "#/$defs/text"}
       }
     },
+    "reference_experiments": {
+      "$ref": "#/$defs/pin",
+      "description": "Explicit operator reference-experiment selection for controller feedback. No author read grants or runtime defaults are added."
+    },
     "instruction_selection": {
       "type": "object",
       "additionalProperties": false,

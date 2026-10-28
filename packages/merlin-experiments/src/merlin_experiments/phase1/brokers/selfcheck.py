@@ -47,16 +47,19 @@ from merlin_experiments.phase1.feedback.idle_performance import REQUEST_PREFIX a
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
 
 from ..compiler_library import selected_child
+from ..feedback.reference_analysis import broker_response as _reference_analysis_response
 
 # Lane sizing and worker reaping live in their own module; every name stays importable from here.
 from .selfcheck_lanes import (  # noqa: F401 -- re-exported for callers and tests
     CAPSULES_PER_COMPUTE_CPU,
+    _author_cpu_backlog,
     _diagnostic_request,
     _dispatch_capacity,
     _feedback_scope_error,
     _lane_admits,
     _ordinary_capacity,
     _ordinary_capsule_limit,
+    _overflow_admits,
     _process_record,
     _public_corpus_size,
     _stop_owned_worker,
@@ -211,6 +214,10 @@ def _decorate_response(
     # Which tree this verdict is about, on every response; a variant's also says it is not official.
     body.update(sources.response_fields(request, submission_sha256))
     body.update(tuning.response_fields(request))  # knob overrides grade a private copy, never submission/
+    from ..feedback import reference_experiments
+    body.pop("reference_experiment_result", None)  # only the owned request/result join can issue this observation
+    reference_experiments.attach(body, current_compiler_sha256=submission_sha256)
+    reference_experiments.observe_result(request, body, base_compiler_sha256=submission_sha256)
     return body
 
 
@@ -569,13 +576,18 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
         health = json.loads(health_path.read_bytes())
     except (OSError, ValueError):
         health = {}
+    from merlin.common.cpu_pool import compute_capacity
+
     ordinary_capacity = _ordinary_capacity()
     # Variants share the ordinary lane; their own bound keeps the rest of it for submission/ checks.
     variant_capacity = sources.variant_capacity(ordinary_capacity)
+    overflow_capacity = compute_capacity()
     health.update(
         protocol=PROTOCOL_VERSION,
         dispatch_capacity=ordinary_capacity + 1,
         ordinary_capacity=ordinary_capacity,
+        overflow_capacity=overflow_capacity,
+        overflow_admitted=int(health.get("overflow_admitted", 0)),
         variant_capacity=variant_capacity,
         broker_starts=int(health.get("broker_starts", 0)) + 1,
         processed=int(health.get("processed", 0)),
@@ -641,6 +653,9 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                     )
                 )
                 health["max_queue_depth"] = max(health["max_queue_depth"], len(pending))
+                # Read the pool's author backlog at most once per pass, and admit at most one request
+                # past the ordinary lanes per pass: a new handler takes seconds to reach its first lease.
+                backlog = unread = object()
                 for request in pending:
                     try:
                         request_bytes = request.read_bytes()
@@ -648,14 +663,24 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                         continue
                     diagnostic = _diagnostic_request(request, request_bytes=request_bytes)
                     variant = sources.is_variant_request(request_bytes)
-                    if not _lane_admits(
-                        _lane_holders(ch, active),
+                    holders = _lane_holders(ch, active)
+                    lanes = dict(
                         diagnostic=diagnostic,
                         variant=variant,
                         ordinary_capacity=ordinary_capacity,
                         variant_capacity=variant_capacity,
-                    ):
-                        continue
+                    )
+                    overflow = False
+                    if not _lane_admits(holders, **lanes):
+                        if diagnostic or request.name.startswith("req_" + IDLE_REQUEST_PREFIX):
+                            continue  # operator background work never starts past the lanes
+                        if backlog is unread:
+                            backlog = _author_cpu_backlog()
+                        overflow = _overflow_admits(
+                            holders, ordinary_capacity=ordinary_capacity, author_backlog=backlog, pool=overflow_capacity
+                        )
+                        if not _lane_admits(holders, **lanes, overflow=overflow):
+                            continue
                     stop = ch / f".handler-stop_{secrets.token_hex(12)}"
                     try:
                         command = _handler_command(
@@ -669,15 +694,27 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                             request_bytes=request_bytes,
                         )
                         from ..joint_model_activation import request_environment
-                        handler_env = request_environment(os.environ, channel="selfcheck",
-                            request_id=request.stem.removeprefix("req_"), request_bytes=request_bytes)
+
+                        handler_env = request_environment(
+                            os.environ,
+                            channel="selfcheck",
+                            request_id=request.stem.removeprefix("req_"),
+                            request_bytes=request_bytes,
+                        )
                     except FileNotFoundError:
                         continue  # Ordinary cancellation must not stop another lane.
                     except (ValueError, KeyError, TypeError) as error:
                         rid = request.stem.removeprefix("req_")
-                        _atomic_write(ch / f"resp_{rid}.json", json.dumps({
-                            "error": "request model admission refused: " + type(error).__name__,
-                            "all_pass": False, "numeric_assessment": "not_run"}))
+                        _atomic_write(
+                            ch / f"resp_{rid}.json",
+                            json.dumps(
+                                {
+                                    "error": "request model admission refused: " + type(error).__name__,
+                                    "all_pass": False,
+                                    "numeric_assessment": "not_run",
+                                }
+                            ),
+                        )
                         _atomic_write(ch / f"done_{rid}", "err")
                         seen.add(request.name)
                         continue
@@ -686,6 +723,9 @@ def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
                     )
                     stat = _process_record(process.pid)
                     seen.add(request.name)
+                    if overflow:
+                        backlog = None  # one request past the lanes per pass
+                        health["overflow_admitted"] += 1
                     try:
                         body = json.loads(request_bytes)
                     except ValueError:
@@ -739,8 +779,11 @@ def _lane_holders(ch: Path, active: dict) -> list[dict]:
     """
     from .. import joint_gsim_queue as gsim_queue
 
-    return [job for name, job in active.items()
-            if gsim_queue.waiting(ch / f"progress_{name[len('req_'):-len('.json')]}.json") is None]
+    return [
+        job
+        for name, job in active.items()
+        if gsim_queue.waiting(ch / f"progress_{name[len('req_') : -len('.json')]}.json") is None
+    ]
 
 
 def _drain_handlers(active: dict) -> list[str]:
@@ -978,13 +1021,28 @@ def main(
             if r.get("action") == "mechanism-question":
                 try:
                     from ..joint_mechanism_questions import submit
+
                     body = submit(r.get("mechanism_question"), request_id=rid)
                 except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
-                    body = {"status": "mechanism_question_denied", "reason": str(error),
-                            "all_pass": False, "numeric_assessment": "not_run", "fit_eligible": False}
-                doc = _decorate_response(json.dumps(body), r, rid, graded_digest,
-                    started_ns=started_ns, completed_ns=time.time_ns())
+                    body = {
+                        "status": "mechanism_question_denied",
+                        "reason": str(error),
+                        "all_pass": False,
+                        "numeric_assessment": "not_run",
+                        "fit_eligible": False,
+                    }
+                doc = _decorate_response(
+                    json.dumps(body), r, rid, graded_digest, started_ns=started_ns, completed_ns=time.time_ns()
+                )
                 _atomic_write(resp, json.dumps(doc))
+                _atomic_write(ch / f"done_{rid}", "ok")
+                continue
+            if r.get("action") == "reference-analysis":
+                body = _reference_analysis_response(r, workspace=ws, facts=a.rtl_facts,
+                    compiler_sha256=graded_digest, rid=rid, started_ns=started_ns,
+                    bundle_manifest=a.compiler_bundle_manifest, repo=context.repo,
+                    descriptor=context.descriptor, target=context.target)
+                _atomic_write(resp, json.dumps(body))
                 _atomic_write(ch / f"done_{rid}", "ok")
                 continue
             if r.get("action") in COMMON_ACTIONS:
@@ -1005,6 +1063,8 @@ def main(
                         "merlin.common_compiler_substrate.v13",
                         "merlin.common_compiler_substrate.v14",
                         "merlin.common_compiler_substrate.v15",
+                        "merlin.common_compiler_substrate.v16",
+                        "merlin.common_compiler_substrate.v17",
                     ):
                         raise FileNotFoundError("common check was not admitted by the original compiler profile")
                     proof_root = a.compiler_bundle_manifest.parent / "common-transform-work"
@@ -1068,7 +1128,9 @@ def main(
                     suite_error = f"public {suite} request refused ({type(exc).__name__})"
             elif suite != "core":
                 suite_error = "unknown public suite"
-            sim = None if inspection else str(r.get("sim") or _default_sim() or "") or None
+            # A variant or tuning A/B without a named engine is a performance comparison: Spike cycle model.
+            default_sim = "spike" if variant else _default_sim()
+            sim = None if inspection else str(r.get("sim") or default_sim or "") or None
             if suite in {"scalability", "programs"}:
                 sim = "gsim" if measurement is not None else "spike"
             policy_error = suite_error or (_sim_policy_error(sim) if sim and suite == "core" else None)
@@ -1196,13 +1258,16 @@ def main(
                     _atomic_write(ch / f"construction_plan_{rid}.json", json.dumps(construction_admission))
                 argv2[argv2.index("--submission") + 1] = str(snapshot_root / "submission")
                 from ..joint_model_activation import request_environment
-                worker_env = request_environment(os.environ, channel="selfcheck", request_id=rid,
-                                                 request_bytes=request_bytes)
+
+                worker_env = request_environment(
+                    os.environ, channel="selfcheck", request_id=rid, request_bytes=request_bytes
+                )
                 worker_env[sources.LABEL_ENV] = label
                 from .. import joint_gsim_queue as gsim_queue
 
                 # An author request waits for a busy gSIM correctness slot; operator work does not.
                 worker_env[gsim_queue.CLASS_ENV] = gsim_queue.AUTHOR
+                gsim_queue.name_requester(worker_env, r)  # waiting is interleaved per caller thread
                 if r.get("origin") in OPERATOR_ORIGINS:
                     # Operator background measurement: every author request and grade leases CPUs first.
                     from merlin.common.cpu_pool import AUXILIARY, PRIORITY_ENV
@@ -1280,8 +1345,11 @@ def main(
                                     proc.kill()  # a wedged RTL sim does not get to outlive us
                                     proc.wait(timeout=30)
                             staged_resp.unlink(missing_ok=True)
+                            from ..feedback.selfcheck_progress import partial_results  # decided cases survive
+
                             doc = _decorate_response(
-                                json.dumps({"error": f"broker: self-check aborted ({why})", "all_pass": False}),
+                                json.dumps({"error": f"broker: self-check aborted ({why})", "all_pass": False,
+                                            **partial_results(ch / f"progress_{rid}.json")}),
                                 r,
                                 rid,
                                 graded_digest,
@@ -1305,12 +1373,18 @@ def main(
                         from ..feedback.knob_lint import attach as attach_knob_candidates
 
                         doc = attach_knob_candidates(attach_tuning(doc, ws), ws, submission=sources.SUBMISSION)
+                        from ..feedback.result_details import compact_document
+
+                        doc = compact_document(doc, workspace=ws, namespace="selfcheck")
                         _atomic_write(resp, json.dumps(doc))
                     else:
                         out = log_out.read_text()[-20000:] if log_out.exists() else ""
                         err = _log_tail(log_err, 300)
+                        from ..feedback.selfcheck_progress import partial_results
+
                         doc = _decorate_response(
-                            out or json.dumps({"error": err, "all_pass": False}),
+                            out or json.dumps({"error": err, "all_pass": False,
+                                               **partial_results(ch / f"progress_{rid}.json")}),
                             r,
                             rid,
                             graded_digest,
@@ -1333,7 +1407,9 @@ def main(
             promotion_source = None
             try:
                 if resp.exists() and not variant and suite == "core":  # only core results can promote
-                    passed = json.loads(resp.read_text())
+                    from ..feedback.result_details import hydrate
+
+                    passed = hydrate(json.loads(resp.read_text()), workspace=ws)
                     if not passed.get("error") and any(
                         row.get("pass") is True for row in passed.get("per_capsule", [])
                     ):
@@ -1384,8 +1460,15 @@ def main(
                         if isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
                             from merlin_experiments.phase1.feedback.selfcheck_certificates import import_executed
 
-                            import_executed(ws, _v, loop_tier=_loop, cert_tier=_cert, source_ws=promotion_source,
-                                            context=context, log=sys.stderr)
+                            import_executed(
+                                ws,
+                                _v,
+                                loop_tier=_loop,
+                                cert_tier=_cert,
+                                source_ws=promotion_source,
+                                context=context,
+                                log=sys.stderr,
+                            )
                     elif isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
                         _promote(
                             ws,

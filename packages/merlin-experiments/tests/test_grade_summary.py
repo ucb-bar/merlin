@@ -36,7 +36,9 @@ def test_every_completed_grade_rewrites_the_one_line_per_case_view(tmp_path):
     assert any(line.startswith("1. 2 case(s) emission/LINK") for line in lines)
     assert any(line.strip() == "members: case_b, case_c" for line in lines)
     assert "newest grade token=200" in text and "passed=1" in text
-    assert len(text) < 2000 and len(json.dumps(full)) > 5000  # the per-case bulk stays in the full file
+    assert len(text) < 2000 and len(json.dumps(full)) < 5000
+    detail = json.loads((ws / full["per_capsule"][0]["detail"]["path"]).read_text())
+    assert detail["performance"]["feedback_brief"]["bulk"] == "x" * 5000
 
 
 def test_a_failing_view_never_touches_the_full_file(tmp_path, monkeypatch):
@@ -118,3 +120,13 @@ def test_a_passing_case_lacking_trace_evidence_is_shown_while_the_author_can_act
     header = next(line for line in lines if line.startswith("## trace evidence"))
     assert header.startswith("## trace evidence: 2 passing case(s)")
     assert "- looped: failed: mode resident_reuse declared" in "\n".join(lines)
+
+
+def test_a_row_reconciled_as_an_older_version_says_so_on_its_line():
+    from merlin_experiments.phase1.feedback import grade_summary
+
+    row = {"capsule": "a", "status": "pass", "tiers": {"L2": "pass"},
+           "graded": {"token": "1", "graded_source_sha256": "0123456789abcdef", "currency": "older_version"}}
+    assert grade_summary._case_line(row, "2").endswith(" graded=1 older_version=0123456789ab")
+    row["graded"]["currency"] = "current"
+    assert "older_version" not in grade_summary._case_line(row, "2")

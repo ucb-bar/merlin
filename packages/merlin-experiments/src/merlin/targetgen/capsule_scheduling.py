@@ -32,6 +32,9 @@ from math import isfinite, prod
 from pathlib import Path
 from typing import Any
 
+from .seeded_grade import NEEDS_TIMING, carried_in_full, proven, seed_run
+from .seeded_grade import rank as seeded_rank
+
 #: Wall seconds a serial calibration member may run before the pool fans out around it. Calibration
 #: pays off when the head is cheap (a 0.29 s tier priced before 7 workers pay a 24.5 s one); a
 #: full-shape layer at the head of a perf corpus took hours, all of it with every other worker idle.
@@ -42,7 +45,7 @@ _DEFER_PROBE: ContextVar[Callable[[], str | None] | None] = ContextVar("merlin_c
 #: runs roots of this run; their completed capsule results price ``measured-longest-first``.
 TIMING_HISTORY_ENV = "MERLIN_CAPSULE_TIMING_HISTORY"
 _TIMING_HISTORY: ContextVar[tuple[Path, ...] | None] = ContextVar("merlin_capsule_timing_history", default=None)
-_ORDERS = ("", "legacy", "operators-small-first", "measured-longest-first", "information-first")
+_ORDERS = ("", "legacy", "operators-small-first", "measured-longest-first", "information-first", "seeded")
 #: Parsed timing rows by (path, size, mtime_ns): one long run re-reads its history every grade.
 _PARSED: dict[tuple, tuple[str, dict[str, float], dict[str, int]] | None] = {}
 _PARSED_LOCK = threading.Lock()
@@ -69,7 +72,8 @@ def timing_history(runs_roots: Iterable[str | Path]) -> Iterator[None]:
         _TIMING_HISTORY.reset(token)
 
 
-_ADMISSION_OBSERVER: ContextVar[tuple[Callable[[str], None], Callable[[], bool] | None, Callable[[], bool] | None] | None] = ContextVar("merlin_admission_observer", default=None)
+_ADMISSION_OBSERVER: ContextVar[tuple[Callable[[str], None], Callable[[], bool] | None, Callable[[], bool] | None,
+                                      Callable[[dict], None] | None] | None] = ContextVar("merlin_admission_observer", default=None)
 #: Seconds a gate-held member may still start after its grade's admission window closed
 #: (``MERLIN_SNAPSHOT_GATE_HOLD_S``; 0 disables holding).
 GATE_HOLD_S = 1800.0
@@ -85,13 +89,15 @@ def gate_hold_seconds() -> float:
 
 
 @contextmanager
-def observe_admission(callback, *, stop_requested=None, current=None):
+def observe_admission(callback, *, stop_requested=None, current=None, running=None):
     """Notify the trusted snapshot owner when this queue can admit no further work.
 
     ``current()`` says whether the owner's snapshot is still the author's source; while it is, a
     gate-held member (see :func:`run_pipelined`) may still start after the admission window.
+    ``running({member: measured seconds or None})`` sees every change of the started, unfinished
+    members, priced like admission (``None``: no measurement yet); it observes, never schedules.
     """
-    token = _ADMISSION_OBSERVER.set((callback, stop_requested, current))
+    token = _ADMISSION_OBSERVER.set((callback, stop_requested, current, running))
     try:
         yield
     finally:
@@ -132,16 +138,17 @@ _RELEVANCE: ContextVar[dict | None] = ContextVar("merlin_admission_relevance", d
 
 
 @contextmanager
-def admission_relevance(*, source_sha256=None, reach=None, superseded=None):
+def admission_relevance(*, source_sha256=None, reach=None, superseded=None, gap=None):
     """Trusted per-snapshot facts that order and narrow admission; never a result or a credit.
 
     ``source_sha256`` is the graded snapshot's digest (the ``compiler_source.candidate_sha256`` its
     results record); ``reach(member)`` the compiler components that member's commands reach (``None``:
     unknown); ``superseded(member)`` why that unstarted member may no longer be admitted because the
     author's source changed what it reaches (``None``: still valid for the current source). A started
-    member always drains on its own snapshot; nothing here re-attributes a result.
+    member always drains on its own snapshot; nothing here re-attributes a result. ``gap(member)`` is
+    its performance gap in cycles (``None``: unknown), which orders the timing work of a seeded grade.
     """
-    token = _RELEVANCE.set(dict(source_sha256=source_sha256, reach=reach, superseded=superseded))
+    token = _RELEVANCE.set(dict(source_sha256=source_sha256, reach=reach, superseded=superseded, gap=gap))
     try:
         yield
     finally:
@@ -183,7 +190,8 @@ def newest_outcomes(runs_roots: Iterable[str | Path]) -> dict[str, dict]:
             if isinstance(document, dict) and document.get("capsule") == name:
                 source = (document.get("compiler_source") or {}).get("candidate_sha256")
                 row = {"passed": document.get("status") == "pass" and not document.get("failure"),
-                       "source_sha256": source if isinstance(source, str) and source else None}
+                       "source_sha256": source if isinstance(source, str) and source else None,
+                       **({"carried": True} if carried_in_full(document) else {})}
             with _PARSED_LOCK:
                 if len(_OUTCOMES) > 65536:
                     _OUTCOMES.clear()
@@ -194,15 +202,46 @@ def newest_outcomes(runs_roots: Iterable[str | Path]) -> dict[str, dict]:
 
 
 def information_rank(outcome: Mapping | None, source_sha256: str | None) -> int:
-    """0 when the newest result is failing, missing or earned on other source bytes, else 1.
+    """0 when the newest result is failing or missing, 1 when it passed on other source bytes, else 2.
 
-    Fail closed: an unknown graded source makes every result stale. Equality of the whole snapshot
-    digest is the freshness proof, so an edit outside a member's reach still counts as an edit here.
+    Never-graded and failing members start before members that already passed on an older snapshot,
+    so with one development grade admitting at a time a stream of edits cannot starve them behind
+    re-checks of passing work. Fail closed: an unknown graded source makes every pass stale. Equality
+    of the whole snapshot digest is the freshness proof, so an edit outside a member's reach still
+    counts as an edit here. (Every member runs every declared command, so which member's executable an
+    edit changes is only known after its build; a stale pass is therefore ranked as stale.)
     """
-    if (not outcome or outcome.get("passed") is not True or not source_sha256
-            or outcome.get("source_sha256") != source_sha256):
+    if not outcome or outcome.get("passed") is not True:
         return 0
-    return 1
+    if not source_sha256 or outcome.get("source_sha256") != source_sha256:
+        return 1
+    return 2
+
+
+def seeded_ranks(capsules: Sequence[Mapping], gap: Callable[[Mapping], float | None] | None = None) -> dict:
+    """``{member: (need, -gap)}``: a seeded grade's order (:func:`merlin.targetgen.seeded_grade.rank`).
+
+    Members without proof first, then members proven by execution in this run by largest cycle gap
+    (``gap(member)``, else their newest observed cycles), then members whose verdict is carried.
+    Ordering input only: it never reuses, skips or credits a member.
+    """
+    history = selected_history()
+    outcomes = newest_outcomes(history)
+    seed_proven = proven()
+    cycles = measured_costs(history)[1] if history else {}
+    out = {}
+    for cap in capsules:
+        name = str(cap["name"])
+        need = seeded_rank(outcomes.get(name), proven_by_seed=name in seed_proven)
+        size = None
+        if need == NEEDS_TIMING:
+            try:
+                size = gap(cap) if gap is not None else None
+            except Exception:  # noqa: BLE001 -- an unknown gap orders by observed cycles
+                size = None
+            size = size if type(size) in (int, float) and isfinite(size) else cycles.get(name)
+        out[name] = (need, -float(size or 0))
+    return out
 
 
 def selected_history() -> tuple[Path, ...]:
@@ -513,11 +552,14 @@ def run_pipelined(
     if order not in _ORDERS:
         raise ValueError("MERLIN_CAPSULE_ORDER must be legacy, operators-small-first, measured-longest-first"
                          " or information-first")
+    if not order and seed_run() is not None:
+        order = "seeded"  # a seeded run checks what changed, then times, then carries (seeded_grade)
     if not order and background_admission_selected():
         order = "information-first"  # a short admission window is spent where feedback is worth most
     small_operators_first = order == "operators-small-first"
     measured_first = order == "measured-longest-first"
-    information_first = order == "information-first"
+    seeded = order == "seeded"
+    information_first = order == "information-first" or seeded
     relevance = _RELEVANCE.get() or {}
     superseded_member = relevance.get("superseded")
     estimate: dict[str, float] = {}
@@ -531,7 +573,9 @@ def run_pipelined(
         estimate = (cost_estimates(capsules, admission_costs, {}) if scoped_costs_supplied
                     else cost_estimates(capsules, *measured_costs(selected_history())))
     rank: dict[str, tuple[int, float]] = {}
-    if information_first:
+    if seeded:
+        rank = seeded_ranks(capsules, relevance.get("gap"))
+    elif information_first:
         outcomes = newest_outcomes(selected_history())
         reach = relevance.get("reach")
         for cap in capsules:
@@ -604,12 +648,30 @@ def run_pipelined(
         with setup_timing.queued():
             return pool.submit(copy_context().run, run_one, capsule, parallel)
 
+    observer = _ADMISSION_OBSERVER.get()
+    report_running = observer[3] if observer is not None and len(observer) > 3 else None
+    in_flight: dict[str, float | None] = {}
+    if report_running is not None:
+        priced = admission_costs if scoped_costs_supplied else measured_costs(selected_history())[0]
+
+    def running_changed(name, started):
+        if report_running is None:
+            return
+        if started:
+            in_flight[name] = priced.get(name)
+        elif name in in_flight:
+            del in_flight[name]
+        else:
+            return  # a blocked or deferred member never started
+        report_running(dict(in_flight))
+
     def start(cap):
         if on_start is not None:
             on_start(cap)
         admitted.add(str(cap["name"]))
         if boundary_readiness is not None:
             boundary_readiness.started(cap)
+        running_changed(str(cap["name"]), True)
 
     # Background snapshot replacement may drain started work at capsule boundaries.
     # Other callers retain cooperative cancellation of an owned running child.
@@ -628,7 +690,9 @@ def run_pipelined(
         observer = _ADMISSION_OBSERVER.get()
         if observer is not None and observer[1] is not None and observer[1]():
             admission_closed = "snapshot owner stopped new admission"
-        if admission_deadline_monotonic is not None and time.monotonic() >= admission_deadline_monotonic:
+        # Owner retirement takes precedence over the deadline: only deadline closure may
+        # extend gate-held admission. Never reopen that extension for a stopped owner.
+        elif admission_deadline_monotonic is not None and time.monotonic() >= admission_deadline_monotonic:
             admission_closed = "snapshot admission deadline reached"
         if deferred is None and defer_pending is not None:
             reason = defer_pending()
@@ -760,8 +824,9 @@ def run_pipelined(
             def key(entry):
                 return ((priority(capsules[entry[1]]) if priority else 0), -estimate[entry[2]], entry[0], entry[2])
         elif information_first and not calibration:
-            # A short window buys the most feedback per second: failing, missing or stale results
-            # first, then the cheapest per reached component; long members last. Caller priority
+            # A short window buys the most feedback per second: failing or missing results first,
+            # then passes earned on older source, then the cheapest per reached component; long
+            # members last. Caller priority
             # (models when admitted, curriculum fairness via admission_priority) still leads.
             def key(entry):
                 return ((priority(capsules[entry[1]]) if priority else 0), *rank[entry[2]], estimate[entry[2]],
@@ -819,6 +884,7 @@ def run_pipelined(
         if boundary_readiness is not None:
             result = boundary_readiness.completed(name, result)
         results[index[name]] = result
+        running_changed(name, False)
         if on_complete is not None:
             on_complete(completed_result)
         for child in children[name]:

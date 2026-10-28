@@ -6,8 +6,8 @@ description: "Search the schedule or pass options of one operator family with me
 `SKILL_DIR` = the directory holding this file. Run from the workspace root.
 
 1. **Choose bounded alternatives.** Prioritize large/connected roles and expose a finite set of
-   reusable lowering/pass choices. Do not wait for calibration: UNKNOWN timing limits cycle ranking,
-   not compiler development. Inspect the emitted host/device code and keep a compact before/after
+   reusable lowering/pass choices. No complete timing: rank on `fast_estimate`, revert if measured
+   worse. Inspect the emitted host/device code and keep a compact before/after
    record per trial; `reference/evidence.md` lists what to look for and what to retain. Helpers can
    explore families concurrently against snapshots of the same compiler.
 2. **Freeze validation shapes.** Create `ExplorationGeometry(family, operand_shapes)` values, with

@@ -29,6 +29,7 @@ from merlin_experiments.phase1.context import InvocationContext, readback_kwargs
 from merlin_experiments.phase1.feedback import completed_grade, package_rejection
 from merlin_experiments.phase1.feedback import joint_test_scope as JTS
 from merlin_experiments.phase1.feedback import lifecycle as FL
+from merlin_experiments.phase1.feedback.stage_timing import measure
 
 # Re-exported: grade() looks these up through THIS module's globals at call time, so replacing
 # loop_grading.<name> (as the tests do) replaces the probe a grade runs.
@@ -296,6 +297,9 @@ def grade(
                     "n_completed": len(progress_rows),
                     "n_passed": sum(r.get("status") == "pass" for r in progress_rows.values()),
                     "n_execution_passed": qualification["execution_passed"],
+                    # Seeded grades: passes carried in full from the seed run, labelled per row.
+                    **({"n_carried_passed": carried} if (carried := sum(
+                        bool(r.get("carried_from")) for r in progress_rows.values())) else {}),
                     "qualification_summary": qualification,
                     "per_capsule": list(progress_rows.values()),
                     "updated_at": _dt.datetime.now(_dt.UTC).isoformat(),
@@ -378,7 +382,7 @@ def grade(
         }
     else:
         with shared_compute_pool(timeout_s=timeout):
-            shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+            shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns(*RI.SNAPSHOT_IGNORED))
             RI.strip_build_state(cand)  # clean, relocatable build per grade (abc9 L3-build bug)
             snapshot_digest = hash_tree(cand)["sha256"]
         if background_guard is not None:
@@ -431,13 +435,15 @@ def grade(
         if no_oracle:
             argv.append("--no-oracle")
         from merlin.targetgen.capsule_scheduling import admission_relevance, timing_history
-        from merlin_experiments.phase1.feedback import qa
+        from merlin.targetgen.seeded_grade import workspace_gap
+        from merlin_experiments.phase1.feedback import grade_lanes, qa
 
         relevance = (
             admission_relevance(
                 source_sha256=snapshot_digest,
                 reach=background_guard.case_reach,
-                superseded=background_guard.member_reason,
+                superseded=grade_lanes.relevance(),
+                gap=workspace_gap(ws),
             )
             if background_guard is not None
             else nullcontext()
@@ -687,6 +693,27 @@ def grade(
 # reading as SUCCESS is a recurring bug in this repo; this is not another instance of it.
 
 
+def _verdict_row(name: str, info: dict | None) -> dict:
+    """One redacted per-test-case verdict row from its readback (``qa._per_capsule_from_results``)."""
+    info = info or {}
+    return {
+        "capsule": name,
+        "status": info.get("status"),
+        "tiers": info.get("tiers") or {},
+        "numeric_status": info.get("numeric_status"),
+        "mismatch_count": info.get("mismatch_count"),
+        "trace_status": info.get("trace_status"),
+        "trace_requirement_status": info.get("trace_requirement_status"),
+        "trace_unavailable_requirements": info.get("trace_unavailable_requirements") or [],
+        "trace_violations": info.get("trace_violations") or [],
+        "failure_plane": info.get("failure_plane"),
+        "failure_category": info.get("failure_category"),
+        "failure_detail": info.get("failure_detail"),
+        **({"carried": info["carried"]} if info.get("carried") else {}),
+        **({"carried_from": info["carried_from"]} if info.get("carried_from") else {}),
+    }
+
+
 def _fast_loop_verdict_doc(
     red: dict,
     tiers_graded,
@@ -702,28 +729,8 @@ def _fast_loop_verdict_doc(
     UNKNOWN to every consumer and is falsy to every gate, so no downstream check can mistake a partial
     ladder for a converged run.
     """
-    rows: list = []
-    npass = 0
-    for name, info in sorted(red.items()):
-        info = info or {}
-        npass += int(info.get("status") == "pass")
-        rows.append(
-            {
-                "capsule": name,
-                "status": info.get("status"),
-                "tiers": info.get("tiers") or {},
-                "numeric_status": info.get("numeric_status"),
-                "mismatch_count": info.get("mismatch_count"),
-                "trace_status": info.get("trace_status"),
-                "trace_requirement_status": info.get("trace_requirement_status"),
-                "trace_unavailable_requirements": info.get("trace_unavailable_requirements") or [],
-                "trace_violations": info.get("trace_violations") or [],
-                "failure_plane": info.get("failure_plane"),
-                "failure_category": info.get("failure_category"),
-                "failure_detail": info.get("failure_detail"),
-                **({"carried": info["carried"]} if info.get("carried") else {}),
-            }
-        )
+    rows = [_verdict_row(name, info) for name, info in sorted(red.items())]
+    npass = sum(row["status"] == "pass" for row in rows)
     graded, withheld = sorted(tiers_graded), sorted(tiers_withheld)
     complete = not withheld
     # The grader joins original trace, provided-host, model and refusal scopes.
@@ -887,7 +894,7 @@ def fast_grade(
     with shared_compute_pool(timeout_s=timeout):
         if cand.parent.exists():
             shutil.rmtree(cand.parent)
-        shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+        shutil.copytree(ws / "submission", cand, ignore=shutil.ignore_patterns(*RI.SNAPSHOT_IGNORED))
         RI.strip_build_state(cand)
     from .construction_plan import require_ready as require_construction_plan
 
@@ -923,16 +930,26 @@ def fast_grade(
     except Exception as exc:  # noqa: BLE001 -- scheduling cannot invalidate completed loop evidence
         print(f"[first-grade] streaming promotion unavailable: {type(exc).__name__}: {exc}", flush=True)
     from merlin.targetgen.capsule_scheduling import admission_relevance, timing_history
+    from merlin.targetgen.seeded_grade import workspace_gap
 
     progress = SnapshotProgress(ws, fruns, snapshot_digest, background_guard)
     from . import joint_curriculum
     from .rolling_scalability import PerformanceFeedback
     from .rolling_scalability import Selection as ScalabilitySelection
+    from .rolling_scalability import lane as rolling_lane
 
     scalability = ScalabilitySelection(inputs.context) if JTS.focused() else None
     scalability_cases = scalability.cases if scalability is not None else {}
+    # Large-case timing is its own lane: it outlives this grade and never delays its verdict.
     scale_feedback = (
-        PerformanceFeedback(scalability, compiler=cand, runs_root=fruns, timeout=timeout, environment=grade_environment)
+        PerformanceFeedback(
+            scalability,
+            compiler=cand,
+            runs_root=fruns,
+            timeout=timeout,
+            environment=grade_environment,
+            lane=rolling_lane(run_dir),
+        )
         if scalability_cases
         else None
     )
@@ -988,14 +1005,28 @@ def fast_grade(
                 curriculum.completed(row)
             except (OSError, ValueError, KeyError, TypeError) as error:
                 print(f"[first-grade] curriculum receipt unavailable: {type(error).__name__}", flush=True)
-        from .joint_physical_correctness import roster as physical_roster
-
-        if (
-            row.get("capsule") not in scalability_cases
-            and completed_promotion is not None
-            and (physical_roster() or background_guard.reason() is None)
-        ):
+        # An older snapshot's pass is promoted too: the ledger keys it on that snapshot's exact executable,
+        # and promotion admission refuses native work whose executed bytes the current source changed.
+        if row.get("capsule") not in scalability_cases and completed_promotion is not None:
             completed_promotion(row)
+        publish_completed_cases()
+
+    published_cases = set()
+
+    def publish_completed_cases():
+        # Each finished case reaches qa/latest_completed_grade.json now, not when this grade's slowest
+        # case does (completed_grade.record_rows); completions that queued meanwhile share one write.
+        rows = [_verdict_row(name, info) for name, info in list(progress.rows.items()) if name not in published_cases]
+        if not rows:
+            return
+        published_cases.update(row["capsule"] for row in rows)
+        try:
+            completed_grade.record_rows(
+                ws, rows, tick, graded_source_sha256=snapshot_digest, graded_at=_dt.datetime.now(_dt.UTC).isoformat(),
+                reach_sha256=background_guard.reach_identity(),
+            )
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            print(f"[first-grade] per-case publication unavailable: {type(error).__name__}", flush=True)
 
     def process_completed(row):
         from .joint_performance import environment_scope
@@ -1026,6 +1057,7 @@ def fast_grade(
         if curriculum is not None
         else nullcontext(timeout)
     )
+    from . import grade_lanes
     from .completion_processing import CompletionProcessing
 
     grade_error = None
@@ -1037,7 +1069,8 @@ def fast_grade(
             admission_relevance(
                 source_sha256=snapshot_digest,
                 reach=background_guard.case_reach,
-                superseded=background_guard.member_reason,
+                superseded=grade_lanes.relevance(),
+                gap=workspace_gap(ws),
             ),
             CompletionProcessing(process_completed) as completion_processing,
         ):
@@ -1094,7 +1127,8 @@ def fast_grade(
         cohort_complete=_qc._original_cohort_complete(_fast_score),
     )
     if scale_feedback is not None:
-        scale_feedback.project(verdict)
+        # Only the observations already landed; the rest follow this grade's publication (below).
+        scale_feedback.project(verdict, wait=False)
     if grade_error is not None:
         # An aborted grade reports its failure; publication keeps the last real per-test-case results
         # visible instead of replacing them with an empty grade (see visible_model_gate.publish).
@@ -1147,17 +1181,25 @@ def fast_grade(
             },
         )
     verdict["graded_request_sha256"] = background_guard.source
+    verdict["graded_reach_sha256"] = background_guard.reach_identity()  # reconciled per row (.reconcile)
     verdict = _attribute_source(verdict, ws, snapshot_digest, stage="loop_screen")
     if curriculum is not None and test_scope is not None:
-        test_scope["curriculum"] = curriculum.report()
+        with measure("curriculum.report", verdict, events=run_dir / "_qa_work" / "host_stage_timings.jsonl"):
+            test_scope["curriculum"] = curriculum.report()
         test_scope["pending"] = test_scope["curriculum"]["pending"]
-    JTS.annotate(verdict, test_scope)
-    progress.finish(verdict)
+    with measure("joint_test_scope.annotate", verdict, events=run_dir / "_qa_work" / "host_stage_timings.jsonl"):
+        JTS.annotate(verdict, test_scope)
+    with measure("progress.finish", verdict, events=run_dir / "_qa_work" / "host_stage_timings.jsonl"):
+        progress.finish(verdict)
     out = run_dir / "qa_history" / f"verdict_fast_{tick}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     verdict = write_verdict(out, verdict)
     (ws / "qa").mkdir(exist_ok=True)
-    verdict = completed_grade.publish(ws, verdict, tick, write_verdict)
+    archived = verdict
+    with measure("completed_grade.publish", verdict, events=run_dir / "_qa_work" / "host_stage_timings.jsonl"):
+        verdict = completed_grade.publish(ws, verdict, tick, write_verdict)
+    if scale_feedback is not None:
+        scale_feedback.follow_up(partial(completed_grade.follow_up, ws, out, archived, tick, write_verdict))
     _record_plateau(run_dir, current_source_sha256=verdict.get("current_source_sha256"))
     FL.record_channel_health(ws, run_dir)
     # The first successful loop verdict unlocks cert work immediately. The existing
@@ -1193,7 +1235,7 @@ def fast_grade(
     return verdict
 
 
-def write_verdict(path: Path, verdict: dict) -> dict:
+def write_verdict(path: Path, verdict: dict, *, expect=None) -> dict | None:
     """Write a verdict WITH the time it was produced, and return it.
 
     Verdicts carried no timestamp of any kind. Under the continuous schedule the grader refreshes
@@ -1205,23 +1247,35 @@ def write_verdict(path: Path, verdict: dict) -> dict:
     Stamping costs one field. `graded_at` is UTC and ISO-8601, matching the spelling every other
     record in the run tree uses. Existing verdicts are unaffected: readers fall back to the mtime and
     say so.
+
+    ``expect(previous)`` guards a late projection onto the live verdict (:func:`.visible_model_gate.publish`).
     """
     from .. import joint_control
 
-    verdict = joint_control.stage_evidence(dict(verdict))
+    verdict = dict(verdict)
+    with measure("joint_control.stage_evidence", verdict):
+        verdict = joint_control.stage_evidence(verdict)
     if path.name == "verdict.json" and path.parent.name == "qa":
         from .failure_clusters import attach as attach_clusters
         from .joint_physical_correctness import attach
         from .performance_headroom import attach as attach_headroom
 
-        verdict = package_rejection.enrich(attach_headroom(path.parent.parent, attach(path, verdict)))
-        verdict = attach_clusters(path.parent.parent, verdict)
+        with measure("attach_physical_correctness", verdict):
+            verdict = attach(path, verdict)
+        with measure("attach_performance_headroom", verdict):
+            verdict = attach_headroom(path.parent.parent, verdict)
+        with measure("attach_package_rejection", verdict):
+            verdict = package_rejection.enrich(verdict)
+        with measure("attach_failure_clusters", verdict):
+            verdict = attach_clusters(path.parent.parent, verdict)
     verdict.setdefault("graded_at", _dt.datetime.now(_dt.UTC).isoformat())
     if path.name == "verdict.json" and path.parent.name == "qa":
         from .snapshot_publication import publish_live
         from .visible_model_gate import publish
 
-        return publish_live(path.parent.parent, lambda: publish(path, verdict), default=verdict)
+        return publish_live(
+            path.parent.parent, lambda: publish(path, verdict, expect=expect), default=verdict if expect is None else None
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(verdict, indent=2))
     return verdict

@@ -409,8 +409,11 @@ measured results.
             "offload census, and public capsule L3 gSIM qualification. Whole-model Spike chain validation runs\n"
             "on the frozen compiler after the experiment, outside its authoring clock;",
             "offload census, and separately tracked physical obligations. Development defaults to Spike;\n"
-            "all original required gSIM correctness checks remain required, with separate selective\n"
-            "calibration witnesses. Full-model Spike prevalidation is gated\n"
+            + ("all original required gSIM correctness checks remain required, with separate selective\n"
+               if joint_control.continuous_l3_promotion() else
+               "L3 gSIM certification of the original correctness cases runs at the end, best-effort;\n"
+               "performance uses the Spike cycle model unless --sim gsim is asked; separate selective\n")
+            + "calibration witnesses. Full-model Spike prevalidation is gated\n"
             "to the selected final model window inside the authoring clock;",
         ).replace(
             "Without `--sim` it runs every tier each capsule declares mandatory (Spike, L3 gSIM, provided host)\n"

@@ -171,31 +171,53 @@ def _completed_job_ids(ch: Path) -> set[str]:
     return {p.stem[len(prefix) :] for p in ch.glob(f"{prefix}*.json")}
 
 
+def _repeat_promotion(state: dict, row: dict, cert_tier) -> bool:
+    """Whether a promotion re-runs a case that a completed certificate job already answered.
+
+    Any resolved record of the case's cert tier (passed, failed or unattributed, for any bytes) means
+    the case has had its gSIM run; only outstanding (``pending``) records mean it has not. Unreadable
+    state reads as a first run, which keeps the established order.
+    """
+    if not (cert_tier and row.get("promoted") and isinstance(row.get("capsules"), str)):
+        return False
+    try:
+        records = _TP._slots_ro(state, row["capsules"], cert_tier)
+    except (AttributeError, TypeError):
+        return False
+    return any(isinstance(entry, dict) and entry.get("status") != "pending" for entry in records.values())
+
+
 def _current_source_first(requests, ws, *, context=None, capsules_root=None, cert_tier=None, contract=None):
     """Prioritize current-source work without treating request metadata as evidence.
 
     Source recovery still authenticates every promoted request at launch. Unknown
     bindings retain ordinary ordering; source changes during observation abandon
     the optimization. Running jobs and their completed certificates are untouched.
+
+    Among current work, a case's first certificate job (its first gSIM run since it passed) goes
+    before re-promotions of cases a completed job already answered (:func:`_repeat_promotion`). This
+    orders the queue only: every slot still takes the next request in that order.
     """
     ordered = sorted(requests)
     if len(ordered) < 2:
         return ordered
     try:
         current = _TP._submission_digest(ws)
+        state = _TP._tier_state(ws) if cert_tier else {}
         ranks = {}
         for request in ordered:
             try:
                 row = json.loads(request.read_text())
             except (OSError, ValueError):
-                ranks[request] = (1, 1)
+                ranks[request] = (1, 1, 1)
                 continue
             if not isinstance(row, dict):
-                ranks[request] = (1, 1)
+                ranks[request] = (1, 1, 1)
                 continue
             digest = row.get("submission_digest")
             # Direct requests are frozen from current source when launched.
             from ..feedback.joint_physical_correctness import selected_request
+
             current_work = not row.get("promoted") or digest == current or selected_request(row)
             ready_model = False
             if current_work and digest == current and row.get("promoted") and context is not None:
@@ -210,20 +232,24 @@ def _current_source_first(requests, ws, *, context=None, capsules_root=None, cer
                     independent = snapshot_execution.selected()
                     ready_model = bool(names and names != ["all"]) and all(
                         yaml.safe_load((capsules_root / name / "capsule.yaml").read_text()).get("kind") == "model"
-                        and (independent or model_gate_vouchers.lookup(
-                            ws,
-                            digest=current,
-                            capsule=name,
-                            context=context,
-                            cert_tier=cert_tier,
-                            contract=contract,
+                        and (
+                            independent
+                            or model_gate_vouchers.lookup(
+                                ws,
+                                digest=current,
+                                capsule=name,
+                                context=context,
+                                cert_tier=cert_tier,
+                                contract=contract,
+                            )
+                            is not None
                         )
-                        is not None)
                         for name in names
                     )
                 except (OSError, ValueError, TypeError, AttributeError):
                     ready_model = False
-            ranks[request] = (0 if current_work else 1, 0 if ready_model else 1)
+            repeat = _repeat_promotion(state, row, cert_tier)
+            ranks[request] = (0 if current_work else 1, 1 if repeat else 0, 0 if ready_model else 1)
         if _TP._submission_digest(ws) != current:
             return ordered
         return sorted(ordered, key=lambda request: ranks[request])
@@ -263,8 +289,12 @@ def _correctness_gsim(request, sim) -> bool:
     """A promoted job that will take a joint correctness gSIM slot."""
     from .. import joint_control
 
-    return (bool(request.get("promoted")) and sim == "gsim" and joint_control.selected() is not None
-            and str(request.get("capsules", "")) in joint_control.correctness_capsules())
+    return (
+        bool(request.get("promoted"))
+        and sim == "gsim"
+        and joint_control.selected() is not None
+        and str(request.get("capsules", "")) in joint_control.correctness_capsules()
+    )
 
 
 def _joint_gsim_launchable(request, sim, gate: dict, running: dict) -> bool:
@@ -316,8 +346,9 @@ def _requeue_refused(ch: Path, jid: str, job: dict, out: dict, claimed: set, que
     those exact bytes were never certified. The request is unclaimed instead and launched again when
     a slot is free; nothing is recorded for it.
     """
-    if not (job.get("promoted") and out.get("joint_policy_refused") is True
-            and out.get("joint_policy_retryable") is True):
+    if not (
+        job.get("promoted") and out.get("joint_policy_refused") is True and out.get("joint_policy_retryable") is True
+    ):
         return False
     if job.get("log"):
         try:
@@ -370,10 +401,11 @@ def _admitted_promotions(requests, ws, *, loop_tier, cert_tier, context):
                 current = None
         request_source = current
         from ..feedback.joint_physical_correctness import selected_request
+
         if selected_request(request):
             # Authenticate the same protected snapshot+ledger+instrument as the
             # legacy path, but ordinary author edits do not cancel required work.
-            frozen = _TP.snapshots.promotion_snapshot_path(Path(ws), request.get('submission_snapshot'))
+            frozen = _TP.snapshots.promotion_snapshot_path(Path(ws), request.get("submission_snapshot"))
             try:
                 request_source = admission.observe_source(frozen) if frozen is not None else None
             except (OSError, ValueError):
@@ -791,6 +823,23 @@ def _job_timeout_s(sim: str, ncaps: int, vpc: int) -> int:
     return (max(1, int(vpc)) * max(1, int(ncaps))) if rtl else _SCREEN_TIMEOUT_S
 
 
+def _job_classes(env: dict, *, promoted: bool) -> dict:
+    """Set one job's gSIM queue class and CPU lease class in its worker environment.
+
+    The broker process leases at the author class, which is right for a simulation the author asked
+    for and waits on. A promotion is background certification of a verdict the author already has:
+    it waits behind author work for a gSIM slot, and it leases CPUs at the grade class, so an author
+    self-check is served first. It is never preempted and still takes every slot no author waits for.
+    """
+    from merlin.common.cpu_pool import AUTHOR, GRADE, PRIORITY_ENV
+
+    from .. import joint_gsim_queue as gsim_queue
+
+    env[gsim_queue.CLASS_ENV] = gsim_queue.BACKGROUND if promoted else gsim_queue.AUTHOR
+    env[PRIORITY_ENV] = str(GRADE if promoted else AUTHOR)
+    return env
+
+
 def _default_max_jobs() -> int:
     """Every job's steps lease the shared compute pool, so its size is the only limiter (legacy: 4)."""
     from merlin.common.cpu_pool import compute_capacity
@@ -979,7 +1028,7 @@ def main(
                         )
                 except Exception as _pe:  # noqa: BLE001 -- promotion is an optimisation, never a gate
                     print(f"[promote] skipped: {type(_pe).__name__}: {_pe}", file=sys.stderr, flush=True)
-            elif j.get("promoted") and not out.get("error"):
+            elif j.get("promoted"):
                 # A promotion's own verdict: record it, so the cert this just PAID FOR on real RTL is
                 # kept instead of discarded. Without this the capsule stays `pending` forever and the
                 # same bytes are re-certified on the next loop verdict.
@@ -995,6 +1044,7 @@ def main(
                         sys.stderr,
                         identity=j.get("identity"),
                         source_identity_verified=bool(j.get("source_identity_verified")),
+                        request=jid,
                     )
                 except Exception as _re:  # noqa: BLE001 -- recording must never gate a run either
                     print(f"[promote] record skipped: {type(_re).__name__}: {_re}", file=sys.stderr, flush=True)
@@ -1137,16 +1187,24 @@ def main(
                         claimed.add(jid)
                         continue
                     source_identity_verified = True
-                from ..feedback.construction_plan import admit as admit_construction_plan, PlanRequired
+                from ..feedback.construction_plan import PlanRequired
+                from ..feedback.construction_plan import admit as admit_construction_plan
+
                 try:
-                    construction_admission = admit_construction_plan(
-                        submission, r, request_id=jid, channel="simjob")
+                    construction_admission = admit_construction_plan(submission, r, request_id=jid, channel="simjob")
                 except (PlanRequired, ValueError) as error:
                     _release_veril_workers(slots)
                     shutil.rmtree(snapshot_root, ignore_errors=True)
-                    (ch / f"simresp_{jid}.json").write_text(json.dumps({
-                        "status": "not_scheduled", "all_pass": False,
-                        "numeric_assessment": "not_run", "error": str(error)}))
+                    (ch / f"simresp_{jid}.json").write_text(
+                        json.dumps(
+                            {
+                                "status": "not_scheduled",
+                                "all_pass": False,
+                                "numeric_assessment": "not_run",
+                                "error": str(error),
+                            }
+                        )
+                    )
                     (ch / f"simerr_{jid}").write_text("construction plan required")
                     claimed.add(jid)
                     continue
@@ -1157,6 +1215,7 @@ def main(
                 launched_instrument = _TP.cert_instrument(_CERT_TIER, context=context) if r.get("promoted") else None
                 to = _job_timeout_s(sim, ncaps, vpc)
                 from .. import joint_control
+
                 if joint_control.selected() is not None and sim == "gsim":
                     to = min(to, joint_control.physical_policy(capspec)["per_job_s"])
                 resp_tmp = ch / f"simtmp_{jid}.json"
@@ -1184,8 +1243,14 @@ def main(
                 try:
                     if r.get("promoted") and caps != ["all"]:
                         _tiers, model_vouchers = _promoted_model_continuation(
-                            ws, caps, capsules_root, _tiers,
-                            digest=launched_source_digest, context=context, contract=contract, cert_tier=_CERT_TIER,
+                            ws,
+                            caps,
+                            capsules_root,
+                            _tiers,
+                            digest=launched_source_digest,
+                            context=context,
+                            contract=contract,
+                            cert_tier=_CERT_TIER,
                         )
                         for voucher in model_vouchers:
                             argv2 += ["--model-gate-voucher", str(voucher)]
@@ -1205,18 +1270,19 @@ def main(
                     continue
                 if _tiers:  # validated downstream against the RESOLVED adapter map
                     argv2 += ["--tiers", _tiers]
-                from ..joint_model_activation import request_environment, request_binding
-                worker_env = request_environment(_sim_env(context), channel="simjob", request_id=jid,
-                                                 request_bytes=req.read_bytes())
+                from ..joint_model_activation import request_binding, request_environment
+
+                worker_env = request_environment(
+                    _sim_env(context), channel="simjob", request_id=jid, request_bytes=req.read_bytes()
+                )
                 from .. import joint_gsim_queue as gsim_queue
 
                 # Promotions never wait inside their child (they wait here, queued); author jobs may.
-                worker_env[gsim_queue.CLASS_ENV] = gsim_queue.BACKGROUND if r.get("promoted") else gsim_queue.AUTHOR
+                _job_classes(worker_env, promoted=bool(r.get("promoted")))
                 worker_env[gsim_queue.REQUEST_ENV] = jid
                 model_binding = request_binding(worker_env)
                 model_identity = (model_binding or {}).get("selection")
-                dedupe_key = (launched_source_digest, capspec, sim, _tiers,
-                              json.dumps(model_identity, sort_keys=True))
+                dedupe_key = (launched_source_digest, capspec, sim, _tiers, json.dumps(model_identity, sort_keys=True))
                 if _dedupe_sim_job(ch, jid, dedupe_key, running, completed_by_key):
                     _release_veril_workers(slots)
                     shutil.rmtree(snapshot_root, ignore_errors=True)
@@ -1234,10 +1300,13 @@ def main(
                     # Broker-owned frozen source/full policy root only. Requests cannot
                     # provide a gate counter, record path or narrower denominator.
                     from ..feedback.rolling_model_gate import broker_environment
-                    worker_env.update(broker_environment(
-                        ws, promotion_capsules_root or capsules_root, snapshot_root / "submission"))
-                    proc = _spawn_selfcheck(argv2, cwd=ws, env=worker_env, job_log=job_log,
-                                            timeout_s=to + _queue_wait_allowance(r, sim))
+
+                    worker_env.update(
+                        broker_environment(ws, promotion_capsules_root or capsules_root, snapshot_root / "submission")
+                    )
+                    proc = _spawn_selfcheck(
+                        argv2, cwd=ws, env=worker_env, job_log=job_log, timeout_s=to + _queue_wait_allowance(r, sim)
+                    )
                 except Exception:
                     job_log.close()
                     _release_veril_workers(slots)

@@ -268,12 +268,13 @@ def test_panel_records_build_shape_policy_observations_only_with_the_authors_pin
     assert not counted.eligible and counted.cycles is None
 
 
-def _shim(tmp_path, *args):
+def _shim(tmp_path, *args, trees=("submission",)):
     from merlin_experiments.phase1.tools import selfcheck as shim
 
     ws = tmp_path / "ws"
-    (ws / "submission").mkdir(parents=True)
-    (ws / "submission" / "manifest.yaml").write_text("name: x\n")
+    for tree in trees:
+        (ws / tree).mkdir(parents=True)
+        (ws / tree / "manifest.yaml").write_text("name: x\n")
     shutil.copyfile(shim.__file__, ws / "agent_selfcheck.py")
     env = {k: v for k, v in os.environ.items() if not k.startswith("MERLIN_")}
     done = subprocess.run([sys.executable, str(ws / "agent_selfcheck.py"), *args, "--wait-budget", "1"],
@@ -282,15 +283,27 @@ def _shim(tmp_path, *args):
     return done, [json.loads(p.read_text()) for p in requests]
 
 
-def test_shim_sends_the_panel_as_one_ordinary_request_on_gsim_by_default(tmp_path):
+def test_shim_sends_the_panel_as_one_ordinary_request_on_the_spike_cycle_model_by_default(tmp_path):
     done, requests = _shim(tmp_path, "--panel", "dense")
     assert done.returncode == 3, done.stderr
     assert len(requests) == 1
-    assert requests[0]["capsules"] == "panel:dense" and requests[0]["sim"] == "gsim"
-    done, requests = _shim(tmp_path / "spike", "--panel", "conv", "--sim", "spike")
-    assert requests[0]["capsules"] == "panel:conv" and requests[0]["sim"] == "spike"
+    assert requests[0]["capsules"] == "panel:dense" and requests[0]["sim"] == "spike"
+    done, requests = _shim(tmp_path / "gsim", "--panel", "conv", "--sim", "gsim")
+    assert requests[0]["capsules"] == "panel:conv" and requests[0]["sim"] == "gsim"
     done, requests = _shim(tmp_path / "both", "--panel", "dense", "--capsules", "a,b")
     assert done.returncode == 2 and not requests
+
+
+def test_shim_sends_a_variant_comparison_on_the_spike_cycle_model_unless_gsim_is_named(tmp_path):
+    trees = ("submission", "variants/v1")
+    done, requests = _shim(tmp_path, "--submission", "variants/v1", "--capsules", "a", trees=trees)
+    assert done.returncode == 3, done.stderr
+    assert requests[0]["submission"] == "variants/v1" and requests[0]["sim"] == "spike"
+    done, requests = _shim(tmp_path / "gsim", "--submission", "variants/v1", "--capsules", "a", "--sim", "gsim",
+                           trees=trees)
+    assert requests[0]["sim"] == "gsim"
+    done, requests = _shim(tmp_path / "submission", "--capsules", "a")
+    assert "sim" not in requests[0]  # submission/ keeps the driver's own engine selection
 
 
 def test_joint_campaign_admits_each_gsim_panel_case_under_its_own_policy(monkeypatch):

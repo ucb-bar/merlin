@@ -1,5 +1,21 @@
 # `packages/merlin-experiments/src/merlin_experiments/phase1/feedback`
 
+`reference_experiments` consumes only explicitly selected, pinned host input.
+Validate packet/context custody before author work and at successful exit; carry
+the selection through private child arguments even without a compiler library.
+Keep its outcome journal beside the private selector, separate from author-owned
+progress files. Join original broker source/settings/cases/engine before recording
+an advisory trial; subsequent briefs suppress that exact repeated request while
+retaining unresolved executable mechanism, timing and held-out obligations.
+Source drift retains bounded reference goals, hypotheses, actions and immutable
+pointer/hash provenance as prior guidance, including an empty round-zero compiler.
+Never carry its executable requests, outcomes or performance/mechanism authority
+to the edited source; collect current diagnostics, compilation and selfcheck
+evidence through existing tools and the current transformation/scheduling APIs.
+Changed selected bytes or context pins still withhold all task text.
+Neither packet tasks nor observations
+change grading, promotion, certification or private reference visibility.
+
 Concurrent original compiler operations may re-admit an invalidated snapshot guard
 under the same live owner and immutable marker. Reopen ordinary custody before
 publishing a replacement; preserve old guards until their owner drains and retain
@@ -72,6 +88,15 @@ foreign selections refuse; v1 transport/receipts retain their original meaning.
 
 Host-only grading, redaction, certificate promotion and simulator dispatch live here.
 Inputs are explicit invocation context and corpus/contract paths, never native imports.
+
+`result_details` is the standalone public index/detail transport, staged verbatim as
+`qa_result_details.py`. Completed grades and self-check responses retain compact
+rows and immutable content-addressed public details under `qa/cases/`; the grade
+also appends changed rows to `qa/completed_rows.jsonl`. Hydrate only where full
+diagnostics are needed, keep distinct performance/compiler briefs, and support
+legacy inline records. Paths remain inside the public case store and payload
+digests must match. These public details grant no private receipt authority.
+`stage_timing` records passive host-stage wall time, separate from guest cycles.
 
 `private_completed_build` is an explicit compiler-product store, never a prebuilt
 qualification route. Only the live original executor under the independently
@@ -548,12 +573,28 @@ race without updating grade health, and retains the required first-grade retry.
 Real grader errors retain bounded printable type/reason in their owned records;
 all snapshot custody, concurrent draining and numerical checks remain unchanged.
 
+`grade_lanes` splits an owner's running cases at its cadence: a case priced
+beyond `interval_s`, or running past it, is long. An owner whose admission is
+closed and whose running cases are all long drains in its long lane at
+PREPARATION and stops counting as an owner; newer owners withhold a case another
+owner runs as long, so started work is never repeated or cancelled. Each
+completed case is merged into `qa/latest_completed_grade.json` as it lands
+(`completed_grade.record_rows`). Rolling scalability timing is its own lane
+(`rolling_scalability.ObservationLane`): a verdict projects only observations
+already landed, later ones are a guarded follow-up of that grade
+(`completed_grade.follow_up`), and the drain-time grade keeps its behaviour (its
+projection was never part of the final public scalability gate).
+
 `source_quiet` debounces that launch: a due grade starts once its source identity
-has been unchanged for `MERLIN_GRADE_QUIET_S` (off by default: a replay of two runs
-made it a net loss for an author editing every 15-21 s), or at
-the latest `MERLIN_GRADE_QUIET_MAX_DELAY_S` (default 120 s) after it fell due.
-The identity is sampled at most every 5 s while waiting and never between
-grades; metadata only dates a new identity, so an idle source launches at once.
+has been unchanged for `MERLIN_GRADE_QUIET_S` (default 5 s, 0 disables; a replay of
+two runs made 30 s a net loss for an author editing every 15-21 s), or at
+the latest `MERLIN_GRADE_QUIET_MAX_DELAY_S` (default 30 s) after it fell due.
+A grade is due on the `interval_s` cadence while another grade admits, and as soon
+as no grade admits and the source was edited since the newest grade started (a
+stat walk decides whether to read it). A superseded owner draining its started
+cases does not count toward the owner limit. The identity is sampled at most
+every 5 s while waiting; metadata only dates a new identity, so an idle source
+launches at once.
 While a grade waits, the readiness record says `waiting_for_quiet_source` with
 `waited_s` (rewritten per sample, not per poll) and one log line marks the start.
 Scheduling only: the grade still captures and verifies its own source.
@@ -617,3 +658,6 @@ ratio. Panel records use `merlin.transforms.shape_policy` field names and leave
 the author's session pins to the author. `capacity_use` relates addressed local
 rows and device reads to RTL-derived capacity; it is structural and advisory,
 never reads cycles, and reports unresolved run-time addresses as UNKNOWN.
+# `pending_retirement` retires only a completed certificate request's own pending
+# slot. Retired entries carry no verdict and permit a new request with a distinct
+# attempt identity; old completions cannot resolve or retire a newer attempt.

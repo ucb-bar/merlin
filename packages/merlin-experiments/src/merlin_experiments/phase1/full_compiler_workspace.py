@@ -75,6 +75,7 @@ PUBLIC_HELPERS = (
     "merlin.targetgen.oot_starterkit.cmdbuf",
     "merlin.perf.emitted_work",
     "merlin.perf.model_group_work",
+    "merlin.runtime.operation_profile",
 )
 # The shared author-withheld packages; the V22 author SDK stages none of them either.
 DENIED_PREFIXES = AUTHOR_WITHHELD_PREFIXES
@@ -282,7 +283,7 @@ def stage(selection, submission):
     }
 
 
-def prepare(repo, destination, *, review_id):
+def prepare(repo, destination, *, review_id, modules=None):
     """Operator preparation: generic compiler directories plus source dependencies.
 
     Missing/withheld dependencies are explicit, never silently granted. This
@@ -295,9 +296,18 @@ def prepare(repo, destination, *, review_id):
     source = repo / "src"
     pending = [
         p.relative_to(source).as_posix() for name in SOURCE_ROOTS for p in (source / "merlin" / name).rglob("*.py")
-    ]
-    pending += ["merlin/__init__.py", "merlin/compile_core.py", "merlin/compile_cli.py"]
-    pending += [name.replace(".", "/") + ".py" for name in PUBLIC_HELPERS]
+    ] if modules is None else []
+    if modules is None:
+        pending += ["merlin/__init__.py", "merlin/compile_core.py", "merlin/compile_cli.py"]
+        pending += [name.replace(".", "/") + ".py" for name in PUBLIC_HELPERS]
+    else:
+        if not modules or len(set(modules)) != len(modules):
+            raise ValueError("component export requires distinct public compiler modules")
+        for module in modules:
+            relative = module.replace(".", "/") + ".py"
+            if _module(relative) != module or forbidden(module) or not (source / relative).is_file():
+                raise ValueError(f"component entry is not an existing public compiler module: {module}")
+            pending.append(relative)
     members, denied, missing = {}, set(), set()
     while pending:
         relative = pending.pop()
@@ -358,6 +368,38 @@ def prepare(repo, destination, *, review_id):
         "unavailable_dependencies": sorted(denied | missing),
         "scope": "generic compiler source; no corpora, kernels, grader, target backend or performance references",
     }
+    if modules is not None:
+        data["entry_modules"] = list(modules)
+    manifest = destination / "manifest.json"
+    manifest.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n")
+    manifest.chmod(0o444)
+    return select(root, manifest, hashlib.sha256(manifest.read_bytes()).hexdigest())
+
+
+def compose(baseline, component, destination, *, review_id):
+    """Extend an exact public baseline with one reviewed component's dependency closure."""
+    if type(baseline) is not FullCompilerSelection or type(component) is not FullCompilerSelection:
+        raise ValueError("compiler composition requires two reviewed source selections")
+    baseline.verify()
+    component.verify()
+    destination = Path(destination).absolute()
+    if destination.exists() or not review_id:
+        raise ValueError("compiler composition requires a new destination and review identity")
+    selected = {path: (baseline, digest, module) for path, digest, module in baseline.members}
+    selected.update({path: (component, digest, module) for path, digest, module in component.members})
+    root = destination / "python"
+    rows = []
+    for relative, (owner, digest, module) in sorted(selected.items()):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(_read(owner.root, relative))
+        path.chmod(0o444)
+        rows.append(dict(path=relative, sha256=digest, module=module))
+    data = json.loads(baseline.manifest_path.read_bytes())
+    provided = {module for _, _, module in selected.values() if module}
+    data.update(review_id=review_id, members=rows,
+                component_manifests=[baseline.manifest_sha256, component.manifest_sha256],
+                unavailable_dependencies=sorted((set(baseline.diagnostics) | set(component.diagnostics)) - provided))
     manifest = destination / "manifest.json"
     manifest.write_text(json.dumps(data, sort_keys=True, indent=2) + "\n")
     manifest.chmod(0o444)

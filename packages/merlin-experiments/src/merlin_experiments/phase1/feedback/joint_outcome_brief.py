@@ -11,7 +11,7 @@ def performance_signals(performance, runtime=None):
                            'scoped_resource_activity', 'resource_overlap', 'traffic_by_boundary',
                            'queue_pressure', 'host_cycle_attribution', 'storage_lifetimes'],
             'diagnostic_only': ['instructions', 'commands', 'fences'],
-            'missing_timing': 'UNRANKED; no instruction-count fallback',
+            'missing_timing': 'use the calibrated fast_estimate (labelled, with its band) until a complete estimate exists',
             'utilization_policy': 'Explain latency and headroom; do not maximize busy work or padded work.',
         },
         'timing_status': performance.get('status', 'UNKNOWN'),
@@ -123,3 +123,21 @@ def project(result, performance):
                 missing_rtl_is_numerical_failure=False, additional_gsim_requested=False,
                 certification_unchanged=True,
                 rtl_policy='Unobserved required RTL tiers remain uncertified. Original required gSIM checks remain mandatory; additional calibration gSIM needs an admitted mechanism question.')
+
+
+def decide_on_fast_estimate(outcomes, block) -> None:
+    """Point a passing case whose complete timing is missing at its calibrated fast estimate.
+
+    The complete observation still follows where a lane has the budget; meanwhile the estimate is the
+    basis for the decision, under its own evidence kind and band."""
+    if (not isinstance(outcomes, dict) or outcomes.get('next_priority') != 'timing_model_or_observation'
+            or not isinstance(block, dict) or block.get('status') != 'ESTIMATED'):
+        return
+    low, high = block.get('low_cycles'), block.get('high_cycles')
+    band = f', band {low}-{high}' if low and high else ''
+    outcomes.update(
+        next_priority='performance_search', next_owner='compiler',
+        next_action=(f"Decide on the fast estimate (~{block['cycles']} cycles{band}; evidence kind fast_estimate): "
+                     'compare legal variants on it, prefer the change it favors and revert if a complete '
+                     'estimate or measurement later disagrees.'),
+    )

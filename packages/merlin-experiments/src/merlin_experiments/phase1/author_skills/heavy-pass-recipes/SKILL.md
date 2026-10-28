@@ -1,40 +1,45 @@
 ---
 name: heavy-pass-recipes
-description: "Runnable, verified recipes for the heavy scheduling-library passes, tiles derived from RTL-fact capacities and every emitted command stream checked on host integers against the source: readout overlap and ready readout for an accumulator-bound GEMM, the segmented pipeline for long K, convolution through window row runs with retained input and resident weights (no per-pixel one-row gather, no zero-fill-then-overwrite rows), a conv-requant-pool chain found through the composition catalog, and a shape_policy worked example where --panel results choose between registered library PipelineVariants instead of hand-written if cutoffs. Use before hand-writing a convolution or GEMM schedule, when a lowering issues a transfer per output pixel, when a dense path picks its plan with an if on M, N or K, or when the performance brief names one of these passes."
+description: "Runnable, verified recipes for heavy scheduling-library passes, tiles from RTL-fact capacities and every command stream checked on host integers against the source: readout overlap and ready readout for an accumulator-bound GEMM, the segmented pipeline for long K, convolution through window row runs with retained input and resident weights (no per-pixel gather, no zero-fill-then-overwrite rows), convolution compute epochs and dense panel epochs that drain only where RTL ordering facts leave rows unordered, a conv-requant-pool chain via the composition catalog, a per-case list of composition routes and source_composition.json requests, and a shape_policy example choosing registered PipelineVariants from --panel results. Use before hand-writing a convolution or GEMM schedule, when a lowering issues a transfer per output pixel or drains after every compute or K step, when a dense path picks its plan with an if on M, N or K, or when the brief names one of these passes."
 ---
 
-`SKILL_DIR` = the directory holding this file. Run from the workspace root. Every recipe reads
-`rtl_facts/facts.json` if present (else a small synthetic body, labelled so in `"facts"`), imports
-`submission/compiler_library` (or `--library DIR`), prints JSON, answers `--help`, and fails if an
-emitted program does not reproduce the source result. The preflight runs all of them on every launch.
+Workspace: `--facts FILE` (else synthetic), `--library DIR` (default
+`submission/compiler_library`); JSON, `--help`.
 
 | recipe (`SKILL_DIR/scripts/`) | applies when | library chain | read |
 |---|---|---|---|
-| `dense_readout_recipe.py` | the output needs more accumulator rows than the store has | `schedule_dense_pipeline` on one K-segmented block: separate, batched, `disjoint` (`dense_readout_overlap`), `ready` (`dense_ready_readout`) | `reference/dense-recipes.md` |
-| `long_k_recipe.py` | a full-K LHS+RHS panel pair no longer fits the operand store | `schedule_dense_pipeline`, K-segmented (`dense_segmented_pipeline`), LHS window = one full-K panel | `reference/dense-recipes.md` |
+| `dense_readout_recipe.py` | serialized readouts; `--family retained` also accepts one K tile | `schedule_dense_pipeline`: separate, batched, `dense_readout_overlap`, `dense_ready_readout` | `reference/dense-recipes.md` |
+| `source_observer_recipe.py` | closed i8 observations | typed observer -> interval/finite proofs | `reference/dense-recipes.md` |
+| `projection_recipe.py` | shared immutable input | retained LHS -> `projection_views` -> `projection_dense` | `reference/dense-recipes.md` |
+| `long_k_recipe.py` | full-K panels exceed operand store | `schedule_dense_pipeline`, `dense_segmented_pipeline`; resident LHS panel | `reference/dense-recipes.md` |
 | `conv_window_recipe.py` | any convolution | `window_transfer.CountedConvolutionPlan` -> `convolution_exploration` (input retention, resident weights); `rolling_window` row staging | `reference/convolution.md` |
+| `conv_epoch_recipe.py` | convolution draining after compute/store | ordering facts -> epochs; source-qualified readout law -> checked consumer; completion-order check | `reference/convolution.md` |
+| `dense_epoch_recipe.py` | K drains | ordering facts -> `DensePanelEpochLaw` -> `schedule_dense_pipeline(epoch_law=)` | `reference/dense-recipes.md` |
+| `shared_rhs_epoch_recipe.py --describe` | immutable shared RHS | V24 `schedule_dense_shared_rhs`; consume `schedule.plan` | script; `ab-library-pass` |
+| `composition_routes.py --case NAME` | pool, epilogue, residual, siblings or heads | `composition_catalog` routes; `source_composition.json` options | `reference/source-composition.md` |
 | `spatial_chain_recipe.py` | a convolution feeding a pool | `composition_catalog` -> `rolling_spatial` | `reference/composition.md` |
-| `library_pipeline_policy.py` | choosing among library pipelines per shape | `PipelineVariant` + `merlin.transforms.shape_policy` | `reference/pipeline-policy.md` |
+| `library_pipeline_policy.py` | pipeline choice per shape | `PipelineVariant` + `merlin.transforms.shape_policy` | `reference/pipeline-policy.md` |
+| `counted_emission_recipe.py` | reuse encoder | checked `.emit_index_program`: same effects/completion, counted loops | `reference/dense-recipes.md` |
+| `parallel_schedule_recipe.py --output DIR` | shape variants | registered heavy passes -> unique emission -> bounded `evaluate_emitted` | `reference/parallel-evaluation.md` |
 
-1. **Run the recipe for your operator** on its derived shape, then on your layer
-   (`--shape`; `conv_window_recipe.py --count-only` for a large layer). Read the counts it prints
-   next to the baseline: epoch drains, overlapped compute pairs, input transfers and rows per
-   transfer, weight loads, and the count a per-pixel one-row gather would issue.
-2. **Move the chain into your lowering.** Keep the derivation (capacities -> plan -> library calls)
-   and the host check as a unit test; replace the neutral adapter (`encode`/`project`) and the
-   test-only law identities with your target's own declarations. A pass that refuses names the
-   premise that failed; that refusal is where your next alternative applies, not a bug to bypass.
-3. **Convolution.** Interior taps move `row_tile` input rows in one strided transfer; weights load
-   once per invocation when resident; one input transfer serves every live output-channel tile.
-   Padding is either a row that is loaded OR zero-sourced (once, never zero-filled then
-   overwritten), or a zero border materialized once on the host so every tap is in bounds. The
-   recipe's hazard check fails on any local row written twice before a compute reads it.
-4. **Register alternatives instead of `if`.** Each pipeline is a `PipelineVariant` of registered
-   library passes with its legality predicate; per-shape choice comes from panel cycles through
-   `assess_shape_policy`, and `AssessedShapePolicy.execute` runs the selected passes on the current
-   source. Missing or incomplete evidence keeps the class incumbent.
-5. **Cycles decide.** Command counts and drains explain a result; change a default only after the
-   panel (`explore-schedules` skill) and `ab-library-pass` show it on every affected class.
+1. **Run** (`--shape`; `--count-only` for large convolutions). Counts describe work; measure cycles.
+2. **Bind your lowering.** Keep source checks. Replace neutral `encode`/`project` and test-only laws
+   with selected declarations. Drains invoke real completion; refused/UNKNOWN keeps the original.
+3. **Convolution.** `emit_checked_readout_epoch` consumes `ConvolutionReadoutEpochLaw` and checks
+   actual grouped/wide consumer receipts. Derive ACC visibility, configuration capture, queue
+   progress and ownership from selected contracts. Load OR zero-source each row; never overwrite
+   an unfinished zero fill. Removed drains require ordering evidence.
+   `conv_epoch_recipe.py --write-toy-contract FILE`, then `--adapter-contract FILE --output DIR`,
+   emits ISA/SCF with toy laws and unranked alternatives. `generated_effect_callbacks`
+   binds caller instructions, without backend or physical authority.
+4. **Register alternatives.** A `PipelineVariant` binds passes and a legality predicate.
+   `assess_shape_policy` consumes panel cycles; `AssessedShapePolicy.execute` applies the selected
+   passes to current source. Missing evidence keeps the incumbent.
+   `shared_rhs_epoch_recipe.prepare` shares authored `tools/shared_rhs_owner.py` across both arms.
+   Bind products, aliases, outputs and laws; retain LHS reuse. `--describe` supplies metadata;
+   execution uses ordinary A/B checks.
+5. **Cycles decide.** Use the panel (`explore-schedules`) and `ab-library-pass` for affected classes.
+   `parallel_schedule_recipe.py --adapter` uses ordinary shared CPU limits and caller-owned
+   numerics/cycle callbacks. Neutral compilation is not a PASS; UNKNOWN ranks on `fast_estimate`.
 
-Contracts and adapter: the `scheduling-api` skill. Choice tables over knobs: the
-`shape-schedule-selection` skill, whose `capacity_pipeline_example.py` these recipes reuse.
+Contracts: `scheduling-api`. Choices: `shape-schedule-selection` / `capacity_pipeline_example.py`.

@@ -79,7 +79,7 @@ brief.refresh_before_launch(run, ws, 1)
 refreshed = path.read_text()
 assert refreshed.startswith('> ## RESUME') and refreshed.count('> ## RESUME') == 1
 assert refreshed.count('RETRACTION') == 1
-assert refreshed.index('RETRACTION') < refreshed.index('Your iteration_notes.md')
+assert refreshed.index('RETRACTION') < refreshed.index('Your ITERATION_NOTES.md')
 assert 'did NOT update' not in refreshed
 assert (ws / 'qa/.notes_hash').read_bytes() == stamp
 assert 'PRIVATE_SENTINEL' not in refreshed and 'FAST_SENTINEL' not in refreshed

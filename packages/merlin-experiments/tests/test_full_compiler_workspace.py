@@ -93,6 +93,37 @@ def test_changed_baseline_and_manifest_refuse(selection):
         F.select(selection.root, selection.manifest_path, '0' * 64)
 
 
+def test_component_export_and_composition_keep_unrelated_baseline_private(selection, tmp_path):
+    repo = tmp_path / 'new-repo'
+    for name, text in {
+        'merlin/__init__.py': '', 'merlin/compile/__init__.py': '', 'merlin/common/__init__.py': '',
+        'merlin/compile/new_pass.py': 'from merlin.common.helper import value\n',
+        'merlin/common/helper.py': 'value=7\n',
+        'merlin/compile/unrelated.py': 'not_part_of_this_treatment=True\n',
+    }.items():
+        path = repo / 'src' / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    component = F.prepare(repo, tmp_path / 'component', review_id='one new capability',
+                          modules=['merlin.compile.new_pass'])
+    names = {row[0] for row in component.members}
+    assert 'merlin/compile/new_pass.py' in names and 'merlin/common/helper.py' in names
+    assert 'merlin/compile/unrelated.py' not in names
+    combined = F.compose(selection, component, tmp_path / 'combined', review_id='old plus one capability')
+    assert (combined.root / 'merlin/common/helper.py').read_text() == 'value=7\n'
+    assert (selection.root / 'merlin/common/helper.py').read_text() == 'value=3\n'
+    assert (combined.root / 'merlin/compile/example.py').exists()
+    assert not (combined.root / 'merlin/compile/unrelated.py').exists()
+    component.verify()
+    combined.verify()
+
+
+@pytest.mark.parametrize('modules', [[], ['merlin.runtime.reference'], ['merlin.compile.missing']])
+def test_component_entry_cannot_grant_private_or_missing_sources(selection, tmp_path, modules):
+    with pytest.raises(ValueError, match='component'):
+        F.prepare(tmp_path / 'repo', tmp_path / 'refused', review_id='invalid', modules=modules)
+
+
 def test_generic_baseline_is_not_a_target_backend_seed(selection, tmp_path):
     ws = tmp_path / 'workspace'
     F.stage(selection, ws / 'submission')

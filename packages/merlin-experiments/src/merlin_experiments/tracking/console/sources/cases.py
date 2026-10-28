@@ -174,7 +174,9 @@ def _status(state: Any, grade_row: dict | None) -> tuple[str, str | None, bool]:
     if l3 == "reproving":
         return ("L3 ↻", "warn", True)
     if l2 == "pass" or (graded and ps.passes(graded)):
-        return ("L2 ✓", "info", True)
+        # A grade row reconciled as an older version's result is evidence, not a current pass.
+        older = l2 != "pass" and obj(graded.get("graded")).get("currency") == "older_version"
+        return ("L2 ✓ older" if older else "L2 ✓", "warn" if older else "info", True)
     if l2 == "reproving":
         return ("L2 ↻", "warn", True)
     if graded.get("status"):
@@ -665,7 +667,9 @@ def inspect(ctx, key: str) -> dict[str, Any]:
             if graded.get("failure_category") or graded.get("failure_plane")
             else ""
         )
-        + (f", grade {origin.get('token')} at {origin.get('graded_at')}" if origin else ""),
+        + (f", grade {origin.get('token')} at {origin.get('graded_at')}" if origin else "")
+        + (f" (result for older version {clean(origin.get('graded_source_sha256'), 12)})"
+           if origin.get("currency") == "older_version" else ""),
         f"first passed {_stamp(case['first_pass_at'])}",
     ]
     current = case["current"]

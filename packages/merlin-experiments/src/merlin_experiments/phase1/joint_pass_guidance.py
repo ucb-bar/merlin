@@ -31,8 +31,9 @@ This menu supplies hypotheses and API locations, not selected schedules or winni
 parameters. Discover choices from typed IR, hardware facts and your own evaluations.
 Preserve an independent serial/unfused alternative where useful. Report numerical
 status, structural evidence and withheld RTL coverage separately; withheld gSIM is
-not an instruction to simulate the whole corpus. Unknown timing is not zero or a
-performance win: save the reproducer and continue independently measurable work.
+not an instruction to simulate the whole corpus. Unknown complete timing is not zero
+or a win: decide on the case's calibrated fast estimate meanwhile, and revert if a
+complete estimate or measurement later disagrees.
 
 ## Construct capabilities for the whole public corpus
 
@@ -82,18 +83,20 @@ complete pointer/output ABI, actual commands, loops, readout modes and completio
 Trace the first incorrect boundary; a successful import, pass receipt or object
 build alone does not establish executable semantics.
 
-The goal is all 250 required public cases complete AND strong performance: 153 original
-correctness cases, 20 calibration cases and 77 primary performance/scalability targets,
-plus any explicitly admitted supplements. Correct declared refusals remain refusals.
-There is no full-153 correctness barrier before calibration or large-shape work.
+The goal is ALL cases in the current selected public inventory complete AND strong
+performance. Use PUBLIC_CAPABILITIES.json and the launch contract for current counts,
+roles and required tiers, including admitted supplements; historical corpus sizes
+are not coverage limits. Correct declared refusals remain refusals.
+There is no whole-correctness-cohort barrier before calibration or large-shape work.
 Preserve each original Spike/gSIM obligation and use the normal calibration policy.
 Begin scalable implementation and legal optimization during construction; use the
 selected provisional model with its limits, then the selected tuned model when
-available. Optimize chiefly the 77 larger targets and connected workloads; the 153
-small cases have low performance priority and supply regression/calibration evidence.
-Prioritize broad Spike numerical coverage of all 250 before spending discretionary
-gSIM work. Every gSIM candidate needs matching passing numerical evidence; the 153
-original required L3 obligations and selected 20 calibration tiers remain intact.
+available. Optimize chiefly the selected primary performance roles and connected
+workloads; small correctness cases have low performance priority and supply
+regression/calibration evidence. Prioritize broad Spike numerical coverage before
+spending discretionary gSIM work. Every gSIM candidate needs matching passing
+numerical evidence; original required L3 obligations and selected calibration
+tiers remain intact. A runtime forecast does not waive a required physical tier.
 As soon as informative passing Spike witnesses exist, automatic calibration can
 progress while other compiler families are repaired; do not impose a global pass
 barrier. Aim for below 5% error on independent held-out measurements within the
@@ -115,6 +118,53 @@ receipt is neither a correctness certificate nor a timing measurement. When the
 selected version provides `host_pass_profile`, inspect action_wall_ns separately
 from framework_wall_ns to find expensive transformations versus orchestration.
 These are host pass costs, not target cycles or capsule numerical evidence.
+
+## Learn reusable schedule regions
+
+Explore both the optimization mechanisms and their selection: edit or introduce
+shared passes, transformations, schedules, knobs and flags when the existing menu
+is insufficient. Keep semantics/lowering shared; specialize actual pass pipelines
+using source geometry, layout, precision and hardware-derived resource facts.
+Start with coarse regions, then refine where paired complete-call cycle evidence
+reveals a crossover. Consider interacting dimensions and aspect ratios, not only
+one global size cutoff. Storage-fit legality is independent of profitability.
+Use cheap cycle-model comparisons first; spend additional simulations near uncertain
+crossovers or on a specific unresolved mechanism, without rerunning the whole corpus.
+Compare both sides of each proposed boundary and aligned/ragged neighbors. Freeze
+separate geometries for validation; a holdout used to revise a rule becomes development
+data and needs a fresh replacement. Preserve each region's incumbent where evidence
+is missing, noisy or regresses. Avoid finer rules without useful performance support.
+When exported, `shape_policy` assesses proposed typed guards and executes selected
+registered pipelines; the agent still discovers the guards and supplies real paired
+feedback. Extend shared predicate tooling for missing generic features rather than
+encoding capsule identities. Record the rule, selected pass order/options, evidence
+domain, gains/regressions and tested coverage; no universal generalization claim is
+implied. This work runs alongside construction and adds no launch prerequisite.
+
+Optimize across compiler levels when a local schedule plateaus. Compare graph
+grouping and fusion/fission, producer/consumer layouts, immutable preparation,
+storage lifetimes and reuse, instruction selection and command batching, as well
+as device schedules. Preserve structured batch/head/reduction axes and explicit
+effects until the relevant transformations have consumed them. Keep every chosen
+alternative connected to ordinary host/device emission; annotations alone do not
+change execution. Fusion can lose through spills or lost parallelism, so retain
+unfused alternatives. Layout choices include downstream conversions and packing.
+Only hoist preparation for truly immutable/versioned inputs; report cold setup
+separately from repeated execution under the declared workload scope.
+
+Use hardware-relative features where meaningful (tile counts, tail fractions,
+live bytes/capacity, reuse distance and transfer/compute demand) alongside raw
+dimensions. Do not invent measured activity from those static features. Explore
+small interacting bundles when one-pass-at-a-time search misses enabling effects,
+then ablate useful winners to explain their benefit. Rank next work by expected
+whole-model time saved, occurrence count and evaluation cost; estimate only from
+compatible timing scopes, and check complete chains for shared/overlapping work.
+Screen legality, changed emitted code and duplicate programs cheaply; reuse valid
+prior observations and evaluate informative boundary cases before broad sweeps.
+Keep compiler search cost separate from target runtime, and prefer simpler rules
+when timing uncertainty cannot distinguish alternatives. Record missed optimization
+reasons (legality, missing representation/adapter, unsupported timing or measured
+regression) so a helper improves the actual bottleneck rather than adding flags.
 
 ## One evolving compiler, parallel bounded work
 

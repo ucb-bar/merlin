@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 from merlin_experiments.phase1.context import InvocationContext
 from merlin_experiments.phase1.feedback import qa, selfcheck
+from merlin_experiments.phase1.feedback.result_details import hydrate
 
 from merlin.common.paths import data_path
 
@@ -153,7 +154,7 @@ def test_main_selfcheck_does_not_count_legacy_screen_or_publish_legacy_artifacts
         capsules_root=corpus,
         contract=data_path("contract"),
     )
-    report = json.loads(capsys.readouterr().out)
+    report = hydrate(json.loads(capsys.readouterr().out), workspace=tmp_path)
     assert code == 1
     assert report["n_passed"] == report["n_screened_only"] == report["n_certified"] == 0
     assert report["per_capsule"][0]["candidate_native_verification"]["status"] == "incomplete"
@@ -230,7 +231,7 @@ def test_main_selfcheck_uses_only_selected_tier_console(
         capsules_root=corpus,
         contract=data_path("contract"),
     )
-    report = json.loads(capsys.readouterr().out)
+    report = hydrate(json.loads(capsys.readouterr().out), workspace=tmp_path)
     assert code == (0 if passing_case else 1)
     row = report["per_capsule"][0]
     assert row["barrier_tier"] == expected_tier
@@ -264,7 +265,7 @@ def test_model_layers_uses_candidate_projection_not_legacy_functional_pass(tmp_p
 
     monkeypatch.setattr(selfcheck.CG, "grade", grade)
     code = selfcheck._model_layers(tmp_path / "submission", "", timeout=1, workers=1, context=_context(tmp_path))
-    report = json.loads(capsys.readouterr().out)
+    report = hydrate(json.loads(capsys.readouterr().out), workspace=tmp_path)
     assert code == 1
     assert report["n_passed_functional_tier"] == 0
     assert report["grade_failure"] is None

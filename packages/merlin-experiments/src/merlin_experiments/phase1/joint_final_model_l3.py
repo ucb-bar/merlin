@@ -18,6 +18,9 @@ from __future__ import annotations
 from pathlib import Path
 
 MISSING = "l3_evidence_missing"
+#: Without continuous promotion (``joint_control.continuous_l3_promotion``) L3 is best-effort: a row
+#: with no exact-byte certificate keeps its L0-L2 Spike verdict and says plainly that L3 did not run.
+NOT_RUN_REASON = "L3 not run: best-effort final certification; L0-L2 passed on Spike for the frozen compiler"
 _TIER = "L3"
 
 
@@ -68,12 +71,17 @@ def close(score, *, runs, workspace, frozen, compiler_sha256, context) -> dict:
         digest = P.submission_tree_digest(frozen)
     except (OSError, ValueError):
         instrument = digest = None
+    from . import joint_control
+
     closed = {}
     for name, path in gaps.items():
         certificate = None
         if instrument is not None and digest is not None:
             certificate = _certificate(workspace, name, digest=digest, instrument=instrument,
                                        execution=qa._execution_digest_from_result(path))
+        if not certificate and not joint_control.continuous_l3_promotion():
+            closed[name] = {"not_run": NOT_RUN_REASON}
+            continue
         closed[name] = {"certificate": certificate} if certificate else {"missing": (
             "L3 evidence missing: L0-L2 passed on Spike for the frozen compiler, and no passing L3 "
             "certificate for exactly these bytes is recorded"
@@ -91,4 +99,13 @@ def cohort_score(score, certified) -> dict:
     for field, delta in (("n_passed", len(certified)), ("n_incomplete", -len(certified))):
         if type(score.get(field, 0)) is int:
             closed[field] = score.get(field, 0) + delta
+    # The native grader withholds ``gradeable`` while a mandatory tier is unavailable. When the
+    # certificates close every such row, and nothing else (an empty suite, an infrastructure fault,
+    # a withheld oracle) kept it false, the closed score is gradeable.
+    if (score.get("gradeable") is not True and closed.get("n_incomplete") == 0
+            and type(score.get("n_incomplete")) is int and score["n_incomplete"] > 0
+            and type(score.get("n_capsules")) is int and score["n_capsules"] > 0
+            and score.get("n_infrastructure_fault", 0) == 0 and score.get("n_not_gradeable_no_oracle", 0) == 0):
+        closed["gradeable"] = True
+        closed.pop("measurement_incomplete", None)
     return closed

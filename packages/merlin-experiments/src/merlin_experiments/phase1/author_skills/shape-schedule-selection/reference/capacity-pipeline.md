@@ -84,8 +84,62 @@ def dense_plan(m, k, n, settings, facts):
 ```
 
 The per-shape decision is then a knob value plus a capacity premise, both visible to
-`shape_choice_table.py`; no `if n % 32` or `m >= 128` remains in the lowering, and a new class of
-shape is handled by the premise rather than by the nearest measured case.
+`shape_choice_table.py`. Keep dimension cutoffs in explicit policy predicates rather than
+scattered through lowering. A new shape follows the predicates and its actual resource
+checks; it never selects the nearest measured capsule or model name.
+
+## Start with a small set of shape classes
+
+Use broad geometry classes to organize experiments: tiny, thin-M, thin-N, balanced,
+tall and wide. Define them using primitive-tile counts and aspect ratios from the
+selected hardware, with explicit precedence so a shape has an unambiguous coarse
+class. These are exploration groups, not claims that every member has one winner.
+
+Treat reduction depth, aligned/ragged tails, layout, output precision and residency
+as modifiers. Derive residency from the actual assigned live windows, including
+buffering and accumulator storage. Do not enumerate every cross-product of tags.
+
+Start each class with a few legal schedule families and retain its incumbent.
+Compare representative shapes in parallel, then refine a class only where paired
+cycles show a useful crossover. Check neighboring dimensions and independent held-out
+shapes around that rule. Prefer a simpler rule when timing cannot distinguish choices.
+Use `pipeline_policy` dimension/ratio/tile predicates and `shape_policy` assessment.
+The existing `propose_shape_policies` accepts raw `axes=` and exact `features=`
+(`RatioFeature`/`TileFeature`), searching training-only cutoffs through the same proposal
+and assessment flow. Its requests identify missing feature-boundary facts and source
+geometries. Selection at compilation is a cheap predicate lookup, not another simulator
+search. Reuse exact matching evidence.
+
+### Convolution and attention use the same policy
+
+Keep source-family distinctions before reusing contraction geometry:
+
+| Family | Coarse groups | Relevant modifiers and alternatives |
+|---|---|---|
+| Convolution | Pointwise, ordinary spatial, grouped/depthwise | Output-position/channel tile counts; kernel/stride/dilation/padding; sliding-row reuse, gather versus explicit packing, channel/output grouping, buffering and readout |
+| Attention | Single-query decode, short-query, balanced prefill, asymmetric query/KV lengths | Query/KV tile ratios, head dimension, batch/head groups, shared KV heads, resident versus streamed KV, head batching and storage reuse |
+
+Use explicit precedence for overlapping geometry descriptions. Residency and tails
+are modifiers, not new operator classes. Pointwise reuses the dense policy when its
+original layout permits the view; other geometries retain their legal source route.
+Spatial convolution retains window geometry and layout while using output-position,
+channel and reduction counts to organize shared blocking choices. A group/depthwise
+label does not establish that the selected target has an efficient legal lowering.
+
+Attention QK and PV can reuse dense scheduling choices, but keep batch/head axes,
+masks, softmax/requantization boundaries and KV-cache recurrence visible in connected
+regions. A class never authorizes a different numerical recipe or an online-softmax
+algorithm. Grouping, fusion and streaming alternatives require their original source
+and storage checks. Distinguish isolated-product timing from complete attention-region
+timing, including host work, intermediate movement and state updates.
+
+These are starting groups for the existing policy, not additional selectors or
+implemented target capabilities. Classify with shape/layout/resource arithmetic once,
+try a small initial set of applicable alternatives on representative performance cases,
+and reuse matching evidence. Expand only when a measured crossover or missed opportunity
+justifies it. Do not add startup profiling, launch gates, per-class compiler copies or
+simulations during ordinary compilation. Small correctness capsules remain controls;
+large and connected regions drive performance exploration.
 
 
 ## One checked entry for your existing dense backend
@@ -119,6 +173,21 @@ backpressure and completion remain your target's independently checked duty.
 Implement every explicit drain; fencing every data command instead prevents the
 intended overlap. Capacity does not grant an execution law. The neutral example
 uses test-only laws, so its host product checks are not hardware qualification.
+
+For an integer exit, carry its original semantics into this same consumer through
+`output_readout=`. `DenseTiledIntegerReadout.from_source_scales(source_scales,
+columns=problem.n, tile_columns=problem.tile_n, ...)` accepts the original scalar
+broadcast or complete column vector and retains exact binary32 coefficients. The
+instruction name/arguments come from your actual store adapter. This normalizes
+representation; it does not replace source arithmetic or choose numerical bounds.
+
+Retained full-K and segmented-K plans can both consume `readout_mode="ready"`
+when their independently checked completion law and actual storage layout admit
+it. Uniform coefficients permit the supported causal integer readout; varying
+coefficients keep the separately completed route. Revalidate and inspect emitted
+SCF/LLVM. Loop-carried operand/array retention can require a conflicting order:
+preserve it as a separate alternative and compare whole-call cycles across shape
+classes. An admissible overlap is not automatically faster.
 
 When timing is UNKNOWN, keep the incumbent and alternative artifacts. Inspect
 emitted IR/LLVM and actual operand/configuration/fence/packing effects; derive

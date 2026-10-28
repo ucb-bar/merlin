@@ -276,6 +276,7 @@ def generate_target(
     synth_profile: str | Path | None = None,
     smt_profile: str | Path | None = None,
     hidden_profile: str | Path | None = None,
+    chain_profile: str | Path | None = None,
     prohibited_instruction_roles: list[str] | None = None,
     component_only: bool = False,
     component_coverage: str | Path | None = None,
@@ -360,6 +361,7 @@ def generate_target(
         synth_profile=synth_profile,
         smt_profile=smt_profile,
         hidden_profile=hidden_profile,
+        chain_profile=chain_profile,
     )
     if software_spec is not None:
         profile_inputs["software_spec"] = software_spec

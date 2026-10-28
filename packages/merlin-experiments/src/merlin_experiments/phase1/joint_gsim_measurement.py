@@ -7,7 +7,9 @@ witnesses. This module lets the operator's idle-capacity measurer (:mod:`.feedba
 bounded sample of those cases on gSIM:
 
 * the campaign policy section ``gsim_measurement`` (absent: every default applies) sets the lane's
-  share of the campaign gSIM worker budget and concurrency; nothing here changes the ``gsim`` or
+  share of the campaign gSIM worker budget and concurrency. The lane is OFF unless the section sets
+  ``enabled: true``: performance is measured on the Spike cycle model by default, and gSIM only on
+  explicit request. Nothing here changes the ``gsim`` or
   ``gsim_correctness`` budgets, their rosters or their ledgers;
 * the measurer *authorizes* one request id at a time in a run-side ledger the author cannot write
   (``joint_gsim_measurement_budget.json`` beside ``joint_campaign.json``), reserving the request's
@@ -47,7 +49,8 @@ REQUEST_PREFIX = "op_idle_gsim_"
 LEDGER = "joint_gsim_measurement_budget.json"
 #: Policy knobs (``gsim_measurement`` in the campaign policy) and their defaults. ``None`` is derived.
 DEFAULTS = {
-    "enabled": True,
+    # Off by default: performance evidence comes from the Spike cycle model; gSIM on explicit request.
+    "enabled": False,
     # Share of the campaign gSIM worker-seconds budget (gsim.worker_budget_s) the lane may reserve, and
     # of the idle capacity seen at a submission it may hold.
     "worker_budget_share": 0.25,

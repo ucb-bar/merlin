@@ -182,6 +182,7 @@ _PHASE0_OPTIONAL_INPUTS = frozenset(
         "conformance_spec",
         "synth_profile",
         "smt_profile",
+        "chain_profile",
         "hidden_profile",
         "software_spec",
         "capability_contract",
@@ -635,6 +636,7 @@ def resolve_plan(
                 "MERLIN_SELFCHECK_BROKER_JOBS",
                 "MERLIN_SNAPSHOT_LEASE_CACHE",
                 "MERLIN_SIMULATION_CERT_CACHE",
+                "MERLIN_COMMAND_RECORDER",
                 "MERLIN_GSIM_SLOT_ROOT",
             ):
                 if key in os.environ:

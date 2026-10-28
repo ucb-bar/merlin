@@ -434,6 +434,12 @@ def _per_capsule_from_results(runs_root: Path, *, only_capsule: str | None = Non
                     else None
                 )
             )(r.get("tier_reuse") if candidate_feedback is None else None),
+            # A seeded grade's pass carried in full from its seed run (merlin.targetgen.seeded_grade):
+            # "carried from <run>", an operator run name. Nothing else can ride the field.
+            **(
+                lambda v: {"carried_from": v} if isinstance(v, str) and v.startswith("carried from ") and len(v) <= 160
+                else {}
+            )((r.get("tier_reuse") or {}).get("carried_from") if isinstance(r.get("tier_reuse"), dict) else None),
             "failure_plane": fail.get("plane"),
             "failure_category": fail.get("category"),
             # The tier LABEL survives redaction. It is a harness constant ("L2"), never capsule data, and
@@ -927,6 +933,10 @@ def run(
         def joint_defer():
             if joint_control.remaining() <= 0:
                 return "joint campaign deadline reached"
+            # A development grade still in flight at the freeze would otherwise run on inside the
+            # final window that the frozen-compiler coverage needs.
+            if joint_control.remaining(drain=True) <= 0:
+                return "joint campaign freeze/drain boundary reached"
             return previous_defer() if previous_defer is not None else None
         defer_pending = joint_defer
 

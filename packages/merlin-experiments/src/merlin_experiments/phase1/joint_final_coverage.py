@@ -6,7 +6,9 @@ or resets the campaign clock. Native graders retain their exact artifact caches.
 """
 from __future__ import annotations
 
+import contextvars
 import json
+import threading
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -31,10 +33,11 @@ def _rollup(document):
     # A model row this Spike-only route cannot close for want of L3 evidence is reported as such, not as
     # unfinished work; it still keeps the group (and so the coverage) from passing.
     document["n_l3_evidence_missing"] = sum(row["status"] == MODEL_L3_MISSING for row in rows)
+    document["n_l3_not_run"] = sum(row.get("l3") == "not_run" for row in rows)  # reported, never gating
     document["n_unfinished"] = (len(rows) - document["n_passed"] - document["n_failed"]
                                 - document["n_l3_evidence_missing"])
-    # A group whose cohort/structural closure is unverified withholds its passing rows ("skipped");
-    # report what the native grader itself executed and passed so the evidence stays readable.
+    # Rows keep their native verdict; a group's cohort/structural veto lives on the group. Rows are
+    # withheld ("skipped" over a native pass) only when the final custody check fails.
     document["n_native_passed"] = sum(row.get("native_status") == "pass" for row in rows)
     document["n_closure_withheld"] = sum(
         row["status"] == "skipped" and row.get("native_status") == "pass" for row in rows)
@@ -54,18 +57,43 @@ def _capsule_group(capsules):
         name: {"status": "pending", "reason": "not yet graded"} for name in sorted(names)}}
 
 
+def _closure_vetoes(score, *, exact, uncertified) -> list[str]:
+    """The group-level closure conditions ``score`` (already model-L3 closed) does not meet."""
+    from .feedback.qa import _original_cohort_complete
+
+    vetoes = []
+    if not exact:
+        vetoes.append("native roster differs from the required obligations")
+    if uncertified:
+        vetoes.append("whole-model rows lack L3 evidence: " + ", ".join(sorted(uncertified)))
+    if not _original_cohort_complete(score):
+        vetoes.append("native cohort is incomplete")
+    for field in ("gradeable", "numeric_all_exact", "structural_evidence_all_pass"):
+        if score.get(field) is not True:
+            vetoes.append(f"{field} is {score.get(field)!r}")
+    if (score.get("functional_public_evidence") or {}).get("claim") != "functional_corroboration":
+        vetoes.append("no functional public corroboration claim")
+    return vetoes
+
+
 def _apply_score(group, score, model_l3=None):
     """Only the final native score, after offload/model vetoes, can close a row.
 
     ``model_l3`` (:func:`.joint_final_model_l3.close`) closes whole-model rows whose only gap is L3:
     with an exact-byte certificate they pass and count toward the cohort; without one they are
     reported as ``l3_evidence_missing``.
+
+    Each row keeps the native grader's own verdict. A cohort, structural or numeric veto belongs to
+    the group: it keeps ``group["passed"]`` (and so the coverage) false and is named in
+    ``group["closure_vetoes"]``, but it never rewrites another row's pass, so one failing case cannot
+    hide every case that passed.
     """
     from .feedback.qa import _original_cohort_complete
     from .joint_final_model_l3 import cohort_score
 
     model_l3 = model_l3 or {}
     certified = {name for name, closure in model_l3.items() if closure.get("certificate")}
+    not_run = {name for name, closure in model_l3.items() if closure.get("not_run")}  # best-effort L3
     rows = score.get("per_capsule") or []
     names = [row.get("capsule") for row in rows]
     expected = set(group["obligations"])
@@ -85,28 +113,18 @@ def _apply_score(group, score, model_l3=None):
             obligation = group["obligations"][name]
             if closure.get("certificate"):
                 obligation.update(status="pass", l3_certificate=closure["certificate"], reason=None)
+            elif closure.get("not_run"):
+                obligation.update(status="pass", l3="not_run", reason=closure["not_run"])
             else:
                 obligation.update(status=MODEL_L3_MISSING, reason=closure.get("missing"))
-    group["passed"] = (
-        exact and not set(model_l3) - certified
-        and _original_cohort_complete(cohort_score(score, certified))
-        and score.get("gradeable") is True
-        and score.get("numeric_all_exact") is True
-        and score.get("structural_evidence_all_pass") is True
-        and (score.get("functional_public_evidence") or {}).get("claim") == "functional_corroboration"
-    )
-    if not group["passed"]:
-        # A perfect-looking row list cannot hide a package/cohort/structural veto.
-        for row in group["obligations"].values():
-            if row["status"] == "pass" and (
-                not exact or score.get("structural_evidence_all_pass") is not True
-                or score.get("numeric_all_exact") is not True or score.get("gradeable") is not True
-                or (score.get("functional_public_evidence") or {}).get("claim") != "functional_corroboration"
-            ):
-                row.update(status="skipped", reason="native cohort or structural closure is unverified")
+    vetoes = _closure_vetoes(cohort_score(score, certified | not_run), exact=exact,
+                             uncertified=set(model_l3) - certified - not_run)
+    group["passed"] = not vetoes
+    group["closure_vetoes"] = vetoes
     group["native_cohort_complete"] = _original_cohort_complete(score)
     if model_l3:
-        group["model_l3"] = {"certified": sorted(certified), "missing": sorted(set(model_l3) - certified)}
+        group["model_l3"] = {"certified": sorted(certified), "not_run": sorted(not_run),
+                             "missing": sorted(set(model_l3) - certified - not_run)}
     group["structural_evidence_all_pass"] = score.get("structural_evidence_all_pass")
     if score.get("failure"):
         group["failure"] = score["failure"]
@@ -205,8 +223,13 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
         "groups": groups,
     }
 
+    # Visible full models run beside the in-process stages (see below); one lock serializes every
+    # report mutation and write between the two threads.
+    lock = threading.RLock()
+
     def save():
-        _write(path, _rollup(report))
+        with lock:
+            _write(path, _rollup(report))
 
     def expired():
         return "original joint campaign deadline exhausted" if joint_control.remaining() <= 0 else None
@@ -218,7 +241,8 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
     adapters, engine = _adapters("spike", context.target, te.sim_via, **readback_kwargs(context))
     if engine != "spike" or set(adapters) != {"L2"}:
         raise ValueError("final cheap coverage requires the exact Spike-only adapter")
-    for name, root in (("core", core), ("scalability", scale_cases)):
+
+    def capsule_stage(name, root):
         group = groups[name]
         try:
             if budget() < 1:
@@ -240,7 +264,8 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
                     )
             score_path = output / f"{name}-score.json"
             _write(score_path, score)
-            group["evidence"] = {"path": str(score_path), "sha256": sha256_file(score_path)}
+            with lock:
+                group["evidence"] = {"path": str(score_path), "sha256": sha256_file(score_path)}
             model_l3 = None
             if name == "core":
                 from .joint_final_model_l3 import close as close_model_l3
@@ -249,18 +274,22 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
                     model_l3 = close_model_l3(score, runs=runs, workspace=prepared.workspace, frozen=frozen,
                                               compiler_sha256=compiler_sha256, context=context)
                 except Exception as exc:  # noqa: BLE001 -- the native rows still close as they did
-                    group["model_l3_error"] = f"{type(exc).__name__}: {exc}"
-            _apply_score(group, score, model_l3)
+                    with lock:
+                        group["model_l3_error"] = f"{type(exc).__name__}: {exc}"
+            with lock:
+                _apply_score(group, score, model_l3)
         except Exception as exc:
-            group["error"] = f"{type(exc).__name__}: {exc}"
+            with lock:
+                group["error"] = f"{type(exc).__name__}: {exc}"
         finally:
-            for row in group["obligations"].values():
-                if row["status"] == "pending":
-                    row.update(status="skipped", reason=group.get(
-                        "error", "native grader did not close this obligation"))
+            with lock:
+                for row in group["obligations"].values():
+                    if row["status"] == "pending":
+                        row.update(status="skipped", reason=group.get(
+                            "error", "native grader did not close this obligation"))
             save()
 
-    if programs is not None:
+    def program_stage():
         group = groups["programs"]
         try:
             if budget() < 1:
@@ -275,40 +304,65 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
                         contract=contract, max_workers=CG.default_grade_workers())
             evidence = output / "programs-result.json"
             _write(evidence, result)
-            group["evidence"] = {"path": str(evidence), "sha256": sha256_file(evidence)}
-            _apply_program_result(group, result, compiler_sha256)
+            with lock:
+                group["evidence"] = {"path": str(evidence), "sha256": sha256_file(evidence)}
+                _apply_program_result(group, result, compiler_sha256)
         except Exception as exc:
-            group["error"] = f"{type(exc).__name__}: {exc}"
+            with lock:
+                group["error"] = f"{type(exc).__name__}: {exc}"
         finally:
-            for row in group["obligations"].values():
-                if row["status"] == "pending":
-                    row.update(status="skipped", reason=group.get(
-                        "error", "native program did not close this obligation"))
+            with lock:
+                for row in group["obligations"].values():
+                    if row["status"] == "pending":
+                        row.update(status="skipped", reason=group.get(
+                            "error", "native program did not close this obligation"))
             save()
 
-    for model, programs in PROGRAMS.items():
-        try:
-            if budget() < 1:
-                raise TimeoutError("original joint campaign deadline exhausted")
-            joint_control.require_full_model(engine="spike")
-            result = execute_visible(
-                prepared.workspace, {"action": "check", "model": model, "split": "visible", "mode": "full"},
-                snapshot_source=frozen, timeout_s=budget(), stop=lambda: expired() is not None,
-                context=inputs.context, compiler_bundle_manifest=prepared.run_dir / "input_bundle_manifest.yaml",
-            )
-            if result.get("source_sha256") != compiler_sha256:
-                raise ValueError("full-model check returned another compiler identity")
-            result_path = output / f"model-{model}.json"
-            _write(result_path, result)
-            for program in programs:
-                row = _program_row(model, program, result)
-                row["evidence"] = {"path": str(result_path), "sha256": sha256_file(result_path)}
-                groups["models"]["obligations"][f"{model}/{program}"] = row
-        except Exception as exc:
-            for program in programs:
-                groups["models"]["obligations"][f"{model}/{program}"] = {
-                    "status": "skipped", "reason": f"{type(exc).__name__}: {exc}"}
-        save()
+    def model_stage():
+        for model, programs in PROGRAMS.items():
+            try:
+                if budget() < 1:
+                    raise TimeoutError("original joint campaign deadline exhausted")
+                joint_control.require_full_model(engine="spike")
+                result = execute_visible(
+                    prepared.workspace, {"action": "check", "model": model, "split": "visible", "mode": "full"},
+                    snapshot_source=frozen, timeout_s=budget(), stop=lambda: expired() is not None,
+                    context=inputs.context,
+                    compiler_bundle_manifest=prepared.run_dir / "input_bundle_manifest.yaml",
+                )
+                if result.get("source_sha256") != compiler_sha256:
+                    raise ValueError("full-model check returned another compiler identity")
+                result_path = output / f"model-{model}.json"
+                _write(result_path, result)
+                rows = {}
+                for program in programs:
+                    row = _program_row(model, program, result)
+                    row["evidence"] = {"path": str(result_path), "sha256": sha256_file(result_path)}
+                    rows[f"{model}/{program}"] = row
+            except Exception as exc:
+                rows = {f"{model}/{program}": {"status": "skipped", "reason": f"{type(exc).__name__}: {exc}"}
+                        for program in programs}
+            with lock:
+                groups["models"]["obligations"].update(rows)
+            save()
+
+    # Core first (its model-L3 closure reads only its own rows). The visible full models are
+    # subprocesses, so they run beside the remaining in-process stages instead of after them: one
+    # shared deadline can then no longer skip them, or the selected programs, behind the large
+    # scalability suite. The thread carries this context's compiler owners like any other stage.
+    capsule_stage("core", core)
+    models = threading.Thread(target=contextvars.copy_context().run, args=(model_stage,),
+                              name="final-coverage-models", daemon=True)
+    models.start()
+    try:
+        if programs is not None:
+            program_stage()
+        capsule_stage("scalability", scale_cases)
+    finally:
+        models.join()
+    for row in groups["models"]["obligations"].values():
+        if row["status"] == "pending":
+            row.update(status="skipped", reason="full-model stage did not close this obligation")
     groups["models"]["passed"] = all(
         row["status"] == "pass" for row in groups["models"]["obligations"].values())
     try:
@@ -322,5 +376,26 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
             for row in group["obligations"].values():
                 if row["status"] == "pass":
                     row.update(status="skipped", reason="final input/compiler custody check failed")
+    save()  # Coverage is published here; the completion-order pass below can only annotate it.
+    report["completion_order"] = _completion_order_after_coverage(groups, output, context.target, budget)
     save()
     return {**report, "artifact": {"path": str(path), "sha256": sha256_file(path)}}
+
+
+def _completion_order_after_coverage(groups, output, target, remaining):
+    """The race check over published native passes, best-effort in the time left (never gating)."""
+    from merlin.targetgen import capsule_grade as CG
+    from merlin.targetgen import completion_order_gate as G
+
+    from .joint_final_model_l3 import _result
+
+    results = {}
+    for name in ("core", "scalability"):
+        for case, row in groups[name]["obligations"].items():
+            found = _result(output / name, case)[0] if row["status"] == "pass" else None
+            if found is not None:
+                results[case] = found
+    try:
+        return G.after_coverage(target, results, remaining=remaining, workers=CG.default_grade_workers())
+    except Exception as exc:  # noqa: BLE001 -- an advisory pass never disturbs published coverage
+        return {"status": "not_run", "error": f"{type(exc).__name__}: {exc}"}

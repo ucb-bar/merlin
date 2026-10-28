@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from merlin.perf.command_buffer_store import CommandBufferIntegrityError, load_command_buffer
 from merlin.perf.envelope import Peak
 
 COMPUTE = "compute"
@@ -118,7 +119,10 @@ def public_baseline_measurement(raw, *, corpus, member, package_sha256, certific
         else None
     )
     artifact = measured.get("command_buffer_artifact") or {}
-    command = artifact.get("command_buffer")
+    try:
+        command = load_command_buffer(artifact)
+    except CommandBufferIntegrityError:  # changed stored bytes: no admissible work identity
+        return None, None
     work, checked = command_buffer_evidence(command, compiler_provenance="original public baseline reply")
     if (
         not isinstance(command, Mapping)

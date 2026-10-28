@@ -13,7 +13,10 @@ from merlin_experiments.phase1.run_inputs import graded_source_hash
 
 @pytest.fixture
 def selected(tmp_path, monkeypatch):
-    monkeypatch.delenv(J.ENV, raising=False)
+    # J.configure assigns os.environ[J.ENV] itself; setenv records the original state first so teardown
+    # restores it (delenv alone records nothing when unset, and the selection leaks into later tests).
+    monkeypatch.setenv(J.ENV, '')
+    monkeypatch.delenv(J.ENV)
     monkeypatch.delenv('MERLIN_JOINT_PERFORMANCE_SELECTION', raising=False)
     source = tmp_path / 'checkpoint' / 'submission'
     source.mkdir(parents=True)
