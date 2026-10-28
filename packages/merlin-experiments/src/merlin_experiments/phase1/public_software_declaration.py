@@ -83,12 +83,17 @@ def append_guidance(record, workspace, run_dir):
     if record is None:
         return
     task = workspace / "TASK.md"
+    # `read_scheduling_contracts` is provided by the frozen shared-pass compiler library of a joint campaign. An
+    # ordinary run exposes no such tool, so naming it sent the author looking for something that does not exist.
+    from .joint_control import selected as joint_selected
+
+    tool = " with `read_scheduling_contracts`" if joint_selected() else ""
     task.write_text(
         task.read_text()
         + "\n## Selected public software declaration\n\n"
         + f"Read `{record['path']}` for the original selected software semantics "
-        + f"(SHA-256 `{record['sha256']}`). Use this readable data leaf with "
-        + "`read_scheduling_contracts`; the original backend tree remains withheld. "
+        + f"(SHA-256 `{record['sha256']}`). Use this readable data leaf{tool}; "
+        + "the original backend tree remains withheld. "
         + "This identical-byte alias grants no additional implementation or qualification.\n"
     )
     (run_dir / "TASK.md").write_bytes(task.read_bytes())
