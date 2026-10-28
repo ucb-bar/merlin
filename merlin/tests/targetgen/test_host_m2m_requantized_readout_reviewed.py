@@ -1,4 +1,4 @@
-"""The requantized i32,i8 -> i8 exact-readout host row is a proposal: it must never count as a reviewed admission."""
+"""The requantized i32,i8 -> i8 exact-readout host row is operator-approved (chat 2026-10-28) and admits as reviewed."""
 
 import copy
 import hashlib
@@ -36,33 +36,33 @@ def _admit(document, operands, results, rank, readout="i8"):
         selection, {"frontend_op": "m2m_q.exact_readout.default", "mlir_operation": "linalg.generic"}, signature)
 
 
-def _flipped(shipped):
+def _demoted(shipped):
     flipped = copy.deepcopy(shipped)
     for row in flipped["operations"]:
         if row["id"] == ROW:
-            row["status"] = "reviewed"
-            row["numerical_contract"]["status"] = "reviewed"
+            row["status"] = "unreviewed"
+            row["numerical_contract"]["status"] = "unreviewed"
     return flipped
 
 
-def test_row_is_proposed_and_marked_not_reviewed(shipped):
+def test_row_is_reviewed_by_the_operator(shipped):
     validate_host_capabilities(shipped)
     row = {r["id"]: r for r in shipped["operations"]}[ROW]
-    assert row["status"] == "unreviewed" and row["numerical_contract"]["status"] == "unreviewed"
-    assert "NOT REVIEWED" in row["numerical_contract"]["evidence"]["reviewed_by"]
+    assert row["status"] == "reviewed" and row["numerical_contract"]["status"] == "reviewed"
+    assert "Loren Hung (approved in operator chat 2026-10-28)" in row["numerical_contract"]["evidence"]["reviewed_by"]
     assert row["signature"]["ranks"] == [3, 4] and row["signature"]["ordered_result_dtypes"] == ["i8"]
 
 
 @pytest.mark.parametrize("rank", [3, 4])
-def test_unreviewed_row_is_never_a_reviewed_admission_and_review_would_make_it_one(shipped, rank):
-    before = _admit(shipped, ["i32", "i8"], ["i8"], rank)
-    assert not (before["status"] == "admitted" and before["reviewed"] is True)
-    after = _admit(_flipped(shipped), ["i32", "i8"], ["i8"], rank)
+def test_reviewed_row_is_a_reviewed_admission_and_demotion_would_withdraw_it(shipped, rank):
+    after = _admit(shipped, ["i32", "i8"], ["i8"], rank)
     assert after["status"] == "admitted" and after["reviewed"] is True
+    before = _admit(_demoted(shipped), ["i32", "i8"], ["i8"], rank)
+    assert not (before["status"] == "admitted" and before["reviewed"] is True)
 
 
 def test_other_forms_stay_refused_even_when_reviewed(shipped):
-    flipped = _flipped(shipped)
+    flipped = shipped
     assert _admit(flipped, ["i32", "i8"], ["i8"], 2)["status"] != "admitted"
     assert _admit(flipped, ["i32", "i8"], ["i8"], 5)["status"] != "admitted"
     assert _admit(flipped, ["i32", "f32"], ["i8"], 3)["status"] != "admitted"

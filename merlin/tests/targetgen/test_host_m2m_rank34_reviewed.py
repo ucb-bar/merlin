@@ -1,4 +1,4 @@
-"""Rank-3/4 siblings of the signed-off m2m exact-quantization rows: proposed, so never counted as reviewed."""
+"""Rank-3/4 siblings of the signed-off m2m exact-quantization rows: operator-approved in chat 2026-10-28, so reviewed."""
 
 import copy
 import hashlib
@@ -46,16 +46,16 @@ def _admit(document, frontend, mlir, operands, results, rank, quant):
     return admit_host_operation(selection, {"frontend_op": frontend, "mlir_operation": mlir}, signature)
 
 
-def test_proposed_rows_are_unreviewed_siblings_of_the_signed_off_rows(shipped):
+def test_rank34_rows_are_reviewed_siblings_of_the_signed_off_rows(shipped):
     validate_host_capabilities(shipped)
     rows = {row["id"]: row for row in shipped["operations"]}
     assert PROPOSED <= set(rows)
     for name in BASE:
         base, proposed = rows[name], rows[name + "_rank3_4"]
         assert base["status"] == "reviewed" and base["signature"]["ranks"] == [2]
-        assert proposed["status"] == "unreviewed" and proposed["numerical_contract"]["status"] == "unreviewed"
+        assert proposed["status"] == "reviewed" and proposed["numerical_contract"]["status"] == "reviewed"
         assert proposed["signature"]["ranks"] == [3, 4]
-        assert "NOT REVIEWED" in proposed["numerical_contract"]["evidence"]["reviewed_by"]
+        assert "Loren Hung (approved in operator chat 2026-10-28)" in proposed["numerical_contract"]["evidence"]["reviewed_by"]
         # Only the ranks, statuses and review note differ from the signed-off row.
         a, b = copy.deepcopy(base), copy.deepcopy(proposed)
         for row in (a, b):
@@ -66,21 +66,20 @@ def test_proposed_rows_are_unreviewed_siblings_of_the_signed_off_rows(shipped):
 
 @pytest.mark.parametrize("case", CASES, ids=[c[0] for c in CASES])
 @pytest.mark.parametrize("rank", [3, 4])
-def test_rank_3_4_is_not_a_reviewed_admission_until_an_operator_reviews_the_row(shipped, case, rank):
+def test_rank_3_4_is_a_reviewed_admission_and_demoting_the_row_withdraws_it(shipped, case, rank):
     verdict = _admit(shipped, *case[:4], rank, case[4])
-    # program_admission._lanes counts a lane only for status admitted AND reviewed.
-    assert not (verdict["status"] == "admitted" and verdict["reviewed"] is True)
+    assert verdict["status"] == "admitted" and verdict["reviewed"] is True
     decisions = {d.get("declaration"): d for d in verdict["profiles"][0]["decisions"]}
-    proposed = [name for name in decisions if name in PROPOSED]
-    assert len(proposed) == 1 and decisions[proposed[0]]["status"] != "admitted"
-    # Counterfactual: the same row, once an operator records review, is the reviewed admission.
-    flipped = copy.deepcopy(shipped)
-    for row in flipped["operations"]:
-        if row["id"] == proposed[0]:
-            row["status"] = "reviewed"
-            row["numerical_contract"]["status"] = "reviewed"
-    after = _admit(flipped, *case[:4], rank, case[4])
-    assert after["status"] == "admitted" and after["reviewed"] is True
+    approved = [name for name in decisions if name in PROPOSED and decisions[name]["status"] == "admitted"]
+    assert len(approved) == 1
+    # Counterfactual: the same row demoted back to unreviewed is not a reviewed admission.
+    demoted = copy.deepcopy(shipped)
+    for row in demoted["operations"]:
+        if row["id"] == approved[0]:
+            row["status"] = "unreviewed"
+            row["numerical_contract"]["status"] = "unreviewed"
+    after = _admit(demoted, *case[:4], rank, case[4])
+    assert not (after["status"] == "admitted" and after["reviewed"] is True)
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c[0] for c in CASES])
