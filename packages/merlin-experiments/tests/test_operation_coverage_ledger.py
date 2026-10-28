@@ -510,13 +510,25 @@ def test_integer_and_batched_matmul_resolve_to_contraction(inputs):
 
 def test_namespaced_ops_never_reach_the_shared_table_by_their_bare_name(inputs):
     _lite(inputs, ["m2m_q.quantize.default", "quantized_decomposed.dequantize_per_tensor.default",
-                   "m2m_q.int_mm_seeded.default", "aten.convolution_backward.default"])
+                   "aten.convolution_backward.default"])
     rows = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())
     for overload in ("m2m_q.quantize.default", "quantized_decomposed.dequantize_per_tensor.default",
-                     "m2m_q.int_mm_seeded.default", "convolution_backward.default"):
+                     "convolution_backward.default"):
         assert rows[overload]["evidence_state"] == "unmodeled", overload
         assert rows[overload]["test_identity"]["family_capsules"] == []
-    assert "m2m_q.int_mm_seeded" in L.PENDING_ALIAS_REVIEW
+
+
+def test_the_seeded_integer_matmul_is_contraction_family_credit_never_operator_credit(inputs):
+    _lite(inputs, ["aten._int_mm.default", "m2m_q.int_mm_seeded.default"])
+    rows = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())
+    seeded = rows["m2m_q.int_mm_seeded.default"]
+    assert seeded["declaration"]["family"] == "contraction"
+    assert seeded["evidence_state"] != "unmodeled"
+    assert seeded["evidence_state"] != "generated"  # no capsule traces the seeded operator
+    assert L._LEDGER_NAMESPACED_ALIASES == {"m2m_q.int_mm_seeded": "contraction"}
+    # the bare op segment of another namespace still does not reach the table
+    assert L._alias_family("m2m_q.int_mm.default") is None
+    assert L._alias_family("other.int_mm_seeded.default") is None
 
 
 # --- direct credit from structured application provenance -------------------------------------

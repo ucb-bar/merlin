@@ -76,10 +76,15 @@ def _base(overload):
 #: eligibility elsewhere. Each entry is an exact operator, never a pattern. ``convolution_backward`` is
 #: deliberately absent (a gradient composite, not a forward contraction).
 _LEDGER_FAMILY_ALIASES = {"mm": "contraction", "bmm": "contraction", "_int_mm": "contraction"}
-#: Namespaced custom operators held out of the alias table until an operator review accepts them.
-#: ``m2m_q.int_mm_seeded`` is an i8 matmul whose i32 seed is a separate elementwise add; the generation
-#: places the seed add on the host at its captured signatures and no capsule names the operator.
-PENDING_ALIAS_REVIEW = {"m2m_q.int_mm_seeded": "contraction"}
+#: Namespaced custom operators the ledger resolves by their exact qualified ``ns.op`` name.
+#: ``m2m_q.int_mm_seeded`` is a signed i8 x i8 -> i32 matmul whose accumulator starts from an i32 seed.
+#: The selected software spec admits it on the accelerator under the reviewed ``contraction`` declaration
+#: (seed_load: unscaled_full_i32_shrink0_once, accumulator_seed_tensor reviewed in the 2026-10-28 addendum),
+#: so its family is contraction. This is FAMILY credit only: no capsule traces the operator itself, so it
+#: reads ``family_generated`` and never ``generated`` (that needs a capsule whose admitted program names
+#: the operator: see the structured-provenance credit). It is not an alias of ``aten._int_mm``: the two
+#: differ by the seed, and a test of the unseeded product is not a test of the seed load.
+_LEDGER_NAMESPACED_ALIASES = {"m2m_q.int_mm_seeded": "contraction"}
 
 
 def _alias_family(overload):
@@ -91,7 +96,7 @@ def _alias_family(overload):
     """
     parts = overload.split(".")
     if len(parts) == 3:
-        return None  # no reviewed namespaced alias yet; see PENDING_ALIAS_REVIEW
+        return _LEDGER_NAMESPACED_ALIASES.get(f"{parts[0]}.{parts[1]}")
     return _LEDGER_FAMILY_ALIASES.get(parts[0])
 
 
