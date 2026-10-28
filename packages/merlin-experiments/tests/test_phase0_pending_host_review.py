@@ -70,3 +70,27 @@ def test_the_derivation_time_inventory_must_wait_on_review_too():
     other_ops = [{"status": "unknown", "pending_host_review": True}, {"status": "unknown"}]
     assert held({"status": "unknown", "reason": "r", "operations": other_ops})["pending_host_review_only"] is False
     assert held({"status": "unsupported", "reason": "r", "operations": pending_ops})["pending_host_review_only"] is False
+
+
+def test_seeded_slice_waiting_only_on_a_proposed_host_row_is_withheld_and_disclosed(tmp_path):
+    from merlin_experiments.phase0.generation import withhold_pending_seeded_slice as withhold
+
+    seeded = {"name": "SY_int_mm_seeded_m4_k8_n6_abc", "capture_op": "int_mm_seeded", "source_role": "model_derived"}
+    pending = {"status": "unknown", "pending_host_review_only": True, "reason": "m2m_q.int_mm_seeded.default: x"}
+    directory = tmp_path / seeded["name"]
+    directory.mkdir()
+    (directory / "capsule.yaml").write_text("x: 1\n")
+    row = withhold(seeded, pending, directory, must_refuse=False)
+    assert row["capsule"] == seeded["name"] and "pending operator review" in row["reason"]
+    assert "m2m_q.int_mm_seeded.default: x" in row["reason"] and not directory.exists()
+    # everything else stays fatal
+    for entry, observed, refuse in (
+        (seeded, {**pending, "pending_host_review_only": False}, False),
+        (seeded, {"status": "unsupported", "reason": "x"}, False),
+        (seeded, pending, True),
+        ({**seeded, "name": "SY_int_mm_m4_k8_n6_abc", "capture_op": "int_matmul"}, pending, False),
+        ({**seeded, "source_role": "derived_sweep"}, pending, False),
+    ):
+        keep = tmp_path / "keep"
+        keep.mkdir(exist_ok=True)
+        assert withhold(entry, observed, keep, must_refuse=refuse) is None and keep.exists()
