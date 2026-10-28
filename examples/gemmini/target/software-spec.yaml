@@ -78,6 +78,34 @@ numerical_semantics:
       evidence:
         review_status: reviewed
         basis: "Operator R1; review packet R1: Configs.scala:29,38; MacUnit.sv:10; PE.scala:23,108-129; ExecuteController.scala:951; AccumulatorMem.scala:70. OS wrap is reachable at total K >= 32."
+      # The value-bound mode of the mesh check. Every OS partial sum (every prefix of every column,
+      # in any K split; each split restarts the PE from a zero preload) is a signed two's-complement
+      # value of signed_bits bits, so a partial sum is exact iff it lies in the closed interval below,
+      # and the bound is that interval, not an absolute value (-2^19 itself is representable).
+      # Phase 0 observes an OS readout only when native_mac_bound.require_value_mac_bound proves the
+      # interval from literal weights, the signed i8 input range and the literal initializer; a
+      # runtime weight or a bias under OS is not observed. Limb components stay WS-only (above).
+      os_value_bound:
+        status: reviewed
+        mode: signed_interval
+        interval: [-524288, 524287]
+        proof: constant_weight_all_prefix_intervals
+        scope: every_retained_partial_sum_including_total_os_k
+        evidence:
+          review_status: reviewed
+          reviewed_by: Loren Hung, operator sign-off 2026-10-28 (OPERATOR-SIGNOFF-20261028, "the output-stationary declaration")
+          basis: >-
+            GemminiRocketConfig = DefaultGemminiConfig (chipyard GemminiConfigs.scala:10; Configs.scala:255-256):
+            dataflow BOTH (Configs.scala:38), spatialArrayOutputType SInt(20) (Configs.scala:29), accType SInt(32)
+            (Configs.scala:25). PE.scala:58,64: in OS the MacUnit accumulates into outputType (20 bits);
+            Arithmetic.scala:93 mac = m1 * m2 + self (wrapping, not saturating); generated
+            gen-collateral/MacUnit.sv: output [19:0] io_out_d = sext(a*b) + io_in_c[19:0]; PE.scala:108,115 and
+            PE_256.sv sign-extend the 20-bit sum into c1/c2. gemmini.h:475-503 keeps one tile's K in the PE
+            (compute_accumulated, GARBAGE preload = zeros, ExecuteController.scala:834); tiles are summed in the
+            32-bit accumulator (ExecuteController.scala:951 sign-extending withWidthOf, AccumulatorMem.scala:70).
+            So a partial sum p is exact iff -2^19 <= p <= 2^19-1. Source checked at Chipyard 0acc1e1, Gemmini
+            8c3f9923a44a2fe2c7930587be297d6d4f8c09ca (files md5-identical in the s4facts chipyard-b725 copy).
+            Not established here: whether a deployed FireSim image is BOTH (OS present) or a Lean WS-only config.
     status: reviewed
     eligibility: source_scalar_dataflow_and_reduction_domains
     allowed_representation: exact_signed_byte_limbs_and_retained_ieee_host_readout
@@ -85,6 +113,28 @@ numerical_semantics:
     source_overload_dispatch: forbidden
     result_literals: uniform_fills_are_movement_nonuniform_result_tables_retain_host_construction
     evidence: {review_status: reviewed, basis: "Operator R1; review packet R1: compiler admission policy approved with WS-only limb execution"}
+  # A whole [M, N] i32 tensor as a contraction's accumulator seed: the bias of `A @ B + S` loaded once,
+  # unscaled, at full width into the accumulator, which the contraction then adds onto (i32 wraps in the
+  # source and in AccumulatorMem alike, so the seeded contraction equals `A @ B + S` for every S). A
+  # per-column bias is the row-repeating special case. PROPOSED for operator review: not named in the
+  # 2026-10-28 sign-off, so Phase 0 observes no full-tensor seed until this is reviewed.
+  accumulator_seed_tensor:
+    status: unreviewed
+    forms: [full_tensor]
+    sources: [constant, runtime_input]
+    seed_load: unscaled_full_i32_shrink0_once
+    accumulation: wrapping_i32
+    evidence:
+      review_status: unreviewed
+      basis: >-
+        Proposed for Loren Hung's review (comp-more c5). transfer_contracts.accumulator_seed_load (reviewed,
+        D1) is the full-width unscaled i32 load. RTL (Chipyard 0acc1e1, Gemmini 8c3f9923): LocalAddr.scala:21-23
+        (acc and accumulate address bits); LoadController.scala:76,105,108,115-117 (32-bit acc mvin, a nonzero
+        stride loads distinct rows); Scratchpad.scala:401,407-419,832 with VectorScalarMultiplier.scala:94-97
+        and mvin_scale_acc_args None (Configs.scala:114, no scale on a 32-bit acc mvin);
+        ExecuteController.scala:951-952 and AccumulatorMem.scala:70,84,127-129,183 (accumulating write = wrapping
+        SInt(32) add, Arithmetic.scala:94); LoopMatmul.scala:282-299,427 and gemmini.h:762,822 (a non-repeating D
+        is loaded per row). The mesh D path is 8-bit (ExecuteController.scala:838) and is not this seed.
   model:
     engine: integer_reference
   operand_dtype: int8
@@ -146,6 +196,9 @@ operations:
     # Rank 4 (convolution and its backward) is LOWERED to direct per-tap rank-2 matmuls; no im2col
     # unit is built. A bias is the int32 accumulator seed (`accumulator_seed_load` below). A
     # constant operand (a ones vector, a scaled identity) is an ordinary operand of this unit.
+    # A whole [M, N] i32 tensor (a runtime input or a constant) as the seed is declared separately in
+    # numerical_semantics.accumulator_seed_tensor (proposed, unreviewed); its RTL evidence is cited
+    # there and in `evidence.basis`.
     families: [contraction, window_mean]
     placement: accelerator
     arithmetic: integer_multiply_accumulate
@@ -170,23 +223,45 @@ operations:
       reviewed_by: Loren Hung, conditional packet 2 approval
       packet: packet2.md R12; seal3-base 118-145
       basis: Configs.scala:23-38; PE.scala:23,108-129; AccumulatorMem.scala:63-70; LoadController.scala:108; Configs.scala:114;
-        BeatMerger.scala:71-75
+        BeatMerger.scala:71-75. Full-tensor seed (comp-more c5, proposed, see accumulator_seed_tensor) - LocalAddr.scala:21-23 (acc and
+        accumulate address bits); LoadController.scala:76,105,108,115-117 (32-bit acc mvin, nonzero stride loads
+        distinct rows); Scratchpad.scala:401,407-419,832 and VectorScalarMultiplier.scala:94-97 with
+        mvin_scale_acc_args None (no scale on a 32-bit acc mvin); ExecuteController.scala:951-952 and
+        AccumulatorMem.scala:70,84,127-129,183 (accumulating write = wrapping SInt(32) add, Arithmetic.scala:94);
+        LoopMatmul.scala:282-299,427 and gemmini.h:762,822 (non-repeating D = per-row mvin of the full bias).
     emission_obligations:
       execution_program:
         status: compiler_obligation
         condition:
           all:
-          - all:
-            - path: execution.pe_partial_abs_bound
-              integer: true
-              min: 0
-              max: 524287
-            - path: execution.accumulator_partial_abs_bound
-              integer: true
-              min: 0
-              max: 2147483647
-            - path: execution.pe_bound_scope
-              eq: every_retained_partial_sum_including_total_os_k
+          - any:
+            - all:
+              - path: execution.pe_partial_abs_bound
+                integer: true
+                min: 0
+                max: 524287
+              - path: execution.accumulator_partial_abs_bound
+                integer: true
+                min: 0
+                max: 2147483647
+              - path: execution.pe_bound_scope
+                eq: every_retained_partial_sum_including_total_os_k
+            # numerical_semantics.native_unit_contract.mesh_mac.os_value_bound: the signed interval.
+            - all:
+              - path: execution.pe_partial_min
+                integer: true
+                min: -524288
+                max: 0
+              - path: execution.pe_partial_max
+                integer: true
+                min: 0
+                max: 524287
+              - path: execution.accumulator_partial_abs_bound
+                integer: true
+                min: 0
+                max: 2147483647
+              - path: execution.pe_bound_scope
+                eq: every_retained_partial_sum_including_total_os_k
           - path: execution.seed_load
             eq: unscaled_full_i32_shrink0_once
           - path: execution.tail_initialization
@@ -212,6 +287,10 @@ operations:
     aliasing: [disjoint_inputs_outputs]
     unconstrained:
       tails: each readout stage maps one accumulator element to one result element; padded lanes never reach a valid result
+    # A runtime scale is the CONFIG_ST rs2 f32 operand (quantization.numerics.policies.scale_source.
+    # runtime_input). Inert until that policy's domain (finite, >= 0) is reviewed: Phase 0 observes
+    # no runtime scale without it.
+    scale_sources: [constant, runtime_input]
     evidence:
       review_status: reviewed
       reviewed_by: Loren Hung, conditional packet 2 approval
@@ -1221,6 +1300,21 @@ quantization:
             Register operands are software-set per call; arithmetic is unchanged. Source checked at
             Chipyard 0acc1e1de2d3284bcd4d876956932a013ffe1949, RTL gitlink
             8c3f9923a44a2fe2c7930587be297d6d4f8c09ca; the extracted ISA digest matches this checkout.
+          # The value domain a model's runtime readout-scale input is declared over. Within it the
+          # device (relu on the accumulator, then f32 RNE multiply, AccumulatorScale.scala:119-138)
+          # and a scale-then-relu stage list agree, and no NaN/Inf reaches the multiplier.
+          # PROPOSED for operator review: not named in the 2026-10-28 operator sign-off, so it
+          # admits nothing (Phase 0 observes a runtime scale only under a reviewed domain).
+          domain:
+            status: unreviewed
+            minimum: 0.0
+            nonfinite: forbid
+            basis: >-
+              Proposed for Loren Hung's review (comp-more c5; not in OPERATOR-SIGNOFF-20261028). Finite because a NaN scale gives
+              int32 max (RecFNToIN.scala:133-145) where the source fptosi of NaN is undefined, 0 * Inf is
+              NaN, and the all-ones NaN word is ignored by CONFIG_ST (StoreController.scala:237-239, the
+              previous scale stays). Non-negative so that relu-then-scale (device) equals scale-then-relu
+              (the command-buffer epilogue order) and the selected readout order needs no sign proof.
       block_scale_reduction:
         max_abs:
           value: max_abs
@@ -1245,8 +1339,8 @@ quantization:
       reason: legal but ungraded; no declared scheme selects it
     - subject: fused max pooling on the readout path with padding
       reason: the pooled-store pad value is not derived (output_path pool padding unknown); padded windows are refused
-    - subject: output-stationary dataflow partial-sum bound from constant operands
-      reason: the value-bound mode of the mesh check is not declared; OS accepts only inputs the bounded_partial_sums admission proves
+    - subject: output-stationary dataflow partial-sum bound from runtime operands
+      reason: the declared value-bound mode (mesh_mac.os_value_bound) proves the signed interval from literal weights only; a runtime weight or a bias under OS is not observed
     - subject: per-channel activation scales and nonzero zero points
       reason: activation_scale_granularity declares tensor only and every zero point is 0; asymmetric or per-channel activations are not modeled
     - subject: floating islands (softmax, layer_norm, rms_norm, group_norm, gelu, silu, rotary)
