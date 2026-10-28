@@ -454,6 +454,14 @@ def test_installed_phase0_freezes_selected_m2m_routing_and_resumes(tmp_path, mon
     assert Path(selected["frozen_root"]).is_relative_to(fixture["run"])
     assert plan["phases"]["0"]["env"]["MERLIN_M2M_DIR"] == selected["frozen_root"]
     assert selected["phase0_admission"] == "not_granted"
+    frozen_env = plan["phases"]["0"]["env"]
+    if sealed:
+        # The sealed guest pins its own dispatch; the verified engine environment is unchanged.
+        assert "ATEN_CPU_CAPABILITY" not in frozen_env
+    else:
+        # Host-run diagnostic captures get the declared dispatch, which the selected-only engine
+        # environment would otherwise drop (an AVX512 host then captured the micro model non-clean).
+        assert frozen_env["ATEN_CPU_CAPABILITY"] == "avx2"
     if sealed:
         config = json.loads(plan["phases"]["0"]["env"]["MERLIN_PHASE0_SEALED_CAPTURE"])
         assert config["m2m_root"] == selected["frozen_root"]
@@ -557,3 +565,21 @@ def test_installed_phase0_freezes_selected_m2m_routing_and_resumes(tmp_path, mon
 
     monkeypatch.setenv("MERLIN_OUT_ROOT", plan["storage_root"])
     assert resume(fixture["run"]) == 0
+
+
+def test_host_dispatch_environment_is_the_declared_capability_and_reaches_the_engine():
+    from merlin_experiments import measured_launch
+    from merlin_experiments.capture_execution import sealed_m2m
+    from merlin_experiments.phase0 import m2m_runtime
+
+    pin = m2m_runtime.host_dispatch_environment()
+    assert pin == {"ATEN_CPU_CAPABILITY": sealed_m2m._declared_cpu_capability()} == {"ATEN_CPU_CAPABILITY": "avx2"}
+    command = {
+        "adapter": "capsule_derivation",
+        "source_snapshot": "/snap",
+        "phase0_environment_policy": measured_launch.FROZEN_PHASE0_ENV_POLICY,
+        "env": dict(pin),
+    }
+    # The frozen engine ignores the operator's ambient value and carries only the frozen one.
+    environment = measured_launch.execution_environment(command)
+    assert environment["ATEN_CPU_CAPABILITY"] == "avx2"

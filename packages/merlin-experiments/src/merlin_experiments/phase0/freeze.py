@@ -441,6 +441,11 @@ def stage(plan: dict) -> dict:
         command["env"].update(m2m_runtime.environment(selected_m2m))
         from .sealed_generation import CONFIG_ENV
 
+        # Host-run (diagnostic) generation captures take the declared CPU dispatch; a sealed capture pins it
+        # in its own guest, so verified runs keep their historical engine environment byte for byte.
+        if CONFIG_ENV not in command["env"] and command["env"].get("MERLIN_PHASE0_EVIDENCE_MODE") != "verified":
+            command["env"].update(m2m_runtime.host_dispatch_environment())
+
         m2m_receipt = artifact_root / "private" / "m2m-runtime.json"
         with m2m_receipt.open("xb") as stream:
             stream.write(m2m_runtime.receipt(selected_m2m))
