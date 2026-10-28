@@ -746,6 +746,15 @@ def resolve_plan(
                 # command. Substituting a checkout-local cache prevents reuse
                 # and can copy the entire runtime onto another filesystem.
                 command["env"][STORE_ENV] = os.environ.get(STORE_ENV) or str(cache_dir("sealed-m2m-runtime"))
+                # The generation child runs in a scrubbed environment, so the operator's capture width must be
+                # frozen into the command to reach it; an invalid width is refused here rather than ignored there.
+                from .phase0.parallel_capture import WORKER_LIMIT_ENV
+
+                width = os.environ.get(WORKER_LIMIT_ENV)
+                if width is not None:
+                    if not width.isdecimal() or int(width) <= 0:
+                        raise SpecError(f"{WORKER_LIMIT_ENV} must be a positive integer, got {width!r}")
+                    command["env"][WORKER_LIMIT_ENV] = width
         commands[number] = command
         inputs[f"phase{number}:entrypoint"] = command["entrypoint"]
         for name, value in command["inputs"].items():
