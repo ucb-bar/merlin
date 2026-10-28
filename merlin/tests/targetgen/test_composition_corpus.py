@@ -222,14 +222,22 @@ def test_every_cross_check_is_justified_and_pow2_stays_covered(software):
     assert {s["id"] for s in schemes} <= {scheme for chain in chains for scheme in _selected(chain)}
 
 
-def test_release_union_raises_on_overflow_and_preserves_the_roster(software, facts):
+def test_release_union_samples_to_the_budget_and_preserves_the_roster(software, facts, tmp_path):
+    import json
+
     from merlin_experiments.phase0.composition_generation import append_declared, coverage
 
     from merlin.targetgen.corpus_synth import SynthesisError
 
     corpus = entries(software, facts)
-    with pytest.raises(SynthesisError, match="never truncate"):
-        append_declared([], software, facts, budget=len(corpus) - 1)
+    path = tmp_path / "composition-selection.json"
+    sampled = append_declared([], software, facts, budget=len(corpus) - 1, selection_path=path)
+    record = json.loads(path.read_text())
+    assert len(sampled) == len(corpus) - 1 and record["policy"] == "sample_to_budget"
+    assert record["declared_count"] == len(corpus) and len(record["unselected"]) == 1
+    workloads = [dict(name=f"w{index}", cat="layers", op="matmul") for index in range(len(corpus))]
+    with pytest.raises(SynthesisError, match="leave no room"):
+        append_declared(workloads, software, facts, budget=len(corpus))
     release = append_declared(corpus, software, facts, budget=len(corpus))
     assert len(release) == len(corpus)
     ledger = coverage(release)

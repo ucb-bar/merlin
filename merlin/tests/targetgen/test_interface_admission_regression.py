@@ -10,6 +10,8 @@ from merlin.targetgen.interface_observations import command_rows
 
 @pytest.fixture(scope="module")
 def evidence():
+    if 'P0' not in os.environ or 'RTL_FACTS' not in os.environ:
+        pytest.skip('requires a generated Phase 0 export: set P0 and RTL_FACTS')
     e=load_exported_evidence(Path(os.environ['P0'])/'phase0')
     with observed_contract('gemmini',e.contract), observed_facts('gemmini',e.refreshed_facts,Path(os.environ['RTL_FACTS'])):
         yield e
