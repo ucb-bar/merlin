@@ -1,5 +1,13 @@
 # TVM TensorIR operation and memory audit
 
+**Current preparation release:** [source, checks and restore instructions](../../../../out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/README.md).
+TVM pin: `619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a`. All 71 unchanged operator
+fixtures pass diagnostic Spike with wrong-oracle rejection; fresh extraction
+retains 47 contractions/26 owners over 36 chunks. This supersedes local-only
+status in historical checkpoints below. Remote/full-model qualification and
+spec-pinned oracle provenance remain outstanding.
+
+
 Audited 2026-10-27. **Keep the compiler interface at mathematical TensorIR plus explicit memory scopes/effects.** The current backend already follows TVM's TensorIntrin design. The latest device extension belongs in that existing path; it does not need per-ATen extern kernels, a separate graph runtime, or a new IR dialect.
 
 ## Exact sources and scope
@@ -17,6 +25,49 @@ Device-ops is exactly **one commit above the handoff pin**, changing 18 files, +
 Audit work used isolated worktrees. The dirty original Merlin checkout was not switched, merged or reset. The supplied `/home/grammy/...` paths correspond here to restored sources under `/scratch/grammy`; no other user's home directory was accessed.
 
 The audit covers every one of the existing 51 baseline operator fixtures, every current Gemmini semantic family and primitive ABI, the new commit's integration, and the current Torch frontend registration boundary. It does not certify all TVM operators, all argument combinations, arbitrary dynamic programs, or every ONNX schema. The generated frontend inventory lists **149 registered converter keys**; registration alone does not establish successful import, legal TensorIR, device execution, static packaging or model qualification.
+
+## Simplified implementation update
+
+The working compiler at `/scratch/grammy/tvm-gemmini-simple` now removes the
+full-domain INT32-add TensorIntrins, including scalar and explicitly wrapping
+forms. The original `add.Tensor`, `add.Scalar` and `sub.Scalar` fixtures retain
+their mathematical programs, extreme-value inputs and expected outputs; their
+new placement is explicitly host arithmetic. The historical counts below are
+not relabeled. Current fixture classifications are 5 array, 0 accumulator,
+1 narrow ReLU, 21 movement, 4 mixed, 15 host and 5 elided/ABI-copy.
+
+Unbounded standalone INT32 readout has also been removed from byte-affine
+admission: its old matcher incorrectly reused a byte-source magnitude bound.
+The original extreme-value fixture now executes explicitly on the host.
+Producer readout with its contraction/epilogue proof remains available.
+Surviving byte affine mappings report accumulator/PE partial-sum bounds.
+
+Contraction and pooling result ranks are restricted to 2–4; standalone
+movement/affine/sum ranks stop at five, and per-operand rounded sums require
+rank two. Rank-five 3D convolution retains host mathematics. Sum admission
+uses `128*K <= INT32_MAX`, including for an INT64 ABI output; the former
+`K=2**24` boundary could reach `-2**31` and violate the spec's absolute bound. These are semantic admission checks in the existing matcher,
+not graph rewrites. Bounded byte affine/residual command sequences remain.
+The 51-original-fixture host/emulator regression passes all 51 subtests, and
+the focused elementwise/device suite passes 22 tests plus 92 subtests. Logs are
+`out/build/tvm-simplification/spec-baseline51-tests.log` and
+`out/build/tvm-simplification/spec-domain-tests.log`.
+
+This closes specific known overbroad cases, not all software-spec obligations.
+Selected-scale screens, producer/composition proofs, actual emitted-command
+bounds and selected hardware/oracle identities remain separate admission gates.
+The current compiler is packaged in the release above; see [the implementation and cost-model
+review](OPTIMIZATION_KNOBS.md) for removed custom passes and measurement changes.
+
+A separate diagnostic Spike checkpoint passes 11 cases (six retained device
+mappings and five full-i32 host fixtures), with wrong-reference rejection at
+exit 22 and 129 checked source/tool/ELF bindings. It precedes the standalone
+readout removal and preserves its exact source patch; it is not a claim about
+later source identities. The follow-up readout/device regression passes 23 tests
+and 30 subtests (`out/build/tvm-simplification/spec-readout-tests.log`). The
+checkpoint is local at `out/artifacts/verification/gemmini-tvm-spec-domain/v1/`,
+not a published remote delivery or a spec-pinned simulator qualification.
+
 
 ## Strict software-spec admission update (2026-10-27)
 
