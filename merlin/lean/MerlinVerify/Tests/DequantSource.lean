@@ -24,4 +24,15 @@ def model := MerlinVerify.Tests.DequantScalar.witnessFloat
 #guard !(Dequant.run c model [.tensor q, .tensor s]).isOk
 #guard !(Dequant.run c model [.scalar .poison, .tensor s, .tensor z]).isOk
 
+/-- PyTorch's int zero point, as captured: a rank-0 i64 tensor. -/
+def z64 : Tensor := { shape := [], elt := .int 64, get := fun _ => .some (.bits 64 (-3)) }
+def channel : Dequant.Config := ⟨true, 1, [2, 3]⟩
+def z64c : Tensor := { shape := [3], elt := .int 64, get := fun _ => .some (.bits 64 0) }
+def sc : Tensor := scaleTensor [3] (fun _ => some 1065353216)
+
+#guard (Dequant.run c model [.tensor q, .tensor s, .tensor z64]).isOk
+#guard !(Dequant.run c model [.tensor q, .tensor s, .tensor { z64 with shape := [1] }]).isOk
+-- Per-channel i64 zero points stay outside the contract.
+#guard !(Dequant.run channel model [.tensor q, .tensor sc, .tensor z64c]).isOk
+
 end MerlinVerify.Tests.DequantSource

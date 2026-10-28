@@ -1,6 +1,7 @@
 /- A partial operational rulebook: successful-result preservation plus typed callback
 congruence. Known-stuck quantization contracts are identified, never given progress. -/
 import MerlinVerify.Rules.ScalarSquareTypingFamilies
+import MerlinVerify.Rules.DequantPerTensor
 
 namespace MerlinVerify.Rules.ScalarSquareTyping
 open MerlinVerify MerlinVerify.Check MerlinVerify.Sem.Ops MerlinVerify.Sem.Ops.Linalg
@@ -78,8 +79,8 @@ theorem structuredRule_related (ib : Nat) : RelatedRuleSound ib (structuredRule 
   exact sound d op ats rts sigs hm accepted
 
 /-- Static type obligations for the captured per-tensor quantization operations. The shared
-semantics rejects these contracts (including their i64 zero points). This rule proves only
-that they cannot return an ill-typed successful result; it does not implement quantization. -/
+semantics computes per-tensor dequantization with an i64 zero point and rejects quantization.
+This rule proves only that they cannot return an ill-typed successful result. -/
 def rejectedQuantRule : OpRule := fun _ op ats rts =>
   if dialectOf op.name = "quant_ext" ∧ op.regions = [] then
     match ats, rts with
@@ -102,49 +103,79 @@ def callRule (signatures : Signatures) : OpRule := fun _ op ats rts =>
 def typingRule (ib : Nat) (signatures : Signatures) : OpRule :=
   firstRule [structuredRule ib, rejectedQuantRule, callRule signatures]
 
-theorem dequant_i64_stuck {ib : Nat} {a b : VTy} {shape : List Nat} {args : List RVal}
-    (ha : HasTys ib args [a, b, .tensor shape (.int 64)]) (ctx : Ctx) (call : CallSem)
-    (op : Op) (regions : List (Ctx → RegionSem)) :
-    ∃ reason, Dequant.sem ctx call op args regions = .stuck reason := by
+/-- A per-tensor dequantization with an i64 zero point either is stuck or returns its declared
+result type. -/
+theorem dequant_i64_typed {ib : Nat} {sh : List Nat} {args : List RVal}
+    (ha : HasTys ib args [.tensor sh (.int 8), .tensor [] (.float .f32), .tensor [] (.int 64)])
+    (ctx : Ctx) (call : CallSem) (op : Op) (regions : List (Ctx → RegionSem)) :
+    ∀ v, Dequant.sem ctx call op args regions = .ok v → HasTys ib v [.tensor sh (.float .f32)] := by
+  intro v hv
   cases hc : Dequant.config? op with
-  | none => exact ⟨"unsupported quant_ext contract (requires signed i8/i32/f32 dequantization)", by simp [Dequant.sem, hc]⟩
+  | none => simp [Dequant.sem, hc] at hv
   | some c =>
-    simp only [Dequant.sem, hc]
-    by_cases empty : regions.isEmpty = true
-    · simp only [empty, ↓reduceIte]
-      cases ha with
+    simp only [Dequant.sem, hc] at hv
+    split at hv
+    · cases ha with
       | cons hq tail => cases tail with
         | cons hs tail => cases tail with
           | cons hz tail =>
             cases tail
             rename_i qv sv zv
             cases qv with
-            | scalar _ => exact ⟨_, rfl⟩
+            | scalar _ => exact (hq : False).elim
             | tensor q =>
               cases sv with
-              | scalar _ => exact ⟨_, rfl⟩
+              | scalar _ => exact (hs : False).elim
               | tensor s =>
                 cases zv with
                 | scalar _ => exact (hz : False).elim
                 | tensor z =>
                   have invalid : Dequant.validInputs c q s z = false := by
                     simp [Dequant.validInputs, Dequant.tensorTyped, hz.2.1]
-                  exact ⟨"dequantization: unsupported runtime types or parameter shapes", by simp [Dequant.run, invalid]⟩
-    · exact ⟨"dequantization: unexpected regions", by simp [empty]⟩
+                  simp only [Dequant.run, invalid, Bool.false_eq_true, ↓reduceIte] at hv
+                  split at hv
+                  · next hv64 =>
+                    cases hv
+                    have hshape : c.shape = sh := by
+                      simp only [Dequant.validPerTensorAt, Bool.and_eq_true, decide_eq_true_eq] at hv64
+                      exact hv64.1.1.1.2.1.symm.trans hq.1
+                    rw [← hshape]
+                    exact .cons (Rules.DequantPerTensor.resultPerTensorAt_typed ib 64 c ctx.M q s z) .nil
+                  · cases hv
+    · cases hv
 
-theorem rejectedQuant_stuck {ib d : Nat} {op : Op} {ats rts : List VTy} {sigs : List RegionSig}
+/-- Any successful result of an operation this rule accepts has the declared types. -/
+theorem rejectedQuant_typed {ib d : Nat} {op : Op} {ats rts : List VTy} {sigs : List RegionSig}
     (h : rejectedQuantRule d op ats rts = some sigs) (ctx : Ctx) (call : CallSem)
     (args : List RVal) (rs : List (Ctx → RegionSem)) (ha : HasTys ib args ats) :
-    ∃ reason, opSem ctx call op args rs = .stuck reason := by
+    ∀ v, opSem ctx call op args rs = .ok v → HasTys ib v rts := by
+  intro v hv
   unfold rejectedQuantRule at h
   split at h
   · next hc =>
     cases hu : unmodelledAttr? op.blind with
-    | some reason => exact ⟨s!"{op.blind.name}: unmodelled attribute {reason}", by simp [opSem, hu]⟩
+    | some reason => simp [opSem, hu] at hv
     | none =>
-      simp only [opSem_modelled hu, dispatch, Op.blind_name, hc.1]
-      split at h <;> try cases h
-      all_goals exact dequant_i64_stuck ha ctx _ _ rs
+      simp only [opSem_modelled hu, dispatch, Op.blind_name, hc.1] at hv
+      split at h
+      · next sh sh' =>
+        split at h
+        · next hn =>
+          obtain ⟨_, rfl⟩ := hn
+          exact dequant_i64_typed ha ctx _ op.blind rs v hv
+        · cases h
+      · next sh sh' =>
+        split at h
+        · next hn =>
+          -- Quantization has no source semantics: the op is stuck.
+          have hname : op.blind.name = "quant_ext.quantize_per_tensor" := by
+            rw [Op.blind_name]; exact hn.1
+          cases hcfg : Dequant.config? op.blind with
+          | none => simp [Dequant.sem, hcfg] at hv
+          | some c =>
+            rcases Rules.DequantPerTensor.config_name hcfg with e | e <;> rw [hname] at e <;> exact absurd e (by decide)
+        · cases h
+      · cases h
   · cases h
 
 /-- Every acceptance has a semantic proof, with external result contracts explicit. -/
@@ -164,13 +195,12 @@ theorem typingRule_sound {ib : Nat} {signatures : Signatures} {d : Nat} {op : Op
     rcases member with rfl | rfl | rfl
     · exact structuredRule_related ib d op ats rts sigs hm accepted
         ctx left right args bodies hib ha hb
-    · obtain ⟨reason, stuck⟩ := rejectedQuant_stuck accepted ctx left args (bodies.map Prod.fst) ha
-      have hdialect : dialectOf op.name = "quant_ext" := by
+    · have hdialect : dialectOf op.name = "quant_ext" := by
         unfold rejectedQuantRule at accepted
         split at accepted
         · next hc => exact hc.1
         · cases accepted
-      refine ⟨?_, fun _ impossible => by rw [stuck] at impossible; cases impossible⟩
+      refine ⟨?_, rejectedQuant_typed accepted ctx left args (bodies.map Prod.fst) ha⟩
       simp only [opSem_modelled hm, dispatch, Op.blind_name, hdialect, Dequant.sem]
       cases bodies <;> rfl
     · unfold callRule at accepted

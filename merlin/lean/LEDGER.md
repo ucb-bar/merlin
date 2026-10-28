@@ -196,8 +196,15 @@ normalizers and preserves the old script-checker interface; no frozen semantics 
 ## Proposed dequantization source contract
 
 `Spec/Dequant.lean` specifies the distinct per-tensor and per-channel arithmetic orders from
-PyTorch v2.10.0 for signed-i8 input, i32 zero point and f32 scale/result, including tensor
-coordinates and poison propagation. Its theorems add no axioms or float algebra laws.
+PyTorch v2.10.0 (`_decomposed.py`: per-tensor line 289, per-channel lines 734–738) for signed-i8
+input and f32 scale/result, with an i32 or i64 zero point per-tensor (PyTorch converts the int zero
+point to f32 once, as captured models carry it) and an i32 zero point per-channel, including tensor
+coordinates and poison propagation. `quant_min`/`quant_max` follow PyTorch: per-tensor ignores them;
+per-channel only checks them against the i8 range, so [-127, 127] is admitted and nothing is
+clamped. f64 scales are excluded: PyTorch then multiplies per-channel in f64 and rounds the product
+to f32, a double rounding the f32 model does not express. Per-channel i64 zero points are excluded
+(no capture uses them, and Merlin's per-channel non-i32 lowering converts before subtracting, which
+is not PyTorch's i64 order). Its theorems add no axioms or float algebra laws.
 `Sem/Ops/Dequant.lean` dispatches that proposed source contract only for checked tensor types,
 shapes and metadata. The source support rule proves non-stuck evaluation on typed inputs, and
 the registered C1 site rule connects accepted target loops to it. A separate definedness rule
