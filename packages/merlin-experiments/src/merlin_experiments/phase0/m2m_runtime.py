@@ -311,6 +311,21 @@ def environment(frozen: dict) -> dict[str, str]:
     }
 
 
+def host_dispatch_environment() -> dict[str, str]:
+    """The declared CPU dispatch for a Phase 0 engine whose generation captures run on the host.
+
+    model2MLIR lowers a broadcasting float ``aten.add.Tensor`` bit-exactly only for the AVX2 kernels the
+    native certificate was proven under (``cpu_arithmetic._inner_run``) and leaves an opaque
+    ``aten_add_Tensor`` call (rc=3) on any other dispatch. A frozen Phase 0 engine runs with a
+    selected-only environment, so an operator's ``ATEN_CPU_CAPABILITY`` never reaches it and a
+    diagnostic generation on an AVX512 host captured the derived micro model non-clean. The sealed
+    capture path pins the same declaration inside its guest; this is the host-run counterpart.
+    """
+    from merlin_experiments.capture_execution.sealed_m2m import _declared_cpu_capability
+
+    return {"ATEN_CPU_CAPABILITY": _declared_cpu_capability()}
+
+
 def receipt(frozen: dict) -> bytes:
     """Small, inspectable run artifact identifying this diagnostic selection."""
     return (json.dumps(frozen, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()

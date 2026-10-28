@@ -370,3 +370,56 @@ def test_verified_status_line_leads_with_all_six_visible_programs():
     assert line.startswith("Visible models: resnet50/model=pass")
     assert line.count("=pass") == 6
     assert line.endswith("Sealed official grade pending.")
+
+
+def _missing_bundle_report(tmp_path, monkeypatch, *, agent_view):
+    """Run the real model-check CLI against a bundle location with no manifest."""
+    from merlin.model_check import cli
+    from merlin.model_check import commands  # noqa: F401 -- registers the real subcommands before we replace one
+    from merlin.model_check.bundle import Bundle
+
+    bundle = tmp_path / "work" / "merlin" / "private" / "gemmini" / "numerics" / "current"
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    (submission / "manifest.yaml").write_text("commands: {}\n")
+
+    class _Models:
+        def model(self, name):
+            return name
+
+    def command(args, report):
+        Bundle(bundle).manifest()
+        return report
+
+    monkeypatch.setattr(cli, "load_models", lambda path: _Models())
+    monkeypatch.setitem(cli._COMMANDS, "check", command)
+    out = tmp_path / "report.json"
+    argv = ["check", "--submission", str(submission), "--model", "resnet50", "--split", "visible",
+            "--models", str(tmp_path / "models.yaml"), "--out", str(out)]
+    code = cli.main(argv + (["--agent-view"] if agent_view else []))
+    return code, json.loads(out.read_text()), bundle
+
+
+def test_missing_bundle_manifest_is_a_typed_pathless_error_in_the_agent_view(tmp_path, monkeypatch):
+    code, report, bundle = _missing_bundle_report(tmp_path, monkeypatch, agent_view=True)
+    assert code == report["exit_code"] != 0 and report["status"] == "error" and report["agent_view"] is True
+    detail = report["failures"][0]["detail"]
+    assert detail == "BundleError: no bundle manifest at the selected numerics bundle"
+    assert "/private/" not in json.dumps(report) and str(bundle) not in json.dumps(report)
+    # The broker's content check is NOT loosened: this report simply no longer trips it.
+    assert broker._safe_report(report) is True
+
+
+def test_operator_report_keeps_the_full_bundle_path(tmp_path, monkeypatch):
+    code, report, bundle = _missing_bundle_report(tmp_path, monkeypatch, agent_view=False)
+    assert str(bundle / "MANIFEST.json") in report["failures"][0]["detail"]
+
+
+def test_safe_report_still_rejects_real_private_content_in_an_error_report(tmp_path, monkeypatch):
+    _code, report, bundle = _missing_bundle_report(tmp_path, monkeypatch, agent_view=True)
+    leaked = json.loads(json.dumps(report))
+    leaked["failures"][0]["detail"] = f"BundleError: no bundle manifest at {bundle}/MANIFEST.json"
+    assert broker._safe_report(leaked) is False
+    leaked["failures"][0]["detail"] = "BundleError: x"
+    leaked["programs"] = [{"split": "sealed"}]
+    assert broker._safe_report(leaked) is False

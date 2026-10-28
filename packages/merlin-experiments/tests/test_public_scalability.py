@@ -571,3 +571,46 @@ def test_actionable_failure_uses_original_answer_redaction():
     assert "timeout" in public["cases"][0]["failure_detail"]
     assert "12345" not in text and "67890" not in text and "/operator/private" not in text
     assert "observed" not in public and "score" not in public
+
+
+def test_operator_tier_floor_does_not_raise_the_spike_only_suite(tmp_path, monkeypatch):
+    """MERLIN_CAPSULE_TIER_FLOOR=L3 raises core capsules, never the L0/L1/L2 Spike-only scalability cases."""
+    from merlin.targetgen.capsule_common import load_capsule
+    from merlin.targetgen.tier_policy import required_tiers
+    from merlin_experiments.phase1.feedback import selfcheck
+
+    root, record, te, context = staged(tmp_path)
+    F.install(te, root)
+    submission = tmp_path / "submission"
+    submission.mkdir()
+    (submission / "compiler.py").write_text('print("fixture")\n')
+
+    def adapter(*a, **k):
+        return None
+
+    adapter._merlin_simulator_engine = "spike"
+    monkeypatch.setattr(selfcheck, "_adapters", lambda sim, *a, **k: ({"L2": adapter}, sim))
+    monkeypatch.setattr(F, "_readback", lambda _: {})
+    monkeypatch.setenv("MERLIN_CAPSULE_TIER_FLOOR", "L3")
+    seen = {}
+
+    def ordinary_grade(package, **kwargs):
+        names = sorted(p.name for p in Path(kwargs["capsules_root"]).iterdir())
+        for name in names:
+            seen[name] = required_tiers(load_capsule(Path(kwargs["capsules_root"]) / name))
+        # A core capsule graded at the same time (another thread) is still raised: the exemption is per directory.
+        other = dict(load_capsule(Path(kwargs["capsules_root"]) / names[0]), __dir__=str(tmp_path / "core"))
+        seen["core"] = required_tiers(other)
+        for row in observations(names).values():
+            kwargs["on_capsule_complete"](row)
+        return score(names)
+
+    monkeypatch.setattr(CG, "grade", ordinary_grade)
+    result = F.grade(
+        submission, root=root, record=record, context=context, output=tmp_path / "result", timeout=120, max_workers=2
+    )
+    assert result["complete"]
+    assert seen["case0"] == seen["case1"] == ["L0", "L1", "L2"]
+    assert seen["core"] == ["L0", "L1", "L2", "L3"]
+    # Outside the grade the same staged case is raised again: the exemption is scoped, not global.
+    assert required_tiers(load_capsule(root / "cases" / "case0")) == ["L0", "L1", "L2", "L3"]

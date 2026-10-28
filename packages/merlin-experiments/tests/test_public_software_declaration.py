@@ -113,3 +113,38 @@ def test_real_bwrap_keeps_backend_hidden_and_exact_public_alias_readable(selecte
         pytest.skip("kernel user namespaces unavailable")
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "EXACT_PUBLIC_DATA"
+
+
+def _guidance(selected_fixture, monkeypatch, tmp_path, *, joint):
+    from merlin_experiments.phase1 import joint_control
+
+    repo, ws, bundle, _ = selected_fixture
+    record = P.stage(ws, bundle, repo=repo)
+    (ws / "TASK.md").write_text("Original task\n")
+    run = ws.parent / "records"
+    run.mkdir(exist_ok=True)
+    monkeypatch.setattr(joint_control, "selected", lambda: {"policy": {}} if joint else None)
+    P.append_guidance(record, ws, run)
+    text = (ws / "TASK.md").read_text()
+    assert (run / "TASK.md").read_bytes() == text.encode()
+    return record, text
+
+
+def test_ordinary_run_does_not_name_the_joint_only_scheduling_tool(selected, monkeypatch, tmp_path):
+    record, text = _guidance(selected, monkeypatch, tmp_path, joint=False)
+    assert "read_scheduling_contracts" not in text
+    assert f"Use this readable data leaf; the original backend tree remains withheld." in text
+    assert record["path"] in text
+
+
+def test_joint_task_text_is_byte_identical_to_the_historical_text(selected, monkeypatch, tmp_path):
+    record, text = _guidance(selected, monkeypatch, tmp_path, joint=True)
+    historical = (
+        "Original task\n"
+        "\n## Selected public software declaration\n\n"
+        + f"Read `{record['path']}` for the original selected software semantics "
+        + f"(SHA-256 `{record['sha256']}`). Use this readable data leaf with "
+        + "`read_scheduling_contracts`; the original backend tree remains withheld. "
+        + "This identical-byte alias grants no additional implementation or qualification.\n"
+    )
+    assert text == historical
