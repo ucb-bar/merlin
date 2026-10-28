@@ -45,3 +45,22 @@ def test_roster_refuses_duplicate_and_non_numeric_cpus():
     for raw in ("1,1", "1-3", "1,", "-1"):
         with pytest.raises(ValueError):
             parse_roster(raw)
+
+
+def test_memfd_falls_back_to_the_kernel_api_without_os_memfd_create(monkeypatch):
+    import fcntl
+    import os
+
+    from merlin.common import cpu_pool
+
+    native = cpu_pool._memfd("native-case")
+    monkeypatch.delattr(os, "memfd_create", raising=False)
+    fallback = cpu_pool._memfd("fallback-case")
+    try:
+        for fd in (native, fallback):
+            assert fcntl.fcntl(fd, fcntl.F_GETFD) & fcntl.FD_CLOEXEC
+            fcntl.fcntl(fd, cpu_pool._ADD_SEALS, cpu_pool._SEALS)
+            assert fcntl.fcntl(fd, cpu_pool._GET_SEALS) & cpu_pool._SEALS == cpu_pool._SEALS
+    finally:
+        os.close(native)
+        os.close(fallback)

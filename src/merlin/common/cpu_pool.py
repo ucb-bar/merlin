@@ -37,6 +37,20 @@ _SEALS = 0x000F
 _ADD_SEALS = getattr(fcntl, "F_ADD_SEALS", 1033)
 _GET_SEALS = getattr(fcntl, "F_GET_SEALS", 1034)
 
+
+def _memfd(name: str) -> int:
+    """Sealable close-on-exec memfd; portable CPython builds may omit os.memfd_create."""
+    if hasattr(os, "memfd_create"):
+        return os.memfd_create(name, os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    import ctypes
+
+    function = ctypes.CDLL(None, use_errno=True).memfd_create
+    function.argtypes, function.restype = (ctypes.c_char_p, ctypes.c_uint), ctypes.c_int
+    descriptor = function(name.encode(), 0x0001 | 0x0002)  # MFD_CLOEXEC | MFD_ALLOW_SEALING
+    if descriptor < 0:
+        raise OSError(ctypes.get_errno(), "sealed descriptor creation failed")
+    return descriptor
+
 # Lease priority classes; a lower number is served first. A class only orders
 # waiters for a free slot: it never reserves a CPU, preempts a held slot or
 # changes what a step computes. A lower class may use free eligible CPUs that
@@ -608,7 +622,7 @@ def transfer_compiler_cpu(*, owner_sha256):
         raise ValueError("compiler CPU transfer needs its exact original owner digest")
     if os.sched_getaffinity(0) != {lease.cpu}:
         raise RuntimeError("compiler CPU transfer differs from its issuer affinity")
-    fd = os.memfd_create("original-compiler-cpu", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    fd = _memfd("original-compiler-cpu")
     read_fd, write_fd = os.pipe2(os.O_CLOEXEC)
     try:
         body = {
