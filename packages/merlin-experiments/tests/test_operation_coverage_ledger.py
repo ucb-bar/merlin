@@ -470,7 +470,7 @@ def test_component_program_takes_its_semantic_family(inputs):
     assert "SY_reduction_sum_i8_aligned" not in document["omissions"]["unjustified_capsules"]
     row = _rows(document)["sum.dim_IntList"]
     assert row["test_identity"]["family_capsules"] == ["SY_reduction_sum_i8_aligned"]
-    assert row["evidence_state"] != "not_evidenced"
+    assert row["evidence_state"] == "family_generated"
 
 
 def test_composed_epilogue_is_not_a_standalone_family_test(inputs):
@@ -556,6 +556,7 @@ def test_verified_application_provenance_credits_its_overload(inputs):
     assert rows["bmm.default"]["test_identity"]["capsules"] == []
     assert "SY_int_mm_m1_k8_n8" in rows["bmm.default"]["test_identity"]["family_capsules"]
     assert "capsule_sources" not in rows["bmm.default"]["test_identity"]
+    assert rows["bmm.default"]["evidence_state"] == "family_generated"
 
 
 @pytest.mark.parametrize(
@@ -595,3 +596,12 @@ def test_provenance_never_bypasses_the_declaration(inputs, monkeypatch):
     row = _rows(L.prepare(**inputs, workload_spec={"synthesize_compositions": False}).record())["_int_mm.default"]
     assert row["test_identity"]["capsules"] == ["SY_int_mm_m1_k8_n8"]
     assert row["evidence_state"] == "unmodeled"
+
+
+def test_family_only_credit_has_its_own_state(inputs):
+    inputs["capsules"] = [c for c in inputs["capsules"] if c["name"] != "SY_source_mlp"]
+    rows = _rows(L.prepare(**inputs).record())
+    assert rows["convolution.default"]["test_identity"]["capsules"] == []
+    assert rows["convolution.default"]["evidence_state"] == "family_generated"
+    assert "family cell capsule" in rows["convolution.default"]["justification"]
+    assert "family_generated" in L.STATES

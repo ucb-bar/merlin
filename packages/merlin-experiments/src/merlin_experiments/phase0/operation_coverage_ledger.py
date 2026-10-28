@@ -37,6 +37,9 @@ FAILING_VERDICTS = frozenset(
     {"MISMATCH_admitted_not_device", "MISMATCH_device_not_admitted", "numeric_fail", "capture_unavailable"}
 )
 #: Evidence states, kept distinct. ``rtl_qualified`` is reserved; this ledger never produces it.
+#: ``generated`` means a capsule names the overload itself (a whole-model trace or verified application
+#: provenance); ``family_generated`` means only a same-family cell capsule exercises its declaration row,
+#: which no capsule ties to this overload. Composition rows keep ``generated``.
 STATES = (
     "mismatch",
     "unmodeled",
@@ -44,6 +47,7 @@ STATES = (
     "executed_spike",
     "executed_host",
     "generated",
+    "family_generated",
     "withheld_unplaceable",
     "not_evidenced",
     "out_of_scope",
@@ -368,8 +372,10 @@ def _state(*, cases, unmodeled, admitting_rows, spec, direct, family_capsules, e
         return "executed_spike"
     if cases:
         return "executed_host"
-    if direct or family_capsules:
+    if direct:
         return "generated"
+    if family_capsules:
+        return "family_generated"
     return "not_evidenced"
 
 
