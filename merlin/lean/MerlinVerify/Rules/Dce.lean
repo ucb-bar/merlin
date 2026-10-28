@@ -47,12 +47,22 @@ mutual
     | op :: ops => (op.isTerminator || pureOp op) && pureNested ops
 end
 
+/-- The two `quant_ext` dequantizations `Sem/Ops/Dequant.lean` models: region-free ops that only
+compute value results (ledger A9). Other `quant_ext` ops stay ineligible. -/
+def dequantOp : Op → Bool
+  | .mk name results _ _ _ regions _ =>
+    (name == "quant_ext.dequantize_per_tensor" || name == "quant_ext.dequantize_per_channel") &&
+      regions.isEmpty && !results.isEmpty && results.all (valueTy ·.ty)
+
+/-- An op this rule may erase: it does nothing but compute its results. -/
+def erasable (op : Op) : Bool := pureOp op || dequantOp op
+
 /-- Erase one op. The model has no memory, trace or external state, so only an op that does
-nothing but compute its results (`pureOp`) may be erased: a call, an assertion or a store has an
+nothing but compute its results (`erasable`) may be erased: a call, an assertion or a store has an
 effect the model cannot see, and the refinement theorem would say nothing about it. -/
 def check (ρ : Rho) : List Op → List Op → Option Rho
   | [op], [] =>
-    if op.isTerminator = false ∧ pureOp op = true ∧ op.results.all (fun r => ρ.find r.id == none) then
+    if op.isTerminator = false ∧ erasable op = true ∧ op.results.all (fun r => ρ.find r.id == none) then
       some ρ
     else none
   | _, _ => none

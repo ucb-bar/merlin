@@ -20,13 +20,14 @@ import MerlinVerify.Check.BitcastCancel
 import MerlinVerify.Check.TensorEmptyDead
 import MerlinVerify.Check.ParallelFusion
 import MerlinVerify.Check.IdentityReturnComparison
+import MerlinVerify.Check.ExactCse
 
 namespace MerlinVerify.Check.SharedNormalize
 
 open MerlinVerify MerlinVerify.Sem.Ops
 
-/-- Local families share one recursive body traversal. The order lets materialization and
-carrier aliases expose scalar rewrite opportunities before the integer stage. -/
+/-- Local families share one recursive body traversal. Exact CSE comes first; the order then lets
+materialization and carrier aliases expose scalar rewrite opportunities before the integer stage. -/
 def base (ib : Nat) (hints : List Op) : SplatNormalizer.Normalizer ib :=
   let selection := BodyNormalize.sequential (FromElementsSelect.base ib)
     (DenseExtract.base ib (DenseExtract.hintOps hints))
@@ -39,8 +40,10 @@ def base (ib : Nat) (hints : List Op) : SplatNormalizer.Normalizer ib :=
   let insertions := BodyNormalize.sequential (InsertExtract.base ib) (Rules.IntegerNeutral.base ib)
   let aliases := BodyNormalize.sequential selection
     (BodyNormalize.sequential scalarAliases (BodyNormalize.sequential indexFacts insertions))
-  BodyNormalize.sequential (ScalarConstantHoist.base ib)
-    (BodyNormalize.sequential aliases (TensorEmptyDead.base ib))
+  -- Exact CSE runs first, twice: merging an empty can make a fill of it a repeat.
+  let cse := BodyNormalize.sequential (ExactCse.base ib hints) (ExactCse.base ib hints)
+  BodyNormalize.sequential cse (BodyNormalize.sequential (ScalarConstantHoist.base ib)
+    (BodyNormalize.sequential aliases (TensorEmptyDead.base ib)))
 
 /-- Adapt the exact body normalizers without assuming any producer facts at function entry.
 The source and target syntax supply only a finite traversal budget. -/
@@ -74,12 +77,13 @@ def normalizer : TypedNormalizer :=
 
 def check (ib : Nat) (src tgt : Module) (fn : String) (argTys resTys : List VTy) : Bool :=
   TypedNormalizeC1.checkWith normalizer
-    (TypedComparison.script.orElse IdentityReturn.comparison) ib src tgt fn argTys resTys
+    ((TypedComparison.script.orElse TypedComparison.pruning).orElse IdentityReturn.comparison)
+    ib src tgt fn argTys resTys
 
 theorem check_sound {ib : Nat} {src tgt : Module} {fn : String} {argTys resTys : List VTy}
     (h : check ib src tgt fn argTys resTys = true) :
     FuncRefinesC opSem (fun ctx => ctx.indexBits = ib) (fun args => HasTys ib args argTys)
       tgt fn src fn := TypedNormalizeC1.checkWith_sound normalizer
-        (TypedComparison.script.orElse IdentityReturn.comparison) h
+        ((TypedComparison.script.orElse TypedComparison.pruning).orElse IdentityReturn.comparison) h
 
 end MerlinVerify.Check.SharedNormalize
