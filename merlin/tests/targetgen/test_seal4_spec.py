@@ -101,7 +101,11 @@ def test_historical_spec_retains_exact_parent_bytes_and_software_pin():
         == (yaml.safe_load(parent)["execution_provider_revision"])
     )
     variants = yaml.safe_load(current)["quantization"]["methodology"]["model_variants"]
-    assert {row["model"] for row in variants}.isdisjoint({"resnet50", "tiny_llama"})
+    assert {row["model"] for row in variants}.isdisjoint({"resnet50"})
+    # TinyLlama returns only as the newly reviewed operands2 variant; the historical row stays in history.
+    assert [row["name"] for row in variants if row["model"] == "tiny_llama"] == [
+        "static-heads-softmax2-bounded-partner2-operands2"
+    ]
     old = load_software_spec(historical)
     assert {"resnet50", "tiny_llama"} <= {row["model"] for row in old["quantization"]["methodology"]["model_variants"]}
 

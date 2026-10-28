@@ -662,7 +662,7 @@ quantization:
     eligible_operations: from_facts
   # How every model is quantized for this target (merlin.targetgen.quant_methodology). Each hardware
   # value is the word from_output_path: it is read from the selected contract's derived output path,
-  # never written here. Historical held-out variants are excluded from this seal input.
+  # never written here. Prior variants remain frozen in phase0/history; new reviews are explicit below.
   methodology:
     schema: merlin.quantization_methodology.v1
     scale_granularity: from_output_path
@@ -688,6 +688,49 @@ quantization:
       - silu
       - rotary
     model_variants:
+    - model: tiny_llama
+      name: static-heads-softmax2-bounded-partner2-operands2
+      status: reviewed
+      reviewed_by: Codex operator, explicit TinyLlama operands2 implementation request, 2026-10-26
+      reason: Add two bounded signed-int8 residual planes for each ordinary activation operand, including
+        both attention-score operands. Keep two fixed softmax planes, two bounded partner planes, static head
+        scales, and the unchanged per-site agreement bars. Fresh capture must establish agreement; extra precision
+        is not an admission result.
+      measured_accuracy:
+        basis: 'TinyLlama decode admission analysis /tmp/claude-2629/tl_admit.py: three 1-token activation_contraction
+          score sites ([1,32,1,64] x [1,32,64,64]) have cosine_min 0.93311 / 0.94296 / 0.94711 below the unchanged
+          0.947588 bar; rel_rmse_max meets the unchanged 0.457351 bar. Prefill passes with worst cosine_min
+          0.9815. The prior variant static-heads-softmax2-bounded-partner2 and its decode refusal remain in
+          the history; examples/gemmini/phase0/history/software-spec-seals1-3.yaml retains the old variant
+          text. This new variant is unmeasured and requires fresh capture and per-site verification; the prior
+          refusal is not relabeled a pass.'
+        prior_variant_decode:
+          layer_3_cosine_min: 0.9331125847462606
+          layer_4_cosine_min: 0.9471101675350817
+          layer_5_cosine_min: 0.9429586776091345
+          samples_per_site: 64
+        new_variant: unmeasured; no passing admission or dataset-accuracy claim
+      changes:
+        families:
+        - contraction
+        - operand_sum
+        - window_mean
+        - activation_contraction
+        dynamic:
+          families:
+          - activation_contraction
+          planes:
+            softmax_output: 2
+            softmax_partner: 2
+            residual_operand: 2
+          scales: static_heads
+          schema: dynamic_contractions_v1
+          site_agreement:
+            cosine_min: 0.947588
+            rel_rmse_max: 0.457351
+            schema: dynamic_site_agreement_v1
+          smooth: null
+        calibration_count: 1024
     - model: smolvla
       name: static-heads-softmax2-bounded-operands2
       status: reviewed
