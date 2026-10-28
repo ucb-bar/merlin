@@ -995,11 +995,19 @@ def generate_target(
                         actual["source_reference"] = diagnostic_entry(actual, observed)["source_reference"]
                     (Path(w) / "capsule.yaml").write_text(yaml.safe_dump(actual, sort_keys=False))
                     if evidence_mode != "diagnostic" and observed["status"] != "admitted" and not must_refuse:
-                        failures.append((e.get("name", "?"), "emitted SW operation admission: " + observed["reason"]))
-                        print(
-                            f"  [failure] {e.get('name', '?')}: emitted SW operation admission: {observed['reason']}",
-                            flush=True,
-                        )
+                        withheld = withhold_unadmitted_micro_model(e, observed, must_refuse=must_refuse)
+                        if withheld is not None:
+                            host_placed.append(withheld)
+                            print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}", flush=True)
+                        else:
+                            failures.append(
+                                (e.get("name", "?"), "emitted SW operation admission: " + observed["reason"])
+                            )
+                            print(
+                                f"  [failure] {e.get('name', '?')}: emitted SW operation admission: "
+                                f"{observed['reason']}",
+                                flush=True,
+                            )
                     # Verified evidence admits a generation-time capture only from the sealed runner.
                     capture_refusal = verified_capture_failure(actual)
                     if evidence_mode != "diagnostic" and capture_refusal is not None:
@@ -1492,6 +1500,32 @@ def _with_reference_gate(entry: dict, te, descriptor: Path) -> dict:
     if not resolved.is_absolute():
         resolved = Path(descriptor).parent / resolved
     return {**entry, "reference_gate": str(resolved)}
+
+
+def withhold_unadmitted_micro_model(entry: dict, observed: dict, *, must_refuse: bool) -> dict | None:
+    """Account for a synthesized micro-model whose emitted program the selected host lane cannot admit.
+
+    A synthesized micro-model is derived from the application captures, and the programs it emits can need
+    host operations the selected portable host lane does not support. That refusal is the host screen
+    working, not a fault of the corpus: the capsule is not published (it stays in the diagnostic cohort) and the
+    refusal is reported verbatim as a withheld member. Only this case is relaxed. A roster model, a must-refuse
+    member, a capsule that is not a synthesized micro-model sweep entry and any screen result other than
+    ``unsupported`` still fail verified generation, and so does any exception raised while emitting: this is
+    reached only after the writer returned and the written program was screened. The screen is unchanged.
+    """
+    if (
+        must_refuse
+        or _is_roster_capsule(entry)
+        or not entry.get("micro_model")
+        or entry.get("source_role") != "derived_sweep"
+        or observed.get("status") != "unsupported"
+    ):
+        return None
+    return {
+        "capsule": str(entry.get("name", "?")),
+        "placements": copy.deepcopy(observed.get("placements") or {}),
+        "reason": "emitted program not admitted by the selected host lane: " + str(observed.get("reason", "")),
+    }
 
 
 def withhold_unaccelerated(name: str, observed: dict, directory: Path, *, capsule: dict | None = None) -> dict | None:
