@@ -31,6 +31,7 @@ module admits nothing itself.
 from __future__ import annotations
 
 import math
+import struct
 from pathlib import Path
 
 _MATMUL_MAPS = (
@@ -445,8 +446,13 @@ def operand_sum_chain(op, users, *, numerics: dict, strategy: str | None) -> dic
     Only the ``per_operand`` form is proven: each of two distinct program inputs of one shape is
     requantized ``sat_i8(RNE(f32(x) * g))`` by ONE constant gain (the readout body with an i8
     source and no relu), each result used only by an exact ``extsi + addi``. The sum's only user
-    must be a proven readout with ONE constant gain (tensor granularity). The returned parameters
+    must be a proven readout (one gain per output column). The returned parameters
     are exactly the source program's: they feed the operand-sum numeric witness.
+
+    The readout's gain may differ by output column (the requant gains may not). ``readout_gains`` is
+    always the per-column f32 list (length N); ``readout_scale`` is the one gain when it is uniform,
+    else ``None``. A column-varying readout only becomes rows through ``operand_sum_rows``, behind a
+    reviewed spec row that declares the column-component screen.
 
     A float (single-rounding) sum is not observed, not even at unit multipliers where it is exact:
     its realization binds the single-rounding contract, whose witness carries no readout gain.
@@ -478,16 +484,15 @@ def operand_sum_chain(op, users, *, numerics: dict, strategy: str | None) -> dic
     proven = readout(reader, op.results[0], numerics=numerics, strategy=strategy, bound=256)
     if proven is None or proven["result"]["dtype"] != "i8":
         return None
-    gain = _uniform(proven["gains"])
-    if gain is None:
-        return None
+    readout_gains = list(proven["gains"])
     return {
         "rounding": "per_operand",
         "requants": members,
         "reader": reader,
         "lhs_scale": scales[0],
         "rhs_scale": scales[1],
-        "readout_scale": gain,
+        "readout_scale": _uniform(readout_gains),
+        "readout_gains": readout_gains,
         "relu": proven["relu"],
         "shape": shape,
     }
@@ -1083,33 +1088,57 @@ def prove_operand_sums(program: Path, *, numerics: dict, strategy: str | None = 
     return chains
 
 
-def operand_sum_rows(chain: dict, *, evidence) -> list[dict] | None:
-    """The rows an interface program states for ``chain`` as ONE fused operand-sum command.
+def _f32(value: float) -> float:
+    return struct.unpack("<f", struct.pack("<f", value))[0]
 
-    The command is the per-operand form: both loads RNE-saturated to i8 at the proven operand
-    scales, the exact i32 sum, then the proven readout (relu, scale). Rows come from
-    ``command_rows`` (the interface observation itself), each RESIDUAL_ADD row carrying the numeric
-    witness computed from the source program's own constants, as ``account_interface_text`` attaches
-    one. ``None`` when the selected facts give no witness model.
+
+#: The reviewed spec row that declares column-component readout screens.
+_COLUMN_COMPONENT_ROW = "elementwise_map_after_per_operand_sum"
+
+
+def _column_components_declared(evidence) -> bool:
+    """Whether the selected spec carries the reviewed per-operand row declaring ``column_component``."""
+    from merlin.targetgen.operator_review import review_accepted
+
+    spec = getattr(evidence, "software_spec", None) or {}
+    declared = [row for row in spec.get("operations") or () if row.get("id") == _COLUMN_COMPONENT_ROW]
+    return (
+        len(declared) == 1
+        and isinstance(declared[0].get("readout_gain_screens"), list)
+        and "column_component" in declared[0]["readout_gain_screens"]
+        and review_accepted(declared[0], default="unreviewed")
+    )
+
+
+def _column_runs(gains: list[float]) -> list[tuple[int, int, float]]:
+    """``(start, stop, f32 gain)`` for each maximal run of equal gains: disjoint, contiguous, covering every column."""
+    runs: list[tuple[int, int, float]] = []
+    for column, gain in enumerate(_f32(value) for value in gains):
+        if runs and runs[-1][2] == gain:
+            runs[-1] = (runs[-1][0], column + 1, gain)
+        else:
+            runs.append((column, column + 1, gain))
+    cursor = 0
+    for start, stop, _ in runs:
+        assert start == cursor and stop > start, "column components must be contiguous and disjoint"
+        cursor = stop
+    assert cursor == len(gains), "column components must cover every output column exactly once"
+    return runs
+
+
+def _fused_command_rows(chain: dict, shape: list[int], gain: float, witness: dict) -> list[dict] | None:
+    """The rows of ONE synthetic fused RESIDUAL_ADD command over ``shape`` at the scalar readout ``gain``.
+
+    The command is only a vehicle for ``command_rows`` (the interface observation of a fused
+    command's stage rows): it is never executed or emitted. Each row carries ``witness`` as its
+    ``numeric_screen``, and the carrier/stage ordinals of ``chain``.
     """
     from merlin.targetgen.interface_observations import command_rows
 
-    from .program_admission import per_operand_readout_witness
-
-    witness = per_operand_readout_witness(
-        lhs_scale=chain["lhs_scale"],
-        rhs_scale=chain["rhs_scale"],
-        readout_scale=chain["readout_scale"],
-        relu=chain["relu"],
-        evidence=evidence,
-    )
-    if witness is None:
-        return None
-    shape = list(chain["shape"])
     from merlin.runtime.commandbuffer import EPILOGUE_STAGES
 
-    # Epilogue in the order a command applies it (as ``stage_rows`` states it); the proven gain is
-    # positive, so a relu before the scale commutes with it.
+    # Epilogue in the order a command applies it (as ``stage_rows`` states it); every gain screened
+    # here is positive (a within-bound witness requires it), so a relu before the scale commutes with it.
     declared = {"acc_scale"} | ({"relu"} if chain["relu"] else set())
     stages = [name for name in EPILOGUE_STAGES if name in declared]
     command = {
@@ -1119,7 +1148,7 @@ def operand_sum_rows(chain: dict, *, evidence) -> list[dict] | None:
             "epilogue": stages,
             "lhs_scale": chain["lhs_scale"],
             "rhs_scale": chain["rhs_scale"],
-            "acc_scale": chain["readout_scale"],
+            "acc_scale": gain,
             "operand_sum_rounding": "per_operand",
             "bound_lsb": 0,
             "output_dtype": "i8",
@@ -1140,6 +1169,67 @@ def operand_sum_rows(chain: dict, *, evidence) -> list[dict] | None:
         else:
             rows.append({**row, **operands, "ordinals": [chain["readout_member"]]})
     return [{**row, "numeric_screen": {"command_index": 0, **witness}} for row in rows]
+
+
+def operand_sum_rows(chain: dict, *, evidence) -> list[dict] | None:
+    """The rows an interface program states for ``chain`` as fused operand-sum command(s).
+
+    The command is the per-operand form: both loads RNE-saturated to i8 at the proven operand
+    scales, the exact i32 sum, then the proven readout (relu, scale). Rows come from
+    ``command_rows`` (the interface observation itself), each RESIDUAL_ADD row carrying the numeric
+    witness computed from the source program's own constants, as ``account_interface_text`` attaches
+    one. ``None`` when the selected facts give no witness model.
+
+    A readout with ONE gain is one command over the full shape. A readout whose gain differs by
+    output column is observed as disjoint contiguous column components (maximal runs of equal gain
+    covering every column exactly once), each a synthetic command over ``[M, stop - start]`` at that
+    run's scalar gain with its own exhaustive witness (the command is never executed) and the
+    signature field ``output_column_component``. That needs the selected spec's reviewed
+    ``elementwise_map_after_per_operand_sum`` row to declare ``readout_gain_screens: column_component``;
+    otherwise, or if any component's witness is not within bound or does not carry exactly the
+    run's constants, there is no observation (``None``).
+    """
+    from .program_admission import per_operand_readout_witness
+
+    shape = list(chain["shape"])
+    if chain["readout_scale"] is not None:
+        witness = per_operand_readout_witness(
+            lhs_scale=chain["lhs_scale"],
+            rhs_scale=chain["rhs_scale"],
+            readout_scale=chain["readout_scale"],
+            relu=chain["relu"],
+            evidence=evidence,
+        )
+        return None if witness is None else _fused_command_rows(chain, shape, chain["readout_scale"], witness)
+    gains = chain.get("readout_gains")
+    if not gains or len(gains) != shape[-1] or not _column_components_declared(evidence):
+        return None
+    lhs, rhs = _f32(chain["lhs_scale"]), _f32(chain["rhs_scale"])
+    rows: list[dict] = []
+    for start, stop, gain in _column_runs(gains):
+        witness = per_operand_readout_witness(
+            lhs_scale=chain["lhs_scale"],
+            rhs_scale=chain["rhs_scale"],
+            readout_scale=gain,
+            relu=chain["relu"],
+            evidence=evidence,
+        )
+        if witness is None or witness.get("status") != "within_bound":
+            return None
+        source = (witness.get("parameters") or {}).get("source") or {}
+        if (
+            source.get("readout_scale") != gain
+            or source.get("lhs_scale") != lhs
+            or source.get("rhs_scale") != rhs
+            or source.get("relu") != chain["relu"]
+        ):
+            return None
+        component = _fused_command_rows(chain, shape[:-1] + [stop - start], gain, witness)
+        if component is None:
+            return None
+        description = {"start": start, "stop": stop, "columns": shape[-1], "readout_scale": gain}
+        rows.extend({**row, "output_column_component": dict(description)} for row in component)
+    return rows
 
 
 def observe(

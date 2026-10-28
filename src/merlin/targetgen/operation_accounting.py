@@ -167,6 +167,9 @@ def _observed_signature(row: dict) -> dict:
             observed[key] = value
     if row.get("numeric_screen") is not None:
         observed["numeric_screen"] = row["numeric_screen"]
+    # Dedicated field, never a signature constraint: a fused readout gain screened per column component.
+    if row.get("output_column_component") is not None:
+        observed["output_column_component"] = row["output_column_component"]
     geometry = row.get("contraction_shape") or {}
     observed["dimensions"] = {axis: geometry[axis] for axis in ("M", "K", "N") if type(geometry.get(axis)) is int}
     return observed

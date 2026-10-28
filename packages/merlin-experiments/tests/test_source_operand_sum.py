@@ -139,7 +139,6 @@ WRONG_PER_OPERAND = {
     "sum_of_one_operand_twice": {"add": "%a, %a"},
     "same_requant_twice": {"ins": ("%left", "%left")},
     "both_requants_of_one_input": {"right": requant("right", "%Left", gain=TENTH)},
-    "readout_two_gains": {"readout_gain": SIXTH, "readout_second": TENTH},
     "requant_result_escapes": {"extra_return": "%left"},
 }
 
@@ -147,6 +146,21 @@ WRONG_PER_OPERAND = {
 @pytest.mark.parametrize("variant", WRONG_PER_OPERAND.values(), ids=WRONG_PER_OPERAND.keys())
 def test_wrong_per_operand_variants_are_not_proven(tmp_path, variant):
     assert prove(tmp_path, per_operand(**variant)) == []
+
+
+def test_column_varying_readout_is_proved_but_yields_no_rows_without_the_declared_screen(tmp_path):
+    # The proof keeps the per-column gains; only a reviewed spec row declaring the column-component
+    # screen (tests/test_source_operand_sum_columns.py) turns them into rows.
+    from merlin_experiments.phase0.source_fused_stages import operand_sum_rows
+
+    [chain] = prove(tmp_path, per_operand(readout_gain=SIXTH, readout_second=TENTH))
+    assert chain["readout_scale"] is None
+    assert chain["readout_gains"] == [float(SIXTH)] * 8 + [float(TENTH)] * 8
+    assert operand_sum_rows(chain, evidence=_Evidence([FACET])) is None
+
+
+def test_requant_gains_must_stay_uniform_even_if_the_readout_may_vary(tmp_path):
+    assert prove(tmp_path, per_operand(left=requant("left", "%Left", second=TENTH), readout_second=TENTH)) == []
 
 
 def test_unsupported_numerics_or_strategy_prove_nothing(tmp_path):

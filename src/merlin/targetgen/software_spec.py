@@ -31,6 +31,11 @@ _NUMERICAL_CONTRACTS = frozenset(
         "operand_sum_per_operand_exhaustive_i8_v1",
     }
 )
+#: How a fused operand-sum row's readout gain may vary over the output columns. ``tensor``: one gain
+#: for the whole result (the numeric witness is the row's only screen). ``column_component``: a gain
+#: that differs by output column is observed as disjoint contiguous column components, each carrying
+#: its own full witness at that component's scalar gain (``output_column_component`` on the signature).
+_READOUT_GAIN_SCREENS = frozenset({"tensor", "column_component"})
 _IEEE_ROUNDING = frozenset({"rne", "rmm", "rtz", "rdn", "rup"})
 _REDUCTION_ORDERS = frozenset({"index_sequential", "tree", "pairwise"})
 _REDUCTION_CADENCES = frozenset({"per_step", "single_final"})
@@ -431,6 +436,24 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
             or (isinstance(row["numerical_contract"], str) and row["numerical_contract"] not in _NUMERICAL_CONTRACTS)
         ):
             raise ValueError(f"{source}: operation {row['id']!r} has an unsupported numerical contract")
+        if "readout_gain_screens" in row:
+            screens = row["readout_gain_screens"]
+            if (
+                not isinstance(screens, list)
+                or not screens
+                or any(not isinstance(value, str) or value not in _READOUT_GAIN_SCREENS for value in screens)
+                or len(set(screens)) != len(screens)
+            ):
+                raise ValueError(
+                    f"{source}: operation {row['id']!r} readout_gain_screens must list distinct values from "
+                    f"{sorted(_READOUT_GAIN_SCREENS)}"
+                )
+            if not (
+                isinstance(row.get("numerical_contract"), str) and row["numerical_contract"] in _NUMERICAL_CONTRACTS
+            ):
+                raise ValueError(
+                    f"{source}: operation {row['id']!r} readout_gain_screens requires an exhaustive numerical contract"
+                )
         if "emission_obligations" in row:
             validate_emission_obligations(row["emission_obligations"])
         # The author names constraints directly; consumers keep one canonical
@@ -457,6 +480,7 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
                     "unconstrained",
                     "emission_obligations",
                     "admission_conditions",
+                    "readout_gain_screens",
                 }
             )
             if unknown:
@@ -1089,6 +1113,36 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                 or (witness["max_error_lsb"] > parameters["bound_lsb"])
             ):
                 refused.append("numerical_contract exceeds the selected fact-derived error bound")
+        # A fused sum read out with a gain that differs by output column is observed as column
+        # components. A declaration that consumes the numeric witness (an exhaustive numerical
+        # contract) must declare that screen, and the component's gain must be the very gain its
+        # witness was computed at, so a witness for one gain never admits another's columns. A
+        # declaration that never reads the witness (for example a standalone operand sum admitting the
+        # carrier command) is unaffected by the component field: it relies on none of it.
+        component = signature.get("output_column_component")
+        screens = row.get("readout_gain_screens")
+        if isinstance(row.get("numerical_contract"), str) and row["numerical_contract"] in _NUMERICAL_CONTRACTS:
+            if component is not None:
+                witness = signature.get("numeric_screen")
+                source_gain = (
+                    ((witness.get("parameters") or {}).get("source") or {}).get("readout_scale")
+                    if isinstance(witness, dict)
+                    else None
+                )
+                well_formed = (
+                    isinstance(component, dict)
+                    and set(component) == {"start", "stop", "columns", "readout_scale"}
+                    and all(type(component[key]) is int for key in ("start", "stop", "columns"))
+                    and 0 <= component["start"] < component["stop"] <= component["columns"]
+                    and type(component["readout_scale"]) is float
+                    and type(source_gain) is float
+                )
+                if not isinstance(screens, list) or "column_component" not in screens:
+                    missing.append("output_column_component")
+                elif not well_formed or component["readout_scale"] != source_gain:
+                    missing.append("output_column_component.readout_scale")
+            elif isinstance(screens, list) and "tensor" not in screens:
+                missing.append("readout_gain_screens")
         for axis, bounds in (constraints.get("shape_bounds") or {}).items():
             dimensions = signature.get("dimensions") or {}
             observed = dimensions.get(axis)
