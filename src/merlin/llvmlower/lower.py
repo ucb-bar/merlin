@@ -175,12 +175,7 @@ def lower_model(
         lowering_selection: dict[str, Any] = {}
         from . import leading_cse
 
-        pipeline_text = leading_cse.run(
-            upstream_text,
-            work,
-            features=features,
-            stages=(source_scalar_carrier, source_observation_effects, masked_contraction_effects),
-        )
+        pipeline_text = leading_cse.run(upstream_text, work)
         try:
             ll_text = lower_to_llvm_ir(
                 pipeline_text,
@@ -216,6 +211,7 @@ def lower_model(
             except Exception:  # noqa: BLE001 -- an exotic constructor: keep the original
                 raise exc
             raise enriched from exc
+        leading_cse.confirm(work)  # the checked cse is the one this build's own pipeline runs
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
         if "source_scalar_carrier" in lowering_selection:

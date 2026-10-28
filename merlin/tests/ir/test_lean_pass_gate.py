@@ -364,13 +364,71 @@ def test_an_injected_cse_bug_stops_real_lowering(tmp_path, validation, monkeypat
     assert raised.value.report["verdict"] == "not_established"
 
 
-def test_cse_validation_refuses_a_pipeline_whose_input_is_rewritten_first(tmp_path, validation):
-    from merlin.llvmlower.transpose_fuse import FEATURE
+def test_cse_validates_with_a_feature_that_only_edits_later_stages(tmp_path, validation):
+    from merlin.llvmlower.selfcopy import FEATURE  # erase_self_copy: after bufferization
 
-    with pytest.raises(ValueError, match="cse validation"):
+    lower.lower_model(
+        capture("tiny_llama_fp32_consistent"),
+        tmp_path / "lower",
+        targets=(),
+        features=frozenset({FEATURE}),
+        pass_validation=validation,
+    )
+    assert ("cse", "accepted") in [(v["label"], v["verdict"]) for v in validation.gate.verdicts]
+    assert (tmp_path / "lower" / "model.ll").is_file()
+
+
+def test_a_rewrite_before_the_pass_manager_fails_closed(tmp_path, validation):
+    from merlin.llvmlower.transpose_fuse import FEATURE  # rewrites the parsed module in the runner
+
+    work = tmp_path / "lower"
+    with pytest.raises(GateFailure) as raised:
         lower.lower_model(
-            LIVE, tmp_path / "lower", targets=(), features=frozenset({FEATURE}), pass_validation=validation
+            capture("tiny_llama_fp32_consistent"),
+            work,
+            targets=(),
+            features=frozenset({FEATURE}),
+            pass_validation=validation,
         )
+    assert raised.value.report["label"] == "cse"
+    assert "_FUSE_TRANSPOSE_B" in raised.value.report["reason"]
+    assert not (work / "model.ll").exists()
+
+
+RUNNER = """import sys
+_GATE = len(sys.argv) > 4 and sys.argv[4] == '1'
+_OTHER = True
+with open(src_path) as f:
+    module = ir.Module.parse(f.read(), ctx)
+# a comment
+if _GATE:
+    rewrite(module)
+STATEMENT
+_run_stages(ctx, module, pipeline)
+"""
+
+
+@pytest.mark.parametrize(
+    ("statement", "flag", "found"),
+    [
+        ("", "0", []),
+        ("", "1", ["gate _GATE (argv[4]) is on"]),
+        ("rewrite(module)", "0", ["unrecognised statement 'rewrite(module)'"]),
+        ("if _OTHER:\n    rewrite(module)", "0", ["gate _OTHER is not an argv flag"]),
+    ],
+)
+def test_pre_pass_rewrites_are_read_from_the_runner_itself(statement, flag, found):
+    script = RUNNER.replace("STATEMENT", statement)
+    assert leading_cse.pre_pass_rewrites(script, ["run.py", "in", "out", "canonicalize,cse", flag]) == found
+
+
+def test_pipeline_passes_split_only_at_the_top_level():
+    assert leading_cse.top_level_passes("canonicalize,cse,func.func(a,b{x=1,y=2}),c") == [
+        "canonicalize",
+        "cse",
+        "func.func(a,b{x=1,y=2})",
+        "c",
+    ]
 
 
 MAP = "affine_map<(d0) -> (d0)>"
