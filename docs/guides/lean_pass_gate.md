@@ -36,29 +36,25 @@ the paths of the input and output, and renames any `.ll`, `.so` or `.o` already 
 | `prune_dead_pure_tensor_ops` | `lower_model` preprocessing (xDSL route) | `passes_xdsl._preprocess_module` |
 | `lower_quant_ext` | `lower_model` preprocessing, and every `prepare_for_lowering` | `_preprocess_module`, `zephyr_model._prepare_model_mlir` |
 | `preprocess_text_textual` | `lower_model(textual=True)`: the whole-model RVV route, including Spike | `passes_xdsl.preprocess_text_textual` |
-| `cse` | the tensor-level `cse` every lowering pipeline starts with, on every route | `leading_cse.run` |
+| `cse` | every tensor-level `cse` the build's runner runs (the pipeline's leading one), on every route | `leading_cse.bind_runner`, `leading_cse.submit` |
 
 The whole-model RVV route lowers textually, so in a Spike or `merlin-compile` RVV build the checked
 boundaries are `preprocess_text_textual` (dequantization, slice repair and the C interface together)
 and `cse`; the xDSL prune and quantization run only on the xDSL route and in preparation.
 
-Every pipeline opens with `canonicalize,cse`. With `cse` validated, `leading_cse` runs those two passes
-before the pipeline (same pass registry and fusion guard as the build's runner), checks the exact `cse`
-pair, and hands the result on; it then runs them once more and checks any change, so the pipeline's own
-head provably changes nothing and the build lowers exactly what was checked. `canonicalize` is not
-validated (folds are outside the checker). This is exact only when the build's pipeline opens with
-`canonicalize,cse` and its runner leaves the module alone before the pass manager. After lowering,
-`leading_cse.confirm` establishes both from what the build ran: the recorded runner command
-(`lowering_recipe.json`) and runner script, whose statements between parsing the module and
-`_run_stages` must each be an `if` on an `argv` flag that is off. A feature that only edits later
-stages therefore validates; a build whose runner rewrites the module first (for example
-`fuse_transpose_b`), or whose runner cannot be read that way, fails as `cse` / `unsupported` and its
-artifacts are rejected.
+Every pipeline opens with `canonicalize,cse` on tensors, and some pre-pipeline rewrites run the same
+pair. With `cse` validated, `leading_cse.bind_runner` puts a prelude ahead of the build's own runner,
+whatever its variant or features, that wraps `torch_mlir`'s `PassManager`. Any invocation whose pass
+list opens with `canonicalize,cse` on a module with no `memref` runs as `canonicalize`, `cse` and the
+rest, in the same process and order, and the exact module before and after that `cse` is written to
+`leading-cse/`. After lowering, `leading_cse.submit` checks every recorded pair. A build that ran no
+tensor-level `cse` fails closed. `canonicalize` is not validated (its folds are outside the checker),
+nor is `cse` on bufferized or LLVM-dialect modules (recorded as skipped).
 
-On the textual (RVV, Spike) route the gated build's `model.ll` is byte-identical to the ungated one.
-On the xDSL route 15 commutative `fadd`s of `small_llama_int8` have their operands swapped: the
-pipeline now parses the module once more after `cse`, and the later elementwise fusion builds bodies
-in use order, which a print and parse does not keep (the likely cause; not separately confirmed).
+Because the check reads the module the build actually ran on, it covers every route and feature,
+including rewrites the runner applies before the pass manager (for example `fuse_transpose_b`), and
+the gated build's `model.ll` is byte-identical to the ungated one on both the xDSL and the textual
+route (checked on `small_llama_int8` and `tiny_llama_fp32`).
 
 ## What is proved
 

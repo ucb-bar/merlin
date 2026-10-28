@@ -351,7 +351,7 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
     # The pipeline's leading cse, by MLIR itself, on the whole-model route's preprocessed form.
     cse_source = render(lowered(program))
     (tmp_path / "cse-apply").mkdir()
-    cse_after = leading_cse._apply(cse_source, "cse", tmp_path / "cse-apply", "cse")
+    cse_after = leading_cse.apply(cse_source, "cse", tmp_path / "cse-apply", "cse")
     if cse_after != cse_source:
         complete("cse", cse_source, cse_after, render(deduplicated(lowered(program))), "cse")
     if gaps:

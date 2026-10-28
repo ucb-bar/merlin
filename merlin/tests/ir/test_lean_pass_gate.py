@@ -330,7 +330,7 @@ DUPLICATES = f"""func.func @forward(%a: {F23}) -> (tensor<6xf32>, tensor<6xf32>,
 def _cse(tmp_path, text: str) -> str:
     directory = tmp_path / "apply"
     directory.mkdir(exist_ok=True)
-    return leading_cse._apply(text, "cse", directory, "cse")
+    return leading_cse.apply(text, "cse", directory, "cse")
 
 
 def test_upstream_cse_of_empties_fills_and_reshapes_is_proved(tmp_path, tools):
@@ -348,87 +348,78 @@ def test_a_cse_that_merges_different_fills_is_rejected(tmp_path, tools):
         gate_checks.tensor_refinement(job(tmp_path, before, merged, tools))
 
 
+# A cse bug inside the build's own runner: after the real cse, one multiply in the module the build
+# continues from becomes an add.
+CSE_BUG = """        from torch_mlir import ir as _bug_ir
+        from torch_mlir.dialects import arith as _bug_arith
+
+        def _bug_find(op):
+            for region in op.regions:
+                for block in region.blocks:
+                    for child in block.operations:
+                        if child.operation.name == 'arith.mulf':
+                            return child.operation
+                        found = _bug_find(child.operation)
+                        if found is not None:
+                            return found
+            return None
+
+        _bug = _bug_find(operation)
+        with operation.context, _bug_ir.Location.unknown(), _bug_ir.InsertionPoint(_bug):
+            _bug_add = _bug_arith.AddFOp(_bug.operands[0], _bug.operands[1])
+        _bug.results[0].replace_all_uses_with(_bug_add.result)
+        _bug.erase()
+        after = operation.get_asm(print_generic_op_form=True)"""
+
+
 def test_an_injected_cse_bug_stops_real_lowering(tmp_path, validation, monkeypatch):
-    real = leading_cse._apply
-
-    def buggy(text, passes, directory, name):
-        result = real(text, passes, directory, name)
-        return result.replace("arith.mulf", "arith.addf", 1) if passes == "cse" else result
-
-    monkeypatch.setattr(leading_cse, "_apply", buggy)
-    with pytest.raises(GateFailure) as raised:
-        lower.lower_model(
-            capture("small_llama_int8_consistent"), tmp_path / "lower", targets=(), pass_validation=validation
-        )
-    assert raised.value.report["label"] == "cse"
-    assert raised.value.report["verdict"] == "not_established"
-
-
-def test_cse_validates_with_a_feature_that_only_edits_later_stages(tmp_path, validation):
-    from merlin.llvmlower.selfcopy import FEATURE  # erase_self_copy: after bufferization
-
-    lower.lower_model(
-        capture("tiny_llama_fp32_consistent"),
-        tmp_path / "lower",
-        targets=(),
-        features=frozenset({FEATURE}),
-        pass_validation=validation,
-    )
-    assert ("cse", "accepted") in [(v["label"], v["verdict"]) for v in validation.gate.verdicts]
-    assert (tmp_path / "lower" / "model.ll").is_file()
-
-
-def test_a_rewrite_before_the_pass_manager_fails_closed(tmp_path, validation):
-    from merlin.llvmlower.transpose_fuse import FEATURE  # rewrites the parsed module in the runner
-
+    line = "        after = operation.get_asm(print_generic_op_form=True)"
+    assert leading_cse._PRELUDE.count(line) == 1
+    monkeypatch.setattr(leading_cse, "_PRELUDE", leading_cse._PRELUDE.replace(line, CSE_BUG))
     work = tmp_path / "lower"
     with pytest.raises(GateFailure) as raised:
-        lower.lower_model(
-            capture("tiny_llama_fp32_consistent"),
-            work,
-            targets=(),
-            features=frozenset({FEATURE}),
-            pass_validation=validation,
-        )
+        lower.lower_model(capture("tiny_llama_fp32_consistent"), work, targets=(), pass_validation=validation)
     assert raised.value.report["label"] == "cse"
-    assert "_FUSE_TRANSPOSE_B" in raised.value.report["reason"]
+    assert raised.value.report["verdict"] == "not_established"
     assert not (work / "model.ll").exists()
 
 
-RUNNER = """import sys
-_GATE = len(sys.argv) > 4 and sys.argv[4] == '1'
-_OTHER = True
-with open(src_path) as f:
-    module = ir.Module.parse(f.read(), ctx)
-# a comment
-if _GATE:
-    rewrite(module)
-STATEMENT
-_run_stages(ctx, module, pipeline)
-"""
-
-
 @pytest.mark.parametrize(
-    ("statement", "flag", "found"),
-    [
-        ("", "0", []),
-        ("", "1", ["gate _GATE (argv[4]) is on"]),
-        ("rewrite(module)", "0", ["unrecognised statement 'rewrite(module)'"]),
-        ("if _OTHER:\n    rewrite(module)", "0", ["gate _OTHER is not an argv flag"]),
-    ],
+    "feature",
+    ["erase_self_copy", "fuse_transpose_b"],  # one edits a late stage, one rewrites before the pass manager
 )
-def test_pre_pass_rewrites_are_read_from_the_runner_itself(statement, flag, found):
-    script = RUNNER.replace("STATEMENT", statement)
-    assert leading_cse.pre_pass_rewrites(script, ["run.py", "in", "out", "canonicalize,cse", flag]) == found
+def test_cse_validates_whatever_the_runner_does_around_it(tmp_path, validation, feature):
+    work = tmp_path / "lower"
+    lower.lower_model(
+        capture("tiny_llama_fp32_consistent"),
+        work,
+        targets=(),
+        features=frozenset({feature}),
+        pass_validation=validation,
+    )
+    assert ("cse", "accepted") in [(v["label"], v["verdict"]) for v in validation.gate.verdicts]
+    assert "_LCPassManager" in (work / "run_lowering.py").read_text()  # recorded inside the build's own runner
+    assert (work / "model.ll").is_file()
 
 
-def test_pipeline_passes_split_only_at_the_top_level():
-    assert leading_cse.top_level_passes("canonicalize,cse,func.func(a,b{x=1,y=2}),c") == [
-        "canonicalize",
-        "cse",
-        "func.func(a,b{x=1,y=2})",
-        "c",
-    ]
+def test_the_runner_records_nothing_without_cse_validation(tmp_path, tools):
+    gate = SpeculativeGate(tmp_path / "gate", job_timeout=900)
+    prune_only = pass_validation.PassValidation(gate, tools, frozenset({"prune_dead_pure_tensor_ops"}))
+    try:
+        lower.lower_model(
+            capture("tiny_llama_fp32_consistent"), tmp_path / "lower", targets=(), pass_validation=prune_only
+        )
+    finally:
+        gate.close()
+    assert "_LCPassManager" not in (tmp_path / "lower" / "run_lowering.py").read_text()
+
+
+def test_validated_cse_with_nothing_recorded_fails_closed(tmp_path, validation):
+    (tmp_path / leading_cse.DIRECTORY).mkdir()
+    (tmp_path / leading_cse.DIRECTORY / "index.json").write_text(json.dumps([{"skipped": "bufferized module"}]))
+    with pass_validation.validating(validation):
+        with pytest.raises(GateFailure, match="no tensor-level canonicalize,cse"):
+            leading_cse.submit(tmp_path)
 
 
 MAP = "affine_map<(d0) -> (d0)>"

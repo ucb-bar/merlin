@@ -173,12 +173,9 @@ def lower_model(
 
         audit.stage("upstream", upstream_text)
         lowering_selection: dict[str, Any] = {}
-        from . import leading_cse
-
-        pipeline_text = leading_cse.run(upstream_text, work)
         try:
             ll_text = lower_to_llvm_ir(
-                pipeline_text,
+                upstream_text,
                 workdir=work,
                 audit=audit,
                 vectorize=vectorize,
@@ -211,7 +208,9 @@ def lower_model(
             except Exception:  # noqa: BLE001 -- an exotic constructor: keep the original
                 raise exc
             raise enriched from exc
-        leading_cse.confirm(work)  # the checked cse is the one this build's own pipeline runs
+        from . import leading_cse
+
+        leading_cse.submit(work)  # every tensor-level cse the build's runner ran, as it ran it
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
         if "source_scalar_carrier" in lowering_selection:
