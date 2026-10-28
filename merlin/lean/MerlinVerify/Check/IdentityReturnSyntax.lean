@@ -3,6 +3,7 @@ the candidate never replaces a tensor by an exact alias in an arbitrary continua
 import MerlinVerify.Rules.IdentityReturn
 import MerlinVerify.Check.RulesLinalg
 import MerlinVerify.Check.Alpha
+import MerlinVerify.Check.AlphaFast
 
 namespace MerlinVerify.Check.IdentityReturnSyntax
 

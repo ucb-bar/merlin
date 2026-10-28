@@ -1,5 +1,6 @@
 /- Accepted scalar regions execute the ordered W8A8 components. Whole tensor sites are separate. -/
 import MerlinVerify.Check.Alpha
+import MerlinVerify.Check.AlphaFast
 import MerlinVerify.Check.PolicyW8A8Captures
 import MerlinVerify.Rules.W8A8Scalar
 

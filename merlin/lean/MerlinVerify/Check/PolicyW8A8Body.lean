@@ -3,6 +3,7 @@ Executable recognition of the integer region emitted by Merlin's contraction_int
 This diagnostic component deliberately makes no whole-pass policy claim.
 -/
 import MerlinVerify.Check.Alpha
+import MerlinVerify.Check.AlphaFast
 import MerlinVerify.Rules.W8A8IntegerBody
 
 namespace MerlinVerify.Check.PolicyW8A8Body

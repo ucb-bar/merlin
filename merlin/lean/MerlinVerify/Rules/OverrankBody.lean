@@ -1,6 +1,7 @@
 /- Actual scalar body, for every float model and surrounding SSA environment. -/
 import MerlinVerify.Rules.OverrankIntent
 import MerlinVerify.Check.Alpha
+import MerlinVerify.Check.AlphaFast
 namespace MerlinVerify.Rules.OverrankBody
 open MerlinVerify OverrankIntent
 def flags : List (String × Attr) := [("fastmath", .enum "arith" "fastmath" "none")]

@@ -2,6 +2,7 @@
 frozen semantics, but is deliberately NOT declared inert to the runtime or compiler pipeline. -/
 import MerlinVerify.Check.ExactSyntax
 import MerlinVerify.Check.Alpha
+import MerlinVerify.Check.AlphaFast
 set_option maxHeartbeats 2000000
 namespace MerlinVerify.Rules.QinnerPropagation
 open MerlinVerify Sem.Ops
