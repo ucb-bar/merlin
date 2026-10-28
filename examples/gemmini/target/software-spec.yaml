@@ -454,6 +454,7 @@ operations:
   elementwise_map_after_per_operand_sum:
     status: reviewed
     numerical_contract: operand_sum_per_operand_exhaustive_i8_v1
+    readout_gain_screens: [tensor, column_component]
     description: >-
       For each selected scalar f32 operand-scale pair in (0, 1] and each
       positive finite f32 readout scale with finite products on the full domain,
@@ -465,9 +466,19 @@ operations:
       RTL qualification or a source/provider proof; those remain mandatory.
       Pooling, bias, residual extensions and accumulator-full exits are outside
       this contract. Every distinct readout scale needs its own full screen.
+      A readout whose gain differs by output column is screened as disjoint
+      contiguous column components, each one full exhaustive screen at that
+      component's scalar gain, the components covering every output column
+      exactly once.
     evidence:
       review_status: reviewed
-      basis: "Operator review of the per-operand rounded operand-sum row; operand_sum_numeric.audit_i8_per_operand_sum"
+      reviewed_by: "Loren Hung (comp-more c4 sign-off, 2026-10-28)"
+      basis: >-
+        Operator review of the per-operand rounded operand-sum row;
+        operand_sum_numeric.audit_i8_per_operand_sum, run once per column
+        component at that component's scalar readout gain, and
+        fusion_execution._screen_per_operand_case, which screens every
+        (source gain, device gain) column pair of the realization.
     families: [elementwise_map]
     hardware: fused_operand_sum
     arithmetic: integer_affine
