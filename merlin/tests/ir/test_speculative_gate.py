@@ -370,4 +370,59 @@ def _alive(pid: int) -> bool:
     except ProcessLookupError:
         return False
     stat = Path(f"/proc/{pid}/stat")
-    return not (stat.is_file() and stat.read_text().split()[2] == "Z")  # a zombie has exited
+    try:
+        return stat.read_text().split()[2] != "Z"  # a zombie has exited
+    except FileNotFoundError:
+        return False  # the process may exit between kill(0) and reading its state
+
+
+def test_a_killed_worker_leaves_no_checker_running(gate_factory):
+    gate = gate_factory()
+    job = gate.submit("fake_checks:forever_with_child", before="a", after="a")
+    pids = []
+    try:
+        deadline = time.monotonic() + 30
+        while not (job.directory / "pids").is_file() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        pids = json.loads((job.directory / "pids").read_text())
+        os.kill(pids[0], signal.SIGKILL)
+        with pytest.raises(GateFailure):
+            gate.join(timeout=15)
+        deadline = time.monotonic() + 10
+        while any(_alive(pid) for pid in pids) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not any(_alive(pid) for pid in pids)
+    finally:
+        gate.close()
+        for pid in pids:
+            if _alive(pid):
+                os.kill(pid, signal.SIGKILL)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux parent-death requirement")
+def test_missing_parent_death_tool_is_unavailable(gate_factory, monkeypatch):
+    original = shutil.which
+    monkeypatch.setattr(shutil, "which", lambda name: None if name == "setpriv" else original(name))
+    gate = gate_factory()
+    gate.submit("fake_checks:accept", before="a", after="a")
+    with pytest.raises(GateFailure, match="setpriv") as raised:
+        gate.join(timeout=15)
+    assert raised.value.report["verdict"] == "unavailable"
+
+
+def test_a_worker_with_a_vanished_parent_never_starts_a_check(tmp_path):
+    from merlin.verify.speculative_gate import WORKER_MODULE
+
+    job = tmp_path / "job"
+    job.mkdir()
+    (job / "request.json").write_text(json.dumps({"check": "fake_checks:accept", "directory": str(job)}))
+    (tmp_path / "fake_checks.py").write_text(FAKE_CHECKS)
+    env = {**os.environ, "MERLIN_GATE_PARENT_PID": "1", "PYTHONPATH": os.pathsep.join([str(tmp_path), *sys.path])}
+    worker = subprocess.Popen([sys.executable, "-m", WORKER_MODULE, str(job)], env=env, start_new_session=True)
+    try:
+        assert worker.wait(timeout=15) == -signal.SIGKILL
+        assert not (job / "verdict.json").exists()
+    finally:
+        if worker.poll() is None:
+            worker.kill()
+            worker.wait(timeout=10)

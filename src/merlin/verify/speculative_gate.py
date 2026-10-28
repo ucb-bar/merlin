@@ -293,10 +293,14 @@ class SpeculativeGate:
         command = [sys.executable, "-m", WORKER_MODULE, str(job.directory)]
         if self._nice and shutil.which("nice"):
             command = ["nice", "-n", str(self._nice), *command]
-        if shutil.which("setpriv"):
+        parent_death = shutil.which("setpriv")
+        if sys.platform == "linux" and parent_death is None:
+            raise RuntimeError("Linux gate workers require util-linux setpriv for parent-death cleanup")
+        if parent_death is not None:
             # A compile killed by a signal runs no cleanup; the worker must not outlive it. The
             # worker turns this SIGTERM into a kill of its own group, checker processes included.
-            command = ["setpriv", "--pdeathsig", "TERM", "--", *command]
+            command = [parent_death, "--pdeathsig", "TERM", "--", *command]
+            env["MERLIN_GATE_PARENT_PID"] = str(os.getpid())
         verdict_path = job.directory / "verdict.json"
         with (job.directory / "worker.log").open("wb") as log:
             process = start_owned(command, env=env, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
@@ -317,6 +321,9 @@ class SpeculativeGate:
                         }
                     time.sleep(0.05)
             finally:
+                # A worker crash or SIGKILL can leave its checker children alive even
+                # after the leader exited. Reap the whole specifically owned group.
+                stop_owned(process)
                 close_owned_pipes(process)
                 with self._condition:
                     self._processes.discard(process)
