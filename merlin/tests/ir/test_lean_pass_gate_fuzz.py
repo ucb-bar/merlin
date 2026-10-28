@@ -5,10 +5,12 @@ inputs, constants, per-channel dequantization in the capture's ``quant_ext`` for
 dead values) and checks two properties:
 
 * completeness -- the gate accepts the real output of every validated pass on the program, or, when it
-  does not, it also refuses this file's independent rendering of the expected output: a checker gap
-  (recorded and reported) rather than a pass bug. A refusal of the real output alone is a failure;
-* soundness -- a mutated pass output that the oracle can tell apart from the program on random
-  inputs is never accepted. A mutation the oracle cannot tell apart is counted, not asserted.
+  does not, the real output is identical to this file's independent rendering of the expected
+  output and that is refused too: a checker gap (recorded and reported) rather than a pass bug. Any
+  other refusal is a failure;
+* soundness -- at every validated boundary (prune, quantization, the whole-model textual route) a
+  mutated pass output that the oracle can tell apart from the program on random inputs is never
+  accepted. A mutation the oracle cannot tell apart is counted, not asserted.
 
 The oracle evaluates the generator's own program representation in numpy; it shares no code with
 the passes or the checker. ``MERLIN_FUZZ_SEED`` and ``MERLIN_FUZZ_CASES`` scale the run; a failure
@@ -293,8 +295,8 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
     (tmp_path / f"program-{seed}.mlir").write_text(source)
     where = f"seed {seed}, program saved at {tmp_path}"
 
-    # Completeness: each real pass output is accepted, or the refusal is a checker gap shared by the
-    # independent rendering of the expected output.
+    # Completeness: each real pass output is accepted, or it is exactly the independently rendered
+    # expected output and the refusal is a checker gap that output shares.
     gaps = []
 
     def complete(label, before, real_after, reference_after, tag):
@@ -303,6 +305,10 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
         reference = check(tmp_path, tools, label, before, reference_after, tag + "-reference")
         assert reference != "accepted", (
             f"{label}: the real output is refused but the expected one is accepted ({where})"
+        )
+        # Only a refusal of the expected output itself is a checker gap; otherwise a pass bug could hide.
+        assert generic_text(real_after)[0] == generic_text(reference_after)[0], (
+            f"{label}: the real output is refused and differs from the expected one ({where})"
         )
         gaps.append(label)
 
@@ -328,9 +334,10 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
 
     # Soundness: an output the oracle can tell apart is never accepted.
     counts = {"rejected": 0, "indistinguishable": 0}
-    for boundary, before, expected in (
-        ("prune", source, pruned(program)),
-        ("quant", quant_source, lowered(pruned(program))),
+    for boundary, before, expected, dead_empty in (
+        ("prune", source, pruned(program), False),
+        ("quant", quant_source, lowered(pruned(program)), False),
+        ("textual", source, lowered(program), True),
     ):
         for attempt in range(2):
             mutated = mutate(rnd, expected)
@@ -338,7 +345,12 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
                 continue
             what, mutant = mutated
             verdict = check(
-                tmp_path, tools, boundary, before, render(mutant, dead_empty=False), f"{boundary}-mutant-{attempt}"
+                tmp_path,
+                tools,
+                boundary,
+                before,
+                render(mutant, dead_empty=dead_empty),
+                f"{boundary}-mutant-{attempt}",
             )
             if distinguishable(rnd, expected, mutant):
                 assert verdict != "accepted", f"UNSOUND: {boundary} mutation '{what}' was accepted ({where})"

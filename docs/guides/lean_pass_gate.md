@@ -111,7 +111,8 @@ are correct rewrites the checker does not prove, so the gate would stop a compil
 * deleting a dead `quant_ext` dequantization (no totality fact for dequantization);
 * deleting a dead constant-fed generic placed before live code (the same cone after live code is proved).
 
-Neither occurs in the captured models checked so far.
+Neither occurs in the captured models checked so far, but random programs hit them often (32 of 40
+in one campaign), so they block turning the prune gate on by default.
 
 ## Tests
 
@@ -120,9 +121,10 @@ Neither occurs in the captured models checked so far.
 * `merlin/tests/rvv/test_lean_pass_gate_spike.py` — whole-model builds on Spike: a gated build matches
   its golden output; an injected dequantization bug reaches the output without the gate and is
   stopped, before any ELF exists, with it.
-* `merlin/tests/ir/test_lean_pass_gate_fuzz.py` — seeded random programs through the real passes;
-  completeness against an independent reference and soundness against a numpy oracle.
-  `MERLIN_FUZZ_SEED` and `MERLIN_FUZZ_CASES` scale it.
+* `merlin/tests/ir/test_lean_pass_gate_fuzz.py` — seeded random programs through the real passes.
+  Completeness: each real output is accepted, or it is identical to an independently rendered expected
+  output that is refused too (a checker gap). Soundness, at all three boundaries: a mutated output a
+  numpy oracle can tell apart is never accepted. `MERLIN_FUZZ_SEED` and `MERLIN_FUZZ_CASES` scale it.
 
 Set `MERLIN_LEAN_REQUIRED=1` to turn a missing tool into a failure instead of a skip.
 
