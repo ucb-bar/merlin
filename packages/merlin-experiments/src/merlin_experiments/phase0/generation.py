@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import subprocess
+from collections.abc import Iterable
 from contextlib import closing
 from pathlib import Path
 
@@ -1015,7 +1016,9 @@ def generate_target(
                         actual["source_reference"] = diagnostic_entry(actual, observed)["source_reference"]
                     (Path(w) / "capsule.yaml").write_text(yaml.safe_dump(actual, sort_keys=False))
                     if evidence_mode != "diagnostic" and observed["status"] != "admitted" and not must_refuse:
-                        withheld = withhold_unadmitted_member(e, observed, Path(w), must_refuse=must_refuse)
+                        withheld = withhold_unadmitted_member(
+                            e, observed, Path(w), must_refuse=must_refuse, out_root=out_root, written=written
+                        )
                         if withheld is not None:
                             host_placed.append(withheld)
                             print(f"  [placement] {e.get('name')}: NOT PUBLISHED — {withheld['reason']}", flush=True)
@@ -1562,18 +1565,57 @@ def withhold_unadmitted_micro_model(entry: dict, observed: dict, *, must_refuse:
     }
 
 
-def withhold_unadmitted_member(entry: dict, observed: dict, directory: Path, *, must_refuse: bool) -> dict | None:
+def withhold_unadmitted_member(
+    entry: dict,
+    observed: dict,
+    directory: Path,
+    *,
+    must_refuse: bool,
+    out_root: Path | None = None,
+    written: Iterable[Path] = (),
+) -> dict | None:
     """Withhold a synthesized micro-model the host lane cannot admit: record it and remove what was written.
 
     The member must leave the output tree, as a placement-withheld member does: a directory left under the
     output root (even in ``_diagnostic``) is globbed as a corpus member, counted in the manifest and the
     commitments, and copied into the release, while the same capsule is also reported as not published.
+    The qualifying group capsules the model names go with it: the call site skips the loop that screens and
+    commits them, so a group left on disk would be a member the receipt never commits. A group is kept when
+    a published member (``written``) or any other capsule still under ``out_root`` also names it. The
+    removed group names are recorded as ``qualifying_groups_withheld``.
     Returns the record that replaces it in the manifest, or ``None`` when the member stays and fails.
     """
     record = withhold_unadmitted_micro_model(entry, observed, must_refuse=must_refuse)
-    if record is not None:
-        shutil.rmtree(directory)
+    if record is None:
+        return None
+    groups: list[Path] = []
+    if out_root is not None:
+        try:
+            groups = _qualifying_group_capsules(directory, out_root)
+        except ValueError:
+            groups = []  # a group that is absent leaves nothing on disk to remove
+        shared = {Path(path) for path in written} | _groups_named_by_others(out_root, directory)
+        groups = [group for group in groups if group not in shared]
+    shutil.rmtree(directory)
+    for group in groups:
+        shutil.rmtree(group)
+    if groups:
+        record["qualifying_groups_withheld"] = [str(group.relative_to(out_root)) for group in groups]
     return record
+
+
+def _groups_named_by_others(out_root: Path, excluded: Path) -> set[Path]:
+    """Qualifying group capsule directories named by any capsule under ``out_root`` other than ``excluded``."""
+    named: set[Path] = set()
+    for capsule_file in out_root.glob("*/*/capsule.yaml"):
+        if capsule_file.parent == excluded:
+            continue
+        capsule = yaml.safe_load(capsule_file.read_text(encoding="utf-8"))
+        qualification = capsule.get("model_qualification") if isinstance(capsule, dict) else None
+        for row in (qualification or {}).get("group_capsules") or []:
+            if row.get("capsule"):
+                named.add(out_root / str(row["capsule"]))
+    return named
 
 
 def disclosed_source_gap(

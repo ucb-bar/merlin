@@ -1,4 +1,5 @@
 import pytest
+import yaml
 
 from merlin_experiments.phase0.generation import withhold_unadmitted_micro_model as withhold
 
@@ -87,3 +88,66 @@ def test_generation_skips_a_withheld_member_instead_of_publishing_it():
             and isinstance(n.value, ast.Name) and n.value.id == "host_placed"
             for statement in site.body for n in ast.walk(statement)
         )
+
+
+def _group(root, name):
+    directory = root / "layers" / name
+    directory.mkdir(parents=True)
+    (directory / "capsule.yaml").write_text(f"name: {name}\n")
+    return directory
+
+
+def _model_naming(root, groups, name="SY_micro_model", category="_diagnostic"):
+    directory = root / category / name
+    directory.mkdir(parents=True)
+    rows = [{"capsule": f"layers/{group}"} for group in groups]
+    (directory / "capsule.yaml").write_text(
+        yaml.safe_dump({"name": name, "model_qualification": {"group_capsules": rows}})
+    )
+    return directory
+
+
+def test_a_withheld_micro_model_takes_its_qualifying_group_capsules_with_it(tmp_path):
+    from merlin_experiments.phase0.generation import withhold_unadmitted_member
+
+    root = tmp_path / "capsules"
+    group = _group(root, "G_matmul_m32k32n32_raw")
+    directory = _model_naming(root, ["G_matmul_m32k32n32_raw"])
+    row = withhold_unadmitted_member(MICRO, UNSUPPORTED, directory, must_refuse=False, out_root=root, written=[])
+    assert not directory.exists() and not group.exists()
+    assert row["qualifying_groups_withheld"] == ["layers/G_matmul_m32k32n32_raw"]
+    assert row["reason"].endswith(UNSUPPORTED["reason"])
+    assert not list(root.glob("*/*/capsule.yaml"))
+
+
+def test_a_group_shared_with_a_published_member_is_kept(tmp_path):
+    from merlin_experiments.phase0.generation import withhold_unadmitted_member
+
+    root = tmp_path / "capsules"
+    shared = _group(root, "G_shared")
+    only = _group(root, "G_only")
+    directory = _model_naming(root, ["G_shared", "G_only"])
+    row = withhold_unadmitted_member(MICRO, UNSUPPORTED, directory, must_refuse=False, out_root=root, written=[shared])
+    assert shared.is_dir() and not only.exists() and not directory.exists()
+    assert row["qualifying_groups_withheld"] == ["layers/G_only"]
+
+
+def test_a_group_a_not_yet_processed_model_also_names_is_kept(tmp_path):
+    from merlin_experiments.phase0.generation import withhold_unadmitted_member
+
+    root = tmp_path / "capsules"
+    shared = _group(root, "G_shared")
+    directory = _model_naming(root, ["G_shared"])
+    later = _model_naming(root, ["G_shared"], name="SY_later", category="models")
+    row = withhold_unadmitted_member(MICRO, UNSUPPORTED, directory, must_refuse=False, out_root=root, written=[])
+    assert shared.is_dir() and later.is_dir() and "qualifying_groups_withheld" not in row
+
+
+def test_a_member_that_stays_fatal_keeps_its_groups(tmp_path):
+    from merlin_experiments.phase0.generation import withhold_unadmitted_member
+
+    root = tmp_path / "capsules"
+    group = _group(root, "G_x")
+    directory = _model_naming(root, ["G_x"])
+    assert withhold_unadmitted_member(MICRO, UNSUPPORTED, directory, must_refuse=True, out_root=root, written=[]) is None
+    assert group.is_dir() and directory.is_dir()
