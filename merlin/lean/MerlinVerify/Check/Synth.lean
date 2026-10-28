@@ -4,7 +4,8 @@ the two programs by greedy alignment, and `c1Check` re-checks every step. A wron
 synthesis can only make the boundary `abstracted`, never `verified`.
 
 Current alignment tries alpha-equivalent prefixes, closed-expression CSE and adjacent motion,
-proved operation expansions, dequantization sites, and DCE.
+proved operation expansions, dequantization sites, and DCE; `synthC1Live` first erases the ops
+that are dead in the source.
 Rules that need certificates from the pass (rewrites that create ops)
 add their own synthesis or read the pass's certificate.
 -/
@@ -66,33 +67,69 @@ def multiRewrite? (ρ : Rho) (ss ts : List Op) : Option (SiteCandidate × Rho) :
       (c.rule.check ρ (ss.take (c.sourceTail + 1)) (ts.take c.targetCount)).map fun ρ' => (c, ρ')
     else none
 
-def synthLocal (ρ : Rho) : List Op → List Op → List Step
+/-- Greedy alignment. A source op for which `drop` holds is erased before any alignment is tried. -/
+def synthLocalWith (drop : Op → Bool) (ρ : Rho) : List Op → List Op → List Step
   | [], [] => []
   | s :: ss, [] =>
+    if drop s then .site Rules.Dce.rule 1 0 :: synthLocalWith drop ρ ss [] else
     match multiRewrite? ρ (s :: ss) [] with
     | some (c, ρ') => .site c.rule (c.sourceTail + 1) c.targetCount ::
-        synthLocal ρ' ((s :: ss).drop (c.sourceTail + 1)) ([].drop c.targetCount)
-    | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss []
+        synthLocalWith drop ρ' ((s :: ss).drop (c.sourceTail + 1)) ([].drop c.targetCount)
+    | none => .site Rules.Dce.rule 1 0 :: synthLocalWith drop ρ ss []
   | [], _ :: _ => [.same]
   | s :: ss, t :: ts =>
+    if drop s then .site Rules.Dce.rule 1 0 :: synthLocalWith drop ρ ss (t :: ts) else
     match (samePrefix? ρ (s :: ss) (t :: ts)).orElse
         (fun _ => rewritePrefix? ρ (s :: ss) (t :: ts)) with
-    | some ρ' => .same :: synthLocal ρ' ss ts
+    | some ρ' => .same :: synthLocalWith drop ρ' ss ts
     | none =>
       match multiRewrite? ρ (s :: ss) (t :: ts) with
       | some (c, ρ') => .site c.rule (c.sourceTail + 1) c.targetCount ::
-          synthLocal ρ' ((s :: ss).drop (c.sourceTail + 1)) ((t :: ts).drop c.targetCount)
+          synthLocalWith drop ρ' ((s :: ss).drop (c.sourceTail + 1)) ((t :: ts).drop c.targetCount)
       | none =>
         match localRewrite? ρ s t with
-        | some (r, ρ') => .site r 1 1 :: synthLocal ρ' ss ts
+        | some (r, ρ') => .site r 1 1 :: synthLocalWith drop ρ' ss ts
         | none =>
           match alphaOp ρ s t with
-          | some ρ' => .same :: synthLocal ρ' ss ts
-          | none => .site Rules.Dce.rule 1 0 :: synthLocal ρ ss (t :: ts)
+          | some ρ' => .same :: synthLocalWith drop ρ' ss ts
+          | none => .site Rules.Dce.rule 1 0 :: synthLocalWith drop ρ ss (t :: ts)
   termination_by ss ts => ss.length + ts.length
   decreasing_by
     all_goals simp_all
     all_goals omega
+
+def synthLocal (ρ : Rho) : List Op → List Op → List Step := synthLocalWith (fun _ => false) ρ
+
+mutual
+  /-- Every id an op reads, including from its regions (an over-approximation: region-local ids too). -/
+  def usesOp : Op → List ValueId
+    | .mk _ _ operands _ _ regions _ => operands ++ usesRegions regions
+
+  def usesRegions : List Region → List ValueId
+    | [] => []
+    | (.mk bs) :: rs => usesBlocks bs ++ usesRegions rs
+
+  def usesBlocks : List Block → List ValueId
+    | [] => []
+    | (.mk _ ops) :: bs => usesOps ops ++ usesBlocks bs
+
+  def usesOps : List Op → List ValueId
+    | [] => []
+    | op :: ops => usesOp op ++ usesOps ops
+end
+
+/-- Ids that reach a terminator or an op the DCE rule may not erase, computed backwards. -/
+def liveIds (ops : List Op) : List ValueId :=
+  ops.foldr (fun op live =>
+    if op.isTerminator || !Rules.Dce.erasable op || op.results.any (fun r => live.contains r.id) then
+      usesOp op ++ live
+    else live) []
+
+/-- Erasable ops none of whose results is live: what a dead-code pass removes. Aligning first
+without them keeps a dead op from being matched with an identical live one later in the block. -/
+def deadIn (ops : List Op) : Op → Bool :=
+  let live := liveIds ops
+  fun op => !op.isTerminator && Rules.Dce.erasable op && op.results.all (fun r => !live.contains r.id)
 
 /-- Build a C1 input with a synthesized local-rewrite script. -/
 def synthC1 (src tgt : Module) (fn : String) : C1Input :=
@@ -106,6 +143,34 @@ def synthC1 (src tgt : Module) (fn : String) : C1Input :=
           | .mk [.mk _ opsT] => synthLocal ρ0 opsS opsT
           | _ => []
         | none => []
+      | _, _ => []
+    | _, _ => []
+  { src, tgt, fn, script }
+
+/-- Erasable ops nothing in `ops` reads: what upstream `cse` erases as it reaches them (not their
+now-unused producers, which it keeps). -/
+def unusedIn (ops : List Op) : Op → Bool :=
+  let used := usesOps ops
+  fun op => !op.isTerminator && Rules.Dce.erasable op && op.results.all (fun r => !used.contains r.id)
+
+/-- `synthC1` with every source-dead op erased first (an alternative script; still rechecked). -/
+def synthC1Live (src tgt : Module) (fn : String) : C1Input :=
+  let script := match src.func? fn, tgt.func? fn with
+    | some fS, some fT =>
+      match fS.body, fT.body with
+      | .mk [.mk argsS opsS], .mk [.mk argsT opsT] =>
+        synthLocalWith (deadIn opsS) ((argsS.map (·.id)).zip (argsT.map (·.id))) opsS opsT
+      | _, _ => []
+    | _, _ => []
+  { src, tgt, fn, script }
+
+/-- `synthC1` with every unused source op erased first. -/
+def synthC1Unused (src tgt : Module) (fn : String) : C1Input :=
+  let script := match src.func? fn, tgt.func? fn with
+    | some fS, some fT =>
+      match fS.body, fT.body with
+      | .mk [.mk argsS opsS], .mk [.mk argsT opsT] =>
+        synthLocalWith (unusedIn opsS) ((argsS.map (·.id)).zip (argsT.map (·.id))) opsS opsT
       | _, _ => []
     | _, _ => []
   { src, tgt, fn, script }

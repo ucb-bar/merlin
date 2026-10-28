@@ -360,9 +360,8 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
     print(f"seed {seed}: {counts}, checker gaps: {gaps or 'none'}")
 
 
-def test_known_gap_deleting_a_dead_dequantization_is_not_proved(tmp_path, pass_gate_tools):
-    """Pins a checker gap: removing a dead dequantization is correct but not proved, so it is refused.
-    When MerlinVerify gains a totality fact for dequantization this test should flip to accepted."""
+def test_deleting_a_dead_dequantization_is_proved(tmp_path, pass_gate_tools):
+    """Found by fuzzing: erasing a dead modeled dequantization (ledger A9) is a proved refinement."""
     program = Program(
         2,
         {"v0": Node("binary", op="arith.addf", args=["x0", "x1"]), "v1": Node("dequant", args=["w", "s", "z"])},
@@ -371,19 +370,27 @@ def test_known_gap_deleting_a_dead_dequantization_is_not_proved(tmp_path, pass_g
     )
     before, after = generic_text(render(program, dead_empty=False), prune_dead_pure_tensor_ops)
     assert before != after
-    assert check(tmp_path, pass_gate_tools, "prune_dead_pure_tensor_ops", before, after, "gap") == "GateRejected"
+    assert check(tmp_path, pass_gate_tools, "prune_dead_pure_tensor_ops", before, after, "dead") == "accepted"
 
 
-def test_known_gap_a_dead_cone_before_live_code_is_not_proved(tmp_path, pass_gate_tools):
-    """Pins a checker gap found by fuzzing: a dead constant feeding a dead generic, placed before live
-    code, is correctly removed but not proved (the same cone after the live code is). Flip when fixed."""
+def test_a_dead_cone_before_live_code_is_proved(tmp_path, pass_gate_tools):
+    """Found by fuzzing: a dead constant feeding a dead generic, placed before live code whose
+    tensor.empty is identical to the dead one's, is proved whichever comes first."""
     add = lambda a, b: Node("binary", op="arith.addf", args=[a, b])  # noqa: E731
-    program = Program(
-        2, {"v0": Node("constant", value=0.5), "v1": add("v0", "x0"), "v2": add("x0", "x1")}, ["v0", "v1", "v2"], ["v2"]
-    )
-    before, after = generic_text(render(program, dead_empty=False), prune_dead_pure_tensor_ops)
-    assert before != after
-    assert check(tmp_path, pass_gate_tools, "prune_dead_pure_tensor_ops", before, after, "gap") == "GateRejected"
-    reordered = Program(2, program.nodes, ["v2", "v0", "v1"], ["v2"])
-    before, after = generic_text(render(reordered, dead_empty=False), prune_dead_pure_tensor_ops)
-    assert check(tmp_path, pass_gate_tools, "prune_dead_pure_tensor_ops", before, after, "after-live") == "accepted"
+    nodes = {"v0": Node("constant", value=0.5), "v1": add("v0", "x0"), "v2": add("x0", "x1")}
+    for order in (["v0", "v1", "v2"], ["v2", "v0", "v1"]):
+        program = Program(2, nodes, order, ["v2"])
+        before, after = generic_text(render(program, dead_empty=False), prune_dead_pure_tensor_ops)
+        assert before != after
+        verdict = check(tmp_path, pass_gate_tools, "prune_dead_pure_tensor_ops", before, after, "-".join(order))
+        assert verdict == "accepted", order
+
+
+def test_a_live_op_deleted_as_dead_is_still_rejected(tmp_path, pass_gate_tools):
+    """The liveness-guided script only proposes erasures; deleting a used value is still refused."""
+    add = lambda a, b: Node("binary", op="arith.addf", args=[a, b])  # noqa: E731
+    program = Program(2, {"v0": add("x0", "x1"), "v1": add("v0", "x1")}, ["v0", "v1"], ["v1"])
+    wrong = Program(2, {"v1": add("x0", "x1")}, ["v1"], ["v1"])  # v0 dropped, its use rewired
+    before = generic_text(render(program, dead_empty=False))[0]
+    after = generic_text(render(wrong, dead_empty=False))[0]
+    assert check(tmp_path, pass_gate_tools, "prune_dead_pure_tensor_ops", before, after, "wrong") == "GateRejected"
