@@ -17,7 +17,10 @@ import json
 import struct
 import sys
 
-from torch_mlir import ir
+try:
+    from torch_mlir import ir
+except ImportError:  # the host imports this module only to locate it; it runs under the compiler Python
+    ir = None
 
 DYNAMIC = -9223372036854775808
 
@@ -265,6 +268,8 @@ def canonical(text: str) -> str:
 
 
 if __name__ == "__main__":
+    if ir is None:
+        raise SystemExit("mlir_export needs torch_mlir: run it with the compiler Python")
     if sys.argv[1] == "--canonical":
         with open(sys.argv[2]) as f:
             sys.stdout.write(canonical(f.read()))

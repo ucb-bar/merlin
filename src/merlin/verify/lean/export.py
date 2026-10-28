@@ -282,7 +282,9 @@ class RoundTrip:
     detail: str = ""
 
 
-MLIR_EXPORT = Path(__file__).with_name("mlir_export.py")
+from . import mlir_export as _mlir_export  # noqa: E402 -- run by path under the compiler Python
+
+MLIR_EXPORT = Path(_mlir_export.__file__)
 
 
 def export_file(mlir_path: Path, json_path: Path, *, backend: str = "mlir", m2m_python: Path | None = None) -> None:
