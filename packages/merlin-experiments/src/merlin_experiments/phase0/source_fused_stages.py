@@ -40,6 +40,7 @@ _MATMUL_MAPS = (
 )
 _IDENTITY2 = "affine_map<(d0, d1) -> (d0, d1)>"
 _COLUMN2 = "affine_map<(d0, d1) -> (d1)>"
+_SCALAR2 = "affine_map<(d0, d1) -> (0)>"
 _PARALLEL = "#linalg.iterator_type<parallel>"
 _REDUCTION = "#linalg.iterator_type<reduction>"
 _NARROW = {"i8": (-128.0, 127.0)}
@@ -267,11 +268,19 @@ def readout(
     strategy: str | None = None,
     bound: int | None = None,
     source_dtype: str = "i32",
+    runtime_scale: int | None = None,
 ) -> dict | None:
     """The selected readout of an i32 accumulator to a narrow integer: [relu,] scale, round half even, saturate.
 
     ``source_dtype`` names the integer type read (``i32`` for an accumulator; ``i8`` for an operand
     load requantized by the same body, see ``operand_sum_chain``).
+
+    ``runtime_scale`` is the position of the function argument the capsule declares as its runtime
+    readout scale (``None``: none). The gain may then be that argument instead of a constant: one
+    ``tensor<1xf32>`` read through ``(d0, d1) -> (0)``, under ``f32_product_rne`` only. Its value is
+    not known here; the caller passes it only under the reviewed runtime-scale domain (finite and
+    >= 0, ``runtime_scale_domain``), where relu-then-scale and the stage list's scale-then-relu agree
+    exactly as they do for a non-negative constant gain.
 
     The body computes ``f32(acc) * gain`` rounded once: that IS the readout only under the
     ``f32_product_rne`` strategy. Under any other (e.g. an exact rational readout) it is equal only
@@ -282,16 +291,28 @@ def readout(
         return None
     if numerics.get("acc_scale_rounding") != "half_even" or numerics.get("narrowing") != "saturate_to_declared_dtype":
         return None
-    if not _generic(op, (_IDENTITY2, _COLUMN2, _IDENTITY2), (_PARALLEL, _PARALLEL)) or len(op.inputs) != 2:
+    runtime = runtime_scale is not None and _generic(op, (_IDENTITY2, _SCALAR2, _IDENTITY2), (_PARALLEL, _PARALLEL))
+    if not runtime and not _generic(op, (_IDENTITY2, _COLUMN2, _IDENTITY2), (_PARALLEL, _PARALLEL)):
         return None
-    if op.inputs[0] is not accumulator or not _fresh_output(op):
+    if len(op.inputs) != 2 or op.inputs[0] is not accumulator or not _fresh_output(op):
         return None
     acc, result = _tensor(op.inputs[0]), _tensor(op.results[0])
     if acc is None or result is None or acc[1] != source_dtype or result[1] not in _NARROW or acc[0] != result[0]:
         return None
-    gains = _dense_f32(op.inputs[1])
-    if gains is None or len(gains) != result[0][-1]:
-        return None
+    if runtime:
+        scale = op.inputs[1]
+        if (
+            strategy != "f32_product_rne"
+            or not _program_input(scale)
+            or scale.index != runtime_scale
+            or _tensor(scale) != ([1], "f32")
+        ):
+            return None
+        gains = None
+    else:
+        gains = _dense_f32(op.inputs[1])
+        if gains is None or len(gains) != result[0][-1]:
+            return None
     if strategy != "f32_product_rne" and not all(g > 0 and math.frexp(g)[0] == 0.5 for g in gains):
         return None
     lo_bound, hi_bound = _NARROW[result[1]]
@@ -324,7 +345,7 @@ def readout(
             return None
         value = rectify.results[0]
         # relu before the scale commutes with it only for non-negative multipliers.
-        if any(g < 0 for g in gains):
+        if any(g < 0 for g in gains or ()):
             return None
     scale, rounding, lo, hi, floor, ceil, narrow, yld = it
     if set(map(id, scale.operands)) != {id(value), id(gain)} or scale.operands[0] is scale.operands[1]:
@@ -341,11 +362,37 @@ def readout(
         return None
     if yld.operands[0] is not narrow.results[0]:
         return None
-    return {
-        "relu": relu,
-        "gains": gains,
-        "result": {"dtype": result[1], "shape": result[0]},
-    }
+    proven = {"relu": relu, "gains": gains, "result": {"dtype": result[1], "shape": result[0]}}
+    if runtime:
+        proven["scale_source"] = "runtime_input"
+    return proven
+
+
+def runtime_scale_domain(spec: dict) -> dict | None:
+    """The reviewed domain of a runtime readout-scale input, when it is finite and non-negative.
+
+    ``quantization.numerics.policies.scale_source.runtime_input`` must be the rtl_derived policy and
+    carry a reviewed ``domain`` with ``nonfinite: forbid`` and a finite ``minimum >= 0``.
+    """
+    policy = (
+        (((spec.get("quantization") or {}).get("numerics") or {}).get("policies") or {})
+        .get("scale_source", {})
+        .get("runtime_input")
+        or {}
+    )
+    domain = policy.get("domain") or {}
+    minimum = domain.get("minimum")
+    if (
+        policy.get("value") != "runtime_input"
+        or policy.get("evidence") != "rtl_derived"
+        or domain.get("status") != "reviewed"
+        or domain.get("nonfinite") != "forbid"
+        or type(minimum) not in (int, float)
+        or not math.isfinite(minimum)
+        or minimum < 0
+    ):
+        return None
+    return {"minimum": float(minimum), "nonfinite": "forbid"}
 
 
 def _program_input(value) -> bool:
@@ -813,6 +860,8 @@ def prove_chains(
     pooling_fenced: bool = False,
     mesh_mac: dict | None = None,
     full_tensor_seed: bool = False,
+    runtime_scale: int | None = None,
+    inputs: list[dict] | None = None,
 ) -> list[dict]:
     """Every proven contraction -> [k_extension | bias_add | seed] -> [readout] chain, and every proven
     movement -> readout -> max pool chain when its scratchpad-source pooling is fenced, by
@@ -833,6 +882,12 @@ def prove_chains(
     if parsed is None:
         return []
     top, index, only_user = parsed
+    if runtime_scale is not None and top:
+        # The declared runtime scale is a capsule input by NAME; it is located by position only when
+        # the function's arguments are exactly the capsule's declared inputs, in order.
+        arguments = [_tensor(arg) for arg in top[0].parent_block().args]
+        if arguments != [(list(row.get("shape") or []), row.get("dtype")) for row in inputs or []]:
+            runtime_scale = None
     chains = []
     for i, op in enumerate(top):
         carrier = contraction(op)
@@ -871,7 +926,18 @@ def prove_chains(
                 value = user.results[0]
                 user = only_user(value)
         if user is not None:
-            proven = readout(user, value, numerics=numerics, strategy=strategy, bound=bound)
+            # A runtime scale is observed on an unseeded accumulator only: the realization's runtime
+            # readout route (fusion_enumeration runtime v1) refuses a seeded, biased or extended
+            # contraction.
+            unseeded = not any(key in stage for stage in stages for key in ("seed", "bias", "k_extension"))
+            proven = readout(
+                user,
+                value,
+                numerics=numerics,
+                strategy=strategy,
+                bound=bound,
+                runtime_scale=runtime_scale if unseeded else None,
+            )
             if proven is not None:
                 stages.append(
                     {"member": index[id(user)], "stages": (["relu"] if proven["relu"] else []) + ["acc_scale"], **proven}
@@ -961,6 +1027,7 @@ def stage_rows(chain: dict) -> dict[int, list[dict]]:
             "result": exit_type,
             "bias": next((s["bias"] for s in stages if "bias" in s), None),
         }
+    runtime = any(stage.get("scale_source") == "runtime_input" for stage in stages)
     for stage in stages:
         if "seed" in stage:
             continue  # the contraction's own accumulator seed (``observe``), not an epilogue stage
@@ -985,6 +1052,10 @@ def stage_rows(chain: dict) -> dict[int, list[dict]]:
             column_source=column_source,
             result_type=exit_type,
         )
+        if runtime:
+            # The scale is the declared runtime input, not a command constant (``readout``).
+            for row in rows_by_member[stage["member"]]:
+                row["composed_observation"] = {**row["composed_observation"], "scale_source": "runtime_input"}
         if "pooled_store" in stage:
             for row in rows_by_member[stage["member"]]:
                 row["_observation_extra"] = {"pooled_store": stage["pooled_store"]}
@@ -1080,8 +1151,14 @@ def observe(
     dataflow: str | None = None,
     max_k: int | None = None,
     pooling_fenced: bool = False,
+    runtime_scale: int | None = None,
+    inputs: list[dict] | None = None,
 ) -> list[dict]:
     """``entries`` with each proven fused member's standalone entry replaced by its stage rows' entries.
+
+    ``runtime_scale`` is the function-argument position of the capsule's declared runtime readout
+    scale and ``inputs`` its declared inputs; the scale is observed only when the selected spec
+    declares the reviewed runtime-scale domain (``runtime_scale_domain``).
 
     ``max_k`` is the facts' ``k_extension_within.max_k`` and ``pooling_fenced`` the composition's
     ``scratchpad_source_pooling_fenced``; without them no K extension, respectively no movement
@@ -1103,6 +1180,8 @@ def observe(
         pooling_fenced=pooling_fenced,
         mesh_mac=((spec.get("numerical_semantics") or {}).get("native_unit_contract") or {}).get("mesh_mac"),
         full_tensor_seed=accumulator_seed_tensor(spec),
+        runtime_scale=runtime_scale if runtime_scale_domain(spec) is not None else None,
+        inputs=inputs,
     )
     by_member: dict[int, list[dict]] = {}
     placed_producers = {

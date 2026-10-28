@@ -416,6 +416,7 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
     if program is None:
         return None
     semantic = capsule.get("semantic") or capsule.get("generalization") or {}
+    runtime_scale_name = None
     host_only = semantic.get("must_accelerate") is False and semantic.get("eligible") is False
     if "linalg_mlir" in capsule or capsule.get("kind") == "model":
         entries = account_program(program, name=str(capsule.get("name")), target=target, evidence=evidence)
@@ -426,6 +427,10 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
 
             attributes = (capsule.get("operation") or {}).get("attributes") or {}
             case = attributes.get("case") or {}
+            inputs = [row for row in capsule.get("inputs") or [] if isinstance(row, dict)]
+            names = [row.get("name") for row in inputs]
+            scale_name = case.get("runtime_scale_input")
+            runtime_scale = names.index(scale_name) if scale_name and names.count(scale_name) == 1 else None
             # The fact-derived extended-K bound the generator resolved for this composition.
             within = ((semantic.get("composition_facts") or {}).get("k_extension_within")) or {}
             entries = observe_fused_stages(
@@ -438,7 +443,15 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
                 # The Linalg cannot state a fence; the composition declares it (an unfenced twin
                 # has byte-identical Linalg), so only a declared fence lets a pool be observed.
                 pooling_fenced=case.get("scratchpad_source_pooling_fenced") is True,
+                runtime_scale=runtime_scale,
+                inputs=inputs,
             )
+            if any(
+                ((entry.get("observed_signature") or {}).get("composed_observation") or {}).get("scale_source")
+                == "runtime_input"
+                for entry in entries
+            ):
+                runtime_scale_name = scale_name
         numeric_screens = []
     else:
         numeric_screens = _operand_sum_numeric_screens(program, evidence)
@@ -461,6 +474,18 @@ def screen_written(capsule: dict, directory: Path, *, target: str, evidence) -> 
     from .numeric_domains import screen as screen_numeric_domain
 
     domain = screen_numeric_domain(capsule, directory, (evidence.software_spec or {}).get("numerical_semantics") or {})
+    if runtime_scale_name is not None:
+        # An observed runtime scale holds the capsule's own inputs to the reviewed domain it was
+        # observed under, so the reference is never computed outside it.
+        from .numeric_domains import screen_runtime_scale
+        from .source_fused_stages import runtime_scale_domain
+
+        scale_domain = screen_runtime_scale(
+            capsule, directory, runtime_scale_name, runtime_scale_domain(evidence.software_spec or {})
+        )
+        screen["runtime_scale_domain"] = scale_domain
+        if scale_domain["status"] != "within_domain" and (domain is None or domain["status"] == "within_domain"):
+            domain = scale_domain
     if domain is not None:
         screen["numeric_domain"] = domain
         if domain["status"] in {"unsupported", "unknown"}:

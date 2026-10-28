@@ -19,6 +19,7 @@ against the selected RTL facts by :func:`audit`, and an unconfirmable claim fail
 from __future__ import annotations
 
 import copy
+import math
 from collections.abc import Mapping, Sequence
 from fractions import Fraction
 
@@ -434,6 +435,24 @@ def _validate_policies(policies: Mapping, axes: Mapping, schemes: Mapping) -> No
             _validate_property(record, f"quantization.numerics.policies.{name}.{value}")
             if record["value"] != value:
                 raise ValueError(f"quantization.numerics.policies.{name}.{value} differs from its policy")
+            if "domain" in record:
+                _validate_scale_domain(record["domain"], f"quantization.numerics.policies.{name}.{value}.domain")
+
+
+def _validate_scale_domain(domain: object, label: str) -> None:
+    """A declared value domain of a runtime scale input: a finite minimum and a nonfinite policy."""
+    from merlin.targetgen.operator_review import STATUSES
+
+    if not isinstance(domain, Mapping) or set(domain) != {"status", "minimum", "nonfinite", "basis"}:
+        raise ValueError(f"{label} requires exactly status, minimum, nonfinite and basis")
+    if domain["status"] not in STATUSES:
+        raise ValueError(f"{label}.status must be a review status")
+    if type(domain["minimum"]) not in (int, float) or not math.isfinite(domain["minimum"]):
+        raise ValueError(f"{label}.minimum must be a finite number")
+    if domain["nonfinite"] not in {"allow", "forbid"}:
+        raise ValueError(f"{label}.nonfinite must be allow or forbid")
+    if not isinstance(domain["basis"], str) or not domain["basis"].strip():
+        raise ValueError(f"{label}.basis must state why the domain holds")
 
 
 def _check_boundary(boundary: object, declared: Mapping, seen: set) -> None:

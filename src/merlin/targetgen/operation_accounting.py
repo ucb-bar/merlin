@@ -163,7 +163,7 @@ def _observed_signature(row: dict) -> dict:
     # Composition observed in a written program (an epilogue stage and the family that produced its
     # operand). Captured application rows carry none, so they stay unresolved exactly as before.
     for key, value in (row.get("composed_observation") or {}).items():
-        if key in {"epilogues", "composed_with", "scale_granularity"} and value is not None:
+        if key in {"epilogues", "composed_with", "scale_granularity", "scale_source"} and value is not None:
             observed[key] = value
     if row.get("numeric_screen") is not None:
         observed["numeric_screen"] = row["numeric_screen"]

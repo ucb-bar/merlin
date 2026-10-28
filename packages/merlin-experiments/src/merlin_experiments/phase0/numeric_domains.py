@@ -66,3 +66,35 @@ def screen(capsule, directory, semantics):
         }
     except (OSError, ValueError, KeyError, TypeError) as exc:
         return {"status": "unknown", "policies": policies, "reason": str(exc), "observations": {}}
+
+
+def screen_runtime_scale(capsule, directory, name, domain):
+    """Hold the capsule's runtime readout-scale input ``name`` to its reviewed ``domain``.
+
+    ``domain`` is ``{minimum, nonfinite: forbid}`` (``source_fused_stages.runtime_scale_domain``).
+    The values read are the ones the independent reference used; an unreadable, missing or empty
+    input is ``unknown`` and any value outside the domain is ``unsupported``.
+    """
+    if domain is None:
+        return {"status": "unknown", "input": name, "reason": "no reviewed runtime readout-scale domain"}
+    try:
+        golden = golden_store.load_golden(directory)
+        inputs = ((golden or {}).get("oracle_provenance") or {}).get("inputs") or {}
+        if inputs:
+            values = list(_scalars(inputs[name]["decoded"]))
+        else:
+            values = list(_scalars(materialize_capsule_leaves(capsule)[name].data))
+        if not values:
+            raise ValueError("runtime readout scale has no concrete values")
+        outside = [v for v in values if not math.isfinite(v) or v < domain["minimum"]]
+        return {
+            "status": "unsupported" if outside else "within_domain",
+            "input": name,
+            "domain": domain,
+            "values": len(values),
+            "reason": f"{len(outside)} runtime scale value(s) outside the reviewed domain"
+            if outside
+            else "every runtime scale value is finite and within the reviewed domain",
+        }
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return {"status": "unknown", "input": name, "reason": str(exc)}

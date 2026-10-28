@@ -46,6 +46,7 @@ _SIGNATURE_FIELDS = frozenset(
         "broadcasting",
         "aliasing",
         "scale_granularity",
+        "scale_sources",
         "epilogues",
         "composed_with",
         "shape_bounds",
@@ -342,6 +343,10 @@ def _validate_accumulator_seed_tensor(declared) -> None:
         raise ValueError("accumulator_seed_tensor requires evidence with a basis")
 
 
+#: Where a fused readout's scale comes from: a command constant, or a declared runtime input.
+SCALE_SOURCES = ("constant", "runtime_input")
+
+
 def _validate_os_value_bound(mesh: dict) -> None:
     """The output-stationary value-bound mode of the mesh check: a signed two's-complement interval."""
     declared = mesh["os_value_bound"]
@@ -511,6 +516,12 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
                 raise ValueError(
                     f"{source}: operation {row['id']!r} kinds must be reduction kinds from {sorted(REDUCTION_KINDS)}"
                 )
+        if "scale_sources" in signature and (
+            not isinstance(signature["scale_sources"], list)
+            or not signature["scale_sources"]
+            or any(value not in SCALE_SOURCES for value in signature["scale_sources"])
+        ):
+            raise ValueError(f"{source}: operation {row['id']!r} scale_sources must list {list(SCALE_SOURCES)}")
         if "max_tensor_operands" in signature and (
             type(signature["max_tensor_operands"]) is not int or signature["max_tensor_operands"] < 0
         ):
@@ -1013,6 +1024,11 @@ def admit_operation(spec: dict, op: str, signature: dict, placement: str) -> dic
                 actual, choices = canonical(actual), [canonical(choice) for choice in choices]
             if actual not in choices:
                 refused.append(f"{observed_key} {actual!r} not in {choices!r}")
+        # A scale read from a runtime input is admitted only by a declaration that names that source;
+        # an observation without one is a command constant (the interface ABI's acc_scale is a number).
+        scale_source = signature.get("scale_source") or "constant"
+        if scale_source not in constraints.get("scale_sources", ["constant"]):
+            refused.append(f"scale_source {scale_source!r} is not admitted by this declaration")
         if family == "elementwise_map" and signature.get("epilogues") and "epilogues" not in constraints:
             # An unconstrained standalone elementwise declaration is not a wildcard fused-stage
             # licence. A contraction's own declaration remains independent of its fused stage form.
