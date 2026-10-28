@@ -1088,9 +1088,10 @@ def spec_fact_drift(spec: Mapping[str, Any], facts: Mapping[str, Any], *, target
 
     from merlin.targetgen import quant_recipe as QR
 
-    # The recipe's own family vocabulary; a declaration's other families are never quantized by a
-    # recipe (``capture_recipe_candidates`` intersects with it), so they claim nothing here.
-    vocabulary = {QR.CONTRACTION, QR.OPERAND_SUM, QR.WINDOW_MEAN}
+    # The recipe's own family vocabulary (quant_recipe's six quantized families, less the opt-in
+    # activation contraction); a declaration's other families are never quantized by a recipe
+    # (``capture_recipe_candidates`` intersects with it), so they claim nothing here.
+    vocabulary = {QR.CONTRACTION, QR.OPERAND_SUM, QR.WINDOW_MEAN, QR.AFFINE_MAP, QR.MOVEMENT}
     quantizable = facts.get("quantization") or {}
     for declaration in (spec.get("quantization") or {}).get("formats") or ():
         if not isinstance(declaration, Mapping):

@@ -243,6 +243,27 @@ def test_quantization_eligibility_is_compared_with_the_derived_recipe_families()
     assert row["classification"] == D.RESTRICTED
 
 
+def test_every_recipe_family_is_compared_including_movement_and_affine_maps():
+    """quant_recipe quantizes six families; the comparison once saw only three of them."""
+    quant = [
+        {
+            **_QUANT[0],
+            "recipe": {"families": ["contraction", "operand_sum", "movement", "affine_map"]},
+        }
+    ]
+    facts = _facts(quantization_candidates=quant)
+    spec = _spec()
+    spec["quantization"]["formats"][0]["eligible_operations"] = ["contraction", "elementwise_map", "movement"]
+    spec["operations"][1]["families"] = ["elementwise_map", "operand_sum", "affine_map"]
+    report = D.spec_fact_drift(spec, facts)
+    for family in ("movement", "affine_map", "operand_sum"):
+        [row] = _only(report, family, "quantization")
+        assert row["classification"] == D.OK, family
+    spec["quantization"]["formats"][0]["eligible_operations"] = ["contraction", "elementwise_map"]
+    [row] = _only(D.spec_fact_drift(spec, facts), "movement", "quantization")
+    assert row["classification"] == D.FORBIDS and row["values"] == ["int8__int32"]
+
+
 def test_quantizing_a_family_no_recipe_quantizes_blocks():
     quant = [{**_QUANT[0], "recipe": {"families": ["contraction"]}}]
     [row] = _only(D.spec_fact_drift(_spec(), _facts(quantization_candidates=quant)), "operand_sum", "quantization")
