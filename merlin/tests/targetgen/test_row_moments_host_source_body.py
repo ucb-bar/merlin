@@ -425,13 +425,21 @@ def test_reviewed_and_proposed_digests_are_byte_identical_to_the_recorded_ones(s
     sibling = rows[SIBLING_ID]
     assert sibling["source_body"]["canonical_body_sha256"] == SIBLING_DIGEST
     assert sibling["source_body"]["data_operand"]["shape"] == [2, 8]
-    assert sibling["status"] == "unreviewed" and sibling["numerical_contract"]["status"] == "unreviewed"
-    assert sibling["numerical_contract"]["evidence"]["reviewed_by"].startswith("PROPOSED, NOT REVIEWED")
+    assert sibling["status"] == "reviewed" and sibling["numerical_contract"]["status"] == "reviewed"
+    assert sibling["numerical_contract"]["evidence"]["reviewed_by"].startswith(
+        "Reviewed by Loren Hung (approved in operator chat 2026-10-28)")
+    assert "no numerical comparison against eager" in sibling["numerical_contract"]["evidence"]["reviewed_by"]
+    assert SIBLING_ID in shipped["review"]["operator_chat_addendum_2"]
+    # demote counterfactual: the in-memory unreviewed copy is what the old proposal looked like
+    demoted = copy.deepcopy(shipped)
+    row = next(r for r in demoted["operations"] if r["id"] == SIBLING_ID)
+    row["status"] = row["numerical_contract"]["status"] = "unreviewed"
+    assert next(r for r in demoted["operations"] if r["id"] == SIBLING_ID)["status"] == "unreviewed"
     assert rm.canonical_body_sha256(_generic(FIXTURE.read_text())) == DIGEST
 
 
-def test_unreviewed_sibling_never_admits_and_does_not_mask_a_reviewed_row(shipped, fixture_text):
-    # The reviewed [32, 32] row admits its fixture; the proposed [2, 8] row refuses it structurally.
+def test_reviewed_sibling_refuses_the_other_shape_and_does_not_mask_a_reviewed_row(shipped, fixture_text):
+    # The reviewed [32, 32] row admits its fixture; the reviewed [2, 8] row refuses it structurally.
     result = _admit(shipped, (_generic(fixture_text),))
     assert result["status"] == "admitted"
     by_id = {d["declaration"]: d for d in result["profiles"][0]["decisions"]}

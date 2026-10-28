@@ -99,14 +99,29 @@ def test_screen_admits_only_with_rank3_abi(text):
     assert bad["status"] == "unsupported" and "rank-3 ABI" in bad["reason"]
 
 
-def test_shipped_row_is_proposed_valid_and_never_admits_unreviewed(shipped, text):
+def _demoted(document, *, contract_too=True):
+    document = copy.deepcopy(document)
+    row = next(r for r in document["operations"] if r["id"] == ROW_ID)
+    row["status"] = "unreviewed"
+    if contract_too:
+        row["numerical_contract"]["status"] = "unreviewed"
+    return document
+
+
+def test_shipped_row_is_operator_reviewed_and_demotion_withdraws_admission(shipped, text):
     validate_host_capabilities(shipped)
     row = next(r for r in shipped["operations"] if r["id"] == ROW_ID)
-    assert row["status"] == "unreviewed" and row["numerical_contract"]["status"] == "unreviewed"
-    assert row["numerical_contract"]["evidence"]["reviewed_by"].startswith("PROPOSED, NOT REVIEWED")
+    assert row["status"] == "reviewed" and row["numerical_contract"]["status"] == "reviewed"
+    reviewed_by = row["numerical_contract"]["evidence"]["reviewed_by"]
+    assert reviewed_by.startswith("Reviewed by Loren Hung (approved in operator chat 2026-10-28)")
+    assert "NOT repeated" in reviewed_by and "no numerical comparison against eager" in reviewed_by
+    assert ROW_ID in shipped["review"]["operator_chat_addendum_2"]
     assert row["source_body"]["canonical_body_sha256"] == DIGEST and row["signature"]["ranks"] == [3]
     result = admit_host_operation(_selection(shipped), dict(SOURCE_ROW), dict(OBSERVED), source_operations=(_generic(text),))
-    assert result["status"] == "unknown"
+    assert result["status"] == "admitted"
+    for document in (_demoted(shipped), _demoted(shipped, contract_too=False)):
+        demoted = admit_host_operation(_selection(document), dict(SOURCE_ROW), dict(OBSERVED), source_operations=(_generic(text),))
+        assert demoted["status"] == "unknown"
 
 
 def test_simulated_review_admits_the_real_body(shipped, text):

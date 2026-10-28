@@ -52,7 +52,7 @@ def validate(body):
 
 
 def validate_row(row):
-    """A seed-guard declaration names one frontend op, the exact rank-1 i32 ABI and a placement-only contract."""
+    """A seed-guard declaration names one frontend op, the exact rank-1 i32 ABI and a placement-only contract (reviewed or unreviewed)."""
     validate(row["source_body"])
     signature = row.get("signature") or {}
     if (
@@ -63,8 +63,8 @@ def validate_row(row):
         or "family" in row
     ):
         raise ValueError("seed guard needs the seeded-contraction frontend op and the exact rank-1 i32 ABI")
-    if not isinstance(row.get("numerical_contract"), dict) or row["numerical_contract"].get("status") != "unreviewed":
-        raise ValueError("seed guard routing declares no numerical qualification")
+    if not isinstance(row.get("numerical_contract"), dict) or row["numerical_contract"].get("status") not in {"reviewed", "unreviewed"}:
+        raise ValueError("seed guard routing needs a reviewed or unreviewed placement-only contract")
 
 
 def _static_type(value):

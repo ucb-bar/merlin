@@ -12,6 +12,7 @@ review:
   library_numerical_policy_addendum: "only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
   m2m_exact_quant_addendum: "REVIEWED by operator sign-off /scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68: four exact typed declarations for model2MLIR exact-quantization captures (m2m_q.quantize f32/f64/i64->i8, m2m_q.exact_readout i32/f32->f32, dequantize_per_tensor i8/f64/i64->f32, two-result f32 layer-norm moments). Each row records that review in its reviewed_by evidence."
   operator_chat_addendum: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28): exactly six rows, host_m2m_exact_quantize_f32_i8_rank3_4, host_m2m_exact_readout_i32_f32_rank3_4, host_m2m_dequantize_per_tensor_f64_scale_rank3_4, host_m2m_exact_readout_i32_i8_requantized_rank3_4, host_f32_max_pool2d_with_i64_indices_rank4 and host_i8_to_i32_to_copy_rank3; each row's stated open evidence obligations remain mandatory."
+  operator_chat_addendum_2: "REVIEWED by Loren Hung (approved in operator chat 2026-10-28): exactly three rows, host_i32_int_mm_seed_overflow_guard_rank1, host_f32_layer_norm_two_result_moments_2x8 and host_f32_layer_norm_two_result_moments_rank3_1x17x16; each row's stated open evidence obligations remain mandatory (cf.assert lowering inside a linalg.generic body not proved and no execution evidence for the guard; no numerical comparison to eager rerun for the two moments bodies)."
   successor: attention-host-placement-v2-20261019
   attention_source_addendum: "add only the nine exact typed attention-preparation declarations below for a prospective fresh host view. Closed parsed source bodies, selected index bounds, source-to-linked-image correspondence and ordinary numerical execution remain mandatory. Existing declarations, sealed views, numerical policies and accelerator obligations are unchanged; this review is not an all-input numerical or hardware qualification."
 compiler:
@@ -3262,7 +3263,7 @@ operations:
       reviewed_by: "Loren Hung, operator sign-off 2026-10-28 (/scratch/loren/OPERATOR-SIGNOFF-20261028.txt sha256 54ac3295a659751db2de7847900cc9f6bda6b4943ebb72ca2059faa43a944c68); reviewer text /scratch/loren/hostfix-ln/RESULT.md section 6 (the reviewer text is on the stopped compute-2 disk; source-body screen evidence in this history: commit 0e20d3243); the stated basis and RV64 obligations remain mandatory."
       basis: the digest-pinned parsed body, executed op by op in binary32 with single-rounding fma, against eager native_layer_norm mean and rstd on edge and random rows (out-of-tree /scratch/loren/hostfix-ln/evidence/ln_moments_evidence.out sha256 326b5a59db61566b4d566ece2463d5d448690bf9e3d80868ab6932566566a1c3; 1472 rows, mean and rstd bit-exact vs eager with single-rounding fma); RV64 lowering, fused-fma emission and Spike execution remain obligations
 - id: host_f32_layer_norm_two_result_moments_2x8
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.native_layer_norm.default
   families:
@@ -3289,7 +3290,7 @@ operations:
       reduction_axis: 1
     canonical_body_sha256: 80ae7cf203308d57065fed1031a198251023bcb85812d9ed8014fdb77b12726c
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: ieee754_binary32
       rounding: round_to_nearest_even
@@ -3300,10 +3301,10 @@ operations:
       tolerance: atol 0.03125, rtol 0.02 against eager native_layer_norm mean and rstd
       fused_multiply_add: math.fma must lower to a fused llvm.fma (fmadd.s or correctly rounded fmaf)
     evidence:
-      reviewed_by: "PROPOSED, NOT REVIEWED (app-fix 2026-10-28): the [2, 8] sibling of the operator-reviewed [32, 32] row, pinned to the coverage_mlp layer-norm moments body. The structural proof (linalg_row_moments_source_body.prove) accepts the captured body for shape [2, 8] with the canonical body digest recorded here; the numerical evidence run of the reviewed row (1472 rows against eager) was NOT repeated for this body. Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here."
+      reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory. Open obligations: the numerical evidence run of the reviewed [32, 32] row (1472 rows against eager) was NOT repeated for this [2, 8] body, so no numerical comparison against eager native_layer_norm mean and rstd has been run for it; RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
       basis: "the digest-pinned parsed body of the coverage_mlp capture (static [2, 8] f32 data operand), accepted by the row-moments structural proof; NO numerical comparison against eager native_layer_norm mean and rstd has been run for this body. RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
 - id: host_f32_layer_norm_two_result_moments_rank3_1x17x16
-  status: unreviewed
+  status: reviewed
   ops:
   - aten.native_layer_norm.default
   families:
@@ -3331,7 +3332,7 @@ operations:
       reduction_axis: 2
     canonical_body_sha256: b49e906cd89c993f1dabf4e39f128088d91b7c36b1bf7653b007e4f7894abfce
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       arithmetic: ieee754_binary32
       rounding: round_to_nearest_even
@@ -3342,7 +3343,7 @@ operations:
       tolerance: atol 0.03125, rtol 0.02 against eager native_layer_norm mean and rstd
       fused_multiply_add: math.fma must lower to a fused llvm.fma (fmadd.s or correctly rounded fmaf)
     evidence:
-      reviewed_by: "PROPOSED, NOT REVIEWED (item 5 2026-10-28): the rank-3 [1, 17, 16] sibling of the operator-reviewed [32, 32] row, pinned to the multimodal_policy layer-norm moments body. The rank-3 structural proof (linalg_row_moments_source_body.prove, schema merlin.static_f32_row_moments_rank3_source_body.v1) accepts the captured body with the canonical body digest recorded here; the numerical evidence run of the reviewed row (1472 rows against eager) was NOT repeated for this body. Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here."
+      reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory. Open obligations: the numerical evidence run of the reviewed [32, 32] row (1472 rows against eager) was NOT repeated for this [1, 17, 16] body, so no numerical comparison against eager native_layer_norm mean and rstd has been run for it; RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
       basis: "the digest-pinned parsed body of the multimodal_policy capture (static [1, 17, 16] f32 data operand), accepted by the rank-3 row-moments structural proof; NO numerical comparison against eager native_layer_norm mean and rstd has been run for this body. RV64 lowering of math.fma to a fused fmadd.s remains an obligation."
 - id: host_m2m_exact_quantize_f32_i8_rank3_4
   status: reviewed
@@ -3568,7 +3569,7 @@ operations:
         equality is a property of sign extension; it has not been run on the selected
         host package.
 - id: host_i32_int_mm_seed_overflow_guard_rank1
-  status: unreviewed
+  status: reviewed
   ops:
   - m2m_q.int_mm_seeded.default
   placement: host
@@ -3585,14 +3586,14 @@ operations:
     schema: merlin.static_i32_seed_overflow_guard_source_body.v1
     operation: int32_seed_interval_assert
   numerical_contract:
-    status: unreviewed
+    status: reviewed
     semantics:
       guard: a rank-1 i32 seed is read element by element and returned unchanged after cf.assert(lo <= seed <= hi) in i64
       interval: lo = -2^31 + K*16384 and hi = 2^31 - 1 - K*16384 for the reduction extent K of the seeded contraction the guarded seed initializes; the source_body proof binds both constants to that K through the linalg.broadcast and the contraction
       assertion_message: seeded contraction may overflow its int32 accumulator
       effect: the value is unchanged; the only effect is the assertion, so a seed inside the interval cannot overflow the i32 accumulator of an i8 x i8 contraction over K
     evidence:
-      reviewed_by: "PROPOSED, NOT REVIEWED (int-mm-seeded-apps 2026-10-28): the rank-1 i32 overflow guard that model2MLIR emits before every m2m_q.int_mm_seeded contraction (extsi i32 to i64, two i64 interval bounds, two cmpi, andi, cf.assert, yield). Not covered by the 2026-10-28 operator sign-off; the host lane counts it only after an operator records review here. Open obligations: how the selected host lowering emits a cf.assert inside a linalg.generic body is not proved, and no Spike or host execution of the guard (in-range pass, out-of-range trap) is recorded."
+      reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-28); the stated evidence and qualification scope remain mandatory. Open obligations: how the selected host lowering emits a cf.assert inside a linalg.generic body is not proved, and no Spike or host execution of the guard (in-range pass, out-of-range trap) is recorded."
       basis: the digest-free structural proof in linalg_seed_guard_source_body (exact eight-operation body, one interval whose half-width is K*16384 for the consuming contraction's K, single use through the broadcast); no numerical or execution evidence has been collected for this row.
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
