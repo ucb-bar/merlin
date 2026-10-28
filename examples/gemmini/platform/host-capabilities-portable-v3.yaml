@@ -10,6 +10,7 @@ review:
     mandatory; the historical source-only review leaves numerical contracts unreviewed
     unless separately reviewed below. Source-call-to-symbol routing is not proved.'
   library_numerical_policy_addendum: "only the selected sin/cos/tanh-GELU approximation assumptions below; no operator corpus-sealing approval or blanket execution/accuracy qualification."
+  m2m_exact_quant_addendum: "PROPOSED, not reviewed: four exact typed declarations for model2MLIR exact-quantization captures (m2m_q.quantize f32/f64/i64->i8, m2m_q.exact_readout i32/f32->f32, dequantize_per_tensor i8/f64/i64->f32, two-result f32 layer-norm moments). Each row stays unreviewed until an operator records review here."
   successor: attention-host-placement-v2-20261019
   attention_source_addendum: "add only the nine exact typed attention-preparation declarations below for a prospective fresh host view. Closed parsed source bodies, selected index bounds, source-to-linked-image correspondence and ordinary numerical execution remain mandatory. Existing declarations, sealed views, numerical policies and accelerator obligations are unchanged; this review is not an all-input numerical or hardware qualification."
 compiler:
@@ -3100,6 +3101,157 @@ operations:
     evidence:
       reviewed_by: "Recorded operator review; the stated evidence and qualification scope remain mandatory."
       exact_typed_boolean_source_and_linked_image: required
+- id: host_m2m_exact_quantize_f32_i8
+  status: unreviewed
+  ops:
+  - m2m_q.quantize.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - f32
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - i8
+    ranks:
+    - 2
+    - 3
+    - 4
+    quantization_parameters:
+      zero_point: 0
+      quant_min: -128
+      quant_max: 127
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      formula: q = clamp(round_half_even(x / scale) + zero_point, quant_min, quant_max)
+      quotient: exact_rational_no_reciprocal
+      rounding: round_half_to_even
+      scale: binary64 operand equal to prov.quant.scale_numerator/scale_denominator (lowering refuses otherwise)
+      scale_granularity: tensor
+      zero_point: 0
+      quant_min: -128
+      quant_max: 127
+      infinity: saturates_to_quant_min_or_quant_max
+      nan: runtime_assert_refusal
+    evidence:
+      review_status: proposed; operator review required before status may be reviewed
+      basis: 'model2MLIR m2m_q::quantize CPU evaluator m2m/capture/exact_quant.py quantize_tensor
+        (exact Fraction quotient, Python round half-even, clamp, NaN raises); host lowering
+        llvmlower/passes_xdsl.py selects llvmlower/exact_quantize.py for prov.aten
+        m2m_q.quantize.default (255 exact RNE thresholds over ordered binary32 codes,
+        integer bisection, cf.assert on NaN). Threshold-adjacency check over every
+        threshold proves the table equals the evaluator for every finite binary32
+        input at the checked scales; RV64 execution remains a separate obligation.'
+- id: host_m2m_exact_readout_i32_f32
+  status: unreviewed
+  ops:
+  - m2m_q.exact_readout.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 2
+    - 3
+    - 4
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      formula: y = round_to_binary32_half_even(acc * activation_scale * alpha * weight_scale[channel])
+      arithmetic: exact_rational_wide_integer_body
+      rounding: single_round_half_to_even_to_binary32
+      accumulator: i32 full range (no |acc| < 2^24 premise)
+      subnormals: produced_exactly
+      overflow: infinity
+      operand_1: f32 init tensor (outs), value unused
+      excluded_forms: bias operand and requantized integer output have other typed signatures
+    evidence:
+      review_status: proposed; operator review required before status may be reviewed
+      basis: 'model2MLIR m2m_q::exact_readout CPU evaluator m2m/capture/exact_quant.py
+        exact_readout/float_bits; emitted linalg.generic body from m2m/ir/integer_readout.py
+        decompose_exact_readout (i32 -> wide signed integer product with the exact
+        rational scale numerator, shift, normalize, RNE, binary32 bit assembly).
+        A Python integer interpretation of the emitted body matched the evaluator
+        on boundary and random accumulators; RV64 legalization of the non-native
+        integer widths remains a separate obligation.'
+- id: host_m2m_dequantize_per_tensor_f64_scale
+  status: unreviewed
+  ops:
+  - quantized_decomposed.dequantize_per_tensor.default
+  families:
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - i8
+    - f64
+    - i64
+    ordered_result_dtypes:
+    - f32
+    ranks:
+    - 2
+    - 3
+    - 4
+    quantization_parameters:
+      zero_point: 0
+      quant_min: -128
+      quant_max: 127
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      formula: f32((i8 - zero_point) * scale)
+      host_arithmetic: binary64 product then one truncation to binary32
+      exactness_premise: scale is exactly representable in binary32 (then the binary64
+        product of a byte code and the scale is exact and the only rounding is the
+        final half-even narrowing, equal to PyTorch's binary32 multiply)
+      scale_granularity: tensor
+      zero_point: 0
+    evidence:
+      review_status: proposed; operator review required before status may be reviewed
+      basis: 'host lowering llvmlower/passes_xdsl.py dequantize rewrite (f64 compute
+        when the scale is f64, truncf to f32). Exhaustive 256-code comparison
+        against torch eager at the captured scales. The binary32-representable scale
+        premise is not checked by this signature screen.'
+- id: host_f32_layer_norm_two_result_moments
+  status: unreviewed
+  ops:
+  - aten.native_layer_norm.default
+  families:
+  - reduction
+  - elementwise_map
+  placement: host
+  signature:
+    ordered_operand_dtypes:
+    - f32
+    - f32
+    ordered_result_dtypes:
+    - f32
+    - f32
+    ranks:
+    - 2
+    - 3
+    - 4
+  numerical_contract:
+    status: unreviewed
+    semantics:
+      arithmetic: ieee754_binary32
+      rounding: round_to_nearest_even
+      accumulator: f32
+      reduction_order: selected_lowering
+      existing_numerical_tolerance: unchanged
+    evidence:
+      review_status: proposed; operator review required before status may be reviewed
+      basis: same f32 layer-norm decomposition as host_f32_reduction, observed as
+        one linalg.generic with two f32 results; emitted scalar-package execution
+        remains an obligation
 evidence:
   source: Content identity of the host package selected by descriptor.yaml.
   inspected_package:

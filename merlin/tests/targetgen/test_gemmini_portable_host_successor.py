@@ -26,7 +26,14 @@ def test_shared_portable_host_view_preserves_every_unrelated_native_declaration(
         "host_review_tanh_gelu_f32",
         "host_review_attention_exp_f32",
     }
-    assert set(a) == set(b)
+    # The successor adds only the proposed exact-quantization declarations.
+    assert set(b) - set(a) == {
+        "host_m2m_exact_quantize_f32_i8",
+        "host_m2m_exact_readout_i32_f32",
+        "host_m2m_dequantize_per_tensor_f64_scale",
+        "host_f32_layer_norm_two_result_moments",
+    }
+    assert set(a) <= set(b)
     for name in changed:
         original, successor = deepcopy(a[name]), deepcopy(b[name])
         for field in ("linkage_contract", "numerical_contract"):
