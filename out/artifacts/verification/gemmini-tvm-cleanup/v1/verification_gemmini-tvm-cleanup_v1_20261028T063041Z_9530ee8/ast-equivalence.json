@@ -1,0 +1,19 @@
+{
+  "unchanged_definitions": [
+    "_shape",
+    "_LinearLowerer",
+    "DecomposeGemminiLinear",
+    "_eligible",
+    "_wrapper",
+    "_MatmulLowerer",
+    "LowerGemminiMatmul",
+    "LowerGemminiScheduledMatmul",
+    "gemmini_pipeline",
+    "gemmini_build_pipeline",
+    "_inline_cpu_producers",
+    "prepare_gemmini_graph",
+    "prepare_gemmini_graph_legacy"
+  ],
+  "allowed_difference": "Local imports selecting retained historical implementation",
+  "status": "pass"
+}

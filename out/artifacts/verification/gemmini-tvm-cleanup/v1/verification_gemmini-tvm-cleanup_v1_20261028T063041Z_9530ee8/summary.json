@@ -1,0 +1,23 @@
+{
+  "tvm_cleanup_commit": "2c0857ab88b18d4a090f2dd6e401e06266af1877",
+  "tests": {
+    "passed": 41,
+    "subtests_passed": 64,
+    "onnx_tests_unavailable": 19,
+    "missing_dependency": "onnx",
+    "initial_refactor_missing_import_fixed": "DataTypeCode"
+  },
+  "unchanged_semantic_definitions": 13,
+  "structure_inherited_failures": 9,
+  "branch_cleanup": {
+    "status": "awaiting_user_approval",
+    "local_aliases": [
+      "gemmini/bringup",
+      "gemmini/legacy-template"
+    ],
+    "preserved_ref": "gemmini/byoc",
+    "all_worktrees_preserved": true,
+    "remote_refs_preserved": true
+  },
+  "spike_evidence_source_unchanged": "bb4ad9f8dbd21dd96a4dc63121dfebc24742f260"
+}

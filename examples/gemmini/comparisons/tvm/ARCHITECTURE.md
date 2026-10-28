@@ -3,7 +3,10 @@
 Audited implementation: TVM `64bed0cb9c876b89707e69584909abe5e13b0384`,
 Merlin runner `9794880b465a8fa456bd0949914187ea192a45e3` and handoff
 `9ab339ca2b8f34a2a362350fd8c74bd752e47780`. Later documentation-only changes do
-not reattribute earlier measurements. The operation authority is the exact
+not reattribute earlier measurements. Cleanup successor TVM `2c0857ab8` isolates
+legacy graph lowering without changing the 13 existing semantic definitions
+(apart from explicit compatibility imports); prior Spike results retain their
+`bb4ad9f8d` source binding. The operation authority is the exact
 [8ec99308 software specification](https://github.com/ucb-bar/merlin/blob/8ec99308cb1182b9b896a6075300312266fadf6f/examples/gemmini/target/software-spec.yaml).
 
 **Design conclusion:** retain this architecture as the implementation baseline:
@@ -12,6 +15,9 @@ memory lowering, a primitive runtime and an external measurement adapter. It is
 a modified TVM backend, not stock TVM with only intrinsic registration. There is
 no reason to restore the removed pattern-forcing graph optimizations. Freezing
 the design does not complete software-spec or hardware qualification.
+
+The cited methods draft is [PAPER_IMPLEMENTATION.md](PAPER_IMPLEMENTATION.md),
+with LaTeX and BibTeX beside it.
 
 ## Top-down execution path
 

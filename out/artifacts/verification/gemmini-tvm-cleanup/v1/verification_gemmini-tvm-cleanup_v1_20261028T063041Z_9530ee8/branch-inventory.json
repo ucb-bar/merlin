@@ -1,0 +1,108 @@
+{
+  "refs": {
+    "gemmini/bringup": "6b376cc8895a83387ec38cc06ef8f7b09827b071",
+    "gemmini/byoc": "6b376cc8895a83387ec38cc06ef8f7b09827b071",
+    "gemmini/curated-handoff": "d4480d521b92d9a3873a4434ecc36b4454a84e5e",
+    "gemmini/direct-intrinsics": "bb4ad9f8dbd21dd96a4dc63121dfebc24742f260",
+    "gemmini/legacy-template": "6b376cc8895a83387ec38cc06ef8f7b09827b071",
+    "gemmini/metaschedule-dse": "87f07883b65ee55dbd1b93f665aaab87cd8a1e50",
+    "gemmini/tensorir": "1f493e3a86138032f1104fb607d65051807f21ed",
+    "gemmini/workload-tuning": "f1e411b1fe57f9fb5983d6cdef45877a6c211485"
+  },
+  "worktrees": [
+    {
+      "worktree": "/scratch/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/tvm-source",
+      "HEAD": "6b376cc8895a83387ec38cc06ef8f7b09827b071",
+      "branch": "refs/heads/gemmini/byoc",
+      "changes": [
+        "?? apps/gemmini/byoc_primitives.c",
+        "?? python/tvm/relax/backend/contrib/gemmini_byoc.py"
+      ]
+    },
+    {
+      "worktree": "/scratch/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/tvm-f2-followup",
+      "HEAD": "c50c4e26992eb79ea4fc1c693d3aa16f62aaea43",
+      "detached": "",
+      "changes": [
+        " M apps/gemmini/WORKLOAD_TUNING.md",
+        " M apps/gemmini/baremetal.py",
+        " M apps/gemmini/compile_package.py",
+        " M apps/gemmini/graph_plans.py",
+        " M apps/gemmini/tune_chunk.py",
+        " M tests/python/relax/test_apps_gemmini_graph_plans.py",
+        " M tests/python/relax/test_backend_contrib_gemmini_baremetal.py",
+        "?? apps/gemmini/audit_graph_plans.py"
+      ]
+    },
+    {
+      "worktree": "/scratch/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/tvm-handoff",
+      "HEAD": "d4480d521b92d9a3873a4434ecc36b4454a84e5e",
+      "branch": "refs/heads/gemmini/curated-handoff",
+      "changes": []
+    },
+    {
+      "worktree": "/scratch/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/tvm-metaschedule-dse",
+      "HEAD": "87f07883b65ee55dbd1b93f665aaab87cd8a1e50",
+      "branch": "refs/heads/gemmini/metaschedule-dse",
+      "changes": []
+    },
+    {
+      "worktree": "/scratch/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/tvm-tensorir-source",
+      "HEAD": "1f493e3a86138032f1104fb607d65051807f21ed",
+      "branch": "refs/heads/gemmini/tensorir",
+      "changes": [
+        " M apps/gemmini/EL4_STATUS.md",
+        " M apps/gemmini/README.md",
+        " M apps/gemmini/tune_tensorir.py",
+        " M python/tvm/relax/backend/contrib/gemmini_search.py",
+        " M tests/python/relax/test_backend_contrib_gemmini_search.py",
+        "?? apps/gemmini/TUNING.md",
+        "?? apps/gemmini/case_studies.py",
+        "?? tests/python/relax/test_backend_contrib_gemmini_measurement.py"
+      ]
+    },
+    {
+      "worktree": "/scratch/grammy/blast/merlin-tvm-gemmini/out/build/baselines/tvm-gemmini/tvm-workload-tuning",
+      "HEAD": "f1e411b1fe57f9fb5983d6cdef45877a6c211485",
+      "branch": "refs/heads/gemmini/workload-tuning",
+      "changes": [
+        " M apps/gemmini/WORKLOAD_TUNING.md",
+        " M apps/gemmini/baremetal.py",
+        " M apps/gemmini/compile_package.py",
+        " M apps/gemmini/graph_plans.py",
+        " M apps/gemmini/tune_chunk.py",
+        " M tests/python/relax/test_apps_gemmini_graph_plans.py",
+        " M tests/python/relax/test_backend_contrib_gemmini_baremetal.py",
+        "?? apps/gemmini/audit_graph_plans.py"
+      ]
+    },
+    {
+      "worktree": "/scratch/grammy/tvm-device-op-audit",
+      "HEAD": "42b3c1ef27abe878f930e48b335b24956beb0e56",
+      "detached": "",
+      "changes": [
+        " M apps/gemmini/tune_models.py",
+        " M apps/gemmini/verify_tensorir.py",
+        " M python/tvm/relax/backend/contrib/gemmini_meta_schedule.py",
+        " M tests/python/relax/test_backend_contrib_gemmini_device_ops.py"
+      ]
+    },
+    {
+      "worktree": "/scratch/grammy/tvm-firesim-op-audit",
+      "HEAD": "3423bd6818ab752ddd9cdb5d5773743e48c65f1d",
+      "detached": "",
+      "changes": []
+    },
+    {
+      "worktree": "/scratch/grammy/tvm-gemmini-simple",
+      "HEAD": "bb4ad9f8dbd21dd96a4dc63121dfebc24742f260",
+      "branch": "refs/heads/gemmini/direct-intrinsics",
+      "changes": []
+    }
+  ],
+  "proposed_delete_local_only": [
+    "gemmini/bringup",
+    "gemmini/legacy-template"
+  ],
+  "retained_ref": "gemmini/byoc"
+}
