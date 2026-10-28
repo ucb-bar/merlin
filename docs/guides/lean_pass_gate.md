@@ -1,5 +1,5 @@
 ---
-title: Gate a compiler pass on Merlin's Lean proofs
+title: Gate compiler passes on Merlin's Lean proofs
 kind: guide
 status: current
 owner: verification
@@ -12,51 +12,72 @@ code_refs:
   - src/merlin/verify/lean/check.py
   - src/merlin/llvmlower/passes_xdsl.py
   - src/merlin/llvmlower/lower.py
+  - src/merlin/runtime/backends/zephyr_model.py
   - src/merlin/compile/command.py
   - merlin/lean/lakefile.toml
-  - merlin/tests/ir/test_lean_prune_gate.py
+  - merlin/tests/ir/test_lean_pass_gate.py
+  - merlin/tests/ir/test_lean_pass_gate_fuzz.py
+  - merlin/tests/rvv/test_lean_pass_gate_spike.py
 ---
 
-# Gate a compiler pass on Merlin's Lean proofs
+# Gate compiler passes on Merlin's Lean proofs
 
-`lower_model` can check `prune_dead_pure_tensor_ops`, the dead-tensor pruning every lowering runs,
-against the `MerlinVerify` proofs while it compiles. The pass's exact IR before and after goes to a
-worker process; lowering carries on as if the check passes, and a check that does not accept stops
-the compile, printing the check, the reason, and the paths of the input and output.
+Merlin can check selected preprocessing passes against the `MerlinVerify` proofs while it compiles.
+Each pass's exact IR before and after goes to a worker process; compilation carries on as if the
+check passes, and a check that does not accept stops the compile, prints the check, the reason and
+the paths of the input and output, and renames any `.ll`, `.so` or `.o` already produced to
+`*.rejected`.
+
+| Validated pass | Where it runs | Hook |
+| --- | --- | --- |
+| `prune_dead_pure_tensor_ops` | `lower_model` preprocessing (xDSL route) | `passes_xdsl._preprocess_module` |
+| `lower_quant_ext` | `lower_model` preprocessing, and every `prepare_for_lowering` | `_preprocess_module`, `zephyr_model._prepare_model_mlir` |
+| `preprocess_text_textual` | `lower_model(textual=True)`: the whole-model RVV route, including Spike | `passes_xdsl.preprocess_text_textual` |
+
+The whole-model RVV route lowers textually, so in a Spike or `merlin-compile` RVV build the checked
+boundary is `preprocess_text_textual` (dequantization, slice repair and the C interface together);
+the xDSL prune and quantization run only on the xDSL route and in preparation.
 
 ## What is proved
 
-The worker accepts only when all three hold:
+For every validated boundary the worker requires all of:
 
-1. `MerlinVerify.Check.TypedModule.check_sound` verifies the boundary on inputs of the declared
-   types (both buffers exported by MLIR's own parser, round-tripped identically through Lean);
-2. `MerlinVerify.Check.supportCheck_sound` verifies every function of the input (it never gets
-   stuck), which makes the refinement strict rather than conditional;
-3. `compose_chain` replays both and reports `refinement_verdict: verified`.
+1. `MerlinVerify.Check.TypedModule.check_sound` on the boundary, inputs of the declared types, both
+   buffers exported by MLIR's own parser and round-tripped identically through Lean;
+2. `MerlinVerify.Check.supportCheck_sound` on every function of the input (it never gets stuck),
+   which makes the refinement strict rather than conditional;
+3. `compose_chain` replaying both, with `refinement_verdict: verified`.
 
-Claim: every behaviour of the pruned program is a behaviour of the original on inputs of the
-declared types. Definedness (no undefined behaviour or poison) is not claimed:
-`DefinedExtended.check_sound` is outside its proved fragment on the captured models. The theorems use
-only `propext`, `Classical.choice` and `Quot.sound`. Their assumptions are `merlin/lean/LEDGER.md`
-A1–A8 and T1–T6 (notably T2, the exporter and Python bridge, and T3, fidelity of the op semantics).
+It then attempts two strengthenings and reports them, never requiring them: the universal boundary
+theorem (`moduleCheck_sound`, for all inputs) and source definedness (no undefined behaviour or
+poison). The receipt's `claim` says exactly what was established, for example "strict refinement
+for all inputs; definedness not established". Axioms: `propext`, `Classical.choice`, `Quot.sound`.
+Assumptions: `merlin/lean/LEDGER.md` A1–A8 and T1–T6 (notably T2, the exporter and Python bridge,
+and T3, fidelity of the op semantics to MLIR). Only the 64-bit index width is admitted: at index32
+the model and the native pipeline disagree on a retained example (LEDGER S6).
+
+`quant_ext` dequantization is proved against `MerlinVerify.Spec.Dequant`, a narrow contract written
+from PyTorch v2.10.0 (`_decomposed.py`): per-tensor converts then subtracts; per-channel promotes to
+i32, subtracts, converts once, then multiplies — the order lowering implements since 03a22c5fd ("match PyTorch per-channel dequantization order").
+Signed i8 input, i32 zero points and f32 scale only. The contract still needs human specification
+review and capture-route binding; draft policy, native and capture premises remain;
+an unexplained SmolVLA complete-output comparison failure is recorded upstream. With `int8_compute`
+the W8A8 passes do most of the quantization before `lower_quant_ext` and are not gated here.
 
 ## Set it up once
 
 ```
-# compiler Python with the pinned MLIR bindings (no PyTorch needed)
 uv venv --python 3.12 <venv>
 grep '^torch-mlir' build_tools/toolchains/lean-mlir-requirements.txt > torch-mlir.txt
 uv pip install --python <venv>/bin/python --no-deps --require-hashes -r torch-mlir.txt
 uv pip install --python <venv>/bin/python --no-deps numpy==2.4.6   # numpy carries no hash in the file
 
-# Mathlib (prebuilt, about 7 GB) and the checker, from merlin/lean
 cd merlin/lean
-PATH=<lean-4.35.0>/bin:$PATH lake exe cache get
+PATH=<lean-4.35.0>/bin:$PATH lake exe cache get        # prebuilt Mathlib, about 7 GB
 PATH=<lean-4.35.0>/bin:$PATH taskset -c 0-7 nice -n 19 lake build MerlinVerify merlin-lean merlin-lean-audit
 ```
 
-The build writes `out/build/lean/build/bin/merlin-lean`, which the gate uses. A checker that is out of
-date with `merlin/lean` (as `lake build --no-build` reports) is refused.
+A checker that is out of date with `merlin/lean` (`lake build --no-build`) is refused.
 
 ## Turn it on
 
@@ -64,34 +85,50 @@ date with `merlin/lean` (as `lake build --no-build` reports) is refused.
 merlin-compile ... --validate-passes all --lean-sdk-bin <lean-4.35.0>/bin
 ```
 
-or set `MERLIN_VALIDATE_PASSES=all` and `MERLIN_LEAN_SDK_BIN=<lean-4.35.0>/bin` for any entry point
-that lowers, with `MERLIN_COMPILER_PYTHON=<venv>/bin/python`, or pass
-`lower_model(..., pass_validation=PassValidation(gate, CheckerTools(sdk_bin, compiler_python)))`.
-A missing tool stops the compile before it starts. It is off by default.
+or set `MERLIN_VALIDATE_PASSES` (`all` or a comma list) and `MERLIN_LEAN_SDK_BIN`, with
+`MERLIN_COMPILER_PYTHON=<venv>/bin/python`, or pass `pass_validation=PassValidation(gate, tools)` to
+`lower_model`. It is off by default; a missing or stale tool stops the compile before it starts.
+`prepare_for_lowering` and `lower_model` each run under their own guard; a step called inside an
+active validation joins it, and a different explicit validation is refused.
 
 ## Outcomes
 
 | Verdict | Meaning | Compile |
 | --- | --- | --- |
-| `accepted` | the three checks above passed | continues |
-| `not_established` | the boundary or the composition did not verify: a pass bug | stops |
+| `accepted` | the three required checks passed | continues |
+| `not_established` | the boundary or the composition did not verify | stops |
 | `unsupported` | MLIR's parser refused the IR, or source support is not established | stops |
 | `unavailable` | a tool could not run or the check ran out of time | stops |
 
-A pass that changes nothing submits nothing. Measured on captured models with real lowering:
+A pass that changes nothing submits nothing. Raw int8 captures that read a value before its
+definition are rejected by MLIR's parser and so reported `unsupported`.
 
-| Capture | Pruned | Gate | Lowering with the gate |
-| --- | --- | --- | --- |
-| small_llama_int8_consistent | 30 | accepted | 10.2 s |
-| small_consistent | 30 | accepted | 9.9 s |
-| tiny_llama_fp32_consistent | 0 | nothing to check | 1.0 s |
+## Known checker gaps
 
-Raw int8 captures with `quant_ext` operations can read a value before its definition; MLIR's parser
-rejects such IR, so the gate reports `unsupported` rather than checking it.
+Found by fuzzing and pinned by tests in `test_lean_pass_gate_fuzz.py` (they flip when fixed). Both
+are correct rewrites the checker does not prove, so the gate would stop a compile that contains them:
+
+* deleting a dead `quant_ext` dequantization (no totality fact for dequantization);
+* deleting a dead constant-fed generic placed before live code (the same cone after live code is proved).
+
+Neither occurs in the captured models checked so far.
+
+## Tests
+
+* `merlin/tests/ir/test_lean_pass_gate.py` — real lowering of captured models with each pass proved,
+  injected bugs in each pass stopping the compile, nesting, tool and freshness refusals.
+* `merlin/tests/rvv/test_lean_pass_gate_spike.py` — whole-model builds on Spike: a gated build matches
+  its golden output; an injected dequantization bug reaches the output without the gate and is
+  stopped, before any ELF exists, with it.
+* `merlin/tests/ir/test_lean_pass_gate_fuzz.py` — seeded random programs through the real passes;
+  completeness against an independent reference and soundness against a numpy oracle.
+  `MERLIN_FUZZ_SEED` and `MERLIN_FUZZ_CASES` scale it.
+
+Set `MERLIN_LEAN_REQUIRED=1` to turn a missing tool into a failure instead of a skip.
 
 ## Add a pass
 
-A pass is a candidate when its boundary is in the checker's typed module domain (see the theorems in
+A candidate's boundary must lie in the checker's typed module domain (the theorems in
 `merlin/lean/MerlinVerify/Check/`). Add it to `pass_validation.CHECKS`, report its exact before/after
-IR through `pass_validation.selected`/`submit` at the pass (as `passes_xdsl._preprocess_module` does),
-and add a real-capture acceptance and an injected-bug test to `merlin/tests/ir/test_lean_prune_gate.py`.
+IR with `pass_validation.observe` (or `submit` for text) where it runs, and add a real-capture
+acceptance, an injected-bug test and fuzz coverage.
