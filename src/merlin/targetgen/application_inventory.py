@@ -724,6 +724,7 @@ def _application_operation_inventory(
     software_spec: dict | None = None,
     host_capabilities: dict | None = None,
     prepared_source: PreparedApplicationSource | None = None,
+    graph_jobs=None,
 ) -> dict:
     """Answer-free, operation-complete inventory for one application capture.
 
@@ -1029,7 +1030,9 @@ def _application_operation_inventory(
     if integerization is not None and integerization.get("source_quantization") == module_quantization:
         result["capture_integerization"] = integerization
     if include_graph:
-        result["operation_graph"] = application_graph_inventory(p)
+        # ``graph_jobs`` (a parse_pool.Prefetch over the roster's captures) reads the file here and returns
+        # the graph of exactly those bytes; without it this is the plain call.
+        result["operation_graph"] = graph_jobs.get(p) if graph_jobs is not None else application_graph_inventory(p)
     if prepared_source is not None:
         prepared_source.reopen(p)
     return result
@@ -1098,6 +1101,16 @@ def application_demand_inventory(
         else capability_map_for_target(target)
     )
     output: dict[str, dict] = {}
+    graph_jobs = None
+    if include_graph:
+        from merlin.common.parse_pool import Prefetch
+
+        # Each graph is a function of its capture's bytes alone: start them together; each is consumed
+        # (file read and graph taken) at the point the serial loop built it.
+        graph_jobs = Prefetch(
+            "merlin.targetgen.application_graph:application_graph_inventory_from_bytes",
+            [Path(path) for _, path in sorted(applications.items())],
+        ).start()
     for label, path in sorted(applications.items()):
         if cm.is_claim_bundle(label) or cm.is_claim_bundle(Path(path).resolve().parent.name):
             raise ValueError(f"application {label!r} is a held-out claim model and cannot derive Phase 0 demands")
@@ -1109,6 +1122,7 @@ def application_demand_inventory(
             capability_contract=capability_contract,
             software_spec=software_spec,
             host_capabilities=host_capabilities,
+            graph_jobs=graph_jobs,
         )
         identity = (application_metadata or {}).get(str(label))
         if identity is not None:
@@ -1129,6 +1143,8 @@ def application_demand_inventory(
                 if source is not None and cm.is_claim_bundle(source):
                     raise ValueError(f"application metadata {field} names a held-out validation source")
             output[str(label)]["workload_identity"] = dict(identity)
+    if graph_jobs is not None:
+        graph_jobs.close()
     full = {
         "schema_version": 2 if include_graph else 1,
         "status": "incomplete" if any(row["status"] == "incomplete" for row in output.values()) else "inventoried",
