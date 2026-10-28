@@ -1,5 +1,8 @@
 # FireSim ELF preparation and tuning plan
 
+For the current compiler design and limits on paper claims, read
+[ARCHITECTURE.md](ARCHITECTURE.md) and [operation support](TENSORIR_OP_AUDIT.md).
+
 The [simplified preparation release](../../../../out/artifacts/handoff/gemmini-simplified-tvm/v1/handoff_gemmini-simplified-tvm_v1_20261028T021958Z_dd079d3/README.md) contains
 TVM **619c7c202ff1fe133eceb8fddf3cc9081a6c7e8a**, the portable source bundle/patch,
 71-case diagnostic Spike ELFs/results and a fresh 36-chunk task index. Use this

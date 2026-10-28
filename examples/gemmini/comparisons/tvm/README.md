@@ -18,6 +18,8 @@ its TinyLlama/SmolVLA model roster is not the new kernel roster.
 | --- | --- |
 | [Selected protocol](https://github.com/ucb-bar/merlin/tree/8ec99308cb1182b9b896a6075300312266fadf6f/examples/gemmini/protocol) | Sole E2E recipe/input/quality authority; approved correction in handoff |
 | [Adapter contract](ADAPTER_CONTRACT.md) | Approved median wall watchdog, cycle measurement and remote cancellation qualification |
+| [Architecture and paper scope](ARCHITECTURE.md) | Current top-down path, stock/custom boundaries and limits on claims |
+| [Operation support](TENSORIR_OP_AUDIT.md) | Exact spec families, primitive/composite mappings and all 51 fixture boundaries |
 | [Optimization ownership/knobs](OPTIMIZATION_KNOBS.md) | Compiler simplification, scheduling/cost-model audit and approved scope |
 | [Input audit](EL4_INPUT_AUDIT.md) | Dated source/shape/input findings; current readiness is in the handoff |
 | [Generation](GENERATION.md) | Compiler flow and ownership |
