@@ -87,6 +87,14 @@ def validate(obj: Any, name: str, *, contract: str | Path | None = None) -> None
         raise ContractViolation(f"{name} schema violation at {loc}: {e.message}") from e
 
 
+# Per-output numeric policy versions (mirrors capsule_golden.PER_OUTPUT_SCHEMAS; the second is the
+# separately declared non-finite comparison contract).
+_PER_OUTPUT_SCHEMAS = (
+    "merlin.numeric_policy.per_output.v1",
+    "merlin.numeric_policy.per_output.nonfinite.v1",
+)
+
+
 def _declared_dtypes(cap: Any):
     """Yield ``(location, token)`` for every element type a capsule declares."""
     for i, t in enumerate((cap.get("inputs") if isinstance(cap, dict) else None) or []):
@@ -95,7 +103,7 @@ def _declared_dtypes(cap: Any):
     pol = cap.get("numeric_policy") if isinstance(cap, dict) else None
     if isinstance(pol, dict) and "dtype" in pol:
         yield "numeric_policy/dtype", pol["dtype"]
-    if isinstance(pol, dict) and pol.get("schema") == "merlin.numeric_policy.per_output.v1":
+    if isinstance(pol, dict) and pol.get("schema") in _PER_OUTPUT_SCHEMAS:
         for name, leaf in pol["outputs"].items():
             yield f"numeric_policy/outputs/{name}/dtype", leaf["dtype"]
 
@@ -103,7 +111,7 @@ def _declared_dtypes(cap: Any):
 def _check_output_policy_roster(cap: dict) -> None:
     """Join the explicit versioned policy to every declared output, without defaults."""
     policy = cap["numeric_policy"]
-    if policy.get("schema") != "merlin.numeric_policy.per_output.v1":
+    if policy.get("schema") not in _PER_OUTPUT_SCHEMAS:
         return
     attrs = cap["operation"].get("attributes", {})
     names = attrs.get("outs")

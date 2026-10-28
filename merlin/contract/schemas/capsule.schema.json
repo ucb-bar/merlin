@@ -240,7 +240,11 @@
           ],
           "properties": {
             "schema": {
-              "const": "merlin.numeric_policy.per_output.v1"
+              "enum": [
+                "merlin.numeric_policy.per_output.v1",
+                "merlin.numeric_policy.per_output.nonfinite.v1"
+              ],
+              "description": "per_output.v1 grades finite leaves only. per_output.nonfinite.v1 is the separately declared non-finite comparison contract: a NaN or +-Inf leaf matches only the same class (NaN by quiet bit, Inf by sign), finite leaves keep their declared rules. Nothing selects it except a capsule that declares it (capsule_golden.PER_OUTPUT_NONFINITE_SCHEMA)."
             },
             "compare": {
               "const": "per_output"

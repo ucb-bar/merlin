@@ -160,7 +160,9 @@ def _numeric_context(context):
     if policy is None:
         return projected
     if (not isinstance(policy, dict) or set(policy) != {"schema", "compare", "outputs"}
-            or policy["schema"] != "merlin.numeric_policy.per_output.v1" or policy["compare"] != "per_output"
+            or policy["schema"] not in {"merlin.numeric_policy.per_output.v1",
+                                        "merlin.numeric_policy.per_output.nonfinite.v1"}
+            or policy["compare"] != "per_output"
             or not isinstance(policy["outputs"], dict) or len(policy["outputs"]) > 1024):
         projected["numeric_policy"] = {"status": "UNKNOWN"}
         return projected

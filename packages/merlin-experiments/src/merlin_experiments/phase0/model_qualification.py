@@ -28,6 +28,10 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "merlin.phase0.model_qualification.v1"
+#: Entry key and value that opt one model into a disclosed vacuous qualification when it forms no
+#: device group (see ``_qualify``). Absent, the refusal is unchanged.
+VACUOUS_OPT_IN = "zero_device_group_qualification"
+VACUOUS_SELECTION = "vacuous_disclosed_v1"
 #: The refusal the writer has always issued for an unverified source-backed integer model.
 REFUSAL = "source-backed integer contraction lacks a verified isolated i8 matmul and exact inputs"
 _IDENTITY_KEY = "group_identity_sha256"
@@ -196,7 +200,8 @@ def _qualify(entry, cap, directory: Path, binding, out_root: Path) -> dict:
         except ValueError as error:
             raise QualificationMissing(str(error)) from error
 
-    if (entry.get("numerical_semantics") or {}).get("internal_arithmetic") is None:
+    vacuous_ok = entry.get(VACUOUS_OPT_IN) == VACUOUS_SELECTION
+    if (entry.get("numerical_semantics") or {}).get("internal_arithmetic") is None and not vacuous_ok:
         raise QualificationMissing("no selected internal arithmetic to bound a group against")
     interface = directory / str(cap.get("interface_mlir") or "capsule.interface.mlir")
     if not interface.is_file():
@@ -212,6 +217,21 @@ def _qualify(entry, cap, directory: Path, binding, out_root: Path) -> dict:
     )
     if stated.get("unstated"):
         raise QualificationMissing(f"device groups the capsule vocabulary cannot state: {stated['unstated']}")
+    if vacuous_ok and not stated.get("accelerator_groups") and not stated.get("entries"):
+        # Explicit, per-entry opt-in only: the model forms no device group, so there is no arithmetic
+        # to verify in isolation. The record says so; it is never a claim that device arithmetic was
+        # verified, and a model that does form a group still takes the ordinary path below.
+        return {
+            "schema": SCHEMA,
+            "status": "qualified",
+            "qualification": "vacuous",
+            "grouping": "merlin.targetgen.group_capsule_entries.entries",
+            "device_groups": [],
+            "covered_groups": [],
+            "group_capsules": [],
+            "reference_gate": reference_gate_verdict(entry.get("reference_gate")),
+            "scope": "no device group; qualification vacuous; full-model execution unverified",
+        }
     if not stated.get("entries") or not stated.get("accelerator_groups"):
         raise QualificationMissing("the model forms no device group whose arithmetic could be verified")
     if stated.get("stated") != stated.get("accelerator_groups"):
