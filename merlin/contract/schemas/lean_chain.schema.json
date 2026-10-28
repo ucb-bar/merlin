@@ -1,0 +1,334 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin.lean.chain.v1",
+  "title": "Merlin Lean end-to-end chain (merlin.lean.chain.v1)",
+  "description": "Refinement and defined-execution evidence composed from replayed boundary, support, and source-definedness receipts. Overall verification requires source definedness on the stated typed, nonpoison input domain. Claims cover the recorded chain, not earlier capture or downstream lowering.",
+  "type": "object",
+  "required": [
+    "schema",
+    "theorem",
+    "refinement_theorem",
+    "domain",
+    "function",
+    "links",
+    "support",
+    "chained",
+    "refinement_verdict",
+    "source_definedness",
+    "verdict",
+    "assumptions",
+    "replayed"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "verified"
+          }
+        },
+        "required": [
+          "verdict"
+        ]
+      },
+      "then": {
+        "properties": {
+          "chained": {
+            "const": true
+          },
+          "refinement_verdict": {
+            "const": "verified"
+          },
+          "source_definedness": {
+            "required": [
+              "receipt_sha256"
+            ],
+            "properties": {
+              "verdict": {
+                "const": "verified"
+              }
+            }
+          },
+          "replayed": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "theorem": {
+            "enum": [
+              "MerlinVerify.Check.chain_typed_defined_refines",
+              "MerlinVerify.Check.chain_typed_extended_defined_refines"
+            ]
+          }
+        },
+        "required": [
+          "theorem"
+        ]
+      },
+      "then": {
+        "required": [
+          "index_bits"
+        ],
+        "properties": {
+          "refinement_theorem": {
+            "const": "MerlinVerify.Check.chain_typed_refines"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "refinement_theorem": {
+            "const": "MerlinVerify.Check.chain_refines"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source_definedness": {
+            "properties": {
+              "checker": {
+                "const": "MerlinVerify.Check.DefinedExtended.check"
+              }
+            },
+            "required": [
+              "checker"
+            ]
+          }
+        },
+        "required": [
+          "source_definedness"
+        ]
+      },
+      "then": {
+        "properties": {
+          "theorem": {
+            "enum": [
+              "MerlinVerify.Check.chain_extended_defined_refines",
+              "MerlinVerify.Check.chain_typed_extended_defined_refines"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "theorem": {
+            "enum": [
+              "MerlinVerify.Check.chain_defined_refines",
+              "MerlinVerify.Check.chain_typed_defined_refines"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "merlin.lean.chain.v1"
+    },
+    "theorem": {
+      "enum": [
+        "MerlinVerify.Check.chain_defined_refines",
+        "MerlinVerify.Check.chain_typed_defined_refines",
+        "MerlinVerify.Check.chain_extended_defined_refines",
+        "MerlinVerify.Check.chain_typed_extended_defined_refines"
+      ]
+    },
+    "refinement_theorem": {
+      "enum": [
+        "MerlinVerify.Check.chain_refines",
+        "MerlinVerify.Check.chain_typed_refines"
+      ]
+    },
+    "index_bits": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "domain": {
+      "type": "string",
+      "description": "The defined-execution claim requires typed, nonpoison inputs at the stated index width."
+    },
+    "function": {
+      "type": "string"
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "boundary",
+          "receipt_sha256",
+          "before_sha256",
+          "after_sha256",
+          "verdict"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "boundary": {
+            "type": "string"
+          },
+          "receipt_sha256": {
+            "$ref": "#/$defs/sha"
+          },
+          "before_sha256": {
+            "$ref": "#/$defs/sha"
+          },
+          "after_sha256": {
+            "$ref": "#/$defs/sha"
+          },
+          "verdict": {
+            "enum": [
+              "verified",
+              "refuted",
+              "abstracted",
+              "unmeasured"
+            ]
+          }
+        }
+      }
+    },
+    "support": {
+      "type": "object",
+      "required": [
+        "receipt_sha256",
+        "subject_sha256",
+        "verdict"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "receipt_sha256": {
+          "$ref": "#/$defs/sha"
+        },
+        "subject_sha256": {
+          "$ref": "#/$defs/sha"
+        },
+        "verdict": {
+          "enum": [
+            "verified",
+            "refuted",
+            "abstracted",
+            "unmeasured"
+          ]
+        },
+        "domain": {
+          "type": "string"
+        }
+      }
+    },
+    "chained": {
+      "type": "boolean",
+      "description": "Every boundary's before is the previous boundary's after, the support subject is the first before, and (with a handoff) the last after is the handoff."
+    },
+    "handoff_sha256": {
+      "$ref": "#/$defs/sha",
+      "description": "SHA-256 of the file handed to the upstream lowering, when the chain was checked against it."
+    },
+    "refinement_verdict": {
+      "enum": [
+        "verified",
+        "abstracted",
+        "unmeasured"
+      ]
+    },
+    "source_definedness": {
+      "type": "object",
+      "required": [
+        "verdict",
+        "checker",
+        "theorem",
+        "domain"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {
+          "enum": [
+            "verified",
+            "abstracted",
+            "unmeasured"
+          ]
+        },
+        "checker": {
+          "enum": [
+            "MerlinVerify.Check.Definedness.check",
+            "MerlinVerify.Check.DefinedExtended.check"
+          ]
+        },
+        "theorem": {
+          "enum": [
+            "MerlinVerify.Check.Definedness.definedCheck_sound",
+            "MerlinVerify.Check.DefinedExtended.check_sound"
+          ]
+        },
+        "domain": {
+          "type": "string"
+        },
+        "receipt_sha256": {
+          "$ref": "#/$defs/sha"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "checker": {
+                "const": "MerlinVerify.Check.DefinedExtended.check"
+              }
+            },
+            "required": [
+              "checker"
+            ]
+          },
+          "then": {
+            "properties": {
+              "theorem": {
+                "const": "MerlinVerify.Check.DefinedExtended.check_sound"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "theorem": {
+                "const": "MerlinVerify.Check.Definedness.definedCheck_sound"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "verdict": {
+      "enum": [
+        "verified",
+        "abstracted",
+        "unmeasured"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "replayed": {
+      "type": "boolean",
+      "description": "Every boundary and source-support claim was replayed against its recorded exports and actual stage bytes, with matching proof metadata."
+    }
+  },
+  "$defs": {
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

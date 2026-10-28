@@ -1,0 +1,379 @@
+/-
+Executable fidelity-test adapter. This imports the actual denotation used by the proofs; it does
+not reimplement integer, tensor, or structured-op semantics. The host Float/Float32 instance below
+is a TEST ORACLE, outside MerlinVerify's verified namespace, not an added axiom or a proved IEEE
+instance. Unsupported float operations and modifiers are rejected before evaluation.
+
+Build its verified imports with `lake build MerlinVerify`, then run this adapter with
+`lake env lean --run Differential.lean <request.json>` from merlin/lean. The oracle is separate
+from the receipt-writing checker and is not a proved IEEE instance.
+-/
+import MerlinVerify.Core.Json
+import MerlinVerify.Sem.Ops
+import MerlinVerify.Rules.W8A8DequantWidth
+import MerlinVerify.Rules.W8A8ByteModel
+import MerlinVerify.Rules.W8A8SourceQuantize
+import MerlinVerify.Check.PolicyW8A8SourceDomain
+import MerlinVerify.Check.PolicyW8A8FiniteDomain
+import MerlinVerify.Check.PolicyW8A8Source
+import MerlinVerify.Rules.W8A8SourceSemantics
+
+open MerlinVerify Lean
+
+namespace MerlinDifferential
+
+def floatOps : List String :=
+  ["arith.addf", "arith.subf", "arith.mulf", "arith.divf", "arith.negf", "arith.cmpf",
+   "arith.extf", "arith.truncf", "arith.sitofp", "arith.uitofp", "arith.fptosi", "arith.fptoui",
+   "math.absf", "math.sqrt", "math.ceil", "math.floor", "math.round", "math.roundeven", "math.trunc",
+   "math.fma"]
+
+def usesFloatModel (n : String) : Bool :=
+  (n.startsWith "math." && n != "math.absi") || floatOps.contains n ||
+    ["arith.remf", "arith.maximumf", "arith.minimumf", "arith.maxnumf", "arith.minnumf"].contains n
+
+-- The native observation ABI is limited to 64 bits, but the proved integer
+-- denotation supports wider intermediates without a host integer conversion.
+def internalScalarType : Ty → Bool
+  | .int w => 0 < w
+  | .index | .float .f32 | .float .f64 => true
+  | _ => false
+
+def internalValueType : Ty → Bool
+  | .tensor sh elt none => sh.all Option.isSome && internalScalarType elt
+  | ty => internalScalarType ty
+
+mutual
+  def validateOps (byteModel : Bool) (types : List (ValueId × Ty)) : List Op → Except String Unit
+    | [] => pure ()
+    | op@(.mk _ results _ _ _ regions _) :: rest => do
+      unless results.all (fun r => internalValueType r.ty) do throw "unsupported result type in fidelity adapter"
+      if usesFloatModel op.name then
+        let byteOp := byteModel && ["arith.minimumf", "arith.maximumf"].contains op.name
+        unless floatOps.contains op.name || byteOp do throw s!"test float model does not implement {op.name}"
+        if byteOp then
+          unless results.all (fun r => match r.ty with
+            | .float .f32 | .tensor _ (.float .f32) none => true
+            | _ => false) do throw "byte-model candidate supports only f32 min/max"
+        let arity := if op.name == "math.fma" then 3
+          else if byteOp || ["arith.addf", "arith.subf", "arith.mulf", "arith.divf", "arith.cmpf"].contains op.name then 2
+          else 1
+        unless op.operands.length == arity do throw "unsupported float operation arity"
+        if op.name == "arith.cmpf" then
+          match op.attr? "predicate" with
+          | some (.int p (.int 64)) => unless 0 <= p && p <= 15 do throw "invalid cmpf predicate"
+          | _ => throw "test cmpf model requires MLIR's i64 predicate attribute"
+        if (op.attr? "roundingmode").isSome then throw "test float model requires default rounding"
+        match op.attr? "fastmath" with
+        | none => pure ()
+        | some (.enum "arith" "fastmath" "none") => pure ()
+        | _ => throw "test float model requires fastmath=none"
+        if op.name == "arith.fptosi" || op.name == "arith.fptoui" then
+          unless results.all (fun r => (r.ty.bitWidth? 64).getD 65 <= 32) do
+            throw "test float-to-int model supports results up to 32 bits"
+        if op.name == "arith.sitofp" || op.name == "arith.uitofp" then
+          -- hostModel.ofInt uses UInt64. Check the actual operand's SSA type,
+          -- including captures, before permitting that host conversion.
+          let supported := match op.operands with
+            | [id] => match types.lookup id with
+              | some (.int w) | some (.tensor _ (.int w) none) => 0 < w && w <= 64
+              | _ => false
+            | _ => false
+          unless supported do throw "test int-to-float model requires a 1..64-bit integer input"
+      validateRegions byteModel types regions
+      validateOps byteModel (results.map (fun r => (r.id, r.ty)) ++ types) rest
+  def validateRegions (byteModel : Bool) (types : List (ValueId × Ty)) : List Region → Except String Unit
+    | [] => pure ()
+    | .mk bs :: rs => do
+      validateBlocks byteModel types bs
+      validateRegions byteModel types rs
+  def validateBlocks (byteModel : Bool) (types : List (ValueId × Ty)) : List Block → Except String Unit
+    | [] => pure ()
+    | .mk args ops :: bs => do
+      unless args.all (fun a => internalValueType a.ty) do throw "unsupported block argument type in fidelity adapter"
+      validateOps byteModel (args.map (fun a => (a.id, a.ty)) ++ types) ops
+      validateBlocks byteModel types bs
+end
+
+def roundEven (x : Float) : Float := Id.run do
+  if x.isNaN || x.isInf || x.abs >= 4503599627370496.0 then return x
+  let lo := x.floor
+  let delta := x - lo
+  let r := if delta < 0.5 then lo else if delta > 0.5 then lo + 1.0
+    else if lo.abs.toUInt64 % 2 == 0 then lo else lo + 1.0
+  -- Preserve negative zero, including rounding negative fractions to zero.
+  return if r == 0.0 then Float.ofBits (x.toBits &&& 0x8000000000000000) else r
+
+def trunc (x : Float) : Float := if x < 0.0 then x.ceil else x.floor
+
+def op64 (n : String) (xs : List Float) : Float :=
+  match n, xs with
+  | "arith.addf", [x, y] => x + y
+  | "arith.subf", [x, y] => x - y
+  | "arith.mulf", [x, y] => x * y
+  | "arith.divf", [x, y] => x / y
+  | "arith.negf", [x] => -x
+  | "math.absf", [x] => x.abs
+  | "math.sqrt", [x] => x.sqrt
+  | "math.ceil", [x] => x.ceil
+  | "math.floor", [x] => x.floor
+  | "math.round", [x] => x.round
+  | "math.roundeven", [x] => roundEven x
+  | "math.trunc", [x] => trunc x
+  | "math.fma", [x, y, z] => x.fma y z
+  | _, _ => 0.0 -- validateOps and the corpus restrict names and arities.
+
+def op32 (n : String) (xs : List Float32) : Float32 :=
+  match n, xs with
+  | "arith.addf", [x, y] => x + y
+  | "arith.subf", [x, y] => x - y
+  | "arith.mulf", [x, y] => x * y
+  | "arith.divf", [x, y] => x / y
+  | "arith.negf", [x] => -x
+  | "math.absf", [x] => x.abs
+  | "math.sqrt", [x] => x.sqrt
+  | "math.ceil", [x] => x.ceil
+  | "math.floor", [x] => x.floor
+  | "math.round", [x] => x.round
+  | "math.roundeven", [x] => (roundEven x.toFloat).toFloat32
+  | "math.trunc", [x] => (trunc x.toFloat).toFloat32
+  | "math.fma", [x, y, z] => x.fma y z
+  | _, _ => 0.0
+
+def toHost (k : FKind) (x : FBits k) : Float :=
+  match k with
+  | .f32 => (Float32.ofBits x.toNat.toUInt32).toFloat
+  | .f64 => Float.ofBits x.toNat.toUInt64
+  | _ => 0.0
+
+def ofHost (k : FKind) (x : Float) : FBits k :=
+  match k with
+  | .f32 => BitVec.ofNat 32 x.toFloat32.toBits.toNat
+  | .f64 => BitVec.ofNat 64 x.toBits.toNat
+  | _ => 0
+
+def cmp (key : FloatOpKey) (x y : Float) : Bool := Id.run do
+  -- Predicate is part of the exact float key; parse the decimal IntegerAttr literal. The request
+  -- is exported by MLIR, whose cmpf predicate is an i64 attribute (0..15).
+  let part := (key.modifiers.splitOn ";pred").getLast!
+  let literal := (part.splitOn "attr ").getLast!
+  let p := ((literal.splitOn " ").headD "").toNat?.getD 99
+  let unordered := x.isNaN || y.isNaN
+  return match p with
+    | 0 => false
+    | 1 => !unordered && x == y
+    | 2 => !unordered && x > y
+    | 3 => !unordered && x >= y
+    | 4 => !unordered && x < y
+    | 5 => !unordered && x <= y
+    | 6 => !unordered && x != y
+    | 7 => !unordered
+    | 8 => unordered || x == y
+    | 9 => unordered || x > y
+    | 10 => unordered || x >= y
+    | 11 => unordered || x < y
+    | 12 => unordered || x <= y
+    | 13 => unordered || x != y
+    | 14 => unordered
+    | 15 => true
+    | _ => false
+
+def hostModel : FloatModel where
+  op key k xs := match k with
+    | .f32 => BitVec.ofNat 32 (op32 key.op (xs.map fun x => Float32.ofBits x.toNat.toUInt32)).toBits.toNat
+    | .f64 => BitVec.ofNat 64 (op64 key.op (xs.map fun x => Float.ofBits x.toNat.toUInt64)).toBits.toNat
+    | _ => 0
+  cmp key k x y := cmp key (toHost k x) (toHost k y)
+  convert _ src dst x := ofHost dst (toHost src x)
+  toInt key k w x :=
+    let f := toHost k x
+    if f.isNaN || f.isInf || w > 32 then none else
+    let magnitude := (trunc f).abs.toUInt64.toNat
+    let z : Int := if f < 0.0 then -(Int.ofNat magnitude) else Int.ofNat magnitude
+    let signed := key.op == "arith.fptosi"
+    let lower : Int := if signed then -(Int.ofNat (2 ^ (w - 1))) else 0
+    let upper : Int := Int.ofNat (if signed then 2 ^ (w - 1) else 2 ^ w)
+    if lower <= z && z < upper then some (BitVec.ofInt w z) else none
+  ofInt key _w k x :=
+    let z := if key.op == "arith.sitofp" then x.toInt else Int.ofNat x.toNat
+    match k with
+    | .f32 =>
+      let f := z.natAbs.toUInt64.toFloat32
+      BitVec.ofNat 32 (if z < 0 then -f else f).toBits.toNat
+    | .f64 =>
+      let f := z.natAbs.toUInt64.toFloat
+      BitVec.ofNat 64 (if z < 0 then -f else f).toBits.toNat
+    | _ => 0
+
+def scalar (ib : Nat) (ty : Ty) (bits : String) : Except String Val := do
+  let some n := bits.toNat? | throw "input bits must be unsigned decimal strings"
+  let some w := ty.bitWidth? ib | throw "unsupported input element type"
+  unless 0 < w && w <= 64 && n < 2 ^ w do throw "input bits exceed element width (1..64)"
+  let some s := scalarOfBits ib ty n | throw "input element decode failed"
+  return .some s
+
+def input (ib : Nat) (ty : Ty) (j : Json) : Except String RVal := do
+  let raw <- Decode.arr j
+  match ty with
+  | .tensor dims elt none =>
+    let some shape := dims.mapM id | throw "dynamic tensors are outside the fidelity adapter"
+    unless raw.length == shapeSize shape do throw "wrong tensor input element count"
+    let vs <- raw.mapM fun x => do scalar ib elt (← Decode.str x)
+    return .tensor (Tensor.canon shape elt fun i => vs.toArray[linearIndex shape i]?.getD .poison)
+  | .tensor .. => throw "encoded tensors are outside the fidelity adapter"
+  | _ =>
+    let [x] := raw | throw "scalar input must contain exactly one element"
+    return .scalar (← scalar ib ty (← Decode.str x))
+
+def valBits : Val → Json
+  | .poison => .null
+  | .some (.bits _ x) => toJson (toString x.toNat)
+  | .some (.flt _ x) => toJson (toString x.toNat)
+
+def output : RVal → Json
+  | .scalar v => Json.mkObj [("shape", .null), ("bits", toJson [valBits v])]
+  | .tensor t => Json.mkObj [("shape", toJson t.shape),
+      ("bits", toJson ((allPoints t.shape).map fun i => valBits (t.get i)))]
+
+def outcome : Outcome (List RVal) → Json
+  | .ok vs => Json.mkObj [("status", toJson "ok"), ("values", toJson (vs.map output))]
+  | .ub => Json.mkObj [("status", toJson "ub")]
+  | .stuck why => Json.mkObj [("status", toJson "stuck"), ("reason", toJson why)]
+
+/-- Evaluate the additive source-contract candidate, without installing it in frozen dispatch.
+This mode cannot issue a verification verdict. Widths and axes are validated before the host
+model runs; numerical results are finite test evidence only. -/
+def dequantWidth (j : Json) : Except String Json := do
+  let width ← Decode.nat (← Decode.field j "zero_width")
+  unless width == 32 || width == 64 do throw "dequant candidate supports i32/i64 zero points"
+  let kind ← Decode.str (← Decode.field j "kind")
+  unless kind == "per_tensor" || kind == "per_channel" do throw "unsupported dequant candidate"
+  let channel := kind == "per_channel"
+  let shape ← (← Decode.arr (← Decode.field j "shape")).mapM Decode.nat
+  let axis ← Decode.nat (← Decode.field j "axis")
+  unless !channel || axis < shape.length do throw "dequant candidate axis out of bounds"
+  let config : Sem.Ops.Dequant.Config := ⟨channel, axis, shape⟩
+  let tensorTy := fun sh ty => Ty.tensor (sh.map some) ty none
+  let types := [tensorTy shape (.int 8),
+    tensorTy (Sem.Ops.Dequant.paramShape config) (.float .f32),
+    tensorTy (Sem.Ops.Dequant.paramShape config) (.int width)]
+  let samples ← Decode.arr (← Decode.field j "samples")
+  let results ← samples.mapM fun sample => do
+    let args ← Decode.arr sample
+    unless args.length == types.length do throw "wrong dequant candidate argument count"
+    let values ← (types.zip args).mapM fun (ty, arg) => input 64 ty arg
+    return outcome (Rules.W8A8DequantWidth.run width config hostModel values)
+  return Json.mkObj [("scope", toJson "dequant_width_candidate_only"),
+    ("whole_pass_verified", toJson false), ("results", toJson results)]
+
+structure SourceQuantizeObservation where
+  result : Json
+  instanceDomain : Bool
+  finitePreconditions : Bool
+
+/-- Test-only evaluation of the captured-source quantization candidate. It cannot write a
+verified receipt or replace frozen quant_ext dispatch. -/
+def sourceQuantize (j : Json) : Except String Json := do
+  let width ← Decode.nat (← Decode.field j "zero_width")
+  unless width == 32 || width == 64 do throw "source quantize candidate supports i32/i64 zero points"
+  let lo ← Decode.intStr (← Decode.field j "quant_min")
+  let hi ← Decode.intStr (← Decode.field j "quant_max")
+  unless lo == -128 && hi == 127 do throw "source quantize candidate requires range -128/127"
+  let dtype ← Decode.str (← Decode.field j "output_dtype")
+  unless dtype == "int8" do throw "source quantize candidate requires signed int8 output"
+  let shape ← (← Decode.arr (← Decode.field j "shape")).mapM Decode.nat
+  let tensorTy := fun sh ty => Ty.tensor (sh.map some) ty none
+  let types := [tensorTy shape (.float .f32), tensorTy [] (.float .f32), tensorTy [] (.int width)]
+  let samples ← Decode.arr (← Decode.field j "samples")
+  let results ← samples.mapM fun sample => do
+    let args ← Decode.arr sample
+    unless args.length == types.length do throw "wrong source quantize candidate argument count"
+    let values ← (types.zip args).mapM fun (ty, arg) => input 64 ty arg
+    return ({
+      result := outcome (Rules.W8A8SourceQuantize.run width
+        (Rules.W8A8ByteModel.extend hostModel) shape values)
+      instanceDomain := Check.PolicyW8A8SourceDomain.check width hostModel shape values
+      finitePreconditions := Check.PolicyW8A8FiniteDomain.check width shape values
+    } : SourceQuantizeObservation)
+  return Json.mkObj [("scope", toJson "source_quantize_candidate_only"),
+    ("whole_pass_verified", toJson false), ("results", toJson (results.map (·.result))),
+    ("domain_scope", toJson "candidate_runtime_instances_only"),
+    ("domain_checks", toJson (results.map (·.instanceDomain))),
+    ("finite_preconditions", toJson (results.map (·.finitePreconditions))),
+    ("finite_precondition_theorem", toJson "MerlinVerify.Check.PolicyW8A8FiniteDomain.check_sound"),
+    ("primitive_model_laws_verified", toJson false)]
+
+/-- Bind samples to actual function-argument SSA values before executing one recognized source
+operation. This deliberately narrow adapter is for contract qualification, not model execution. -/
+def sourceContract (j : Json) : Except String Json := do
+  let m ← Decode.module (← Decode.str (← Decode.field j "export"))
+  let fn ← Decode.str (← Decode.field j "function")
+  let some function := m.ops.find? (fun op => (op.asFunc?.map (·.name)) == some fn) | throw "function missing"
+  let [.mk [.mk inputs [actual, returned]]] := function.regions |
+    throw "source contract adapter requires a single operation and return"
+  unless returned.name == "func.return" && returned.operands == actual.results.map (·.id) do
+    throw "source contract adapter requires returning the actual operation results"
+  let some (.type (.function tys _)) := function.attr? "function_type" | throw "function signature missing"
+  unless inputs.map (·.ty) == tys do throw "source contract adapter requires matching argument declarations"
+  let types := inputs.map fun value => (value.id, value.ty)
+  let matched := (Rules.W8A8SourceContract.inspect types actual).isSome
+  let samples ← Decode.arr (← Decode.field j "samples")
+  let results ← if matched then samples.mapM fun sample => do
+      let raw ← Decode.arr sample
+      unless raw.length == tys.length do throw "wrong source operation argument count"
+      let values ← (tys.zip raw).mapM fun (ty, arg) => input 64 ty arg
+      let env : Env := (inputs.map (·.id)).zip values
+      let .ok args := env.getAll actual.operands | throw "source operation refers to an unbound SSA value"
+      return (outcome (Rules.W8A8SourceContract.eval types actual (Rules.W8A8ByteModel.extend hostModel) args),
+        Check.PolicyW8A8Source.check types actual hostModel args)
+    else pure []
+  return Json.mkObj [("scope", toJson "source_contract_instances_only"), ("whole_pass_verified", toJson false),
+    ("source_contract_matched", toJson matched), ("results", toJson (results.map Prod.fst)),
+    ("instance_checks", toJson (results.map Prod.snd))]
+
+def program (j : Json) (byteModel : Bool := false) (sourceModel : Bool := false) : Except String Json := do
+  let m <- Decode.module (← Decode.str (← Decode.field j "export"))
+  validateOps byteModel [] m.ops
+  let fn <- Decode.str (← Decode.field j "function")
+  let ib <- Decode.nat (← Decode.field j "index_bits")
+  unless ib == 32 || ib == 64 do throw "fidelity adapter supports 32- or 64-bit index"
+  let some op := m.ops.find? (fun o => (o.asFunc?.map (·.name)) == some fn) | throw "function missing"
+  let some (.type (.function tys _)) := op.attr? "function_type" | throw "function signature missing"
+  let samples <- Decode.arr (← Decode.field j "samples")
+  let ctx : Ctx := {
+    M := if byteModel then Rules.W8A8ByteModel.extend hostModel else hostModel
+    ext := fun _ _ => .stuck "no external oracle"
+    indexBits := ib }
+  let results <- samples.mapM fun sample => do
+    let args <- Decode.arr sample
+    unless args.length == tys.length do throw "wrong input argument count"
+    let vs <- (tys.zip args).mapM fun (ty, arg) => input ib ty arg
+    let sem := if sourceModel then Rules.W8A8SourceSemantics.opSem else Sem.Ops.opSem
+    return outcome (MerlinVerify.denote sem ctx m fn vs)
+  return toJson results
+
+/-- Whole-function execution under the provisional source extension. The test-only host float
+model and finite samples establish no universal input-domain or independent recipe claim. -/
+def sourceProgram (j : Json) : Except String Json := do
+  let results ← program j true true
+  return Json.mkObj [("scope", toJson "source_program_candidate_instances_only"),
+    ("whole_pass_verified", toJson false), ("results", results)]
+
+def run (j : Json) : Except String Json :=
+  match j.getObjVal? "contract" with
+  | .ok (.str "w8a8_dequant_width") => dequantWidth j
+  | .ok (.str "w8a8_byte_model") => program j true
+  | .ok (.str "w8a8_source_quantize") => sourceQuantize j
+  | .ok (.str "w8a8_source_contract") => sourceContract j
+  | .ok (.str "w8a8_source_program") => sourceProgram j
+  | .ok _ => .error "unsupported fidelity contract"
+  | .error _ => program j
+
+end MerlinDifferential
+
+def main (args : List String) : IO UInt32 := do
+  let [path] := args | do IO.eprintln "usage: Differential.lean <request.json>"; return 2
+  let text ← IO.FS.readFile path
+  match Json.parse text >>= MerlinDifferential.run with
+  | .ok result => IO.println result.compress; return 0
+  | .error reason => IO.eprintln reason; return 2
