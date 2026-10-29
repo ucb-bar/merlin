@@ -20,6 +20,24 @@ CHECK = "compiler_qdq_refinement"
 TEXTUAL = "preprocess_text_textual.dequant_to_generic"
 ENV_CAPTURE = "MERLIN_QDQ_SOURCE_CAPTURE"
 SOURCE_NAMES = ("quant_ext.quantize_per_tensor", "quant_ext.dequantize_per_tensor", "quant_ext.dequantize_per_channel")
+_SOURCE_BINDING_PATHS = (
+    "src/merlin/targetgen/qdq_capture.py",
+    "src/merlin/targetgen/qdq_capture_identity.py",
+    "src/merlin/targetgen/_m2m_capture_worker.py",
+    "src/merlin/targetgen/_m2m_capture_artifacts.py",
+    "src/merlin/targetgen/__init__.py",
+    "src/merlin/integrations/model2mlir.py",
+    "src/merlin/integrations/__init__.py",
+    "src/merlin/common/provenance.py",
+    "src/merlin/common/provenance_lost.py",
+    "build_tools/toolchains/lean-torch-requirements.txt",
+    "merlin/contract/software_pins.yaml",
+)
+
+
+def _source_refs(root):
+    """Bind canonical capture/pin observers; foreign dependency closure stays trusted."""
+    return [bindings._ref(root / path) for path in _SOURCE_BINDING_PATHS]
 
 
 def source_sites(source):
@@ -41,9 +59,21 @@ class SourceCapture:
     producer: Path
     torch_wheel: Path
     dependencies: Path | None = None
+    prove_prefix: bool = False
+
+    def __post_init__(self):
+        if type(self.prove_prefix) is not bool:
+            raise ValueError("Q/DQ prefix proof requires an explicit boolean")
 
     def describe(self):
-        return {name: str(value.absolute()) if value is not None else None for name, value in vars(self).items()}
+        return {
+            **{
+                name: str(value.absolute()) if value is not None else None
+                for name, value in vars(self).items()
+                if name != "prove_prefix"
+            },
+            "prove_prefix": self.prove_prefix,
+        }
 
     @classmethod
     def from_environment(cls):
@@ -55,8 +85,14 @@ class SourceCapture:
         if missing:
             raise ValueError("Q/DQ source qualification requires explicit " + ", ".join(missing))
         dependencies = os.environ.get("MERLIN_QDQ_CAPTURE_DEPS")
+        prefix = os.environ.get("MERLIN_QDQ_PROVE_PREFIX", "0")
+        if prefix not in ("0", "1"):
+            raise ValueError("MERLIN_QDQ_PROVE_PREFIX requires 0 or 1")
         return cls(
-            Path(directory), *(Path(os.environ[name]) for name in names), Path(dependencies) if dependencies else None
+            Path(directory),
+            *(Path(os.environ[name]) for name in names),
+            Path(dependencies) if dependencies else None,
+            prove_prefix=prefix == "1",
         )
 
 
@@ -89,14 +125,17 @@ def _capture(selection, before, directory):
     from merlin.llvmlower.passes_xdsl import parse_mlir_text
     from merlin.xdsl_dialects._common import text
 
-    if type(selection) is not dict or set(selection) != {
+    required = {
         "directory",
         "python",
         "producer",
         "torch_wheel",
         "dependencies",
-    }:
+    }
+    if type(selection) is not dict or set(selection) not in (required, required | {"prove_prefix"}):
         raise GateUnsupported("Q/DQ source qualification requires exact explicit capture/tool selections")
+    if type(selection.get("prove_prefix", False)) is not bool:
+        raise GateUnsupported("Q/DQ prefix proof requires an explicit boolean")
     if any(
         type(selection[key]) is not str or not selection[key]
         for key in ("directory", "python", "producer", "torch_wheel")
@@ -116,10 +155,12 @@ def _capture(selection, before, directory):
             "qdq-source-check.json",
         )
     ]
-    if text(parse_mlir_text(before), generic=True) != text(
+    exact_input = text(parse_mlir_text(before), generic=True) == text(
         parse_mlir_text((capture / "qdq-source.mlir").read_text()), generic=True
-    ):
+    )
+    if not exact_input and not selection.get("prove_prefix", False):
         raise GateRejected("actual Q/DQ boundary input differs from the selected source capture")
+    refs.append(bindings._ref(Path(selection["python"])))
     script = (
         "import json,sys; "
         "request=json.loads(sys.argv[1]); "
@@ -145,7 +186,7 @@ def _capture(selection, before, directory):
         refs.append(bindings._ref(path))
     cleanup = getattr(process, "owned_process_cleanup", None)
     (directory / "source.cleanup.json").write_text(json.dumps(cleanup, sort_keys=True) + "\n")
-    refs.extend((bindings._ref(directory / "source.cleanup.json"), bindings._ref(Path(selection["python"]))))
+    refs.append(bindings._ref(directory / "source.cleanup.json"))
     if type(cleanup) is not dict or cleanup.get("complete") is not True:
         raise GateUnavailable("Q/DQ source reconstruction child cleanup is unknown")
     if process.returncode:
@@ -155,7 +196,68 @@ def _capture(selection, before, directory):
         raise GateRejected("Q/DQ source reconstruction did not establish its complete scoped claim")
     for ref in refs:
         bindings._bound(ref)
-    return result, refs
+    return {**result, "actual_input_matches_capture": exact_input}, refs
+
+
+def _check_prefix(captured, actual, directory, params):
+    """Fresh whole-module refinement; an earlier receipt supplies no authority.
+
+    This connects the captured Q/DQ IR to a later compiler input under the same
+    proposed model. It is not direct original-graph correspondence for that
+    later syntax, nor proof of a particular prefix producer's implementation.
+    """
+    from .gate_checks import tensor_refinement
+
+    directory.mkdir(parents=True, exist_ok=False)
+    before, after = directory / "before.mlir", directory / "after.mlir"
+    before.write_text(captured)
+    after.write_text(actual)
+    detail = tensor_refinement(
+        {
+            "directory": str(directory),
+            "label": "qdq_capture_to_boundary",
+            "before": str(before),
+            "after": str(after),
+            "params": {name: params[name] for name in ("sdk_bin", "compiler_python", "index_bits")},
+        }
+    )
+    refs = [bindings._ref(path) for path in sorted(directory.rglob("*")) if path.is_file()]
+    return {
+        "status": "verified",
+        "claim": detail["claim"] + "; relative to the proposed Q/DQ source semantics",
+        "relation": "strict_typed_refinement",
+        "source_spec_approved": False,
+        "before": bindings._ref(before),
+        "after": bindings._ref(after),
+        "receipt": detail["receipt"],
+        "chains": detail["chains"],
+        "theorems": list(detail["theorems"]),
+        "strengthenings": detail["strengthenings"],
+    }, refs
+
+
+def _compose_prefix(prefix, detail, directory, params):
+    """Replay and compose both actual stages on the captured input domain."""
+    from .lean import check as checker
+
+    if set(prefix["chains"]) != set(detail["functions"]):
+        raise GateRejected("Q/DQ prefix and lowering function rosters differ")
+    first = Path(prefix["receipt"]).parent
+    final = Path(detail["receipt"]).parent
+    chains = {}
+    for function in detail["functions"]:
+        path = directory / f"capture-chain-{function}.json"
+        outcome = checker.compose_chain(
+            [first, final],
+            first.parent / f"support-{function}" / "receipt.json",
+            function,
+            path,
+            m2m_python=Path(params["compiler_python"]),
+        )
+        if outcome.get("refinement_verdict") != "verified":
+            raise GateRejected(f"captured Q/DQ refinement did not compose for @{function}")
+        chains[function] = bindings._ref(path)
+    return {"status": "verified", "relation": "strict_typed_refinement", "chains": chains}, list(chains.values())
 
 
 def check(job):
@@ -170,15 +272,7 @@ def check(job):
         raise GateUnsupported("Q/DQ compiler refinement supports index64 only")
     root = bindings.installed_root()
     sources = bindings.source_bindings(root)
-    extra = [
-        bindings._ref(root / path)
-        for path in (
-            "src/merlin/targetgen/qdq_capture.py",
-            "src/merlin/targetgen/qdq_capture_identity.py",
-            "build_tools/toolchains/lean-torch-requirements.txt",
-            "merlin/contract/software_pins.yaml",
-        )
-    ]
+    extra = _source_refs(root)
     directory = Path(job["directory"])
     endpoints = [bindings._ref(Path(job[name])) for name in ("before", "after")]
     sites = source_sites(Path(job["before"]).read_text())
@@ -186,11 +280,20 @@ def check(job):
         raise GateUnsupported("no supported source Q/DQ sites; no positive lowering coverage")
     source = {"status": "not_requested", "original_program_bound": False}
     selection = params.get("source_capture")
+    prefix = None
     if selection is not None:
         first = directory / "source-before-proof"
         first.mkdir()
         source, refs = _capture(selection, Path(job["before"]).read_text(), first)
         extra.extend(refs)
+        if not source["actual_input_matches_capture"]:
+            captured = (Path(selection["directory"]) / "qdq-source.mlir").read_text()
+            if bindings._digest(captured.encode()) != source["mlir_sha256"]:
+                raise GateRejected("Q/DQ capture changed before prefix checking")
+            prefix, refs = _check_prefix(
+                captured, Path(job["before"]).read_text(), directory / "capture-prefix", params
+            )
+            extra.extend(refs)
     detail = tensor_refinement(job)
     if selection is not None:
         last = directory / "source-after-proof"
@@ -199,6 +302,16 @@ def check(job):
         if source != repeated:
             raise GateRejected("Q/DQ source/tool identity changed during the compiler proof")
         extra.extend(refs)
+        composed = None
+        if prefix is not None:
+            composed, refs = _compose_prefix(prefix, detail, directory, params)
+            extra.extend(refs)
+        source = {
+            **source,
+            "capture_to_boundary": prefix or {"status": "exact_generic_ir"},
+            "capture_to_output": composed,
+            "correspondence_scope": "original graph to captured IR; optional model-relative prefix to actual input",
+        }
     for ref in [*endpoints, *extra]:
         bindings._bound(ref)
     if bindings.source_bindings(root) != sources:

@@ -13,6 +13,9 @@ code_refs:
   - src/merlin/targetgen/qdq_capture_identity.py
   - src/merlin/llvmlower/passes_xdsl.py
   - merlin/tests/ir/test_compiler_qdq.py
+  - merlin/tests/ir/test_compiler_qdq_prefix.py
+  - merlin/tests/ir/test_compiler_qdq_native_source.py
+  - merlin/tests/ir/test_compiler_qdq_bindings.py
 ---
 
 # Check Q/DQ lowering in the compiler
@@ -102,9 +105,19 @@ No tool or wheel is downloaded by a check.
 
 Before and after the Lean proof, an owned child reopens the selected identities,
 loads the original PT2 graph, compares its ordered nodes and returns, and reruns
-the existing capture correspondence checker. The complete generic IR must equal
-the actual boundary input. Actual endpoint bytes and source/capture hashes are
+the existing capture correspondence checker. By default the complete generic IR
+must equal the actual boundary input. Actual endpoint bytes and source/capture hashes are
 retained in the verdict. Saved `matched` status is insufficient.
+
+When a proven preparation changes that input, Python callers can explicitly
+select `SourceCapture(..., prove_prefix=True)`; the environment equivalent is
+`MERLIN_QDQ_PROVE_PREFIX=1`. The worker then freshly proves captured IR → actual
+boundary input with the existing typed tensor checker and composes that prefix
+with the Q/DQ lowering proof. Both original-source checks still reopen the PT2,
+producer and pinned Torch identities. The report distinguishes exact-input
+binding, prefix refinement and the captured-IR→output chain. The default remains
+exact input binding. A provenance ID or saved prefix receipt cannot authorize
+this route, and the prefix proves refinement only under the same proposed model.
 
 The pin lookup belongs to the installed checker; a caller-selected repository
 cannot replace it. Changing the capture checker's bound sources requires fresh
@@ -123,8 +136,50 @@ materialization and scalar i64 zero points; per-channel dequantization uses f32
 scales and i32 zero points. Quantizer scales must also be positive with a finite
 f32 reciprocal. Dequantization does not acquire that reciprocal restriction.
 
-If an earlier preparation changes the complete input, the original capture
-cannot be attached to that later boundary without a corresponding bridge. The
-gate refuses rather than inferring source correspondence from provenance IDs.
+If an earlier preparation changes the complete input, select the checked prefix
+route above or attach the original capture at its exact input boundary. An
+unsupported prefix is refused rather than inferred from provenance IDs.
 Source binding does not establish whole-model successful execution, numerical
 accuracy, general TorchAO semantics or hardware fidelity.
+
+The source semantics also have a narrower type/granularity domain than the
+production lowering: per-tensor full-range signed-i8 quantization with f32 data
+and scale; signed-i8→f32 per-tensor/channel dequantization with supported zero
+point widths. Per-group dequantization and broader float precisions require
+additional semantics and proof coverage. Real native source examples qualify
+the selected capture/compiler route; they do not widen these formal domains.
+
+## Native qualification checkpoint, 2026-10-29
+
+The real source route now runs locally with PyTorch **2.10.0+cpu** and producer
+commit **905d2c918f839596c9d1198cbdeb42d4c12a325b**. The selected wheel matches the
+existing SHA256 pin
+`ee40b8a4b4b2cf0670c6fd4f35a7ef23871af956fecb238fbf5da15a72650b1d`;
+preflight checked 11,882 installed wheel payload members (excluding `RECORD`)
+and all 60 producer source files. CUDA is absent from this Torch build. Provisioning used existing local
+producer objects and compatible owned dependencies; no pin was changed.
+
+The dedicated native test module captures and reloads the original programs,
+checks retained native references, then exercises all four examples—quantize,
+per-tensor dequantize, per-channel dequantize and two-site Q/DQ composition—on
+both actual compiler routes. All eight source-qualified compiles matched their
+ungated LLVM output. The actual observed pass also accepted a freshly checked
+nonidentity prefix and its two-stage composition; swapped original PT2 and
+changed source-contract controls refused. These **11 native cases** and **three
+earlier source-freshness reruns** passed in the 14-case checkpoint. They retain
+proposed status and establish no downstream LLVM/native correctness theorem.
+
+Local records are in
+`out/build/pass-verif-integration-20261028/qdq-prefix/`: `verified-tool-identity.json`,
+`producer-materialization.json`, `pytest-native-v1.xml` and `pytest-native-v1.log`.
+Seven canonical observer-byte mutation controls also passed after the additive
+binding hardening. That hardening binds the consumed capture/pin observers and
+package initializers; it does not establish foreign dependency closure.
+
+The repository deletes passed pytest temporary trees by default. Use
+`-o tmp_path_retention_policy=all` when retaining gate receipts for independent
+replay. The checkpoint's XML/log and shared native capture survive; its passed
+per-test gate directories were cleaned. An earlier eight-boundary lowering run
+predated a checker rebuild, so its replay correctly refused the old provenance;
+fresh final-cut lowering,
+separate-process replay and a retained current-source smoke remain pending.
