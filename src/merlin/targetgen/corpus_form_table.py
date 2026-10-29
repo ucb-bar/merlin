@@ -57,6 +57,19 @@ def _pad(mode: str) -> Callable[[int, int], dict[str, Any]]:
     return make
 
 
+def _pad_dims(mode: str, kind: str) -> Callable[[int, int], dict[str, Any]]:
+    """torch reflection/replication_pad1d / 3d: the LAST 1 (shape [m, n]) or 3 (shape [2, m, n]) dims are padded."""
+
+    def make(m: int, n: int) -> dict[str, Any]:
+        lo_c = 1 if n > 1 else 0
+        if kind == "1d":
+            return {"form": "pad", "shape": [m, n], "low": [0, lo_c], "high": [0, lo_c], "mode": mode}
+        lo_r = 1 if m > 1 else 0
+        return {"form": "pad", "shape": [2, m, n], "low": [1, lo_r, lo_c], "high": [1, lo_r, lo_c], "mode": mode}
+
+    return make
+
+
 def _broadcast(m: int, n: int) -> dict[str, Any]:
     return {"form": "broadcast", "shape": [1, n], "out_shape": [m, n]}
 
@@ -180,6 +193,9 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     ("movement", "pad_constant"): FormEntry("movement", _pad("constant"), ("copy", "zero_fill")),
     ("movement", "pad_reflect"): FormEntry("movement", _pad("reflect"), ("copy", "permutation")),
     ("movement", "pad_replicate"): FormEntry("movement", _pad("replicate"), ("copy", "broadcast")),
+    ("movement", "pad_reflect_1d"): FormEntry("movement", _pad_dims("reflect", "1d"), ("copy", "permutation")),
+    ("movement", "pad_reflect_3d"): FormEntry("movement", _pad_dims("reflect", "3d"), ("copy", "permutation")),
+    ("movement", "pad_replicate_3d"): FormEntry("movement", _pad_dims("replicate", "3d"), ("copy", "broadcast")),
     ("movement", "broadcast"): FormEntry("movement", _broadcast, ("broadcast",)),
     ("movement", "repeat"): FormEntry("movement", _repeat, ("copy", "broadcast")),
     ("movement", "permute"): FormEntry("movement", _permute, ("permutation",)),

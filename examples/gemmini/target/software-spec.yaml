@@ -840,7 +840,7 @@ operations:
     # upsample_nearest is the `upsample` form on CHANNELS-LAST pixel rows [H, W, C] (C contiguous and not
     # resampled): each pixel row is MVIN'd once and MVOUT'd to its replicas (primitive `copy`); an NCHW
     # tensor resamples its contiguous axis and needs a layout permutation around it, which this row does not claim.
-    forms: [slice, flip, pad_constant, pad_reflect, pad_replicate, broadcast, repeat, permute, concat, insert_slice, view, unsqueeze, squeeze, select, split_chunk, fill, fill_zero, diagonal, as_strided, upsample_nearest]
+    forms: [slice, flip, pad_constant, pad_reflect, pad_replicate, broadcast, repeat, permute, concat, insert_slice, view, unsqueeze, squeeze, select, split_chunk, fill, fill_zero, diagonal, as_strided, upsample_nearest, pad_reflect_1d, pad_reflect_3d, pad_replicate_3d]
     evidence:
       review_status: reviewed
       reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-29); the stated evidence and qualification scope remain mandatory."

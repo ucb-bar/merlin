@@ -926,3 +926,16 @@ def test_strided_read_and_upsample_broadcast_class_is_read_from_the_form(attribu
     }  # fmt: skip
     rows = [row for row in command_rows(cb) if row["semantic_family"] == "movement"]
     assert len(rows) == 1 and rows[0].get("broadcasting") == expected
+
+
+@pytest.mark.parametrize(("code", "broadcasting", "work"), [(0, "none", "zero_fill"), (5, "outer", "broadcast")])
+def test_literal_fill_states_its_dtype_class_and_work(code, broadcasting, work):
+    from merlin.targetgen.interface_observations import command_rows
+
+    cb = {
+        "abi_version": "0.1", "target": "fixture",
+        "tensors": {"Y": {"shape": [4, 8], "dtype": "i8", "role": "output"}},
+        "commands": [{"opcode": "FILL", "operands": {"dst": "Y"}, "attributes": {"value_code": code}}],
+    }  # fmt: skip
+    [row] = [r for r in command_rows(cb) if r["semantic_family"] == "movement"]
+    assert row["operand_dtypes"] == ["i8"] and row["broadcasting"] == broadcasting and row["movement_form"] == work
