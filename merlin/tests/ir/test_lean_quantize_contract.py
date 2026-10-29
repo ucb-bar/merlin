@@ -184,16 +184,48 @@ def test_textual_quantizer_preserves_the_named_contraction_body(tmp_path, pass_g
     assert verdict(tmp_path, pass_gate_tools, program, after) == "accepted"
 
 
-def test_dead_source_quantizer_is_proved_when_pruned(tmp_path, pass_gate_tools):
-    from merlin.llvmlower.passes_xdsl import parse_mlir_text, prune_dead_pure_tensor_ops
+def test_dead_source_quantizer_is_lowered_before_proved_pruning(tmp_path, pass_gate_tools):
+    from merlin.llvmlower.passes_xdsl import lower_quant_ext, parse_mlir_text, prune_dead_pure_tensor_ops
     from merlin.xdsl_dialects._common import text
 
     program = source().replace("-> tensor<2x3xi8> {", "-> tensor<2x3xf32> {")
     program = program.replace("return %q : tensor<2x3xi8>", "return %x : tensor<2x3xf32>")
     module = parse_mlir_text(program)
     before = text(module, generic=True)
-    assert prune_dead_pure_tensor_ops(module) == 1
-    assert verdict(tmp_path, pass_gate_tools, before, text(module, generic=True)) == "accepted"
+    # The current DCE keeps an unregistered quant_ext op until its typed lowering.
+    assert prune_dead_pure_tensor_ops(module) == 0
+    assert lower_quant_ext(module) == 1
+    middle = text(module, generic=True)
+    assert prune_dead_pure_tensor_ops(module) == 6
+    after = text(module, generic=True)
+    assert verdict(tmp_path / "lower", pass_gate_tools, before, middle) == "accepted"
+    assert verdict(tmp_path / "prune", pass_gate_tools, middle, after) == "accepted"
+
+
+def test_mutated_actual_compiler_quantizer_boundary_is_refused(tmp_path, pass_gate_tools, monkeypatch):
+    from merlin.llvmlower import lower, passes_xdsl
+    from merlin.verify.lean import stages
+
+    real = passes_xdsl.lower_quant_ext
+
+    def buggy(module, **kwargs):
+        count = real(module, **kwargs)
+        _wrong_multiply(module)
+        return count
+
+    monkeypatch.setattr(passes_xdsl, "lower_quant_ext", buggy)
+    monkeypatch.setenv(stages.ENV, str(tmp_path / "stages"))
+    lower.lower_model(source(), tmp_path / "compiled", targets=())
+    stage = next(path for path in stages.completed(tmp_path / "stages") if path.name.endswith("xdsl-quant-lowered"))
+    assert (
+        verdict(
+            tmp_path / "checked",
+            pass_gate_tools,
+            (stage / "before.mlir").read_text(),
+            (stage / "after.mlir").read_text(),
+        )
+        == "GateRejected"
+    )
 
 
 @pytest.mark.parametrize("width", [32, 64])

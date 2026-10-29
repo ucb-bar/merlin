@@ -58,6 +58,25 @@ def write_frontend_trace(path: Path, trace: dict) -> dict:
     return {"path": path.name, "sha256": hashlib.sha256(raw).hexdigest(), "status": trace["status"]}
 
 
+def write_conversion_status(path: Path, result) -> None:
+    """Keep the conversion boundary visible before later capture work can fail."""
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "merlin.capture.conversion_status.v1",
+                "conversion_ok": bool(result.ok),
+                "mlir_bytes": len(result.mlir_text.encode("utf-8")),
+                "path_taken": getattr(result, "path_taken", None),
+                "diagnostics": [str(item)[:2000] for item in (getattr(result, "diagnostics", None) or [])[:100]],
+                "numerical_execution_qualified": False,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def finalize_session_artifacts(root: Path, report: dict) -> None:
     """Commit final worker sidecars before inventorying the completed session bundle."""
     from m2m.capture.bundle_integrity import write_bundle_integrity

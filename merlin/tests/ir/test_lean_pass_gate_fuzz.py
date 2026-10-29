@@ -435,16 +435,20 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
 
 
 def test_deleting_a_dead_dequantization_is_proved(tmp_path, pass_gate_tools):
-    """Found by fuzzing: erasing a dead modeled dequantization (ledger A9) is a proved refinement."""
+    """A9 proves dead dequantization deletion although production DCE keeps this unregistered op."""
     program = Program(
         2,
         {"v0": Node("binary", op="arith.addf", args=["x0", "x1"]), "v1": Node("dequant", args=["w", "s", "z"])},
         ["v0", "v1"],
         ["v0"],
     )
-    before, after = generic_text(render(program, dead_empty=False), prune_dead_pure_tensor_ops)
+    raw = render(program, dead_empty=False)
+    before, held = generic_text(raw, prune_dead_pure_tensor_ops)
+    assert held == before  # unregistered source semantics are not a DCE eligibility shortcut
+    without = Program(2, {"v0": program.nodes["v0"]}, ["v0"], ["v0"])
+    after, _ = generic_text(render(without, dead_empty=False))
     assert before != after
-    assert check(tmp_path, pass_gate_tools, "prune_dead_pure_tensor_ops", before, after, "dead") == "accepted"
+    assert check(tmp_path, pass_gate_tools, "modeled-dead-dequant", before, after, "dead") == "accepted"
 
 
 def test_a_dead_cone_before_live_code_is_proved(tmp_path, pass_gate_tools):
