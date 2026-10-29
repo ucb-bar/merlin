@@ -212,7 +212,7 @@ def _substitute(call, isa, declarations, domains, records):
     return result
 
 
-def program_current(value, isa, effects, *, analyses, allow_multiple=False):
+def program_current(value, isa, effects, *, analyses, allow_multiple=False, extent_limit=1_000_000):
     if type(allow_multiple) is not bool:
         raise Unsupported("explicit multiple-loop parsing profile required")
     original_calls = []
@@ -228,13 +228,13 @@ def program_current(value, isa, effects, *, analyses, allow_multiple=False):
             decode_effect(statement, isa, effects)
             continue
         loop = node(statement, "Loop", ("var", "extent", "body", "iter_args", "yields", "results"))
-        if type(loop["extent"]) is not int or not 0 < loop["extent"] <= 1_000_000:
+        if type(loop["extent"]) is not int or not 0 < loop["extent"] <= extent_limit:
             raise Unsupported("positive bounded indexed loop domain required")
         domains = {loop["var"]: (0, loop["extent"] - 1)}
         for index, call in enumerate(sequence(loop["body"])):
             original_calls.append(copy.deepcopy(call))
             loop["body"]["tuple"][index] = _substitute(call, isa, effects, domains, analyses)
-    projected, descriptor = program(substituted, isa, effects, allow_multiple=allow_multiple)
+    projected, descriptor = program(substituted, isa, effects, allow_multiple=allow_multiple, extent_limit=extent_limit)
     if len(projected["atoms"]) != len(original_calls):
         raise ValueError("actual indexed atom roster changed")
     for atom, call in zip(projected["atoms"], original_calls, strict=True):

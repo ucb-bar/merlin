@@ -23,7 +23,7 @@ from .compiler_configuration_hoist_intake import (
     emit_profile,
     prepare,
     proof_sources,
-    reopen,
+    reopen_request,
     request,
     revalidate,
 )
@@ -83,7 +83,12 @@ def check_candidate(candidate, *, lean, destination, timeout=120):
         source_plan=lambda: proof_sources(candidate.domain),
         relation=RELATION,
     )
-    report.update(schema="merlin.compiler-configuration-hoist.checked.v1", domain=candidate.domain)
+    report.update(
+        schema="merlin.compiler-configuration-hoist.checked.v2"
+        if json.loads(candidate.request_json).get("schema") == "merlin.compiler-configuration-hoist.request.v2"
+        else "merlin.compiler-configuration-hoist.checked.v1",
+        domain=candidate.domain,
+    )
     path = Path(destination).resolve() / "REPORT.json"
     path.write_text(canonical(report))
     completion = Completion(candidate.identity, str(path))
@@ -130,14 +135,23 @@ def deliver(completion, candidate):
 
 def replay(report_path, *, lean, destination, timeout=120):
     saved = json.loads(Path(report_path).read_text())
-    if saved.get("schema") != "merlin.compiler-configuration-hoist.checked.v1" or len(saved.get("buffers", [])) != 2:
+    if (
+        saved.get("schema")
+        not in {"merlin.compiler-configuration-hoist.checked.v1", "merlin.compiler-configuration-hoist.checked.v2"}
+        or len(saved.get("buffers", [])) != 2
+    ):
         raise Unavailable("current complete compiler configuration replay record required")
     for row in saved["buffers"]:
         _exact(row)
-    selection = reopen(saved["source_request"])
+    current_request = saved["source_request"]
+    bound_consumer = current_request.get("schema") == "merlin.compiler-configuration-hoist.request.v2"
+    if bound_consumer != (saved["schema"] == "merlin.compiler-configuration-hoist.checked.v2"):
+        raise Unavailable("checked hoist report/request schema or C-consumer binding differs")
+    selection, c_consumer = reopen_request(current_request)
     candidate = prepare(
         *(Path(row["path"]).read_text() for row in saved["buffers"]),
         selection=selection,
+        c_consumer=c_consumer,
     )
     # Replay intentionally uses current canonical proof/host sources. A saved
     # report locates the source pair, never approves the reconstructed result.
@@ -145,7 +159,18 @@ def replay(report_path, *, lean, destination, timeout=120):
     return completion, candidate
 
 
-def job_params(selection, *, sdk_bin):
+def job_params(selection, *, sdk_bin, c_consumer=None):
+    if c_consumer is not None:
+        from merlin.compile.scheduling.configuration_c_consumer import ConfigurationCConsumer
+
+        if type(c_consumer) is not ConfigurationCConsumer:
+            raise ValueError("original typed C consumer required")
+        return {
+            "schema": "merlin.compiler-configuration-hoist.job.v2",
+            "sdk_bin": str(sdk_bin),
+            "selection": request(selection),
+            "c_consumer": c_consumer.record(),
+        }
     return {
         "schema": "merlin.compiler-configuration-hoist.job.v1",
         "sdk_bin": str(sdk_bin),
@@ -155,21 +180,32 @@ def job_params(selection, *, sdk_bin):
 
 def check(job):
     params = job.get("params")
+    legacy = type(params) is dict and params.get("schema") == "merlin.compiler-configuration-hoist.job.v1"
+    expected = {"schema", "sdk_bin", "selection"} if legacy else {"schema", "sdk_bin", "selection", "c_consumer"}
     if (
         type(params) is not dict
-        or set(params) != {"schema", "sdk_bin", "selection"}
-        or params["schema"] != "merlin.compiler-configuration-hoist.job.v1"
+        or set(params) != expected
+        or (not legacy and params.get("schema") != "merlin.compiler-configuration-hoist.job.v2")
     ):
-        raise GateUnsupported("exact original compiler configuration selection and tool required")
+        raise GateUnsupported("exact original compiler configuration/C-consumer selection and tool required")
     try:
         for key in ("facts", "software"):
             _exact(params["selection"][key])
-        selection = reopen(params["selection"])
+        selection, c_consumer = reopen_request(
+            params["selection"]
+            if legacy
+            else {
+                "schema": "merlin.compiler-configuration-hoist.request.v2",
+                "selection": params["selection"],
+                "c_consumer": params["c_consumer"],
+            }
+        )
         originals = [file_ref(job[key]) for key in ("before", "after")]
         candidate = prepare(
             Path(job["before"]).read_text(),
             Path(job["after"]).read_text(),
             selection=selection,
+            c_consumer=c_consumer,
         )
         for row, text in zip(originals, (candidate.source, candidate.final), strict=True):
             if row["sha256"] != digest(text):
@@ -188,7 +224,10 @@ def check(job):
     except (ValueError, TypeError, KeyError) as error:
         raise GateUnsupported(str(error)) from error
     return {
-        "schema": "merlin.compiler-configuration-hoist.gate.v1",
+        "schema": "merlin.compiler-configuration-hoist.gate.v1"
+        if legacy
+        else "merlin.compiler-configuration-hoist.gate.v2",
+        **({"c_consumer": c_consumer.record()} if not legacy else {}),
         "status": "checked",
         "claim": RELATION,
         "domain": candidate.domain,
@@ -208,6 +247,65 @@ def check(job):
     }
 
 
+def _joined_c_delivery(validation, job, candidate, c_consumer, params):
+    """Bind one actual live gate join to this owner's frozen endpoints/domain.
+
+    This is transport verification after the original canonical gate ran, not
+    acceptance derived from a saved report or child consumer object.
+    """
+    from .speculative_gate import Job
+
+    if type(job) is not Job or job.check != CHECK or job.params != params:
+        raise ValueError("original C-bound gate job differs from its frozen request")
+    rows = [row for row in validation.gate.verdicts if row.get("job") == job.id]
+    if len(rows) != 1 or rows[0].get("verdict") != "accepted":
+        raise ValueError("original C-bound job has no unique actual accepted delivery")
+    detail = rows[0].get("detail", {})
+    if (
+        detail.get("schema") != "merlin.compiler-configuration-hoist.gate.v2"
+        or detail.get("c_consumer") != c_consumer.record()
+        or detail.get("domain") != candidate.domain
+        or detail.get("relation") != candidate.relation
+    ):
+        raise ValueError("actual accepted gate delivery differs from original C consumer/candidate")
+    request_path = job.directory / "request.json"
+    frozen = json.loads(request_path.read_text())
+    expected = {
+        "check": CHECK,
+        "label": SELECTOR,
+        "params": params,
+        "directory": str(job.directory),
+        "before": str(job.directory / "before.mlir"),
+        "after": str(job.directory / "after.mlir"),
+    }
+    if frozen != expected:
+        raise ValueError("actual C-bound gate request changed before delivery")
+    for key, text in (("before", candidate.source), ("after", candidate.final)):
+        if Path(frozen[key]).read_text() != text or detail.get(key) != file_ref(frozen[key]):
+            raise ValueError("actual accepted gate source/output differs from original candidate")
+    report_path = Path(detail["receipt"])
+    report = json.loads(report_path.read_text())
+    if (
+        report.get("schema") != "merlin.compiler-configuration-hoist.checked.v2"
+        or report.get("source_identity") != candidate.identity
+        or report.get("candidate") != candidate.describe()
+        or report.get("source_request") != json.loads(candidate.request_json)
+        or report.get("sources") != json.loads(candidate.sources_json)
+        or [row.get("sha256") for row in report.get("buffers", [])]
+        != [digest(candidate.source), digest(candidate.final)]
+    ):
+        raise ValueError("actual accepted report differs from original C-bound proof inputs")
+    refs = [file_ref(path) for path in (request_path, frozen["before"], frozen["after"], report_path)]
+    # All child products were checked by the live canonical join. Preserve that
+    # exact product/source/output binding until this owner's controlled emission.
+    for key in ("buffers", "mapping_records", "imports", "library", "process_evidence"):
+        refs.extend(report[key])
+    refs.extend(report[key] for key in ("query", "object", "tool", "auditor"))
+    for row in refs:
+        _exact(row)
+    return tuple({row["path"]: row for row in refs}.values())
+
+
 def validated_hoist(
     kernel,
     adapter,
@@ -218,6 +316,7 @@ def validated_hoist(
     max_calls=4096,
     max_fields=256,
     max_depth=64,
+    c_consumer=None,
 ):
     """Observe actual original input before the producer and hold its result."""
     from merlin.compile.scheduling.configuration_ir import ConfigurationIRSelection
@@ -228,6 +327,10 @@ def validated_hoist(
     if type(validation) is not pass_validation.PassValidation or SELECTOR not in validation.passes:
         raise ValueError("hoisting proof requires original explicit PassValidation")
     pass_validation.require_canonical_handler(validation, CHECK)
+    if c_consumer is not None:
+        if type(validation.index_bits) is not int or validation.index_bits != c_consumer.index_bits:
+            raise ValueError("original C consumer differs from the selected proof index domain")
+        c_consumer.revalidate()
     active = pass_validation.current()
     if active is not None and active is not validation:
         raise ValueError("hoisting validation differs from active original compiler owner")
@@ -256,22 +359,80 @@ def validated_hoist(
         after = result.kernel.text()
         if kernel.text() != before:
             raise ValueError("hoisting producer changed original compiler input")
+        proof_inputs, transport_refs = (), ()
         if before != after:
-            validation.gate.submit(
+            if c_consumer is not None:
+                bound = prepare(before, after, selection=selection, c_consumer=c_consumer)
+                proof_inputs = tuple(json.loads(bound.sources_json))
+            original_params = job_params(selection, sdk_bin=validation.tools.sdk_bin, c_consumer=c_consumer)
+            job = validation.gate.submit(
                 CHECK,
                 before=before,
                 after=after,
                 label=SELECTOR,
-                params=job_params(selection, sdk_bin=validation.tools.sdk_bin),
+                params=original_params,
             )
             validation.gate.join()
+            for row in proof_inputs:
+                _exact(row)
+            if c_consumer is not None:
+                transport_refs = _joined_c_delivery(validation, job, bound, c_consumer, original_params)
         selection.revalidate()
         if kernel.text() != before or result.kernel.text() != after:
             raise ValueError("hoisting source/result changed before actual compiler delivery")
-        return result
+        return (result, proof_inputs, transport_refs) if c_consumer is not None else result
 
     if active is not None:
         return produce()
     with pass_validation.validating(validation):
         result = produce()
     return result
+
+
+def replay_to_c_consumer(report_path, *, c_consumer, lean, destination, timeout=120):
+    """Fresh proof/ownership operation; a saved record only locates input buffers."""
+    from merlin.compile.scheduling.configuration import ConfigurationResult
+    from merlin.compile.scheduling.configuration_c_consumer import ConfigurationCConsumer, _canonical
+    from merlin.sched.ir import parse_kernel
+
+    if type(c_consumer) is not ConfigurationCConsumer:
+        raise Unavailable("original typed C consumer required for controlled replay emission")
+    c_consumer.revalidate()
+    saved = json.loads(Path(report_path).read_text())
+    if saved.get("schema") != "merlin.compiler-configuration-hoist.checked.v2" or len(saved.get("buffers", [])) != 2:
+        raise Unavailable("exact C-bound descriptive replay record required")
+    selection, requested = reopen_request(saved["source_request"])
+    if requested is None or requested.record() != c_consumer.record():
+        raise Unavailable("fresh original C consumer differs from replay input domain")
+    for row in saved["buffers"]:
+        _exact(row)
+    texts = [Path(row["path"]).read_text() for row in saved["buffers"]]
+    original = parse_kernel(texts[0])
+    selected_record = _canonical(selection.selected_contracts.record())
+    before = prepare(*texts, selection=selection, c_consumer=c_consumer)
+    proof_inputs = tuple(json.loads(before.sources_json))
+    completion, fresh = replay(report_path, lean=lean, destination=destination, timeout=timeout)
+    if fresh != before or deliver(completion, fresh) != texts[1]:
+        raise Unavailable("fresh replay source/target/consumer inputs changed")
+    for row in (*proof_inputs, *saved["buffers"]):
+        _exact(row)
+    report = validate_completion(completion, fresh)
+    refs = [file_ref(completion.report), *saved["buffers"]]
+    for key in ("buffers", "mapping_records", "imports", "library", "process_evidence"):
+        refs.extend(report[key])
+    refs.extend(report[key] for key in ("query", "object", "tool", "auditor"))
+    for row in refs:
+        _exact(row)
+    actual = ConfigurationResult(parse_kernel(texts[1]), {"scope": "fresh actual endpoint replay; no producer replay"})
+    return c_consumer._issue(
+        actual,
+        source=original,
+        source_text=texts[0],
+        selected_contracts=selection.selected_contracts,
+        selected_record=selected_record,
+        max_calls=selection.max_operations,
+        max_fields=selection.max_fields,
+        max_depth=64,
+        proof_inputs=proof_inputs,
+        transport_refs=tuple({row["path"]: row for row in refs}.values()),
+    )

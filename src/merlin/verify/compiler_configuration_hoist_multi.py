@@ -19,11 +19,17 @@ _MAX_STAGE_WORK = 65536
 _MAX_CAPTURE_BYTES = 32 * 1024 * 1024
 
 
-def project(source, final, *, isa, effects):
+def project(source, final, *, isa, effects, allow_single=False, extent_limit=1_000_000):
+    if type(allow_single) is not bool:
+        raise Unsupported("explicit single/multiple focused-loop profile required")
     analyses = []
-    before, loops = program_current(source, isa, effects, analyses=analyses, allow_multiple=True)
-    after, final_loops = program_current(final, isa, effects, analyses=analyses, allow_multiple=True)
-    if len(loops) < 2 or len(loops) != len(final_loops):
+    before, loops = program_current(
+        source, isa, effects, analyses=analyses, allow_multiple=True, extent_limit=extent_limit
+    )
+    after, final_loops = program_current(
+        final, isa, effects, analyses=analyses, allow_multiple=True, extent_limit=extent_limit
+    )
+    if len(loops) < (1 if allow_single else 2) or len(loops) != len(final_loops):
         raise Unsupported("multiple complete flat top-level loop roster required")
     fields = sorted(
         {

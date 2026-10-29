@@ -276,19 +276,38 @@ def hoist_loop_configuration(
     max_depth=64,
     pass_validation=None,
     selected_contracts=None,
+    c_consumer=None,
 ):
     """Run ordinary hoisting, joining an explicitly selected original proof owner."""
+    if c_consumer is not None:
+        from .configuration_c_consumer import ConfigurationCConsumer
+
+        if type(c_consumer) is not ConfigurationCConsumer:
+            raise ValueError("original typed configuration C consumer required")
+        from .configuration_c_consumer import _canonical
+        from .selected_contracts import SelectedSchedulingContracts
+
+        if type(selected_contracts) is not SelectedSchedulingContracts:
+            raise ValueError("C-bound hoisting requires original typed selected ISA/effect contracts")
+        selected_contracts.revalidate()
+        if adapter.configuration_identity != selected_contracts.hardware_identity:
+            raise ValueError("C-bound hoisting adapter differs from original selected hardware inputs")
+        _bounded(kernel, max_calls, max_fields, max_depth)
+        c_consumer.admit(kernel)
+        original_c_source = kernel.text()
+        original_c_selection = _canonical(selected_contracts.record())
     owner = sys.modules.get("merlin.verify.pass_validation")
     active = owner.current() if owner is not None else None
     if active is not None and pass_validation is not None and active is not pass_validation:
         raise ValueError("hoisting validation differs from active original compiler owner")
     validation = active if pass_validation is None else pass_validation
+    c_proof_inputs, c_transport_refs = (), ()
     if validation is not None and "configuration_loop_hoisting" in validation.passes:
         if selected_contracts is None:
             raise ValueError("hoisting validation requires original typed selected ISA/effect contracts")
         from merlin.verify.compiler_configuration_hoist import validated_hoist
 
-        return validated_hoist(
+        evaluated = validated_hoist(
             kernel,
             adapter,
             selected_contracts=selected_contracts,
@@ -297,12 +316,32 @@ def hoist_loop_configuration(
             max_calls=max_calls,
             max_fields=max_fields,
             max_depth=max_depth,
+            c_consumer=c_consumer,
         )
-    return _hoist_loop_configuration(
-        kernel,
-        adapter,
-        enabled=enabled,
-        max_calls=max_calls,
-        max_fields=max_fields,
-        max_depth=max_depth,
-    )
+        if c_consumer is None:
+            result = evaluated
+        else:
+            result, c_proof_inputs, c_transport_refs = evaluated
+    else:
+        result = _hoist_loop_configuration(
+            kernel,
+            adapter,
+            enabled=enabled,
+            max_calls=max_calls,
+            max_fields=max_fields,
+            max_depth=max_depth,
+        )
+    if c_consumer is not None:
+        return c_consumer._issue(
+            result,
+            source=kernel,
+            source_text=original_c_source,
+            selected_contracts=selected_contracts,
+            selected_record=original_c_selection,
+            max_calls=max_calls,
+            max_fields=max_fields,
+            max_depth=max_depth,
+            proof_inputs=c_proof_inputs,
+            transport_refs=c_transport_refs,
+        )
+    return result

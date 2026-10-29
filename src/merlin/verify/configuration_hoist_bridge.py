@@ -132,9 +132,11 @@ def decode_effect(value, isa, declarations):
     return result
 
 
-def program(value, isa, effects, *, allow_multiple=False):
+def program(value, isa, effects, *, allow_multiple=False, extent_limit=1_000_000):
     if type(allow_multiple) is not bool:
         raise Unsupported("explicit multiple-loop parsing profile required")
+    if type(extent_limit) is not int or extent_limit not in (1_000_000, (1 << 63) - 1):
+        raise Unsupported("explicit legacy or signed-index64 extent profile required")
     kernel = node(value, "Kernel", ("name", "args", "body", "attrs"))
     # All actual tensor descriptors and arbitrary retained attrs stay in frame.
     frame = canonical({key: item for key, item in kernel.items() if key != "body"})
@@ -162,7 +164,7 @@ def program(value, isa, effects, *, allow_multiple=False):
         completion = {key: sequence(loop[key]) for key in ("iter_args", "yields", "results")}
         if any(completion.values()):
             raise Unsupported("phase1 refuses ALL actual Loop completion-token fields")
-        if type(loop["extent"]) is not int or loop["extent"] <= 0 or loop["extent"] > 1_000_000:
+        if type(loop["extent"]) is not int or loop["extent"] <= 0 or loop["extent"] > extent_limit:
             raise Unsupported("positive bounded static tripcount required; zero-trip hoist excluded")
         if type(loop["var"]) is not str or not loop["var"]:
             raise Unsupported("actual loop induction-variable identity required")

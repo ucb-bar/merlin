@@ -65,13 +65,14 @@ def _stop_group(signum, frame) -> None:
 
 def _require_builtin_result(name, detail):
     if name == "compiler_configuration_hoist_refinement":
-        from .compiler_configuration_hoist_intake import DOMAINS, RELATION
+        from .compiler_configuration_hoist_intake import DOMAINS, RELATION, WIDE_DOMAIN
         from .configuration_hoist_emit import ROOT
         from .gate_errors import GateRejected
 
         if (
             type(detail) is not dict
-            or detail.get("schema") != "merlin.compiler-configuration-hoist.gate.v1"
+            or detail.get("schema")
+            not in {"merlin.compiler-configuration-hoist.gate.v1", "merlin.compiler-configuration-hoist.gate.v2"}
             or detail.get("status") != "checked"
             or type(detail.get("domain")) is not str
             or detail["domain"] not in DOMAINS
@@ -89,6 +90,15 @@ def _require_builtin_result(name, detail):
             or len(set(detail["entries"])) != len(detail["entries"])
         ):
             raise GateRejected("hoisting handler did not establish complete Kernel error/state preservation")
+        if detail["schema"] == "merlin.compiler-configuration-hoist.gate.v2":
+            from merlin.compile.scheduling.configuration_c_consumer import ConfigurationCConsumer
+
+            try:
+                ConfigurationCConsumer.reopen(detail.get("c_consumer"))
+            except (OSError, ValueError, TypeError) as error:
+                raise GateRejected("hoisting handler did not bind its actual index64 C consumer") from error
+        elif detail["domain"] == WIDE_DOMAIN or "c_consumer" in detail:
+            raise GateRejected("wide C-consumer hoisting requires its exact versioned result schema")
         return
     if name == "compiler_configuration_refinement":
         from .compiler_configuration_intake import DOMAIN, RELATION

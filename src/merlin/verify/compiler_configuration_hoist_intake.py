@@ -26,7 +26,8 @@ DOMAIN = "current-compiler-one-positive-loop-constant-pure-hoist-v1"
 INDEXED_DOMAIN = "current-compiler-one-positive-loop-indexed-retained-data-hoist-v2"
 PREFIX_DOMAIN = "current-compiler-one-positive-loop-pure-prefix-fixed-state-hoist-v3"
 MULTI_DOMAIN = "current-compiler-multiple-positive-flat-loops-pure-prefix-hoist-v4"
-DOMAINS = frozenset({DOMAIN, INDEXED_DOMAIN, PREFIX_DOMAIN, MULTI_DOMAIN})
+WIDE_DOMAIN = "current-compiler-original-C64-consumer-wide-flat-prefix-hoist-v5"
+DOMAINS = frozenset({DOMAIN, INDEXED_DOMAIN, PREFIX_DOMAIN, MULTI_DOMAIN, WIDE_DOMAIN})
 RELATION = "equal_conditional_complete_kernel_error_terminal_state_hoist"
 
 
@@ -38,7 +39,7 @@ def _program(text):
 
 
 def proof_sources(domain=DOMAIN):
-    if domain == MULTI_DOMAIN:
+    if domain in {MULTI_DOMAIN, WIDE_DOMAIN}:
         from .compiler_configuration_hoist_multi import proof_sources as multi_sources
 
         return multi_sources()
@@ -52,7 +53,7 @@ def proof_sources(domain=DOMAIN):
 
 
 def emit_profile(projection, domain):
-    if domain == MULTI_DOMAIN:
+    if domain in {MULTI_DOMAIN, WIDE_DOMAIN}:
         from .configuration_hoist_multi_emit import emit as multi_emit
 
         return multi_emit(projection)
@@ -65,8 +66,11 @@ def emit_profile(projection, domain):
     return emit(projection)
 
 
-def _sources(selection, *, indexed=False, prefix=False, multi=False):
+def _sources(selection, *, indexed=False, prefix=False, multi=False, c_consumer=None):
     rows = list(configuration_sources(selection))
+    if c_consumer is not None:
+        rows += c_consumer.record()["sources"]
+        rows.append(file_ref(module_source_path("merlin.verify.compiler_configuration_hoist_wide")))
     if indexed:
         rows.append(file_ref(module_source_path("merlin.verify.compiler_configuration_hoist_indexed")))
     if prefix:
@@ -125,8 +129,17 @@ class CurrentHoistCandidate:
 
     def describe(self):
         projection = json.loads(self.projection_json)
+        request_record = json.loads(self.request_json)
+        consumer = request_record.get("c_consumer") if request_record.get("schema") == REQUEST_V2 else None
         return {
-            "schema": "merlin.compiler-configuration-hoist.candidate.v1",
+            "schema": "merlin.compiler-configuration-hoist.candidate.v2"
+            if consumer is not None
+            else "merlin.compiler-configuration-hoist.candidate.v1",
+            **(
+                {"c_consumer": consumer, "index_domain_admission": "original_actual_C_consumer_index64"}
+                if consumer is not None
+                else {}
+            ),
             "identity": self.identity,
             "domain": self.domain,
             "relation": self.relation,
@@ -149,7 +162,7 @@ class CurrentHoistCandidate:
             "all_index_model_premise_retained": True,
             "moved_setter_count": (
                 sum(len(stage["focus"]["move"]["setups"]) for stage in projection["stages"])
-                if self.domain == MULTI_DOMAIN
+                if self.domain in {MULTI_DOMAIN, WIDE_DOMAIN}
                 else len(projection["move"]["setups"])
                 if self.domain == PREFIX_DOMAIN
                 else 1
@@ -159,7 +172,7 @@ class CurrentHoistCandidate:
                     "actual_loop_count": projection["actual_loop_count"],
                     "focused_loop_count": projection["focused_loop_count"],
                 }
-                if self.domain == MULTI_DOMAIN
+                if self.domain in {MULTI_DOMAIN, WIDE_DOMAIN}
                 else {}
             ),
             "premises": [
@@ -172,8 +185,28 @@ class CurrentHoistCandidate:
         }
 
 
-def prepare(source, final, *, selection):
+REQUEST_V2 = "merlin.compiler-configuration-hoist.request.v2"
+
+
+def reopen_request(value):
+    if type(value) is dict and value.get("schema") == REQUEST_V2:
+        from merlin.compile.scheduling.configuration_c_consumer import ConfigurationCConsumer
+
+        if set(value) != {"schema", "selection", "c_consumer"}:
+            raise ValueError("exact original ISA/C-consumer request required")
+        return reopen(value["selection"]), ConfigurationCConsumer.reopen(value["c_consumer"])
+    return reopen(value), None
+
+
+def prepare(source, final, *, selection, c_consumer=None):
     selected = request(selection)
+    if c_consumer is not None:
+        from merlin.compile.scheduling.configuration_c_consumer import ConfigurationCConsumer
+
+        if type(c_consumer) is not ConfigurationCConsumer:
+            raise ValueError("original typed configuration C consumer required")
+        c_consumer.revalidate()
+        selected = {"schema": REQUEST_V2, "selection": selected, "c_consumer": c_consumer.record()}
     if not selection.enabled or selection.qualification_identity is None:
         raise ValueError("enabled original selected effect-premise owner required")
     if any(type(text) is not str or len(text.encode()) > selection.max_ir_bytes for text in (source, final)):
@@ -183,36 +216,50 @@ def prepare(source, final, *, selection):
     isa = selection.selected_contracts.isa.record()
     effects = json.loads(selection.selected_contracts.effects_json)
     source_tree, final_tree = _program(source), _program(final)
-    domain = DOMAIN
-    try:
-        projection = project_current(source_tree, final_tree, isa=isa, effects=effects)
-    except Unsupported:
-        from .compiler_configuration_hoist_indexed import project
+    wide = c_consumer is not None and any(
+        row.get("class") == "merlin.sched.ir.kernel.Loop" and row["fields"]["extent"] > 1_000_000
+        for kernel in (source_tree, final_tree)
+        for row in sequence(kernel["fields"]["body"])
+    )
+    if c_consumer is not None:
+        c_consumer.admit(parse_kernel(source))
+        c_consumer.admit(parse_kernel(final))
+    if wide:
+        from .compiler_configuration_hoist_wide import project_current as wide_project
 
+        projection = wide_project(source, final, isa=isa, effects=effects, c_consumer=c_consumer)
+        domain = WIDE_DOMAIN
+    else:
+        domain = DOMAIN
         try:
-            projection = project(source_tree, final_tree, isa=isa, effects=effects)
-            domain = INDEXED_DOMAIN
+            projection = project_current(source_tree, final_tree, isa=isa, effects=effects)
         except Unsupported:
-            from .compiler_configuration_hoist_prefix import project as prefix_project
+            from .compiler_configuration_hoist_indexed import project
 
             try:
-                projection = prefix_project(source_tree, final_tree, isa=isa, effects=effects)
-                domain = PREFIX_DOMAIN
+                projection = project(source_tree, final_tree, isa=isa, effects=effects)
+                domain = INDEXED_DOMAIN
             except Unsupported:
-                # Preserve single-loop profile refusals and diagnostics. V4 is
-                # considered only for actual multiple top-level loop scopes.
-                if (
-                    sum(
-                        row.get("class") == "merlin.sched.ir.kernel.Loop"
-                        for row in sequence(source_tree["fields"]["body"])
-                    )
-                    < 2
-                ):
-                    raise
-                from .compiler_configuration_hoist_multi import project as multi_project
+                from .compiler_configuration_hoist_prefix import project as prefix_project
 
-                projection = multi_project(source_tree, final_tree, isa=isa, effects=effects)
-                domain = MULTI_DOMAIN
+                try:
+                    projection = prefix_project(source_tree, final_tree, isa=isa, effects=effects)
+                    domain = PREFIX_DOMAIN
+                except Unsupported:
+                    # Preserve single-loop profile refusals and diagnostics. V4 is
+                    # considered only for actual multiple top-level loop scopes.
+                    if (
+                        sum(
+                            row.get("class") == "merlin.sched.ir.kernel.Loop"
+                            for row in sequence(source_tree["fields"]["body"])
+                        )
+                        < 2
+                    ):
+                        raise
+                    from .compiler_configuration_hoist_multi import project as multi_project
+
+                    projection = multi_project(source_tree, final_tree, isa=isa, effects=effects)
+                    domain = MULTI_DOMAIN
     if (
         len(projection["before"]["atoms"]) > selection.max_operations
         or len(projection["fields"]) > selection.max_fields
@@ -237,8 +284,9 @@ def prepare(source, final, *, selection):
             _sources(
                 selection,
                 indexed=domain != DOMAIN,
-                prefix=domain in {PREFIX_DOMAIN, MULTI_DOMAIN},
-                multi=domain == MULTI_DOMAIN,
+                prefix=domain in {PREFIX_DOMAIN, MULTI_DOMAIN, WIDE_DOMAIN},
+                multi=domain in {MULTI_DOMAIN, WIDE_DOMAIN},
+                c_consumer=c_consumer,
             )
         ),
         canonical(proof_sources(domain)),
@@ -257,6 +305,7 @@ def revalidate(candidate):
     for row in json.loads(candidate.sources_json):
         if file_ref(row["path"]) != row:
             raise ValueError("current hoist source/proof/selection changed")
-    if prepare(candidate.source, candidate.final, selection=reopen(json.loads(candidate.request_json))) != candidate:
+    selection, c_consumer = reopen_request(json.loads(candidate.request_json))
+    if prepare(candidate.source, candidate.final, selection=selection, c_consumer=c_consumer) != candidate:
         raise ValueError("forged/stale complete Kernel/ISA/fields/query/roots")
     return {"fresh": True, "authority": False}
