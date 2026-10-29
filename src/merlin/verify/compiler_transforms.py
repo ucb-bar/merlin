@@ -78,6 +78,7 @@ def apply(source, directory, *, options=None, index_bits=64):
         raise ValueError("formal source transformations require explicit index64")
     module = parse_ir(source)
     buffers, names = [ir_text(module)], []
+    changing_buffers = [buffers[0]]
 
     def run(kind, action):
         before = ir_text(module)
@@ -86,6 +87,7 @@ def apply(source, directory, *, options=None, index_bits=64):
         after = ir_text(module)
         if before != after:
             names.append(kind)
+            changing_buffers.append(after)
         buffers.append(after)
 
     if options.buffer_allocator is not None:
@@ -112,12 +114,12 @@ def apply(source, directory, *, options=None, index_bits=64):
         # additionally retain all-entry adjacent theorems for each actual pass.
         if options.buffer_allocator is not None and len(names) != 3:
             raise ValueError("selected buffer proof requires changing normalization, reuse and tiling boundaries")
-        if options.buffer_allocator is None and len(names) != len(buffers) - 1:
-            raise ValueError("mixed identity/changed loop pipeline requires a separate proof boundary")
+        # Exact identity stages preserve the complete scalar boundary bytes.
+        proof_buffers = buffers if options.buffer_allocator is not None else changing_buffers
         validation.gate.submit(
             check_name,
-            before=buffers[0],
-            after=buffers[-1],
+            before=proof_buffers[0],
+            after=proof_buffers[-1],
             label="+".join(selected),
             params={
                 "sdk_bin": str(validation.tools.sdk_bin),
@@ -126,7 +128,7 @@ def apply(source, directory, *, options=None, index_bits=64):
                 "tile": options.tile_size or 3,
                 "kinds": names,
                 "selected": selected,
-                "intermediates": buffers[1:-1],
+                "intermediates": proof_buffers[1:-1],
                 "allocator": options.buffer_allocator,
             },
         )

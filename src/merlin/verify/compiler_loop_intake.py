@@ -112,20 +112,20 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
                 loops = [row["loop"] for row in records if "loop" in row]
                 if not loops:
                     continue
-                if len(loops) != 1 or len(function["inputs"]) != 2 or not 1 <= len(loops[0]["carries"]) <= 4:
-                    raise ValueError("one loop/two inputs/one to four word carries required")
+                if len(loops) != 1 or len(function["inputs"]) > 16 or not 1 <= len(loops[0]["carries"]) <= 16:
+                    raise ValueError("one loop/at most sixteen inputs/one to sixteen word carries required")
                 if any(set(t) != {"bits"} for t in loops[0]["carries"]) or any("loop" in r for r in loops[0]["body"]):
                     raise ValueError("region-free scalar word body required")
-                lower, upper, step = static_controls(records, capture)
+                lower, upper, step = static_controls(records, capture, input_count=len(function["inputs"]))
                 if not 0 <= lower < upper or step <= 0 or upper + step * tile >= 2**63:
                     raise ValueError("nonempty static fitting positive-stride controls required")
                 changed.append(i)
-            if len(changed) != 1:
-                raise ValueError("exactly one changed top-level loop required")
+            if not changed:
+                raise ValueError("at least one changed top-level loop required")
         else:
-            changed = _domain({"pipeline": capture})
-            if len(changed) != 1:
-                raise ValueError("exactly one changed top-level loop required")
+            changed = _domain({"pipeline": capture}, flexible_entries=True)
+            if not changed:
+                raise ValueError("at least one changed top-level loop required")
         query = emit(capture, identity_unroll=kinds == (TILE,))
         adjacent, _, _ = _adjacent_rosters({"pipeline": capture}, "Merlin.GraphStatePipelineInstance.", changed)
         query += adjacent

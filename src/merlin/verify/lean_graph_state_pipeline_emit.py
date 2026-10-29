@@ -24,8 +24,17 @@ def unpack(name, size, count, prefix, pad="  ", offset=0):
     return result + unpack(tail, later_size, count - 1, prefix, pad, offset + 1)
 
 
-def static_controls(records, capture):
-    env = [None] * 2
+def entry_arguments(input_count, lemma, inputs="inputs"):
+    """Eliminate a typed entry list without assuming a particular ABI arity."""
+    args = " ".join(f"x{i}" for i in range(input_count))
+    text = f"  have size : arguments.length = {input_count} := by\n"
+    text += f"    simpa only [{inputs},List.length_nil,List.length_cons] using arity\n"
+    text += unpack("arguments", "size", input_count, "x")
+    return text + f"  exact {lemma} primitive external {args} world\n"
+
+
+def static_controls(records, capture, *, input_count=2):
+    env = [None] * input_count
     controls = {r["identity"]: r for r in capture["index_operations"]}
     for record in records:
         if "loop" in record:
@@ -127,7 +136,7 @@ theorem naturalRange (lower upper step : Nat) (positive : 0 < step) :
 """
 
 
-def body_group_text(capture, loops, envs, count, factor, step):
+def body_group_text(capture, loops, envs, count, factor, step, args):
     # Exact actual Program suffixes, not a replacement body/evaluator.
     control_map = {r["identity"]: r for r in capture["index_operations"]}
     result, groups = "", {}
@@ -166,8 +175,8 @@ def body_group_text(capture, loops, envs, count, factor, step):
     if len(groups[3]) - 1 != factor * source_calls:
         raise ValueError("actual target external prefix count differs from source lanes")
     result += f"""theorem body_group (base : Int) (carry : List Int) (world : World) (arity : carry.length = {count}) :
-  evalProgram (M primitive external) B3 (base::carry++E3 primitive x0 x1) world =
-  loopEval {count} (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)
+  evalProgram (M primitive external) B3 (base::carry++E3 primitive {args}) world =
+  loopEval {count} (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive {args}) w)
     {lean_list(["base" if lane == 0 else f"(base+{step * lane})" for lane in range(factor)])} carry world := by
 """
     result += unpack("carry", "arity", count, "c")
@@ -207,7 +216,7 @@ def body_group_text(capture, loops, envs, count, factor, step):
     return result
 
 
-def scope_text(capture, loops, envs, count):
+def scope_text(capture, loops, envs, count, args):
     carry = [f"c{i}" for i in range(count)]
     outer_carry = [f"outerCarry{i}" for i in range(count)]
     outer_env = prefix_environment(loops[4]["body"], ["outer", *outer_carry, *envs[4]], capture)
@@ -225,7 +234,7 @@ def scope_text(capture, loops, envs, count):
     result += "theorem innerAccepted : Scope.check registry LS RS B3 I4 = true := by decide\n"
     result += f"theorem inner_same (iv outer {' '.join(outer_carry)} : Int) (carry : List Int) (world : World) (arity : carry.length = {count}) :\n"
     result += "  evalProgram (M primitive external) I4 (iv::carry++" + lean_list(outer_env) + ") world =\n"
-    result += "  evalProgram (M primitive external) B3 (iv::carry++E3 primitive x0 x1) world := by\n"
+    result += f"  evalProgram (M primitive external) B3 (iv::carry++E3 primitive {args}) world := by\n"
     result += unpack("carry", "arity", count, "c")
     result += (
         "  have checked := Scope.check_sound innerAccepted (M primitive external) " + lean_list(logical) + " world\n"
@@ -240,8 +249,8 @@ def scope_text(capture, loops, envs, count):
         result += (
             f"theorem suffix_same{left}{right} (carry : List Int) (world : World) (arity : carry.length = {count}) :\n"
         )
-        result += f"  evalProgram (M primitive external) N{left} (carry++E{left} primitive x0 x1) world =\n"
-        result += f"  evalProgram (M primitive external) N{right} (carry++E{right} primitive x0 x1) world := by\n"
+        result += f"  evalProgram (M primitive external) N{left} (carry++E{left} primitive {args}) world =\n"
+        result += f"  evalProgram (M primitive external) N{right} (carry++E{right} primitive {args}) world := by\n"
         result += unpack("carry", "arity", count, "c")
         result += (
             f"  have checked := Scope.check_sound suffixAccepted{left}{right} (M primitive external) "
@@ -252,7 +261,7 @@ def scope_text(capture, loops, envs, count):
     return result
 
 
-def outer_text(count, upper, stride, tile):
+def outer_text(count, upper, stride, tile, args):
     block = stride * tile
     names = [f"c{i}" for i in range(count)]
     values = lean_list(names)
@@ -260,33 +269,33 @@ def outer_text(count, upper, stride, tile):
     natframe = frame.replace("base", "Int.ofNat base")
     rets = lean_list([str(i) for i in range(count)])
     result = f"""theorem outer_form (base {" ".join(names)} : Int) (world : World) :
-  evalProgram (M primitive external) B4 (base::{values}++E4 primitive x0 x1) world =
+  evalProgram (M primitive external) B4 (base::{values}++E4 primitive {args}) world =
   (loopEval {count} (fun i cs w => evalProgram (M primitive external) I4
-    (i::cs++{frame}++E4 primitive x0 x1) w)
+    (i::cs++{frame}++E4 primitive {args}) w)
       (indexIterations base (min (base+{block}) {upper}) {stride}) {values} world).bind
         (fun result => evalProgram (M primitive external) (.ret {rets})
-          (result.1++{frame}++E4 primitive x0 x1) result.2) := by
+          (result.1++{frame}++E4 primitive {args}) result.2) := by
   simp only [List.append_assoc]
   rfl
 theorem outer_same (base : Nat) (carry : List Int) (world : World) (arity : carry.length = {count}) :
-  evalProgram (M primitive external) B4 (Int.ofNat base::carry++E4 primitive x0 x1) world =
-  loopEval {count} (fun i cs w => evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w)
+  evalProgram (M primitive external) B4 (Int.ofNat base::carry++E4 primitive {args}) world =
+  loopEval {count} (fun i cs w => evalProgram (M primitive external) B3 (i::cs++E3 primitive {args}) w)
     ((scfRange base (min (base+{stride}*{tile}) {upper}) {stride}).map Int.ofNat) carry world := by
 """
     result += unpack("carry", "arity", count, "c")
     result += f"""  rw [outer_form]
   have bodies : ∀ i cs w, cs.length = {count} →
-      evalProgram (M primitive external) I4 (i::cs++{natframe}++E4 primitive x0 x1) w =
-      evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w := by
+      evalProgram (M primitive external) I4 (i::cs++{natframe}++E4 primitive {args}) w =
+      evalProgram (M primitive external) B3 (i::cs++E3 primitive {args}) w := by
     intro i cs w size
     simpa only [E4,List.append_assoc,List.cons_append,List.nil_append] using
-      inner_same primitive external x0 x1 i (Int.ofNat base) {" ".join(names)} cs w size
+      inner_same primitive external {args} i (Int.ofNat base) {" ".join(names)} cs w size
   rw [loopEval_congr {count} _ _ bodies]
   have minimum : min (Int.ofNat base+{block}) {upper} = Int.ofNat (min (base+{block}) {upper}) := minui_natural (base+{block}) {upper}
   have ranges : indexIterations (Int.ofNat base) (Int.ofNat (min (base+{block}) {upper})) {stride} =
       (scfRange base (min (base+{block}) {upper}) {stride}).map Int.ofNat := naturalRange base (min (base+{block}) {upper}) {stride} (by decide)
   rw [minimum,ranges]
-  cases run : loopEval {count} (fun i cs w => evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w)
+  cases run : loopEval {count} (fun i cs w => evalProgram (M primitive external) B3 (i::cs++E3 primitive {args}) w)
       ((scfRange base (min (base+{block}) {upper}) {stride}).map Int.ofNat) {values} world with
   | error failure => rfl
   | ok result =>
@@ -297,10 +306,13 @@ theorem outer_same (base : Nat) (carry : List Int) (world : World) (arity : carr
     return result + "    rfl\n"
 
 
-def compose_text(count, bounds, bulk_bounds, factor, groups, tile, bits, initial, *, identity_unroll=False):
+def compose_text(
+    count, bounds, bulk_bounds, factor, groups, tile, bits, initial, input_names, *, identity_unroll=False
+):
     lower, upper, step = bounds
     bulk_lower, bulk_upper, stride = bulk_bounds
     outer_stride = stride * tile
+    args, vector = " ".join(input_names), lean_list(input_names)
     text = f"""def unrollBounds : Merlin.GraphLoopsUnroll.Bounds :=
   {{ bits := {bits}, lower := {lower}, upper := {upper}, step := {step}, factor := {factor}, count := {groups * factor}, groups := {groups}, remainder := 0 }}
 def segmentBounds : Merlin.GraphLoopsSegment.Bounds :=
@@ -308,56 +320,46 @@ def segmentBounds : Merlin.GraphLoopsSegment.Bounds :=
 theorem unrollBoundsChecked : unrollBounds.Valid := by decide
 theorem segmentBoundsChecked : segmentBounds.Valid := by decide
 theorem unroll_actual (world : World) :
-    evalProgram (M primitive external) S2 [x0,x1] world = evalProgram (M primitive external) S3 [x0,x1] world := by
+    evalProgram (M primitive external) S2 {vector} world = evalProgram (M primitive external) S3 {vector} world := by
   have bodies : ∀ index values w, values.length = {count} →
-      evalProgram (M primitive external) B3 (Int.ofNat index::values++E3 primitive x0 x1) w =
-      loopEval {count} (fun i c current => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) current)
+      evalProgram (M primitive external) B3 (Int.ofNat index::values++E3 primitive {args}) w =
+      loopEval {count} (fun i c current => evalProgram (M primitive external) B2 (i::c++E2 primitive {args}) current)
         ((progression index {step} {factor}).map Int.ofNat) values w := by
     intro index values w size
-    simpa [progression,Int.ofNat_eq_natCast,Int.add_assoc] using body_group primitive external x0 x1 (Int.ofNat index) values w size
-  have loops : loopEval {count} (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)
+    simpa [progression,Int.ofNat_eq_natCast,Int.add_assoc] using body_group primitive external {args} (Int.ofNat index) values w size
+  have loops : loopEval {count} (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive {args}) w)
       (indexIterations {lower} {upper} {step}) {initial} world =
-    loopEval {count} (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)
+    loopEval {count} (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive {args}) w)
       (indexIterations {bulk_lower} {bulk_upper} {stride}) {initial} world :=
     unroll_loop {count} _ _ {lower} {upper} {step} {factor} {groups} (by decide) (by decide) (by decide) bodies {initial} world
   rw [form2,form3,loops]
-  cases run : loopEval {count} (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)
+  cases run : loopEval {count} (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive {args}) w)
       (indexIterations {bulk_lower} {bulk_upper} {stride}) {initial} world with
   | error failure => rfl
-  | ok result => exact suffix_same23 primitive external x0 x1 result.1 result.2 (loopEval_arity {count} _ _ _ _ run)
+  | ok result => exact suffix_same23 primitive external {args} result.1 result.2 (loopEval_arity {count} _ _ _ _ run)
 theorem segment_actual (world : World) :
-    evalProgram (M primitive external) S3 [x0,x1] world = evalProgram (M primitive external) S4 [x0,x1] world := by
+    evalProgram (M primitive external) S3 {vector} world = evalProgram (M primitive external) S4 {vector} world := by
   have r2 : indexIterations {bulk_lower} {bulk_upper} {stride} = (scfRange {bulk_lower} {bulk_upper} {stride}).map Int.ofNat := naturalRange {bulk_lower} {bulk_upper} {stride} (by decide)
   have r6 : indexIterations {bulk_lower} {bulk_upper} {outer_stride} = (scfRange {bulk_lower} {bulk_upper} {outer_stride}).map Int.ofNat := naturalRange {bulk_lower} {bulk_upper} {outer_stride} (by decide)
-  have loops : loopEval {count} (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)
+  have loops : loopEval {count} (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive {args}) w)
       (indexIterations {bulk_lower} {bulk_upper} {stride}) {initial} world =
-    loopEval {count} (fun i c w => evalProgram (M primitive external) B4 (i::c++E4 primitive x0 x1) w)
+    loopEval {count} (fun i c w => evalProgram (M primitive external) B4 (i::c++E4 primitive {args}) w)
       (indexIterations {bulk_lower} {bulk_upper} {outer_stride}) {initial} world := by
     rw [r2,r6]
-    exact segment_loop {count} _ _ {bulk_lower} {bulk_upper} {stride} {tile} (by decide) (by decide) (outer_same primitive external x0 x1) {initial} world
+    exact segment_loop {count} _ _ {bulk_lower} {bulk_upper} {stride} {tile} (by decide) (by decide) (outer_same primitive external {args}) {initial} world
   rw [form3,form4,loops]
-  cases run : loopEval {count} (fun i c w => evalProgram (M primitive external) B4 (i::c++E4 primitive x0 x1) w)
+  cases run : loopEval {count} (fun i c w => evalProgram (M primitive external) B4 (i::c++E4 primitive {args}) w)
       (indexIterations {bulk_lower} {bulk_upper} {outer_stride}) {initial} world with
   | error failure => rfl
-  | ok result => exact suffix_same34 primitive external x0 x1 result.1 result.2 (loopEval_arity {count} _ _ _ _ run)
+  | ok result => exact suffix_same34 primitive external {args} result.1 result.2 (loopEval_arity {count} _ _ _ _ run)
 theorem actual_inputs (world : World) :
-    evalProgram (M primitive external) S0 [x0,x1] world = evalProgram (M primitive external) S4 [x0,x1] world :=
-  (firstTwo Int World Error (M primitive external) [x0,x1] world rfl).trans
-    ((unroll_actual primitive external x0 x1 world).trans (segment_actual primitive external x0 x1 world))
+    evalProgram (M primitive external) S0 {vector} world = evalProgram (M primitive external) S4 {vector} world :=
+  (firstTwo Int World Error (M primitive external) {vector} world rfl).trans
+    ((unroll_actual primitive external {args} world).trans (segment_actual primitive external {args} world))
 theorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :
     evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S4 arguments world := by
-  cases arguments with
-  | nil => simp only [inputs,List.length_nil,List.length_cons] at arity; contradiction
-  | cons first rest =>
-    cases rest with
-    | nil => simp only [inputs,List.length_nil,List.length_cons] at arity; contradiction
-    | cons second later =>
-      have empty : later = [] := List.length_eq_zero_iff.mp (by
-        simp only [inputs,List.length_nil,List.length_cons] at arity
-        omega)
-      subst later
-      exact actual_inputs primitive external first second world
 """
+    text += entry_arguments(len(input_names), "actual_inputs")
     if identity_unroll:
         # A standalone segmentation boundary has identical S2/S3 syntax. Do not
         # claim that factor one satisfies the separate unrolling contract.
@@ -366,8 +368,8 @@ theorem actual (arguments : List Int) (world : World) (arity : arguments.length 
         text = (
             text[:start]
             + "theorem segmentBoundsChecked : segmentBounds.Valid := by decide\n"
-            + """theorem unroll_actual (world : World) :
-    evalProgram (M primitive external) S2 [x0,x1] world = evalProgram (M primitive external) S3 [x0,x1] world := rfl
+            + f"""theorem unroll_actual (world : World) :
+    evalProgram (M primitive external) S2 {vector} world = evalProgram (M primitive external) S3 {vector} world := rfl
 """
             + text[end:]
         )
@@ -426,8 +428,12 @@ def emit(capture, *, identity_unroll=False):
             text += "theorem actual {World Error : Type} (primitive : Prim → List Int → Int) (external : External World Error registry)\n    (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S4 arguments world :=\n  firstTwo Int World Error (M primitive external) arguments world arity\n"
             text += f"end F{index}\n"
             continue
-        if len(function["inputs"]) != 2:
-            raise ValueError("two-input changed function submode required")
+        input_count = len(function["inputs"])
+        if input_count > 16:
+            raise ValueError("at most sixteen scalar entry arguments supported")
+        input_names = [f"x{i}" for i in range(input_count)]
+        args, vector = " ".join(input_names), lean_list(input_names)
+        binders = f"({args} : Int)" if args else ""
         loops, envs = {}, {}
         for stage in (2, 3, 4):
             raw = records[stage]
@@ -436,9 +442,9 @@ def emit(capture, *, identity_unroll=False):
                 raise ValueError("exactly one top-level changed loop required")
             pos = positions[0]
             loops[stage] = raw[pos]["loop"]
-            envs[stage] = prefix_environment(raw, ["x0", "x1"], capture)
+            envs[stage] = prefix_environment(raw, input_names, capture)
             text += (
-                f"def E{stage} (primitive : Prim → List Int → Int) (x0 x1 : Int) : List Int := "
+                f"def E{stage} (primitive : Prim → List Int → Int) {binders} : List Int := "
                 + lean_list(envs[stage])
                 + f"\ndef B{stage} : Program := "
                 + program(loops[stage]["body"])
@@ -446,7 +452,8 @@ def emit(capture, *, identity_unroll=False):
                 + program(raw[pos + 1 :])
                 + "\n"
             )
-        bounds, bulk_bounds = static_controls(records[2], capture), static_controls(records[3], capture)
+        bounds = static_controls(records[2], capture, input_count=input_count)
+        bulk_bounds = static_controls(records[3], capture, input_count=input_count)
         lower, upper, step = bounds
         if step <= 0 or upper < lower:
             raise ValueError("positive static source stride and ordered bounds required")
@@ -457,7 +464,7 @@ def emit(capture, *, identity_unroll=False):
         expected_bulk = bounds if identity_unroll else [lower, lower + step * trips, step * factor]
         if identity_unroll and records[2] != records[3]:
             raise ValueError("standalone segmentation requires identical source/unroll stages")
-        if bulk_bounds != expected_bulk or static_controls(records[4], capture) != [
+        if bulk_bounds != expected_bulk or static_controls(records[4], capture, input_count=input_count) != [
             lower,
             expected_bulk[1],
             expected_bulk[2] * tile,
@@ -469,21 +476,30 @@ def emit(capture, *, identity_unroll=False):
         if any(loops[stage]["carries"] != loops[2]["carries"] for stage in (3, 4)):
             raise ValueError("declared carried result type/order differs across complete stages")
         count = len(loops[2]["carries"])
-        if not 1 <= count <= 4:
-            raise ValueError("one to four carries supported")
-        text += "variable {World Error : Type} (primitive : Prim → List Int → Int)\n    (external : External World Error registry) (x0 x1 : Int)\n"
+        if not 1 <= count <= 16:
+            raise ValueError("one to sixteen carries supported")
+        text += f"variable {{World Error : Type}} (primitive : Prim → List Int → Int)\n    (external : External World Error registry) {binders}\n"
         for stage in (2, 3, 4):
             loop, env = loops[stage], envs[stage]
-            args = " ".join(env[i] for i in loop["bounds"])
+            control_args = " ".join(env[i] for i in loop["bounds"])
             initial = lean_list([env[i] for i in loop["initial"]])
-            text += f"theorem form{stage} (world : World) : evalProgram (M primitive external) S{stage} [x0,x1] world =\n  (loopEval {len(loop['carries'])} (fun i carry w => evalProgram (M primitive external) B{stage} (i::carry++E{stage} primitive x0 x1) w)\n    (indexIterations {args}) {initial} world).bind\n      (fun result => evalProgram (M primitive external) N{stage} (result.1++E{stage} primitive x0 x1) result.2) := by rfl\n"
+            text += f"theorem form{stage} (world : World) : evalProgram (M primitive external) S{stage} {vector} world =\n  (loopEval {len(loop['carries'])} (fun i carry w => evalProgram (M primitive external) B{stage} (i::carry++E{stage} primitive {args}) w)\n    (indexIterations {control_args}) {initial} world).bind\n      (fun result => evalProgram (M primitive external) N{stage} (result.1++E{stage} primitive {args}) result.2) := by rfl\n"
         if not identity_unroll:
-            text += body_group_text(capture, loops, envs, count, factor, step)
-        text += scope_text(capture, loops, envs, count)
-        text += outer_text(count, bulk_bounds[1], bulk_bounds[2], tile)
+            text += body_group_text(capture, loops, envs, count, factor, step, args)
+        text += scope_text(capture, loops, envs, count, args)
+        text += outer_text(count, bulk_bounds[1], bulk_bounds[2], tile, args)
         initial = lean_list([envs[2][i] for i in loops[2]["initial"]])
         text += compose_text(
-            count, bounds, bulk_bounds, factor, groups, tile, bits, initial, identity_unroll=identity_unroll
+            count,
+            bounds,
+            bulk_bounds,
+            factor,
+            groups,
+            tile,
+            bits,
+            initial,
+            input_names,
+            identity_unroll=identity_unroll,
         )
         text += f"end F{index}\n"
     defined = [i for i, f in enumerate(stages[0]["functions"]) if not f["declaration"]]
