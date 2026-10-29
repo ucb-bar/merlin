@@ -22,8 +22,8 @@ Start at the [current evidence and remaining work](out/artifacts/handoff/pass-ve
 [completion scope](docs/design/lean_pass_integration_completion.md) and
 [assumption ledger](merlin/lean/LEDGER.md). The offline stack now shows all nine
 registered compiler gates. Q/DQ stays proposed and MACC stays draft pending
-independent review. Local commits have verified attribution; no new remote push
-has been verified. Earlier checkpoints below retain their stated source cuts.
+independent review. Remote publication is verified through `969ee9340`; all 20 new commits
+resolve both GitHub identities to `grammy117`. Earlier checkpoints below retain their stated source cuts.
 
 The [unpublished commit map](out/artifacts/handoff/pass-verif-integration-20261028/unpublished-commit-map.json)
 records a publication message-length correction. All code trees, identities and

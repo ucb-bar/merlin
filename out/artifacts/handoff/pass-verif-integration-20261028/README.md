@@ -94,14 +94,20 @@ See the [compiler stack and examples](../../../../docs/guides/lean_compiler_stac
 [completion plan](../../../../docs/design/lean_pass_integration_completion.md).
 Frozen semantic/specification definitions and locks remain unchanged. Existing
 repository-wide structure/overfit/provenance findings outside this slice remain
-visible; targeted verification does not certify full CI. No new push has been
-verified; the previous remote authentication failure is a delivery blocker.
+visible; targeted verification does not certify full CI. Remote publication is verified through `969ee9340`; the GitHub API resolves
+both identities for all 20 new commits to `grammy117`. Earlier authentication
+failures are historical, not the current delivery state.
 
 Earlier results below retain their stated source cuts.
 
 [unpublished-commit-map.json](unpublished-commit-map.json) maps older retained
 commit identifiers to the publication series after one message-length correction.
 All trees, identities and dates are preserved; published history is unchanged.
+
+The final broad source scan records seven target-name findings and 44 regex
+call sites in 16 files unchanged from the incoming base. Staged target/regex/fact
+checks pass. Global structure/provenance scans retain 16/two baseline findings.
+These are not passing full-CI results; no guard or ratchet was weakened.
 
 ---
 
