@@ -137,6 +137,19 @@ def require_query_success(process):
     raise NotEstablished("complete loop query did not typecheck")
 
 
+def _library_refs(library):
+    library = Path(library)
+    paths = sorted(library.rglob("*"))
+    if library.is_symlink() or any(path.is_symlink() for path in paths):
+        raise Unavailable("private proof objects must not be symlinks")
+    return [file_ref(path) for path in paths if path.is_file()]
+
+
+def _validate_library(library, references):
+    if _library_refs(library) != references:
+        raise Unavailable("private proof object bytes or tree membership changed")
+
+
 def check(prepared, *, lean, destination, timeout=120):
     """Compile exact selected project closure/query, audit roots, issue live handle.
 
@@ -191,6 +204,9 @@ def check(prepared, *, lean, destination, timeout=120):
     obj = library / "LoopTransformQuery.olean"
     process = _run([str(lean), "-j1", "-o", str(obj), str(query)], directory, env, directory, "query", timeout)
     require_query_success(process)
+    # Freeze bytes and membership before either auditor imports the objects.
+    # Audit-time replacement cannot become the expected object after the fact.
+    library_refs = _library_refs(library)
     # The canonical existing auditor checks all imported project theorems and
     # forbids unsafe/extern/axiom/reflection overrides; no synthetic Boolean test.
     audits = {}
@@ -212,12 +228,17 @@ def check(prepared, *, lean, destination, timeout=120):
     for row in audit["imports"]:
         if row["module"].startswith("Merlin.") or row["module"] == "LoopTransformQuery":
             path = Path(row["olean"]).resolve()
-            if not path.is_relative_to(library):
+            expected = library / (row["module"].replace(".", "/") + ".olean")
+            if path != expected.resolve():
                 raise Unavailable("project proof object escaped fresh private build")
             imports.append(file_ref(path))
     _revalidate(prepared)
+    _validate_library(library, library_refs)
     if file_ref(lean) != tool or file_ref(audit_source) != auditor or file_ref(query) != query_ref:
         raise Unavailable("tool/source/query changed during proof")
+    for ref in [*snapshots, *imports, *library_refs]:
+        if file_ref(ref["path"]) != ref:
+            raise Unavailable("checked artifact changed during proof")
     report = {
         "schema": "merlin.loop-transform.checked.v1",
         "status": "checked",
@@ -229,7 +250,8 @@ def check(prepared, *, lean, destination, timeout=120):
         "lean": tool,
         "auditor": auditor,
         "imports": imports,
-        "built_artifacts": [file_ref(p) for p in sorted(library.rglob("*")) if p.is_file()],
+        "library_root": str(library),
+        "built_artifacts": library_refs,
         "audit": audit,
         "statements": statements,
         "scope": "actual compiler loop boundary"
@@ -248,6 +270,7 @@ def check(prepared, *, lean, destination, timeout=120):
     report_path.write_text(canonical(report))
     token = Completion(prepared.identity, str(report_path))
     _LIVE[token] = (prepared, file_ref(report_path), report)
+    validate_completion(token, prepared)
     return token
 
 
@@ -262,6 +285,7 @@ def validate_completion(completion, prepared):
     ):
         raise Unavailable("live completion/request/report changed")
     _revalidate(prepared)
+    _validate_library(report["library_root"], report["built_artifacts"])
     for ref in [
         *report["buffers"],
         report["query"],
