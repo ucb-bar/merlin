@@ -484,3 +484,9 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/audits/host-graph-fusion-20261029/
 !/out/artifacts/audits/host-graph-fusion-20261029/README.md
 !/out/artifacts/audits/host-graph-fusion-20261029/qualification.json
+
+# Curated ledger review; generated proof objects, receipts and logs stay local.
+!/out/artifacts/audits/ledger-review-20261029/
+!/out/artifacts/audits/ledger-review-20261029/README.md
+!/out/artifacts/audits/ledger-review-20261029/results.json
+!/out/artifacts/audits/ledger-review-20261029/projection-inventory.json

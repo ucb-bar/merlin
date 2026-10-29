@@ -1,0 +1,501 @@
+{
+  "audit_readme_sha256": "a7408d5ce4d3ff903feeb6d06f790394ed63f3aa1650b907bc59dd8b907157f8",
+  "base_commit": "6a6ffacb2ab286ea715a4eda2405da454d0abd47",
+  "baseline_checks": {
+    "dependency_findings": 2,
+    "sources": [
+      {
+        "path": "packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py",
+        "sha256": "cd7c708f202981eb0cb42cbe7ea26831b4f41eacd7262dd98ee5aa1fb6b94cd0",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin/targetgen/owned_host_model_execution.py",
+        "sha256": "cf3987c327a936cba94906b6d747c6e7b11d99bbaccad4df5324655cf918bcc8",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py",
+        "sha256": "7a248fc274e602aaf98e1a35f22be6eba3182ef82b68275c865155a15bbbc327",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/authoring.py",
+        "sha256": "cabda1fbddc1fed217b38dd1d38253a1e77ea7d2c51d61e8087a51f2b391fbf1",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/brokers/selfcheck.py",
+        "sha256": "c7816238f8b71367a0b0f57e04b6beabe2899a2fb5a1201651c79495e0ec4f10",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_agent.py",
+        "sha256": "c7939ec41da80cde9ace63be92e644263f8be3d4a13d56c69aed1a5551685ddb",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/compile/scheduling/block_schedule.py",
+        "sha256": "fd4997d265ec4d61c28e8b3bf2c06ad2985a1d83cd205072ac748ac777e8526c",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/compile/scheduling/convolution_exploration.py",
+        "sha256": "416dd0abe12bae6bae7da4eb540b74cc107771179be6be9f68e78bc2f1fdf892",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/compile/scheduling/dense_panel_pipeline.py",
+        "sha256": "598896efd707077493a5aee1b304720415d902920329995ed41c1e0dedbcc365",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/llvmlower/device_build.py",
+        "sha256": "139694644cb30c6d228dc676f740a66b7266a964a8b987f248666463311b9d62",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/runtime/backends/spike_model.py",
+        "sha256": "3671865182c7c16ea28d25199de62c0da18965d184a7d096bd72b68bc8598569",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/runtime/backends/zephyr_model.py",
+        "sha256": "7e0c3a43dcd254938205d7889c8ab1f56596a8515a740d0a76752f42b106467f",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/targetgen/_recipe_quantizer.py",
+        "sha256": "7f3cd0ee06f08442895aab0e9650476f4dd80e54c01d942837d96d31b527b56e",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/targetgen/corpus_spec.py",
+        "sha256": "bb805ba069d601c9f5a079491203d542eefcc07d183544e6bd3a29957af8c6ba",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/targetgen/package_runtime.py",
+        "sha256": "b8c935204e7a2af9b4016b268d9f6388744a49aa11ee6d9c73ed4ab383247e0c",
+        "unchanged_from_base": true
+      }
+    ],
+    "structure_findings": 16
+  },
+  "current_qualification_runs": [
+    "qualification",
+    "f12-final"
+  ],
+  "fusion_audit": {
+    "defined_in": [],
+    "theorems_audited": 1580,
+    "violations": []
+  },
+  "host_fusion_replays": [
+    {
+      "audit": {
+        "assurance": "lean_kernel_std3_no_native_reflection",
+        "axioms_used": [
+          "propext",
+          "Quot.sound",
+          "Classical.choice"
+        ],
+        "theorems_audited": 117,
+        "violations": []
+      },
+      "file_refs_checked": 1178,
+      "ledger_sha256": "b833200127f503358637af554fa5853b16ddb856a921f41572547cc7408adee4",
+      "report": "out/artifacts/audits/ledger-review-20261029/host-fusion-0/REPORT.json",
+      "sha256": "df2b4bc6af6a835fd2d266af34cee1dc677a567e584ee54e772679309912a677",
+      "source_refs": 474
+    },
+    {
+      "audit": {
+        "assurance": "lean_kernel_std3_no_native_reflection",
+        "axioms_used": [
+          "propext",
+          "Quot.sound",
+          "Classical.choice"
+        ],
+        "theorems_audited": 117,
+        "violations": []
+      },
+      "file_refs_checked": 1178,
+      "ledger_sha256": "b833200127f503358637af554fa5853b16ddb856a921f41572547cc7408adee4",
+      "report": "out/artifacts/audits/ledger-review-20261029/host-fusion-1/REPORT.json",
+      "sha256": "93584bf612ea62b3e6b3dad4cdf472194ee1d7e6114349994a88d2024ef212b8",
+      "source_refs": 474
+    }
+  ],
+  "interrupted_attempt": {
+    "directory": "out/artifacts/audits/ledger-review-20261029/macc-bf16",
+    "qualification": false,
+    "status": "server_restart_before_receipt"
+  },
+  "macc_replay_log_sha256": "99373f4e3ad43ab2711aa362527672e0d281887110f780ec0a6d4c892eafaa40",
+  "macc_replays": [
+    {
+      "after": {
+        "bytes": 2277,
+        "path": "out/artifacts/audits/ledger-review-20261029/macc-bf16-v2/after.mlir",
+        "sha256": "491a080218c15ffb7e913c259cb6cb8a488b63d6802aa841f303f3087cfa8b2d"
+      },
+      "before": {
+        "bytes": 1285,
+        "path": "out/artifacts/audits/ledger-review-20261029/macc-bf16-v2/before.mlir",
+        "sha256": "236f5c7eb559c74c7ae5d75dbd6bfcda948400856778b502f4e8d8d4528f81aa"
+      },
+      "file_refs_checked": 616,
+      "fusion_premises": {
+        "site_formats": [
+          "bf16"
+        ],
+        "source_licensed_operations": 0,
+        "theorem": "MerlinVerify.Rules.Bf16F32AccFusion.fused_step_on_image"
+      },
+      "generation_file_refs_checked": 616,
+      "generation_report_sha256": "ca100c2408e9f7c7f7ef15d7fbe6bbf9e5d4be6007895b7ec7fb357b915d7c43",
+      "ledger_sha256": "b833200127f503358637af554fa5853b16ddb856a921f41572547cc7408adee4",
+      "native_fidelity": false,
+      "numerical_policy_verdict": "abstracted",
+      "policy_reviewed": false,
+      "report": "out/artifacts/audits/ledger-review-20261029/macc-bf16-v2/replay/draft-boundary.json",
+      "sha256": "89ea2c8c985910273b861e6f11e5a38774beaab8edaad2a7957fd9ff1ffb32e8",
+      "source_refs": 925
+    },
+    {
+      "after": {
+        "bytes": 2255,
+        "path": "out/artifacts/audits/ledger-review-20261029/macc-f16-v2/after.mlir",
+        "sha256": "3c8f9bf621bb96c36b0f8089a5d69cd9c2cba1dbeb8ed57b14aab4eecb24a77f"
+      },
+      "before": {
+        "bytes": 1261,
+        "path": "out/artifacts/audits/ledger-review-20261029/macc-f16-v2/before.mlir",
+        "sha256": "15c9ea6835f9cb731a8a507602eefefbdb4365821d3baac42e8938f44972da01"
+      },
+      "file_refs_checked": 616,
+      "fusion_premises": {
+        "site_formats": [
+          "f16"
+        ],
+        "source_licensed_operations": 0,
+        "theorem": "MerlinVerify.Rules.Bf16F32AccFusion.fused_step_on_image"
+      },
+      "generation_file_refs_checked": 616,
+      "generation_report_sha256": "d57970eee3cef6100d0ad72eafdbc17d3d5d90328a54154f775fc42468a5c58b",
+      "ledger_sha256": "b833200127f503358637af554fa5853b16ddb856a921f41572547cc7408adee4",
+      "native_fidelity": false,
+      "numerical_policy_verdict": "abstracted",
+      "policy_reviewed": false,
+      "report": "out/artifacts/audits/ledger-review-20261029/macc-f16-v2/replay/draft-boundary.json",
+      "sha256": "942edf670a3ea74ca76840c465a9c2075b675fc2951ff909de191ba0c7be42db",
+      "source_refs": 925
+    }
+  ],
+  "negative_test_replays": [
+    {
+      "current_after_sha256": "db5d39e399c38671738720895f5bc3b1e8208633ec1dcbbc9250d9218ee7b2f2",
+      "currently_replayable": false,
+      "fusion_premises": {
+        "site_formats": [
+          "bf16"
+        ],
+        "source_licensed_operations": 0,
+        "theorem": "MerlinVerify.Rules.Bf16F32AccFusion.fused_step_on_image"
+      },
+      "native_fidelity": false,
+      "policy_reviewed": false,
+      "report": "out/build/ledger-review-20261029/qualification/test_actual_half_output_delive0/replay/draft-boundary.json",
+      "sha256": "a2998ac2d64e383199de30449727c3eacc8f0650a613230574a21b8800f53c3d",
+      "source_refs": 925,
+      "status": "negative_test_evidence_intentionally_tampered_after_successful_replay"
+    },
+    {
+      "current_after_sha256": "93bfac4b37ed0129b274f0ea0ff1a835e7a5ce043212fb5faf9cd3db9ef84f96",
+      "currently_replayable": false,
+      "fusion_premises": {
+        "site_formats": [
+          "f16"
+        ],
+        "source_licensed_operations": 0,
+        "theorem": "MerlinVerify.Rules.Bf16F32AccFusion.fused_step_on_image"
+      },
+      "native_fidelity": false,
+      "policy_reviewed": false,
+      "report": "out/build/ledger-review-20261029/qualification/test_actual_half_output_delive1/replay/draft-boundary.json",
+      "sha256": "fb3be7ed888052079b54ade21bac8807e4f9e526f963aab843b9dd9633582e84",
+      "source_refs": 925,
+      "status": "negative_test_evidence_intentionally_tampered_after_successful_replay"
+    }
+  ],
+  "path_basis": "Repository-relative paths in this curated summary; retained raw receipts and logs keep original absolute paths.",
+  "pinned_statements_unchanged": 235,
+  "projection_inventory": {
+    "field_counts": {
+      "Python_projection_trusted": 3,
+      "projectionTrustedPython": 1,
+      "projection_is_trusted_python": 2,
+      "projection_trust": 5,
+      "projection_trusted": 7,
+      "projection_trusted_python": 5,
+      "python_interpreter_and_trace_projection_trusted": 1,
+      "python_projection_trusted": 31,
+      "trusted_host_projection": 1
+    },
+    "sha256": "a8179572b3acf3b27e3e02199d02b8942d6d3772f56b151585a4208f94ea97d6",
+    "sites": 56
+  },
+  "qdq": {
+    "generate": {
+      "dequantize_channel-textual": {
+        "after_sha256": "80efb3c3ace91e5eaf87eb7c557772c8fa9aa6c8d675f88743bdebd2d004a533",
+        "before_sha256": "ba6e93ad0fbaaf9141786266f80fde88a6e66da9c15d8225573af4021d6e5515",
+        "boundary": "preprocess_text_textual.dequant_to_generic",
+        "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "verified",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "d522eb5defaf84dc1b987aa987a26db348beeb60da1580abcc2195b935faba50",
+        "textual_stats": {
+          "c_interface_funcs": 1,
+          "dequantize_lowered": 1,
+          "quant_ext_lowered": 0
+        },
+        "typed_receipt_sha256": "c5199efc1d970f14589d838dae753b7bc2fc1c79b0e646ad28cf873d9218fb0c",
+        "verdict": "verified"
+      },
+      "dequantize_channel-xdsl": {
+        "after_sha256": "fca6a7a5028c1851a61bd85cee08cc33234ba548a5926a47a159fa912cb8b3ee",
+        "before_sha256": "e824f9c9197d564f721bae815c4694a43c2f5399dea5ac05d2a19aa88ad7e947",
+        "boundary": "lower_quant_ext",
+        "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "verified",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "7629d6f0c5e9319fa4ae044d7a7df79ba05fb931b7556068e0ca76e5b97a3296",
+        "textual_stats": null,
+        "typed_receipt_sha256": "517b43376716254e080d728fcb2da5aff049c585e4764db64c18b6c580e7b66e",
+        "verdict": "verified"
+      },
+      "dequantize_tensor-textual": {
+        "after_sha256": "bfee0bd9a9f2bd01c3fade7f05a7e78bf437a1c2c768a15c596955a456d2fd05",
+        "before_sha256": "284943559dc7666c2ef0f5fabc17605f0be164e1c2eef11216776bf18755b555",
+        "boundary": "lower_quant_ext",
+        "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "verified",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "7242a28b2fbccd7609814e282c86dd7453df8c247fc0490fa8b239f17b580597",
+        "textual_stats": {
+          "c_interface_funcs": 1,
+          "dequantize_lowered": 0,
+          "quant_ext_lowered": 1
+        },
+        "typed_receipt_sha256": "2f28386842a8db4496f13632fc4483189f199669ba454fb69672b9dc0980895b",
+        "verdict": "verified"
+      },
+      "dequantize_tensor-xdsl": {
+        "after_sha256": "08a7d58efb173634884e99634bef0dd2d0ed3dcdaa553eb81ff1b972bd08e2c8",
+        "before_sha256": "e640bfcd7db33cbf786ba2467c25141b23caeb622dcc29d61a9e80c32a0efac5",
+        "boundary": "lower_quant_ext",
+        "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "verified",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "9421bbe47bf3bc99421abd03638c28e7a61a9c56c629eb321532019f8e75428d",
+        "textual_stats": null,
+        "typed_receipt_sha256": "9eff3853e97e5900e769143ba2deff19c6c43c6c97f2578872be08e286882b46",
+        "verdict": "verified"
+      },
+      "quantize-textual": {
+        "after_sha256": "a9c64d2ad56fabb350f419821a31f94f52f91e51cf3847a1825f7539c250377b",
+        "before_sha256": "8f424a2f28595c951b7555939fa81a3d2ab0d6d88b5a9e069860808ad26c2cbd",
+        "boundary": "lower_quant_ext",
+        "claim": "strict refinement on inputs of the declared types; definedness not established",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "abstracted",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "3ecd901838e93dc5758144f91a4c04d24df0e4b18900d077a6299fe3c1843067",
+        "textual_stats": {
+          "c_interface_funcs": 1,
+          "dequantize_lowered": 0,
+          "quant_ext_lowered": 1
+        },
+        "typed_receipt_sha256": "0c54e7c14b236d1bc177f18afd62b8f42a1ba1a23c0124b16cbe536e9621831c",
+        "verdict": "abstracted"
+      },
+      "quantize-xdsl": {
+        "after_sha256": "5d1c23fca776b38cb29dfe5f2d24da15664e2636557654eef07681470291708d",
+        "before_sha256": "5722f4b9dab2a4b10b2b4ffafd3657624a5d901d0cb791211b3af4e4f14df00e",
+        "boundary": "lower_quant_ext",
+        "claim": "strict refinement on inputs of the declared types; definedness not established",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "abstracted",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "301397d6199cf1a6a05611c8c15080cfe97abba72c8994ffdf90067e252c7c99",
+        "textual_stats": null,
+        "typed_receipt_sha256": "8ad5660a600f6392cde07c338ca86f041cedfc580547ec97a2eba3854d706999",
+        "verdict": "abstracted"
+      }
+    },
+    "mutate": {
+      "after_sha256": "b4fac9e990bfc39c4c9ac70c602f95c6db2247380d736c541becbb84a48e3f3f",
+      "before_sha256": "5722f4b9dab2a4b10b2b4ffafd3657624a5d901d0cb791211b3af4e4f14df00e",
+      "reason": "MerlinVerify.Check.TypedModule.check_sound did not verify the pass: a function body did not verify",
+      "receipt_sha256": "cc4d7149cfc1a8e143d1fff89fd7e965341a5ffe004b4dfb32892daa79a85b04",
+      "verdict": "rejected"
+    },
+    "replay": {
+      "dequantize_channel-textual": {
+        "after_sha256": "80efb3c3ace91e5eaf87eb7c557772c8fa9aa6c8d675f88743bdebd2d004a533",
+        "before_sha256": "ba6e93ad0fbaaf9141786266f80fde88a6e66da9c15d8225573af4021d6e5515",
+        "reason": null,
+        "refinement_verdict": "verified",
+        "verdict": "verified"
+      },
+      "dequantize_channel-xdsl": {
+        "after_sha256": "fca6a7a5028c1851a61bd85cee08cc33234ba548a5926a47a159fa912cb8b3ee",
+        "before_sha256": "e824f9c9197d564f721bae815c4694a43c2f5399dea5ac05d2a19aa88ad7e947",
+        "reason": null,
+        "refinement_verdict": "verified",
+        "verdict": "verified"
+      },
+      "dequantize_tensor-textual": {
+        "after_sha256": "bfee0bd9a9f2bd01c3fade7f05a7e78bf437a1c2c768a15c596955a456d2fd05",
+        "before_sha256": "284943559dc7666c2ef0f5fabc17605f0be164e1c2eef11216776bf18755b555",
+        "reason": null,
+        "refinement_verdict": "verified",
+        "verdict": "verified"
+      },
+      "dequantize_tensor-xdsl": {
+        "after_sha256": "08a7d58efb173634884e99634bef0dd2d0ed3dcdaa553eb81ff1b972bd08e2c8",
+        "before_sha256": "e640bfcd7db33cbf786ba2467c25141b23caeb622dcc29d61a9e80c32a0efac5",
+        "reason": null,
+        "refinement_verdict": "verified",
+        "verdict": "verified"
+      },
+      "quantize-textual": {
+        "after_sha256": "a9c64d2ad56fabb350f419821a31f94f52f91e51cf3847a1825f7539c250377b",
+        "before_sha256": "8f424a2f28595c951b7555939fa81a3d2ab0d6d88b5a9e069860808ad26c2cbd",
+        "reason": "source definedness: no source-definedness receipt was provided; NotStuck permits UB and poison",
+        "refinement_verdict": "verified",
+        "verdict": "abstracted"
+      },
+      "quantize-xdsl": {
+        "after_sha256": "5d1c23fca776b38cb29dfe5f2d24da15664e2636557654eef07681470291708d",
+        "before_sha256": "5722f4b9dab2a4b10b2b4ffafd3657624a5d901d0cb791211b3af4e4f14df00e",
+        "reason": "source definedness: no source-definedness receipt was provided; NotStuck permits UB and poison",
+        "refinement_verdict": "verified",
+        "verdict": "abstracted"
+      }
+    }
+  },
+  "runs": {
+    "f12": {
+      "errors": "0",
+      "failures": "0",
+      "hostname": "jmills-framework",
+      "log_sha256": "33b4fb124756050403ecff78617a6d48ce8d3cfd0d6af2bc95b74528ac5d5ab6",
+      "name": "pytest",
+      "skipped": "1",
+      "skips": [
+        {
+          "reason": "Lean differential prerequisites missing: third_party/llvm-install/lib/libmlir_c_runner_utils.so",
+          "test": "test_actual_i64_channel_lowering_matches_integer_promotion"
+        }
+      ],
+      "superseded_by": "f12-final",
+      "tests": "2",
+      "time": "2.179",
+      "timestamp": "2026-10-29T13:41:19.273724-07:00",
+      "xml_sha256": "904f937757c9f9b81ec9d1ea3d5d28736e48c334856f0a1a03a2872a475d2378"
+    },
+    "f12-final": {
+      "errors": "0",
+      "failures": "0",
+      "hostname": "jmills-framework",
+      "log_sha256": "cc410566a654ead9795a785d314aee74d98893f596fe8b6de5903451bab23820",
+      "name": "pytest",
+      "skipped": "1",
+      "skips": [
+        {
+          "reason": "Lean differential prerequisites missing: third_party/llvm-install/lib/libmlir_c_runner_utils.so",
+          "test": "test_actual_i64_channel_lowering_matches_integer_promotion"
+        }
+      ],
+      "tests": "4",
+      "time": "3.002",
+      "timestamp": "2026-10-29T13:53:06.813462-07:00",
+      "xml_sha256": "b404b5fd7617be32edeada9b34d4cb3735601f20325d978eb0ca85a9ca0e207e"
+    },
+    "f12-native": {
+      "errors": "0",
+      "failures": "0",
+      "hostname": "jmills-framework",
+      "log_sha256": "d8402c99c8ce93081ba576d45ac7103f01b2d131c01f047b36c6fb658423e016",
+      "name": "pytest",
+      "skipped": "0",
+      "skips": [],
+      "superseded_by": "f12-final",
+      "tests": "2",
+      "time": "3.649",
+      "timestamp": "2026-10-29T13:42:03.585438-07:00",
+      "xml_sha256": "0d403a2a8bf1d2f2ccd8ab545187b0db74627fa7102a56736a9aef46eb37deeb"
+    },
+    "qualification": {
+      "errors": "0",
+      "failures": "0",
+      "hostname": "jmills-framework",
+      "log_sha256": "98fed78582ea8c9d3b0613b37ec58b8324702620f1cf26bc1fb70a5fe34e33a9",
+      "name": "pytest",
+      "skipped": "3",
+      "skips": [
+        {
+          "reason": "retained receipt SY_model_smolvla is not present in this checkout",
+          "test": "test_retained_receipt_replays[SY_model_smolvla]"
+        },
+        {
+          "reason": "retained receipt SY_model_smolvla-segment is not present in this checkout",
+          "test": "test_retained_receipt_replays[SY_model_smolvla-segment]"
+        },
+        {
+          "reason": "retained receipt SY_model_tiny_llama is not present in this checkout",
+          "test": "test_retained_receipt_replays[SY_model_tiny_llama]"
+        }
+      ],
+      "tests": "61",
+      "time": "335.755",
+      "timestamp": "2026-10-29T13:40:44.154470-07:00",
+      "xml_sha256": "3232ed67d60de3ca2ed6253f9f749bf014849650b34a544293bebbb9208bce24"
+    }
+  },
+  "schema": "merlin.ledger-review.v1",
+  "sources": {
+    ".gitignore": "d7c11d7fd4870edec403f05e60708cc5f5d99fba730952d4ee5a56db1259a526",
+    "VERIFICATION_HANDOFF.md": "9d1a17f95c3bb2fdfe80abe90c03b8079fe89a5c74602e0fa743b9555388d2d9",
+    "docs/design/qdq_macc_numerical_contract_review.md": "25ae3877b32d29e4b9ec5d694a14bba4c954eba1072914d8cfd62090b8d4ecfd",
+    "merlin/lean/LEDGER.md": "b833200127f503358637af554fa5853b16ddb856a921f41572547cc7408adee4",
+    "merlin/lean/MerlinVerify/Driver/Bf16F32Acc.lean": "d5e7fc55fd18fb5acc4f52d1ebadee9672f80d3e7045eb6b1ccfd71e292511e0",
+    "merlin/lean/MerlinVerify/Rules/Bf16F32AccFusion.lean": "97653789b49bd6bc626c3ac89646bb98e470256c361647784a90c357cfd01e88",
+    "merlin/lean/findings.md": "0f394ee2525fcc9bcfa7ae94bcc0c3894966cdc1ec74dbc66f73764537cb4aff",
+    "merlin/tests/ir/test_lean_bf16_f32acc.py": "8c4018c072477d361095e0b39339b191bb5168f399ff48ae4e0249b3bdeba9f7",
+    "merlin/tests/ir/test_lean_numerical_domains.py": "6397b95980622068f2d2a57ed88a9b07c81683b460df30f6d274eb85dad54925",
+    "merlin/tests/ir/test_lean_w8a8_dequant_width.py": "607b25d9535dff78ddac680870294c13c54869db2f277469161ad0d118daab71",
+    "out/artifacts/handoff/pass-verif-integration-20261028/README.md": "96d6435f47b30e1971ae3b7e9776f9eb5d9bd9fc1fa5e6d5b0aee327a83a7e3e",
+    "out/artifacts/handoff/quantization-lean-20261028/README.md": "0f70840f7acc7293a0ea53b121d9fa4431894e2c40adc22e92563dba7ff7bdaa",
+    "src/merlin/verify/lean/bf16_f32acc.py": "7e2fbec2292931d568e85c14c81d12b9ca5d42b49069fe161a57171739f858f1"
+  }
+}

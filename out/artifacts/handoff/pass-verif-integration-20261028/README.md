@@ -1,5 +1,11 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
+The [ledger review](../../audits/ledger-review-20261029/README.md) resolves the
+injectivity overclaim with an additive theorem covering noninjective conversions,
+adds T7/A10 citations, reconciles F12 and dispatcher status, and corrects obsolete
+K-bound/initializer gaps. Frozen statements and approval flags are unchanged.
+Its refreshed receipts bind the new ledger; earlier source cuts stay historical.
+
 The additional host graph fusion gate checks actual emitted helper bodies,
 caller bindings and the complete public entry on both compiler routes. Its
 20-case final qualification passes without skips, including independent-process

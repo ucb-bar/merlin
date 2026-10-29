@@ -1,5 +1,13 @@
 # Current compiler verification checkpoint — 2026-10-29
 
+The [ledger review](out/artifacts/audits/ledger-review-20261029/README.md) corrects
+the numerical and projection assumptions without changing frozen statements or
+approvals. An additive MACC fusion theorem now works for noninjective extensions;
+T7/A10 name the existing Python projection and selected-effect premises. F12 is
+marked compiler-corrected while per-channel i64 formal source support stays out
+of scope. Fresh Q/DQ, MACC and host-fusion replays bind the revised ledger; other
+historical receipts retain their original cuts.
+
 Host graph fusion now has an explicit compiler gate on both xDSL and textual
 routes. It checks actual emitted helper bodies, caller bindings and every public
 output under the existing typed total pure tensor-action model. All 20 new
