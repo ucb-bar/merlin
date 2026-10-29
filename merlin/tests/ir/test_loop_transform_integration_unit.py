@@ -38,6 +38,22 @@ def actual():
     return buffers, prepare(buffers, reference=REFERENCE)
 
 
+def test_changed_child_cleanup_source_invalidates_request(actual, monkeypatch):
+    from merlin.verify.loop_transform_intake import revalidate
+
+    _, candidate = actual
+    cleanup = (repo_root() / "src/merlin/common/owned_children.py").resolve()
+    read_bytes = Path.read_bytes
+
+    def changed(path):
+        data = read_bytes(path)
+        return data + b"\n" if path.resolve() == cleanup else data
+
+    monkeypatch.setattr(Path, "read_bytes", changed)
+    with pytest.raises(Unavailable, match="proof/host/producer source changed"):
+        revalidate(candidate)
+
+
 def test_actual_three_buffers_preserve_complete_roster_and_obligations(actual):
     buffers, prepared = actual
     assert all(a != b for a, b in zip(buffers, buffers[1:]))

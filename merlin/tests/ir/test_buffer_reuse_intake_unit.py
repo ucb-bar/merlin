@@ -12,6 +12,20 @@ from merlin.common.paths import repo_root
 from merlin.verify.buffer_reuse_intake import ALLOCATOR, ROOT, prepare, revalidate
 
 
+def test_changed_child_cleanup_source_invalidates_request(raw_case, monkeypatch):
+    candidate = prepare(*raw_case, allocator=ALLOCATOR)
+    cleanup = (repo_root() / "src/merlin/common/owned_children.py").resolve()
+    read_bytes = Path.read_bytes
+
+    def changed(path):
+        data = read_bytes(path)
+        return data + b"\n" if path.resolve() == cleanup else data
+
+    monkeypatch.setattr(Path, "read_bytes", changed)
+    with pytest.raises(ValueError, match="proof/host source changed"):
+        revalidate(candidate)
+
+
 @pytest.fixture(scope="module")
 def raw_case():
     default = repo_root().parent / "merlin/out/artifacts/verification/graph-shape-normalization"
