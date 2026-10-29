@@ -195,6 +195,7 @@ def prepare_query(before, after, *, factor, tile=3, index_bits=64):
         parent / "lean_graph_pipeline_gate_profile_prepare.py",
         parent / "lean_graph_pipeline_gate_projection.py",
         parent / "lean_graph_input_admission.py",
+        parent / "compiler_loop_resources.py",
         parent / "compiler_loop_nested.py",
         parent / "compiler_unroll_inline_nested.py",
     }

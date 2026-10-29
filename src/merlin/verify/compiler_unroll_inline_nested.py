@@ -11,6 +11,16 @@ from .lean_graph_state_scalar import program
 def emit(capture, before, after, loop, env, initial, trips, lower, upper, step, args):
     text, rules = _model_rules(capture)
     pos = next(i for i, row in enumerate(before) if "loop" in row)
+    from .compiler_loop_resources import check_lanes
+
+    check_lanes(
+        capture,
+        loop["body"],
+        repetitions=trips,
+        environment=env,
+        carry=initial,
+        continuation=before[pos + 1 :],
+    )
     if before[:pos] != after[:pos]:
         raise ValueError("actual inline prefix must retain exact SSA context")
     text += f"def T : Program := {program(after[pos:])}\n"

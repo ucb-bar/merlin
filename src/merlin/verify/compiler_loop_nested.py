@@ -111,6 +111,15 @@ def _shape(stage, call, pad):
 
 
 def body_group_text(capture, loops, envs, count, factor, step, args):
+    from .compiler_loop_resources import check_lanes
+
+    check_lanes(
+        capture,
+        loops[2]["body"],
+        repetitions=factor,
+        environment=envs[2],
+        carry=[f"c{i}" for i in range(count)],
+    )
     controls = {r["identity"]: r for r in capture["index_operations"]}
     text, rules = _model_rules(capture)
     groups = {}

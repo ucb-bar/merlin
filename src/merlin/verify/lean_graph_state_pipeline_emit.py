@@ -143,6 +143,16 @@ theorem naturalRange (lower upper step : Nat) (positive : 0 < step) :
 
 
 def body_group_text(capture, loops, envs, count, factor, step, args, *, max_calls=16):
+    if max_calls is None:
+        from .compiler_loop_resources import check_lanes
+
+        check_lanes(
+            capture,
+            loops[2]["body"],
+            repetitions=factor,
+            environment=envs[2],
+            carry=[f"c{i}" for i in range(count)],
+        )
     # Exact actual Program suffixes, not a replacement body/evaluator.
     control_map = {r["identity"]: r for r in capture["index_operations"]}
     result, groups = "", {}

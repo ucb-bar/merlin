@@ -91,6 +91,17 @@ def emit(capture, *, flexible_parameters=False):
         if upper + step * factor >= 2 ** (bits - 1):
             raise ValueError("selected signed control bound exceeded")
         initial = [env[i] for i in loop["initial"]]
+        if flexible_parameters:
+            from .compiler_loop_resources import check_lanes
+
+            check_lanes(
+                capture,
+                loop["body"],
+                repetitions=trips,
+                environment=env,
+                carry=initial,
+                continuation=before[pos + 1 :],
+            )
         primitive_name = "primitive" if any("primitive" in v for v in env) else "_primitive"
         text += f"def E ({primitive_name} : Prim → List Int → Int) (x0 x1 : Int) : List Int := {lean_list(env)}\n"
         text += f"def B : Program := {program(loop['body'])}\ndef N : Program := {program(before[pos + 1 :])}\n"

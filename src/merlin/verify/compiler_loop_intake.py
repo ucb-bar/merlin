@@ -178,6 +178,7 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
         parent / "pass_validation.py",
         parent / "lean/Merlin/GraphStateAudit.lean",
         parent / "lean_graph_input_admission.py",
+        parent / "compiler_loop_resources.py",
         parent / "lean_graph_pipeline_gate_projection.py",
         parent / "lean_graph_pipeline_gate_profile_prepare.py",
         parent / "compiler_loop_nested.py",
