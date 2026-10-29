@@ -143,6 +143,13 @@ def operand_extents(document, *, residual_preludes=True) -> tuple[tuple[int, ...
     """
     operation = document.get("operation") if isinstance(document, dict) else None
     inputs = document.get("inputs") if isinstance(document, dict) else None
+    if isinstance(operation, dict) and operation.get("op") == "fill" and inputs == []:
+        # A fill reads no operand: its only extents are the declared result's, so that is its identity
+        # (a constant tensor cannot carry a held-out layer's operands).
+        shape = (operation.get("attributes") or {}).get("shape")
+        if isinstance(shape, list) and shape and all(type(size) is int and size > 0 for size in shape):
+            return (tuple(sorted(size for size in shape if size != 1)),)
+        return None
     if (
         not isinstance(operation, dict)
         or not isinstance(operation.get("op"), str)
