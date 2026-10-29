@@ -215,6 +215,7 @@
             "composition_program",
             "activation_matmul",
             "column_sum",
+            "scalar_affine",
             "concat",
             "insert_slice",
             "fill",

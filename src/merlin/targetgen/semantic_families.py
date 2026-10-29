@@ -506,6 +506,8 @@ _OP_FAMILY: dict[str, str] = {
     "sigmoid": "elementwise_map",
     "exp": "elementwise_map",
     "cast": "elementwise_map",
+    # A scalar-immediate affine map y = weight * x + bias with literal immediates (`scalar_affine_capsule`).
+    "scalar_affine": "elementwise_map",
     "rope": "elementwise_map",
     "rope_qkv": "elementwise_map",
     "logit_softcap": "elementwise_map",

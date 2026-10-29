@@ -24,6 +24,7 @@ from merlin.targetgen.capsule_dram import dtype_bits
 
 from .capsule_intent import _semantic_block as _semantic_block
 from .column_sum_capsule import build_column_sum, column_sum_program
+from .scalar_affine_capsule import build_scalar_affine, scalar_affine_program
 from .window_sum_capsule import build_window_sum
 
 # canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
@@ -2614,6 +2615,7 @@ def build_activation_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, 
 
 
 BUILDERS["activation_matmul"] = build_activation_matmul
+BUILDERS["scalar_affine"] = build_scalar_affine  # y = weight * x + bias with literal immediates (scalar_affine_capsule)
 BUILDERS["column_sum"] = build_column_sum  # an integer standalone sum reduction (column_sum_capsule)
 BUILDERS["window_sum"] = build_window_sum  # exact window sums with one readout: mean / avg pools (window_sum_capsule)
 
@@ -2623,6 +2625,7 @@ BUILDERS["window_sum"] = build_window_sum  # exact window sums with one readout:
 COMPONENT_PROGRAM_SOURCES: dict[str, Callable[[dict, CorpusBinding], dict]] = {
     "activation_matmul": activation_matmul_program,
     "column_sum": column_sum_program,
+    "scalar_affine": scalar_affine_program,
 }
 
 

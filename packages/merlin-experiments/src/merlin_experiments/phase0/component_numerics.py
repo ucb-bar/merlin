@@ -63,6 +63,12 @@ def evaluate(capsule):
                 else [sum(int(args[0].data[row * cols + col]) for col in range(cols)) for row in range(rows)]
             )
             output = Tensor(tuple(node["shape"]), values, node["dtype"])
+        elif op == "affine":
+            output = Tensor(
+                tuple(node["shape"]),
+                [int(value) * node["weight"] + node["bias"] for value in args[0].data],
+                node["dtype"],
+            )
         else:
             output = Tensor(tuple(node["shape"]), list(args[0].data), node["dtype"])
         # Standard unflagged MLIR integer operations have modular width. This
