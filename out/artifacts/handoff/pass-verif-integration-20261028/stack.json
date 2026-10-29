@@ -19,11 +19,11 @@
     "title": "Ordered unrolling",
     "kind": "loop",
     "boundary": "The actual source loop \u2192 the Python producer's unrolled loop, before tensor preprocessing.",
-    "interface": "Options(unroll_factor=2)\n--validate-passes ordered_loop_unrolling",
-    "example": "5 ordered iterations, factor 2\n\u2192 2 groups \u00d7 2 lanes + 1 tail\nAn empty loop and a fully inlined small loop also have actual-output proofs.",
+    "interface": "Options(unroll_factor=2, unroll_depth=2)\n--loop-unroll-factor 2 --loop-unroll-depth 2\n--validate-passes ordered_loop_unrolling",
+    "example": "Dynamic outer loop stays in place.\nIts inner 5 iterations become 2 groups \u00d7 2 lanes + 1 tail.\nZero outer trips still execute no inner work.",
     "claim": "Equal returned values, modeled errors and terminal world, under the common scalar/SCF interpretation.",
     "proof": "Merlin.GraphGateProfileAdjacent.complete2",
-    "limit": "Static nonnegative selected index64 controls; arbitrary supported partial external calls, siblings, prefix/suffix contexts and nested retained bodies. No separate argument/carry cap. Inner-depth selection is active engineering; syntax/query/runtime budgets apply.",
+    "limit": "Explicit one-based depth; static selected index64 controls, arbitrary supported dynamic ancestors and partial calls. Current selected-depth qualification covers innermost loops. Captured strides in retained deeper bodies remain a safe refusal pending auxiliary projection qualification. Resource limits apply.",
     "registered": true,
     "in_all": true
   },
@@ -33,11 +33,11 @@
     "title": "Ordered tiling",
     "kind": "loop",
     "boundary": "The actual source loop \u2192 ordered one-dimensional segments. Runs alone or after unrolling.",
-    "interface": "Options(tile_size=3)\n--validate-passes ordered_loop_segmentation",
+    "interface": "Options(tile_size=3, tile_depth=2)\n--loop-tile-size 3 --loop-tile-depth 2\n--validate-passes ordered_loop_segmentation",
     "example": "7 groups\n\u2192 segments [3, 3, 1]\nA short final segment retains the original order.",
     "claim": "Scalar route: equal returns, modeled errors and terminal world. Memory route: the whole storage chain's successful-observation relation.",
     "proof": "Merlin.GraphGateProfileAdjacent.complete3",
-    "limit": "Static selected index64 controls; supported siblings, lexical contexts and nested retained bodies. Combined unroll\u2192tile uses one actual three-buffer gate with both adjacent roots. Private-buffer tiles retain size2\u201316; selecting inner depths is active engineering.",
+    "limit": "Depth is selected at the actual tiling stage after unrolling. Public inner TILE and combined UNROLL\u2192TILE gates/native controls pass with exact intermediate/output custody. Retained deeper-body captures remain under qualification; private-buffer tiles retain size2\u201316.",
     "registered": true,
     "in_all": true
   },
@@ -119,10 +119,10 @@
     "registered": true,
     "boundary": "The public hoist_loop_configuration producer under its original typed ISA/effect selection, before the existing Kernel consumer.",
     "interface": "PassValidation(..., passes=frozenset({'configuration_loop_hoisting'}))\nhoist_loop_configuration(kernel, adapter, pass_validation=validation,\n  selected_contracts=original_selection)\n# Indexed data uses an explicitly selected proposal_adapter.",
-    "example": "repeat 3 times:\n  set configuration = (3, 5)\n  work\n\u2192 set once before the positive loop\n  repeat 3 times: work",
-    "claim": "Equal complete modeled Kernel outcomes, including failing body/surrounding calls and their terminal state, under one common indexed interpretation.",
+    "example": "loop A: set cfg=3; workA(i)\nloop B: set cfg=5; workB(j)\n\u2192 set3; loop A: workA(i)\n   set5; loop B: workB(j)",
+    "claim": "Complete modeled outcome/error/terminal-state equality under all-index Models, with exact full command contexts, frame/atoms and terminal join for each motion.",
     "proof": "ActualConfigurationHoist.complete_kernel",
-    "limit": "Positive counted loop; V1 constant data or V2 admitted signed-index64 data expressions, with literal configuration dependencies. All-index Models remains an explicit premise. V3 derives last-write-wins multi-setter prefixes, including overlap, identical retained writes and prefix-only loops. Its installed canonical/native qualification passes. No completion/async, nested-loop or IV-dependent configuration-value coverage.",
+    "limit": "V1 static, V2 retained IV data, V3 overlapping setter prefixes, V4 multiple flat positive loops. 90 distinct current-source cases, fresh replay and prior-profile compatibility pass. Current extent admission is at most 1,000,000. Nested commands, completion fields and dynamic configuration values remain unsupported; model/hardware approval stays separate.",
     "in_all": false
   }
 ]

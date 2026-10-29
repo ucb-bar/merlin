@@ -54,8 +54,11 @@ context composition, actual unroll→tiling chain composition, and reuse without
 mandatory tiling. Buffer qualification now covers the already admitted four
 integer widths. Indexed-data hoisting adds a separate conservative host-admitted
 profile while retaining the all-index instruction-model premise. Its setter
-prefix extension now has installed canonical/native qualification; selected
-inner-loop depth is undergoing integration.
+prefix extension and multiple flat Kernel-loop contexts now have installed
+canonical/native qualification. Selected innermost-loop depths also have actual
+compiler/native qualification through dynamic ancestors. Captured strides in
+retained deeper bodies, nested Kernel commands and broader memory ranks remain
+engineering work.
 The effort table below is the earlier scope estimate, not remaining effort.
 Broader buffer ranks, producer-language coverage and numerical/source-contract
 coverage remain engineering; the human-review-only exit has not been reached.

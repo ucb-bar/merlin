@@ -9,6 +9,7 @@ code_refs:
   - src/merlin/verify/pass_validation.py
   - src/merlin/verify/compiler_transforms.py
   - src/merlin/verify/compiler_loop_intake.py
+  - src/merlin/verify/compiler_loop_inner.py
   - src/merlin/verify/compiler_macc.py
   - src/merlin/verify/compiler_qdq.py
   - src/merlin/verify/speculative_gate.py
@@ -117,6 +118,26 @@ result = lower_model(Path("source.mlir").read_text(), "out/build/loop-example",
                      targets=(), formal_transforms=Options(unroll_factor=2, tile_size=3))
 ```
 
+Depth selection is one-based, with the outermost loop at depth one. For an
+unchanged dynamic outer loop containing an eligible inner loop, use
+`Options(unroll_factor=2, unroll_depth=2)` or
+`--loop-unroll-factor 2 --loop-unroll-depth 2`.
+`tile_depth` / `--loop-tile-depth` selects the depth at the actual tiling stage,
+after any unrolling. Both default to one. Selecting a depth absent from the
+actual module is identity: it submits no proof and earns no rewrite coverage.
+
+```text
+repeat n times:                  repeat n times:
+  repeat 5 times:      →           repeat 2 groups of 2 lanes:
+    carry += increment              carry += increment twice
+                                  carry += increment
+```
+
+The public inner-depth unroll, tile and combined interfaces have real worker/
+native qualification, including zero/negative/positive outer limits and wrapping
+data. Whole-entry roots derive captured control facts from actual prefixes;
+callers supply no inherited-control or source-success premise.
+
 For example, a loop that starts at 3, stops before 31 and advances by 2 has
 fourteen iterations. Unroll factor two produces seven ordered groups. Tile size
 three groups those into three segments of sizes three, three and one. The
@@ -162,7 +183,8 @@ process can replay with no incoming completion authority; saved JSON is input
 to a new check. The standalone pinned-producer workflow still takes its explicit
 `reference` argument.
 
-The source-SCF route supports multiple changed top-level sibling loops per function,
+The source-SCF route supports multiple changed sibling loops per function at an
+explicitly selected nesting depth,
 scalar entry arguments and word carries without separate fixed arity caps
 (including zero carries), static nonnegative bounds,
 positive stride and index64. Scalar unroll factors and tile sizes are integers
@@ -171,8 +193,8 @@ and bulk-plus-remainder modes. Different function definitions can use different
 modes; the final common-registry theorem restores every actual defined entry,
 including supported unchanged dynamic-loop functions. All outer unroll modes
 and standalone tiling preserve supported nested scalar loop bodies, including
-dynamic inner controls and modeled external effects. The ordinary compiler
-does not yet select inner-depth factors.
+dynamic inner controls and modeled external effects. Explicit selected-depth
+proofs restore unchanged dynamic ancestors and the complete entry roster.
 Tiling supports short final segments. Complete syntax,
 expression/proof expansion, query-size, signed-index and runtime budgets still
 apply. External calls retain the modeled state
@@ -180,8 +202,10 @@ and failure semantics. Actual prefix/suffix contexts, including partial external
 calls, are composed around each selected rewrite. Local wrapper control equations
 are derived from the actual prefix; they are absent from the final whole-entry
 theorem. Combined unroll→tiling checks join the actual original, intermediate and
-final buffers in one canonical job. Selecting inner-depth rewrites remains active
-engineering. Untouched context must also fit the scalar/SCF projection.
+final buffers in one canonical job. Selecting an inner loop that itself retains
+deeper loops can still refuse when its proof wrapper captures a stride; that
+auxiliary-projection extension is undergoing qualification. Untouched context
+must also fit the scalar/SCF projection.
 The gate does not insert a loop-lowering pass to turn
 arbitrary tensor programs into supported source SCF.
 
@@ -312,7 +336,8 @@ three distinct guarantees and source-domain limits.
 ## Selecting and reviewing coverage
 
 Environment equivalents are `MERLIN_LOOP_UNROLL_FACTOR`, `MERLIN_LOOP_TILE_SIZE`
-and `MERLIN_BUFFER_REUSE_ALLOCATOR`. Proof selection remains
+and `MERLIN_BUFFER_REUSE_ALLOCATOR`, with optional `MERLIN_LOOP_UNROLL_DEPTH`
+and `MERLIN_LOOP_TILE_DEPTH`. Proof selection remains
 `MERLIN_VALIDATE_PASSES`; SDK and authoritative exporter selection remain
 `MERLIN_LEAN_SDK_BIN` and `MERLIN_COMPILER_PYTHON`.
 
@@ -370,9 +395,10 @@ The older elision `prepare`/`check`/`deliver` API and fresh replay remain availa
 The explicit `configuration_loop_hoisting` selector guards the real counted-
 Kernel producer and joins its original owner before returning the result. It
 requires `selected_contracts=...` on `hoist_loop_configuration`; the default
-direct producer route remains verifier-free. The current profiles share one
-positive top-level loop: V1 retains constant operands, V2 admits bounded retained
-IV-data expressions, and V3 supports multiple/overlapping pure-setter prefixes.
+direct producer route remains verifier-free. V1 retains constant operands, V2
+admits bounded retained IV-data expressions, and V3 supports multiple/overlapping
+pure-setter prefixes. V4 composes those motions across multiple flat top-level
+loops, binding each full command context and the exact complete final program.
 Configuration dependencies remain literal; the explicit proposal adapter enables
 IV-data candidates without changing the ordinary selected adapter.
 Its state relation does not approve numerical policy or the selected
@@ -398,7 +424,8 @@ surrounding calls. After any modeled failure, both versions retain the same
 error and terminal state. V3 derives the whole prefix's last-write-wins assignment;
 retained body writes may repeat its final values while keeping their other effects.
 Conflicting writes/clobbers and nonempty completion/asynchronous annotations
-refuse. Multiple/nested Kernel loops remain engineering work. A zero-trip loop
+refuse. Nested Kernel commands remain engineering work. Counted Kernel IR requires
+positive extents; this differs from the source-SCF empty-loop case. A zero-trip loop
 cannot be hoisted this way: the original executes no setter.
 
 The bridges bind complete input/output IR, parser/producer origins and the

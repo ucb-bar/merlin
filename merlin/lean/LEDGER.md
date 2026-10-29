@@ -24,6 +24,12 @@ including identical retained writes and prefix-only loops. Its canonical
 ten-module source closure and actual original-owner compiler paths are qualified;
 the existing nine-module V1/V2 closures remain intact. This adds no ISA effect,
 totality, state-completeness or hardware assumption approval.
+The additive V4 Focus checker composes actual prefix motions across multiple
+flat top-level loops with full command contexts, frame/atom rosters and an exact
+terminal join. Its eleven-module canonical closure, live delivery, fresh replay,
+four closed kernel refusals and V1/V2/V3 compatibility pass independent audit.
+Ninety distinct current-source cases pass, with 153 finite native observations;
+these do not discharge all-index `Models` or approve the selected ISA effects.
 Their state relations
 must not be substituted for a numerical-policy proof or for one another.
 
@@ -80,8 +86,12 @@ three recorded source cuts (14 mode, 6 mixed-entry and 10 nested-mode cases).
 Actual sibling-loop changes and surrounding partial-effect contexts now have
 checked whole-entry joins, including the actual unroll→tiling intermediate.
 Control facts in local wrappers are discharged from the actual prefix; final
-entry roots retain no source-success premise. Selecting inner loops for
-transformation remains active engineering. Passing test
+entry roots retain no source-success premise. Explicit one-based depth selection
+now checks innermost loops through arbitrary supported dynamic ancestors, with
+complete actual-entry roots and public worker/native controls at depths two and
+three. Independent public inner tiling and combined three-buffer checks also
+pass. Wrappers capturing strides of retained deeper bodies still refuse; their
+auxiliary-only projection extension is undergoing qualification. Passing test
 logs are not live completion authority; retained final-cut replay remains
 separate. No frozen semantics or new axiom is introduced.
 

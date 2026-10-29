@@ -1,33 +1,38 @@
 # Current compiler verification checkpoint — 2026-10-29
 
-Use **`feat/pass-verif-integration`**. The latest committed loop integration is
-`22f46e7c1`; indexed-data hoisting is `dcdbbb7df`, storage-check extraction is
-`ed201063b`, and the untiled buffer gate is `3070f1a39`.
-Nine families have scoped compiler selectors: DCE, CSE, unroll, tile, buffer,
-Q/DQ, MACC, configuration elision and configuration hoist. Five are selected by
-`all`; proposed Q/DQ, draft MACC and ISA-specific configuration gates stay explicit.
+Use **`feat/pass-verif-integration`**. Selected inner-depth compiler gates are
+committed in `59c61dc71`; multiple flat Kernel-loop hoisting is `c6f454c7b`.
+Nine families have scoped compiler selectors. Five belong to `all`; proposed
+Q/DQ, draft MACC and ISA-specific configuration gates remain explicit.
 
-The independent validator confirmed the actual unroll→tiling three-buffer chain:
-one canonical compiler job, complete adjacent entry roots, exact delivered output,
-172 current references and 1,690 declarations using STD3 only. Fresh untiled buffer
-qualification now covers all already-admitted i8/i16/i32/i64 widths. Indexed hoist
-admission preserves all-index `Models` and now refuses signed-index64 rendering
-overflows, including unreachable literals. Setter prefixes are integrated in
-`d4dc57e8e` with 53 distinct current-source checks and independent custody/axiom
-audit. Selected inner-loop depths are undergoing canonical integration.
-**The human-review-only milestone is not yet complete.**
+Selected-depth qualification passes 20 actual cases plus 18 current API controls.
+Independent public inner tiling and combined unroll→tile checks also pass, with
+one actual three-buffer job, exact adjacent roots and native boundary/wrap cases.
+The innermost-loop profile restores dynamic ancestors without inherited-control
+or source-success premises. Captured strides in retained deeper bodies still
+refuse; that auxiliary-only extension is undergoing qualification.
+
+Multiple-loop configuration hoisting passes 90 distinct current-source cases,
+fresh replay and V1/V2/V3 compatibility. Independent audit verifies 841 current
+references, eleven modules, 25 roots and 392 STD3 declarations. All-index
+`Models`, complete state and ISA effect premises remain explicit. Counted Kernel
+IR requires positive extents; source-SCF empty loops have separate support.
+
+**The human-review-only milestone remains open.** Nested Kernel commands,
+broader memory ranks/source profiles and remaining source-contract coverage need
+engineering. Q/DQ stays proposed and MACC stays draft pending independent review.
+No protected Core/Sem/Spec definitions or locks changed.
 
 Start at the [current evidence and remaining work](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
 [stack/interfaces/examples](docs/guides/lean_compiler_stack.md),
 [completion scope](docs/design/lean_pass_integration_completion.md) and
-[assumption ledger](merlin/lean/LEDGER.md). The offline stack now shows all nine
-registered compiler gates. Q/DQ stays proposed and MACC stays draft pending
-independent review. Remote publication is verified through `969ee9340`; all 20 new commits
-resolve both GitHub identities to `grammy117`. Earlier checkpoints below retain their stated source cuts.
+[assumption ledger](merlin/lean/LEDGER.md). Remote publication and both GitHub
+identities were verified through `820879de6`; subsequent qualified work is being
+prepared for publication. Earlier checkpoints retain their source cuts.
 
 The [unpublished commit map](out/artifacts/handoff/pass-verif-integration-20261028/unpublished-commit-map.json)
-records a publication message-length correction. All code trees, identities and
-dates are unchanged; older evidence retains its original recorded identifiers.
+records a prepublication message-length correction with unchanged code trees,
+identities and dates.
 
 ---
 

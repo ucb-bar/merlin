@@ -12,6 +12,8 @@ code_refs:
   - src/merlin/verify/configuration_hoist_gate.py
   - src/merlin/verify/compiler_configuration_hoist.py
   - src/merlin/verify/compiler_configuration_hoist_intake.py
+  - src/merlin/verify/compiler_configuration_hoist_multi.py
+  - src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistFocus.lean
   - src/merlin/compile/scheduling/configuration_loops.py
   - src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistChecker.lean
 ---
@@ -77,8 +79,23 @@ complete outcomes, including failure state; finite native comparisons remain
 separate qualification. V1/V2 keep their original nine-module proof closures.
 Installed qualification covers 53 distinct current-source cases, including four
 V3 public-producer/worker/native paths, V1/V2 compatibility and a real reversed
-setter-order proof refusal. Multiple/nested Kernel loops, completion fields and
-IV-dependent configuration values still require further engineering.
+setter-order proof refusal. Nested Kernel loops, completion fields and IV-dependent
+configuration values still require further engineering.
+
+The current V4 profile composes prefix motions across multiple flat top-level
+loops. Each checked stage retains the actual earlier/later command context,
+global frame and full atom roster; a closed terminal join binds the complete
+actual output. It does not move a setter across another loop. The eleven-module
+canonical proof preserves the same complete outcomes under all-index `Models`.
+Ninety distinct current-source cases pass, including four multi-loop public/
+worker/native paths, fresh replay, four kernel refusals and V1/V2/V3 compatibility.
+The 153 native initial/failure observations remain finite qualification.
+
+Counted Kernel IR requires positive extents. Zero-extent Kernel inputs are
+rejected by the existing structure checker and producer before optimization;
+they receive no coverage. Nested Kernel commands and completion fields remain
+unsupported. Current admission retains the inherited extent cap of 1,000,000;
+an audit is checking its relationship to explicit emitted integer domains.
 
 This current route has no historical producer-checkout requirement. The
 standalone API below retains its original revision and source-manifest guard.

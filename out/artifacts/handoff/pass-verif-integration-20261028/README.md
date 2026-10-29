@@ -1,32 +1,30 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
-Work on **`feat/pass-verif-integration`**. Latest committed checkpoint is
-`d4dc57e8e` (multiple/overlapping setter prefixes), following `22f46e7c1`
-(actual loop contexts and composed chain), `dcdbbb7df`
-(indexed-data hoist), `ed201063b` (storage-effect helper), `3070f1a39` (untiled
-buffer gate) and `16e9665c4` (scoped hoist gate),
-`6f2676fb3` (bounded loop proof generation), `39d425177` (configuration elision),
-`9409453b6` (final Q/DQ source freshness), `aa6af15c3` (nested inline/tail bodies)
-and `3ff55012b` (approved MACC producer rejection).
+Work on **`feat/pass-verif-integration`**. Latest qualified code is `59c61dc71`
+(selected inner depths), following `c6f454c7b` (multiple flat Kernel-loop hoists),
+`d4dc57e8e` (setter prefixes), `22f46e7c1` (complete loop contexts/chain),
+`3070f1a39` (untiled buffer gate) and the numerical/configuration integrations
+recorded below. Remote publication was verified through `820879de6` before
+these two features; both GitHub identities resolve to `grammy117`.
 
 All nine pass families have compiler selectors within their declared profiles.
 Five belong to `all`; Q/DQ, draft MACC and the two ISA configuration checks require
-explicit selection. **The human-review-only milestone remains open:** broader
-inner-loop depth and source/profile coverage are still being extended. The proof
-boundary is Merlin-owned transformations through their output IR, with downstream
+explicit selection. **The human-review-only milestone remains open:** retained
+deeper-body captures and broader source/profile coverage are still being extended.
+The proof boundary is Merlin-owned transformations through their output IR, with downstream
 MLIR/LLVM/executable/hardware fidelity separate.
 
 | Pass family | Integrated behavior and retained evidence | Main scope boundary |
 | --- | --- | --- |
 | Tensor DCE | Existing typed strict-refinement gate, source support and chain composition | Supported pure tensor operations and declared input types |
 | CSE | Existing leading compiler CSE gate with the same typed relation | Tensor checker support; independent downstream lowering |
-| Unrolling | Empty/full-inline/bulk/tail, siblings, partial prefix/suffix contexts and nested retained bodies; complete actual-entry roots and exact compiler delivery | Selecting inner depths is active engineering; scalar/SCF admission and resource budgets remain |
-| Ordered tiling | Siblings, short final tiles and supported nested bodies; actual unroll→tile chain has one canonical job and two honest adjacent roots | Selected controls remain static index64; inner-depth routing is in progress |
+| Unrolling | Empty/inline/bulk/tail, siblings, full lexical contexts and explicit inner depths through dynamic ancestors; 20 actual cases, 18 API controls and public native checks | Captured strides in retained deeper bodies still refuse pending the auxiliary-only extension; scalar/SCF/resource admission remains |
+| Ordered tiling | Explicit inner depth, partial effects and short tails; independent public TILE and combined UNROLL→TILE one-worker/native controls pass with exact middle/final joins | Static selected index64 controls and the documented retained-body capture gap |
 | Buffer reuse | Actual three-buffer untiled or four-buffer tiled chain; direct check, fresh-process replay and ordinary compiler passed; 2,372 audited declarations, eight finite native observations | Rank-two i8/i16/i32/i64 profile, possible-success relation, explicit total/private/unobservable allocator |
 | Q/DQ | 14 native/freshness cases, seven source-byte controls, eight actual lowerings and separate-process replays, final prefix/source-mutation control passed | Proposed source semantics; broader formats/per-group/mixed source graphs and definedness remain separate |
 | MACC | Shared/init SSA binding, fresh live replay, approved atomic producer rejection; 49 producer/checker cases with three historical skips and two native regressions | Draft numerical-reference conformance, not original half-source equivalence or numerical approval |
 | Configuration elision | Original-owner function/bare-instruction/Kernel gates; actual schedule→worker→encoded bytes→native paths; independent retained-work/frame/initial-setter refusals | Straight-line current profiles and explicit original ISA/effect interpretation |
-| Configuration hoist | Original public producer→worker→C/native; static V1 plus indexed-data V2, explicit proposal helper and literal/range/alignment controls | One positive loop; all-index `Models` remains a premise. V3 setter prefixes, overlap, identical retained writes and prefix-only loops are qualified; multiple/nested loops remain engineering |
+| Configuration hoist | V1 static, V2 indexed data, V3 setter prefixes and V4 multiple flat loops; 90 current cases, fresh replay, four kernel refusals and old-profile compatibility | All-index Models remains a premise; nested Kernel commands, completion fields, dynamic configuration values and broader extent admission remain separate |
 
 The independent validator checks the pass agents' theorem scope, actual input/
 output custody, source bindings, canonical roots, real consumer enforcement and
@@ -79,11 +77,11 @@ Important retained artifacts:
   selected adapters remain conservative; broader rewrites use explicit untrusted
   proposals checked against independently selected original effects.
 
-Remaining engineering: selected inner-loop depth routing, broader buffer ranks
-and element representations beyond the four admitted integer widths, additional
-Q/DQ source forms/precision semantics, and multiple/nested configuration loops.
-Setter-prefix coverage is integrated. Actual top-level sibling/context and
-unroll-tail→tiling joins are implemented; they are no longer pending bridges.
+Remaining engineering: captured strides when a selected inner loop retains deeper
+bodies, nested counted-Kernel commands, broader buffer ranks/element representations,
+additional Q/DQ source forms/precision semantics and explicit extent/index-domain
+admission. Selected innermost depths, top-level sibling/context composition,
+actual unroll→tiling chains and multiple flat Kernel hoists are implemented.
 Human review remains distinct: proposed Q/DQ semantics/poison/definedness, draft
 MACC accumulation/fusion policy, exact ISA pure-write/frame/failure contracts,
 complete/nonaliasing state and allocator/observer assumptions. Neither native
@@ -108,6 +106,24 @@ The final broad source scan records seven target-name findings and 44 regex
 call sites in 16 files unchanged from the incoming base. Staged target/regex/fact
 checks pass. Global structure/provenance scans retain 16/two baseline findings.
 These are not passing full-CI results; no guard or ratchet was weakened.
+
+New retained source cuts:
+
+- `out/build/unroll-modes-20261029/`: the 20-case selected-depth cohort and
+  `depth-options-current-v2.xml` (18 host API cases). Independent audits
+  `inner-installed-cohort-audit-v1.json`, `inner-tile-public-v1/RESULT.json` and
+  `inner-combined-public-v1/RESULT.json` are under the validator directory.
+  Combined public checking has 408 roots/1,648 STD3 declarations, all 175 refs
+  current, exact actual original/middle/final hashes and matching LLVM/native
+  cases for outer limits zero, negative and positive. Earlier cuts remain separate.
+- `out/build/configuration-hoist-multi-20261029/INSTALLED_SUMMARY.json`: 79 host
+  plus eleven canonical cases, 90 distinct IDs, no failures/skips. Seven public
+  accepted paths compare 153 finite initial/failure states. Independent
+  `hoist-multi-installed-audit-v1.json` confirms eleven modules/25 roots/392 STD3,
+  841 current refs per V4/replay report and genuine closed kernel refusals.
+  The initial diagnostic regression is retained separately; repaired routing
+  preserves original single-loop refusals. Malformed zero-extent Kernel input
+  is rejected by the existing producer and earns no coverage.
 
 ---
 
