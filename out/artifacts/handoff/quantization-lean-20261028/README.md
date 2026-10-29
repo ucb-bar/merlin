@@ -1,5 +1,14 @@
 # Quantization Lean proof handoff — updated 2026-10-29
 
+Additional [numerical contract review work](../../../../docs/design/qdq_macc_numerical_contract_review.md)
+adds conditional quantizer definedness through the actual lowering, initialized
+f32-accumulation component proofs and a plain-reduction producer/report regression
+fix. Source/policy approval remains pending; mixed/nonzero compiler eligibility,
+broader Q/DQ formats and concrete IEEE fidelity remain explicit separate work.
+The [completed numerical audit](../../audits/overnight-pass-verification-20261029/README.md)
+retains the exact sources, 71-case Q/DQ run, all six actual-pair replays, rejected
+multiply mutation, 34-root Q/DQ/chain axiom audit and fresh scalar-scale counterexamples.
+
 ## Overnight checker and source integration
 
 MACC checker commit `ce4369279` fixes shared SSA and initialization-as-input

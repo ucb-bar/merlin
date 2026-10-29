@@ -20,6 +20,12 @@ code_refs:
 
 # Check Q/DQ lowering in the compiler
 
+The [numerical contract review packet](../design/qdq_macc_numerical_contract_review.md)
+maps the additive conversion-domain definedness theorem through the actual
+lowering. It leaves the generic gate's unrestricted definedness and source
+approval fields unchanged; concrete IEEE fidelity and more formats remain
+separate review/integration work.
+
 `lower_quant_ext` is an explicitly selected compiler check. It proves refinement
 of the actual Q/DQ lowering under Merlin's existing **proposed Q/DQ source
 semantics**. It is excluded from `--validate-passes all`, whose five checks are

@@ -20,6 +20,11 @@ code_refs:
 
 # Lean verification through the compiler stack
 
+The [numerical contract review packet](../design/qdq_macc_numerical_contract_review.md)
+maps the new conditional Q/DQ definedness and initialized MACC component theorems
+to the current, narrower compiler profiles. It records remaining integration and
+approval work without changing the gates' claims.
+
 Current qualification and remaining limits are in
 the [integration handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md).
 That handoff distinguishes retained evidence from checks on the current source.

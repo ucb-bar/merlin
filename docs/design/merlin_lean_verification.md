@@ -65,6 +65,12 @@ records inherited source Q/DQ proofs and the independent numerical review still
 required. MACC acceptance establishes candidate-reference conformance, with
 numerical approval still abstracted. The design and historical proof counts
 below do not enable approved quantization or numerical-policy compiler gates.
+
+Additive [numerical contract strengthening](qdq_macc_numerical_contract_review.md)
+now proves conditional Q/DQ result definedness at the actual lowering boundary and
+initialized f32-accumulation component laws. Existing source/policy approval and
+compiler eligibility remain separate; no frozen definition or lock changes.
+
 The [pass integration completion plan](lean_pass_integration_completion.md)
 defines the agreed endpoint through Merlin output IR, work packages and the
 conditions for leaving only human semantic review. It separates current full

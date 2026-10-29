@@ -465,3 +465,17 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/handoff/macc-producer-review-20261029/manifest.json
 !/out/artifacts/handoff/macc-producer-review-20261029/regressions.json
 !/out/artifacts/handoff/macc-producer-review-20261029/native-regressions.json
+
+# Keep the existing numerical start-here handoff explicitly curated too.
+!/out/artifacts/handoff/quantization-lean-20261028/
+!/out/artifacts/handoff/quantization-lean-20261028/README.md
+
+# Curated numerical-contract audit checkpoint; raw proofs/logs stay local.
+!/out/artifacts/audits/
+!/out/artifacts/audits/overnight-pass-verification-20261029/
+!/out/artifacts/audits/overnight-pass-verification-20261029/README.md
+!/out/artifacts/audits/overnight-pass-verification-20261029/results.json
+!/out/artifacts/audits/overnight-pass-verification-20261029/audited-contract-sources.json
+!/out/artifacts/audits/overnight-pass-verification-20261029/commit-roster.json
+!/out/artifacts/audits/overnight-pass-verification-20261029/half-reductions/
+!/out/artifacts/audits/overnight-pass-verification-20261029/half-reductions/results.json

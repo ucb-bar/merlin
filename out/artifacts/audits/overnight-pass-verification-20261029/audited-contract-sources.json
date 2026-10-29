@@ -1,0 +1,86 @@
+{
+  "base_head": "4d28efe5c9e3edad360d45efc67390f4ab1e32ef",
+  "source_state": "working tree over the base head; exact bytes below",
+  "files": [
+    {
+      "path": "merlin/lean/MerlinVerify/Rules/QuantizeDefinedness.lean",
+      "sha256": "db78e1983ef8c0433b8200deb485f03d04a045954ff737067f14ed6ac5a8442e",
+      "bytes": 7986
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Rules/Bf16F32AccInitialized.lean",
+      "sha256": "ade563fe4e29623862e8a99c427cafa1bfef0143713004b99dad62c95876ba4f",
+      "bytes": 9880
+    },
+    {
+      "path": "merlin/lean/LEDGER.md",
+      "sha256": "5916005b9c6ead8149373b7ae11b0d9f594a664044f3717f69301b2809626227",
+      "bytes": 60413
+    },
+    {
+      "path": "merlin/lean/SPEC_LOCK",
+      "sha256": "6cc97b6a0742795378cca76393642932b62cc9f8998693f3961f22a5bc44b23b",
+      "bytes": 33934
+    },
+    {
+      "path": "src/merlin/llvmlower/passes_xdsl.py",
+      "sha256": "a0978d3753898ab7fd9cf1f3ae3603aec7fc4e3be4c9e44d107fc721c1aa3f71",
+      "bytes": 67912
+    },
+    {
+      "path": "src/merlin/verify/bf16_policy_gate.py",
+      "sha256": "003f8c0bc06a66193b2bea5c80dedc8e8fb6d9f06ad3fe7597843b4000e479a2",
+      "bytes": 25800
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_numerical_domains.py",
+      "sha256": "5efc0eeff9cfc16318b0b61a565e51afcef8859a8105b5bc300971d3b26f5c6c",
+      "bytes": 5876
+    },
+    {
+      "path": "merlin/tests/ir/lean_half_reduction_cases.py",
+      "sha256": "7335af56fd41317ad5270868b7cea61fdd57d9072ecf70dee957eb9c6b2a7340",
+      "bytes": 1005
+    },
+    {
+      "path": "merlin/tests/ir/test_compiler_macc.py",
+      "sha256": "d496020fb7f195bc9575a6b1ac0cee3903adaf7347c5d52b34e3c83e1bfc093f",
+      "bytes": 8460
+    },
+    {
+      "path": "merlin/tests/ir/test_macc_producer_legality.py",
+      "sha256": "f5181a345a2fb6bad3e3de7573ee6f46f29020fef91a725be4ee0b317a90e123",
+      "bytes": 4466
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_bf16_policy_gate.py",
+      "sha256": "d2883ecc2a6d50d8af3fe227ebfa64347495c800a3db09607db2a773a181c5f5",
+      "bytes": 17822
+    },
+    {
+      "path": "out/build/lean/build/lib/lean/MerlinVerify/Rules/QuantizeDefinedness.olean",
+      "sha256": "5dd81b3a2f47f9184ea2f3af96152caca1d63125d85478e3b9ad23dcba945322",
+      "bytes": 420288
+    },
+    {
+      "path": "out/build/lean/build/lib/lean/MerlinVerify/Rules/Bf16F32AccInitialized.olean",
+      "sha256": "7ffe7817c2bb809e1d46e15833713cefef182ea8e9260c70b85bc2f7eb197873",
+      "bytes": 253704
+    },
+    {
+      "path": "out/build/lean/build/bin/merlin-lean-audit",
+      "sha256": "763fde022dfab8e4c1d96ec4e13fe5172c74a6e68d0b48e5fbc266f2b4d91aa8",
+      "bytes": 118624232
+    },
+    {
+      "path": "out/build/lean/toolchain/lean-4.35.0-linux/bin/lean",
+      "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+      "bytes": 9024
+    },
+    {
+      "path": "out/build/lean/toolchain/lean-4.35.0-linux/bin/lake",
+      "sha256": "8ba83c98f76562d03b8dbc33f1057151ba6cbb121679dde76b2260ccc90495e1",
+      "bytes": 13416
+    }
+  ]
+}

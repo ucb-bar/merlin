@@ -33,6 +33,11 @@ code_refs:
 
 # Completing Merlin pass proofs and compiler integration
 
+The [Q/DQ and MACC review packet](qdq_macc_numerical_contract_review.md) records
+additive domain/initialized-accumulator proofs and the remaining source-profile,
+SSA, map, native-reference and independent numerical-review acceptance criteria.
+These component proofs do not complete the broader compiler profiles.
+
 The agreed endpoint covers Merlin pass proofs and their compiler integration
 through output IR. It covers the nine current interfaces: tensor DCE, CSE,
 ordered unrolling, ordered tiling, private buffer reuse, Q/DQ lowering, MACC

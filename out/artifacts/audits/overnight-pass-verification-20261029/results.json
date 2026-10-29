@@ -1,0 +1,189 @@
+{
+  "audited_base": "a829c1a66",
+  "audited_head": "4d28efe5c",
+  "authority": false,
+  "branch": "feat/pass-verif-integration",
+  "build": {
+    "initial_jobs": 3345,
+    "status": "passed",
+    "strengthened_jobs": 3347
+  },
+  "cohorts": {
+    "final-regressions": {
+      "errors": 0,
+      "failures": 0,
+      "passed": 10,
+      "skipped": 0,
+      "tests": 10,
+      "xml_sha256": "f367413ccdfe6d7fd617a97a14e7e7f0e43826e49f2422580a15e988387ded7e"
+    },
+    "host-v2": {
+      "errors": 0,
+      "failures": 0,
+      "passed": 80,
+      "skipped": 0,
+      "tests": 80,
+      "xml_sha256": "c3acdea41ad02dfcf7a17a01bef7e0fdadb6eb8ca9ff1f44bf3a48bfd5eab67c"
+    },
+    "kernel": {
+      "errors": 0,
+      "failures": 0,
+      "passed": 7,
+      "skipped": 0,
+      "tests": 7,
+      "xml_sha256": "584d9c69908bca45b8aa1b4bf718526330efc849b2461af11ec44560f9e753ad"
+    },
+    "macc-v2": {
+      "errors": 0,
+      "failures": 0,
+      "passed": 68,
+      "skipped": 0,
+      "tests": 68,
+      "xml_sha256": "e50b0a173f62c2da68072a7d783a2f31cb5c9589713aadeabc8da262164d6e7a"
+    },
+    "qdq": {
+      "errors": 0,
+      "failures": 0,
+      "passed": 28,
+      "skipped": 0,
+      "tests": 28,
+      "xml_sha256": "cfba7fd731444ece0019a8cfb93b99d4eb233b50c7cb0905e8dcc1600438a46a"
+    },
+    "qdq-strengthened": {
+      "errors": 0,
+      "failures": 0,
+      "passed": 71,
+      "skipped": 0,
+      "tests": 71,
+      "xml_sha256": "58b9c515de2e62c29d6f9a1aca3d93c1245c0b6ab8b6402042713fe0d79d66d3"
+    },
+    "strengthened": {
+      "errors": 0,
+      "failures": 0,
+      "passed": 143,
+      "skipped": 2,
+      "tests": 145,
+      "xml_sha256": "2adcb15a57f7cefb64cfbd9f7a902cc15700ae575eb7b0b5be652ae9aa38540c"
+    }
+  },
+  "cohorts_overlap": true,
+  "existing_pinned_statements_unchanged": 235,
+  "existing_qdq_chain_roots_std3": 34,
+  "explicit_skips": [
+    "Two retained SmolVLA MACC cases: historical full-shape boundary absent."
+  ],
+  "frozen_interfaces_changed": false,
+  "full_import_audit": {
+    "defined_in": [],
+    "theorems_audited": 4272,
+    "violations": []
+  },
+  "implementation_commits": [
+    "ee99e64fb",
+    "9a92a929f"
+  ],
+  "missing_tools": [
+    "standalone mlir-opt",
+    "third_party/llvm-install/lib/libmlir_c_runner_utils.so"
+  ],
+  "new_elaborated_statements": 11,
+  "policy_reviewed": false,
+  "preserved_failed_evidence": [
+    "half-reductions/results.json",
+    "macc.log",
+    "host.log",
+    "domains-prototype.log",
+    "domains-prototype-v2.log",
+    "domains-prototype-v3.log",
+    "domains-prototype-v4.log",
+    "receipts-strengthened/mutation-quantize-mulf/stage/receipt.json"
+  ],
+  "receipts": {
+    "generate": {
+      "pairs": 6,
+      "refinement_verified": 6,
+      "unrestricted_quantizer_definedness": "abstracted"
+    },
+    "mutate": {
+      "after_sha256": "b4fac9e990bfc39c4c9ac70c602f95c6db2247380d736c541becbb84a48e3f3f",
+      "before_sha256": "5722f4b9dab2a4b10b2b4ffafd3657624a5d901d0cb791211b3af4e4f14df00e",
+      "reason": "MerlinVerify.Check.TypedModule.check_sound did not verify the pass: a function body did not verify",
+      "receipt_sha256": "a54bcbaf6b1579edb173e38d0c4d546568ef9d1bcf7ad57004e255908b459365",
+      "verdict": "rejected"
+    },
+    "replay": {
+      "pairs": 6,
+      "refinement_verified": 6,
+      "unrestricted_quantizer_definedness": "abstracted"
+    }
+  },
+  "remaining": [
+    "independent Q/DQ source and MACC numerical-policy review",
+    "concrete IEEE/framework and arbitrary per-site fusion fidelity",
+    "mixed-format/nonzero-initializer MACC source/reference/SSA compiler integration",
+    "broader Q/DQ format and granularity specifications and integration",
+    "unsupported/incompatible/dynamic/encoded maps",
+    "historical model recapture or original source evidence"
+  ],
+  "repository_checks": {
+    "artifact_layout": {
+      "findings": 48,
+      "status": "failed_existing"
+    },
+    "artifact_layout_staged": "passed",
+    "core_dependencies": {
+      "findings": 2,
+      "status": "failed_existing"
+    },
+    "diagnostic_source_comparison": "baseline-diagnostic-source-comparison.json",
+    "diff_whitespace": "passed",
+    "docs_freshness": {
+      "drift_candidates": 219,
+      "schema": "passed"
+    },
+    "docs_schema_and_paths": "passed",
+    "frozen_files_and_statements": "passed",
+    "no_regex": {
+      "findings": 44,
+      "status": "failed_existing"
+    },
+    "provenance": {
+      "scan_capped_at_entries": 20000,
+      "status": "failed_existing",
+      "unchanged_historical_reports": 2
+    },
+    "ruff": "passed",
+    "structure": {
+      "findings": 16,
+      "status": "failed_existing"
+    }
+  },
+  "reviewed_commits": 30,
+  "schema": "merlin.numerical-contract.audit.v1",
+  "source_counterexample": {
+    "f32_materialized_result": 49,
+    "materialized_f32_scale": 0.002379688899964094,
+    "original_python_scale": 0.0023796888063332034,
+    "source_default_result": 50,
+    "source_overload": "quantized_decomposed.quantize_per_tensor.default",
+    "torch": "2.10.0+cpu",
+    "x_f32": 0.11779459565877914,
+    "zero_scale_source_behavior": "ZeroDivisionError"
+  },
+  "source_identity": {
+    "bound_source_files": 1159,
+    "bound_source_mismatches": [],
+    "compact_manifest": "audited-contract-sources.json",
+    "complete_local_source_manifest_sha256": "4a69cc0a62ee61815afbf4c65979098c082d4075de1b9a0235cf39e25670d702",
+    "exact_working_tree_sources": true,
+    "tested_base_head": "4d28efe5c9e3edad360d45efc67390f4ab1e32ef"
+  },
+  "source_specification_approved": false,
+  "spec_lock_changed": false,
+  "unrun": [
+    "full legacy repository suite",
+    "broader execution-engine differential corpus",
+    "upstream MLIR transformation checks",
+    "independent rank-one compiler/native/replay cohort"
+  ]
+}

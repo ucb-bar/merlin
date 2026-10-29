@@ -1,5 +1,16 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
+Additional audit/strengthening based on `4d28efe5c`: see the
+[numerical review packet](../../../../docs/design/qdq_macc_numerical_contract_review.md)
+for conditional Q/DQ definedness, initialized/mixed-format MACC component proofs,
+the plain-reduction classification regression, remaining integration and paper
+wording. No numerical approval is installed. Audit results retain their exact
+source cuts in `out/artifacts/audits/overnight-pass-verification-20261029/`.
+The [completed audit handoff](../../audits/overnight-pass-verification-20261029/README.md)
+records 143 MACC passes/two absent-retained-artifact skips, 71 Q/DQ passes,
+10 final regressions and six fresh lowering replays. The full new-module import
+audit checks 4,272 theorems with no violations; all 235 existing pins match.
+
 Work on **`feat/pass-verif-integration`**. Latest implementation commits are
 `5f9fb92de` (rank-one complete-entry bridges), `ef46cc269` (retained deeper loop
 bodies) and `91661f328` (original C64 consumer and wide-count hoisting). Remote

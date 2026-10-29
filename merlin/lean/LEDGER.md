@@ -641,6 +641,23 @@ the public full-qualification gate remain unchanged.
 
 ## f32-accumulation contract for `lower_bf16_matmul_f32acc`
 
+Additive numerical-contract strengthening (2026-10-29):
+`Rules/Bf16F32AccInitialized.lean` proves the existing zero contract is defined on
+initialized operands with checked mapped accesses, without float laws. It also
+defines an arbitrary per-cell f32 initializer, proves its exact ordered trace,
+empty-trace behavior and definedness, and connects the actual accumulating generic
+to that contract for independent operand formats. `zero_specialization` preserves
+the existing contract exactly. These component results do not enable mixed-format
+or nonzero-initializer source acceptance. Extending a half zero is not identified
+with literal f32 zero. The compiler still requires its current exact source body,
+positive-zero initializer and checked supported maps.
+
+The producer/report classifier now leaves ordinary sum/product reductions alone;
+half named matmuls and multiply-add reductions, including malformed ones, retain
+atomic refusal when unsupported. Complete output matching remains mandatory.
+Independent numerical review and concrete fusion/IEEE fidelity remain open. See
+the [separate proposals and theorem/domain map](../../docs/design/qdq_macc_numerical_contract_review.md).
+
 `Rules/Bf16F32AccContract.lean` states the contract in six clauses: per-operand `extf` to f32, the
 source's own indexing maps, one accumulator per cell folded in lexicographic order (A5), a `+0.0`
 start admitted only for a `+0.0` source destination, one attribute-free `truncf`, and multiply/add
@@ -682,6 +699,18 @@ replays the checker and permits `verified` only after the installed specificatio
 and all current theorem statements match `SPEC_LOCK`; it cannot approve the policy itself.
 
 ## Ordered per-tensor quantizer components
+
+`Rules/QuantizeDefinedness.lean` adds an explicit model-dependent conversion-safe
+domain. `scalar_defined_iff` characterizes nonpoison scalar output by the exact
+conversion; `result_defined` and `run_defined` prove nonpoison output/successful
+source execution on that domain for i32/i64 zero points. `target_result_defined`
+transfers the domain through the actual six-operation checked lowering using the
+existing site theorem. `initialized_counterexample` preserves typed initialized
+inputs with scale +1 in a legal model whose conversions all fail. Thus source
+typing/initialization and clamp names cannot justify unrestricted definedness.
+No new compile-time definedness verdict, float law, source approval, format or
+granularity is introduced. The separate IEEE-instance and frozen-specification
+review proposals are linked above.
 
 `Spec/Quantize.lean` is a proposed signed-i8 per-tensor quantizer contract,
 following the scalar extraction and operation order in PyTorch v2.10.0. It

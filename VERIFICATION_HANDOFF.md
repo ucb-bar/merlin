@@ -1,5 +1,17 @@
 # Current compiler verification checkpoint — 2026-10-29
 
+Numerical review work based on `4d28efe5c` keeps f32 accumulation as the selected
+MACC contract. Additive Q/DQ conversion-domain and initialized/mixed-format MACC
+component proofs, plus the plain-reduction producer/report regression fix, are
+described in the [review packet](docs/design/qdq_macc_numerical_contract_review.md).
+They do not install source/policy approval or broaden compiler eligibility to
+nonzero/mixed-format source contractions. Exact tested cuts, failures and replay
+commands are retained under `out/artifacts/audits/overnight-pass-verification-20261029/`.
+The [completed audit handoff](out/artifacts/audits/overnight-pass-verification-20261029/README.md)
+records commits `ee99e64fb` and `9a92a929f`: 143 MACC cases pass with two explicit
+retained-artifact skips, 71 Q/DQ cases pass, and 10 final regressions pass.
+All six lowering receipts replay; all 235 pinned statements remain unchanged.
+
 Use **`feat/pass-verif-integration`**. Retained deeper-body loop proofs are
 committed in `ef46cc269`; explicit C64 wide-count hoisting is `91661f328`.
 Nine families have scoped compiler selectors. Five belong to `all`; proposed

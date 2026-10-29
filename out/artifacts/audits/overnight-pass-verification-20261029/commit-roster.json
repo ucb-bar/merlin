@@ -1,0 +1,542 @@
+{
+  "base": "a829c1a66",
+  "head": "4d28efe5c",
+  "commits": [
+    {
+      "commit": "0fd1b0294e8e17e1f854f6cf336550cb9bf08e46",
+      "time": "2026-10-29T03:45:18-07:00",
+      "subject": "feat(verify): generalize compiler loop gate parameters",
+      "files": [
+        "merlin/lean/LEDGER.md",
+        "merlin/tests/ir/test_compiler_formal_transforms.py",
+        "merlin/tests/ir/test_compiler_loop_generalization.py",
+        "src/merlin/compile/command.py",
+        "src/merlin/verify/compiler_loop_intake.py",
+        "src/merlin/verify/compiler_transforms.py",
+        "src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+        "src/merlin/verify/lean_graph_state_pipeline_emit.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual SSA/call/control/context joins, checked theorem premises and resource refusal; focused kernel/host cohorts rerun, not the full repository suite."
+    },
+    {
+      "commit": "e70166a6343d1c34e814bf3f72a0641aa50a187f",
+      "time": "2026-10-29T03:49:27-07:00",
+      "subject": "docs(verify): map remaining pass integration work",
+      "files": [
+        "VERIFICATION_HANDOFF.md",
+        "docs/README.md",
+        "docs/design/lean_pass_integration_completion.md",
+        "docs/design/merlin_lean_verification.md",
+        "docs/design/verified_compiler_roadmap.md",
+        "docs/guides/lean_compiler_stack.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/README.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/merlin-lean-stack.html",
+        "out/artifacts/handoff/pass-verif-integration-20261028/qualification.json",
+        "out/artifacts/handoff/pass-verif-integration-20261028/stack.json"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Claim/domain and evidence-status crosscheck; historical counts retain their original cuts."
+    },
+    {
+      "commit": "ce43692796b8c79b3b93198d0883246644b0e2bf",
+      "time": "2026-10-29T04:55:38-07:00",
+      "subject": "fix(verify): preserve MACC operand identity in site proofs",
+      "files": [
+        "merlin/lean/MerlinVerify/Check/Bf16F32AccOperands.lean",
+        "merlin/lean/MerlinVerify/Check/Bf16F32AccSites.lean",
+        "merlin/tests/ir/lean_macc_ssa_cases.py",
+        "merlin/tests/ir/test_macc_ssa_joins.py",
+        "src/merlin/verify/compiler_macc.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Alias-aware operand packing, actual initializer producer capture, complete output joins, direct SSA mutation refusals and live delivery/fresh replay. Numerical-policy approval is not granted."
+    },
+    {
+      "commit": "337074195365984471d0f6ac19c5f03caa2f7255",
+      "time": "2026-10-29T04:57:22-07:00",
+      "subject": "docs(verify): record overnight pass work and remaining scope",
+      "files": [
+        "VERIFICATION_HANDOFF.md",
+        "docs/design/lean_pass_integration_completion.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/README.md"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Claim/domain and evidence-status crosscheck; historical counts retain their original cuts."
+    },
+    {
+      "commit": "a0335ce40ab90d15eadebbd6743fa2dd2c217586",
+      "time": "2026-10-29T05:00:17-07:00",
+      "subject": "docs(verify): retain MACC producer correction alternatives",
+      "files": [
+        ".gitignore",
+        "out/artifacts/handoff/macc-producer-review-20261029/README.md",
+        "out/artifacts/handoff/macc-producer-review-20261029/manifest.json",
+        "out/artifacts/handoff/macc-producer-review-20261029/native-regressions.json",
+        "out/artifacts/handoff/macc-producer-review-20261029/producer-legality-reject.patch",
+        "out/artifacts/handoff/macc-producer-review-20261029/producer-legality.patch",
+        "out/artifacts/handoff/macc-producer-review-20261029/regressions.json"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Claim/domain and evidence-status crosscheck; historical counts retain their original cuts."
+    },
+    {
+      "commit": "84e9680c6fe48ddd534e937529b7a10c965b7ff6",
+      "time": "2026-10-29T05:07:02-07:00",
+      "subject": "feat(verify): gate inline tail and nested-body unrolling",
+      "files": [
+        "merlin/tests/ir/test_compiler_loop_nested.py",
+        "merlin/tests/ir/test_compiler_unroll_composition.py",
+        "merlin/tests/ir/test_compiler_unroll_modes.py",
+        "src/merlin/verify/compiler_loop_intake.py",
+        "src/merlin/verify/compiler_loop_nested.py",
+        "src/merlin/verify/compiler_unroll_composition.py",
+        "src/merlin/verify/compiler_unroll_inline.py",
+        "src/merlin/verify/compiler_unroll_modes_intake.py",
+        "src/merlin/verify/compiler_unroll_query.py",
+        "src/merlin/verify/compiler_unroll_tail.py",
+        "src/merlin/verify/lean/Merlin/GraphStatePipelineTail.lean",
+        "src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+        "src/merlin/verify/lean_graph_pipeline_inline_emit.py",
+        "src/merlin/verify/lean_graph_pipeline_tail_emit.py",
+        "src/merlin/verify/lean_graph_state_pipeline_emit.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual SSA/call/control/context joins, checked theorem premises and resource refusal; focused kernel/host cohorts rerun, not the full repository suite."
+    },
+    {
+      "commit": "c4cccf767c7e57e3b0e0c898a1b752f4ff958000",
+      "time": "2026-10-29T05:14:45-07:00",
+      "subject": "feat(verify): qualify native QDQ source joins and checked prefixes",
+      "files": [
+        "docs/guides/lean_qdq_gate.md",
+        "merlin/tests/ir/test_compiler_qdq_bindings.py",
+        "merlin/tests/ir/test_compiler_qdq_native_source.py",
+        "merlin/tests/ir/test_compiler_qdq_prefix.py",
+        "src/merlin/verify/compiler_qdq.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual xDSL/textual source binding, overload/precision exclusions, prefix freshness and complete-output roots. Source approval and IEEE-instance fidelity remain separate."
+    },
+    {
+      "commit": "3ff55012b69fa5ca44b1e40319797c4f3cce9ed8",
+      "time": "2026-10-29T05:21:48-07:00",
+      "subject": "fix(lower): reject unsupported draft MACC policy rewrites",
+      "files": [
+        "merlin/tests/ir/test_compiler_macc.py",
+        "merlin/tests/ir/test_lean_bf16_f32acc.py",
+        "merlin/tests/ir/test_lean_bf16_f32acc_native.py",
+        "merlin/tests/ir/test_lean_bf16_policy_gate.py",
+        "merlin/tests/ir/test_macc_producer_legality.py",
+        "out/artifacts/handoff/macc-producer-review-20261029/README.md",
+        "src/merlin/llvmlower/passes_xdsl.py"
+      ],
+      "audit_status": "regression_found_and_fixed_in_working_tree",
+      "review_scope": "Atomic refusal, maps, source body and initializer checks; unrelated half sums/products are falsely rejected. Counterexamples retained and focused producer/host/complete-boundary regressions added."
+    },
+    {
+      "commit": "aa6af15c38776dba7094286f015c2abdb9f2d1e8",
+      "time": "2026-10-29T05:36:17-07:00",
+      "subject": "feat(verify): preserve nested bodies in inline and tail unrolling",
+      "files": [
+        "merlin/tests/ir/test_compiler_nested_unroll_modes.py",
+        "src/merlin/verify/compiler_unroll_composition.py",
+        "src/merlin/verify/compiler_unroll_inline_nested.py",
+        "src/merlin/verify/compiler_unroll_query.py",
+        "src/merlin/verify/lean_graph_pipeline_inline_emit.py",
+        "src/merlin/verify/lean_graph_pipeline_tail_emit.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual SSA/call/control/context joins, checked theorem premises and resource refusal; focused kernel/host cohorts rerun, not the full repository suite."
+    },
+    {
+      "commit": "9409453b6214073984b383558366827d0bc90449",
+      "time": "2026-10-29T05:41:40-07:00",
+      "subject": "fix(verify): recheck QDQ source after prefix composition",
+      "files": [
+        "docs/guides/lean_qdq_gate.md",
+        "merlin/tests/ir/test_compiler_qdq_native_source.py",
+        "src/merlin/verify/compiler_qdq.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual xDSL/textual source binding, overload/precision exclusions, prefix freshness and complete-output roots. Source approval and IEEE-instance fidelity remain separate."
+    },
+    {
+      "commit": "39d425177a3e3dacf8d8fb01430bd64605db516f",
+      "time": "2026-10-29T05:58:38-07:00",
+      "subject": "feat(verify): gate configuration elision at compiler consumers",
+      "files": [
+        "docs/design/merlin_lean_verification.md",
+        "docs/guides/lean_configuration_elision_gate.md",
+        "merlin/tests/infra/test_configuration_compiler_gate.py",
+        "merlin/tests/ir/test_compiler_configuration.py",
+        "merlin/tests/ir/test_compiler_configuration_host.py",
+        "src/merlin/compile/scheduling/configuration_ir.py",
+        "src/merlin/compile/scheduling/multioutput_fusion.py",
+        "src/merlin/compile/scheduling/pointwise_source.py",
+        "src/merlin/compile/scheduling/schedule_pipeline.py",
+        "src/merlin/llvmlower/device_build.py",
+        "src/merlin/llvmlower/target_schedule.py",
+        "src/merlin/targetgen/capsule_common.py",
+        "src/merlin/verify/compiler_configuration.py",
+        "src/merlin/verify/compiler_configuration_intake.py",
+        "src/merlin/verify/compiler_configuration_kernel.py",
+        "src/merlin/verify/configuration_elision_bridge.py",
+        "src/merlin/verify/configuration_elision_runner.py",
+        "src/merlin/verify/gate_checks.py",
+        "src/merlin/verify/gate_worker.py",
+        "src/merlin/verify/pass_validation.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Recomputed intake, exact live-owner and selected ISA/effect binding, current C consumer, all-index bounds, symbolic count and delivery revalidation. Host controls rerun; full native/kernel cohorts not all rerun."
+    },
+    {
+      "commit": "6f2676fb3b410ff73ae7dd5d949feded1684923e",
+      "time": "2026-10-29T06:18:19-07:00",
+      "subject": "fix(verify): bound compiler loop proof expansion before allocation",
+      "files": [
+        "merlin/tests/ir/test_compiler_loop_resources.py",
+        "src/merlin/verify/compiler_loop_intake.py",
+        "src/merlin/verify/compiler_loop_nested.py",
+        "src/merlin/verify/compiler_loop_resources.py",
+        "src/merlin/verify/compiler_unroll_composition.py",
+        "src/merlin/verify/compiler_unroll_inline_nested.py",
+        "src/merlin/verify/compiler_unroll_query.py",
+        "src/merlin/verify/lean_graph_pipeline_inline_emit.py",
+        "src/merlin/verify/lean_graph_state_pipeline_emit.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual SSA/call/control/context joins, checked theorem premises and resource refusal; focused kernel/host cohorts rerun, not the full repository suite."
+    },
+    {
+      "commit": "16e9665c496db7bdc30fc8f4eba2001c38358034",
+      "time": "2026-10-29T06:27:24-07:00",
+      "subject": "feat(verify): gate scoped configuration hoisting before Kernel consumers",
+      "files": [
+        "merlin/tests/ir/configuration_hoist_native_consumer.py",
+        "merlin/tests/ir/test_compiler_configuration_hoist.py",
+        "merlin/tests/ir/test_compiler_configuration_hoist_host.py",
+        "src/merlin/compile/scheduling/configuration_loops.py",
+        "src/merlin/verify/compiler_configuration_hoist.py",
+        "src/merlin/verify/compiler_configuration_hoist_intake.py",
+        "src/merlin/verify/configuration_elision_gate.py",
+        "src/merlin/verify/configuration_elision_runner.py",
+        "src/merlin/verify/configuration_hoist_bridge.py",
+        "src/merlin/verify/gate_checks.py",
+        "src/merlin/verify/gate_worker.py",
+        "src/merlin/verify/pass_validation.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Recomputed intake, exact live-owner and selected ISA/effect binding, current C consumer, all-index bounds, symbolic count and delivery revalidation. Host controls rerun; full native/kernel cohorts not all rerun."
+    },
+    {
+      "commit": "3070f1a393391d9e1eaa9c62da84dc480f5fa567",
+      "time": "2026-10-29T06:39:32-07:00",
+      "subject": "feat(verify): gate private buffer reuse without initializer tiling",
+      "files": [
+        "merlin/tests/ir/test_compiler_buffer_untiled.py",
+        "src/merlin/compile/command.py",
+        "src/merlin/verify/buffer_reuse_bridge.py",
+        "src/merlin/verify/buffer_reuse_gate.py",
+        "src/merlin/verify/compiler_transforms.py",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterUntiled.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterUntiledLocal.lean",
+        "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+        "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+        "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual raw buffers, derived initializer SSA/heap simulation, checked complete-entry joins and total/private/unobservable allocator premise. Rank-one native/replay cohort not independently rerun in this audit."
+    },
+    {
+      "commit": "ed201063bfbf1ee8b7817b829103ceeb50bd009f",
+      "time": "2026-10-29T08:01:05-07:00",
+      "subject": "refactor(scheduling): share pure configuration storage checks",
+      "files": [
+        "src/merlin/compile/scheduling/configuration.py",
+        "src/merlin/compile/scheduling/schedule_pipeline.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Recomputed intake, exact live-owner and selected ISA/effect binding, current C consumer, all-index bounds, symbolic count and delivery revalidation. Host controls rerun; full native/kernel cohorts not all rerun."
+    },
+    {
+      "commit": "dcdbbb7dfb6c413d9e4e521fae7add9f8976e3fa",
+      "time": "2026-10-29T08:02:04-07:00",
+      "subject": "feat(verify): admit scoped indexed data for configuration hoisting",
+      "files": [
+        "merlin/tests/ir/test_compiler_configuration_hoist_indexed.py",
+        "src/merlin/verify/compiler_configuration_hoist.py",
+        "src/merlin/verify/compiler_configuration_hoist_indexed.py",
+        "src/merlin/verify/compiler_configuration_hoist_intake.py",
+        "src/merlin/verify/configuration_hoist_bridge.py",
+        "src/merlin/verify/gate_worker.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Recomputed intake, exact live-owner and selected ISA/effect binding, current C consumer, all-index bounds, symbolic count and delivery revalidation. Host controls rerun; full native/kernel cohorts not all rerun."
+    },
+    {
+      "commit": "22f46e7c1b206ee72e12593a1a126f799e77d76d",
+      "time": "2026-10-29T08:02:57-07:00",
+      "subject": "feat(verify): compose actual loop contexts and unroll tiling chains",
+      "files": [
+        "merlin/tests/ir/test_compiler_loop_context.py",
+        "merlin/tests/ir/test_compiler_loop_context_chain.py",
+        "src/merlin/verify/compiler_loop_atomic.py",
+        "src/merlin/verify/compiler_loop_context.py",
+        "src/merlin/verify/compiler_loop_context_chain.py",
+        "src/merlin/verify/compiler_loop_context_emit.py",
+        "src/merlin/verify/compiler_loop_context_intake.py",
+        "src/merlin/verify/compiler_loop_intake.py",
+        "src/merlin/verify/compiler_loop_scaffold.py",
+        "src/merlin/verify/compiler_loop_tile_emit.py",
+        "src/merlin/verify/compiler_unroll_modes_intake.py",
+        "src/merlin/verify/lean/Merlin/GraphStatePipelineContext.lean"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual SSA/call/control/context joins, checked theorem premises and resource refusal; focused kernel/host cohorts rerun, not the full repository suite."
+    },
+    {
+      "commit": "3fe18074276995e59de0b7bf215f2f2a5d7ae6e1",
+      "time": "2026-10-29T08:07:52-07:00",
+      "subject": "docs(verify): refresh nine-pass stack and independent qualification",
+      "files": [
+        "VERIFICATION_HANDOFF.md",
+        "docs/design/lean_pass_integration_completion.md",
+        "docs/guides/lean_buffer_reuse_gate.md",
+        "docs/guides/lean_compiler_stack.md",
+        "docs/guides/lean_configuration_hoist_gate.md",
+        "merlin/lean/LEDGER.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/README.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/merlin-lean-stack.html",
+        "out/artifacts/handoff/pass-verif-integration-20261028/stack.json",
+        "out/artifacts/handoff/quantization-lean-20261028/README.md"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Claim/domain and evidence-status crosscheck; historical counts retain their original cuts."
+    },
+    {
+      "commit": "d4dc57e8e8f859765aa568089cc59936a948218b",
+      "time": "2026-10-29T08:15:13-07:00",
+      "subject": "feat(verify): gate invariant configuration setter prefixes",
+      "files": [
+        "merlin/tests/ir/configuration_hoist_prefix_native_consumer.py",
+        "merlin/tests/ir/test_compiler_configuration_hoist_prefix.py",
+        "src/merlin/verify/compiler_configuration_hoist.py",
+        "src/merlin/verify/compiler_configuration_hoist_indexed.py",
+        "src/merlin/verify/compiler_configuration_hoist_intake.py",
+        "src/merlin/verify/compiler_configuration_hoist_prefix.py",
+        "src/merlin/verify/configuration_hoist_prefix_emit.py",
+        "src/merlin/verify/lean/Merlin/GraphStateConfigurationPrefixHoist.lean"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Recomputed intake, exact live-owner and selected ISA/effect binding, current C consumer, all-index bounds, symbolic count and delivery revalidation. Host controls rerun; full native/kernel cohorts not all rerun."
+    },
+    {
+      "commit": "969ee93405b519179c981e7da278a63cd757e996",
+      "time": "2026-10-29T08:25:09-07:00",
+      "subject": "docs(verify): record setter prefixes and publication mapping",
+      "files": [
+        ".gitignore",
+        "VERIFICATION_HANDOFF.md",
+        "docs/design/lean_pass_integration_completion.md",
+        "docs/guides/lean_compiler_stack.md",
+        "docs/guides/lean_configuration_hoist_gate.md",
+        "merlin/lean/LEDGER.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/README.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/merlin-lean-stack.html",
+        "out/artifacts/handoff/pass-verif-integration-20261028/stack.json",
+        "out/artifacts/handoff/pass-verif-integration-20261028/unpublished-commit-map.json"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Claim/domain and evidence-status crosscheck; historical counts retain their original cuts."
+    },
+    {
+      "commit": "820879de64649f1f52f363a32c668cb30f719a99",
+      "time": "2026-10-29T08:30:49-07:00",
+      "subject": "docs(verify): record verified publication and baseline checks",
+      "files": [
+        "VERIFICATION_HANDOFF.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/README.md"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Claim/domain and evidence-status crosscheck; historical counts retain their original cuts."
+    },
+    {
+      "commit": "c6f454c7bcb739ee313986364e1cc5c78078a238",
+      "time": "2026-10-29T09:07:06-07:00",
+      "subject": "feat(verify): compose configuration hoists across sibling loops",
+      "files": [
+        "merlin/tests/ir/configuration_hoist_multi_native_consumer.py",
+        "merlin/tests/ir/test_compiler_configuration_hoist_multi.py",
+        "src/merlin/verify/compiler_configuration_hoist_indexed.py",
+        "src/merlin/verify/compiler_configuration_hoist_intake.py",
+        "src/merlin/verify/compiler_configuration_hoist_multi.py",
+        "src/merlin/verify/configuration_hoist_bridge.py",
+        "src/merlin/verify/configuration_hoist_multi_emit.py",
+        "src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistFocus.lean"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Recomputed intake, exact live-owner and selected ISA/effect binding, current C consumer, all-index bounds, symbolic count and delivery revalidation. Host controls rerun; full native/kernel cohorts not all rerun."
+    },
+    {
+      "commit": "59c61dc71721e52de92b3994c7412b945e0902a3",
+      "time": "2026-10-29T09:11:12-07:00",
+      "subject": "feat(verify): gate selected inner loop depths in compiler contexts",
+      "files": [
+        "merlin/tests/ir/test_compiler_loop_depth_options.py",
+        "merlin/tests/ir/test_compiler_loop_selected_depth.py",
+        "src/merlin/compile/command.py",
+        "src/merlin/verify/compiler_loop_context_emit.py",
+        "src/merlin/verify/compiler_loop_inner.py",
+        "src/merlin/verify/compiler_loop_inner_build.py",
+        "src/merlin/verify/compiler_loop_inner_emit.py",
+        "src/merlin/verify/compiler_loop_inner_intake.py",
+        "src/merlin/verify/compiler_loop_inner_stages.py",
+        "src/merlin/verify/compiler_loop_intake.py",
+        "src/merlin/verify/compiler_transforms.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual SSA/call/control/context joins, checked theorem premises and resource refusal; focused kernel/host cohorts rerun, not the full repository suite."
+    },
+    {
+      "commit": "adfb4debdbca76a2830396251e8d962816f7ff85",
+      "time": "2026-10-29T09:22:52-07:00",
+      "subject": "docs(verify): describe selected depths and sibling hoist checks",
+      "files": [
+        "VERIFICATION_HANDOFF.md",
+        "docs/design/lean_pass_integration_completion.md",
+        "docs/guides/lean_compiler_stack.md",
+        "docs/guides/lean_configuration_hoist_gate.md",
+        "merlin/lean/LEDGER.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/README.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/merlin-lean-stack.html",
+        "out/artifacts/handoff/pass-verif-integration-20261028/stack.json"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Claim/domain and evidence-status crosscheck; historical counts retain their original cuts."
+    },
+    {
+      "commit": "ef46cc26912a1d5ca053d72cb36e600d758c47ad",
+      "time": "2026-10-29T09:55:44-07:00",
+      "subject": "feat(verify): preserve deeper bodies in selected inner loop proofs",
+      "files": [
+        "merlin/tests/ir/test_compiler_loop_retained_depth.py",
+        "merlin/tests/ir/test_compiler_loop_selected_depth_chain.py",
+        "src/merlin/verify/compiler_loop_context.py",
+        "src/merlin/verify/compiler_loop_scaffold.py",
+        "src/merlin/verify/compiler_loop_tile_emit.py",
+        "src/merlin/verify/lean_graph_state_scalar_capture.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual SSA/call/control/context joins, checked theorem premises and resource refusal; focused kernel/host cohorts rerun, not the full repository suite."
+    },
+    {
+      "commit": "91661f328ffd36be0bfc0c7fceea4630f5bbaa51",
+      "time": "2026-10-29T10:11:28-07:00",
+      "subject": "feat(verify): bind wide hoisting to the original C64 consumer",
+      "files": [
+        "merlin/tests/ir/test_compiler_configuration_hoist_c_consumer.py",
+        "merlin/tests/ir/test_compiler_configuration_hoist_wide.py",
+        "src/merlin/compile/scheduling/configuration_c_consumer.py",
+        "src/merlin/compile/scheduling/configuration_loops.py",
+        "src/merlin/verify/compiler_configuration_hoist.py",
+        "src/merlin/verify/compiler_configuration_hoist_indexed.py",
+        "src/merlin/verify/compiler_configuration_hoist_intake.py",
+        "src/merlin/verify/compiler_configuration_hoist_multi.py",
+        "src/merlin/verify/compiler_configuration_hoist_wide.py",
+        "src/merlin/verify/configuration_hoist_bridge.py",
+        "src/merlin/verify/gate_worker.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Recomputed intake, exact live-owner and selected ISA/effect binding, current C consumer, all-index bounds, symbolic count and delivery revalidation. Host controls rerun; full native/kernel cohorts not all rerun."
+    },
+    {
+      "commit": "0c52a8b5e0183aed03dadc877a2609e8f72b5bbd",
+      "time": "2026-10-29T10:17:42-07:00",
+      "subject": "docs(verify): record deeper loop and wide hoist qualification",
+      "files": [
+        "VERIFICATION_HANDOFF.md",
+        "docs/README.md",
+        "docs/design/lean_pass_integration_completion.md",
+        "docs/guides/lean_compiler_stack.md",
+        "docs/guides/lean_configuration_hoist_gate.md",
+        "merlin/lean/LEDGER.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/README.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/merlin-lean-stack.html",
+        "out/artifacts/handoff/pass-verif-integration-20261028/stack.json"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Claim/domain and evidence-status crosscheck; historical counts retain their original cuts."
+    },
+    {
+      "commit": "5f9fb92ded9806f4871c6ee7ebee261255a04054",
+      "time": "2026-10-29T10:28:26-07:00",
+      "subject": "feat(verify): connect rank-one buffers to complete entry proofs",
+      "files": [
+        "merlin/tests/ir/buffer_rank_one_inputs.py",
+        "merlin/tests/ir/buffer_rank_one_replay.py",
+        "merlin/tests/ir/test_compiler_buffer_rank_one.py",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterLine.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterLineLocal.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterLineTiled.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterLineTiledLocal.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCommand.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLine.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLineLink.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLineSteps.lean",
+        "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+        "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+        "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+        "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+        "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+        "src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+        "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Actual raw buffers, derived initializer SSA/heap simulation, checked complete-entry joins and total/private/unobservable allocator premise. Rank-one native/replay cohort not independently rerun in this audit."
+    },
+    {
+      "commit": "d0dac9d60b0274a90d3c49b30dc84c3280afcc3b",
+      "time": "2026-10-29T10:32:55-07:00",
+      "subject": "docs(verify): distinguish initial rank-one proof from qualification",
+      "files": [
+        "VERIFICATION_HANDOFF.md",
+        "docs/README.md",
+        "docs/design/lean_pass_integration_completion.md",
+        "docs/guides/lean_buffer_reuse_gate.md",
+        "docs/guides/lean_compiler_stack.md",
+        "merlin/lean/LEDGER.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/README.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/merlin-lean-stack.html",
+        "out/artifacts/handoff/pass-verif-integration-20261028/stack.json"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Claim/domain and evidence-status crosscheck; historical counts retain their original cuts."
+    },
+    {
+      "commit": "4d28efe5c9e3edad360d45efc67390f4ab1e32ef",
+      "time": "2026-10-29T11:16:08-07:00",
+      "subject": "docs(verify): record default-all memory composition gaps",
+      "files": [
+        "docs/design/lean_pass_integration_completion.md",
+        "docs/guides/lean_buffer_reuse_gate.md",
+        "out/artifacts/handoff/pass-verif-integration-20261028/README.md"
+      ],
+      "audit_status": "source_reviewed",
+      "review_scope": "Claim/domain and evidence-status crosscheck; historical counts retain their original cuts."
+    }
+  ],
+  "limitations": [
+    "Source review is not independent numerical-policy approval.",
+    "Focused tests do not qualify every newly supported pass profile.",
+    "Default-all explicit-memory DCE/CSE gap is a known refusal, recorded in 4d28efe5c."
+  ]
+}

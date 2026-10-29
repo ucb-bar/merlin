@@ -1,0 +1,192 @@
+[
+  {
+    "kind": "f16",
+    "operation": "addf",
+    "source_sha256": "d037be0a27cb822cd546ffd4b2c35e0701f521eeddf340cac5375e0c8858f4c2",
+    "baseline": {
+      "status": "returned",
+      "rewrites": 0,
+      "unchanged": true
+    },
+    "baseline_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    },
+    "current": {
+      "status": "exception",
+      "type": "ValueError",
+      "reason": "requested f32-accumulation policy: unsupported contraction legality",
+      "unchanged": true
+    },
+    "current_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    }
+  },
+  {
+    "kind": "f16",
+    "operation": "mulf",
+    "source_sha256": "62f1e7007ed201630dbd395027de154786570a56d84085a9bc1390432d2d43da",
+    "baseline": {
+      "status": "returned",
+      "rewrites": 0,
+      "unchanged": true
+    },
+    "baseline_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    },
+    "current": {
+      "status": "exception",
+      "type": "ValueError",
+      "reason": "requested f32-accumulation policy: unsupported contraction legality",
+      "unchanged": true
+    },
+    "current_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    }
+  },
+  {
+    "kind": "bf16",
+    "operation": "addf",
+    "source_sha256": "86e07f1898b08ff944630d052e5de323bb7be7f980839953c83f0d5de30aebd2",
+    "baseline": {
+      "status": "returned",
+      "rewrites": 0,
+      "unchanged": true
+    },
+    "baseline_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    },
+    "current": {
+      "status": "exception",
+      "type": "ValueError",
+      "reason": "requested f32-accumulation policy: unsupported contraction legality",
+      "unchanged": true
+    },
+    "current_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    }
+  },
+  {
+    "kind": "bf16",
+    "operation": "mulf",
+    "source_sha256": "b4e40dd8fc5165207ba1cd91754f39e637ca56714ecb42ada1577f829c36ace6",
+    "baseline": {
+      "status": "returned",
+      "rewrites": 0,
+      "unchanged": true
+    },
+    "baseline_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    },
+    "current": {
+      "status": "exception",
+      "type": "ValueError",
+      "reason": "requested f32-accumulation policy: unsupported contraction legality",
+      "unchanged": true
+    },
+    "current_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    }
+  },
+  {
+    "kind": "f32",
+    "operation": "addf",
+    "source_sha256": "5a2db9d5cb05aeb78290ce97795acfe0e8df06ec7edc77064d35149f420b7668",
+    "baseline": {
+      "status": "returned",
+      "rewrites": 0,
+      "unchanged": true
+    },
+    "baseline_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    },
+    "current": {
+      "status": "returned",
+      "rewrites": 0,
+      "unchanged": true
+    },
+    "current_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    }
+  },
+  {
+    "kind": "f32",
+    "operation": "mulf",
+    "source_sha256": "38d6303f288081dd159c68d000cfa00008ec366ba432b5c05197acee0d2f6b8a",
+    "baseline": {
+      "status": "returned",
+      "rewrites": 0,
+      "unchanged": true
+    },
+    "baseline_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    },
+    "current": {
+      "status": "returned",
+      "rewrites": 0,
+      "unchanged": true
+    },
+    "current_preprocess": {
+      "status": "returned",
+      "stats": {
+        "dead_tensor_ops_pruned": 0,
+        "quant_ext_lowered": 0,
+        "c_interface_funcs": 1
+      }
+    }
+  }
+]
