@@ -19,7 +19,7 @@ def emit(local, universe, controls, *, tile=3):
 
     before, after, tiled = [parse_ir(local[key]) for key in ("before", "after", "auxiliary")]
     modules = (before, before, before, after, tiled)
-    stages = [project(a, b, context=universe) for a, b in zip(modules, modules[1:])]
+    stages = [project(a, b, context=universe, _allow_captured_stride=True) for a, b in zip(modules, modules[1:])]
     capture = {**local["capture"], "stages": stages, "index_operations": controls, "tile": tile}
     query = pipeline_emit(capture, flexible_parameters=True)
     fi = len(stages[0]["functions"]) - 1
@@ -31,7 +31,7 @@ def emit(local, universe, controls, *, tile=3):
     query += "    evalProgram (M primitive external) S2 arguments world = evalProgram (M primitive external) S3 arguments world := by\n"
     query += entry_arguments(len(stages[0]["functions"][fi]["inputs"]), "unroll_actual")
     query += f"end {base}.F{fi}\n"
-    pair = project(before, after, context=universe)
+    pair = project(before, after, context=universe, _allow_captured_stride=True)
     return {
         **local,
         "capture": capture,

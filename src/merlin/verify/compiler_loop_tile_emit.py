@@ -20,7 +20,7 @@ def emit(local, universe, controls, *, tile):
     from merlin.verify.lean_graph_state_scalar import program, types
     from merlin.verify.lean_graph_state_scalar_capture import project
 
-    pair = project(parse_ir(local["before"]), parse_ir(local["after"]), context=universe)
+    pair = project(parse_ir(local["before"]), parse_ir(local["after"]), context=universe, _allow_captured_stride=True)
     capture = {**local["capture"], "stages": [pair], "index_operations": controls, "factor": 1, "tile": tile}
     text = header(capture)
     fi = len(pair["functions"]) - 1

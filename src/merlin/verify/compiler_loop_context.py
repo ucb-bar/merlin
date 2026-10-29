@@ -248,7 +248,7 @@ def prepare_actual_target_wrapper(module, selected, local, target, chunk, output
     wrapper.verify()
     before = parse_ir(local["before"])
     universe = (module, target, before, wrapper)
-    pair = project(before, wrapper, context=universe)
+    pair = project(before, wrapper, context=universe, _allow_captured_stride=True)
     descriptors = {}
     for current in universe:
         for operation in current.walk():
@@ -296,7 +296,7 @@ def reproject_stages(stages, before, after, *, extra=()):
     for row in stages:
         local = row["local"]
         wrappers = (parse_ir(local["before"]), parse_ir(local["after"]))
-        pair = project(*wrappers, context=universe)
+        pair = project(*wrappers, context=universe, _allow_captured_stride=True)
         if pair["registry"] != registry:
             raise ValueError("local wrapper introduced descriptors outside complete actual stage universe")
         descriptors = {}

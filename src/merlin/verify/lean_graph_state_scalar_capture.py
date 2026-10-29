@@ -121,11 +121,14 @@ def selected_primitive(operation):
     return {"kind": name, "source": types[0].width.data, "target": types[-1].width.data}
 
 
-def project(before, after, *, context=()):
+def project(before, after, *, context=(), _allow_captured_stride=False):
+    if type(_allow_captured_stride) is not bool:
+        raise ValueError("explicit auxiliary stride-projection mode required")
     for module in (before, after, *context):
         admission.admit_module(module)
 
     from xdsl.dialects import arith, builtin, func, scf
+    from xdsl.ir import BlockArgument
 
     if type(before) is not builtin.ModuleOp or type(after) is not builtin.ModuleOp:
         raise ValueError("complete actual builtin.module pair required")
@@ -230,11 +233,15 @@ def project(before, after, *, context=()):
                 from xdsl.dialects import arith
 
                 step_owner = operation.step.owner
-                if (
-                    type(step_owner) is not arith.ConstantOp
-                    or not isinstance(step_owner.value, builtin.IntegerAttr)
-                    or step_owner.value.value.data <= 0
-                ):
+                positive_literal = (
+                    type(step_owner) is arith.ConstantOp
+                    and isinstance(step_owner.value, builtin.IntegerAttr)
+                    and step_owner.value.value.data > 0
+                )
+                # Captured block arguments occur only in internal logical
+                # fragments. Every actual module uses the strict default.
+                captured = _allow_captured_stride and isinstance(operation.step, BlockArgument)
+                if not (positive_literal or captured):
                     raise ValueError("supported actual SCF control needs a checked positive constant stride")
                 carries = [type_code(value.type) for value in operation.iter_args]
                 arguments = list(operation.body.block.args)
