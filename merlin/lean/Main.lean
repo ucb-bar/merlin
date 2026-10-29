@@ -11,6 +11,7 @@ import MerlinVerify.Check.TypedModule
 import MerlinVerify.Driver.W8A8
 import MerlinVerify.Driver.W8A8Chain
 import MerlinVerify.Driver.Bf16F32Acc
+import MerlinVerify.Driver.SourceProfile
 
 open MerlinVerify
 open Lean (Json toJson)
@@ -58,6 +59,8 @@ def emit (fields : List (String × Json)) (ok : Bool) : IO UInt32 := do
 The first two checks prove conditional refinement only; their output names the open obligation. -/
 def main (args : List String) : IO UInt32 := do
   match args with
+  | ["source-profile", kind, input, width] =>
+    Driver.SourceProfile.run kind input width
   | ["check-w8a8-draft", beforeJ, afterJ, width, scope] =>
     Driver.W8A8.run beforeJ afterJ width scope
   | "check-w8a8-chain-draft" :: beforeJ :: afterJ :: width :: scope :: suffix =>

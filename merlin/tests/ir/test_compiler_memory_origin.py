@@ -408,11 +408,18 @@ def test_changed_capture_metadata_refuses(tmp_path, monkeypatch, field):
             cse.submit(tmp_path)
 
 
-def test_changed_actual_memory_CSE_is_unsupported_not_tensor_fallback(tmp_path, monkeypatch):
-    with pytest.raises(GateFailure, match="changed original-memory CSE"):
-        with scope(tmp_path, passes=frozenset({"cse"})) as (owner, _):
-            fake_native_capture(tmp_path, owner, monkeypatch, changed=True)
-            cse.submit(tmp_path)
+def test_changed_authentic_memory_CSE_continues_with_no_proof_credit(tmp_path, monkeypatch):
+    with scope(tmp_path, passes=frozenset({"cse"})) as (owner, validation):
+        fake_native_capture(tmp_path, owner, monkeypatch, changed=True)
+        assert cse.submit(tmp_path) == 0
+    report = json.loads((validation.gate.directory / "coverage.json").read_text())
+    assert validation.gate.verdicts == []
+    assert report["unverified_boundaries"] == 1 and report["verified_boundaries"] == 0
+    row = report["boundaries"][0]
+    assert row["proof_credit"] is False
+    directory = tmp_path / "leading-cse"
+    assert row["source_sha256"] == hashlib.sha256((directory / "0001.before.mlir").read_bytes()).hexdigest()
+    assert row["final_sha256"] == hashlib.sha256((directory / "0001.after.mlir").read_bytes()).hexdigest()
 
 
 def test_actual_runner_text_changes_refuse(tmp_path, monkeypatch):
@@ -493,7 +500,10 @@ def test_real_xdsl_preprocessing_DCE_before_joins_actual_formal_memory_epoch(tmp
 
             # Preserve the now-source-bound real submit/observe dispatch functions.
             monkeypatch.setattr(selected.gate, "submit", observe_only)
-            preprocess_text(actual)
+            # The actual epoch join is exercised above; a capture-only sink
+            # cannot authorize a changed boundary under the coverage controller.
+            with pytest.raises(ValueError, match="actual proof job"):
+                preprocess_text(actual)
     assert captured and any(before != after for before, after in captured)
     assert pv.observe is original_observe and pv.submit is original_submit
 

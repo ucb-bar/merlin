@@ -90,7 +90,7 @@ def _functions(module):
     return functions, public[0]
 
 
-def project(source: str) -> dict:
+def project(source: str, *, strict_source=False) -> dict:
     """Project all public results and actual ordered callee bodies without hints."""
     if type(source) is not str or not source.isascii() or len(source.encode()) > MAX_BYTES:
         raise GateUnsupported("host fusion input exceeds the IR byte budget")
@@ -100,6 +100,11 @@ def project(source: str) -> dict:
     except GateUnsupported:
         raise
     except Exception as error:
+        if strict_source:
+            from .lean_graph_regions_projection import UnsupportedGraphRegion
+
+            if not isinstance(error, UnsupportedGraphRegion):
+                raise
         raise GateUnsupported("host fusion input is outside the supported typed IR") from error
     nodes, groups = [], []
     arguments = functions[entry].body.block.args

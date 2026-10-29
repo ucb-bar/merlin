@@ -76,7 +76,9 @@ def test_actual_corrupted_qdq_output_stops_compilation(tmp_path, pass_gate_tools
     assert not any(path.suffix in {".ll", ".o", ".so"} for path in (tmp_path / "checked").rglob("*"))
 
 
-def test_textual_and_nested_xdsl_capture_one_complete_actual_boundary(tmp_path):
+def test_textual_and_nested_xdsl_capture_one_complete_actual_boundary(tmp_path, monkeypatch):
+    # This checks nesting/capture, not source-model admission or proof success.
+    monkeypatch.setattr(pass_validation, "source_admission", lambda *args, **kwargs: "capture-only-test")
     jobs = []
     validation = SimpleNamespace(
         passes={qdq.SELECTOR},

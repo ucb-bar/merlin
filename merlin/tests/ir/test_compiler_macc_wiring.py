@@ -12,7 +12,10 @@ from merlin.verify import pass_validation
 
 
 @pytest.mark.parametrize("fmt", ["bf16", "f16"])
-def test_actual_pass_and_entry_capture_exactly_one_draft_job(tmp_path, fmt):
+def test_actual_pass_and_entry_capture_exactly_one_draft_job(tmp_path, fmt, monkeypatch):
+    # Capture-only control; source recognition and kernel acceptance have their
+    # own real-tool tests. This stub grants neither kind of proof authority.
+    monkeypatch.setattr(pass_validation, "source_admission", lambda *args, **kwargs: "capture-only-test")
     jobs = []
     validation = SimpleNamespace(
         passes=frozenset({transforms.MACC}),
@@ -34,7 +37,8 @@ def test_actual_pass_and_entry_capture_exactly_one_draft_job(tmp_path, fmt):
     assert summary["changed"] == summary["selected_checks"] == [transforms.MACC]
 
 
-def test_actual_pass_identity_submits_no_draft_job(tmp_path):
+def test_actual_pass_identity_submits_no_draft_job(tmp_path, monkeypatch):
+    monkeypatch.setattr(pass_validation, "source_admission", lambda *args, **kwargs: "capture-only-test")
     jobs = []
     validation = SimpleNamespace(
         passes=frozenset({transforms.MACC}),
@@ -62,6 +66,7 @@ def test_capture_includes_mutation_after_decorated_producer(tmp_path, monkeypatc
     from merlin.llvmlower import passes_xdsl
 
     jobs = []
+    monkeypatch.setattr(pass_validation, "source_admission", lambda *args, **kwargs: "capture-only-test")
     validation = SimpleNamespace(
         passes=frozenset({transforms.MACC}),
         index_bits=64,

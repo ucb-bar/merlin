@@ -397,6 +397,7 @@ def lower_model(
             formal_transform_report is not None
             and formal_transform_report["memory_source"]
             and _validation.current() is not None
+            and _validation.memory_scope_supported(mlir_text)
         ):
             from merlin.verify.compiler_memory_origin import compiler_scope
             from merlin.verify.compiler_transforms import memory_lowering_pipeline

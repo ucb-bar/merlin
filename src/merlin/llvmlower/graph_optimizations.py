@@ -482,6 +482,16 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
         )
 
         fusion_input = text(module, generic=True) if pass_validation.selected("host_graph_fusion") else None
+        if fusion_input is not None:
+            from merlin.verify.compiler_ir_source_profile import admit_host_source
+
+            fusion_admission = pass_validation.source_admission(
+                "host_graph_fusion",
+                fusion_input,
+                predicate=lambda raw: admit_host_source(
+                    raw, fusion_groups=contract.fusion_groups, entry=contract.entry
+                ),
+            )
         original_count = sum(1 for _ in module.walk())
         outlined = outline_dispatches(module, forward=contract.entry)
         program = build_dispatch_program(outlined, entry=contract.entry)
@@ -514,7 +524,9 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
             "source_correspondence": "static_pointwise_coordinates_and_scalar_regions",
         }
         if fusion_input is not None:
-            pass_validation.submit("host_graph_fusion", fusion_input, text(module, generic=True))
+            pass_validation._submit_admitted(
+                "host_graph_fusion", fusion_input, text(module, generic=True), admission=fusion_admission
+            )
     if _signature(module, contract.entry) != signature:
         raise ValueError("graph optimization changed the complete public entry ABI")
     output = text(module, generic=True)

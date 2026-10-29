@@ -116,10 +116,6 @@ class _LCPassManager:
                 raise RuntimeError('actual pre-canonicalize whole module differs from frozen upstream input')
         self._native(head + 'canonicalize)').run(operation)
         before = operation.get_asm(print_generic_op_form=True)
-        if 'memref<' in before and memory is None:
-            _lc_record({'skipped': 'bufferized module (memref)', 'pipeline': text[:200]})
-            self._native(head + ','.join(passes[1:]) + ')').run(operation)
-            return None
         self._native(head + 'cse)').run(operation)
         after = operation.get_asm(print_generic_op_form=True)
         if memory is None:
@@ -233,10 +229,20 @@ def submit(work: Path) -> int:
                     precanonical=precanonical,
                     expected_upstream=expected_upstream,
                 )
+                from merlin.verify.compiler_coverage import boundary
+                from merlin.verify.compiler_profile import SourceOutsideProfile
+
                 if before != after:
-                    _unsupported(directory, "changed original-memory CSE remains unsupported")
+                    excluded = SourceOutsideProfile(
+                        "typed-tensor-cse-index64-v1",
+                        "explicit-memory",
+                        "changed explicit-memory CSE is outside the tensor CSE model",
+                    )
+                    boundary(PASS, before, after, profile_id=excluded.profile_id, exclusion=excluded)
+                else:
+                    boundary(PASS, before, after, profile_id="raw-identity")
             else:
-                if "schema" in entry or "memref<" in before or "memref<" in after:
+                if "schema" in entry:
                     raise ValueError("memory CSE capture has no original live memory scope")
                 pass_validation.submit(PASS, before, after)
         if memory is not None:

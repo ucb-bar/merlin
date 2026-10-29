@@ -199,21 +199,28 @@ def test_every_memory_source_roster_binds_helper_and_reused_attribute_walker():
 @pytest.mark.parametrize("where", ["source", "upstream", "CSE-before-and-after"])
 def test_original_memory_scope_cannot_lend_nan_metadata_custody(tmp_path, monkeypatch, where):
     poisoned = pair("0x7F800001 : f32")[0]
+    if where == "CSE-before-and-after":
+        # The ordinary CSE observation follows unverified canonicalization.
+        # Raw identity grants no mathematical/model projection credit.
+        with scope(tmp_path, passes=frozenset({"cse"})) as (owner, validation):
+            fake_native_capture(tmp_path, owner, monkeypatch, canonicalized=poisoned)
+            assert leading_cse.submit(tmp_path) == 0
+        report = json.loads((validation.gate.directory / "coverage.json").read_text())
+        assert report["verified_boundaries"] == 0
+        assert report["unchanged_boundaries"] == 1
+        assert report["boundaries"][0]["proof_credit"] is False
+        assert not validation.gate.verdicts
+        return
     with pytest.raises((InputAdmissionError, GateFailure), match="scalar-nan"):
-        if where == "CSE-before-and-after":
-            with scope(tmp_path, passes=frozenset({"cse"})) as (owner, validation):
-                fake_native_capture(tmp_path, owner, monkeypatch, canonicalized=poisoned)
-                leading_cse.submit(tmp_path)
-        else:
-            with active(tmp_path) as validation:
-                with origin.compiler_scope(
-                    tmp_path,
-                    original_source=poisoned if where == "source" else pair("0.0 : f32")[0],
-                    memory_pipeline=memory_lowering_pipeline(),
-                    validation=validation,
-                ) as owner:
-                    if where == "upstream":
-                        owner.bind_upstream(poisoned)
+        with active(tmp_path) as validation:
+            with origin.compiler_scope(
+                tmp_path,
+                original_source=poisoned if where == "source" else pair("0.0 : f32")[0],
+                memory_pipeline=memory_lowering_pipeline(),
+                validation=validation,
+            ) as owner:
+                if where == "upstream":
+                    owner.bind_upstream(poisoned)
 
 
 @pytest.mark.parametrize("decoder", [parse, origin._canonical_source, admission.parse_loop_module])

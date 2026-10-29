@@ -19,6 +19,7 @@ from pathlib import Path
 BUILTIN_CHECKS = (
     "tensor_refinement",
     "compiler_loop_refinement",
+    "compiler_loop_generic_refinement",
     "compiler_buffer_refinement",
     "compiler_memory_dce_refinement",
     "compiler_macc_contract",
@@ -66,6 +67,33 @@ def _stop_group(signum, frame) -> None:
 
 
 def _require_builtin_result(name, detail):
+    if name == "compiler_loop_generic_refinement":
+        from .compiler_loop_generic import ADJACENT, DOMAIN, RELATION, ROOT, UNROLL
+        from .gate_errors import GateRejected
+
+        if (
+            type(detail) is not dict
+            or detail.get("schema") != "merlin.compiler-generic-loop.gate.v1"
+            or detail.get("status") != "checked"
+            or detail.get("domain") != DOMAIN
+            or detail.get("relation") != RELATION
+            or detail.get("kind") != UNROLL
+            or detail.get("compiler_enforcement") is not True
+            or detail.get("native_fidelity_proved") is not False
+            or type(detail.get("theorems")) is not list
+            or ROOT not in detail["theorems"]
+            or ADJACENT not in detail["theorems"]
+            or "Merlin.GraphStatePipelineInstance.completeData" not in detail["theorems"]
+            or len(set(detail["theorems"])) != len(detail["theorems"])
+            or type(detail.get("axioms")) is not list
+            or not set(detail["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"}
+            or type(detail.get("entries")) is not list
+            or not detail["entries"]
+            or any(type(value) is not str or not value for value in detail["entries"])
+            or len(set(detail["entries"])) != len(detail["entries"])
+        ):
+            raise GateRejected("generic handler did not establish its complete typed operational entry relation")
+        return
     if name == "compiler_host_graph_fusion":
         from .gate_errors import GateRejected
         from .host_graph_fusion_intake import DOMAIN, RELATION, ROOT

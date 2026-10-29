@@ -110,13 +110,22 @@ def observe_textual(source, transform):
     names = source_sites(source)
     if not names:
         return transform(source)
+    admission = pass_validation.source_admission(SELECTOR, source)
     token = pass_validation._OBSERVING.set((*pass_validation._OBSERVING.get(), (SELECTOR, None)))
     try:
-        result = transform(source)
+        try:
+            result = transform(source)
+        except BaseException:
+            from .compiler_coverage import boundary
+            from .compiler_profile import SourceOutsideProfile
+
+            if isinstance(admission, SourceOutsideProfile):
+                boundary(SELECTOR, source, None, profile_id=admission.profile_id, exclusion=admission)
+            raise
     finally:
         pass_validation._OBSERVING.reset(token)
     label = TEXTUAL if "quant_ext.dequantize_per_channel" in names else SELECTOR
-    pass_validation.submit(SELECTOR, source, result[0], label=label)
+    pass_validation._submit_admitted(SELECTOR, source, result[0], label=label, admission=admission)
     return result
 
 

@@ -355,8 +355,6 @@ class MemoryScope:
             self.validate_cse_record(
                 entry, work, before=before, after=after, precanonical=precanonical, expected_upstream=expected_upstream
             )
-            if before != after:
-                raise ValueError("changed original-memory CSE remains unsupported")
         _LIVE[self] = replace(original, cse_finished=True)
 
     def validate_cse_record(self, entry, work, *, before, after, precanonical, expected_upstream):
@@ -373,10 +371,8 @@ class MemoryScope:
         )
         if type(entry) is not dict or entry != expected:
             raise ValueError("CSE capture differs from its original memory scope/runner/pipeline/buffers")
-        # Even raw-identity CSE capture remains inside the scalar-NaN-free
-        # memory profile; canonicalize supplies no proof of these literals.
-        _canonical_source(before)
-        _canonical_source(after)
+        # This authenticates the observation, not CSE semantics. Changed CSE
+        # is explicitly unverified; even identity receives zero proof credit.
         if precanonical != expected_upstream or _canonical_source(precanonical) != original.upstream_canonical:
             raise ValueError("actual pre-canonicalize whole module differs from original frozen upstream input")
         self.upstream_text(work)

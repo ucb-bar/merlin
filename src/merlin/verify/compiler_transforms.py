@@ -144,12 +144,62 @@ def apply(source, directory, *, options=None, index_bits=64):
         (macc_changed if before_macc != after_macc else macc_unchanged).append(MACC)
     buffers, names, identities = [ir_text(module)], [], []
     changing_buffers = [buffers[0]]
+    validation = pass_validation.current()
+    from .compiler_coverage import boundary
+    from .compiler_profile import SourceOutsideProfile
+
+    def loop_admission(raw, kind):
+        from .compiler_loop_source_profile import admit_source
+
+        return pass_validation.source_admission(
+            kind,
+            raw,
+            predicate=lambda source: admit_source(
+                source,
+                kind=kind,
+                factor=options.unroll_factor or 2,
+                tile=options.tile_size or 3,
+                depth=options.unroll_depth if kind == UNROLL else options.tile_depth,
+                index_bits=index_bits,
+            ),
+        )
+
+    selected_loops = [
+        kind
+        for kind, parameter in ((UNROLL, options.unroll_factor), (TILE, options.tile_size))
+        if parameter is not None and pass_validation.selected(kind)
+    ]
+    initial_profiles = {}
+    buffer_admission = None
+    if options.buffer_allocator is not None:
+        if pass_validation.selected(BUFFER) or (options.tile_size is not None and pass_validation.selected(TILE)):
+            from .compiler_buffer_source_profile import admit_source
+
+            buffer_admission = pass_validation.source_admission(
+                BUFFER, buffers[0], predicate=lambda raw: admit_source(raw, options=options)
+            )
+    else:
+        initial_profiles = {kind: loop_admission(buffers[0], kind) for kind in selected_loops}
+    from .compiler_loop_source_profile import GENERIC_PROFILE, WORD_PROFILE
+
+    grouped = len(selected_loops) == 2 and all(initial_profiles[kind] == WORD_PROFILE for kind in selected_loops)
+    stages = []
 
     def run(kind, action):
         before = ir_text(module)
-        action()
-        module.verify()
+        admission = None
+        if options.buffer_allocator is None and kind in initial_profiles:
+            admission = initial_profiles[kind] if grouped or not stages else loop_admission(before, kind)
+        try:
+            action()
+            module.verify()
+        except BaseException:
+            excluded = buffer_admission if options.buffer_allocator is not None else admission
+            if isinstance(excluded, SourceOutsideProfile):
+                boundary(kind, before, None, profile_id=excluded.profile_id, exclusion=excluded)
+            raise
         after = ir_text(module)
+        stages.append((kind, before, after, admission))
         if before != after:
             names.append(kind)
             changing_buffers.append(after)
@@ -162,7 +212,6 @@ def apply(source, directory, *, options=None, index_bits=64):
         run(BUFFER, lambda: planning.reuse_storage(module, planning.plan_storage(module)))
         if options.tile_size is not None:
             run(TILE, lambda: loops.segment_loops(module, (options.tile_size,), index_bits=64))
-        check_name = "compiler_buffer_refinement"
         required = tuple(name for name in names if name in (BUFFER, TILE))
         if names and not required:
             # Normalization is part of this selected storage bundle even when
@@ -183,35 +232,59 @@ def apply(source, directory, *, options=None, index_bits=64):
                     module, _at_depth(module, options.tile_depth, options.tile_size), index_bits=64
                 ),
             )
-        check_name = "compiler_loop_refinement"
         required = tuple(names)
     for i, text in enumerate(buffers):
         (directory / f"stage{i}.mlir").write_text(text)
-    validation = pass_validation.current()
     selected = [name for name in required if pass_validation.selected(name)]
-    if selected and names:
-        # The memory proof covers the complete actual storage chain, including
-        # identity normalization/reuse. Scalar proofs retain adjacent roots.
-        # Exact identity stages preserve the boundary bytes. Prove the changing
-        # adjacent scalar stages and deliver the actual final compiler output.
-        proof_buffers = buffers if options.buffer_allocator is not None else changing_buffers
-        pass_validation.require_canonical_handler(validation, check_name)
-        validation.gate.submit(
-            check_name,
+
+    def enqueue(check, proof_buffers, kinds, selected_names, admission):
+        label = "+".join(selected_names)
+        if isinstance(admission, SourceOutsideProfile):
+            boundary(label, proof_buffers[0], proof_buffers[-1], profile_id=admission.profile_id, exclusion=admission)
+            return
+        if proof_buffers[0] == proof_buffers[-1]:
+            boundary(label, proof_buffers[0], proof_buffers[-1], profile_id=admission)
+            return
+        pass_validation.require_canonical_handler(validation, check)
+        job = validation.gate.submit(
+            check,
             before=proof_buffers[0],
             after=proof_buffers[-1],
-            label="+".join(selected),
+            label=label,
             params={
                 "sdk_bin": str(validation.tools.sdk_bin),
                 "index_bits": 64,
                 "factor": options.unroll_factor or 2,
                 "tile": options.tile_size or 3,
-                "kinds": names,
-                "selected": selected,
+                "kinds": kinds,
+                "selected": selected_names,
                 "intermediates": proof_buffers[1:-1],
                 "allocator": options.buffer_allocator,
             },
         )
+        boundary(label, proof_buffers[0], proof_buffers[-1], profile_id=admission, job=job)
+
+    if buffer_admission is not None:
+        selected_storage = [
+            name
+            for name in (BUFFER, TILE)
+            if pass_validation.selected(name) and (name != TILE or options.tile_size is not None)
+        ]
+        # The memory proof covers the complete actual storage chain, including
+        # normalization and identity stages. It grants one whole-chain row.
+        enqueue("compiler_buffer_refinement", buffers, names, selected_storage, buffer_admission)
+    elif options.buffer_allocator is None and grouped and names:
+        enqueue("compiler_loop_refinement", changing_buffers, names, selected, WORD_PROFILE)
+        for kind, before, after, admission in stages:
+            if kind in selected_loops and before == after:
+                boundary(kind, before, after, profile_id=admission)
+    elif options.buffer_allocator is None:
+        for kind, before, after, admission in stages:
+            if admission is not None:
+                check = (
+                    "compiler_loop_generic_refinement" if admission == GENERIC_PROFILE else "compiler_loop_refinement"
+                )
+                enqueue(check, [before, after], [kind], [kind], admission)
     report = {
         "schema": "merlin.compiler-transforms.v1",
         "changed": macc_changed + names,
@@ -249,8 +322,59 @@ def memory_lowering_pipeline():
     )
 
 
-def _buffers(job):
-    return (Path(job["before"]).read_text(), *job["params"]["intermediates"], Path(job["after"]).read_text())
+@dataclass(frozen=True)
+class _TransformInputs:
+    buffers: tuple[str, ...]
+    paths: tuple[Path, ...]
+    refs: tuple[dict, ...]
+    request_ref: dict | None
+    params_json: str
+
+
+def _input_snapshot(job):
+    import json
+
+    from .configuration_elision_bridge import canonical, digest, file_ref
+    from .gate_errors import GateUnavailable
+
+    try:
+        paths = tuple(Path(job[key]) for key in ("before", "after"))
+        refs = tuple(file_ref(path) for path in paths)
+        raw = tuple(path.read_bytes() for path in paths)
+        if any(digest(data) != ref["sha256"] or len(data) != ref["bytes"] for data, ref in zip(raw, refs, strict=True)):
+            raise ValueError("actual transform buffers differ from the captured references")
+        before, after = (data.decode("utf-8") for data in raw)
+        middle = tuple(job["params"]["intermediates"])
+        params_json = canonical(job["params"])
+        if any(type(value) is not str for value in middle):
+            raise ValueError("literal actual intermediate buffers required")
+        request_path = Path(job["directory"]) / "request.json"
+        request_ref = None
+        if request_path.exists():
+            request_ref = file_ref(request_path)
+            request_bytes = request_path.read_bytes()
+            if digest(request_bytes) != request_ref["sha256"] or json.loads(request_bytes) != job:
+                raise ValueError("actual request differs from the independently read transform parameters")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise GateUnavailable("transform inputs changed during independent read") from error
+    return _TransformInputs((before, *middle, after), paths, refs, request_ref, params_json)
+
+
+def _recheck_inputs(inputs, job):
+    from .configuration_elision_bridge import canonical, file_ref
+    from .gate_errors import GateUnavailable
+
+    try:
+        if (
+            tuple(Path(job[key]) for key in ("before", "after")) != inputs.paths
+            or canonical(job["params"]) != inputs.params_json
+            or tuple(job["params"]["intermediates"]) != inputs.buffers[1:-1]
+            or any(file_ref(path) != ref for path, ref in zip(inputs.paths, inputs.refs, strict=True))
+            or (inputs.request_ref is not None and file_ref(inputs.request_ref["path"]) != inputs.request_ref)
+        ):
+            raise ValueError("original transform input or request changed")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise GateUnavailable("transform inputs changed after proof") from error
 
 
 def loop_check(job):
@@ -263,8 +387,9 @@ def loop_check(job):
 
     params = job["params"]
     try:
+        inputs = _input_snapshot(job)
         prepared = prepare(
-            _buffers(job),
+            inputs.buffers,
             kinds=tuple(params["kinds"]),
             factor=params["factor"],
             tile=params["tile"],
@@ -275,6 +400,7 @@ def loop_check(job):
         )
         validate_completion(completion, prepared)
         report = json.loads(Path(completion.report).read_text())
+        _recheck_inputs(inputs, job)
     except Unsupported as exc:
         raise GateUnsupported(str(exc)) from exc
     except NotEstablished as exc:
@@ -305,8 +431,9 @@ def buffer_check(job):
     params = job["params"]
     if params["index_bits"] != 64 or params["allocator"] != ALLOCATOR:
         raise GateUnsupported("explicit index64 total private allocator required")
+    inputs = _input_snapshot(job)
     try:
-        prepared = prepare_chain(_buffers(job), allocator=params["allocator"], index_bits=64)
+        prepared = prepare_chain(inputs.buffers, allocator=params["allocator"], index_bits=64)
     except (ValueError, KeyError, TypeError) as exc:
         raise GateUnsupported(str(exc)) from exc
     result = check(
@@ -317,6 +444,7 @@ def buffer_check(job):
         raise error(result.reason)
     validate_completion(result.completion, prepared)
     report = json.loads(Path(result.completion.report).read_text())
+    _recheck_inputs(inputs, job)
     return {
         "claim": prepared.relation,
         "premises": {"allocator": ALLOCATOR},

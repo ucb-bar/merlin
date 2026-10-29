@@ -27,6 +27,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .compiler_profile import SourceOutsideProfile
+
 #: Validated pass -> the gate check that proves its before/after pair.
 CHECKS = {
     "prune_dead_pure_tensor_ops": "tensor_refinement",
@@ -182,12 +184,45 @@ def from_environment(workdir: Path, *, index_bits: int | None = None) -> PassVal
 @contextmanager
 def validating(validation: PassValidation) -> Iterator[PassValidation]:
     """Make ``validation`` active for this compile, inside its gate's guard."""
-    with validation.gate.guard():
-        token = _ACTIVE.set(validation)
+    active = _ACTIVE.get()
+    if active is not None:
+        if active is not validation:
+            raise ValueError("a different pass validation is already active for this compile")
+        yield validation
+        return
+    from . import compiler_coverage
+    from .speculative_gate import GateFailure
+
+    journal, coverage_token = compiler_coverage.begin(validation)
+    try:
         try:
-            yield validation
-        finally:
-            _ACTIVE.reset(token)
+            with validation.gate.guard():
+                token = _ACTIVE.set(validation)
+                try:
+                    yield validation
+                finally:
+                    _ACTIVE.reset(token)
+        except BaseException as error:
+            try:
+                journal.finish(compiler_completed=False)
+            except Exception as coverage_error:  # noqa: BLE001 -- retain the original blocking failure
+                error.add_note(f"coverage summary could not be written: {coverage_error}")
+            raise
+        else:
+            try:
+                journal.finish(compiler_completed=True)
+            except OSError as error:
+                raise GateFailure(
+                    {
+                        "check": "compiler_coverage",
+                        "label": "coverage summary",
+                        "verdict": "unavailable",
+                        "reason": str(error),
+                        "directory": str(validation.gate.directory),
+                    }
+                ) from error
+    finally:
+        compiler_coverage.reset(coverage_token)
 
 
 def current() -> PassValidation | None:
@@ -249,12 +284,20 @@ def observe(pass_name: str, module, transform: Callable):
     from merlin.xdsl_dialects._common import text
 
     before = text(module, generic=True)
+    admission = source_admission(pass_name, before)
     token = _OBSERVING.set((*_OBSERVING.get(), (pass_name, module)))
     try:
-        result = transform(module)
+        try:
+            result = transform(module)
+        except BaseException:
+            if isinstance(admission, SourceOutsideProfile):
+                from .compiler_coverage import boundary
+
+                boundary(pass_name, before, None, profile_id=admission.profile_id, exclusion=admission)
+            raise
     finally:
         _OBSERVING.reset(token)
-    submit(pass_name, before, text(module, generic=True))
+    _submit_admitted(pass_name, before, text(module, generic=True), admission=admission)
     return result
 
 
@@ -281,8 +324,75 @@ def selected(pass_name: str) -> bool:
 def submit(pass_name: str, before: str, after: str, *, label: str | None = None) -> bool:
     """Queue the pass's exact before/after pair; returns whether a check was submitted. ``label``
     names the check in reports (default: the pass)."""
-    validation = _ACTIVE.get()
-    if validation is None or pass_name not in validation.passes or before == after:
+    if not selected(pass_name):
+        return False
+    admission = "raw-identity" if before == after else source_admission(pass_name, before)
+    return _submit_admitted(pass_name, before, after, label=label, admission=admission)
+
+
+def source_admission(pass_name, before, *, predicate=None):
+    """Return a fixed model or a known source exclusion; all other failures block."""
+    from .gate_errors import GateError
+    from .speculative_gate import GateFailure
+
+    validation = current()
+    try:
+        if predicate is not None:
+            return predicate(before)
+        if pass_name == "host_graph_fusion":
+            from merlin.frontends.linalg_mlir import make_context
+
+            from .gate_errors import GateUnsupported
+            from .host_graph_fusion_intake import DOMAIN
+            from .host_graph_fusion_projection import project
+            from .memory_scalar_nan_admission import _parse_bounded
+
+            if len(before.encode()) > 1 << 20:
+                raise SourceOutsideProfile(
+                    DOMAIN, "source-byte-bound", "host fusion source exceeds its 1MiB model bound"
+                )
+            _parse_bounded(before, maximum_bytes=1 << 20, memory=False, context=make_context())
+
+            try:
+                model = project(before, strict_source=True)
+                if any(call["count"] > 1 for call in model["calls"]):
+                    raise GateUnsupported("source already has a multi-stage host dispatch")
+            except GateUnsupported as error:
+                raise SourceOutsideProfile(DOMAIN, "source-model", str(error)) from error
+            return DOMAIN
+        if pass_name == "prune_dead_pure_tensor_ops":
+            from .compiler_memory_origin import current as memory_origin
+
+            if memory_origin() is not None:
+                from .compiler_ir_source_profile import admit_memory_dce
+
+                return admit_memory_dce(before)
+        from .compiler_ir_source_profile import admit_source
+
+        return admit_source(before, pass_name=pass_name, validation=validation)
+    except SourceOutsideProfile as exclusion:
+        return exclusion
+    except (GateError, OSError, ValueError, TypeError) as error:
+        raise GateFailure(
+            {
+                "check": CHECKS[pass_name],
+                "label": pass_name + " source admission",
+                "verdict": "unavailable",
+                "reason": str(error),
+                "directory": str(validation.gate.directory),
+            }
+        ) from error
+
+
+def _submit_admitted(pass_name, before, after, *, admission, label=None):
+    from .compiler_coverage import boundary
+
+    validation = current()
+    if isinstance(admission, SourceOutsideProfile):
+        boundary(pass_name, before, after, profile_id=admission.profile_id, exclusion=admission)
+        return False
+    if before == after:
+        boundary(pass_name, before, after, profile_id=admission)
         return False
     if pass_name == "prune_dead_pure_tensor_ops":
         from .compiler_memory_origin import current as memory_origin
@@ -295,7 +405,7 @@ def submit(pass_name: str, before: str, after: str, *, label: str | None = None)
             if original.validation is not validation:
                 raise ValueError("memory DCE observation differs from its original compiler owner")
             require_canonical_handler(validation, CHECK)
-            validation.gate.submit(
+            job = validation.gate.submit(
                 CHECK,
                 before=before,
                 after=after,
@@ -306,6 +416,7 @@ def submit(pass_name: str, before: str, after: str, *, label: str | None = None)
                 },
                 label=label or pass_name,
             )
+            boundary(pass_name, before, after, profile_id=admission, job=job)
             return True
     require_canonical_handler(validation, CHECKS[pass_name])
     params = {
@@ -315,11 +426,20 @@ def submit(pass_name: str, before: str, after: str, *, label: str | None = None)
     }
     if pass_name == "lower_quant_ext" and validation.qdq_source is not None:
         params["source_capture"] = validation.qdq_source.describe()
-    validation.gate.submit(
+    job = validation.gate.submit(
         CHECKS[pass_name],
         before=before,
         after=after,
         params=params,
         label=label or pass_name,
     )
+    boundary(pass_name, before, after, profile_id=admission, job=job)
     return True
+
+
+def memory_scope_supported(before):
+    """A source outside the memory model uses ordinary compilation without that proof scope."""
+    from .compiler_ir_source_profile import admit_memory_dce
+
+    admission = source_admission("prune_dead_pure_tensor_ops", before, predicate=admit_memory_dce)
+    return not isinstance(admission, SourceOutsideProfile)

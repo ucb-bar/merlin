@@ -148,6 +148,12 @@ def compiler_loop_refinement(job: dict[str, Any]) -> dict[str, Any]:
     return loop_check(job)
 
 
+def compiler_loop_generic_refinement(job: dict[str, Any]) -> dict[str, Any]:
+    from .compiler_loop_generic import check
+
+    return check(job)
+
+
 def compiler_buffer_refinement(job: dict[str, Any]) -> dict[str, Any]:
     from .compiler_transforms import buffer_check
 
