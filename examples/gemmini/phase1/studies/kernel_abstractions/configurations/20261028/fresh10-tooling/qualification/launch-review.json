@@ -1,0 +1,160 @@
+{
+  "schema": "merlin.study.fresh10_tooling_launch_review.v1",
+  "source_revision": "3f3fab435f387f99a8986f78dbb6e6c180577cf4",
+  "export_id": "3f3fab435f38",
+  "baseline_sha256": "cfcd3d46f7e612b485a2ad9946903a97b00dbc61af70e3038935e20bfd25a1bd",
+  "common_workloads_sha256": "2f3eb3a29129496f683f0556e060fc43a782955c7eb9a187828c67d0f57dee8c",
+  "arms": [
+    {
+      "arm": "infra",
+      "plan_sha256": "46cbc7530afaa24a500d0a08500e6fd3ad211e2a1762f0c6cb301f718691d8de",
+      "preflight_returncode": 0,
+      "all_passed": true,
+      "initial_files": 0,
+      "public_abi_files_read": 23,
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/audits/prepared-inputs-3f3fab435f38-audit.json",
+          "sha256": "f6a47613d9a05032cce47ef17d4d3d7ea6b3b4634d8be79160b68b64c4ea80a9"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/audits/runtime-20261028T181736Z.json",
+          "sha256": "2afd7b73f821dd3a2ad6fdc2f421e78ee43277c5cd0848f01c9062bea7298591"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/prompt-audit/receipt.json",
+          "sha256": "6eda99702b41f966de0d29520871667c4697e5a5c3b12011d949512e2b7fb60f"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/receipt.json",
+          "sha256": "d6870a8fe3dd577bdb2883f663013992809cdc1c4d262dde8650249ee61bb28b"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/fresh10-tooling-20261028-r5-infra-preflight/preflight_result.json",
+          "sha256": "3f8f6edc68060a74bfe6323bb62834486133471c7ff0b7c86c90a3cb012d60e9"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/fresh10-tooling-20261028-r5-infra-preflight/tooling_readiness.yaml",
+          "sha256": "b452e3c2b0bfda29ef340e17b25461ec8e7ac5d7942b79aebab93e11a01939c5"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/fresh10-tooling-20261028-r5-infra-preflight/environment.yaml",
+          "sha256": "873f02d8837a1d6d0a8fcf2f3a60f57eddaf2fbee945bcf34653355847d37d5f"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/canaries/firstclass/infra-1793211831978494843/receipt.json",
+          "sha256": "e04307ddb274c0647b5d08e4cb24b35c5b506f534f410ff60ac4ee15dc533834"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/canaries/boundary/infra-1793211845439318748/receipt.json",
+          "sha256": "2477a81abd864a8f2bb6ebd9d55a4db2a05f54e28c6ea43acf28cadfd24c4d7e"
+        }
+      ]
+    },
+    {
+      "arm": "scheduling",
+      "plan_sha256": "6091744445375d20983d63e51b0419f6a9b8239e6adf6791f42844e8db4fc909",
+      "preflight_returncode": 0,
+      "all_passed": true,
+      "initial_files": 0,
+      "public_abi_files_read": 23,
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/audits/prepared-inputs-3f3fab435f38-audit.json",
+          "sha256": "f6a47613d9a05032cce47ef17d4d3d7ea6b3b4634d8be79160b68b64c4ea80a9"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/audits/runtime-20261028T181736Z.json",
+          "sha256": "2afd7b73f821dd3a2ad6fdc2f421e78ee43277c5cd0848f01c9062bea7298591"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/prompt-audit/receipt.json",
+          "sha256": "6eda99702b41f966de0d29520871667c4697e5a5c3b12011d949512e2b7fb60f"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/receipt.json",
+          "sha256": "d6870a8fe3dd577bdb2883f663013992809cdc1c4d262dde8650249ee61bb28b"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/fresh10-tooling-20261028-r5-scheduling-preflight/preflight_result.json",
+          "sha256": "98bd5638ee4d19389677fcfd4c61df42d489ba4fd5e3bc303e0a5ed5705cd8ce"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/fresh10-tooling-20261028-r5-scheduling-preflight/tooling_readiness.yaml",
+          "sha256": "bb0b5ae350df26ce76f9ee257ecc1b5645bc4fe47ce003041c5d075d32091cbf"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/fresh10-tooling-20261028-r5-scheduling-preflight/environment.yaml",
+          "sha256": "e9a7edd4d306b51cd3ff1dad3b49bfe370d1a74b79de43a79412d755c0f8aaec"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/canaries/firstclass/scheduling-1793211831819330496/receipt.json",
+          "sha256": "d88a8cd1361011fb38a177e20c1782c1ccf39f116ccefa865153aeb0a5759140"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/canaries/boundary/scheduling-1793211845257820495/receipt.json",
+          "sha256": "6542315171fd0f4a842ed67d0e8591433ebd72bc301779f807d66e787fef7602"
+        }
+      ]
+    },
+    {
+      "arm": "no-reference-kernels",
+      "plan_sha256": "625005e0239b989287a9519c03a01a590ac63deb536a28ca13dea2d4e587041c",
+      "preflight_returncode": 0,
+      "all_passed": true,
+      "initial_files": 0,
+      "public_abi_files_read": 23,
+      "evidence": [
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/audits/prepared-inputs-3f3fab435f38-audit.json",
+          "sha256": "f6a47613d9a05032cce47ef17d4d3d7ea6b3b4634d8be79160b68b64c4ea80a9"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/audits/runtime-20261028T181736Z.json",
+          "sha256": "2afd7b73f821dd3a2ad6fdc2f421e78ee43277c5cd0848f01c9062bea7298591"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/prompt-audit/receipt.json",
+          "sha256": "6eda99702b41f966de0d29520871667c4697e5a5c3b12011d949512e2b7fb60f"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/receipt.json",
+          "sha256": "d6870a8fe3dd577bdb2883f663013992809cdc1c4d262dde8650249ee61bb28b"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/preflight_result.json",
+          "sha256": "ccdf5659349cd1cd04346e911d7d9d71319c98e6ebbf2b88f6a024ecb7165114"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/tooling_readiness.yaml",
+          "sha256": "e0e29da27a227dafe1508460a6dea1f00f834ac0d9e58681ed9465ef47341320"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/runs/gemmini/phase1/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/environment.yaml",
+          "sha256": "853c4aabc484452d486221696828fa92e2b9a0a40692000a0710ae473a62fa13"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/canaries/firstclass/no-reference-kernels-1793211827265575570/receipt.json",
+          "sha256": "2d7ebb61004548a64b6466e2ec94e02ea751c1cd25626e2fb0ac836974badc5c"
+        },
+        {
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/canaries/boundary/no-reference-kernels-1793211839967315999/receipt.json",
+          "sha256": "aa6b5ab6e1e346abbbb4931e28ed0791fc300dc3c17f1af7302e8aa9c9afb2de"
+        }
+      ]
+    }
+  ],
+  "author_jobs_launched": 0,
+  "reviewed_at_epoch": 1793211949.154307,
+  "common_workloads": true,
+  "common_judge_and_model": true,
+  "empty_backends": true,
+  "fresh_homes_and_state": true,
+  "actual_served_prompt_comparability": true,
+  "profile_source_and_service_boundaries": true,
+  "native_public_data_readability": true,
+  "author_helper_candidate_canaries": true,
+  "no_cca_or_automatic_kernel_learning": true,
+  "reference_content_and_removal": true,
+  "native_preflights": true
+}

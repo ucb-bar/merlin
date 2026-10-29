@@ -1,0 +1,18 @@
+## Selected fresh10 compiler capabilities
+
+Start with an empty target backend and construct one general compiler under the common fresh10 contract. The supplied integration, frontend, representation, ABI, runtime and inspection sources are an explicitly reviewed subset of that environment. AUTHOR_PROFILE.json, FULL_COMPILER_SOURCE_SELECTION.json and the selected additional-library contract state the exact source/API inventories. Import only those selected sources; no prior authored target backend, result or provider state is supplied.
+
+The source selection also records original unavailable dependencies and optional call paths. A source file's presence does not qualify every callable or grant a missing private dependency. Use explicit selected public facts for the admitted fact readers/generators; automatic extraction and descriptor fallbacks remain unavailable when their source owners are withheld.
+
+Scheduling IR/dialect declarations, generic Kernel representation and emission, and static/configuration/placement/synchronization checking APIs are supplied. Their reports can be partial, unchecked or undecidable. Target instruction declarations, facts and renderers remain caller-supplied; generic emission is not a completed target backend. Optimized schedulers/planners and the reusable transformation/pass implementation library are withheld. CCA helpers, reference-analysis services and automatic system kernel learning are disabled. You may implement general compiler capabilities yourself using the admitted languages, source semantics and hardware facts. Ordinary numerical, ISA, ordering, complete-call and privacy checks remain independent of compiler-side checking.
+
+The same reviewed read-only reference bank is supplied to this arm. Reference inspection does not grant execution, expected answers or timing authority. Any operator-built reference map is manual reference material; no CCA service is enabled by it.
+
+The source-only command-buffer helpers can select the common public schemas/command_buffer.schema.json with schema_path= in CommandBufferBuilder or verify.validate. Copy identical public data into the compiler package when candidate execution needs it; workspace aliases are not candidate execution paths.
+
+## Reference map
+
+`REFERENCE_MAP.json` (read-only, operator-built) links regions of the expert references in `reference-kernels/` to the operation each implements: `operation.kind`, `dims`, `epilogue` and `dtypes`, the `techniques` observed there, whether the region `uses_hardware_loops`, and the `confidence` and `evidence` of the link. Each entry names a `file` and a `locator` (lines, function or address range). Once a case passes numerically and is a performance target, its self-check feedback names at most two matching entries (exact dimensions, same shape class, or same operation kind) beside its next step. A region that uses hardware loops shows a technique to express with ordinary commands. The map grants no numerical or performance credit: check each change with ordinary selfchecks.
+A match describes operation geometry, not equal fusion, layouts, quantization or timing boundaries.
+
+

@@ -1,0 +1,82 @@
+{
+  "schema": "operator.fresh10_native_canary_wave.v1",
+  "source_revision": "3f3fab435f387f99a8986f78dbb6e6c180577cf4",
+  "results": [
+    {
+      "arm": "infra",
+      "all_passed": true,
+      "probes": [
+        {
+          "probe": "restore",
+          "returncode": 0,
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/infra-restore.log",
+          "sha256": "940c84255b3033da234bb49385d06f013b56a75472d76c68c89bdd8f17f1bbc0"
+        },
+        {
+          "probe": "public",
+          "returncode": 0,
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/infra-public.log",
+          "sha256": "7f18bfadd5451d7312499be689a5e375b0e2fd25e8d9456ae27afd4643b82ee2"
+        },
+        {
+          "probe": "boundary",
+          "returncode": 0,
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/infra-boundary.log",
+          "sha256": "9715e158829939e44aed79882763adcbf580e18038a0b875f8315b08a0f2baa9"
+        }
+      ]
+    },
+    {
+      "arm": "scheduling",
+      "all_passed": true,
+      "probes": [
+        {
+          "probe": "restore",
+          "returncode": 0,
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/scheduling-restore.log",
+          "sha256": "d54269a04436cf9d67a6beec25caedc2867f2c5e5940c2ca2e26eec6934f43ff"
+        },
+        {
+          "probe": "public",
+          "returncode": 0,
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/scheduling-public.log",
+          "sha256": "708349d9e723c8611c504ec4a678b1eba6712524795053f9d130f66cc57ba662"
+        },
+        {
+          "probe": "boundary",
+          "returncode": 0,
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/scheduling-boundary.log",
+          "sha256": "227c5e8e363ea84c0dfd389e93287fea9518e16b30ac945a6b396c49409a8c69"
+        }
+      ]
+    },
+    {
+      "arm": "no-reference-kernels",
+      "all_passed": true,
+      "probes": [
+        {
+          "probe": "restore",
+          "returncode": 0,
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/no-reference-kernels-restore.log",
+          "sha256": "1220dc383d54d3d310d5e072f85269ff19939cbedcce3db421d883c51093b7a4"
+        },
+        {
+          "probe": "public",
+          "returncode": 0,
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/no-reference-kernels-public.log",
+          "sha256": "7b8f772de693b1b652d4b5c7b859b569b6031deee669561346d86d5927583a53"
+        },
+        {
+          "probe": "boundary",
+          "returncode": 0,
+          "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/native-canaries-1793211769390301569/no-reference-kernels-boundary.log",
+          "sha256": "f2768c7681e0e839d9ddb43a4feee7fed8efb51e8d839dbb27fd4f6686d3132b"
+        }
+      ]
+    }
+  ],
+  "all_passed": true,
+  "scope": "native prelaunch qualification",
+  "model_calls": 0,
+  "author_jobs_launched": 0
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "operator.el123_noexpert_explicit_export.v1",
+  "created_at": "2026-10-28T21:23:12.356307+00:00",
+  "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+  "framework": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f",
+  "declared_config_copies": [
+    {
+      "path": ".env",
+      "mode": "0600"
+    },
+    {
+      "path": "out/artifacts/targets/host/gemmini_rocket_scalar_int8_v0",
+      "mode": null
+    }
+  ],
+  "method": "git archive explicit detached source snapshot; native provenance owner",
+  "authors_launched": 0,
+  "active_campaigns_changed": false
+}

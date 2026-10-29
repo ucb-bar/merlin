@@ -316,7 +316,7 @@ plan:
     OPENBLAS_NUM_THREADS: '1'
     PATH: ${WORKSPACE}/tasks/gemmini-shared-phase1-20261021/.tmp/phase1-runtime-v1/venv/bin:${HARNESS}/merlin/.venv/bin:${WORKSPACE}/hw/bubblewrap-0.11.0/bin:${WORKSPACE}/toolchains/llvm-a47bddcc/install/bin:${HOME}/.local/share/codex-0.162.0/bin:/usr/local/bin:/usr/bin:/bin
     PYTHONDONTWRITEBYTECODE: '1'
-    PYTHONPATH: ${FRAMEWORK}/src:${FRAMEWORK}/packages/merlin-experiments/src:${FRAMEWORK}/packages/merlin-timing/src
+    PYTHONPATH: ${FRAMEWORK}/src:${FRAMEWORK}/packages/merlin-experiments/src:${FRAMEWORK}/packages/merlin-timing/src:${FRAMEWORK}/packages/merlin-mining/src
     PYTHONUNBUFFERED: '1'
     TMPDIR: ${TASK}/.tmp
     MERLIN_SELFCHECK_VARIANT_JOBS: '20'

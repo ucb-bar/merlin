@@ -1,0 +1,122 @@
+{
+  "schema": "operator.el123_noexpert_frozen_source.v1",
+  "created_at": "2026-10-28T21:22:49.791865+00:00",
+  "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+  "base_revision": "adff3ab95caeb3adc738627843ee6671f51d8dc8",
+  "tree": "3040bfee2273a20d3f90661d1e65ece6a9976454",
+  "preservation_tag": "xs-el123-noexpert-20261028-source-02d14a7d523f",
+  "signature": "unsigned detached local snapshot",
+  "branch": "cc/el4-grader-throughput-20261024",
+  "shared_state_before": {
+    "HEAD": "388ee5ff2ed57b06b5f229e1abadfba78d7fbac4",
+    "MERGE_HEAD": "d20c4fafd8ee2c3a23d96199e585f8a1b20f5caa"
+  },
+  "shared_state_after": {
+    "HEAD": "388ee5ff2ed57b06b5f229e1abadfba78d7fbac4",
+    "MERGE_HEAD": "d20c4fafd8ee2c3a23d96199e585f8a1b20f5caa"
+  },
+  "shared_index_sha256": "10b4a92fee2b9971e101195f54aeb99da7dfca74199c6c4f65d332e8240a55e4",
+  "shared_state_unchanged": true,
+  "overlay_files": [
+    {
+      "path": "examples/gemmini/phase1/launch/fresh_campaign.py",
+      "bytes": 67810,
+      "sha256": "d9f7c8dec77b04b46f6138491d7df43fb487461e13438a6e894c98d91228b0de"
+    },
+    {
+      "path": "examples/gemmini/phase1/launch/prepare_source_release.py",
+      "bytes": 10233,
+      "sha256": "866bcc43d9994118ba4edf0b30bb953d4ad4500b8393ecb5aba19018646e94d9"
+    },
+    {
+      "path": "examples/gemmini/phase1/launch/test_no_expert_source_release.py",
+      "bytes": 1606,
+      "sha256": "79ead6ba977c801ea41e3ec8302e3759649dfb0d9974cdd152c6f451094b528f"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/el123_no_expert_study.py",
+      "bytes": 21350,
+      "sha256": "000e9328cff8fe189fbb99680f0449207891bcd980fc5d148596da5f8d48253b"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/test_el123_no_expert_study.py",
+      "bytes": 10317,
+      "sha256": "5a213855055756b012da664a0d480db8cbf88301bcda0fb4a48645c339a3f2e1"
+    },
+    {
+      "path": "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/PROTOCOL_CORRECTION_NO_EXPERT.md",
+      "bytes": 2830,
+      "sha256": "f008a5a0d93a343e86e1943e26111a840f451c9eae73c288a61d8ff544820c96"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin_experiments/phase1/author_profiles.py",
+      "bytes": 29414,
+      "sha256": "9955e9c66e90efbc51aca3e9ed8cabb90404fc4107eb2c7b251f64e4fa3fd3b0"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin_experiments/phase1/fresh10_profiles.py",
+      "bytes": 2347,
+      "sha256": "bbd9ced503d0057e59bb8893ef0fe8648b73d366fccd623e397ae1481b821075"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin_experiments/phase1/public_contract_staging.py",
+      "bytes": 3756,
+      "sha256": "eca480e417d761b75e4db41e9703d078bab9a9d2793844f5aa46ea8d94c1f5eb"
+    },
+    {
+      "path": "packages/merlin-experiments/tests/test_phase1_public_contract_staging.py",
+      "bytes": 5046,
+      "sha256": "6af714ce654a75777906ae78c6d8e4ab1be6495c82b55720993589162031175f"
+    },
+    {
+      "path": "packages/merlin-experiments/tests/test_no_expert_author_profiles.py",
+      "bytes": 4603,
+      "sha256": "37e190cc651d8a518cae7616ff064d93ce0dd6cc4da62141fdfd87eb05db3b7b"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin/targetgen/capsule_golden.py",
+      "bytes": 56889,
+      "sha256": "5bbf6fa5eb199afb5fc28255963d56e6ff97cdceb227cc5e73383d06af755e2e"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py",
+      "bytes": 377910,
+      "sha256": "cd7c708f202981eb0cb42cbe7ea26831b4f41eacd7262dd98ee5aa1fb6b94cd0"
+    },
+    {
+      "path": "packages/merlin-experiments/tests/test_common_output_contract.py",
+      "bytes": 9819,
+      "sha256": "264c8a30401ec47722023165d91ec9ad115f1ed513760063457b4a0174deeb4b"
+    },
+    {
+      "path": "merlin/tests/targetgen/test_tier_certificate_cache.py",
+      "bytes": 41943,
+      "sha256": "9a15ca2e3696c35c67ff269a6a3b45db32d418e1ea19cf5c28045e92717b1c93"
+    },
+    {
+      "path": "merlin/tests/targetgen/test_load_order.py",
+      "bytes": 17146,
+      "sha256": "c46559fc7820f560bfb711c1705b9b9a90b1a88a4ac0f0c0cce6edb5bdbebff3"
+    }
+  ],
+  "changed_files": [
+    "examples/gemmini/phase1/launch/fresh_campaign.py",
+    "examples/gemmini/phase1/launch/prepare_source_release.py",
+    "examples/gemmini/phase1/launch/test_no_expert_source_release.py",
+    "examples/gemmini/phase1/studies/kernel_abstractions/configurations/20261028/PROTOCOL_CORRECTION_NO_EXPERT.md",
+    "examples/gemmini/phase1/studies/kernel_abstractions/el123_no_expert_study.py",
+    "examples/gemmini/phase1/studies/kernel_abstractions/test_el123_no_expert_study.py",
+    "merlin/tests/targetgen/test_load_order.py",
+    "merlin/tests/targetgen/test_tier_certificate_cache.py",
+    "packages/merlin-experiments/src/merlin/targetgen/capsule_golden.py",
+    "packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/author_profiles.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/fresh10_profiles.py",
+    "packages/merlin-experiments/src/merlin_experiments/phase1/public_contract_staging.py",
+    "packages/merlin-experiments/tests/test_common_output_contract.py",
+    "packages/merlin-experiments/tests/test_no_expert_author_profiles.py",
+    "packages/merlin-experiments/tests/test_phase1_public_contract_staging.py"
+  ],
+  "active_campaigns_changed": false,
+  "authors_launched": 0
+}

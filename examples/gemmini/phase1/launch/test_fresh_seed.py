@@ -62,6 +62,22 @@ def _seed_fixture(root: Path) -> dict:
         "ab/rejected_epochs/README.md": "rejected: 3% slower on conv\n",
         "ab/rejected_epochs/raw.log": "x" * 10,
         "variants/epochs/backend.py": "TUNING = 'changed'\n",
+        "variants/epochs/manifest.yaml": "version: 1\n",
+        "variants/epochs/build/obj.o": "build product\n",
+        "evidence/epochs-panel.json": '{"cycles": 90}\n',
+        "tools/compare.py": "print('compare')\n",
+        "ITERATION_NOTES.md": "seed author notes\n",
+        "TASK.md": "harness task text\n",
+        "qa/perf_history.jsonl": json.dumps({"kind": "modeled", "test_case": "conv", "cycles": 120,
+                                             "evidence": "modeled: Spike timing model (self-check)"}) + "\n",
+        "qa/cases/conv/d1.json": json.dumps({"capsule": "conv", "performance": {
+            "status": "PROVISIONAL", "complete_event_accounting": True, "estimated_whole_soc_cycles": 100,
+            "elf_sha256": "e" * 64, "capsule_sha256": "c" * 64, "selection_sha256": "s" * 64,
+            "model_sha256": "m" * 64, "facts_sha256": "f" * 64, "timing_epoch": 0,
+            "structural_roofline": {"structural_compute_floor_cycles": 10}}, "compiler_diagnostics": {"x": 1}}),
+        "qa/latest_completed_grade.json": json.dumps({"graded_source_sha256": "g" * 64, "per_capsule": [
+            {"capsule": "conv", "status": "pass", "graded": {"token": "1"}, "detail": {"path": "qa/cases/conv/d1.json"},
+             "performance": {"array_utilization_pct": 7.5, "bound_by": "compute"}}]}),
     }.items():
         (workspace / name).parent.mkdir(parents=True, exist_ok=True)
         (workspace / name).write_text(text)
@@ -127,7 +143,11 @@ def test_seeded_plan_rewrites_the_fresh_launch_without_hand_steps(seeded):
     assert origin["previous_session"]["run_dir"].endswith("seed-run/run")
     review = json.loads((out / "seed-review.json").read_text())
     assert all(review[key] == origin[key] for key in origin if key not in ("review", "schema"))
-    assert record["seed"]["carry"] == dict.fromkeys(("certificates", "results", "rules", "handoff"), True)
+    assert record["seed"]["carry"] == dict.fromkeys(
+        ("certificates", "results", "rules", "handoff", "variants", "performance"), True)
+    # The seeded order is selected explicitly: the base specs' information-first would keep it off.
+    assert record["environment"]["MERLIN_CAPSULE_ORDER"] == "seeded"
+    assert "MERLIN_CAPSULE_ORDER=seeded" not in record["seed"]["preflight_twin"]["reserved_argv"]
     assert record["seed"]["certificates"]["carried"] == 2
     # The unseeded twin keeps the fresh launch for the runtime's preflight-only mode.
     twin = record["seed"]["preflight_twin"]
@@ -136,8 +156,9 @@ def test_seeded_plan_rewrites_the_fresh_launch_without_hand_steps(seeded):
     assert "MERLIN_TIER_CERT_PORTABLE=1" not in twin["reserved_argv"]
     assert not any(str(item).startswith("MERLIN_SEEDED_GRADE") for item in twin["reserved_argv"])
     guidance = (out / "author-guidance.md").read_text()
-    assert guidance.startswith("guidance\n") and "baseline to beat, not a design to preserve" in guidance
-    assert "Spike cycle-model estimates" in guidance
+    assert guidance.startswith("guidance\n") and "starting point to evolve, not a design to preserve" in guidance
+    assert "Make big changes" in guidance and "SEED_INDEX.md" in guidance and "SEED_VARIANTS/" in guidance
+    assert "vs_seed" in guidance and "Spike cycle-model estimates" in guidance
     assert json.loads((out / "proposed-launch.json").read_text()) == record
 
 
@@ -160,6 +181,31 @@ def test_seed_copy_strips_stale_notes_and_keeps_what_the_compiler_reads(seeded):
     from merlin.common.tree_hash import hash_tree
 
     assert pin == {"path": str(evidence), "sha256": hash_tree(evidence)["sha256"]}
+
+
+def test_seed_evidence_carries_variants_performance_and_an_index(seeded):
+    evidence = seeded.out / "seed-evidence"
+    variant = evidence / "SEED_VARIANTS/epochs"
+    assert (variant / "backend.py").read_text() == "TUNING = 'changed'\n" and not (variant / "build").exists()
+    outcomes = json.loads((evidence / "SEED_VARIANTS/OUTCOMES.json").read_text())["variants"]["epochs"]
+    assert outcomes["changed"] == ["backend.py"] and "evidence/epochs-panel.json" in outcomes["seed_records"]
+    assert (evidence / "SEED_EXPERIMENTS/evidence/epochs-panel.json").is_file()
+    assert (evidence / "SEED_TOOLS/compare.py").is_file()
+    assert (evidence / "SEED_NOTES/workspace/ITERATION_NOTES.md").is_file()
+    assert not (evidence / "SEED_NOTES/workspace/TASK.md").exists()
+    assert (evidence / "SEED_PERFORMANCE/perf_history.jsonl").is_file()
+    baseline = json.loads((evidence / "SEED_PERFORMANCE/baseline.json").read_text())["cases"]["conv"]
+    assert baseline["cycles"] == 100 and baseline["best_cycles"] == 120 and baseline["roofline_bound_cycles"] == 10
+    assert baseline["array_utilization_pct"] == 7.5 and baseline["model_sha256"] == "m" * 64
+    timing = json.loads((evidence / f"RUN_PRIVATE/seed_timing/{'e' * 64}.json").read_text())
+    assert timing["records"][0]["capsule"] == "conv" and timing["records"][0]["compiler_diagnostics"] == {"x": 1}
+    assert (evidence / "RUN_PRIVATE/seed_baseline.json").read_text() == (
+        evidence / "SEED_PERFORMANCE/baseline.json").read_text()
+    index = (evidence / "SEED_INDEX.md").read_text()
+    for name in ("SEED_VARIANTS/", "SEED_PERFORMANCE/baseline.json", "PREVIOUS_SESSION.md", "SEED_TOOLS/"):
+        assert f"`{name}`" in index
+    counts = seeded.record["seed"]["evidence"]["performance"]
+    assert counts["timed_executables"] == 1 and counts["baseline_cases_with_cycles"] == 1
 
 
 def test_stale_notes_named_by_compiler_sources_stay(seeded, tmp_path):
@@ -198,11 +244,24 @@ def test_seed_runtime_check_accepts_the_planned_seed(seeded, monkeypatch):
     monkeypatch.delenv("MERLIN_JOINT_CAMPAIGN", raising=False)
     # The session's own launch checks need the complete fixture-free runtime (codex, full compiler).
     monkeypatch.setattr("merlin_experiments.phase1.session.validate_options", lambda options: None)
+    compiled = []
+
+    def compile_staged(record, options, submission, scratch):
+        # The staged seed is complete when the compile check sees it (seed_compile_probe has its own tests).
+        compiled.append(sorted(p.name for p in submission.iterdir()))
+        return {"status": "compiled", "case": "fixture"}
+
+    monkeypatch.setattr(seeded.module, "compile_staged", compile_staged)
     report = seeded.module.verify_in_runtime(seeded.record)
+    assert report["compile"] == {"status": "compiled", "case": "fixture"}
+    assert compiled and "backend.py" in compiled[0] and "manifest.yaml" in compiled[0]
     placement = report["placement"]
     assert report["seed"] == "accepted" and placement["certificate_carry_over"] is True
     assert {"PREVIOUS_SESSION.md", "OPTIMIZATION_RULES.json", "SEED_NOTES", "SEED_EVIDENCE",
-            "SEED_EXPERIMENTS"} <= set(placement["workspace_root"])
+            "SEED_EXPERIMENTS", "SEED_INDEX.md", "SEED_VARIANTS", "SEED_PERFORMANCE",
+            "SEED_TOOLS"} <= set(placement["workspace_root"])
+    assert "RUN_PRIVATE" not in placement["workspace_root"]
+    assert sorted(placement["seed_evidence"]["run_private"]["staged"]) == ["seed_baseline.json", "seed_timing"]
 
 
 def test_seed_spec_refuses_carry_without_its_run(F, fixture_spec, library):

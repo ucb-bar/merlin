@@ -1,0 +1,20 @@
+# Common inputs for the user-selected reference study: the extracted contents of the four
+# user-named sources plus pinned upstream Exo, 20 CPUs per arm. Select one arm below.
+extends: fresh-campaign-fresh7-paired.yaml
+id: gemmini-open-compiler-fresh7ref-matched-references
+variables:
+  MATCHED_RAW_REFERENCES: ${REPO}/out/artifacts/preparation/fresh7-user-references
+  # The operator-built map linking reference regions to operation kinds and shapes; both arms
+  # stage these exact bytes as REFERENCE_MAP.json. Set FRESH7_REFERENCE_MAP_SHA256 to the map's
+  # sha256 once it is reviewed (or pass --var FRESH7_REFERENCE_MAP_SHA256=<sha256> to plan);
+  # until then `plan` refuses with the variable's name.
+  FRESH7_REFERENCE_MAP: ${REPO}/out/artifacts/preparation/fresh7-reference-map/REFERENCE_MAP.json
+  FRESH7_REFERENCE_MAP_SHA256: 51568c1de0842ab143d2fad503a146a9a41056f08c21c3ae73fdf7dbbbf65720
+run:
+  workers: 20
+  sim_max_jobs: 20
+plan:
+  guidance: ${TASK}/.tmp/fresh/fresh7ref-guidance.md
+  reference_map:
+    path: ${FRESH7_REFERENCE_MAP}
+    sha256: ${FRESH7_REFERENCE_MAP_SHA256}

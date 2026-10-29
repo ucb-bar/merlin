@@ -1,7 +1,7 @@
 """Launch a matched study through the existing finite CPU reservation owner.
 
-``plan`` only prints commands. ``launch`` acquires CPUs 0-3 once; independent
-root-level study services share that pool under equal cgroup CPU quotas. Their
+``plan`` only prints commands. ``launch`` acquires the selected CPU union once;
+independent study services share each selected pool under equal CPU quotas. Their
 lifetimes are bound to the reservation service, including abnormal termination.
 """
 
@@ -23,6 +23,12 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def cpu_text(cpus, *, compact=False):
+    if compact and cpus == list(range(cpus[0], cpus[-1] + 1)):
+        return f"{cpus[0]}-{cpus[-1]}"
+    return ",".join(map(str, cpus))
+
+
 def plan(path, unit, *, user=None):
     if not unit.startswith("merlinphase1") or not unit.isalnum() or not unit.islower():
         raise ValueError("select a unique lower-case alphanumeric merlinphase1 unit")
@@ -31,23 +37,39 @@ def plan(path, unit, *, user=None):
     runs = document["runs"]
     if not 1 <= len(runs) <= 12:
         raise ValueError("select one to twelve prepared runs")
-    quota = 400 // len(runs)
-    user = user or subprocess.check_output(["id", "-un"], text=True).strip()
-    slice_name = "merlinkernelstudy" + unit.removeprefix("merlinphase1") + ".slice"
-    children, timeouts, frameworks = [], [], set()
-    for index, row in enumerate(runs):
+    records, pools = [], {}
+    for row in runs:
         config = Path(row["config"])
         if config.is_symlink() or digest(config) != row["config_sha256"]:
             raise ValueError("prepared run config changed")
         settings = json.loads(config.read_bytes())
-        if settings["cpus"] != [0, 1, 2, 3] or settings["cpu_quota_percent"] != quota:
-            raise ValueError("all services require the same four-CPU pool and equal bounded quota")
+        pool = settings["cpus"]
+        if (not isinstance(pool, list) or len(pool) != 4
+                or any(type(cpu) is not int or cpu < 0 for cpu in pool)
+                or pool != sorted(set(pool))):
+            raise ValueError("each study requires four distinct sorted CPU IDs")
+        key = tuple(pool)
+        pools[key] = pools.get(key, 0) + 1
+        records.append((row, config, settings))
+    for left in pools:
+        if any(left != right and set(left) & set(right) for right in pools):
+            raise ValueError("distinct study CPU pools must be disjoint")
+    cpus = sorted({cpu for pool in pools for cpu in pool})
+    quota = 100 * len(cpus) // len(runs)
+    if any(quota * count > 100 * len(pool) for pool, count in pools.items()):
+        raise ValueError("equal quotas exceed a selected study pool's capacity")
+    user = user or subprocess.check_output(["id", "-un"], text=True).strip()
+    slice_name = "merlinkernelstudy" + unit.removeprefix("merlinphase1") + ".slice"
+    children, timeouts, frameworks = [], [], set()
+    for index, (row, config, settings) in enumerate(records):
+        if settings["cpu_quota_percent"] != quota:
+            raise ValueError("all services require equal bounded CPU quota")
         if settings["workers"] != 1 or digest(settings["runner"]["path"]) != settings["runner"]["sha256"]:
             raise ValueError("prepared runner changed or evaluator concurrency differs")
         expected = [
             "taskset",
             "-c",
-            "0,1,2,3",
+            cpu_text(settings["cpus"]),
             settings["python"],
             "-B",
             settings["runner"]["path"],
@@ -72,7 +94,7 @@ def plan(path, unit, *, user=None):
             "--slice=" + slice_name,
             "--property=Type=exec",
             "--property=User=" + user,
-            "--property=AllowedCPUs=0-3",
+            "--property=AllowedCPUs=" + cpu_text(settings["cpus"], compact=True),
             f"--property=CPUQuota={quota}%",
             "--property=CPUQuotaPeriodSec=100ms",
             "--property=LimitNOFILE=65536",
@@ -102,7 +124,7 @@ def plan(path, unit, *, user=None):
         sys.executable,
         str(wrapper),
         "--cpus",
-        "0-3",
+        cpu_text(cpus, compact=True),
         "--max-seconds",
         str(maximum),
         "--unit",
@@ -118,7 +140,7 @@ def plan(path, unit, *, user=None):
         schema="private.kernel_abstractions.launch.v1",
         runs_sha256=digest(path),
         unit=unit,
-        cpus=[0, 1, 2, 3],
+        cpus=cpus,
         quota_percent=quota,
         slice=slice_name,
         runtime_max_seconds=maximum,
@@ -132,8 +154,8 @@ def coordinate(path, unit):
     """Executed by the existing reservation service, never by an author."""
     selected = plan(path, unit)
     group = Path("/proc/self/cgroup").read_text()
-    if unit + ".service" not in group or set(os.sched_getaffinity(0)) != {0, 1, 2, 3}:
-        raise ValueError("coordinator requires its original active four-CPU reservation")
+    if unit + ".service" not in group or set(os.sched_getaffinity(0)) != set(selected["cpus"]):
+        raise ValueError("coordinator requires its original active selected CPU reservation")
     processes, logs, previous = [], [], {}
 
     def interrupted(number, _frame):

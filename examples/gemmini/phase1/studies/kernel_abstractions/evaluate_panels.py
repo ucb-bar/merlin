@@ -363,7 +363,7 @@ def _issued_qualification(result_path, result, *, source_sha256, suite_sha256):
     return qualification, invocation, issued
 
 
-def collect(plan_path):
+def collect(plan_path, *, physical_collections=()):
     """Read ordinary evaluator responses, retaining every planned cell."""
     plan = _read(plan_path)
     if plan.get("schema") != PLAN:
@@ -549,7 +549,7 @@ def collect(plan_path):
                 physical_status="UNKNOWN",
             )
         )
-    return dict(
+    collection = dict(
         schema="private.kernel_abstractions.evaluation_collection.v1",
         plan=_pin(plan_path),
         baseline_mode=plan.get("baseline_mode", "common"),
@@ -563,6 +563,12 @@ def collect(plan_path):
             "incomplete groups remain unranked"
         ),
     )
+
+    if physical_collections:
+        from physical_panel import apply_physical
+
+        return apply_physical(collection, physical_collections)
+    return collection
 
 
 def _numeric_pass(row):
@@ -848,6 +854,8 @@ def main():
     finish = sub.add_parser("collect")
     finish.add_argument("--plan", type=Path, required=True)
     finish.add_argument("--out", type=Path, required=True)
+    finish.add_argument("--physical-collection", type=Path, action="append", default=[],
+                        help="private exact-custody physical collection; repeat for multiple images")
     agent = sub.add_parser("progress")
     agent.add_argument("--runs", type=Path, required=True)
     agent.add_argument("--baseline-collection", type=Path)
@@ -862,7 +870,7 @@ def main():
             raise ValueError("collection output already exists")
         _write(
             args.out,
-            collect(args.plan)
+            collect(args.plan, physical_collections=args.physical_collection)
             if args.action == "collect"
             else progress(args.runs, baseline_collection=args.baseline_collection, launch_audit=args.launch_audit),
         )

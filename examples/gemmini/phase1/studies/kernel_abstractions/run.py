@@ -51,6 +51,8 @@ def boot(config, *, context_setup=True):
             os.environ.pop(key)
     if C["reference_guidance"] == "on" and C.get("reference_map"):
         os.environ["MERLIN_REFERENCE_MAP"] = json.dumps(C["reference_map"])
+    if C["reference_guidance"] == "on" and C.get("cca_lifting"):
+        os.environ["MERLIN_REFERENCE_CAPTURE_SELECTION"] = json.dumps(C["cca_lifting"], sort_keys=True)
     from merlin_experiments.phase1.brokers.selfcheck import _decorate_response
     from merlin_experiments.phase1.brokers.selfcheck_sources import pinned_source, request_label
     from merlin_experiments.phase1.feedback import reference_analysis, reference_experiments
@@ -82,7 +84,7 @@ def boot(config, *, context_setup=True):
                 dict(
                     id=row["case"],
                     split="training",
-                    goals=row.get("goals", []),
+                    goals=row.get("goals") or C.get("reference_goals", []),
                     source_sha256=row["source"]["sha256"],
                     selfcheck_argv=[
                         "python3",
@@ -137,7 +139,25 @@ def selected():
     )
 
 
-def evaluate(config, submission, capsules, output, timeout, tiers="L0,L1,L2"):
+def evaluation_request(request):
+    """Keep source diagnostics distinct from ordinary numerical checks."""
+    from merlin_experiments.phase1.brokers.selfcheck import FORWARDED_PROBES
+    from merlin_experiments.phase1.feedback.public_scalability import request_policy
+    from merlin_experiments.phase1.feedback.public_scalability_inspection import requested
+
+    if request.get("suite") != "scalability" or request.get("sim") not in (None, "spike"):
+        raise ValueError("offline checks use --suite scalability --sim spike")
+    mode = requested(request)
+    if mode == "compile_only":
+        raise ValueError("offline compile-only requires an original native compiler-bundle owner; "
+                         "no numerical check was substituted")
+    other_probes = bool(request.get("caller_layout") or any(
+        request.get(key) for key in FORWARDED_PROBES if key != "candidate_diagnostics"))
+    _, tiers = request_policy(request.get("sim"), request.get("tiers", ""), inspection=other_probes)
+    return tiers, ["--candidate-diagnostics"] if mode == "candidate_diagnostics" else []
+
+
+def evaluate(config, submission, capsules, output, timeout, tiers="L0,L1,L2", *, candidate_diagnostics=False):
     """The original evaluator CLI, with one worker and the selected original runtime."""
     boot(config, context_setup=False)
     from merlin_experiments.phase1 import full_compiler_workspace as full
@@ -147,6 +167,8 @@ def evaluate(config, submission, capsules, output, timeout, tiers="L0,L1,L2"):
 
     from merlin.targetgen.target_experiment import load_target_experiment
 
+    if type(candidate_diagnostics) is not bool:
+        raise ValueError("candidate-diagnostics selection must be boolean")
     ctx = load_context(C["descriptor"], repo=C["framework"])
     install(load_target_experiment(C["descriptor"]), Path(C["suite"]))
     args = [
@@ -167,6 +189,8 @@ def evaluate(config, submission, capsules, output, timeout, tiers="L0,L1,L2"):
         "--out",
         output,
     ]
+    if candidate_diagnostics:
+        args.append("--candidate-diagnostics")
     contract = C.get("library_contract")
     if contract:
         args += [
@@ -236,11 +260,7 @@ def serve(path, *, timeout=900):
                     repo=F,
                 )
             else:
-                if req.get("suite") != "scalability" or req.get("sim") not in (None, "spike"):
-                    raise ValueError("offline checks use --suite scalability --sim spike")
-                from merlin_experiments.phase1.feedback.public_scalability import request_policy
-
-                _, tiers = request_policy(req.get("sim"), req.get("tiers", ""))
+                tiers, inspection_argv = evaluation_request(req)
                 names = req.get("capsules", "").split(",")
                 if not 1 <= len(names) <= 6 or any(n not in CASES for n in names):
                     raise ValueError("choose 1 to 6 explicit training case names")
@@ -284,7 +304,7 @@ def serve(path, *, timeout=900):
                         str(timeout),
                         "--tiers",
                         ",".join(tiers),
-                    ]
+                    ] + inspection_argv
                     with (job / "worker.log").open("wb") as log:
                         process = subprocess.Popen(
                             argv, env=ENV, cwd=WS, stdout=log, stderr=subprocess.STDOUT, start_new_session=True
@@ -314,6 +334,8 @@ def serve(path, *, timeout=900):
         submission_sha256=source_sha,
         official=False,
     )
+    if req.get("action") == "reference-analysis" and response.get("schema") == "merlin.reference_analysis.v1":
+        response = reference_analysis._bounded_response(response, workspace=WS, pretty=True)
     write(CH / ("resp_" + rid + ".json"), response)
     (CH / ("done_" + rid)).write_text("ok\n")
 
@@ -582,9 +604,11 @@ def main():
     parser.add_argument("--out")
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--tiers", default="L0,L1,L2")
+    parser.add_argument("--candidate-diagnostics", action="store_true")
     args = parser.parse_args()
     if args.action == "evaluate":
-        return evaluate(args.config, args.submission, args.capsules, args.out, args.timeout, args.tiers)
+        return evaluate(args.config, args.submission, args.capsules, args.out, args.timeout, args.tiers,
+                        candidate_diagnostics=args.candidate_diagnostics)
     boot(args.config)
     if set(os.sched_getaffinity(0)) != set(C["cpus"]):
         raise ValueError("launch/preflight must inherit selected CPUs; use prepared taskset argv and quota wrapper")

@@ -1,0 +1,17 @@
+{
+  "schema": "operator.no_expert_scope_confirmation.v1",
+  "confirmed_on": "2026-10-28",
+  "expert_exo_kernel_material": "withheld in all replacement EL1/EL2/EL3 profiles",
+  "includes": [
+    "optimized Exo GEMM and convolution sources",
+    "Exo reference archives",
+    "derived expert ELFs",
+    "disassemblies and listings",
+    "reference maps and learned artifacts"
+  ],
+  "existing_spike_model_and_feedback": "preserved",
+  "live_tooling_A_B": "reference-assisted as launched; user clarification pending whether to replace",
+  "live_tooling_C": "no expert references as launched",
+  "active_campaigns_changed": false,
+  "new_authors_launched": 0
+}

@@ -1,0 +1,114 @@
+{
+  "schema": "operator.no_expert_canary_static_preparation.v1",
+  "study": {
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/study.json",
+    "sha256": "6340dea3ec2fe3112d96dfbdd821c4185202bcda1fb9e35adf87dc2b6ce6344e"
+  },
+  "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+  "files": {
+    "actual_profile_canary.py": {
+      "path": "/work/merlin/tasks/el123-noexpert-setup-20261028/.tmp/noexpert-boundary-canary/actual_profile_canary.py",
+      "sha256": "598081c45276ba2565baae2b2878214e308ca268c31f41cfd539f8eef7d541a3"
+    },
+    "canary_policy.py": {
+      "path": "/work/merlin/tasks/el123-noexpert-setup-20261028/.tmp/noexpert-boundary-canary/canary_policy.py",
+      "sha256": "8edb956893fb60942ea917f0e074608e9ee271c736a62925e056d4debbe02f5f"
+    },
+    "run-native-canary.py": {
+      "path": "/work/merlin/tasks/el123-noexpert-setup-20261028/.tmp/noexpert-boundary-canary/run-native-canary.py",
+      "sha256": "aff83a53aca03f8e3c889d951ca522b26bd2ffb790d2ff6f11dee1e043f9dab1"
+    },
+    "test_canary_policy.py": {
+      "path": "/work/merlin/tasks/el123-noexpert-setup-20261028/.tmp/noexpert-boundary-canary/test_canary_policy.py",
+      "sha256": "cd86737f590b44aed1eedf0242d728a4b751bae6259c4c8ad03b562004510955"
+    },
+    "README.md": {
+      "path": "/work/merlin/tasks/el123-noexpert-setup-20261028/.tmp/noexpert-boundary-canary/README.md",
+      "sha256": "1bf50bf9b8a46cfa5ff51fd1c7e0c0d64e03d6d83f96571eed2e72786045489a"
+    },
+    "negative-inventory-prepared.json": {
+      "path": "/work/merlin/tasks/el123-noexpert-setup-20261028/.tmp/noexpert-boundary-canary/negative-inventory-prepared.json",
+      "sha256": "a99dd89663c8e343eb33e0a653b203bf0ab2b4278a212e8e6c82ef6f8c9ef848"
+    }
+  },
+  "static_cli_observations": [
+    {
+      "schema": "operator.no_expert_canary_prepared_only.v1",
+      "arm": "el1",
+      "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+      "inventory_files": 841,
+      "native_receipt_required": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/preparation/native-preflight-executed.json",
+      "native_preflight_qualified": false,
+      "canary_executed": false,
+      "author_jobs_launched": 0,
+      "model_calls": 0,
+      "compiler_jobs_launched": 0
+    },
+    {
+      "schema": "operator.no_expert_canary_prepared_only.v1",
+      "arm": "el2",
+      "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+      "inventory_files": 841,
+      "native_receipt_required": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/preparation/native-preflight-executed.json",
+      "native_preflight_qualified": false,
+      "canary_executed": false,
+      "author_jobs_launched": 0,
+      "model_calls": 0,
+      "compiler_jobs_launched": 0
+    },
+    {
+      "schema": "operator.no_expert_canary_prepared_only.v1",
+      "arm": "el3",
+      "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+      "inventory_files": 841,
+      "native_receipt_required": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/preparation/native-preflight-executed.json",
+      "native_preflight_qualified": false,
+      "canary_executed": false,
+      "author_jobs_launched": 0,
+      "model_calls": 0,
+      "compiler_jobs_launched": 0
+    }
+  ],
+  "derived_inventory_counts_by_origin": {
+    "old-spec:el1:FRESH7_REFERENCE_EXPERIMENTS": 1,
+    "old-spec:el2:FRESH7_REFERENCE_EXPERIMENTS": 1,
+    "old-spec:el3:FRESH7_REFERENCE_EXPERIMENTS": 1,
+    "old-spec:el1:REFERENCE_ANALYSIS_DEPS": 21,
+    "old-spec:el2:REFERENCE_ANALYSIS_DEPS": 21,
+    "old-spec:el3:REFERENCE_ANALYSIS_DEPS": 21,
+    "old-spec:el1:FRESH7_REFERENCE_MAP": 1,
+    "old-spec:el2:FRESH7_REFERENCE_MAP": 1,
+    "old-spec:el3:FRESH7_REFERENCE_MAP": 1,
+    "old-spec:el1:MATCHED_RAW_REFERENCES": 8,
+    "old-spec:el2:MATCHED_RAW_REFERENCES": 8,
+    "old-spec:el3:MATCHED_RAW_REFERENCES": 8,
+    "old-spec:el1:FRESH8_REFERENCE_MAP": 1,
+    "old-spec:el2:FRESH8_REFERENCE_MAP": 1,
+    "old-spec:el3:FRESH8_REFERENCE_MAP": 1,
+    "old-r2-workspace-reference-alias:el1": 14,
+    "old-r2-workspace-reference-alias:el2": 14,
+    "old-r2-workspace-reference-alias:el3": 14,
+    "new-release-withheld-reference-input": 756,
+    "old-r2-grant:el1": 14,
+    "old-r2-workspace-reference-alias:el1:resolved-host-target": 14,
+    "old-r2-grant:el2": 14,
+    "old-r2-workspace-reference-alias:el2:resolved-host-target": 14,
+    "old-r2-grant:el3": 14,
+    "old-r2-workspace-reference-alias:el3:resolved-host-target": 14
+  },
+  "pytest": {
+    "passed": 12,
+    "scope": "parser, static real-metadata/inventory, module import, compression and negative qualification-gate tests only"
+  },
+  "canary_executed": false,
+  "native_preflight_qualified": false,
+  "author_jobs_launched": 0,
+  "model_calls": 0,
+  "compiler_jobs_launched": 0,
+  "simulator_jobs_launched": 0,
+  "pending": [
+    "actual successful native15-CPU preflight for all3",
+    "actual boundary controls on0-3 after native receipts",
+    "assembled runtime prompt audit"
+  ]
+}

@@ -1,0 +1,433 @@
+schema: merlin.phase1.fresh_campaign_spec.v1
+id: fresh10-tooling-v1-infra
+derived_from:
+  launch: ${REPO}/out/artifacts/open-continuation/v8/proposed-launch.json
+  launch_sha256: 6dcdc13fc03e17d58969efbe8aa2e311d3b85d09dfea6b2bf58d1d91e11bbb8f
+run:
+  run_id: fresh10-tooling-20261028-r5-infra
+  unit: merlinphase1f10tooling1f65fed0ebd52312
+  cpus: 41,42,43,44,45,46,47,56,57,58,59,60,91,92,93
+  preparation_cpus: '0'
+  max_wall_s: 15300
+  final_model_s: 900
+  rate_limit_waits: 24
+  sim_max_jobs: 15
+  workers: 15
+  treatment: infra
+  author_helper_effort: medium
+variables:
+  WORKSPACE: /work/merlin
+  TASK: ${WORKSPACE}/tasks/el4-grader-throughput-20261024
+  REPO: ${TASK}/merlin
+  PYTHON: ${WORKSPACE}/tasks/gemmini-shared-phase1-20261021/.tmp/phase1-runtime-v1/venv/bin/python3.12
+  FRAMEWORK: ${REPO}/out/build/run-frameworks/3f3fab435f38
+  INPUTS: ${FRAMEWORK}/out/artifacts/fresh10-tooling/${RUN_ID}/inputs
+  RELEASE: ${INPUTS}/source-release
+  ARTIFACTS: ${STUDY_ROOT}/arms/${STUDY_ARM}/artifacts
+  RUN_STATE: ${STUDY_ROOT}/arms/${STUDY_ARM}/state
+  PRIVATE_ROOT: ${STUDY_ROOT}/arms/${STUDY_ARM}/private
+  OPERATOR_TMP: ${STUDY_ROOT}/arms/${STUDY_ARM}/tmp
+  PREVIOUS_RELEASE: ${WORKSPACE}/tasks/megaphase-auto-capabilities-20261024/merlin/out/artifacts/full-auto-launch/source-release/release
+  HARNESS: ${WORKSPACE}/tasks/phase1-harness-v2
+  LAUNCH_MODULES: ${FRAMEWORK}/examples/gemmini/phase1/launch
+  NEXT_TIMING_SELECTION: ${PINS_XS}/performance-selection.json
+  NEXT_TIMING_SELECTION_SHA256: f25f562f289c6cc3240af2740e4037975a03f99f3589d604661c70ed550e37f6
+  NEXT_CORRECTNESS_ROSTER_PIN: '{"path": "${PINS_XS}/original-roster-xs_capsules.json",
+    "sha256": "81559f640abb72eb736c2818b3978b525232fd65640546bdf708b4fb9baea1cb"}'
+  FRESH7_REFERENCE_EXPERIMENTS: ${REPO}/out/artifacts/open-fresh/fresh7/reference-experiments/packet-shards.json
+  FRESH7_REFERENCE_EXPERIMENTS_SHA256: f939d43cce1996439fd99d5e81d64270a70bd7d7fd1656431040524f5b2bc3cd
+  MATCHED_RAW_REFERENCES: ${REPO}/out/artifacts/preparation/fresh8-reference-kernels-only
+  REFERENCE_ANALYSIS_DEPS: ${REPO}/out/artifacts/preparation/fresh7-reference-analysis-deps/python
+  FRESH7_REFERENCE_MAP: ${REPO}/out/artifacts/preparation/fresh7-reference-map/REFERENCE_MAP.json
+  FRESH7_REFERENCE_MAP_SHA256: 51568c1de0842ab143d2fad503a146a9a41056f08c21c3ae73fdf7dbbbf65720
+  FRESH8_REFERENCE_MAP: ${REPO}/out/artifacts/preparation/fresh8-reference-map/REFERENCE_MAP.json
+  FRESH8_REFERENCE_MAP_SHA256: 5134c637c5d154008e7c877090a72868009f82655d4b2d23e58c8efa4c173ef7
+  CORPUS_XS: /work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/frameworks/0bb2f1a37a96/out/artifacts/xs_capsules/source-release
+  PINS_XS: /work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/pins
+  F10: ${TASK}/.tmp/fresh10
+  FRESH10_REFERENCE_MAP: ${F10}/refs-cca/REFERENCE_MAP.json
+  FRESH10_REFERENCE_MAP_SHA256: 9d7d56c59072493f2f1aa4b3a2471811e21a5da62e1d548e900201e275bfcfd3
+  STUDY_ROOT: /work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5
+  STUDY_ARM: infra
+export:
+  config_source: ${WORKSPACE}/tasks/megaphase-auto-capabilities-20261024/merlin
+  copies:
+  - path: .env
+    mode: '0600'
+  - path: out/artifacts/targets/host/gemmini_rocket_scalar_int8_v0
+inputs:
+  output: ${INPUTS}
+  nice: 0
+  previous_library: ${WORKSPACE}/tasks/el4-connected-execution-20261023/merlin/out/artifacts/releases/automatic-compiler-integration-20261025-v3/author-library
+  library_version: 24
+  reviewed_modules:
+  - merlin.sched.ir.events
+  - merlin.compile.scheduling.scf_carried_events
+  - merlin.sched.primitives.event_loops
+  - merlin.common.stat_memo
+  - merlin.sched.primitives.loop_handles
+  - merlin.compile.scheduling.completion_streams
+  - merlin.compile.scheduling.configuration_motion
+  - merlin.compile.scheduling.spatial_max_stripes
+  - merlin.compile.logical_abi
+  - merlin.compile.scheduling.convolution_exploration
+  - merlin.compile.scheduling.dense_panel_epochs
+  - merlin.transforms.evaluated_exploration
+  - merlin.transforms.shape_policy
+  - merlin.compile.scheduling.pointwise_convolution
+  - merlin.compile.scheduling.batched_dense
+  - merlin.compile.scheduling.loaded_sum_epochs
+  - merlin.compile.tuning_knobs
+  - merlin.transforms.tuning_selection
+  - merlin.compile.scheduling.dense_shared_rhs
+  - merlin.compile.scheduling.dense_shared_rhs_check
+  - merlin.compile.scheduling.shared_rhs_schedule_ir
+  - merlin.compile.scheduling.horizontal_convolution
+  - merlin.compile.scheduling.operand_slots
+  - merlin.compile.scheduling.rolling_lookahead
+  - merlin.llvmlower.contraction_row_slice
+  - merlin.llvmlower.layout_conformance
+  - merlin.llvmlower.quant_round_check
+  - merlin.llvmlower.repeated_pointwise
+  - merlin.llvmlower.weight_prepack_runtime
+  - merlin.transforms.dense_row_batching
+  - merlin.transforms.dense_row_batching_check
+  - merlin.transforms.head_batching
+  - merlin.transforms.shared_rhs_views
+  - merlin.compile.scheduling.projection_dense
+  - merlin.llvmlower.borrowed_arena
+  - merlin.llvmlower.quant_round_chain
+  - merlin.compile.analysis
+  - merlin.compile.analysis.contraction_shapes
+  full_compiler_review_id: fresh-run-complete-compiler-source-${EXPORT_ID}
+  corpus: ${CORPUS_XS}
+  public_references: ${F10}/refs-cca/public-references
+  forbidden_reference_prefixes:
+  - measured-exo/
+  logical_storage_budget_bytes: 134217728
+  common_substrate: merlin.common_compiler_substrate.v17
+  environment:
+    MERLIN_BUNDLE_CAS: ${OPERATOR_TMP}/prepare-cas
+    MERLIN_CAPSULE_ORDER: measured-longest-first
+    MERLIN_CODEX_CPUS: ${PREPARATION_CPUS}
+    MERLIN_COMPUTE_CPUS: ${PREPARATION_CPUS}
+    MERLIN_PREPARATION_CPUS: ${PREPARATION_CPUS}
+    MERLIN_COMPUTE_CPU_SLOTS: ${OPERATOR_TMP}/prepare-tmp/merlin_compute_cpu_slots
+    MERLIN_GSIM_SLOT_ROOT: ${OPERATOR_TMP}/prepare-tmp/merlin_gsim_slot_root
+    MERLIN_CORPUS_SEAL: ${PREVIOUS_RELEASE}/private/seal.json
+    MERLIN_RTL_FACTS: ${PREVIOUS_RELEASE}/payload/experiment/rtl_facts/facts.json
+    MERLIN_TARGET_CONTRACT: ${PREVIOUS_RELEASE}/payload/experiment/contracts/target_contract.yaml
+    MERLIN_TARGET_EXPERIMENT: ${PREVIOUS_RELEASE}/payload/experiment/target_experiment.yaml
+    MERLIN_JOINT_PERFORMANCE_SELECTION: '{"path": "${NEXT_TIMING_SELECTION}", "sha256":
+      "${NEXT_TIMING_SELECTION_SHA256}"}'
+    MERLIN_OUT_ROOT: ${FRAMEWORK}/out
+    TMPDIR: ${OPERATOR_TMP}/prepare-tmp
+    MERLIN_JOINT_CORRECTNESS_ROSTER: ${NEXT_CORRECTNESS_ROSTER_PIN}
+  public_program_suite:
+    path: /work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs_capsules/programs/program-selection.json
+    sha256: 58cde8e581f067dcfcd1de0d17a04a117cacc2101e9648daba98bf289c763de8
+  host_capability_selection:
+    path: ${FRAMEWORK}/examples/gemmini/platform/host-capabilities.yaml
+    sha256: f2934e728ecdbb18b9f6a4cf6365aec6bf05ba381fd89bd397010909a151b326
+  author_profile_common_inputs: fresh10_common
+seal:
+  reviewed_by: copparihollmann@gmail.com
+  review_note: null
+plan:
+  launch_modules: ${LAUNCH_MODULES}
+  library_selection: ${INPUTS}/author-library/compiler-library-selection.json
+  full_compiler_manifest: ${INPUTS}/full-compiler/manifest.json
+  public_reference_manifest: ${INPUTS}/public-references/reference-manifest.json
+  guidance: /work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/common-guidance.md
+  timing_selection: ${NEXT_TIMING_SELECTION}
+  policy:
+    base:
+      path: /work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/common-base-policy.json
+      sha256: c2bdb4efdbbad80c864e09d581538ef63369ce87f3c455cb30d98feb1cfcd9b0
+    performance_scope: null
+    defaults:
+      prohibited_instruction_roles:
+      - loop_descriptor
+      gsim_measurement:
+        long_max_jobs: 4
+        max_job_wall_s: 1800
+      gsim:
+        max_job_wall_s: 1800
+      gsim_correctness:
+        max_job_wall_s: 1800
+  reservation:
+    margin_s: 1800
+    unit: ${UNIT}
+    state: ${RUN_STATE}/cpu-reservation.json
+    log: ${ARTIFACTS}/campaign.log
+  required_flags:
+  - --fresh-backend
+  - --author-token-unbounded
+  forbidden_flags:
+  - --seed-submission
+  - --author-token-target
+  - --resume
+  forbidden_fragments:
+  - seed-compiler
+  - gemmini-open-compiler-20261024-v8
+  - measured-exo
+  input_flags:
+  - --descriptor
+  - --bundle-manifest
+  - --corpus-seal
+  - --full-compiler-root
+  - --full-compiler-manifest
+  - --compiler-library-root
+  - --compiler-library-contract
+  - --operator-errata
+  - --joint-campaign
+  record:
+    schema: operator.open_compiler_continuation.v1
+    immutable_input_repository: ${WORKSPACE}/tasks/megaphase-auto-capabilities-20261024/merlin
+    origin: fresh backend on the complete editable compiler source; no seed, no inherited
+      results
+    compiler_access: full_compiler
+    capsules:
+      total: 250
+      original_correctness: 153
+      calibration: 20
+      scalability_performance: 77
+    token_admission: false
+    model_status: provisional; no <=4percent qualification claim
+    limits:
+      author_helpers: 8
+      shared_compute_cpus: 15
+    acceptance: Fresh backend with reviewed inputs; correctness and performance qualification
+      remain execution results.
+    token_budget:
+      target: null
+      mode: unbounded
+      hard_cap: false
+    study_kind: fresh10-tooling-v1
+    study_source_revision: 3f3fab435f387f99a8986f78dbb6e6c180577cf4
+    study_baseline_source_revision: f9d7fb5c3d6fa2e5168e982953dd0b1d9b480076
+  argv:
+  - ${PYTHON}
+  - -B
+  - -m
+  - merlin_experiments.phase1
+  - --descriptor
+  - ${RELEASE}/payload/experiment/target_experiment.yaml
+  - --repo
+  - ${FRAMEWORK}
+  - --level
+  - EL4
+  - --bundle
+  - merlin_assisted_rtlchecks_public_v0
+  - --bundle-manifest
+  - ${RELEASE}/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml
+  - --corpus-seal
+  - ${RELEASE}/private/seal.json
+  - --oracle-timing
+  - ${HARNESS}/.tmp/phase1-prep-20261017-v4/oracle-timing.json
+  - --validation-scope
+  - full
+  - --private-full-model-spec
+  - ${WORKSPACE}/tasks/el4-joint-campaign-20261021/private/joint-ready-model-source-v2/private-models.yaml
+  - --instruction-selection
+  - ${HARNESS}/private/instruction-selection/selection.json
+  - --compiler-library-root
+  - ${LIBRARY_ROOT}
+  - --compiler-library-contract
+  - ${ARTIFACTS}/selected-library-contract.json
+  - --compiler-library-contract-sha256
+  - ${LIBRARY_CONTRACT_SHA256}
+  - --driver
+  - codex
+  - --model
+  - gpt-6.1-sol
+  - --effort
+  - high
+  - --codex-max-subagents
+  - '8'
+  - --author-max-subagents
+  - '8'
+  - --codex-binary
+  - ${HOME}/.local/share/codex-0.162.0/bin/codex
+  - --codex-auth-source
+  - ${HOME}/.codex/auth.json
+  - --codex-home-root
+  - ${PRIVATE_ROOT}/codex-${RUN_ID}
+  - --sandbox
+  - bwrap
+  - --experiment
+  - full
+  - --schedule
+  - continuous
+  - --max-wall-s
+  - ${DURATION_S}
+  - --qa-timeout
+  - '1200'
+  - --model-budget-s
+  - '3600'
+  - --sim-max-jobs
+  - ${SIM_MAX_JOBS}
+  - --sim-per-capsule-timeout
+  - '1200'
+  - --grade-interval
+  - '120'
+  - --hidden-capsule-mode
+  - rtl
+  - --operator-errata
+  - ${ARTIFACTS}/author-guidance.md
+  - --live-conformance-feedback
+  - --run-id
+  - ${RUN_ID}
+  - --round-timeout
+  - ${DURATION_S}
+  - --joint-campaign
+  - ${ARTIFACTS}/policy.json
+  - --compiler-execution
+  - snapshot_external_v1
+  - --compiler-access
+  - full_compiler
+  - --full-compiler-root
+  - ${INPUTS}/full-compiler/python
+  - --full-compiler-manifest
+  - ${INPUTS}/full-compiler/manifest.json
+  - --full-compiler-manifest-sha256
+  - ${FULL_COMPILER_MANIFEST_SHA256}
+  - --max-rate-limit-waits
+  - ${RATE_LIMIT_WAITS}
+  - --fresh-backend
+  - --author-token-unbounded
+  environment:
+    LD_LIBRARY_PATH: ${HARNESS}/out/fire-aligned-spike-30mhz/runtime/lib
+    MERLIN_BACKGROUND_CODEGEN_SCALABILITY: '1'
+    MERLIN_BACKGROUND_FINISH_SNAPSHOT: '1'
+    MERLIN_BACKGROUND_PROGRESS: '1'
+    MERLIN_CAPSULE_CALIBRATION_S: '0'
+    MERLIN_CAPSULE_ORDER: information-first
+    MERLIN_CHIPYARD: ${HARNESS}/.tmp/chipyard-fire-aligned
+    MERLIN_CHIPYARD_GEMMINI_ROCKET: ${HARNESS}/.tmp/chipyard-fire-aligned
+    MERLIN_CLANG: ${WORKSPACE}/toolchains/llvm-a47bddcc/install/bin/clang-23
+    MERLIN_CODEX_CPUS: ${CPUS}
+    MERLIN_COMPUTE_CPUS: ${CPUS}
+    MERLIN_COMPUTE_CPU_SLOTS: ${RUN_STATE}/compute-slots
+    MERLIN_CORPUS_SEAL: ${RELEASE}/private/seal.json
+    MERLIN_DEVICE_BUILD_JOBS: ${CPU_COUNT}
+    MERLIN_EXT_CHIPYARD: ${HARNESS}/.tmp/chipyard-fire-aligned
+    MERLIN_FIRE_ALIGNED_SPIKE_RUNTIME: ${HARNESS}/out/fire-aligned-spike-30mhz/runtime
+    MERLIN_GEMMINI_GSIM_EMU: ${HARNESS}/.tmp/gsim-fire-aligned-provisional-v3/native/emulator
+    MERLIN_GRADE_START_TO_START: '1'
+    MERLIN_GRADE_WORKERS: ${CPU_COUNT}
+    MERLIN_GSIM_EMU_GEMMINI: ${HARNESS}/.tmp/gsim-fire-aligned-provisional-v3/native/emulator
+    MERLIN_GSIM_MAX_SLOTS: ${CPU_COUNT}
+    MERLIN_GSIM_SLOT_ROOT: ${RUN_STATE}/gsim-slots
+    MERLIN_JOINT_CORRECTNESS_ROSTER: ${NEXT_CORRECTNESS_ROSTER_PIN}
+    MERLIN_JOINT_PERFORMANCE_SELECTION: ${PERFORMANCE_SELECTION_PIN}
+    MERLIN_M2M_DIR: ${WORKSPACE}/tasks/el4-publication-clean/model2mlir
+    MERLIN_M2M_PYTHON: ${HARNESS}/model2mlir/.venv/bin/python
+    MERLIN_MODEL2MLIR: ${WORKSPACE}/tasks/el4-publication-clean/model2mlir
+    MERLIN_MODEL_CHECK_BUNDLE: ${WORKSPACE}/tasks/el4-joint-large-feedback-20261021/private/gemmini/numerics/joint-v1
+    MERLIN_NATIVE_CALIBRATION_ADMISSION_REVIEW: '{"path": "${WORKSPACE}/tasks/megaphase-host-admission/merlin/out/artifacts/provisional-partial-row-selection-v1/combined-initial/continued-denial.json",
+      "sha256": "fd90dbca9671613ebd6a6fe0aa246a6f4e6ae192752b3ad772570fe66f1a76d3"}'
+    MERLIN_NATIVE_CALIBRATION_LAUNCHER_REVIEW: '{"path": "${WORKSPACE}/tasks/el4-joint-performance-feedback-20261021/private/automatic-calibration-v1/launcher-correction-v1/review-v2.json",
+      "sha256": "1664fc0619a5a330c2874a32df88c88877744bb9543b8426cb2f16b3205a5620"}'
+    MERLIN_OPERATOR_GRADE_PROCESSES: '0'
+    MERLIN_ORIGINAL_EMISSION_PROCESSES: '0'
+    MERLIN_OUT_ROOT: ${REPO}/out
+    MERLIN_PHASE1_PUBLIC_HOST_BOARD: gemmini_rocket_gsim_fire_aligned
+    MERLIN_PREPARATION_CPUS: ${CPUS}
+    MERLIN_PRIVATE_EXECUTION_WORKERS: ${CPU_COUNT}
+    MERLIN_REPO_ROOT: ${FRAMEWORK}
+    MERLIN_RTL_FACTS: ${RELEASE}/payload/experiment/rtl_facts/facts.json
+    MERLIN_SELFCHECK_MAX_CAPSULES: auto
+    MERLIN_SELFCHECK_ORDINARY_JOBS: ${CPU_COUNT}
+    MERLIN_SHAPE_COVERAGE_CACHE: '1'
+    MERLIN_SIMULATION_CERT_CACHE: '1'
+    MERLIN_SNAPSHOT_LEASE_CACHE: '0'
+    MERLIN_SNAPSHOT_LEASE_MAX_FILES: '65536'
+    MERLIN_SNAPSHOT_LEASE_MIN_BYTES: '65536'
+    MERLIN_SPIKE: ${HARNESS}/out/fire-aligned-spike-30mhz/runtime/bin/spike
+    MERLIN_SPIKE_MAX_SLOTS: ${CPU_COUNT}
+    MERLIN_TARGET_CONTRACT: ${RELEASE}/payload/experiment/contracts/target_contract.yaml
+    MERLIN_TARGET_EXPERIMENT: ${RELEASE}/payload/experiment/target_experiment.yaml
+    MKL_NUM_THREADS: '1'
+    OMP_NUM_THREADS: '1'
+    OPENBLAS_NUM_THREADS: '1'
+    PATH: ${WORKSPACE}/tasks/gemmini-shared-phase1-20261021/.tmp/phase1-runtime-v1/venv/bin:${HARNESS}/merlin/.venv/bin:${WORKSPACE}/hw/bubblewrap-0.11.0/bin:${WORKSPACE}/toolchains/llvm-a47bddcc/install/bin:${HOME}/.local/share/codex-0.162.0/bin:/usr/local/bin:/usr/bin:/bin
+    PYTHONDONTWRITEBYTECODE: '1'
+    PYTHONPATH: ${FRAMEWORK}/src:${FRAMEWORK}/packages/merlin-experiments/src:${FRAMEWORK}/packages/merlin-timing/src:${FRAMEWORK}/packages/merlin-mining/src:${REFERENCE_ANALYSIS_DEPS}
+    PYTHONUNBUFFERED: '1'
+    TMPDIR: ${OPERATOR_TMP}
+    MERLIN_SELFCHECK_VARIANT_JOBS: ${CPU_COUNT}
+    MERLIN_SELFCHECK_BROKER_JOBS: '2'
+    HOME: ${HOME}
+    USER: ${USER}
+    LOGNAME: ${USER}
+    LANG: C.UTF-8
+    MERLIN_WORK_DIR: ${FRAMEWORK}
+    MERLIN_BUNDLE_CAS: ${RUN_STATE}/bundle-cas
+  ordering_selection: ${INPUTS}/completion-order-selection/selection.json
+  reference_experiments: null
+  reference_guidance: 'off'
+  reference_map:
+    path: ${FRESH10_REFERENCE_MAP}
+    sha256: ${FRESH10_REFERENCE_MAP_SHA256}
+  reference_experiment_tasks: 'off'
+  author_profile: fresh10-tooling-v1/infra
+preflight:
+  script: ${OPERATOR_TMP}/preflight-${RUN_ID}.sh
+  run_script: ${OPERATOR_TMP}/run-${RUN_ID}.sh
+  log: ${OPERATOR_TMP}/preflight-${RUN_ID}.log
+  timeout_s: 1500
+  retire_into: ${OPERATOR_TMP}/old-preflight-${RUN_ID}
+  retire:
+  - path: ${REPO}/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/${PREFLIGHT_RUN_ID}
+    as: ws
+    drop:
+    - bundle_inputs/external
+    - bundle_inputs/repo
+  - path: ${REPO}/out/runs/gemmini/phase1/${PREFLIGHT_RUN_ID}
+    as: run
+check:
+  log: ${ARTIFACTS}/campaign.log
+  run_dir: ${REPO}/out/runs/gemmini/phase1/${RUN_ID}
+  workspace: ${REPO}/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/${RUN_ID}/workspace
+  interval_s: 60
+  disk_path: ${WORKSPACE}
+  disk_min_gib: 50
+  error_markers:
+  - - grade failed
+  - - grade error
+  - - traceback
+  - - enospc
+  - - refus
+    - lease
+  response_keys:
+  - performance_brief
+  - model_calibration
+  - calibrated
+  - development_headroom
+  console:
+    python: ${WORKSPACE}/tasks/el4-command-console-20261023/merlin/.venv/bin/python
+    pythonpath: src:packages/merlin-experiments/src
+    cwd: ${REPO}
+    timeout_s: 400
+    args:
+    - --task
+    - ${TASK}
+    - --experiment
+    - ${RUN_ID}
+    - --operator-private
+    - --dump
+    - --no-placement
+    sections:
+    - grader
+    - tools
+    - performance
+    - certification
+    - integrity
+ordering:
+  target: gemmini
+  declarations: ${FRAMEWORK}/examples/gemmini/target/contracts/target_contract.yaml
+  command_recorder:
+    engine: ${WORKSPACE}/tasks/phase1-harness-v2/out/fire-aligned-spike-30mhz/runtime/bin/spike
+    include: ${WORKSPACE}/tasks/phase1-harness-v2/.tmp/functional-fire-build-v3/install/include
+    output: ${INPUTS}/command-recorder

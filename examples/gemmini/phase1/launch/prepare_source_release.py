@@ -15,6 +15,18 @@ import yaml
 from merlin_experiments.corpus import release
 
 
+def selected_public_references(scaffold, explicit, author_profile=None):
+    """Explicit no-expert profiles must never inherit a previous release's bank."""
+    from merlin_experiments.phase1.author_profiles import resolve
+
+    profile = resolve(author_profile) if author_profile else None
+    if profile is not None and not profile.raw_kernel_references:
+        if explicit is not None:
+            raise ValueError("the no-expert author profile cannot select public references")
+        return None
+    return Path(explicit) if explicit is not None else Path(scaffold["public_reference_sources"]["path"])
+
+
 def prepare(
     previous,
     output,
@@ -28,6 +40,11 @@ def prepare(
     common_substrate="merlin.common_compiler_substrate.v8",
     source_run=None,
     phase1_policy_descriptor=None,
+    author_profile=None,
+    author_profile_sources=None,
+    author_profile_common_inputs=None,
+    operand_protocol_selection=None,
+    operand_protocol_revision=None,
 ):
     if common_substrate not in (
         "merlin.common_compiler_substrate.v8",
@@ -58,6 +75,14 @@ def prepare(
     def pair(row):
         return Path(row["path"]), row["sha256"]
 
+    if operand_protocol_selection is None:
+        if operand_protocol_revision is not None:
+            raise ValueError("an operand protocol revision requires its explicit protocol selection")
+        operand_protocol_selection = pair(scaffold["operand_protocol"])
+        operand_protocol_revision = pair(scaffold["operand_revision"])
+    # An explicitly selected new protocol may have no revision. Never attach
+    # the previous release's revision to that new source/fact context.
+
     # A new Phase 0 generation of the same reviewed derivation may replace the previous source run.
     return release.prepare(
         Path(source_run) if source_run is not None else Path(old["source_run"]),
@@ -77,19 +102,17 @@ def prepare(
         model_spike_timeout_s=3600,
         logical_storage_budget_bytes=logical_storage_budget_bytes,
         gsim_readback_transport="coherent_dump_v1",
-        operand_protocol_selection=pair(scaffold["operand_protocol"]),
-        operand_protocol_revision=pair(scaffold["operand_revision"]),
+        operand_protocol_selection=operand_protocol_selection,
+        operand_protocol_revision=operand_protocol_revision,
         public_supplement=Path(public_supplement) if public_supplement is not None
             else Path(assembly["public_supplement"]["selection"]["path"]),
         public_scalability=Path(public_scalability) if public_scalability is not None
             else Path(scale["source"]["selection"]["path"]),
         public_program_suite=Path(public_program_suite) if public_program_suite is not None else None,
         host_capability_selection=host_capability_selection,
-        public_reference_manifest=(
-            Path(public_reference_manifest)
-            if public_reference_manifest is not None
-            else Path(scaffold["public_reference_sources"]["path"])
-        ),
+        **(dict(author_profile=author_profile, author_profile_sources=author_profile_sources,
+                author_profile_common_inputs=author_profile_common_inputs) if author_profile else {}),
+        public_reference_manifest=selected_public_references(scaffold, public_reference_manifest, author_profile),
     )
 
 
@@ -185,6 +208,9 @@ def main():
                    help="Exact reviewed support source for the existing host package")
     p.add_argument("--host-capability-spec-sha256", help="Digest of the explicitly selected host support source")
     p.add_argument("--public-program-suite", type=Path, help="Explicit reviewed complete-program roster")
+    for name in ("operand-protocol-selection", "operand-protocol-revision"):
+        p.add_argument("--" + name, type=Path)
+        p.add_argument("--" + name + "-sha256")
     args = p.parse_args()
     values = vars(args)
     host_spec, host_sha = values.pop("host_capability_spec"), values.pop("host_capability_spec_sha256")
@@ -192,6 +218,12 @@ def main():
         p.error("host capability source and digest must be selected together")
     if host_spec is not None:
         values["host_capability_selection"] = (host_spec, host_sha)
+    for name in ("operand_protocol_selection", "operand_protocol_revision"):
+        path, sha = values.pop(name), values.pop(name + "_sha256")
+        if (path is None) != (sha is None):
+            p.error(f"{name} path and digest must be selected together")
+        if path is not None:
+            values[name] = (path, sha)
     report = prepare(**values)
     (args.output.parent / "release-inspection.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
     print(json.dumps({k: report[k] for k in ("review_digest", "target") if k in report}))

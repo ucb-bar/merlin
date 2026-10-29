@@ -460,16 +460,68 @@ def stage_launch_references(manifest, destination, prefixes):
     return staged
 
 
+def profile_reference_manifest(ctx, section, destination, profile):
+    """Stage reviewed examples, or require an explicit profile-bound absence.
+
+    A no-reference treatment passes ``None`` into ordinary corpus preparation;
+    it never weakens positive-origin review by inventing an empty review bank.
+    """
+    selected = section.get("public_references")
+    if getattr(profile, "raw_kernel_references", True) is False:
+        if selected is not None:
+            raise SpecError("the no-reference author profile cannot select public references")
+        if ctx.reference_guidance != "off" or ctx.section("plan").get("reference_map") is not None:
+            raise SpecError("the no-reference author profile cannot select reference guidance or a map")
+        if destination.exists() or destination.is_symlink():
+            raise SpecError("the no-reference input destination must be absent")
+        return None
+    if selected is None:
+        raise SpecError("this author profile requires its reviewed public references")
+    return stage_launch_references(
+        ctx.path(selected) / "reference-manifest.json", destination,
+        section.get("forbidden_reference_prefixes") or (),
+    )
+
+
+def planned_reference_manifest(ctx, plan, profile):
+    """Bind a reviewed reference manifest or the explicit no-reference treatment."""
+    selected = plan.get("public_reference_manifest")
+    if getattr(profile, "raw_kernel_references", True) is False:
+        if (selected is not None or ctx.section("inputs").get("public_references") is not None
+                or ctx.reference_guidance != "off" or plan.get("reference_map") is not None):
+            raise SpecError("the no-reference plan cannot select reference material, guidance or a map")
+        return None
+    if selected is None:
+        raise SpecError("this plan requires its reviewed public reference manifest")
+    references = ctx.path(selected)
+    prefixes = ctx.section("inputs").get("forbidden_reference_prefixes") or ()
+    forbidden = forbidden_references(reference_members(json.loads(references.read_text())), prefixes)
+    if forbidden:
+        raise SpecError(f"public references carry forbidden members: {forbidden[:3]}")
+    return references
+
+
 def extra_source_selections(ctx, section):
+    """Forward explicit native source choices; a run pin hashes its resolved-plan.json.
+
+    The native release owner independently validates that completed producer's
+    frozen inputs, output and execution receipts. This pin selects its plan,
+    without hashing a potentially large run tree or carrying a release seal.
+    """
     selected = {}
-    for key in ("public_program_suite", "host_capability_selection"):
+    tuple_selections = {"host_capability_selection", "operand_protocol_selection", "operand_protocol_revision"}
+    for key in ("public_program_suite", "host_capability_selection", "phase1_policy_descriptor", "source_run",
+                "operand_protocol_selection", "operand_protocol_revision"):
         pin = section.get(key)
         if pin is None:
             continue
+        if not isinstance(pin, dict) or set(pin) != {"path", "sha256"}:
+            raise SpecError(f"{key} requires an explicit path/sha256 selection")
         path = ctx.path(pin["path"])
-        if sha256(path) != pin["sha256"]:
+        member = path / "resolved-plan.json" if key == "source_run" else path
+        if sha256(member) != pin["sha256"]:
             raise SpecError(f"{key} selection changed: {path}")
-        selected[key] = path if key == "public_program_suite" else (path, pin["sha256"])
+        selected[key] = (path, pin["sha256"]) if key in tuple_selections else path
     return selected
 
 
@@ -484,6 +536,10 @@ def cmd_inputs_stage(ctx: Context, args) -> int:
     out.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
 
+    from merlin_experiments.phase1.author_profiles import prepare_sources, resolve
+    from merlin_experiments.phase1.full_compiler_workspace import prepare as prepare_full
+
+    profile = resolve(ctx.section("plan").get("author_profile", ""))
     library = load_module("prepare_author_library", modules)
     base = ctx.path(section["previous_library"])
     previous = json.loads((base / "generic-library-selection.json").read_bytes())
@@ -497,21 +553,27 @@ def cmd_inputs_stage(ctx: Context, args) -> int:
         library_version=int(section["library_version"]),
         reviewed_module=tuple(section.get("reviewed_modules") or ()),
     )
+    if profile is not None and profile.name.startswith("fresh10-tooling-v1/"):
+        from merlin_experiments.phase1.fresh10_sources import project_author_library
+
+        report = {**report, **project_author_library(out / "author-library", profile.name, repo=framework)}
     contract = report["contract_sha256"]
     print(json.dumps({"stage": "author_library", "contract": contract, "members": report["members"]}), flush=True)
 
-    from merlin_experiments.phase1.full_compiler_workspace import prepare as prepare_full
-
-    full = prepare_full(framework, out / "full-compiler", review_id=ctx.x(section["full_compiler_review_id"]))
-    full.verify()
-    (out / "full-compiler-selection.json").write_text(json.dumps(full.record(), indent=2) + "\n")
-    print(json.dumps({"stage": "full_compiler", "members": len(full.members), "manifest": full.manifest_sha256}))
+    full = (prepare_full(framework, out / "full-compiler", review_id=ctx.x(section["full_compiler_review_id"]))
+            if profile is None else prepare_sources(framework, out / "full-compiler", profile=profile,
+                                                    review_id=ctx.x(section["full_compiler_review_id"]),
+                                                    source_selection=ctx.x_tree(section.get("author_profile_source_selection"))))
+    if full is not None:
+        full.verify()
+    (out / "full-compiler-selection.json").write_text(json.dumps(None if full is None else full.record(), indent=2) + "\n")
+    print(json.dumps({"stage": "full_compiler", "members": len(full.members) if full else 0,
+                      "manifest": full.manifest_sha256 if full else None}))
 
     # Public references: the pinned base members only; a forbidden prefix (private measured kernels)
     # refuses the whole preparation before anything is copied.
-    source_refs, refs = ctx.path(section["public_references"]), out / "public-references"
-    reference_manifest = stage_launch_references(
-        source_refs / "reference-manifest.json", refs, section.get("forbidden_reference_prefixes") or ()
+    reference_manifest = profile_reference_manifest(
+        ctx, section, out / "public-references", profile,
     )
 
     source = load_module("prepare_source_release", modules)
@@ -524,6 +586,8 @@ def cmd_inputs_stage(ctx: Context, args) -> int:
         **extra_source_selections(ctx, section),
         logical_storage_budget_bytes=budget,
         common_substrate=section["common_substrate"],
+        **(dict(author_profile=profile.name, author_profile_sources=full,
+                author_profile_common_inputs=section.get("author_profile_common_inputs")) if profile else {}),
     )
     selection = {
         "schema": "operator.fresh_run_inputs.v1",
@@ -535,7 +599,8 @@ def cmd_inputs_stage(ctx: Context, args) -> int:
         "common_substrate": section["common_substrate"],
         "logical_storage_budget_bytes": budget,
         "full_compiler_selection": str(out / "full-compiler-selection.json"),
-        "full_compiler": full.record(),
+        "full_compiler": None if full is None else full.record(),
+        **({"author_profile": profile.record()} if profile else {}),
         "source_release": str(out / "source-release"),
         "previous_release": str(corpus),
         "requires_review_and_sealing": True,
@@ -639,6 +704,37 @@ WORKER_KEYS = (
 )
 
 
+def profile_omitted_flags(profile):
+    """Keep argument construction and input admission on the same capability boundary."""
+    if profile is None or profile.seeded:
+        return set()
+    if profile.name.startswith("fresh10-tooling-v1/"):
+        return set() if profile.allows("transform_library") else {"--required-shared-pass"}
+    removed = {"--compiler-library-root", "--compiler-library-contract", "--compiler-library-contract-sha256",
+               "--required-shared-pass"}
+    if profile.level == 1:
+        removed.update(("--full-compiler-root", "--full-compiler-manifest", "--full-compiler-manifest-sha256"))
+    return removed
+
+
+def profile_campaign_argv(profile, argv):
+    """Apply the source and reuse requirements of the selected author treatment."""
+    removed = profile_omitted_flags(profile)
+    filtered, cursor = [], 0
+    while cursor < len(argv):
+        if argv[cursor] in removed:
+            cursor += 2
+        else:
+            filtered.append(argv[cursor])
+            cursor += 1
+    if (profile is not None and not profile.seeded and not profile.name.startswith("fresh10-tooling-v1/")
+            and "--compiler-access" in filtered):
+        filtered[filtered.index("--compiler-access") + 1] = (
+            "selected_library" if profile.level == 1 else "full_compiler"
+        )
+    return filtered
+
+
 def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     plan, run = ctx.section("plan"), ctx.run
     output = ctx.path("${ARTIFACTS}")
@@ -678,15 +774,14 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     timing = {"path": str(selection), "sha256": sha256(selection)}
 
     # 3. Inputs: full compiler manifest, author library selection and public references.
-    manifest = ctx.path(plan["full_compiler_manifest"])
+    from merlin_experiments.phase1.author_profiles import resolve as resolve_author_profile
+
+    author_profile = resolve_author_profile(plan.get("author_profile", ""))
+    manifest = None if author_profile and author_profile.level == 1 else ctx.path(plan["full_compiler_manifest"])
     library = restore_library(ctx.path(plan["library_selection"]))
     contract = output / "selected-library-contract.json"
     contract.write_text(json.dumps(library.contract.record(), sort_keys=True, indent=2) + "\n")
-    references = ctx.path(plan["public_reference_manifest"])
-    prefixes = ctx.section("inputs").get("forbidden_reference_prefixes") or ()
-    forbidden = forbidden_references(reference_members(json.loads(references.read_text())), prefixes)
-    if forbidden:
-        raise SpecError(f"public references carry forbidden members: {forbidden[:3]}")
+    references = planned_reference_manifest(ctx, plan, author_profile)
 
     cap = (lambda value: str(min(int(value), int(workers)))) if workers else str
     ctx.computed.update(
@@ -696,13 +791,16 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
             "SIM_MAX_JOBS": cap(run["sim_max_jobs"]),
             "LIBRARY_ROOT": str(library.root),
             "LIBRARY_CONTRACT_SHA256": library.contract.sha256,
-            "FULL_COMPILER_MANIFEST_SHA256": sha256(manifest),
+            "FULL_COMPILER_MANIFEST_SHA256": sha256(manifest) if manifest else "",
             "PERFORMANCE_SELECTION_PIN": json.dumps(timing),
         }
     )
 
     # 4. Campaign argv and environment, exactly as the spec spells them.
-    argv = [ctx.x(item) for item in plan["argv"]]
+    raw_argv = profile_campaign_argv(author_profile, plan["argv"])
+    argv = [ctx.x(item) for item in raw_argv]
+    if author_profile is not None:
+        argv += ["--author-profile", author_profile.name]
     reference = plan.get("reference_experiments") if ctx.reference_guidance == "on" else None
     if ctx.reference_guidance == "on" and reference is None:
         raise SpecError("reference guidance on requires a pinned reference_experiments selection")
@@ -810,6 +908,7 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     record.update(
         {
             "reference_guidance": ctx.reference_guidance,
+            **({"author_profile": author_profile.record()} if author_profile else {}),
             "execution_started": False,
             "run_id": ctx.run_id,
             "cwd": str(framework),
@@ -821,7 +920,9 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
             "launcher_pid": None,
             "treatment": run["treatment"],
             "source_release": str(ctx.path("${RELEASE}")),
-            "reference_manifest": {"path": str(references), "sha256": sha256(references)},
+            "reference_manifest": (
+                None if references is None else {"path": str(references), "sha256": sha256(references)}
+            ),
             "timing_selection": timing,
             "argv": argv,
             "reserved_argv": reserved,
@@ -858,7 +959,7 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     return record
 
 
-def pin_reference_map(ctx: Context, plan: dict, output: Path, references: Path) -> dict | None:
+def pin_reference_map(ctx: Context, plan: dict, output: Path, references: Path | None) -> dict | None:
     """The operator-built reference map, verified and copied beside the launch: ``{path, sha256}``.
 
     The same bytes for every arm that names the same pin; it must describe this launch's reference
@@ -866,6 +967,8 @@ def pin_reference_map(ctx: Context, plan: dict, output: Path, references: Path) 
     selected = plan.get("reference_map")
     if selected is None:
         return None
+    if references is None:
+        raise SpecError("a reference map requires its reviewed reference manifest")
     if not isinstance(selected, dict) or set(selected) != {"path", "sha256"}:
         raise SpecError("reference_map requires one explicit path/sha256 pin")
     path, digest = ctx.path(selected["path"]), ctx.x(selected["sha256"])
@@ -897,7 +1000,11 @@ def _check_campaign(ctx: Context, argv: list[str], plan: dict) -> None:
     leftover = [item for item in argv if "${" in item]
     if leftover:
         raise SpecError(f"unexpanded variables: {leftover[:3]}")
-    for flag in plan.get("required_flags") or ():
+    from merlin_experiments.phase1.author_profiles import resolve
+
+    profile = resolve(plan.get("author_profile", ""))
+    omitted = profile_omitted_flags(profile)
+    for flag in [f for f in plan.get("required_flags") or () if f not in omitted]:
         if flag not in argv:
             raise SpecError(f"fresh launch requires {flag}")
     for flag in plan.get("forbidden_flags") or ():
@@ -906,7 +1013,7 @@ def _check_campaign(ctx: Context, argv: list[str], plan: dict) -> None:
     stale = [item for item in argv if any(part in item for part in plan.get("forbidden_fragments") or ())]
     if stale:
         raise SpecError(f"stale origin paths remain: {stale[:3]}")
-    for flag in plan.get("input_flags") or ():
+    for flag in [f for f in plan.get("input_flags") or () if f not in omitted]:
         value = argv[argv.index(flag) + 1]
         if not Path(value).exists():
             raise SpecError(f"missing input for {flag}: {value}")
@@ -997,7 +1104,25 @@ def preflight_script(plan: dict, *, run: bool) -> str:
     command = argv[argv.index("/usr/bin/env") :]
     if not run:
         name, preflight = plan["run_id"], plan["run_id"] + "-preflight"
-        command = [item.replace(name, preflight) for item in command] + ["--preflight-only"]
+        # Only invocation identity and writable runtime state get a new name.
+        # A run-specific frozen release can itself contain RUN_ID in its path;
+        # rewriting descriptor/seal/source/reference pins would select nonexistent
+        # inputs and invalidate the exact plan being checked.
+        positions = [i for i, item in enumerate(command) if item == "--run-id"]
+        if len(positions) != 1 or command[positions[0] + 1] != name:
+            raise SpecError("preflight requires the plan's exact run-id option")
+        command[positions[0] + 1] = preflight
+        for flag in ("--codex-home-root",):
+            if flag in command:
+                position = command.index(flag)
+                command[position + 1] = command[position + 1].replace(name, preflight)
+        writable = {"TMPDIR", "MERLIN_BUNDLE_CAS", "MERLIN_COMPUTE_CPU_SLOTS", "MERLIN_GSIM_SLOT_ROOT"}
+        command = [
+            key + "=" + value.replace(name, preflight)
+            if separator and key in writable else item
+            for item in command for key, separator, value in (item.partition("="),)
+        ]
+        command += ["--preflight-only"]
     cpus = plan["environment"]["MERLIN_COMPUTE_CPUS"]
     slots = [
         item.split("=", 1)[1]

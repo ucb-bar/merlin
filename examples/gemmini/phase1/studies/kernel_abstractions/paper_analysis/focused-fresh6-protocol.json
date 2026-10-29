@@ -1,0 +1,256 @@
+{
+  "schema": "merlin.focused_fresh6_proposal.v1",
+  "status": "planned_not_launched",
+  "purpose": "Separate newly added assistance over one effective inherited Fresh6 compiler; freeze before transfer evaluation.",
+  "common_controls": [
+    "Same byte-pinned effective seed and declared inherited feature set",
+    "Identical raw expert references and numeric/ABI/ISA/storage/order contracts",
+    "Same model, effort, prompts apart from real capability disclosure, feedback and evaluation policy",
+    "14400 author seconds; 15 CPUs; at most8helpers; at most3ofthese large runs concurrently",
+    "Same fixed author deadline across provider interruptions; record downtime and actual author activity",
+    "Automatic kernel learning off in the analysis-only CCA contrast",
+    "All candidate source, rules, knobs and dispatch policies frozen before final probes; no retuning"
+  ],
+  "arms": {
+    "B": "Inherited seed plus raw references; agent implements its own new optimizations",
+    "C": "B plus CCA lifting/comparison",
+    "L": "B plus pinned new transformation library and explicitly inventoried dependencies",
+    "LS": "L plus additional author-facing scheduling/legality/emission interface",
+    "ALL": "LS plus the same CCA assistance as C"
+  },
+  "contrasts": {
+    "C-B": "CCA conditional on common inherited tools",
+    "L-B": "New library bundle including required dependencies",
+    "LS-L": "Additional scheduling interface conditional on library",
+    "ALL-B": "Combined assistance bundle"
+  },
+  "conditional_later_contrast": "ALL-LS isolates CCA with full tools only if contemporaneous/configuration matched.",
+  "optional_resource_blocking": [
+    [
+      "B1",
+      "L",
+      "LS"
+    ],
+    [
+      "B2",
+      "C",
+      "ALL"
+    ]
+  ],
+  "limits": [
+    "One author per arm gives descriptive results; shapes are not independent author replications",
+    "Dependency audits may reveal that the library includes minimal scheduling support",
+    "This is not a complete factorial design and does not identify every interaction"
+  ],
+  "training": [
+    {
+      "case_id": "projection_train",
+      "family": "projection",
+      "shape": {
+        "M": 16,
+        "K": 2048,
+        "N": 2048
+      }
+    },
+    {
+      "case_id": "qk_train",
+      "family": "qk",
+      "shape": {
+        "Q": 16,
+        "S": 16,
+        "Hq": 32,
+        "Hkv": 4,
+        "D": 64
+      }
+    },
+    {
+      "case_id": "convolution_train",
+      "family": "convolution",
+      "shape": {
+        "batch": 4,
+        "output_h": 28,
+        "output_w": 28,
+        "kernel_h": 3,
+        "kernel_w": 3,
+        "Cin": 128,
+        "Cout": 128
+      }
+    }
+  ],
+  "final_only_probes": [
+    {
+      "case_id": "gemm_decode",
+      "family": "projection",
+      "shape": {
+        "M": 1,
+        "K": 2048,
+        "N": 2048
+      },
+      "change": {
+        "M": 1
+      },
+      "probe_kind": "smaller",
+      "prior_exposure": "needs_seed_and_reference_audit"
+    },
+    {
+      "case_id": "gemm_row_tail",
+      "family": "projection",
+      "shape": {
+        "M": 17,
+        "K": 2048,
+        "N": 2048
+      },
+      "change": {
+        "M": 17
+      },
+      "probe_kind": "tile_boundary",
+      "prior_exposure": "needs_seed_and_reference_audit"
+    },
+    {
+      "case_id": "gemm_reduction_tail",
+      "family": "projection",
+      "shape": {
+        "M": 16,
+        "K": 2049,
+        "N": 2048
+      },
+      "change": {
+        "K": 2049
+      },
+      "probe_kind": "reduction_tail",
+      "prior_exposure": "needs_seed_and_reference_audit"
+    },
+    {
+      "case_id": "qk_decode",
+      "family": "qk",
+      "shape": {
+        "Q": 1,
+        "S": 16,
+        "Hq": 32,
+        "Hkv": 4,
+        "D": 64
+      },
+      "change": {
+        "Q": 1
+      },
+      "probe_kind": "smaller",
+      "prior_exposure": "needs_seed_and_reference_audit"
+    },
+    {
+      "case_id": "qk_context_tail",
+      "family": "qk",
+      "shape": {
+        "Q": 16,
+        "S": 19,
+        "Hq": 32,
+        "Hkv": 4,
+        "D": 64
+      },
+      "change": {
+        "S": 19
+      },
+      "probe_kind": "context_tail",
+      "prior_exposure": "needs_seed_and_reference_audit"
+    },
+    {
+      "case_id": "qk_joint_tile_tail",
+      "family": "qk",
+      "shape": {
+        "Q": 17,
+        "S": 17,
+        "Hq": 32,
+        "Hkv": 4,
+        "D": 64
+      },
+      "change": {
+        "Q": 17,
+        "S": 17
+      },
+      "probe_kind": "two_axis_interaction",
+      "prior_exposure": "needs_seed_and_reference_audit"
+    },
+    {
+      "case_id": "conv_batch2",
+      "family": "convolution",
+      "shape": {
+        "batch": 2,
+        "output_h": 28,
+        "output_w": 28,
+        "kernel_h": 3,
+        "kernel_w": 3,
+        "Cin": 128,
+        "Cout": 128
+      },
+      "change": {
+        "batch": 2
+      },
+      "probe_kind": "smaller",
+      "prior_exposure": "needs_seed_and_reference_audit"
+    },
+    {
+      "case_id": "conv_spatial29",
+      "family": "convolution",
+      "shape": {
+        "batch": 4,
+        "output_h": 29,
+        "output_w": 29,
+        "kernel_h": 3,
+        "kernel_w": 3,
+        "Cin": 128,
+        "Cout": 128
+      },
+      "change": {
+        "output_h": 29,
+        "output_w": 29
+      },
+      "probe_kind": "spatial_tail",
+      "prior_exposure": "needs_seed_and_reference_audit"
+    },
+    {
+      "case_id": "conv_cout129",
+      "family": "convolution",
+      "shape": {
+        "batch": 4,
+        "output_h": 28,
+        "output_w": 28,
+        "kernel_h": 3,
+        "kernel_w": 3,
+        "Cin": 128,
+        "Cout": 129
+      },
+      "change": {
+        "Cout": 129
+      },
+      "probe_kind": "channel_tail",
+      "prior_exposure": "needs_seed_and_reference_audit"
+    }
+  ],
+  "unresolved_contract_bindings": [
+    "Exact effective seed/source and prior reference exposure",
+    "Convolution stride, padding, input dimensions and layout consistent with specified output geometry",
+    "All families: dtype, accumulator width, overflow/rounding, epilogue, layout and full-output checking",
+    "Exact compiler, runtime, hardware, ROI and consumed ELF/domain proof for qualified FireSim comparison"
+  ],
+  "exposure_rule": "Held out by a new focused protocol does not imply unseen by Fresh6. Preserve inherited/public/reference exposure strata.",
+  "known_exposure_conflicts": [
+    {
+      "case": "gemm_decode",
+      "public_case": "JM_tiny_llama_decode_m1k2048n2048_raw",
+      "reason": "Geometry is already public in the common xs suite."
+    }
+  ],
+  "existing_34_cell_panel": "Keep the existing panel and exposure labels unchanged; add this as a separately versioned12-cell protocol.",
+  "oracle_rule": "Compare against an independently retained oracle with matching contract/hardware; do not feed final-probe results or oracle schedules back to authoring.",
+  "abstraction_metrics": [
+    "Checked legality acceptance with instrumented denominator and unchecked cases",
+    "Independent common validator outcomes per request/source/case",
+    "Explicit storage/alias/lifetime/completion findings; no diagnosis from numerical mismatch alone",
+    "Detection stage and latency, observed expensive checks avoided",
+    "Repeated failure signatures and changed-source repair time/tokens; censor open repairs",
+    "Emitted and executed reuse across shapes, separating supplied and authored origin",
+    "Training/frozen-probe correctness and same-shape timing ratios with failures retained",
+    "Build/emission latency, IR/object/code size, command/traffic/packing/host-work observations",
+    "CCA proposed-to-admitted-to-emitted-to-executed mechanism chain",
+    "Pass ordering/heuristic and schedule comparisons to oracle as descriptive structural diagnostics"
+  ]
+}

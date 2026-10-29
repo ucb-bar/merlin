@@ -1,0 +1,196 @@
+{
+  "schema": "merlin.paper_results_index.v1",
+  "branch": "cc/el4-grader-throughput-20261024",
+  "checkout_head": "388ee5ff2ed57b06b5f229e1abadfba78d7fbac4",
+  "pending_merge_preserved": true,
+  "pushed": false,
+  "independent_author_runs": 14,
+  "expert_subjects": 1,
+  "source": "native retained evidence; actual run identities and captures, not preparation flags",
+  "cutoff": "2026-10-28T19:06:46.946018+00:00",
+  "csv": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/data/all_results.csv",
+  "compressed_csv": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/data/all_results.csv.gz",
+  "report": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/RESULTS_20261028.md",
+  "figures": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures",
+  "new_fresh6_protocol_status": "planned_not_launched",
+  "metric_coverage": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/metric-availability.json",
+  "monitoring_task": "/root/inputs_runtime_audit",
+  "regression_tests_passed": 10,
+  "artifacts": [
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/data/all_results.csv",
+      "bytes": 120990120,
+      "sha256": "a13d23e55bdd7df49fc424bf35e4ab3dd510fff34d8c81f2d3197d6800b60454"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/data/all_results.csv.gz",
+      "bytes": 9507457,
+      "sha256": "f19ccc53b1e26b5b834bec40fe52191de774739db1d7b4732016b996aaafe4c5"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/data/runs.json",
+      "bytes": 127489,
+      "sha256": "690bc261f3a9cda2adc15ca24741dc16534fd93b31e20f36b67e26509bcd14b6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/data/sources.json",
+      "bytes": 1810720,
+      "sha256": "2236a2cecb1dfecb3f851f87c0befeca5d265e647a7e5044bbf514b341cc3338"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/data/extraction_issues.json",
+      "bytes": 3,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/data/receipt.json",
+      "bytes": 1441,
+      "sha256": "ab32f426e76ed063cec417fa3046a0babcd6a0b746ce21e856725eca10eea6e1"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/data/validation.json",
+      "bytes": 673,
+      "sha256": "ded7fdc55b8f51f23f3afd7c56f674e9f5446e5e696bd72f519c75a2023e006a"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/data/scope-exclusions.json",
+      "bytes": 1226,
+      "sha256": "2d47bc9b835b05474b6eedd593eec81e5a9a852c29d4ea8b13cf305da4b2124f"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/el123_progress_single_column.pdf",
+      "bytes": 43382,
+      "sha256": "01210823051f6406293ab2b85a600788ea00c80690697b561201e20979685306"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/el123_progress_single_column.svg",
+      "bytes": 83166,
+      "sha256": "a4aa3b7c788f8be27ac8886d95ef6fa14e92b6b8aab1891a1e548284911e7f81"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/el123_progress_single_column.png",
+      "bytes": 94757,
+      "sha256": "7554c57680b24f38f4fa9e0c4f72d7d0532e0cbb128c463845c2118cd488c0fd"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/campaign_comparison_double_column.pdf",
+      "bytes": 43923,
+      "sha256": "7032f093304b26a19ae35df9b8dbc1258a9fa690e6624243c2e383995a943fc7"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/campaign_comparison_double_column.svg",
+      "bytes": 123792,
+      "sha256": "c02fce134f099113b97be56522dd2f11873381f9f88d42dabf74f945eff5640c"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/campaign_comparison_double_column.png",
+      "bytes": 171989,
+      "sha256": "ba791e3e3c9b77032d69b857d3b9a63d424c442a78f36d78c2aa0ca73b946607"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/small_studies_effort_and_transfer.pdf",
+      "bytes": 22802,
+      "sha256": "2f2e1fcb28ca333cf05230a7faf92926c8530d9ddb08597584b12e05fe1c9fbe"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/small_studies_effort_and_transfer.svg",
+      "bytes": 73030,
+      "sha256": "9d2dc98d274ef120c6a4f140733b0f08bb24a6569d29c04a7fdcb0ab531102e1"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/small_studies_effort_and_transfer.png",
+      "bytes": 81834,
+      "sha256": "e8f0e7a971742ae1c25813180da30371000b6a08502207cab7aa3106a886e819"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/el123_frozen_source_modeled_performance.pdf",
+      "bytes": 15793,
+      "sha256": "4752243b3156c941fbcedeb7750f6bcfc0aa522756086ab1607a98c3bcaa2f37"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/el123_frozen_source_modeled_performance.svg",
+      "bytes": 13661,
+      "sha256": "3a0de7a085a9e416b020dbcdefca645ed7e45e6c8f6eb16d35edc140e8d92f48"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/el123_frozen_source_modeled_performance.png",
+      "bytes": 51949,
+      "sha256": "d89fe838236cdc0f9c92051306b9f7bc4b2daaae1f7606fff5998a9d4e05e182"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/tooling_wave_censored.pdf",
+      "bytes": 33465,
+      "sha256": "bd0c70be1aafa12ad234252ccfe873388745c4c9a32ba9fb453f8c58b8c63dcb"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/tooling_wave_censored.svg",
+      "bytes": 86288,
+      "sha256": "0db93b74ba93c78ba32e84b614c4647c4d4b41f2d63eadc8542f496db1c4364e"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/tooling_wave_censored.png",
+      "bytes": 76806,
+      "sha256": "24890be9478359d6079568d64b4e261c3e5a401527aae29815f5d5cb8d2bb9de"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/figures/summary.json",
+      "bytes": 74605,
+      "sha256": "a6e1e2abcc36b69c2d1ab44b15a79c5cc29683c820c84e422621581da6eda857"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/paper-results-20261028/plot-requirements.txt",
+      "bytes": 214,
+      "sha256": "f06c1683833a02f6277d8bd8420a3555a062dc8ed2f1b388c1c26f2b08d4c4a1"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/test_analyze_results.py",
+      "bytes": 1813,
+      "sha256": "350e7e12cb966ed57fc6b3274187a55a1f4983be4bd257a6c1f22184f41d4056"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/collect_results.py",
+      "bytes": 37313,
+      "sha256": "bc4c80b58b4784d61b911b39ac08046ff0159f6fcca681174a8459a14c9a0658"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/test_collect_results.py",
+      "bytes": 3064,
+      "sha256": "830c00ab849d8f945e6845b3a223042119510f32a443e789ca15f53048c6e906"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/README.md",
+      "bytes": 8250,
+      "sha256": "b3646a157f7232057d11d71ad36e25cb185ef5217f91ea9e3e4faaf0221c9663"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/RESULTS_20261028.md",
+      "bytes": 18429,
+      "sha256": "e6748a55d74eb718b12ea325809a0997124938713e4c94028c94194ffbf99c95"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/focused-fresh6-protocol.json",
+      "bytes": 7769,
+      "sha256": "e04aeb744c0408409f8f139588e8a439277701cf81a5610dc059246f81369067"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/metric-availability.json",
+      "bytes": 1920,
+      "sha256": "a006478668970e595124d9374235d10bc9c0e83bd4d2c1eaa9897a874e051de1"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/examples/gemmini/phase1/studies/kernel_abstractions/paper_analysis/analyze_results.py",
+      "bytes": 25117,
+      "sha256": "6aa2e2ec201363151c0114f89bec4011c7f15ccfe43240135efa56859c2b51b4"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/packages/merlin-experiments/src/merlin_experiments/phase1/telemetry/author_agents.py",
+      "bytes": 38549,
+      "sha256": "3a7932441c1eaf797cb0a5557f521836984d525d3f936e80afe6faeccfcaaaed"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/packages/merlin-experiments/src/merlin_experiments/phase1/tools/result_details.py",
+      "bytes": 11118,
+      "sha256": "2cd91b27adb26ce0dfa477a94a1d1d399cdc6420d5593f25cb6e8f41cb65785a"
+    }
+  ]
+}

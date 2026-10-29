@@ -39,6 +39,19 @@ TINY = [
     "JT_tiny_decode_m1k2048n32000_raw",
 ]
 SMOL = ["JM_smolvla_flow_denoise_m50k32n720_raw", "CH_kv_heads_smolvla_flow_denoise_q15kv5s50l163d64"]
+CONV_FAMILY_TRAIN = ((4, 28, 128, 128), (2, 28, 128, 128), (4, 21, 128, 128))
+CONV_FAMILY_HIDDEN = (
+    *((b, 28, 128, 128) for b in (1, 6, 8)),
+    *((4, h, 128, 128) for h in (14, 32, 35, 42)),
+    *((4, 28, ci, 128) for ci in (64, 96, 192, 256)),
+    *((4, 28, 128, co) for co in (64, 96, 192, 256)),
+)
+PROJECTION_FAMILY_TRAIN = ((16, 2048, 2048), (8, 2048, 2048), (16, 1024, 2048))
+PROJECTION_FAMILY_HIDDEN = (
+    *((m, 2048, 2048) for m in (4, 24, 32, 48, 64)),
+    *((16, k, 2048) for k in (512, 1536, 3072, 4096)),
+    *((16, 2048, n) for n in (512, 1024, 1536, 3072, 4096)),
+)
 
 
 def pin(path):
@@ -272,6 +285,45 @@ def resize_conv(cb, *, batch, output, output_channels=None):
     return cb
 
 
+def same_conv_case(cb, *, batch, spatial, input_channels, output_channels):
+    """Derive a SAME K3 source contract; padding belongs to the operation.
+
+    The original uniform bias/i8 exit is preserved. No host halo buffer or
+    invented per-channel readout coefficients enter this independent fixture.
+    The shared window owner verifies the requested input/output relationship.
+    """
+    from merlin.compile.scheduling.window_transfer import Window2D
+
+    result = copy.deepcopy(cb)
+    convs = [c for c in result["commands"] if c["opcode"] == "CONV2D"]
+    if len(convs) != 1:
+        raise ValueError("SAME family requires one original convolution")
+    command = convs[0]
+    attrs, operands = command["attributes"], command["operands"]
+    if (attrs.get("kernel", [])[:2] != [3, 3] or attrs.get("stride") != [1, 1]
+        or attrs.get("dilation") != [1, 1] or attrs.get("layout") != "nhwc"
+        or attrs.get("epilogue") != ["bias_add"] or attrs.get("output_dtype") != "i8"
+        or not attrs.get("bias") or "acc_scale" in attrs or "acc_scale_by_column" in attrs):
+        raise ValueError("SAME family requires the original uniform bias/i8 identity readout")
+    if any(type(v) is not int or v <= 0 for v in (batch, spatial, input_channels, output_channels)):
+        raise ValueError("SAME family requires positive static dimensions")
+    window = Window2D((batch, spatial, spatial, input_channels), (3, 3), padding=(1, 1, 1, 1))
+    assert window.output_spatial == (spatial, spatial)
+    tensors = result["tensors"]
+    handles = {c["operands"]["dst"]: c["operands"]["src"] for c in result["commands"] if c["opcode"] == "RES_PACK"}
+    if (tensors[operands["ifm"]]["dtype"] != "i8"
+        or tensors[handles[operands["weight"]]]["dtype"] != "i8"
+        or tensors[attrs["bias"]]["dtype"] != "i32"):
+        raise ValueError("SAME family requires signed-i8 operands and original i32 bias")
+    tensors[operands["ifm"]]["shape"] = list(window.input_shape)
+    tensors[handles[operands["weight"]]]["shape"] = [9 * input_channels, output_channels]
+    tensors[attrs["bias"]]["shape"] = [output_channels]
+    tensors[operands["dst"]]["shape"] = [batch * spatial * spatial, output_channels]
+    attrs["kernel"] = [3, 3, input_channels, output_channels]
+    attrs["padding"] = list(window.padding)
+    return result
+
+
 def resize_heads(cb, *, query, context, pv):
     cb = copy.deepcopy(cb)
     # Existing original interface records each head and actual shared RHS by SSA.
@@ -348,7 +400,7 @@ def prepare_inputs(
 ):
     from merlin_experiments.corpus.public_references import stage
 
-    if profile not in ("full", "projection-core", "conv-composition"):
+    if profile not in ("full", "projection-core", "conv-composition", "conv-family-v2", "projection-family-v2"):
         raise ValueError("unknown study input profile")
     if profile != "full" and raw_containers:
         raise ValueError(f"{profile} reuses the complete pinned reference review")
@@ -424,7 +476,7 @@ def prepare_inputs(
                     },
                 }
                 capsule["numeric_policy"]["dtype"] = commits[0].get("attributes", {}).get("output_dtype", "i32")
-            elif profile == "conv-composition":
+            elif profile in ("conv-composition", "conv-family-v2"):
                 source_cb = parse_interface_mlir(text)
                 convs = [c for c in source_cb["commands"] if c["opcode"] == "CONV2D"]
                 if len(convs) == 1:
@@ -464,9 +516,9 @@ def prepare_inputs(
         ("projection", TINY),
         ("smolvla", SMOL),
     ]
-    if profile == "projection-core":
+    if profile in ("projection-core", "projection-family-v2"):
         families = [("projection", [TINY[2]])]
-    elif profile == "conv-composition":
+    elif profile in ("conv-composition", "conv-family-v2"):
         families = [("convolution", [CONVS[1]])]
     for family, names in families:
         for name in names:
@@ -486,7 +538,7 @@ def prepare_inputs(
                 add(name, family, "train", text, source, cap, contract)
             else:
                 cb = parse_interface_mlir(text)
-                if profile == "projection-core":
+                if profile in ("projection-core", "projection-family-v2"):
                     contract = source_contract(cb)
                     commits = contract["numerics_and_fusion"]
                     if (
@@ -498,7 +550,7 @@ def prepare_inputs(
                         or any(t["dtype"] != "i8" for t in cb["tensors"].values() if t["role"] != "output")
                     ):
                         raise ValueError("projection-core requires the raw-i32 projection anchor")
-                elif profile == "conv-composition":
+                elif profile in ("conv-composition", "conv-family-v2"):
                     convs = [c for c in cb["commands"] if c["opcode"] == "CONV2D"]
                     if len(convs) != 1:
                         raise ValueError("conv-composition requires one NHWC bias INT8 convolution anchor")
@@ -517,10 +569,26 @@ def prepare_inputs(
                         or cb["tensors"][operands["ifm"]]["dtype"] != "i8"):
                         raise ValueError("conv-composition requires the original valid K3 NHWC bias INT8 anchor")
                 templates[name] = (source, cb, cap)
-                add(name, family, "train", text, source, cap)
+                if profile not in ("conv-family-v2", "projection-family-v2"):
+                    add(name, family, "train", text, source, cap)
     boundary = None
-    counts = {"train": 1, "heldout": 3} if profile != "full" else {"train": 18, "heldout": 30}
-    if profile == "projection-core":
+    counts = ({"train": 3, "heldout": 15} if profile == "conv-family-v2" else
+              {"train": 3, "heldout": 14} if profile == "projection-family-v2" else
+              {"train": 1, "heldout": 3} if profile != "full" else {"train": 18, "heldout": 30})
+    if profile == "conv-family-v2":
+        source, cb, cap = templates[CONVS[1]]
+        for split, shapes in (("train", CONV_FAMILY_TRAIN), ("heldout", CONV_FAMILY_HIDDEN)):
+            for b, h, ci, co in shapes:
+                add(f"CV2_conv_b{b}_h{h}_ci{ci}_co{co}_same_i8", "convolution", split,
+                    emit_interface_mlir(same_conv_case(cb, batch=b, spatial=h,
+                        input_channels=ci, output_channels=co)), source, cap)
+    elif profile == "projection-family-v2":
+        source, cb, cap = templates[TINY[2]]
+        for split, shapes in (("train", PROJECTION_FAMILY_TRAIN), ("heldout", PROJECTION_FAMILY_HIDDEN)):
+            for m, k, n in shapes:
+                add(f"PF2_projection_m{m}k{k}n{n}", "projection", split,
+                    emit_interface_mlir(resize_dense(cb, m=m, k=k, ns=[n])), source, cap)
+    elif profile == "projection-core":
         source, cb, cap = templates[TINY[2]]
         for m, k, n in [(32, 2048, 2048), (16, 1024, 2048), (16, 2048, 1024)]:
             add(
@@ -649,8 +717,7 @@ def prepare_inputs(
         "oracle_study": pin(oracle_study),
         "oracle_study_source": oracle_source,
         "early_slot": {
-            "case": (CONVS[1] if profile == "conv-composition"
-                     else TINY[2] if profile == "projection-core" else TINY[-1]),
+            "case": cases[0]["case"] if profile != "full" else TINY[-1],
             "split": "train",
         },
         "treatment": {
@@ -742,7 +809,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for key in ("output", "corpus", "historical-kernels", "reference-manifest", "compiler-root", "oracle-study"):
         parser.add_argument("--" + key, required=True, type=Path)
-    parser.add_argument("--profile", choices=("full", "projection-core", "conv-composition"), default="full")
+    parser.add_argument("--profile", choices=("full", "projection-core", "conv-composition",
+        "conv-family-v2", "projection-family-v2"), default="full")
     parser.add_argument("--base-config", type=Path)
     parser.add_argument("--evidence-root", type=Path)
     parser.add_argument("--raw-containers", action="append", type=Path, default=[])

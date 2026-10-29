@@ -94,6 +94,12 @@ def acquire(path):
     host = set(state["online_cpus"]) - selected
     if not selected or not host:
         raise ValueError("reservation must leave CPUs for other machine workloads")
+    if state.get("host_isolation", "exclude") == "preserve":
+        # Concurrent studies own only their service cgroup. In particular they
+        # must not snapshot/restore masks belonging to a longer-running peer.
+        state.update(status="reserved", acquired_at=now(), host_masks_modified=False)
+        save(path, state)
+        return
     for unit, original in state["host_original_allowed_cpus"].items():
         if allowed(unit) != original:
             raise ValueError(f"{unit} changed before reservation")
@@ -122,6 +128,11 @@ def acquire(path):
 
 def release(path):
     state = root_state(path)
+    if state.get("host_isolation", "exclude") == "preserve":
+        state.update(status="released", released_at=now(), release_complete=True,
+                     release_errors=[], host_masks_modified=False)
+        save(path, state)
+        return
     if "acquire_started_at" not in state:
         state.update(
             status="released_without_acquisition",
@@ -240,6 +251,7 @@ def launch(args):
         json.dump(env, stream)
     state = {
         "schema": "merlin.operator.cpu_reservation.v1",
+        "host_isolation": getattr(args, "host_isolation", "exclude"),
         "status": "prepared",
         "prepared_at": now(),
         "unit": args.unit,
@@ -255,8 +267,9 @@ def launch(args):
         "file_descriptor_limit": FILE_DESCRIPTOR_LIMIT,
         "release_complete": False,
         "scope": (
-            "CPU isolation of ordinary user/system workloads; shared memory, disk and "
-            "OS interrupts remain observed resources"
+            "Service CPU cap only; existing host and peer masks are preserved and host interference is observed"
+            if getattr(args, "host_isolation", "exclude") == "preserve" else
+            "CPU isolation of ordinary user/system workloads; shared memory, disk and OS interrupts remain observed resources"
         ),
     }
     save(args.state, state)
@@ -340,6 +353,8 @@ def main():
     parser.add_argument("--cpus", required=True)
     parser.add_argument("--max-seconds", type=int, required=True)
     parser.add_argument("--unit", required=True)
+    parser.add_argument("--host-isolation", choices=("exclude", "preserve"), default="exclude",
+                        help="preserve pins only this service and never changes/restores host masks")
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--log", type=Path, required=True)
     parser.add_argument("command", nargs=argparse.REMAINDER)

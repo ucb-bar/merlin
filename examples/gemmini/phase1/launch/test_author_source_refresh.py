@@ -91,3 +91,43 @@ def test_carrying_refuses_a_changed_or_gateless_previous_overlay(tmp_path, monke
         overlay.write_text(overlay.read_text() + "# edited\n")
     with pytest.raises(ValueError):
         refresh.carry_phase1_gates(previous, tmp_path, tmp_path / "policy.yaml")
+
+
+@pytest.mark.parametrize("mode", ["inherit", "new_without_revision", "new_with_revision"])
+def test_source_refresh_keeps_protocol_revisions_in_the_selected_context(tmp_path, monkeypatch, mode):
+    previous = tmp_path / "previous"
+    (previous / "private").mkdir(parents=True)
+    (previous / "payload/corpus/_public_scalability").mkdir(parents=True)
+    bundle = previous / "payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0"
+    bundle.mkdir(parents=True)
+    old_selection, old_revision = dict(path="old-selection.json", sha256="a" * 64), dict(
+        path="old-revision.json", sha256="b" * 64)
+    (previous / "private/preparation.json").write_text(json.dumps(dict(
+        source_run="recorded-phase0-run", phase1_policy=dict(source_path="recorded-policy.yaml"),
+        assembly=dict(mode="generated_only", baseline={}, retirements=dict(members=[]),
+                      capsule_scope=dict(kind="accelerator"),
+                      public_supplement=dict(selection=dict(path="logical-supplement.json"))),
+        scaffolding=dict(operand_protocol=old_selection, operand_revision=old_revision,
+                         public_reference_sources=dict(path="logical-references.json")))))
+    (previous / "payload/corpus/_public_scalability/selection.json").write_text(json.dumps(
+        dict(source=dict(selection=dict(path="logical-scalability.json")))))
+    (bundle / "input_bundle_manifest.yaml").write_text("{}\n")
+    monkeypatch.setattr(refresh, "selected_lean_manifest", lambda bundle: tmp_path / "selected-formal.json")
+    calls = []
+    monkeypatch.setattr(refresh.release, "prepare", lambda *args, **kwargs: calls.append((args, kwargs)) or {})
+    new_selection = tmp_path / "new-selection.json", "c" * 64
+    new_revision = tmp_path / "new-revision.json", "d" * 64
+    kwargs = {} if mode == "inherit" else dict(operand_protocol_selection=new_selection)
+    if mode == "new_with_revision":
+        kwargs["operand_protocol_revision"] = new_revision
+    refresh.prepare(previous, tmp_path / "new-release", tmp_path / "sdk", **kwargs)
+    forwarded = calls[0][1]
+    assert forwarded["operand_protocol_selection"] == (
+        (Path(old_selection["path"]), old_selection["sha256"]) if mode == "inherit" else new_selection)
+    assert forwarded["operand_protocol_revision"] == (
+        (Path(old_revision["path"]), old_revision["sha256"]) if mode == "inherit"
+        else new_revision if mode == "new_with_revision" else None)
+    calls.clear()
+    with pytest.raises(ValueError, match="explicit protocol selection"):
+        refresh.prepare(previous, tmp_path / "refused", tmp_path / "sdk", operand_protocol_revision=new_revision)
+    assert calls == []

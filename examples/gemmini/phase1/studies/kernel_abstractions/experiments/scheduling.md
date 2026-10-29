@@ -91,7 +91,7 @@ the rest of this panel provides ordinary aligned scaling. Distinguish shapes
 withheld from this round from those absent from Fresh6's earlier history.
 
 Reuse bounded `prepare_runs.py` / `run.py`: 1,800 seconds per author, one evaluator
-request per arm, equal 200% quotas in CPU pool 0–3. An optional fifth core serves
+request per arm, equal 200% quotas in its selected four-CPU pool. An optional fifth core serves
 common preparation. No full-model cold preparation or old-suite correctness sweep.
 Both retain the same seed, evidence, dependencies and author settings. Supply
 `COMMAND_ORDERING_SELECTION.json` through the existing public staging owner;
@@ -137,6 +137,13 @@ for this qualification. Measure time/tokens/CPU, attempts, rejected unsafe
 changes, time to the first correct changed kernel, frozen shape performance,
 and the emitted completion mechanism.
 
-The wider family panel is a new input/configuration revision. Existing anchor
-qualification does not establish M8 support or validate all 17 cases. No author
-or FPGA campaign is launched by this plan.
+The new public M8 case also passes ordinary target L2: **16,384 INT32 outputs
+exact**, zero mismatches, with the original 1,026-file Fresh6 library unchanged.
+This was a numerical-only check of one public case; its aggregate suite result
+is incomplete because the other two cases were not requested. No timing was
+selected. Receipt: `.tmp/projection-family-m8-qualification-v1/receipt.json` in
+the same task.
+
+The wider family panel is a new input/configuration revision. These two
+qualifications do not validate all 17 cases or replace final matched-config
+checks. No author or FPGA campaign is launched by this plan.

@@ -21,4 +21,4 @@ plan:
   reference_guidance: "off"
   environment:
     TMPDIR: ${OPERATOR_TMP}
-    PYTHONPATH: ${FRAMEWORK}/src:${FRAMEWORK}/packages/merlin-experiments/src:${FRAMEWORK}/packages/merlin-timing/src:${REFERENCE_ANALYSIS_DEPS}
+    PYTHONPATH: ${FRAMEWORK}/src:${FRAMEWORK}/packages/merlin-experiments/src:${FRAMEWORK}/packages/merlin-timing/src:${FRAMEWORK}/packages/merlin-mining/src:${REFERENCE_ANALYSIS_DEPS}

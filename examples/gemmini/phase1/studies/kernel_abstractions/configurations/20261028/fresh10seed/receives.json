@@ -1,0 +1,1513 @@
+{
+  "allowed": [
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/VERSION"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/command_buffer_abi.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/interface_dialect_contract.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/interface_grammar.md"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/integrity_policy.md"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/mlir_oot_backend_contract.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/target_dialect_contract.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen public ABI",
+      "path": "merlin/contract/schemas/"
+    },
+    {
+      "mode": "ro",
+      "note": "capsule corpus",
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/corpus/isa/"
+    },
+    {
+      "mode": "ro",
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/corpus/calibration/"
+    },
+    {
+      "mode": "ro",
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/corpus/layers/"
+    },
+    {
+      "mode": "ro",
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/corpus/model/"
+    },
+    {
+      "mode": "ro",
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/corpus/model_slices/"
+    },
+    {
+      "mode": "ro",
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/corpus/projections/"
+    },
+    {
+      "mode": "ro",
+      "note": "selected capability contract (ALL arms)",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/source-release/payload/experiment/contracts/target_contract.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "LLVM/MLIR 23 toolchain",
+      "path": "/work/merlin/toolchains/llvm-a47bddcc/install/"
+    },
+    {
+      "as": "agent_selfcheck.py",
+      "mode": "ro",
+      "note": "redacted self-check",
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/experiment/scripts/agent_selfcheck.py"
+    },
+    {
+      "mode": "ro",
+      "note": "frozen host lane (pinned infrastructure, read-only)",
+      "path": "out/artifacts/targets/host/gemmini_rocket_scalar_int8_v0/"
+    },
+    {
+      "as": "reference-kernels",
+      "mode": "ro",
+      "note": "explicit pinned examples; compiler starts empty",
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/experiment/reference-kernels/"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/families.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/compute_units.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/semantic_families.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/capability_manifest.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/target_experiment.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/evidence/store.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/corpora.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/providers.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/target_registry.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/runtime/commandbuffer.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/runtime/tensor.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/analysis/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/analysis/compute_endpoints.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/analysis/instruction_roles.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/synthesize/"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/generate/"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/contract/interface_emit.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/contract/linalg_iface.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/oot_starterkit/"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/perf/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/perf/host_cfg_index.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/perf/task_cfg_evidence.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED tool: xDSL kit / CCA spine",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/rtl_backend.py"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED (CIRCT arm): RTL-facts generators",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/rtl/"
+    },
+    {
+      "mode": "ro",
+      "note": "ALLOWED (CIRCT arm): RTL-extracted facts",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/source-release/payload/experiment/rtl_facts/"
+    },
+    {
+      "mode": "ro",
+      "note": "explicit public input",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/source-release/payload/corpus/_public_scalability/public_sources"
+    },
+    {
+      "mode": "ro",
+      "note": "explicit public input",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/source-release/payload/experiment/public-program-sources"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/verify/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/semantic_compiler/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/codegen/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/ir/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/isa/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/primitives/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/frontends/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/integrations/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/runtime/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/lowering/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/capture/__init__.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/certificates.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/normalization.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/loops.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/planning.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/validation.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/pipeline.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/client.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/verify/lean_contract.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/pure_scalar.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/scalar_witness.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/unrolling.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/analysis_types.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/analysis_memory.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/analysis_liveness.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/analyses.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/resource_allocation.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/semantic_compiler/allocation_types.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/semantic_compiler/allocate.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/semantic_compiler/rules.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/semantic_compiler/model.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/dense_planning.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/dense_ir.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/block_schedule.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/shared_input_verification.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/shared_input_schedule.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/shared_input_groups.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/panel_transfers.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/copy_pipeline.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/configuration_loops.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/command_compaction.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/compact_dense.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/compact_loaded_sum.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/spatial_gather.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_source.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/configuration.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/configuration_ir.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/device_spills.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/fusion.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/fusion_semantics.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/library_sources.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/llvm_program.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/pointwise_source.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/program_limits.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/row_softmax.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/schedule_pipeline.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/staged_dense.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/selected_contracts.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/spill_conformance.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/temporary_storage.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/window_transfer.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/cpu_softmax.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/ir/expr.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/ir/integer_domain.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/ir/kernel.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/ir/parse.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/isa/types.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/isa_dialect_gen.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/isa_spec.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/pipeline_state.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/periodic_dense.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/spatial_producer.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/spatial_readout.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/spatial_scratch_abi.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/fresh_tensor_writer.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/private_workspace_pool.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/borrowed_effects.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/schedule_ir.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/schedule.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/loop_schedule.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_panel_pipeline.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/scf_commands.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/configuration_contexts.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/configuration_loop_cleanup.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_panel_readout.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/tile_load_coalescing.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/panel_tile_loads.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_segmented_pipeline.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_array_retention.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/api_catalog.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/rolling_window.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/rolling_spatial.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/rolling_window.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/spatial_readout_cache.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_readout_overlap.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/host_builder.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/projection_views.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/tensor_views.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/source_region.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/source_region_host.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/composition_catalog.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_ready_readout.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/ir/events.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/scf_carried_events.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/primitives/event_loops.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/passes_xdsl.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/lowering/outline.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/sched/primitives/loop_handles.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/completion_streams.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/configuration_motion.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/spatial_max_stripes.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/logical_abi.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/convolution_exploration.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_rhs_residency.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/pipeline_policy.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/pass_exploration.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/evaluated_exploration.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/shape_policy.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_panel_epochs.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/pointwise_convolution.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/batched_dense.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/convolution_output_groups.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/loaded_sum_epochs.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/tuning_knobs.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/tuning_selection.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/late_quant_rne.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/source_expression_interval.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/source_expression_interval_llvm.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/bounded_rne_word_cells.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/scaled_integer_finite.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/scaled_integer_finite_llvm.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/projection_dense.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/rolling_lookahead.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/operand_slots.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_shared_rhs.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/horizontal_convolution.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/repeated_pointwise.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/contraction_row_slice.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/weight_prepack_runtime.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/dense_row_batching.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/shared_rhs_views.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/direct_source.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/source_tokens.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/dense_float_ir.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/zero_initializer_groups.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/periodic_effects.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/compact_verification.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/copy_elimination.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_contracts.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/fusion_contracts.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/program_contracts.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/row_contracts.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/row_softmax_verification.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/spill_contracts.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/storage_contracts.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/staged_dense_verification.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/semantic_compiler/egg_bridge.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/semantic_compiler/extract.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/verify/epilogue_applicability.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/integer_readout.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/integer_producer_range.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/requantization.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/_common.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/fp8.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/contract.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/runtime.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/llvm_loop_metadata.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/access.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/compile_trace.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/ir_audit.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/ir_lock.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/paths.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/provenance.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/provenance_lost.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/tree_hash.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/frontends/linalg_mlir.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/integrations/model2mlir.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/generic_form.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/normalization_reassociation.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/optional_passes.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/source_fma_batch.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/toolchain.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/runtime/host_arithmetic.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/ir_inspection.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/stat_memo.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/affine_gather_runs.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/bounded_rne_maps.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/closed_tensor_insert.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/projection_provenance.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/compact_dense_group.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/compact_dense_group_check.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/dense_shared_rhs_check.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/scheduling/shared_rhs_schedule_ir.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/digest.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/mlir_query.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/common/yaml.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/capture/safetensors.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/quant_round_check.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/segmented_matrix_view.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/layout_conformance.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/weights_pack.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/prepared_operand_effects.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/tensor_preparation_identity.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/ordered_fma_groups.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/head_batching.py"
+    },
+    {
+      "mode": "ro",
+      "note": "common compiler infrastructure",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/transforms/dense_row_batching_check.py"
+    },
+    {
+      "mode": "ro",
+      "note": "shared compiler release identity and license",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/shared-library.json"
+    },
+    {
+      "mode": "ro",
+      "note": "shared compiler release identity and license",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/LICENSE"
+    },
+    {
+      "mode": "ro",
+      "note": "shared compiler release identity and license",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/NOTICE"
+    },
+    {
+      "mode": "ro",
+      "note": "admitted software semantics",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/examples/gemmini/target/software-spec.yaml"
+    },
+    {
+      "mode": "ro",
+      "note": "generic analysis imported by granted tools",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/analysis/contraction_shapes.py"
+    },
+    {
+      "mode": "ro",
+      "note": "generic analysis imported by granted tools",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/analysis/disassembly.py"
+    },
+    {
+      "mode": "ro",
+      "note": "generic analysis imported by granted tools",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/analysis/intrinsics_header.py"
+    },
+    {
+      "mode": "ro",
+      "note": "generic analysis imported by granted tools",
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/compile/analysis/rocc_commands.py"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/libc.so.6"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/libdl.so.2"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/libm.so.6"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/libpthread.so.0"
+    },
+    {
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability",
+      "path": "/usr/lib/x86_64-linux-gnu/librt.so.1"
+    }
+  ],
+  "author_profile": null,
+  "author_profile_sources": null,
+  "denied": [
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/verify/",
+      "reason": "compiler-verification seam (verify arm only)"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/opt.py",
+      "reason": "compiler-verification seam (verify arm only)"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/runtime/reference.py",
+      "reason": "oracle-callable route"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/runtime/simulator.py",
+      "reason": "oracle-callable route"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/generate/runtime_adapter.py",
+      "reason": "oracle-callable route"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/xdsl_dialects/lowering/",
+      "reason": "oracle-callable route"
+    },
+    {
+      "path": "out/artifacts/targets/gemmini/merlin_native_v0/",
+      "reason": "prior backend / exemplar (answer surface)"
+    },
+    {
+      "path": "out/artifacts/targets/gemmini/hand_smoke_oot/",
+      "reason": "prior backend / exemplar (answer surface)"
+    },
+    {
+      "path": "out/artifacts/targets/gemmini/agent_spec_v0_mlir_oot/",
+      "reason": "prior backend / exemplar (answer surface)"
+    },
+    {
+      "path": "out/artifacts/targets/gemmini/agent_spec_v1_mlir_oot/",
+      "reason": "prior backend / exemplar (answer surface)"
+    },
+    {
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/corpus/hidden/",
+      "reason": "hidden capsules + goldens"
+    },
+    {
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/experiment/input_bundles/grader_private_v0/",
+      "reason": "grader-private"
+    },
+    {
+      "path": "out/artifacts/fresh-inputs-xs_capsules/source-release/payload/experiment/runs/",
+      "reason": "prior submissions"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/llvmlower/",
+      "reason": "frozen host lane: the experiment measures the target lane, not a second CPU backend"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/isa_codegen_cli.py",
+      "reason": "optional ISA dialect generation requires EL5 or EL6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/verify/lean_export.py",
+      "reason": "interactive Lean proof development requires EL6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/verify/lean_checker.py",
+      "reason": "interactive Lean proof development requires EL6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/verify/lean_cli.py",
+      "reason": "interactive Lean proof development requires EL6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/verify/lean/Merlin/Foundation.lean",
+      "reason": "interactive Lean proof development requires EL6"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/kernels/endpoints.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/kernels/roles.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/kernels/cca.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/kernels/cca_compare.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/kernels/cca_contract.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/kernels/action_catalog.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/kernels/microkernel.py",
+      "reason": "author-inaccessible module; reached only through its broker"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/rtl/mlc_bridge.py",
+      "reason": "access-policy oracle module; never an author input"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/afcf34be293c/out/artifacts/fresh-inputs-xs_capsules/author-library/base-sdk/merlin/targetgen/rtl/gen_rocc_replay.py",
+      "reason": "access-policy grader module; never an author input"
+    }
+  ],
+  "host_only_input_count": 69,
+  "note": "Host-only inputs are judge custody, not author grants. Native sandbox proofs remain required.",
+  "tools": [
+    "merlin_infra",
+    "xdsl_kit",
+    "cca_spine",
+    "isa_tools",
+    "cca_tools",
+    "rtl_generators",
+    "rtl_facts"
+  ]
+}

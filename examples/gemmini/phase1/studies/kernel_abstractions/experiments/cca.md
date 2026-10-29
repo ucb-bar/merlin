@@ -1,111 +1,140 @@
-# Experiment 1: learning from one expert projection kernel
+# Experiment 1: learning a projection-family rule from expert code
 
-**Question.** Does CCA help an agent improve an established compiler sooner,
-with a rule that retains its benefit when shapes change?
+**Question:** Does actual lifting and CCA comparison help an agent reach a useful
+optimization sooner, with performance that transfers across shapes?
 
-Both agents start from complete graded Fresh6 and the same explicitly migrated
-current tools. Keep working passes, library, scheduling IR and editing freedom.
-The control receives raw expert code; the treatment additionally gets qualified
-lifting/comparison, its pinned derived report and CCA feedback. Neither receives
-an oracle implementation or winning pass sequence.
+Both authors evolve the full graded Fresh6 backend and identical current
+construction tools. Control gets raw expert kernels and trusted measurements;
+treatment additionally gets captured lifting, comparison and resulting
+experiment feedback. Neither gets the oracle implementation or winning settings.
 
-## Inputs and shape panel
+## Seed, public development and frozen sweep
 
-Use the full Fresh6 seed with tree hash
-`8dd194ae90a076b9990341cec4cd4a71f713a9654bee529257f668503f310ea9`.
-Carry the same actual notes, prior successes/rejections and session handoff.
-Historical evidence is not a new certificate; no retained Fresh6 certificate
-store was found. Do not repeat a baseline sweep of established cases.
+Keep complete Fresh6 tree
+`8dd194ae90a076b9990341cec4cd4a71f713a9654bee529257f668503f310ea9`,
+including working passes, library, notes and rejected attempts. New conversations
+start a fresh clock. Historical evidence is not a new certificate; do not rerun
+the established Fresh6 suite.
 
-Train only on `X_mm_o_m16k2048n2048`: signed-i8 inputs, M16×K2048×N2048,
-complete raw-i32 output, no bias, scaling or activation. Freeze before evaluating
-M32×K2048×N2048, M16×K1024×N2048 and M16×K2048×N1024. These are aligned,
-one-axis shape changes. Decode M1, M17 and K tails belong in a subsequent stress
-panel. Prior related seed cases are transfer evidence, not wholly unseen data.
+Use `inputs.py --profile projection-family-v2`. Public cases, in **M × K × N**:
+16×2048×2048, 8×2048×2048 and 16×1024×2048. Inputs are signed INT8; output is
+complete raw INT32, without bias, scaling, rounding or activation. Tell both
+agents to improve this family through source/resource predicates and safe
+fallbacks, rather than selecting schedules by benchmark name or exact triples.
 
-Both arms receive the same curated approximately 217 KB reference bank: expert
-`mm_o` only, its required headers/ISA context and trusted measurement card.
-Do not expose complete archives or exact hidden-shape reference kernels. This
-keeps the author focused and prevents raw-bank generalization leakage. Record
-bank contents/hashes, current tool selections and any common dependency migration.
-Qualify each starting compiler; automatic migration gains are not agent gains.
+After freezing the compiler and rules, evaluate 14 one-axis changes from the
+16×2048×2048 anchor:
 
-## What the lifting supplies
+| Changed axis | Frozen values | Fixed axes |
+|---|---|---|
+| M | 4, 24, 32, 48, 64 | K=N=2048 |
+| K | 512, 1536, 3072, 4096 | M16,N2048 |
+| N | 512, 1024, 1536, 3072, 4096 | M16,K2048 |
 
-The existing bounded native capture observes unchanged expert C control at issue
-sinks. The scoped observer recovers this selected contract and dataflow:
+Together these are 17 cases, including the three public ones. Keep M32 hidden.
+They span smaller, intermediate and larger sizes, including partial M tiles.
+M1/M17/reduction tails are later stress tests. Label seed-known cases as transfer
+checks rather than claiming wholly unseen training history.
+
+## What is lifted
+
+The C source is the expert TinyLlama `mm_o` function extracted unchanged from
+the supplied archive. It is one representation of the expert kernel; parsing
+its syntax alone is insufficient. Both arms receive the same approximately 217 KB
+bank: that function, necessary headers/ISA protocol and trusted metric card.
+There are no complete archives or exact hidden-shape expert kernels.
+
+The existing bounded capture recorded the original function's 37,029 accelerator
+issue/fence commands. The ordinary lift endpoint now replays that stream through
+the selected observer and ISA protocol and recovers a typed region/dataflow:
 
 ```text
 A: i8[16,2048]       Y: i32[16,2048], no epilogue
 packed W[n//64,k,n%64] = logical W[k,n]
-transfers: A 32,768 bytes; W 4,194,304 bytes
-reuse: the full A serves all output-column panels
+transfers: A32,768 bytes; W4,194,304 bytes
+reuse: full A serves all output-column panels
+coverage:16,384 compute tiles,128 output tiles, complete ordered K
 ```
 
-Tile replay checks complete ordered-K coverage and every output tile. This is
-issue/dataflow evidence, not execution of accelerator arithmetic, hardware
-completion, overlap or elapsed cycles. The ordinary C syntax endpoint alone
-cannot establish dynamic traffic. Supplied expert measurements are trusted
-performance targets with their original binary/ROI/sample contract.
+The read-only `cca-evidence/` selection binds source/function-body, raw stream,
+facts, contract and trusted observer hashes. The same lift request on the raw
+reference automatically selects this view. Changed sources, wrong contexts or
+incomplete coverage are refused. It grants no arbitrary C execution or
+author-selected observer. Report capture preparation and replay costs separately
+and in total authoring cost.
 
-Only the CCA arm gets `CCA_REFERENCE.md` and enabled analysis feedback. This
-pilot tests preprocessing plus analysis assistance; report preprocessing wall/CPU
-cost separately and include it in total cost. Agent-requested native capture is
-a later broker extension, not an extra harness or an already-shipped endpoint.
-The original raw kernel and metric card remain identical in both arms.
+Issue/dataflow lifting does not establish accelerator arithmetic, hardware
+completion, overlap, generalized loop proofs or elapsed cycles. Supplied expert
+physical measurements retain their original binary/ROI/cache/sample authority.
 
-## Small automatic loop
+## The automatic loop we need to establish
 
-Give both agents the same task: improve this projection family using a general
-shape/resource rule, preserve exact semantics and existing rules, and retain a
-safe fallback. They may compose existing passes or implement missing generic
-passes/scheduling consumers. Do not supply the operator's completed optimization.
+1. Top down, bind math, layouts, numerical behavior and every live output.
+2. Lift the reference stream and compare supported axes with actual emitted
+   candidate views. Keep incompatible contracts and absent witnesses explicit.
+3. Feed differences to the EXISTING experiment planner. Generate mechanism
+   hypotheses and library-contract routes, or a construction task when a needed
+   pass/adapter or goal-bound alternative is absent.
+4. The agent implements a general alternative and submits ordinary A/B checks.
+   Reopen the emitted result to establish whether the requested mechanism happened.
+5. Keep or reject using exact outputs and same-domain complete-call cost. Freeze
+   the chosen rule before the 14 tests; there is no hidden-shape retuning.
 
-CCA top-down analysis binds mathematics, layouts, fusion and all live outputs.
-Bottom-up lifting recovers operands, traffic, reuse and producer order. Compare
-those supported axes with actual candidate emission, identify a mechanism gap,
-consult transformation contracts, and test a legal implementation. Reanalyze
-emitted effects; a changed knob is not proof that the mechanism happened.
-Use ordinary self-check for changed candidates and the shared model to shortlist.
-Unknown or unsupported mechanisms remain explicit rather than guessed laws.
+Observed function-body counts are loads 4,128 versus candidate 18,432,
+configurations 4 versus 4, and fences 1 versus 2,083. The candidate timed wrapper has
+one additional fence; retain the distinct scope. Equal configuration work must
+not generate an optimization task merely because its fraction of all commands
+changed. Candidate operand traffic and residency remain UNKNOWN until separately
+witnessed; excess load commands do not establish their cause.
 
-## Existing harness and evaluation
+The tool must turn those facts into useful experiments, not merely print a
+report. Missing explicit mechanism-to-knob bindings remain construction gaps;
+we must not fabricate runnable alternatives or claim declarations are consumed.
+Both authors may add new passes and scheduling consumers. The treatment supplies
+structured evidence and routes, not a completed optimization.
 
-Use the shared bounded preparer with `--study cca --seed-continuation PATH`,
-`--wall-s 1800 --replicas 1`. It creates the matched control/treatment pair with
-the same current tool selection. Keep one evaluator per arm, equal 200% quotas
-in the four-core author pool, and optionally a fifth core for common preparation.
-Match author model/effort. Preparation and compact final evaluation have separate
-recorded budgets; no full-model cold preparation or old-suite grading sweep.
+Ordinary linked baseline/variant trials also compare the evaluator's emitted
+program identity. Changed settings with identical ELF and counts, under matching
+capsule/model/domain/scope, produce a requested-but-no-emitted-change construction
+gap. This is advisory negative evidence. A different ELF still leaves the claimed
+mechanism unknown; absent or incompatible witnesses remain unknown. The offline
+Fresh6 retention trial motivates this check: its setting was read, but an existing
+construction guard returned the incumbent and left emitted work unchanged.
 
-Before launch, reopen bank, source/tool, evidence and model/ROI pins; verify the
-common migration, source-bound training role and both no-author sandboxes. The
-pinned base-config `cca_guidance: {path,sha256}` stages the report only in treatment.
-Do not inherit old maps/tasks or fill missing SDK files implicitly.
+## Fair execution and evidence
 
-Freeze one final compiler, rules, settings and dependency identity per arm before
-opening the three test cases. No retuning or selection on test feedback. Check
-every output and report every failure, fallback and regression. Compare final
-variants and starting compilers on a matched four-shape FireSim panel, retaining
-ordered samples and first/warm-call distinctions. Exact supported expert/oracle/
-SW/FSM comparisons are useful; unsupported contracts remain blank with a reason.
-Static counts and provisional modeled cycles are not physical comparisons.
+Reuse `prepare_runs.py --study cca --seed-continuation PATH`, the existing
+sandbox/brokers/evaluator and `--wall-s 1800 --replicas 1`. Keep equal 200% quotas in four shared cores, an optional fifth
+for preparation, and one evaluator per author. Match model/effort. Both arms
+have identical current library bytes; a common migration is not agent credit.
+The base-config `cca_lifting: {path,sha256}` selects the captured view only in
+treatment; optional `cca_guidance` adds its human-readable summary.
 
-Measure time/tokens/CPU, attempts, time to a correct changed kernel, mechanism
-adherence, final cycles and frozen-shape regressions. CCA may improve effort
-without changing final performance. One short pair is diagnostic; repeat before
-claiming a reliable agent advantage. No author or FPGA campaign is launched here.
+Screen on the anchor, then check promising rules on the other public cases.
+All three have correctness/performance feedback. A selected case may pass while
+the full suite is incomplete; inspect case rows. Do not repeat the old full suite.
+Freeze one final compiler, dependencies, rules, settings and timestamp. Measure
+all 17 supported cases on FireSim under matched preparation/cache/completion
+conditions, retaining ordered samples, failures and regressions. Expert/oracle/
+SW/FSM comparisons require exact supported contracts; otherwise leave a reasoned
+blank. Provisional model estimates shortlist and never substitute for timing.
 
-## Preparation status
+Measure time to a correct improvement, failed/invalid attempts, tokens/CPU/time,
+consumed CCA tasks, actual emitted mechanisms and per-shape cycles. Retain
+intermediate candidate evidence: equal final performance can still expose an
+effort difference. Report M/K/N curves separately. One pair is diagnostic;
+replicate promising effects. The experiment must allow CCA to fail its hypothesis.
+Use the same external evidence rule for both authors: a CCA task ID alone is not
+a useful hypothesis or successful attempt. Count proposed, requested, emitted,
+refused, unchanged and unknown attempts separately, using existing request records.
 
-The curated bank, aligned source panel and exact named pair are prepared. Both
-sandbox preflights pass. The migrated current-tool anchor passes all 32,768
-outputs and produces the identical original ELF, 1,380,088 provisional cycles
-and model/domain/scope. This migration is not an agent performance improvement.
-The actual lift endpoint succeeds only in treatment; source-only semantics stay
-UNKNOWN while the separately pinned native-capture report supplies richer evidence.
+## Qualification and current limits
 
-Earlier V3 workspaces added seven SDK files after full-source staging; their
-matched historical CCA preparation is not the clean selective-grant control.
-Use the final operator handoff and exact named-study pins. Authors remain
-unlaunched; hidden-shape and physical study results are not yet available.
+The current-tool anchor checks all 32,768 outputs and reproduces the original ELF
+and 1,380,088 provisional cycles/model/domain/scope. New public M8 checks all 16,384
+outputs on pristine Fresh6; no timing was requested. The new lift/compare replays
+the actual capture and retains unknown candidate mechanisms. A fresh exact
+family/lifting launch configuration and smoke test supersede the earlier
+one-anchor setup. No author or FPGA study has launched. Useful autonomous
+experiment selection, generalized optimizations and physical wins remain study
+outcomes to demonstrate, rather than established benefits of this tooling.

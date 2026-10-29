@@ -700,6 +700,37 @@ def test_additional_source_selections_are_pinned(F, tmp_path):
         F.extra_source_selections(ctx, {"public_program_suite": pin})
 
 
+@pytest.mark.parametrize("damage", [None, "source_run", "phase1_policy_descriptor"])
+def test_new_native_producer_and_policy_overlay_are_forwarded_with_exact_pins(F, tmp_path, damage):
+    run = tmp_path / "phase0-run"
+    plan = _write(run / "resolved-plan.json", {"run_dir": str(run), "phases": {"0": {"adapter": "capsule_derivation"}}})
+    policy = _write(tmp_path / "phase1-policy.yaml", "target: fixture\nphase1_gates: {required: true}\n")
+    section = dict(source_run=dict(path=str(run), sha256=hashlib.sha256(plan.read_bytes()).hexdigest()),
+                   phase1_policy_descriptor=dict(path=str(policy),
+                                                 sha256=hashlib.sha256(policy.read_bytes()).hexdigest()))
+    ctx = SimpleNamespace(path=Path)
+    if damage:
+        (plan if damage == "source_run" else policy).write_text("changed input\n")
+        with pytest.raises(F.SpecError, match=damage + " selection changed"):
+            F.extra_source_selections(ctx, section)
+    else:
+        assert F.extra_source_selections(ctx, section) == dict(source_run=run, phase1_policy_descriptor=policy)
+        # The native prepare call receives actual run/policy paths; no new
+        # certificate, guessed source run or directory digest is introduced.
+        assert F.extra_source_selections(ctx, {}) == {}
+
+
+@pytest.mark.parametrize("key", ["operand_protocol_selection", "operand_protocol_revision"])
+def test_new_operand_protocol_inputs_forward_their_own_source_pins(F, tmp_path, key):
+    source = _write(tmp_path / (key + ".json"), {"source": "new-hardware-context"})
+    pin = dict(path=str(source), sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    ctx = SimpleNamespace(path=Path)
+    assert F.extra_source_selections(ctx, {key: pin}) == {key: (source, pin["sha256"])}
+    source.write_text("changed\n")
+    with pytest.raises(F.SpecError, match=key + " selection changed"):
+        F.extra_source_selections(ctx, {key: pin})
+
+
 def test_plan_counts_match_sealed_release_not_historical_template(F, fixture_spec, library):
     inputs = fixture_spec.root / "framework/inputs"
     release = inputs / "source-release"
@@ -972,3 +1003,41 @@ def test_preflight_drops_sandbox_inputs_on_retire_and_once_it_passes(F, fixture_
     assert (retired / "workspace/notes.md").is_file()
     kept = sorted(p.name for p in (live / "bundle_inputs").iterdir())
     assert kept == (["snapshot.json"] if returncode == 0 else ["external", "repo", "snapshot.json"])
+
+
+def test_preflight_keeps_run_named_frozen_input_paths_and_pins(F):
+    import shlex
+
+    name = "xs-el123-el1"
+    release = "/frozen/" + name + "/inputs/source-release"
+    descriptor = release + "/payload/experiment/target_experiment.yaml"
+    binding = json.dumps({"path": "/frozen/" + name + "/performance-selection.json", "sha256": "a" * 64})
+    command = ["/usr/bin/env", "-i", "MERLIN_TARGET_EXPERIMENT=" + descriptor,
+               "MERLIN_RTL_FACTS=" + release + "/payload/experiment/rtl_facts/facts.json",
+               "MERLIN_JOINT_PERFORMANCE_SELECTION=" + binding,
+               "MERLIN_COMPUTE_CPU_SLOTS=/state/" + name + "/compute-slots",
+               "MERLIN_GSIM_SLOT_ROOT=/state/" + name + "/gsim-slots",
+               "TMPDIR=/state/" + name + "/tmp", "MERLIN_BUNDLE_CAS=/state/" + name + "/cas",
+               "/python", "-m", "phase1", "--descriptor", descriptor,
+               "--bundle-manifest", release + "/payload/experiment/input_bundles/b/input_bundle_manifest.yaml",
+               "--corpus-seal", release + "/private/seal.json",
+               "--codex-home-root", "/private/codex-" + name,
+               "--run-id", name]
+    plan = dict(run_id=name, cwd="/framework", environment={"MERLIN_COMPUTE_CPUS": "38"},
+                reserved_argv=["wrapper", "--max-seconds", "9000", "--", *command])
+    before = copy.deepcopy(plan)
+    rendered = shlex.split(F.preflight_script(plan, run=False).splitlines()[-1])
+    actual = rendered[rendered.index("/usr/bin/env"):]
+    assert plan == before
+    assert actual[actual.index("--run-id") + 1] == name + "-preflight"
+    for flag in ("--descriptor", "--bundle-manifest", "--corpus-seal"):
+        assert actual[actual.index(flag) + 1] == command[command.index(flag) + 1]
+    assert "MERLIN_TARGET_EXPERIMENT=" + descriptor in actual
+    assert "MERLIN_RTL_FACTS=" + release + "/payload/experiment/rtl_facts/facts.json" in actual
+    assert "MERLIN_JOINT_PERFORMANCE_SELECTION=" + binding in actual
+    assert "MERLIN_COMPUTE_CPU_SLOTS=/state/" + name + "-preflight/compute-slots" in actual
+    assert "TMPDIR=/state/" + name + "-preflight/tmp" in actual
+    assert actual[actual.index("--codex-home-root") + 1] == "/private/codex-" + name + "-preflight"
+    assert actual[-1] == "--preflight-only"
+    live = shlex.split(F.preflight_script(plan, run=True).splitlines()[-1])
+    assert live[live.index("/usr/bin/env"):] == command

@@ -1,0 +1,1202 @@
+[
+  {
+    "bytes": 5442,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/ab-library-pass/SKILL.md",
+    "relative": ".agents/skills/ab-library-pass/SKILL.md",
+    "sha256": "93c59608c2ff41e5b63fda171f8b6ff73df90ffb3111cd1896007c3506b8f88d"
+  },
+  {
+    "bytes": 4588,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/ab-library-pass/reference/adapter.md",
+    "relative": ".agents/skills/ab-library-pass/reference/adapter.md",
+    "sha256": "943df20a882c66c554c4893ac93230e48e09c8e6a05b18e75b4f66f41aa9662e"
+  },
+  {
+    "bytes": 1973,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/ab-library-pass/reference/sweeps.md",
+    "relative": ".agents/skills/ab-library-pass/reference/sweeps.md",
+    "sha256": "f3be3eb615b86e5afe673a242f87067de79bab145dd7fb190ff07ca007b22b79"
+  },
+  {
+    "bytes": 13781,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/ab-library-pass/scripts/ab_compare.py",
+    "relative": ".agents/skills/ab-library-pass/scripts/ab_compare.py",
+    "sha256": "4b94a8de3ec8c193719ebdc557f2739eef878970f95a2fc66dec43dfdf3e3654"
+  },
+  {
+    "bytes": 13914,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/ab-library-pass/scripts/apply_library_pass.py",
+    "relative": ".agents/skills/ab-library-pass/scripts/apply_library_pass.py",
+    "sha256": "ae66edc49291c9a96e6b54e12c8a0e8675b383f0991d0a0f3d423f2438233d4c"
+  },
+  {
+    "bytes": 8145,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/ab-library-pass/scripts/mechanism_api.py",
+    "relative": ".agents/skills/ab-library-pass/scripts/mechanism_api.py",
+    "sha256": "865ccd93a4cbb85b87f065ba435ef2c342c3080010aa3b845e904808e51455f3"
+  },
+  {
+    "bytes": 4921,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/compose-pass-pipeline/SKILL.md",
+    "relative": ".agents/skills/compose-pass-pipeline/SKILL.md",
+    "sha256": "5ff733df0284564c1bd57c8c5177b9dd83ad84b5485f796af3254b1980d8f62b"
+  },
+  {
+    "bytes": 11859,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/compose-pass-pipeline/reference/pass_specs.md",
+    "relative": ".agents/skills/compose-pass-pipeline/reference/pass_specs.md",
+    "sha256": "374ec749025b6e7a5c554cea9ec9fafaabf56393da31d0cdb23480de1a944f66"
+  },
+  {
+    "bytes": 9161,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/compose-pass-pipeline/reference/phase-order.md",
+    "relative": ".agents/skills/compose-pass-pipeline/reference/phase-order.md",
+    "sha256": "9f6bb66a24fd8c7a1bc9adf381cd0df0d5339cc7973665ce05bb19d08e447ee9"
+  },
+  {
+    "bytes": 11907,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/compose-pass-pipeline/scripts/pass_specs.py",
+    "relative": ".agents/skills/compose-pass-pipeline/scripts/pass_specs.py",
+    "sha256": "b7cdd83cf3317d435ddbeff4ee24b7a55aea2a272f4d4340493ac031db5cf2e7"
+  },
+  {
+    "bytes": 4131,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/cycle-model-and-gsim/SKILL.md",
+    "relative": ".agents/skills/cycle-model-and-gsim/SKILL.md",
+    "sha256": "476661b73cf157295761542f400bca367641a4943b4112dd3a8aa095280d0524"
+  },
+  {
+    "bytes": 3624,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/cycle-model-and-gsim/reference/trust.md",
+    "relative": ".agents/skills/cycle-model-and-gsim/reference/trust.md",
+    "sha256": "24cd5b69a7eb2d21e409f515bc4d605460dce12f889b963477f875e820e05830"
+  },
+  {
+    "bytes": 4232,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/delegate-to-helpers/SKILL.md",
+    "relative": ".agents/skills/delegate-to-helpers/SKILL.md",
+    "sha256": "27ece20b3fa4d5dd28f0f161eec5aebc1edee094a41c78e25cf8a944adf79e6d"
+  },
+  {
+    "bytes": 4658,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/explore-schedules/SKILL.md",
+    "relative": ".agents/skills/explore-schedules/SKILL.md",
+    "sha256": "5308af546357f972c3742025361c586f6eaf16f074adc7954c567393b055c615"
+  },
+  {
+    "bytes": 1555,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/explore-schedules/reference/evidence.md",
+    "relative": ".agents/skills/explore-schedules/reference/evidence.md",
+    "sha256": "3c12519aa8f76c5e70d9fd31ee140e2d4b6820893dd6a40a653cc8ddcef8680a"
+  },
+  {
+    "bytes": 6871,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/explore-schedules/scripts/holdout_rank.py",
+    "relative": ".agents/skills/explore-schedules/scripts/holdout_rank.py",
+    "sha256": "31952e18804196b9c1c6bd61f4ede3fe548c514c9e800820f3a5ee069024eb85"
+  },
+  {
+    "bytes": 4925,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/feedback-files/SKILL.md",
+    "relative": ".agents/skills/feedback-files/SKILL.md",
+    "sha256": "245f63e397b907674b82631dc52ef547b2050a58a6286e7283104b766e281d6a"
+  },
+  {
+    "bytes": 4115,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/feedback-files/scripts/qa_status.py",
+    "relative": ".agents/skills/feedback-files/scripts/qa_status.py",
+    "sha256": "54d255380c40ca19b6a00d912972fe0abd3fac4d7d67ce533a7356ce67e6a3ae"
+  },
+  {
+    "bytes": 4613,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/fix-failure-cluster/SKILL.md",
+    "relative": ".agents/skills/fix-failure-cluster/SKILL.md",
+    "sha256": "23c642116777b933837c90ac43a6277a7963bfbcfab826c5b8a0aba4ccefd66b"
+  },
+  {
+    "bytes": 9239,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/fix-failure-cluster/scripts/clusters.py",
+    "relative": ".agents/skills/fix-failure-cluster/scripts/clusters.py",
+    "sha256": "cf6491525ded568e7d428a364716495b06771f4119bf3efadd4f2d2776531e9c"
+  },
+  {
+    "bytes": 4762,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/fusion/SKILL.md",
+    "relative": ".agents/skills/fusion/SKILL.md",
+    "sha256": "0abe42f456f7ad25f0df5b0c1f3df8e736617a0b13650b4b2c9f126dc2ee5130"
+  },
+  {
+    "bytes": 8666,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/fusion/reference/routes.md",
+    "relative": ".agents/skills/fusion/reference/routes.md",
+    "sha256": "0bf3fc659df099d7e016d42514cc5c84aefe2f2570f0919fcccc4a2eacef910f"
+  },
+  {
+    "bytes": 5212,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/SKILL.md",
+    "relative": ".agents/skills/heavy-pass-recipes/SKILL.md",
+    "sha256": "f9561aceef7822df3ed73a04e4bc68cdd8de59d1955b257557705186075037ae"
+  },
+  {
+    "bytes": 5503,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/reference/composition.md",
+    "relative": ".agents/skills/heavy-pass-recipes/reference/composition.md",
+    "sha256": "22516f3e08a53f4abac945e806ee7ad48687658a269d6bba4cb77a8a9ad581e2"
+  },
+  {
+    "bytes": 23767,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/reference/convolution.md",
+    "relative": ".agents/skills/heavy-pass-recipes/reference/convolution.md",
+    "sha256": "81d5ea22f07c4ffe7a050e997f62d46853026c2ae7e94c694a78350eb57820c8"
+  },
+  {
+    "bytes": 18474,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/reference/dense-recipes.md",
+    "relative": ".agents/skills/heavy-pass-recipes/reference/dense-recipes.md",
+    "sha256": "56e4034796f5a473d0435c98285f54741194f59fbdbf10623594bf3f3a57a7f3"
+  },
+  {
+    "bytes": 6109,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/reference/parallel-evaluation.md",
+    "relative": ".agents/skills/heavy-pass-recipes/reference/parallel-evaluation.md",
+    "sha256": "457a51b1e0b4491dc9b5bfa61681d75d2e031327803c02b152025d53ad2d4d34"
+  },
+  {
+    "bytes": 8060,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/reference/pipeline-policy.md",
+    "relative": ".agents/skills/heavy-pass-recipes/reference/pipeline-policy.md",
+    "sha256": "8a4c933154fe3c7b9f7d90f9394d719e1fe4e11fe32b2613e7a58fe8a740bb25"
+  },
+  {
+    "bytes": 6802,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/reference/source-composition.md",
+    "relative": ".agents/skills/heavy-pass-recipes/reference/source-composition.md",
+    "sha256": "f2f0be325cb8ffebbf374298f0b8b5ba9a2b6ffb5402e88db5eb05ddb281ec66"
+  },
+  {
+    "bytes": 32310,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/composition_routes.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/composition_routes.py",
+    "sha256": "04d96efa3ddd0408673fad2520cd6bae96b98e2bd66b08c29914dd50e78b6f4b"
+  },
+  {
+    "bytes": 18810,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/conv_adapter_example.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/conv_adapter_example.py",
+    "sha256": "de5aa1c88e4b1f268686beee814f9213fd8ce48d41a25dea4254e18dc404fabb"
+  },
+  {
+    "bytes": 49776,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/conv_epoch_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/conv_epoch_recipe.py",
+    "sha256": "ac84dc29d6d5a1900a0e7c011993d2c3bcc2bf1ed1ae721b3d811b07c8b0ab57"
+  },
+  {
+    "bytes": 18251,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/conv_window_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/conv_window_recipe.py",
+    "sha256": "0c015e218998f54a37a01e54a237ff6f5d8bc2d3554bae6fa94c26a6797525da"
+  },
+  {
+    "bytes": 6742,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/counted_emission_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/counted_emission_recipe.py",
+    "sha256": "b97df49690f58605b2259bc78ff27e30d72decd246a3513913f98e31276e8162"
+  },
+  {
+    "bytes": 30369,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/dense_epoch_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/dense_epoch_recipe.py",
+    "sha256": "a17908cb1beb84bcd5ad19b5dc4ed79a1f27604ac029bb90e5185aba7a480bfc"
+  },
+  {
+    "bytes": 7775,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/dense_readout_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/dense_readout_recipe.py",
+    "sha256": "1224fdc8ac0d1a6eee141a7398a3c638270fea001e5d8d18d58acac17b6f81c2"
+  },
+  {
+    "bytes": 29327,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/library_pipeline_policy.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/library_pipeline_policy.py",
+    "sha256": "1ffa54b31ddbf3b690061189c7093bcce14aa2d380a19192112f1c34361fc1a7"
+  },
+  {
+    "bytes": 6443,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/long_k_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/long_k_recipe.py",
+    "sha256": "a5b3c942cc2cc3580c45133fb3cfcc82429681da4738e622537a13dda6aac6f4"
+  },
+  {
+    "bytes": 14867,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/parallel_schedule_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/parallel_schedule_recipe.py",
+    "sha256": "cc7b43f6dc30262307997add091b2a6dfd0c690a6f741e30942fd313181b0c2d"
+  },
+  {
+    "bytes": 6259,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/projection_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/projection_recipe.py",
+    "sha256": "a6a6deb4bda1be67295f02ede8610bc059b9bc823833a3f940b3267619713307"
+  },
+  {
+    "bytes": 12912,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/recipe_support.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/recipe_support.py",
+    "sha256": "bf3bb87ccb706b389357bf286e51c551c2c2a08607838275b4a66eef424c4a8d"
+  },
+  {
+    "bytes": 7721,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/shared_rhs_epoch_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/shared_rhs_epoch_recipe.py",
+    "sha256": "82aaf8f2d655cb39509c16a49fe25acf6bed734220577ce5ad90a92caf288d3c"
+  },
+  {
+    "bytes": 6706,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/source_observer_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/source_observer_recipe.py",
+    "sha256": "f90954086aa43903a97252751680b326d0e091f89144183c5784d5460484fcdc"
+  },
+  {
+    "bytes": 16142,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/heavy-pass-recipes/scripts/spatial_chain_recipe.py",
+    "relative": ".agents/skills/heavy-pass-recipes/scripts/spatial_chain_recipe.py",
+    "sha256": "002a84756182aa147c28de87722e57945a39978c6c7c335799dc0a933db47adb"
+  },
+  {
+    "bytes": 4420,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-artifacts/SKILL.md",
+    "relative": ".agents/skills/inspect-artifacts/SKILL.md",
+    "sha256": "c6e6de26ab9e0b3368fa8b2d16b23d4d316370a198cbecd5f01cc90fde4c0e9a"
+  },
+  {
+    "bytes": 5642,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-artifacts/reference/layout.md",
+    "relative": ".agents/skills/inspect-artifacts/reference/layout.md",
+    "sha256": "8aec747c2a5952b911870c176381fb493e5fe7d486d8aeca5bab5187e41f349c"
+  },
+  {
+    "bytes": 11931,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-artifacts/scripts/case_artifacts.py",
+    "relative": ".agents/skills/inspect-artifacts/scripts/case_artifacts.py",
+    "sha256": "6d71512e4b9ae17493052dbcf9defc99662ed71e2bda07e9058a916ec948132e"
+  },
+  {
+    "bytes": 4730,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-ir/SKILL.md",
+    "relative": ".agents/skills/inspect-ir/SKILL.md",
+    "sha256": "5e391a0c00711e17682c54b1d62a1f95188d682291dd4f1dc276db4d388208c8"
+  },
+  {
+    "bytes": 6147,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-ir/reference/stages.md",
+    "relative": ".agents/skills/inspect-ir/reference/stages.md",
+    "sha256": "a52f1d0a12eff657d5a9361ac0ed2eb1e74fab40856ddfec3d4ec954ea1b3580"
+  },
+  {
+    "bytes": 15007,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-ir/scripts/dump_stages.py",
+    "relative": ".agents/skills/inspect-ir/scripts/dump_stages.py",
+    "sha256": "bc2c26b9882988d245ed951931afa73d93967f61563a239d255db78bd54c3a19"
+  },
+  {
+    "bytes": 4737,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-kernel/SKILL.md",
+    "relative": ".agents/skills/inspect-kernel/SKILL.md",
+    "sha256": "4f1db39fb812177eb9e02b3993b7c31ff2920c22652bc20df94f7553fe3eece4"
+  },
+  {
+    "bytes": 5666,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-kernel/reference/products.md",
+    "relative": ".agents/skills/inspect-kernel/reference/products.md",
+    "sha256": "e7e379420c22035c6ebb26ab061baf89b470b3ccf814eb78da8ae6876358b51b"
+  },
+  {
+    "bytes": 10991,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-kernel/scripts/build_kernel.py",
+    "relative": ".agents/skills/inspect-kernel/scripts/build_kernel.py",
+    "sha256": "989a61637e1982a25ac223d133eb12f9b0c969e7961eb89e413e848eb2c54072"
+  },
+  {
+    "bytes": 9221,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-kernel/scripts/loop_map.py",
+    "relative": ".agents/skills/inspect-kernel/scripts/loop_map.py",
+    "sha256": "e4cb18ed3145e3d939c933a834ba231a7b8235cbc8276d2ad47cadc7f2a98631"
+  },
+  {
+    "bytes": 4952,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-model/SKILL.md",
+    "relative": ".agents/skills/inspect-model/SKILL.md",
+    "sha256": "13622a762f8bb713f9288100e69b52c11719075d1434d4e10d2297945bca2eab"
+  },
+  {
+    "bytes": 6401,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-model/reference/model-case-format.md",
+    "relative": ".agents/skills/inspect-model/reference/model-case-format.md",
+    "sha256": "c70be91252fc6b4116517349584098ee9a2c84b1e093143def8eb6a8ca1f6b65"
+  },
+  {
+    "bytes": 9220,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/inspect-model/scripts/model_summary.py",
+    "relative": ".agents/skills/inspect-model/scripts/model_summary.py",
+    "sha256": "9cfacf9f38388d6a20c449434abd30a74417b20dcd91fed6afd8c5c5b039f881"
+  },
+  {
+    "bytes": 4273,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/SKILL.md",
+    "relative": ".agents/skills/pass-library/SKILL.md",
+    "sha256": "fce6640fd4ba39db52029a67e4d12c3a91f8d18e69d5b57ce9aebbcc2155a61d"
+  },
+  {
+    "bytes": 1669,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/compiler_control.md",
+    "relative": ".agents/skills/pass-library/reference/compiler_control.md",
+    "sha256": "51e16f8f8ed4090b7793277d7b3b93f29471911df56979fc40c7c3ae116460be"
+  },
+  {
+    "bytes": 1968,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/feedback.md",
+    "relative": ".agents/skills/pass-library/reference/feedback.md",
+    "sha256": "8434a5c5167f7adef933675c6aea55ac81632882d14ddfce81fd499fdeb1414a"
+  },
+  {
+    "bytes": 4299,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/fusion.md",
+    "relative": ".agents/skills/pass-library/reference/fusion.md",
+    "sha256": "6c837521294489fa6efc3f5e1a1e744b29dc008ed90987dfa8595ecd6fc0c3cd"
+  },
+  {
+    "bytes": 2021,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/host_compute.md",
+    "relative": ".agents/skills/pass-library/reference/host_compute.md",
+    "sha256": "df52bcda510b5ef4ef1195386019e9052aad2bc4f969b9dec5bca1ee55f8d30e"
+  },
+  {
+    "bytes": 1224,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/host_interface.md",
+    "relative": ".agents/skills/pass-library/reference/host_interface.md",
+    "sha256": "8df0ce947aa3789a869d48f91ecde7a281b263a0bb9965c8fa63b16baf9bfb76"
+  },
+  {
+    "bytes": 1166,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/host_memory.md",
+    "relative": ".agents/skills/pass-library/reference/host_memory.md",
+    "sha256": "ccb59d9cb3e68e0a33b8e6b040a91d3192dabf06161190257518d6a2bade9351"
+  },
+  {
+    "bytes": 5746,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/issue.md",
+    "relative": ".agents/skills/pass-library/reference/issue.md",
+    "sha256": "0e914bd4ec039c7ed43f01122e07a5de21cc9de2599e69dfce1fc7cbb0b275d5"
+  },
+  {
+    "bytes": 2826,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/legality.md",
+    "relative": ".agents/skills/pass-library/reference/legality.md",
+    "sha256": "f5e019e2e23394c67dbf26b835017990bdc150be4af6a4ef960664d84391f44c"
+  },
+  {
+    "bytes": 2935,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/movement.md",
+    "relative": ".agents/skills/pass-library/reference/movement.md",
+    "sha256": "0221740d5ba2977a0ecd2350f7638d711451c7e4d065bdc9f8c4986b982749fd"
+  },
+  {
+    "bytes": 3794,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/numeric_formats.md",
+    "relative": ".agents/skills/pass-library/reference/numeric_formats.md",
+    "sha256": "dc2e2ce15fdd68c409ee73bd0e45937823efd930a7d0210f6a7d268713ece064"
+  },
+  {
+    "bytes": 7551,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/overlap.md",
+    "relative": ".agents/skills/pass-library/reference/overlap.md",
+    "sha256": "1bfb0c5f52e7277313d4a18dce000e3449e648408e6c9ebc5fe6011071edb9c1"
+  },
+  {
+    "bytes": 4776,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/packing.md",
+    "relative": ".agents/skills/pass-library/reference/packing.md",
+    "sha256": "53856f0330922820327121e4154964786b9da40dcbfd530b071b255f77ff8fe9"
+  },
+  {
+    "bytes": 4065,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/scheduling.md",
+    "relative": ".agents/skills/pass-library/reference/scheduling.md",
+    "sha256": "58de6cdf564727c4b05a3d9a78a86d3bb06da13b36f46d22c66ec9a95b653206"
+  },
+  {
+    "bytes": 7984,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/storage.md",
+    "relative": ".agents/skills/pass-library/reference/storage.md",
+    "sha256": "52e6e18ccfd7c3a628b60762b11ccf00f0f7988248e904781a330cc0946663ab"
+  },
+  {
+    "bytes": 8672,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/pass-library/reference/synchronization.md",
+    "relative": ".agents/skills/pass-library/reference/synchronization.md",
+    "sha256": "dc5c72922d16fd0bef4e8fca36aef72744c4ae9c631a5300900c217812dc9000"
+  },
+  {
+    "bytes": 4718,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/performance-feedback-levels/SKILL.md",
+    "relative": ".agents/skills/performance-feedback-levels/SKILL.md",
+    "sha256": "f4cb93648cc6266f96f3ded8a690c0d853143a23a1400f518c984b2c1ad23c74"
+  },
+  {
+    "bytes": 4937,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/performance-feedback-levels/reference/signal-map.md",
+    "relative": ".agents/skills/performance-feedback-levels/reference/signal-map.md",
+    "sha256": "0a8694efb0436008e375fd5d734f9d03bcdca35cc2dae7b5bb3b37597d78ac31"
+  },
+  {
+    "bytes": 4794,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/quantization/SKILL.md",
+    "relative": ".agents/skills/quantization/SKILL.md",
+    "sha256": "55786c7b9211f096b6dbd26fe4276e6127f7b9dda559a35f4d6e8bd816489f9a"
+  },
+  {
+    "bytes": 5537,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/quantization/reference/debugging.md",
+    "relative": ".agents/skills/quantization/reference/debugging.md",
+    "sha256": "3429ea5ffcf0c589f9893e0e735530aff54dc31b5eeb3d5c9284cf0281f0c6f4"
+  },
+  {
+    "bytes": 5969,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/quantization/reference/library_api.md",
+    "relative": ".agents/skills/quantization/reference/library_api.md",
+    "sha256": "8fb6175a23c4ccff21b61f24c52868b620bc2277b5518678883b1e806cbd36c9"
+  },
+  {
+    "bytes": 7222,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/quantization/reference/semantics.md",
+    "relative": ".agents/skills/quantization/reference/semantics.md",
+    "sha256": "b30c81dd643dc57471454acf66bee6b3e31b0ef982a9d90ac7940b3bcb197640"
+  },
+  {
+    "bytes": 27249,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/quantization/scripts/quant_params.py",
+    "relative": ".agents/skills/quantization/scripts/quant_params.py",
+    "sha256": "2226775a61e3d875faccb9518f1753131f1d1d463e42c7bc806f08f7c5bb0e43"
+  },
+  {
+    "bytes": 4446,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/read-command-buffer/SKILL.md",
+    "relative": ".agents/skills/read-command-buffer/SKILL.md",
+    "sha256": "f1de42e31766e9b1604e80f723097c4a9cab66f970c92ee793ce864f751f6123"
+  },
+  {
+    "bytes": 12975,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/read-command-buffer/scripts/summarize_command_buffer.py",
+    "relative": ".agents/skills/read-command-buffer/scripts/summarize_command_buffer.py",
+    "sha256": "74337975c51232ac2697692cf6c4380b13db90f0f5746608583e76946aa79919"
+  },
+  {
+    "bytes": 4597,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/roofline-and-utilization/SKILL.md",
+    "relative": ".agents/skills/roofline-and-utilization/SKILL.md",
+    "sha256": "d2c1902f89f8eb7bb81e822859fc8335774ae632412e5a992140274262f4ac0d"
+  },
+  {
+    "bytes": 6074,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/roofline-and-utilization/reference/fields.md",
+    "relative": ".agents/skills/roofline-and-utilization/reference/fields.md",
+    "sha256": "18304abc9eaa3f326527ec918c782d052de36479c237a15f41a72f9215199092"
+  },
+  {
+    "bytes": 2988,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/roofline-and-utilization/reference/levers.md",
+    "relative": ".agents/skills/roofline-and-utilization/reference/levers.md",
+    "sha256": "507bbc6314b2a455a7b1b01aa757ef63b01e8c9857884ee3075f0e6005a6df4d"
+  },
+  {
+    "bytes": 36323,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/roofline-and-utilization/scripts/perf_summary.py",
+    "relative": ".agents/skills/roofline-and-utilization/scripts/perf_summary.py",
+    "sha256": "c81cceb8f32d27c98d2d7f564d78086d9e6c114982208574928ee0bcfb014b67"
+  },
+  {
+    "bytes": 5267,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/scheduling-api/SKILL.md",
+    "relative": ".agents/skills/scheduling-api/SKILL.md",
+    "sha256": "a794776c7bf9c1492e764227c017362c75f70b0d0ab24e1914a739598e4ca439"
+  },
+  {
+    "bytes": 13734,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/scheduling-api/scripts/dense_schedule_example.py",
+    "relative": ".agents/skills/scheduling-api/scripts/dense_schedule_example.py",
+    "sha256": "4acccd5e130c9254b5f6fa24c18bd015494526cee732528603cda285ee1c4c87"
+  },
+  {
+    "bytes": 18248,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/scheduling-api/scripts/library_inventory.py",
+    "relative": ".agents/skills/scheduling-api/scripts/library_inventory.py",
+    "sha256": "9778e88afd7b57d7df6058992fd3bd1a095951e93f198fd3c5ea65b7b692f1f3"
+  },
+  {
+    "bytes": 6367,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/shape-schedule-selection/SKILL.md",
+    "relative": ".agents/skills/shape-schedule-selection/SKILL.md",
+    "sha256": "d8ec55261dd3361839ac63b81bd5b9a3ff55b01e2b63b178d50eb5e4142f62cd"
+  },
+  {
+    "bytes": 12603,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/shape-schedule-selection/reference/capacity-pipeline.md",
+    "relative": ".agents/skills/shape-schedule-selection/reference/capacity-pipeline.md",
+    "sha256": "7c2fa1d3f91cb564bf70e93bc1d0db7de698df7b9feb26d4522df913cc19e127"
+  },
+  {
+    "bytes": 8458,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/shape-schedule-selection/reference/choice-table.md",
+    "relative": ".agents/skills/shape-schedule-selection/reference/choice-table.md",
+    "sha256": "7fe1bab67e524c48833302eb967a18aea253a8220287ca6d3f1c7e0ab30e293b"
+  },
+  {
+    "bytes": 5045,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/shape-schedule-selection/reference/shape-policy.md",
+    "relative": ".agents/skills/shape-schedule-selection/reference/shape-policy.md",
+    "sha256": "8a8628084f5c010bdf0e79281bcb17dcf6995b9deb16d5178094e157a346814c"
+  },
+  {
+    "bytes": 22030,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/shape-schedule-selection/scripts/capacity_pipeline_example.py",
+    "relative": ".agents/skills/shape-schedule-selection/scripts/capacity_pipeline_example.py",
+    "sha256": "849ca025fc4370bbebdba70e13d9a3fc8ca552cce788f02fd774b8cc4d866231"
+  },
+  {
+    "bytes": 36785,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/shape-schedule-selection/scripts/shape_choice_table.py",
+    "relative": ".agents/skills/shape-schedule-selection/scripts/shape_choice_table.py",
+    "sha256": "a41371b15027fdab3c6465eb4006ebe561286055c499b32621f1ac3d40a7af25"
+  },
+  {
+    "bytes": 4414,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/task-available-tools/SKILL.md",
+    "relative": ".agents/skills/task-available-tools/SKILL.md",
+    "sha256": "2cc0afd3bdf6a5d6e59cd20df804c8c593296da3f4d4c97a4c69e0c76909ca42"
+  },
+  {
+    "bytes": 1804,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/task-build-against-the-whole-public-corpus/SKILL.md",
+    "relative": ".agents/skills/task-build-against-the-whole-public-corpus/SKILL.md",
+    "sha256": "f22c0a9a370dc2a32b4792f965edebf5d266d381207bb2dd5471dc085a60b859"
+  },
+  {
+    "bytes": 3766,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/task-joint-editable-compiler-development/SKILL.md",
+    "relative": ".agents/skills/task-joint-editable-compiler-development/SKILL.md",
+    "sha256": "6dd5aea4de8d075275ff5afa93d11df9afc7b238d7df2dee6bb417b31478151c"
+  },
+  {
+    "bytes": 1973,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/task-joint-shared-cpu-scheduling/SKILL.md",
+    "relative": ".agents/skills/task-joint-shared-cpu-scheduling/SKILL.md",
+    "sha256": "898f124dccb22c55b3a235284d3f4f46be98850f52d8c826a856fea766244623"
+  },
+  {
+    "bytes": 4984,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/task-model-deployment-and-numerical-boundaries/SKILL.md",
+    "relative": ".agents/skills/task-model-deployment-and-numerical-boundaries/SKILL.md",
+    "sha256": "262d97b3674b578e72e95d7cae4074a1072af31e98cae0c382539b4b138c0db9"
+  },
+  {
+    "bytes": 2911,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/task-one-evolving-compiler-parallel-bounded-work/SKILL.md",
+    "relative": ".agents/skills/task-one-evolving-compiler-parallel-bounded-work/SKILL.md",
+    "sha256": "ebbac0b4eca4eb53080d2df5a42d84425bde57cae4c09c11ecb102d933721ebe"
+  },
+  {
+    "bytes": 1861,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/task-phase-1-gemmini-compiler-for-complete-models/SKILL.md",
+    "relative": ".agents/skills/task-phase-1-gemmini-compiler-for-complete-models/SKILL.md",
+    "sha256": "39ce03be972d1e5223928c3b8782dd2e1a96635552d065d2bb78a2b39f2c89cc"
+  },
+  {
+    "bytes": 1959,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/task-required-public-spike-scalability-suite/SKILL.md",
+    "relative": ".agents/skills/task-required-public-spike-scalability-suite/SKILL.md",
+    "sha256": "5b78bdefa2071e4e3e38645d20f4fef78b52b79877957805b5605bc7ac6b597f"
+  },
+  {
+    "bytes": 2630,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/task-runtime-scope-generated-for-this-launch-authoritative/SKILL.md",
+    "relative": ".agents/skills/task-runtime-scope-generated-for-this-launch-authoritative/SKILL.md",
+    "sha256": "ccd71dfb27a40a169609bc9384a4d326f73aee98ff2277c5e46ab1e8b192f6bb"
+  },
+  {
+    "bytes": 2851,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.agents/skills/task-selected-fresh10-compiler-capabilities/SKILL.md",
+    "relative": ".agents/skills/task-selected-fresh10-compiler-capabilities/SKILL.md",
+    "sha256": "43924a95030f1d73407ecd62be4b49c10f2ee8a4cccd03744059525fc6420875"
+  },
+  {
+    "bytes": 5442,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/ab-library-pass/SKILL.md",
+    "relative": ".claude/skills/ab-library-pass/SKILL.md",
+    "sha256": "93c59608c2ff41e5b63fda171f8b6ff73df90ffb3111cd1896007c3506b8f88d"
+  },
+  {
+    "bytes": 4588,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/ab-library-pass/reference/adapter.md",
+    "relative": ".claude/skills/ab-library-pass/reference/adapter.md",
+    "sha256": "943df20a882c66c554c4893ac93230e48e09c8e6a05b18e75b4f66f41aa9662e"
+  },
+  {
+    "bytes": 1973,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/ab-library-pass/reference/sweeps.md",
+    "relative": ".claude/skills/ab-library-pass/reference/sweeps.md",
+    "sha256": "f3be3eb615b86e5afe673a242f87067de79bab145dd7fb190ff07ca007b22b79"
+  },
+  {
+    "bytes": 13781,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/ab-library-pass/scripts/ab_compare.py",
+    "relative": ".claude/skills/ab-library-pass/scripts/ab_compare.py",
+    "sha256": "4b94a8de3ec8c193719ebdc557f2739eef878970f95a2fc66dec43dfdf3e3654"
+  },
+  {
+    "bytes": 13914,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/ab-library-pass/scripts/apply_library_pass.py",
+    "relative": ".claude/skills/ab-library-pass/scripts/apply_library_pass.py",
+    "sha256": "ae66edc49291c9a96e6b54e12c8a0e8675b383f0991d0a0f3d423f2438233d4c"
+  },
+  {
+    "bytes": 8145,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/ab-library-pass/scripts/mechanism_api.py",
+    "relative": ".claude/skills/ab-library-pass/scripts/mechanism_api.py",
+    "sha256": "865ccd93a4cbb85b87f065ba435ef2c342c3080010aa3b845e904808e51455f3"
+  },
+  {
+    "bytes": 4921,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/compose-pass-pipeline/SKILL.md",
+    "relative": ".claude/skills/compose-pass-pipeline/SKILL.md",
+    "sha256": "5ff733df0284564c1bd57c8c5177b9dd83ad84b5485f796af3254b1980d8f62b"
+  },
+  {
+    "bytes": 11859,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/compose-pass-pipeline/reference/pass_specs.md",
+    "relative": ".claude/skills/compose-pass-pipeline/reference/pass_specs.md",
+    "sha256": "374ec749025b6e7a5c554cea9ec9fafaabf56393da31d0cdb23480de1a944f66"
+  },
+  {
+    "bytes": 9161,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/compose-pass-pipeline/reference/phase-order.md",
+    "relative": ".claude/skills/compose-pass-pipeline/reference/phase-order.md",
+    "sha256": "9f6bb66a24fd8c7a1bc9adf381cd0df0d5339cc7973665ce05bb19d08e447ee9"
+  },
+  {
+    "bytes": 11907,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/compose-pass-pipeline/scripts/pass_specs.py",
+    "relative": ".claude/skills/compose-pass-pipeline/scripts/pass_specs.py",
+    "sha256": "b7cdd83cf3317d435ddbeff4ee24b7a55aea2a272f4d4340493ac031db5cf2e7"
+  },
+  {
+    "bytes": 4131,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/cycle-model-and-gsim/SKILL.md",
+    "relative": ".claude/skills/cycle-model-and-gsim/SKILL.md",
+    "sha256": "476661b73cf157295761542f400bca367641a4943b4112dd3a8aa095280d0524"
+  },
+  {
+    "bytes": 3624,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/cycle-model-and-gsim/reference/trust.md",
+    "relative": ".claude/skills/cycle-model-and-gsim/reference/trust.md",
+    "sha256": "24cd5b69a7eb2d21e409f515bc4d605460dce12f889b963477f875e820e05830"
+  },
+  {
+    "bytes": 4232,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/delegate-to-helpers/SKILL.md",
+    "relative": ".claude/skills/delegate-to-helpers/SKILL.md",
+    "sha256": "27ece20b3fa4d5dd28f0f161eec5aebc1edee094a41c78e25cf8a944adf79e6d"
+  },
+  {
+    "bytes": 4658,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/explore-schedules/SKILL.md",
+    "relative": ".claude/skills/explore-schedules/SKILL.md",
+    "sha256": "5308af546357f972c3742025361c586f6eaf16f074adc7954c567393b055c615"
+  },
+  {
+    "bytes": 1555,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/explore-schedules/reference/evidence.md",
+    "relative": ".claude/skills/explore-schedules/reference/evidence.md",
+    "sha256": "3c12519aa8f76c5e70d9fd31ee140e2d4b6820893dd6a40a653cc8ddcef8680a"
+  },
+  {
+    "bytes": 6871,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/explore-schedules/scripts/holdout_rank.py",
+    "relative": ".claude/skills/explore-schedules/scripts/holdout_rank.py",
+    "sha256": "31952e18804196b9c1c6bd61f4ede3fe548c514c9e800820f3a5ee069024eb85"
+  },
+  {
+    "bytes": 4925,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/feedback-files/SKILL.md",
+    "relative": ".claude/skills/feedback-files/SKILL.md",
+    "sha256": "245f63e397b907674b82631dc52ef547b2050a58a6286e7283104b766e281d6a"
+  },
+  {
+    "bytes": 4115,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/feedback-files/scripts/qa_status.py",
+    "relative": ".claude/skills/feedback-files/scripts/qa_status.py",
+    "sha256": "54d255380c40ca19b6a00d912972fe0abd3fac4d7d67ce533a7356ce67e6a3ae"
+  },
+  {
+    "bytes": 4613,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/fix-failure-cluster/SKILL.md",
+    "relative": ".claude/skills/fix-failure-cluster/SKILL.md",
+    "sha256": "23c642116777b933837c90ac43a6277a7963bfbcfab826c5b8a0aba4ccefd66b"
+  },
+  {
+    "bytes": 9239,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/fix-failure-cluster/scripts/clusters.py",
+    "relative": ".claude/skills/fix-failure-cluster/scripts/clusters.py",
+    "sha256": "cf6491525ded568e7d428a364716495b06771f4119bf3efadd4f2d2776531e9c"
+  },
+  {
+    "bytes": 4762,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/fusion/SKILL.md",
+    "relative": ".claude/skills/fusion/SKILL.md",
+    "sha256": "0abe42f456f7ad25f0df5b0c1f3df8e736617a0b13650b4b2c9f126dc2ee5130"
+  },
+  {
+    "bytes": 8666,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/fusion/reference/routes.md",
+    "relative": ".claude/skills/fusion/reference/routes.md",
+    "sha256": "0bf3fc659df099d7e016d42514cc5c84aefe2f2570f0919fcccc4a2eacef910f"
+  },
+  {
+    "bytes": 5212,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/SKILL.md",
+    "relative": ".claude/skills/heavy-pass-recipes/SKILL.md",
+    "sha256": "f9561aceef7822df3ed73a04e4bc68cdd8de59d1955b257557705186075037ae"
+  },
+  {
+    "bytes": 5503,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/reference/composition.md",
+    "relative": ".claude/skills/heavy-pass-recipes/reference/composition.md",
+    "sha256": "22516f3e08a53f4abac945e806ee7ad48687658a269d6bba4cb77a8a9ad581e2"
+  },
+  {
+    "bytes": 23767,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/reference/convolution.md",
+    "relative": ".claude/skills/heavy-pass-recipes/reference/convolution.md",
+    "sha256": "81d5ea22f07c4ffe7a050e997f62d46853026c2ae7e94c694a78350eb57820c8"
+  },
+  {
+    "bytes": 18474,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/reference/dense-recipes.md",
+    "relative": ".claude/skills/heavy-pass-recipes/reference/dense-recipes.md",
+    "sha256": "56e4034796f5a473d0435c98285f54741194f59fbdbf10623594bf3f3a57a7f3"
+  },
+  {
+    "bytes": 6109,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/reference/parallel-evaluation.md",
+    "relative": ".claude/skills/heavy-pass-recipes/reference/parallel-evaluation.md",
+    "sha256": "457a51b1e0b4491dc9b5bfa61681d75d2e031327803c02b152025d53ad2d4d34"
+  },
+  {
+    "bytes": 8060,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/reference/pipeline-policy.md",
+    "relative": ".claude/skills/heavy-pass-recipes/reference/pipeline-policy.md",
+    "sha256": "8a4c933154fe3c7b9f7d90f9394d719e1fe4e11fe32b2613e7a58fe8a740bb25"
+  },
+  {
+    "bytes": 6802,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/reference/source-composition.md",
+    "relative": ".claude/skills/heavy-pass-recipes/reference/source-composition.md",
+    "sha256": "f2f0be325cb8ffebbf374298f0b8b5ba9a2b6ffb5402e88db5eb05ddb281ec66"
+  },
+  {
+    "bytes": 32310,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/composition_routes.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/composition_routes.py",
+    "sha256": "04d96efa3ddd0408673fad2520cd6bae96b98e2bd66b08c29914dd50e78b6f4b"
+  },
+  {
+    "bytes": 18810,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/conv_adapter_example.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/conv_adapter_example.py",
+    "sha256": "de5aa1c88e4b1f268686beee814f9213fd8ce48d41a25dea4254e18dc404fabb"
+  },
+  {
+    "bytes": 49776,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/conv_epoch_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/conv_epoch_recipe.py",
+    "sha256": "ac84dc29d6d5a1900a0e7c011993d2c3bcc2bf1ed1ae721b3d811b07c8b0ab57"
+  },
+  {
+    "bytes": 18251,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/conv_window_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/conv_window_recipe.py",
+    "sha256": "0c015e218998f54a37a01e54a237ff6f5d8bc2d3554bae6fa94c26a6797525da"
+  },
+  {
+    "bytes": 6742,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/counted_emission_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/counted_emission_recipe.py",
+    "sha256": "b97df49690f58605b2259bc78ff27e30d72decd246a3513913f98e31276e8162"
+  },
+  {
+    "bytes": 30369,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/dense_epoch_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/dense_epoch_recipe.py",
+    "sha256": "a17908cb1beb84bcd5ad19b5dc4ed79a1f27604ac029bb90e5185aba7a480bfc"
+  },
+  {
+    "bytes": 7775,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/dense_readout_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/dense_readout_recipe.py",
+    "sha256": "1224fdc8ac0d1a6eee141a7398a3c638270fea001e5d8d18d58acac17b6f81c2"
+  },
+  {
+    "bytes": 29327,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/library_pipeline_policy.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/library_pipeline_policy.py",
+    "sha256": "1ffa54b31ddbf3b690061189c7093bcce14aa2d380a19192112f1c34361fc1a7"
+  },
+  {
+    "bytes": 6443,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/long_k_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/long_k_recipe.py",
+    "sha256": "a5b3c942cc2cc3580c45133fb3cfcc82429681da4738e622537a13dda6aac6f4"
+  },
+  {
+    "bytes": 14867,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/parallel_schedule_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/parallel_schedule_recipe.py",
+    "sha256": "cc7b43f6dc30262307997add091b2a6dfd0c690a6f741e30942fd313181b0c2d"
+  },
+  {
+    "bytes": 6259,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/projection_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/projection_recipe.py",
+    "sha256": "a6a6deb4bda1be67295f02ede8610bc059b9bc823833a3f940b3267619713307"
+  },
+  {
+    "bytes": 12912,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/recipe_support.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/recipe_support.py",
+    "sha256": "bf3bb87ccb706b389357bf286e51c551c2c2a08607838275b4a66eef424c4a8d"
+  },
+  {
+    "bytes": 7721,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/shared_rhs_epoch_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/shared_rhs_epoch_recipe.py",
+    "sha256": "82aaf8f2d655cb39509c16a49fe25acf6bed734220577ce5ad90a92caf288d3c"
+  },
+  {
+    "bytes": 6706,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/source_observer_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/source_observer_recipe.py",
+    "sha256": "f90954086aa43903a97252751680b326d0e091f89144183c5784d5460484fcdc"
+  },
+  {
+    "bytes": 16142,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/heavy-pass-recipes/scripts/spatial_chain_recipe.py",
+    "relative": ".claude/skills/heavy-pass-recipes/scripts/spatial_chain_recipe.py",
+    "sha256": "002a84756182aa147c28de87722e57945a39978c6c7c335799dc0a933db47adb"
+  },
+  {
+    "bytes": 4420,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-artifacts/SKILL.md",
+    "relative": ".claude/skills/inspect-artifacts/SKILL.md",
+    "sha256": "c6e6de26ab9e0b3368fa8b2d16b23d4d316370a198cbecd5f01cc90fde4c0e9a"
+  },
+  {
+    "bytes": 5642,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-artifacts/reference/layout.md",
+    "relative": ".claude/skills/inspect-artifacts/reference/layout.md",
+    "sha256": "8aec747c2a5952b911870c176381fb493e5fe7d486d8aeca5bab5187e41f349c"
+  },
+  {
+    "bytes": 11931,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-artifacts/scripts/case_artifacts.py",
+    "relative": ".claude/skills/inspect-artifacts/scripts/case_artifacts.py",
+    "sha256": "6d71512e4b9ae17493052dbcf9defc99662ed71e2bda07e9058a916ec948132e"
+  },
+  {
+    "bytes": 4730,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-ir/SKILL.md",
+    "relative": ".claude/skills/inspect-ir/SKILL.md",
+    "sha256": "5e391a0c00711e17682c54b1d62a1f95188d682291dd4f1dc276db4d388208c8"
+  },
+  {
+    "bytes": 6147,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-ir/reference/stages.md",
+    "relative": ".claude/skills/inspect-ir/reference/stages.md",
+    "sha256": "a52f1d0a12eff657d5a9361ac0ed2eb1e74fab40856ddfec3d4ec954ea1b3580"
+  },
+  {
+    "bytes": 15007,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-ir/scripts/dump_stages.py",
+    "relative": ".claude/skills/inspect-ir/scripts/dump_stages.py",
+    "sha256": "bc2c26b9882988d245ed951931afa73d93967f61563a239d255db78bd54c3a19"
+  },
+  {
+    "bytes": 4737,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-kernel/SKILL.md",
+    "relative": ".claude/skills/inspect-kernel/SKILL.md",
+    "sha256": "4f1db39fb812177eb9e02b3993b7c31ff2920c22652bc20df94f7553fe3eece4"
+  },
+  {
+    "bytes": 5666,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-kernel/reference/products.md",
+    "relative": ".claude/skills/inspect-kernel/reference/products.md",
+    "sha256": "e7e379420c22035c6ebb26ab061baf89b470b3ccf814eb78da8ae6876358b51b"
+  },
+  {
+    "bytes": 10991,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-kernel/scripts/build_kernel.py",
+    "relative": ".claude/skills/inspect-kernel/scripts/build_kernel.py",
+    "sha256": "989a61637e1982a25ac223d133eb12f9b0c969e7961eb89e413e848eb2c54072"
+  },
+  {
+    "bytes": 9221,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-kernel/scripts/loop_map.py",
+    "relative": ".claude/skills/inspect-kernel/scripts/loop_map.py",
+    "sha256": "e4cb18ed3145e3d939c933a834ba231a7b8235cbc8276d2ad47cadc7f2a98631"
+  },
+  {
+    "bytes": 4952,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-model/SKILL.md",
+    "relative": ".claude/skills/inspect-model/SKILL.md",
+    "sha256": "13622a762f8bb713f9288100e69b52c11719075d1434d4e10d2297945bca2eab"
+  },
+  {
+    "bytes": 6401,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-model/reference/model-case-format.md",
+    "relative": ".claude/skills/inspect-model/reference/model-case-format.md",
+    "sha256": "c70be91252fc6b4116517349584098ee9a2c84b1e093143def8eb6a8ca1f6b65"
+  },
+  {
+    "bytes": 9220,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/inspect-model/scripts/model_summary.py",
+    "relative": ".claude/skills/inspect-model/scripts/model_summary.py",
+    "sha256": "9cfacf9f38388d6a20c449434abd30a74417b20dcd91fed6afd8c5c5b039f881"
+  },
+  {
+    "bytes": 4273,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/SKILL.md",
+    "relative": ".claude/skills/pass-library/SKILL.md",
+    "sha256": "fce6640fd4ba39db52029a67e4d12c3a91f8d18e69d5b57ce9aebbcc2155a61d"
+  },
+  {
+    "bytes": 1669,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/compiler_control.md",
+    "relative": ".claude/skills/pass-library/reference/compiler_control.md",
+    "sha256": "51e16f8f8ed4090b7793277d7b3b93f29471911df56979fc40c7c3ae116460be"
+  },
+  {
+    "bytes": 1968,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/feedback.md",
+    "relative": ".claude/skills/pass-library/reference/feedback.md",
+    "sha256": "8434a5c5167f7adef933675c6aea55ac81632882d14ddfce81fd499fdeb1414a"
+  },
+  {
+    "bytes": 4299,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/fusion.md",
+    "relative": ".claude/skills/pass-library/reference/fusion.md",
+    "sha256": "6c837521294489fa6efc3f5e1a1e744b29dc008ed90987dfa8595ecd6fc0c3cd"
+  },
+  {
+    "bytes": 2021,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/host_compute.md",
+    "relative": ".claude/skills/pass-library/reference/host_compute.md",
+    "sha256": "df52bcda510b5ef4ef1195386019e9052aad2bc4f969b9dec5bca1ee55f8d30e"
+  },
+  {
+    "bytes": 1224,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/host_interface.md",
+    "relative": ".claude/skills/pass-library/reference/host_interface.md",
+    "sha256": "8df0ce947aa3789a869d48f91ecde7a281b263a0bb9965c8fa63b16baf9bfb76"
+  },
+  {
+    "bytes": 1166,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/host_memory.md",
+    "relative": ".claude/skills/pass-library/reference/host_memory.md",
+    "sha256": "ccb59d9cb3e68e0a33b8e6b040a91d3192dabf06161190257518d6a2bade9351"
+  },
+  {
+    "bytes": 5746,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/issue.md",
+    "relative": ".claude/skills/pass-library/reference/issue.md",
+    "sha256": "0e914bd4ec039c7ed43f01122e07a5de21cc9de2599e69dfce1fc7cbb0b275d5"
+  },
+  {
+    "bytes": 2826,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/legality.md",
+    "relative": ".claude/skills/pass-library/reference/legality.md",
+    "sha256": "f5e019e2e23394c67dbf26b835017990bdc150be4af6a4ef960664d84391f44c"
+  },
+  {
+    "bytes": 2935,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/movement.md",
+    "relative": ".claude/skills/pass-library/reference/movement.md",
+    "sha256": "0221740d5ba2977a0ecd2350f7638d711451c7e4d065bdc9f8c4986b982749fd"
+  },
+  {
+    "bytes": 3794,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/numeric_formats.md",
+    "relative": ".claude/skills/pass-library/reference/numeric_formats.md",
+    "sha256": "dc2e2ce15fdd68c409ee73bd0e45937823efd930a7d0210f6a7d268713ece064"
+  },
+  {
+    "bytes": 7551,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/overlap.md",
+    "relative": ".claude/skills/pass-library/reference/overlap.md",
+    "sha256": "1bfb0c5f52e7277313d4a18dce000e3449e648408e6c9ebc5fe6011071edb9c1"
+  },
+  {
+    "bytes": 4776,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/packing.md",
+    "relative": ".claude/skills/pass-library/reference/packing.md",
+    "sha256": "53856f0330922820327121e4154964786b9da40dcbfd530b071b255f77ff8fe9"
+  },
+  {
+    "bytes": 4065,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/scheduling.md",
+    "relative": ".claude/skills/pass-library/reference/scheduling.md",
+    "sha256": "58de6cdf564727c4b05a3d9a78a86d3bb06da13b36f46d22c66ec9a95b653206"
+  },
+  {
+    "bytes": 7984,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/storage.md",
+    "relative": ".claude/skills/pass-library/reference/storage.md",
+    "sha256": "52e6e18ccfd7c3a628b60762b11ccf00f0f7988248e904781a330cc0946663ab"
+  },
+  {
+    "bytes": 8672,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/pass-library/reference/synchronization.md",
+    "relative": ".claude/skills/pass-library/reference/synchronization.md",
+    "sha256": "dc5c72922d16fd0bef4e8fca36aef72744c4ae9c631a5300900c217812dc9000"
+  },
+  {
+    "bytes": 4718,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/performance-feedback-levels/SKILL.md",
+    "relative": ".claude/skills/performance-feedback-levels/SKILL.md",
+    "sha256": "f4cb93648cc6266f96f3ded8a690c0d853143a23a1400f518c984b2c1ad23c74"
+  },
+  {
+    "bytes": 4937,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/performance-feedback-levels/reference/signal-map.md",
+    "relative": ".claude/skills/performance-feedback-levels/reference/signal-map.md",
+    "sha256": "0a8694efb0436008e375fd5d734f9d03bcdca35cc2dae7b5bb3b37597d78ac31"
+  },
+  {
+    "bytes": 4794,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/quantization/SKILL.md",
+    "relative": ".claude/skills/quantization/SKILL.md",
+    "sha256": "55786c7b9211f096b6dbd26fe4276e6127f7b9dda559a35f4d6e8bd816489f9a"
+  },
+  {
+    "bytes": 5537,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/quantization/reference/debugging.md",
+    "relative": ".claude/skills/quantization/reference/debugging.md",
+    "sha256": "3429ea5ffcf0c589f9893e0e735530aff54dc31b5eeb3d5c9284cf0281f0c6f4"
+  },
+  {
+    "bytes": 5969,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/quantization/reference/library_api.md",
+    "relative": ".claude/skills/quantization/reference/library_api.md",
+    "sha256": "8fb6175a23c4ccff21b61f24c52868b620bc2277b5518678883b1e806cbd36c9"
+  },
+  {
+    "bytes": 7222,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/quantization/reference/semantics.md",
+    "relative": ".claude/skills/quantization/reference/semantics.md",
+    "sha256": "b30c81dd643dc57471454acf66bee6b3e31b0ef982a9d90ac7940b3bcb197640"
+  },
+  {
+    "bytes": 27249,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/quantization/scripts/quant_params.py",
+    "relative": ".claude/skills/quantization/scripts/quant_params.py",
+    "sha256": "2226775a61e3d875faccb9518f1753131f1d1d463e42c7bc806f08f7c5bb0e43"
+  },
+  {
+    "bytes": 4446,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/read-command-buffer/SKILL.md",
+    "relative": ".claude/skills/read-command-buffer/SKILL.md",
+    "sha256": "f1de42e31766e9b1604e80f723097c4a9cab66f970c92ee793ce864f751f6123"
+  },
+  {
+    "bytes": 12975,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/read-command-buffer/scripts/summarize_command_buffer.py",
+    "relative": ".claude/skills/read-command-buffer/scripts/summarize_command_buffer.py",
+    "sha256": "74337975c51232ac2697692cf6c4380b13db90f0f5746608583e76946aa79919"
+  },
+  {
+    "bytes": 4597,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/roofline-and-utilization/SKILL.md",
+    "relative": ".claude/skills/roofline-and-utilization/SKILL.md",
+    "sha256": "d2c1902f89f8eb7bb81e822859fc8335774ae632412e5a992140274262f4ac0d"
+  },
+  {
+    "bytes": 6074,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/roofline-and-utilization/reference/fields.md",
+    "relative": ".claude/skills/roofline-and-utilization/reference/fields.md",
+    "sha256": "18304abc9eaa3f326527ec918c782d052de36479c237a15f41a72f9215199092"
+  },
+  {
+    "bytes": 2988,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/roofline-and-utilization/reference/levers.md",
+    "relative": ".claude/skills/roofline-and-utilization/reference/levers.md",
+    "sha256": "507bbc6314b2a455a7b1b01aa757ef63b01e8c9857884ee3075f0e6005a6df4d"
+  },
+  {
+    "bytes": 36323,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/roofline-and-utilization/scripts/perf_summary.py",
+    "relative": ".claude/skills/roofline-and-utilization/scripts/perf_summary.py",
+    "sha256": "c81cceb8f32d27c98d2d7f564d78086d9e6c114982208574928ee0bcfb014b67"
+  },
+  {
+    "bytes": 5267,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/scheduling-api/SKILL.md",
+    "relative": ".claude/skills/scheduling-api/SKILL.md",
+    "sha256": "a794776c7bf9c1492e764227c017362c75f70b0d0ab24e1914a739598e4ca439"
+  },
+  {
+    "bytes": 13734,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/scheduling-api/scripts/dense_schedule_example.py",
+    "relative": ".claude/skills/scheduling-api/scripts/dense_schedule_example.py",
+    "sha256": "4acccd5e130c9254b5f6fa24c18bd015494526cee732528603cda285ee1c4c87"
+  },
+  {
+    "bytes": 18248,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/scheduling-api/scripts/library_inventory.py",
+    "relative": ".claude/skills/scheduling-api/scripts/library_inventory.py",
+    "sha256": "9778e88afd7b57d7df6058992fd3bd1a095951e93f198fd3c5ea65b7b692f1f3"
+  },
+  {
+    "bytes": 6367,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/shape-schedule-selection/SKILL.md",
+    "relative": ".claude/skills/shape-schedule-selection/SKILL.md",
+    "sha256": "d8ec55261dd3361839ac63b81bd5b9a3ff55b01e2b63b178d50eb5e4142f62cd"
+  },
+  {
+    "bytes": 12603,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/shape-schedule-selection/reference/capacity-pipeline.md",
+    "relative": ".claude/skills/shape-schedule-selection/reference/capacity-pipeline.md",
+    "sha256": "7c2fa1d3f91cb564bf70e93bc1d0db7de698df7b9feb26d4522df913cc19e127"
+  },
+  {
+    "bytes": 8458,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/shape-schedule-selection/reference/choice-table.md",
+    "relative": ".claude/skills/shape-schedule-selection/reference/choice-table.md",
+    "sha256": "7fe1bab67e524c48833302eb967a18aea253a8220287ca6d3f1c7e0ab30e293b"
+  },
+  {
+    "bytes": 5045,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/shape-schedule-selection/reference/shape-policy.md",
+    "relative": ".claude/skills/shape-schedule-selection/reference/shape-policy.md",
+    "sha256": "8a8628084f5c010bdf0e79281bcb17dcf6995b9deb16d5178094e157a346814c"
+  },
+  {
+    "bytes": 22030,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/shape-schedule-selection/scripts/capacity_pipeline_example.py",
+    "relative": ".claude/skills/shape-schedule-selection/scripts/capacity_pipeline_example.py",
+    "sha256": "849ca025fc4370bbebdba70e13d9a3fc8ca552cce788f02fd774b8cc4d866231"
+  },
+  {
+    "bytes": 36785,
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/agent-workspaces/phase1/gemmini/merlin_assisted/fresh10-tooling-20261028-r5-no-reference-kernels-preflight/workspace/.claude/skills/shape-schedule-selection/scripts/shape_choice_table.py",
+    "relative": ".claude/skills/shape-schedule-selection/scripts/shape_choice_table.py",
+    "sha256": "a41371b15027fdab3c6465eb4006ebe561286055c499b32621f1ac3d40a7af25"
+  }
+]

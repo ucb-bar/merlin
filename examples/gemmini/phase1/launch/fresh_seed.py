@@ -18,8 +18,11 @@ then turns it into a reviewed source-only joint seed (``merlin_experiments.phase
   (identical bytes, comment/docstring-only code changes, or changes listed in ``judge_review``
   with their exact old and new digests); otherwise those tiers re-run and the plan's
   ``seed-certificates.json`` lists each changed judge file for review; ``rules`` stages its ``OPTIMIZATION_RULES.json``, A/B
-  records and variant outcomes; ``handoff`` stages ``PREVIOUS_SESSION.md``. All of it lands at
-  the workspace root, outside ``submission/``;
+  records and variant outcomes; ``handoff`` stages ``PREVIOUS_SESSION.md``; ``variants`` the
+  seed run's whole variant trees, its own notes, tools and evidence records; ``performance`` its
+  per-case performance history and baseline, its model cycles by executable bytes and its
+  fast-estimate calibration (``seed_carry.py``). All of it lands at the workspace root, outside
+  ``submission/``, listed one line each in ``SEED_INDEX.md`` (the grader's part in the run directory);
 * the guidance gains the seed addendum (``guidance``, default ``seed-guidance.md`` here);
 * gSIM is optional: continuous gSIM promotion is turned off for the seeded policy;
 * with verdicts carried, ``MERLIN_SEEDED_GRADE`` names the seed run: grades carry the screen tier for
@@ -27,8 +30,9 @@ then turns it into a reviewed source-only joint seed (``merlin_experiments.phase
   carried cases, and label carried passes ``carried from <run>`` (``merlin.targetgen.seeded_grade``).
 
 The runtime's preflight-only mode refuses a seed, so ``preflight`` checks the seed itself (bytes,
-review, option validation and a scratch placement exactly as the session stages it) and preflights
-the unseeded twin the plan records. ``launch`` re-checks the seed before starting anything.
+review, option validation and a scratch placement exactly as the session stages it, whose compiler
+then compiles one small public case: ``seed_compile_probe.py``) and preflights the unseeded twin
+the plan records. ``launch`` re-checks the seed before starting anything.
 """
 
 from __future__ import annotations
@@ -45,7 +49,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 GUIDANCE = HERE / "seed-guidance.md"
-CARRY = ("certificates", "results", "rules", "handoff")
+CARRY = ("certificates", "results", "rules", "handoff", "variants", "performance")
 NOTES = ("REPORT.md", "docs/*iteration*")
 EVIDENCE_DIR, NOTES_DIR, EXPERIMENTS_DIR = "SEED_EVIDENCE", "SEED_NOTES", "SEED_EXPERIMENTS"
 #: Compiler sources whose text may name a note the compiler reads.
@@ -229,12 +233,25 @@ def build_evidence(seed: dict, source: Path, copy: Path, out: Path) -> dict:
             shutil.copyfile(rules, out / "OPTIMIZATION_RULES.json")
         summary["rules"] = rules.is_file()
         summary["experiments"] = experiments(workspace, source, out / EXPERIMENTS_DIR)
+    if run is not None and (seed["carry"]["variants"] or seed["carry"]["performance"]):
+        carry = _sibling("seed_carry")
+        summary.update(carry.build(seed, source, out))
     if not any(out.iterdir()):
         return summary
+    _sibling("seed_carry").write_index(out, summary)
     from merlin.common.tree_hash import hash_tree
 
     summary["pin"] = {"path": str(out), "sha256": hash_tree(out)["sha256"]}
     return summary
+
+
+def _sibling(name: str):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(f"fresh_seed_{name}", HERE / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def carry_certificates(ctx, seed: dict, environment: dict, report: Path) -> dict:
@@ -311,6 +328,9 @@ def apply(ctx, record: dict, *, validate_policy, check_campaign, reserve, carry_
         # Seeded grades carry the screen for byte-identical executables, grade what changed first and
         # label carried passes (merlin.targetgen.seeded_grade). Never set for a from-scratch plan.
         environment["MERLIN_SEEDED_GRADE"] = seed["run"]["run_id"]
+        # The seeded order (changed first, then timing by gap, then carried) applies only to an
+        # unselected order; the base specs select information-first, which would keep it off.
+        environment["MERLIN_CAPSULE_ORDER"] = "seeded"
     carried = None
     if carry["certificates"] or carry["results"]:
         carried = (carry_verdicts or carry_certificates)(ctx, seed, environment, out / "seed-certificates.json")
@@ -422,10 +442,38 @@ def verify_in_runtime(record: dict) -> dict:
             "previous_session": staged.get("previous_session"),
             "seed_evidence": staged.get("seed_evidence"),
         }
+        compiled = compile_staged(record, options, workspace / "submission", Path(scratch))
         for path in Path(scratch).rglob("*"):  # staged evidence files are read-only
             if path.is_file():
                 path.chmod(0o644)
-    return {"seed": "accepted", "origin_sha256": origin["sha256"], "placement": placement}
+    return {"seed": "accepted", "origin_sha256": origin["sha256"], "placement": placement, "compile": compiled}
+
+
+def _argv_value(argv, flag):
+    return argv[argv.index(flag) + 1] if flag in argv else None
+
+
+def compile_staged(record: dict, options, submission: Path, scratch: Path) -> dict:
+    """Complete the session's staging (the full compiler beside the seed), then compile one small case."""
+    import yaml
+    from merlin.targetgen.contract.materialize import descriptor_corpus_roots
+    from merlin.targetgen.target_experiment import load_target_experiment
+
+    probe = _sibling("seed_compile_probe")
+    if options.compiler_access == "full_compiler":
+        from merlin_experiments.phase1 import full_compiler_workspace as FCW
+
+        FCW.stage(FCW.select(options.full_compiler_root, options.full_compiler_manifest,
+                             options.full_compiler_manifest_sha256), submission)
+    argv = record["argv"]
+    repo = Path(_argv_value(argv, "--repo") or record["cwd"])
+    bundle = yaml.safe_load(Path(_argv_value(argv, "--bundle-manifest")).read_text())
+    cases = probe.smallest_public_cases(descriptor_corpus_roots(load_target_experiment(_argv_value(argv, "--descriptor"))))
+    granted = probe.granted_sources(bundle, repo, scratch / "granted")
+    try:
+        return probe.compile_one(submission, cases, granted=granted, work=scratch / "compile")
+    except probe.SeedCompileError as error:
+        raise SeedError(str(error)) from error
 
 
 def verify(ctx, record: dict) -> dict:

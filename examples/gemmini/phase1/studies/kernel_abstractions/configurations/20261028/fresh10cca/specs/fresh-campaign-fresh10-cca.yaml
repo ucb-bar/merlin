@@ -1,0 +1,25 @@
+# fresh10 arm B (user decision 2026-10-28): from scratch (empty backend, no seed), 12 h, 20 CPUs, the
+# fresh9-cca treatment on xs_capsules, plus the user-supplied whole-model ELFs ("also using this kernels").
+# References: fresh9cca's five origins unchanged + three_model_elves_{resnet50,smolvla,tinyllama} + their
+# analysis (README, RoCC census, disassemblies with RoCC regions) and 68 map entries elves.<model>.<pc> (one per
+# RoCC-issuing code span; elfmap/build_entries.py); refs-cca/DECISIONS.md lists the excluded
+# containers. A different reference set is a different sealed release, so this arm has its own inputs.
+extends: fresh-campaign-fresh10-resources.yaml
+id: gemmini-open-compiler-fresh10-cca
+variables:
+  F10: ${TASK}/.tmp/fresh10
+  INPUTS: ${FRAMEWORK}/out/artifacts/fresh-inputs-xs_capsules-cca
+  FRESH10_REFERENCE_MAP: ${F10}/refs-cca/REFERENCE_MAP.json
+  FRESH10_REFERENCE_MAP_SHA256: 9d7d56c59072493f2f1aa4b3a2471811e21a5da62e1d548e900201e275bfcfd3
+run:
+  run_id: gemmini-open-compiler-20261028-fresh10cca
+  unit: merlinphase1fresh10cca20261028
+  cpus: 23,24,25,26,27,28,29,30,31,32,33,34,35,36,37
+  preparation_cpus: 0,1,2,3,4,5,6,7,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95
+inputs:
+  # reference-manifest.json sha256 ecb0cf085ea22eea0b328323e4c00d32c441bb4236f288236e560a5de5dbc897
+  public_references: ${F10}/refs-cca/public-references
+plan:
+  reference_map:
+    path: ${FRESH10_REFERENCE_MAP}
+    sha256: ${FRESH10_REFERENCE_MAP_SHA256}

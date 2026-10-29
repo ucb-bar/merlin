@@ -1,0 +1,55 @@
+# SDK selection for both fresh10 arms: V24 + substrate v17 (Codex handoff 2026-10-28). The 12 leaves
+# new on HEAD relative to the pinned previous library (and their closure) are pending the coordinator's
+# review in SDK-REVIEW.md. BLOCKED on HEAD 0714efabd: V24's library closure reaches withheld merlin.mining
+# (see SDK-REVIEW.md); fresh-campaign-fresh10-sdk.yaml selects this file once that is fixed.
+extends: fresh-campaign-fresh10-common.yaml
+id: gemmini-open-compiler-fresh10-sdk-v24
+inputs:
+  library_version: 24
+  common_substrate: merlin.common_compiler_substrate.v17
+  # fresh8ref's 21 reviewed leaves plus the 12 SDK V24 leaves new on this export relative to the pinned
+  # previous library. The 12 are listed in SDK-REVIEW.md for the coordinator's decision.
+  reviewed_modules:
+  - merlin.sched.ir.events
+  - merlin.compile.scheduling.scf_carried_events
+  - merlin.sched.primitives.event_loops
+  - merlin.common.stat_memo
+  - merlin.sched.primitives.loop_handles
+  - merlin.compile.scheduling.completion_streams
+  - merlin.compile.scheduling.configuration_motion
+  - merlin.compile.scheduling.spatial_max_stripes
+  - merlin.compile.logical_abi
+  - merlin.compile.scheduling.convolution_exploration
+  - merlin.compile.scheduling.dense_panel_epochs
+  - merlin.transforms.evaluated_exploration
+  - merlin.transforms.shape_policy
+  - merlin.compile.scheduling.pointwise_convolution
+  - merlin.compile.scheduling.batched_dense
+  - merlin.compile.scheduling.loaded_sum_epochs
+  - merlin.compile.tuning_knobs
+  - merlin.transforms.tuning_selection
+  - merlin.compile.scheduling.dense_shared_rhs
+  - merlin.compile.scheduling.dense_shared_rhs_check
+  - merlin.compile.scheduling.shared_rhs_schedule_ir
+  # New in fresh10 (pending coordinator review, SDK-REVIEW.md):
+  - merlin.compile.scheduling.horizontal_convolution
+  - merlin.compile.scheduling.operand_slots
+  - merlin.compile.scheduling.rolling_lookahead
+  - merlin.llvmlower.contraction_row_slice
+  - merlin.llvmlower.layout_conformance
+  - merlin.llvmlower.quant_round_check
+  - merlin.llvmlower.repeated_pointwise
+  - merlin.llvmlower.weight_prepack_runtime
+  - merlin.transforms.dense_row_batching
+  - merlin.transforms.dense_row_batching_check
+  - merlin.transforms.head_batching
+  - merlin.transforms.shared_rhs_views
+  # reviewed by coordinator 2026-10-28: generic dense scheduling adapter, no private/oracle/measured material
+  - merlin.compile.scheduling.projection_dense
+  # Dependency closure of the new leaves (imported by them; not exported by SDK V24 on its own):
+  - merlin.llvmlower.borrowed_arena
+  # quant_round_chain exists only with the V24 closure fix (patches/v24-closure-prototype.patch, SDK-REVIEW.md).
+  - merlin.llvmlower.quant_round_chain
+  # Package initializer only (bd9736626); not a public API.
+  - merlin.compile.analysis
+  - merlin.compile.analysis.contraction_shapes

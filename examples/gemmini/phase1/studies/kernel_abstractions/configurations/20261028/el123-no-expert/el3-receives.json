@@ -1,0 +1,1516 @@
+{
+  "arm": "el3",
+  "run_id": "xs-el123-noexpert-20261028-r1-el3",
+  "profile": {
+    "schema": "merlin.author_profile.v1",
+    "name": "xs-el-no-expert-v1/el3",
+    "level": 3,
+    "source_scope": "component_closure",
+    "entry_modules": [
+      "merlin.targetgen.generate.mlir_scaffold",
+      "merlin.targetgen.generate.llvm_plan",
+      "merlin.targetgen.generate.target_repo",
+      "merlin.targetgen.generate.xdsl",
+      "merlin.targetgen.oot_starterkit.iface",
+      "merlin.targetgen.oot_starterkit.dialect",
+      "merlin.targetgen.oot_starterkit.llvm_context",
+      "merlin.targetgen.oot_starterkit.cmdbuf",
+      "merlin.targetgen.oot_starterkit.verify"
+    ],
+    "tools": [
+      "cpp_oot_generators"
+    ],
+    "optimization_guidance": false,
+    "live_cca": false,
+    "prior_reference_tasks": false,
+    "historical_levels_unchanged": true,
+    "raw_kernel_references": false,
+    "expert_kernel_policy": "withheld"
+  },
+  "source_selection": {
+    "schema": "merlin.full_compiler_selection.v1",
+    "root": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/full-compiler/python",
+    "manifest_path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/full-compiler/manifest.json",
+    "manifest_sha256": "87756ae886e7a35b728748503ce2e6906625fb4803634d486c1a4c5ac3075e21",
+    "members": 34,
+    "mutable_namespaces": [
+      "merlin.compile",
+      "merlin.transforms",
+      "merlin.sched",
+      "merlin.semantic_compiler",
+      "merlin.llvmlower",
+      "merlin.frontends",
+      "merlin.capture",
+      "merlin.integrations",
+      "merlin.common",
+      "merlin.liveness",
+      "merlin.xdsl_dialects",
+      "merlin.runtime",
+      "merlin.targetgen",
+      "merlin.verify"
+    ],
+    "unavailable_dependencies": []
+  },
+  "author_grants": [
+    {
+      "path": "merlin/contract/VERSION",
+      "mode": "ro",
+      "note": "frozen public ABI"
+    },
+    {
+      "path": "merlin/contract/command_buffer_abi.yaml",
+      "mode": "ro",
+      "note": "frozen public ABI"
+    },
+    {
+      "path": "merlin/contract/interface_dialect_contract.yaml",
+      "mode": "ro",
+      "note": "frozen public ABI"
+    },
+    {
+      "path": "merlin/contract/interface_grammar.md",
+      "mode": "ro",
+      "note": "frozen public ABI"
+    },
+    {
+      "path": "merlin/contract/integrity_policy.md",
+      "mode": "ro",
+      "note": "frozen public ABI"
+    },
+    {
+      "path": "merlin/contract/mlir_oot_backend_contract.yaml",
+      "mode": "ro",
+      "note": "frozen public ABI"
+    },
+    {
+      "path": "merlin/contract/target_dialect_contract.yaml",
+      "mode": "ro",
+      "note": "frozen public ABI"
+    },
+    {
+      "path": "merlin/contract/schemas/",
+      "mode": "ro",
+      "note": "frozen public ABI"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/corpus/isa/",
+      "mode": "ro",
+      "note": "capsule corpus"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/corpus/calibration/",
+      "mode": "ro"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/corpus/layers/",
+      "mode": "ro"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/corpus/model/",
+      "mode": "ro"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/corpus/model_slices/",
+      "mode": "ro"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/corpus/projections/",
+      "mode": "ro"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/contracts/target_contract.yaml",
+      "mode": "ro",
+      "note": "selected capability contract (ALL arms)"
+    },
+    {
+      "path": "/work/merlin/toolchains/llvm-a47bddcc/install/",
+      "mode": "ro",
+      "note": "LLVM/MLIR 23 toolchain"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/scripts/agent_selfcheck.py",
+      "as": "agent_selfcheck.py",
+      "mode": "ro",
+      "note": "redacted self-check"
+    },
+    {
+      "path": "out/artifacts/targets/host/gemmini_rocket_scalar_int8_v0/",
+      "mode": "ro",
+      "note": "frozen host lane (pinned infrastructure, read-only)"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/rtl_facts/",
+      "mode": "ro",
+      "note": "ALLOWED (CIRCT arm): RTL-extracted facts"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/corpus/_public_scalability/public_sources",
+      "mode": "ro",
+      "note": "explicit public input"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/public-program-sources",
+      "mode": "ro",
+      "note": "explicit public input"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/examples/gemmini/target/software-spec.yaml",
+      "mode": "ro",
+      "note": "admitted software semantics"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libm.so.6",
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability"
+    },
+    {
+      "path": "/usr/lib/x86_64-linux-gnu/librt.so.1",
+      "mode": "ro",
+      "note": "selected ordinary OS runtime; not formal authoring capability"
+    }
+  ],
+  "host_inputs": [
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/target_experiment.yaml",
+      "note": "experiment declaration for host-only model grading"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/corpus/hidden/",
+      "note": "private grading corpus; never an agent grant"
+    },
+    {
+      "path": "examples/gemmini/phase0/recipe.yaml",
+      "note": "declared numerical assumptions; not hardware evidence"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/private",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/contracts/operand-facts.json",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/contracts/operand-protocol.json",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-joint-control-20261021/.tmp/structural-binding-activation-v1/operand-selection-v2/operand_selection_recipe.yaml",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-joint-control-20261021/.tmp/structural-binding-activation-v1/operand-selection-v2/target_contract.yaml",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/GemminiISA.scala",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/LoadController.scala",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/StoreController.scala",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/ExecuteController.scala",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/.tmp/chipyard-fire-aligned/generators/gemmini/src/main/scala/gemmini/LocalAddr.scala",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/merlin/out/artifacts/probes/gemmini/fire-aligned-30mhz/firesim-target/elaboration/firechip.chip.FireSim.FireSimGemminiRocketConfig.fir",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/corpus/_phase0",
+      "note": "operator-only frozen input; never an agent grant"
+    },
+    {
+      "path": "out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/task/",
+      "note": "retained task text for release custody; never a candidate grant"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_export.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_checker.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_obligations.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/perf/pass_observation.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_resource_geometry.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_state_effects.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_state_projection.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_checked.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_emission_chain.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_emission_context.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_emission_products.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_sat_runtime.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_isa_semantics.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/compiler_profile_admission.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/tool_profile_toolchain.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/host_optimization_admission.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/common_transforms.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/bundle_snapshot.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/read_lease_digest.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/rtl/result_format_ceiling.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/rtl/result_format_validity.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/bwrap_args.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/host_optimization_request.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/host_optimization_compile.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/rocc/semantics.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/rocc/normalized_operands.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/rocc/selected_operand_protocol.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/rtl/firrtl_operand_slices.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/rtl/firrtl_load_states.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/tool_profile_shared.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/export.py",
+      "note": "host-owned automatic formal verification"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean/Merlin/Foundation.lean",
+      "note": "automatic formal verification lemmas"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "note": "automatic formal verification lemmas"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean/Merlin/StateEffects.lean",
+      "note": "automatic formal verification lemmas"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+      "note": "selected formal verification toolchain manifest"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/lean-4.27.0-nightly-2025-12-01-linux/bin/lean",
+      "note": "selected formal verification toolchain"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/upstream-e2e/merlin/src/merlin/verify/lean/Merlin/Foundation.lean",
+      "note": "selected formal verification toolchain"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/upstream-e2e/merlin/src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "note": "selected formal verification toolchain"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/upstream-e2e/merlin/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "note": "selected formal verification toolchain"
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/public-tool-runtime/.tmp/lean-v3-prepared-r1/lib",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/lean-4.27.0-nightly-2025-12-01-linux/lib/lean",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/mathlib4-nightly-testing-2100ee662d0d4b3233534f70716a04f15f74c300/.lake/build/lib/lean",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/mathlib4-nightly-testing-2100ee662d0d4b3233534f70716a04f15f74c300/.lake/packages/LeanSearchClient/.lake/build/lib/lean",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/mathlib4-nightly-testing-2100ee662d0d4b3233534f70716a04f15f74c300/.lake/packages/Qq/.lake/build/lib/lean",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/mathlib4-nightly-testing-2100ee662d0d4b3233534f70716a04f15f74c300/.lake/packages/aesop/.lake/build/lib/lean",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/mathlib4-nightly-testing-2100ee662d0d4b3233534f70716a04f15f74c300/.lake/packages/batteries/.lake/build/lib/lean",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/mathlib4-nightly-testing-2100ee662d0d4b3233534f70716a04f15f74c300/.lake/packages/importGraph/.lake/build/lib/lean",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/mathlib4-nightly-testing-2100ee662d0d4b3233534f70716a04f15f74c300/.lake/packages/plausible/.lake/build/lib/lean",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/mathlib4-nightly-testing-2100ee662d0d4b3233534f70716a04f15f74c300/.lake/packages/proofwidgets/.lake/build/lib/lean",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/phase1-harness-v2/out/toolchains/lean-v3-restored-20261016/root/work/merlin/tasks/normalized-operand-observer/.tmp/lean-provision-r1/lean-mlir-b8c4a771319a044854a4bbb49b8821381ef86ff8/LeanMLIR/.lake/build/lib/lean",
+      "note": "closed private formal verification library",
+      "closed_toolchain_root": {
+        "schema": "merlin.private_toolchain_root.v1",
+        "manifest": "/work/merlin/tasks/phase1-harness-v2/.tmp/phase1-prep-20261017-v4/lean-toolchain.json",
+        "manifest_sha256": "4fc4831d2a47d77f2301b8a318652bc04594e9f87e8fec00ed42d53e9dff570f"
+      }
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/families.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/compute_units.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/semantic_families.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/capability_manifest.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/target_experiment.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/evidence/store.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/corpora.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/providers.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/target_registry.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/runtime/commandbuffer.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/runtime/tensor.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/analysis/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/analysis/compute_endpoints.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/analysis/instruction_roles.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/synthesize/",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/generate/",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/contract/interface_emit.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/contract/linalg_iface.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/oot_starterkit/",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/perf/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/perf/host_cfg_index.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/perf/task_cfg_evidence.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/rtl_backend.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/rtl/",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/semantic_compiler/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/codegen/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/ir/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/isa/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/primitives/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/frontends/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/integrations/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/runtime/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/lowering/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/capture/__init__.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/certificates.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/normalization.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/loops.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/planning.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/validation.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/pipeline.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/client.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/lean_contract.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/pure_scalar.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/scalar_witness.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/unrolling.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/analysis_types.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/analysis_memory.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/analysis_liveness.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/analyses.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/resource_allocation.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/semantic_compiler/allocation_types.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/semantic_compiler/allocate.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/semantic_compiler/rules.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/semantic_compiler/model.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/dense_planning.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/dense_ir.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/block_schedule.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/shared_input_verification.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/shared_input_schedule.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/shared_input_groups.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/panel_transfers.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/copy_pipeline.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/configuration_loops.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/command_compaction.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/compact_dense.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/compact_loaded_sum.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/spatial_gather.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_source.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/configuration.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/configuration_ir.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/device_spills.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/fusion.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/fusion_semantics.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/library_sources.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/llvm_program.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/pointwise_source.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/program_limits.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/row_softmax.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/schedule_pipeline.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/staged_dense.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/selected_contracts.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/spill_conformance.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/temporary_storage.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/window_transfer.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/cpu_softmax.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/ir/expr.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/ir/integer_domain.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/ir/kernel.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/ir/parse.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/isa/types.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/isa_dialect_gen.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/targetgen/isa_spec.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/pipeline_state.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/periodic_dense.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/spatial_producer.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/spatial_readout.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/spatial_scratch_abi.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/fresh_tensor_writer.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/private_workspace_pool.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/borrowed_effects.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/schedule_ir.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/schedule.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/loop_schedule.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_panel_pipeline.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/scf_commands.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/configuration_contexts.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/configuration_loop_cleanup.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_panel_readout.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/tile_load_coalescing.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/panel_tile_loads.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_segmented_pipeline.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_array_retention.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/api_catalog.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/rolling_window.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/rolling_spatial.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/rolling_window.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/spatial_readout_cache.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_readout_overlap.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/host_builder.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/projection_views.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/tensor_views.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/source_region.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/source_region_host.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/composition_catalog.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_ready_readout.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/ir/events.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/scf_carried_events.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/primitives/event_loops.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/passes_xdsl.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/lowering/outline.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/sched/primitives/loop_handles.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/completion_streams.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/configuration_motion.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/spatial_max_stripes.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/logical_abi.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/convolution_exploration.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_rhs_residency.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/pipeline_policy.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/pass_exploration.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/evaluated_exploration.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/shape_policy.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_panel_epochs.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/pointwise_convolution.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/batched_dense.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/convolution_output_groups.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/loaded_sum_epochs.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/tuning_knobs.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/tuning_selection.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/late_quant_rne.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/source_expression_interval.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/source_expression_interval_llvm.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/bounded_rne_word_cells.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/scaled_integer_finite.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/scaled_integer_finite_llvm.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/projection_dense.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/rolling_lookahead.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/convolution_input_first_use.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/operand_slots.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_shared_rhs.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/horizontal_convolution.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/repeated_pointwise.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/contraction_row_slice.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/weight_prepack_runtime.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/dense_row_batching.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/shared_rhs_views.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/direct_source.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/source_tokens.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/dense_float_ir.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/zero_initializer_groups.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/periodic_effects.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/compact_verification.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/copy_elimination.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_contracts.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/fusion_contracts.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/program_contracts.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/row_contracts.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/row_softmax_verification.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/spill_contracts.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/storage_contracts.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/staged_dense_verification.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/semantic_compiler/egg_bridge.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/semantic_compiler/extract.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/verify/epilogue_applicability.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/integer_readout.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/integer_producer_range.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/requantization.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/_common.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/fp8.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/contract.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/runtime.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/llvm_loop_metadata.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/access.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/compile_trace.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/ir_audit.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/ir_lock.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/paths.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/provenance.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/provenance_lost.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/tree_hash.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/frontends/linalg_mlir.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/integrations/model2mlir.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/generic_form.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/normalization_reassociation.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/optional_passes.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/source_fma_batch.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/toolchain.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/runtime/host_arithmetic.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/xdsl_dialects/ir_inspection.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/stat_memo.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/affine_gather_runs.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/bounded_rne_maps.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/closed_tensor_insert.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/projection_provenance.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/compact_dense_group.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/compact_dense_group_check.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/dense_shared_rhs_check.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/scheduling/shared_rhs_schedule_ir.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/digest.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/mlir_query.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/common/yaml.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/capture/safetensors.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/quant_round_check.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/segmented_matrix_view.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/layout_conformance.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/weights_pack.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/prepared_operand_effects.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/tensor_preparation_identity.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/llvmlower/ordered_fma_groups.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/head_batching.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/transforms/dense_row_batching_check.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/shared-library.json",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/LICENSE",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/NOTICE",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/analysis/contraction_shapes.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/analysis/disassembly.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/analysis/intrinsics_header.py",
+      "note": "judge-only original input; withheld by author profile"
+    },
+    {
+      "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/author-library/base-sdk/merlin/compile/analysis/rocc_commands.py",
+      "note": "judge-only original input; withheld by author profile"
+    }
+  ],
+  "bundle_manifest": {
+    "path": "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/02d14a7d523f/out/artifacts/xs-study/xs-el123-noexpert-20261028-r1-el3/inputs/source-release/payload/experiment/input_bundles/merlin_assisted_rtlchecks_public_v0/input_bundle_manifest.yaml",
+    "sha256": "b0ba625496e53b11b18c1ee35f17402dd80d8dc58fabac12823a477a06164aa4"
+  },
+  "expert_reference_grants": [],
+  "public_reference_directory_absent": true,
+  "native_sandbox_qualification": "pending actual author-affinity preflight"
+}

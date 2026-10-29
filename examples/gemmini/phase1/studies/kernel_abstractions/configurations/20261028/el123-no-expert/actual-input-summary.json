@@ -1,0 +1,24 @@
+{
+  "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+  "author_jobs_launched": 0,
+  "arms": [
+    {
+      "arm": "el1",
+      "allowed_grants": 28,
+      "modules": 0,
+      "public_reference_grants": 0
+    },
+    {
+      "arm": "el2",
+      "allowed_grants": 28,
+      "modules": 12,
+      "public_reference_grants": 0
+    },
+    {
+      "arm": "el3",
+      "allowed_grants": 28,
+      "modules": 34,
+      "public_reference_grants": 0
+    }
+  ]
+}

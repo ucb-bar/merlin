@@ -1,0 +1,242 @@
+# Phase 1: Gemmini compiler for complete models
+
+Build one compiler in `submission/`. Fresh runs start with an empty target backend; declared continuations preserve the authored compiler. The required programs are:
+
+| Model | Programs |
+| --- | --- |
+| ResNet50 | `model` |
+| SmolVLA | `prefix_encode`, `flow_denoise`, `action_decode` |
+| TinyLlama | `prefill`, `decode` |
+
+All six programs must compile and link. During Phase 1, numerical checks require every device kernel
+to replay bit-exactly on Spike, including sealed inputs and sealed shape variants, a fixed-denominator
+offload census, and separately tracked physical obligations. Development defaults to Spike;
+all original required gSIM correctness checks remain required, with separate selective
+calibration witnesses. Full-model Spike development checks are available throughout
+the remaining campaign in this execution mode;
+per-kernel model gSIM replay is not requested.
+`qa/verdict.json` reports your
+visible-input results. Sealed-input results appear only in the official grade.
+
+The frozen `task/PHASE2_TARGET.md` describes the planned FireSim deployment
+target and its relationship to this release's selected RTL facts. Read the
+selected facts and contract for the exact Phase 1 compilation target; retain
+their identities when reporting any timing observation.
+
+## Deliverable
+
+Write a self-contained `submission/` with `manifest.yaml`, compiler sources, the four required
+parse/lower/emit/LLVM entrypoints defined by the admitted contract, and `REPORT.md` stating
+measured results and limitations. The model-check contract uses `numerics.approximations` in the
+manifest for declared approximate kernels. Undeclared device kernels must match the integer
+reference exactly. Declared approximate kernels and host f32 work must meet the contract's
+error policy.
+
+## Available tools
+
+- `python agent_selfcheck.py --submission submission --capsules A,B`: focused public capsule checks.
+  Without `--sim`, or with `--sim required`/`--sim auto`, this joint campaign selects Spike L0/L1/L2 development checks; this does not certify unrun physical tiers. Explicit `--sim gsim` accepts one named required original correctness capsule under its separate correctness budget, or one calibration witness subject to question review. Required correctness does not consume calibration permissions or qualify a fit. When every correctness gSIM slot is busy the request waits for one in arrival order (its progress says `queued for a gSIM slot (N ahead)`); collect it later with `--attach`. Unlisted cases, multi-capsule gSIM requests and scalability gSIM/L3 requests are refused.
+  Add `--wait-budget 5` to get a request id back at once, keep working, and collect the verdict with
+  `--attach ID`; `--list` shows your requests. Several requests may be in flight. Put every capsule an
+  edit affects in one request: its capsules run in parallel and per-request overhead dominates.
+  Check edits by naming the affected capsules; `--capsules changed` rebuilds every capsule (a slow
+  sweep for occasional regression checks); `--capsules failing` re-checks your last check's failures.
+- `--submission variants/NAME`: self-check an alternative kept in `variants/NAME/` (same layout as
+  `submission/`) beside it. Variant results are labelled and never graded officially; only
+  `submission/` counts, so copy the winner there.
+- `python simjob.py --help`: asynchronous public capsule jobs (`--sim required` also selects Spike in this joint campaign).
+- Optional cheap code-size feedback for applicable public accelerator members:
+  `python agent_selfcheck.py --compile-only --scale-probe --capsules PUBLIC_ID --timeout 120`.
+  Replace `PUBLIC_ID` with one or two declared public member IDs. The harness derives source-only
+  scale/tail cases from those members and reports lowering failures, timeouts and emitted LLVM growth.
+  Include public convolution and output-readout families when applicable; small matmuls alone do not
+  test their compilation cost. This mode allocates no tensor values and reads no private model shapes.
+- For bounded build feedback use `python agent_selfcheck.py --compile-only --capsules PUBLIC_ID --timeout 120` for bounded
+  object compilation, linking and ABI/host-work audits. Inspect the reported failure stage before
+  retrying. A successful emission or link grants no numerical, offload, trace or full-model credit.
+- `python await_verdict.py --help`: wait for a new harness verdict.
+- `python agent_model_check.py check --model MODEL --out REPORT.json`: visible model check through the broker.
+- `python agent_model_check.py replay-kernel --model MODEL --program PROGRAM`
+  `--group SOURCE_REGION_ID --engine spike`: visible kernel replay through the broker.
+  A pending reply includes a `wait --job-id` command.
+
+Selected treatment tools:
+- `merlin_infra`: Answer-free support modules imported transitively by the selected xDSL and RTL-profile authoring tools. Not an oracle, grader or answer surface — granting them widens no moat, and withholding one disables the advertised tool that imports it.
+- `xdsl_kit`: The xDSL authoring kit: dialect synthesis, the generators, the dialect definitions, the interface emitters and the out-of-tree starter kit.
+- `isa_tools`: Derived assembler, disassembler, static linter and lite debugger for the target's own ISA. Oracle-free: it encodes the syntax you chose and inspects the words you emitted.
+- `rtl_generators`: The CIRCT RTL-fact generators: derive an ISA encoder module, a distilled RTL digest and a numeric-shape checker from the target's elaborated RTL rather than from its documentation.
+- `rtl_facts`: The facts already extracted from THIS target's RTL — the generators' output, granted directly.
+
+## Sandbox and enforced rules
+
+- Use only the frozen inputs and tools granted in this workspace. Do not access hidden inputs,
+  goldens, prior backend submissions, or operator-private paths.
+- `integrity_exempt: false`; the compiler must be agent-authored and use the selected xDSL/Python
+  language and CLI contract. Do not import Merlin's reference or simulator implementation into
+  the submission, or substitute C compute kernels for emitted device code.
+- Keep `manifest.yaml` and the four entrypoints valid. The harness checks package integrity,
+  public development capsules on Spike, required original gSIM correctness, separately admitted
+  calibration witnesses, exact model-kernel replays,
+  and the offload census. Unrun declared physical tiers remain pending.
+  A pending or unavailable check is not a pass.
+- The harness grades immutable snapshots. You may continue editing while a self-check or grade runs.
+  A verdict names the snapshot it graded; check its source digest before treating it as current.
+
+## Final status
+
+Lead with a table of all six programs: model, program, compile/link, numerics, and census.
+Report capsule RTL status separately. Then name the submission path, test artifacts, and remaining failures. Report only
+measured results.
+
+
+## Runtime scope (generated for this launch; authoritative)
+- Core public/dev capsules: **109**, derived from the descriptor's graded roots, label filter, and exclusions. Completion is non-vacuous only when every required member passes.
+- Held-out capsules: **14**, derived from the descriptor's hidden roots; their contents remain sealed.
+- Core and separately selected scalability cases are distinct public rosters; the scalability section gives its additional count and source index. Use the default core suite for core IDs and `--suite scalability` for scalability IDs.
+- **0 core capsules are final-only** (already included in the core count): none. They remain pending in development grades. Full-model execution, including small model capsules, is gated to the selected final Spike window; full target program obligations are separate from the capsule count.
+- Automatic grading uses a rolling unresolved queue with bounded snapshot admission time. The optional 1–16-ID impact hint sets priorities; it is not an author access limit. Name any admitted public development IDs in focused requests through the appropriate suite; hidden members remain inaccessible and final-only/model and engine gates still apply.
+- Active sandbox: **`bwrap`** (deny-by-default bwrap; allowed inputs are the frozen run snapshot and answer surfaces are masked).
+- The harness re-grades a snapshot of your workspace on its own schedule and refreshes `qa/verdict.json` underneath you; you are NOT relaunched between grades. To wait for the next one instead of checking repeatedly, run **`python await_verdict.py`** — it blocks until a new grade lands and prints its score and failing capsules (`--timeout <s>` to bound the wait; a timeout is reported, not an error). Polling `qa/verdict.json` in a loop costs you a turn every time you look.
+- If an older bundled document states a fixed capsule count, a different isolation mode, or that you are relaunched each round, this launch-generated block wins.
+
+
+## Required public Spike scalability suite
+Mathematical sources and exact source-group policy: /work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/3f3fab435f38/out/artifacts/fresh10-tooling/MATCHED_RUN_ID/inputs/source-release/payload/corpus/_public_scalability/public_sources/suite.json.
+This separately selected suite has 40 cases and is required for completion. Use `python agent_selfcheck.py --suite scalability --capsules NAME1,NAME2 --wait-budget 5` for affected cases; collect asynchronous requests with `--attach ID`. Use `--capsules all` when ready for the complete functional denominator. Only Spike L0/L1/L2 is permitted here; gSIM and L3 requests are refused. A subset, unavailable contract or unrun case cannot complete this suite. Its passes give no RTL or timing credit. Core RTL requirements remain unchanged; hidden and full-model validation remain separate. Full-model execution follows the separately selected campaign window. In a joint campaign, start these cases immediately: their failures and performance feedback guide compiler architecture while core correctness is still evolving. Timing estimates, when explicitly selected, carry their own qualification status.
+
+
+## Selected public connected programs
+Cases: PG_source_attention_cache_representative, PG_source_repeated_inference_representative, PG_source_residual_block_medium. Sources: `public_program_sources/suite.json`. Use `python agent_selfcheck.py --suite programs --capsules NAME --sim spike --tiers L0,L1,L2 --wait-budget 5`. Only the operator-selected source roster is available. The original model owner compiles host/device work and checks every output; all selected programs are required final Spike obligations, tracked separately from original core conformance. They do not authorize gSIM or earn original-conformance/L3 credit. The scalability-only idle tuner does not automatically explore this separate endpoint.
+
+
+## Joint editable compiler development
+
+Develop one general compiler across all public capability families. A fresh run has an empty target backend; a declared continuation retains its authored compiler. Generic compiler sources under submission/compiler_library are editable: extend passes, dialects, numerical/layout representations, schedules, allocation, lowering and host generation as useful. There is no mandatory pass order, discovery sequence, tiny-canary prerequisite or minimum helper count. Choose component ownership and testing order; up to the selected helper ceiling can work concurrently toward the same compiler. Use the selected CPUs as one shared pool.
+
+Test useful eligible cases as soon as they can provide feedback, including large and connected cases. A tiny executable can cheaply expose ABI faults but does not gate unrelated work. Keep editing while immutable snapshots grade and integrate completed changes promptly. Consume transformed IR in real emission; preserve all outputs, numerical contracts, source placement and completion. No private answers, retained target backend seed, benchmark-name dispatch or forbidden CPU fallback. An import, receipt or build is not numerical evidence.
+
+All cases in the selected public inventories remain eventual obligations. Without `--sim`, or with `--sim required`/`--sim auto`, this joint campaign selects Spike L0/L1/L2 development checks; this does not certify unrun physical tiers. Explicit `--sim gsim` accepts one named required original correctness capsule under its separate correctness budget, or one calibration witness subject to question review. Required correctness does not consume calibration permissions or qualify a fit. When every correctness gSIM slot is busy the request waits for one in arrival order (its progress says `queued for a gSIM slot (N ahead)`); collect it later with `--attach`. Unlisted cases, multi-capsule gSIM requests and scalability gSIM/L3 requests are refused.
+
+Selected campaign duration: 4.25 hours from author launch; editing stops 15 minutes before deadline for freeze/drain. Required gSIM correctness: 101 declared cases, concurrency 15, per-job budget 1200 seconds. Selective calibration gSIM concurrency 15, per-job budget 1200 seconds; initial diagnostics 2, bootstrap observations 8, later authorized batch limit 4. These are actual admission limits, not required exploration stages. Extra witnesses need matching numerical evidence and an unresolved question under the selected policy; required correctness has separate accounting. Unrun tiers and timeouts remain pending.
+
+Use roofline and whole-SoC feedback with its scope and uncertainty. Prefer the selected tuned model when qualified; missing timing is not zero cost. Independent final FireSim validation uses the exact selected unchanged hardware configuration and complete output checks. Report observed correctness and performance separately; private grading remains independent.
+
+
+Prohibited instruction role `loop_descriptor`: hand the endpoint a whole loop nest to run itself (a hardware-loop FSM). Build every schedule from the target's other commands; a case whose executed command stream issues a command with a prohibited role fails at L2.
+
+
+## Selected public compilation resources
+
+- Original public scale-emission resource policy: mode `enforce`, limits `max_code_bytes=1048576`; mandatory for completion: **True**. Use `python3 agent_selfcheck.py --compile-only --scale-probe --capsules SY_conv_k3x3_s1x1_d1x1_pad1x1 --timeout 120`. The harness supplies these limits; requests cannot relax them. The selected ladder also runs before background capsule simulations and publishes `qa/public_codegen_resources.json` with its candidate digest. Resource acceptance is separate from object compilation, semantic placement, numerical and trace qualification.
+
+
+## Joint shared CPU scheduling
+
+Author/helper affinity: `FIFTEEN_SELECTED_CPUS`; shared compute affinity: `FIFTEEN_SELECTED_CPUS`. Builds, Spike, gSIM and preparation may use any available core in the shared pool; there is no core partition by engine. Expensive harness steps acquire per-core leases. Author processes share their affinity; helpers receive no additional cores. Native simulation concurrency ceiling: 15; author/helper ceiling: 8. These are ceilings, not counts of running work. Selected gSIM concurrency ceilings: calibration witnesses 15; required correctness 15. Question/worker budgets still apply.
+
+The native scheduler serves author-requested checks first (priority 1), background grading second (2), preparation third (3), and advisory probes last (4). Waiting jobs are FIFO within a class; running leases are not preempted. These classes are assigned by the harness, not a selfcheck priority flag. Prioritize critical work by requesting its focused check through the native broker; submit independent cases to rolling admission, reuse exact-input caches and avoid duplicate full sweeps. Continue compiler development after immutable snapshot acknowledgment; consume each finished result without waiting for unrelated slow cases. Keep heavy work on the documented leased harness routes, not unmanaged shell jobs.
+
+## Selected public software declaration
+
+Read `WORKSPACE/public_declarations/software-spec.yaml` for the original selected software semantics (SHA-256 `3c1b8aa1c77775e1c0e590af871f05e038743d7000a99860fb12843f7053372f`). Read this data leaf directly; the original backend tree remains withheld. This identical-byte alias grants no additional implementation or qualification.
+
+
+## Build against the whole public corpus
+
+Read `PUBLIC_CAPABILITIES.md` first. It summarizes 152 selected public cases; Use `python capability_query.py --groups`, `--group PREFIX` or `--capsule ID` for bounded queries over `PUBLIC_CAPABILITIES.json`. Build one reusable compiler around the required semantic capabilities and compiler boundaries: graph, numeric/layout, schedule/storage, ISA lowering, host/runtime, integration. Assign bounded disjoint edits, integrate shared interfaces early, and let admission gate only tests, never construction in an independent capability. For reproducible action sequences use `python construction_actions.py PLAN.json --out OUTPUT`; it invokes ordinary commands and agent_selfcheck.py, just as an offline study does. Test a tiny end-to-end case as each capability becomes executable; continue independent construction while immutable snapshots are evaluated. Calibration prerequisites and large shape cases can proceed before all original correctness cases pass. The scalability cohort contains both performance targets and diagnostic controls: inspect workload_role and performance_priority. Do not spend repeated performance rounds on small controls once their mechanism is resolved. Original small cases remain mandatory correctness regressions.
+
+
+## One evolving compiler, parallel bounded work
+
+Act as one compiler coordinator and delegate bounded, independent tasks to the
+available parallel workers, up to the selected helper ceiling.
+Start independent capability construction promptly; use fewer workers when ownership,
+CPU or token budgets would make more redundant. Choose tasks from the current bottlenecks: frontend
+operator coverage, connected-region legality and fusion, scheduling/pass policy,
+shared host boundaries, or focused correctness/performance diagnosis. Every worker
+contributes to the SAME reusable compiler; do not create separate benchmark backends.
+Use the supported isolated lightweight git/task mechanism for edits, with narrow
+file ownership and clear commits, rather than copying the whole compiler per worker.
+The coordinator owns integration, compiler health and the next useful experiment.
+Integrate compatible completed changes promptly; keep conflicting variants separate
+until a focused same-scope comparison supports a choice.
+
+Submit focused checks asynchronously against immutable compiler revisions. Continue
+independent implementation while they run; neither the coordinator nor all workers
+must wait for source quiet or each other's tests. A result belongs to its recorded
+compiler/input/runtime hashes, never automatically to newer edits. Name the revision, touched files, consumed pass/IR APIs, local dependencies,
+focused checks, first actionable failure, numerical/performance/model confidence and
+artifact paths in each short handoff. Pass relevant contracts and a compact capability
+brief to helpers; retrieve detailed source or logs only for their current boundary. Reuse an existing equivalent request/result
+only when those relevant identities match. Avoid full-cohort checks on every edit;
+reserve them for declared milestones/final validation. Report untested coverage.
+All selected CPUs are dynamically shared through the existing pool: no fixed
+CPU assignments to author, compilation, grading, or calibration roles. Available
+worker count is a concurrency ceiling, not a requirement to launch redundant work.
+A protected evaluator/library upgrade may request a checkpoint; ordinary compiler
+and editable-pass development continues while immutable evaluations run.
+
+
+## Model deployment and numerical boundaries
+
+Maximize accelerator coverage over ALL operations and connected regions admitted
+by the selected hardware facts and numerical contract, not only contractions.
+Inspect standalone and fused forms separately: residual/elementwise addition,
+bias, scaling/requantization, activation, pooling and movement may be available
+through different legal device forms. Every must-accelerate supported region needs
+a legal fused OR unfused device path; a failed fusion attempt does not justify
+silent CPU substitution. A readout-only epilogue capability does
+not imply a standalone instruction. Derive eligibility from actual operand and
+result types, shape/layout, numeric order and selected capabilities; an operator
+name alone is insufficient. Preserve every live output when grouping or fusing.
+
+Do not silently send a supported legal domain to the CPU because its compiler
+adapter is unimplemented, inconvenient, or has an unmeasured cost. Hardware
+unsupported, compiler unimplemented, numerically invalid and unresolved proof
+are different outcomes. Missing target lowering is a compiler task. Profitability
+guides device grouping, schedules and fusion choices; it is not blanket permission
+to evade required accelerator coverage. Initially establish reusable lowering for
+the supported domain. Subsequently compare legal CPU/device placements under the
+same numeric and complete-call cost scope; a measured or supported-model CPU win
+may justify CPU placement where the selected admission policy permits that choice.
+If a current mandatory device gate prevents that comparison, report the precise
+policy limitation for review; do not silently bypass it or label the hardware
+unsupported. Retain real hardware-unsupported floating or nonlinear/control seams
+through Merlin host codegen with explicit evidence.
+
+Maintain source-bound placement diagnostics: source region/node IDs, standalone
+versus fused-only capability, selected device form, host reason and remaining
+compiler/proof gap. Report required/covered/eligible-but-host/unknown counts and
+static boundary bytes separately from measured host time and transferred bytes.
+Unknown measurements stay unknown. The fast model-check contraction census is
+only a contraction census, not evidence that every supported operator is offloaded.
+Inspect the native complete source-demand report for all-region obligations.
+
+The selected deployment for ResNet50, TinyLlama and SmolVLA is W8A8:
+signed INT8 weights and activations at accelerator contractions, with the selected
+integer accumulation and output ABI. This does not require every intermediate or
+model output to be INT8. Keep raw i32 outputs when the typed source requires them.
+Preserve captured floating-point normalization, nonlinear functions, scaling and
+control through Merlin host lowering; do not replace accelerator contractions with
+CPU fallback or convert an entire mixed graph to integer arithmetic.
+
+Use the selected public `target_contract.yaml`, typed source and numeric policies
+as the authority. Its scaled i8 readout contract specifies f32 scale, half-even
+rounding and saturation to [-128, 127]. That contract does not make arbitrary host
+casts, raw accumulator stores or other source rounding operations equivalent.
+Track operand/output dtype, scale identity and granularity, zero points, bias and
+activation order, rounding, saturation, accumulation bounds and host/device
+placement at each graph boundary. Fusion, packing and scheduling must preserve
+these properties; never manufacture scales or loosen comparison tolerances.
+
+The existing visible model-check endpoint accepts `resnet50`, `tiny_llama` and
+`smolvla`: `python agent_model_check.py check --model MODEL`. ResNet has `model`;
+TinyLlama has `prefill` and `decode`; SmolVLA has `prefix_encode`, `flow_denoise`
+and `action_decode`, including its declared recurrent state. Early fast checks
+replay selected kernels; they do not establish full-chain numerical correctness.
+Use unchanged independent numerical contracts for capsule, connected and final
+model checks. A format-compatible external signature alone does not establish
+model calibration, boundary semantics or numerical equivalence. Missing evidence
+stays unknown. The compiler must generalize through these source contracts, not
+model-name dispatch.
+

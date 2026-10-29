@@ -1,0 +1,47 @@
+{
+  "schema": "operator.fresh10_qualified_wave_launch.v1",
+  "source_revision": "3f3fab435f387f99a8986f78dbb6e6c180577cf4",
+  "study": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/study.json",
+  "study_sha256": "232ad7536f748464b7a38ed88bcc0c11ac46cc221b669f7c0d7126bf1180051d",
+  "observer": {
+    "pid": 2690546,
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/work/merlin/tasks/gemmini-shared-phase1-20261021/.tmp/phase1-runtime-v1/venv/bin/python3.12",
+      "-B",
+      "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/3f3fab435f38/examples/gemmini/phase1/studies/kernel_abstractions/fresh10_tooling_study.py",
+      "observe",
+      "--study",
+      "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/study.json",
+      "--runtime-index",
+      "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/runtime-index.json"
+    ],
+    "log": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/checkpoint-observer.log"
+  },
+  "observer_initialized_before_dispatch": true,
+  "dispatcher": {
+    "pid": 2704304,
+    "command": [
+      "taskset",
+      "-c",
+      "0",
+      "/work/merlin/tasks/gemmini-shared-phase1-20261021/.tmp/phase1-runtime-v1/venv/bin/python3.12",
+      "-B",
+      "/work/merlin/tasks/el4-grader-throughput-20261024/merlin/out/build/run-frameworks/3f3fab435f38/examples/gemmini/phase1/studies/kernel_abstractions/fresh10_tooling_study.py",
+      "run",
+      "--study",
+      "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/study.json",
+      "--confirm"
+    ],
+    "log": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/fresh10-tooling-ablation-20261028/fresh10-tooling-20261028-r5/wave-coordinator-attempt-2.log"
+  },
+  "dispatched_at_epoch": 1793212076.8882742,
+  "author_s": 14400,
+  "drain_s": 900,
+  "max_ours": 3,
+  "max_machine_large_campaigns": 5,
+  "attempt": 2,
+  "actual_author_start_times": "recorded only by native joint_campaign.started_at_epoch after startup"
+}

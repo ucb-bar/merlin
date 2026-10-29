@@ -1,0 +1,101 @@
+{
+  "schema": "operator.el123_noexpert_configuration_archive.v1",
+  "archived_at": "2026-10-28T21:28:13.561590+00:00",
+  "canonical_study": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1",
+  "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+  "state": "prepared; native author preflight and sandbox qualification pending",
+  "cpu_groups": "queued, currently held by active tooling studies",
+  "expert_kernel_material": "withheld in all three",
+  "spike_model_and_feedback": "unchanged from historical matched runs",
+  "files": [
+    {
+      "name": "HANDOFF.md",
+      "sha256": "20bc60aad650d724035af968168383855a1939d59d8a9412bbc8edb192c481f9"
+    },
+    {
+      "name": "actual-input-summary.json",
+      "sha256": "f68305bff32bc1524d8680ebd63fd48e34e9611c00076bb3d9069147efc4141d"
+    },
+    {
+      "name": "base-policy.json",
+      "sha256": "2f959a363bd9c820d05341c94781055123fbc1cf1bebb9be826998389847b2d4"
+    },
+    {
+      "name": "boundary-canary-prepared-only.json",
+      "sha256": "1abac3f158eeb827694f8960a56fb816e930bcde750eb55c6ce2094976bfced8"
+    },
+    {
+      "name": "el1-native-plan.json",
+      "sha256": "643e4165d8c8da047b76b93984c049031aefb525edaffab7f6a5a291e2323db9"
+    },
+    {
+      "name": "el1-receives.json",
+      "sha256": "f84a11b998d45826e0b5688287c46359a16a523f29f7bf256f7732157daad431"
+    },
+    {
+      "name": "el1.yaml",
+      "sha256": "91c398ecccbd4d8476424efd73d9ca5a5b95e91e95218d58f0b7e16ce188f54a"
+    },
+    {
+      "name": "el2-native-plan.json",
+      "sha256": "a128d54976e57ad3a8a4c7ca65bbe23a9e4215264f4f5e9906d8ea2d1262f24e"
+    },
+    {
+      "name": "el2-receives.json",
+      "sha256": "9c4587ff58793e4acc8a487461fcee6d327e0e1904fb20390652293d351577d3"
+    },
+    {
+      "name": "el2.yaml",
+      "sha256": "5bba66f6f52f2e6e0a2d3c8db8d836bfa0f8e0375a09cbb379f4245d034b3683"
+    },
+    {
+      "name": "el3-native-plan.json",
+      "sha256": "bfb624e65bf258df00e6035a2fa58dc5f71a50321eeee4edfffc79bab01d8f8e"
+    },
+    {
+      "name": "el3-receives.json",
+      "sha256": "85328b3904fb9f69558ec3f4a735a5910831256bfb7438c6d81a28fa995242bc"
+    },
+    {
+      "name": "el3.yaml",
+      "sha256": "454d2499f8b2100e17cf9aad430852afd4cc087a1fcec1fcb4265eba878eae36"
+    },
+    {
+      "name": "expert-exo-scope.json",
+      "sha256": "cfb372407cb64994bd95cecc9c05cfb0207ae946de614cfc26ac92c944e7a89d"
+    },
+    {
+      "name": "framework-export.json",
+      "sha256": "d51ca17570d09815a23549ff5c11e7ac254a046a81690c90da39f0652931495e"
+    },
+    {
+      "name": "guidance.md",
+      "sha256": "74322cee22bd6c76431668df861613e25ebd89bd4594fcb038afec761a5d6295"
+    },
+    {
+      "name": "independent-input-audit.json",
+      "sha256": "6fecf42c01cf3b8c3f4c89e7dbc6bbb63e3b2c0f6e1f62f739cf8384288dd917"
+    },
+    {
+      "name": "readiness.json",
+      "sha256": "dbdaa2584fb16b74ecad2aa740b4f9543d31c42addfd9675884971f8dfb14e29"
+    },
+    {
+      "name": "source-freeze.json",
+      "sha256": "3726e889b89560ff68168906074807c1262becf49b3f7536f82adf0bf50fd8b2"
+    },
+    {
+      "name": "static-audit.json",
+      "sha256": "914c3210e63432d88f7043269d2b9213009e1146d4b311c9233a6bb4066cee46"
+    },
+    {
+      "name": "study.json",
+      "sha256": "6340dea3ec2fe3112d96dfbdd821c4185202bcda1fb9e35adf87dc2b6ce6344e"
+    },
+    {
+      "name": "test-qualification.json",
+      "sha256": "8771a723a6cd3a0b47de1509a49d83d4bf9311d2bb4d8342301d75ebcda470ca"
+    }
+  ],
+  "readiness": "readiness.json"
+}

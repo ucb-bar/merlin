@@ -101,7 +101,9 @@ def continuation_input(path):
     owner = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(owner)
     owner.verify_source(ordinary(selected["from"]["path"]), selected["from"]["sha256"])
-    selected.update(notes=owner.NOTES, carry=dict(certificates=False, results=False, rules=True, handoff=True))
+    carry = dict.fromkeys(owner.CARRY, True)
+    carry.update(certificates=False, results=False)
+    selected.update(notes=owner.NOTES, carry=carry)
     selected["selection"] = {"path": str(path), "sha256": digest(path)}
     selected["owner"] = {"path": str(owner_path), "sha256": digest(owner_path)}
     return selected, owner
@@ -160,6 +162,9 @@ Optimize the operator family across shapes, rather than selecting a schedule by 
 one exact shape. Start with the primary anchor, then check promising changes on the other public
 development shapes. Derive geometry/storage/capacity predicates and keep a safe fallback. Final
 evaluation covers smaller, intermediate and larger shapes without retuning; exact tests stay private.
+Selected cases may pass while the complete public suite is still incomplete; inspect case-level
+results. Check all public development cases before freezing. Select one final variant using exact
+correctness on all public cases and their per-case costs; report regressions as well as improvements.
 The original passing seed is the baseline; do not repeat a baseline correctness sweep.
 {early_note}
 Native/model feedback is provisional, not physical timing. Expert supplied measured targets retain
@@ -174,13 +179,30 @@ in variants/. Finish RESULT.md with evidence and remaining gaps. Scratch belongs
 
 ON = """CCA/reference guidance is enabled. Use the ordinary parser endpoint:
   python3 agent_selfcheck.py --reference-analysis inventory --reference-limit 8
+Choose the actual selected expert path from that inventory. Replace REFERENCE_PATH below with
+that returned path; the source format is inferred from the selected file:
   python3 agent_selfcheck.py --reference-analysis lift --reference-path \\
-    reference-kernels/expert_mm_o/mm_o.c --reference-format c_source
+    REFERENCE_PATH
   python3 agent_selfcheck.py --reference-analysis candidate --reference-path artifacts/views.json \\
     --reference-format artifact_views
+Create views from your own completed source/command-buffer/emission files using
+--write-reference-views; use your compiler manifest's ordinary commands to emit them if needed.
+Choose a candidate in a supported comparison domain. A captured reference can be compared with
+artifact_views. For a static ISA reference, select your own emitted ELF or disassembly using
+candidate-format elf or disassembly. Use the ordinary compiler manifest's build commands; this
+offline study does not publish a native candidate_build view. A static comparison does not prove
+dynamic traffic, source equivalence or timing. Keep unsupported domain pairs as explicit gaps.
+Replace CANDIDATE_PATH and CANDIDATE_FORMAT with that actual selection:
+  python3 agent_selfcheck.py --reference-analysis compare --reference-path \\
+    REFERENCE_PATH \\
+    --candidate-path CANDIDATE_PATH --candidate-format CANDIDATE_FORMAT
 Fresh analysis is converted into scoped construction/experiment feedback. No old tasks or outcomes
 are inherited. Compare both operands, configurations, fences and whole-region cost; residency
 alone earns no performance credit. Reanalyze the actual emitted result after a transformation.
+Use the report's experiment tasks and named library routes to choose the next bounded attempt.
+If a task lacks a goal-bound alternative, implement the general construction and consumed setting
+before requesting A/B checks; a declaration alone is insufficient. Associate an ordinary check with
+the generated request using --reference-request ID. Keep explicit unknowns and failed attempts.
 """
 OFF = """CCA/reference guidance is disabled for this arm. Read the same raw expert references and
 trusted metric targets directly. No reference map, CCA endpoint or generated reference tasks is
@@ -210,7 +232,7 @@ STUDIES = {
     "cca": (
         "current",
         "current",
-        "Improve the projection family using the supplied expert implementation. "
+        "Improve the selected operator family using the supplied expert implementation. "
         "Learn a resource/shape rule, preserve numerical semantics, and keep a safe fallback.",
     ),
     "library": (
@@ -355,6 +377,11 @@ def prepare(
     if not selected or len(selected) != len(set(selected)) or (not study and not set(selected) <= set(PRESETS)):
         raise ValueError("select distinct existing treatment presets")
     shared_pool = bool(study) or agent_only_control or treatments is not None
+    study_pool = base.get("cpus", [0, 1, 2, 3])
+    if shared_pool and (not isinstance(study_pool, list) or len(study_pool) != 4
+            or any(type(cpu) is not int or cpu < 0 for cpu in study_pool)
+            or study_pool != sorted(set(study_pool))):
+        raise ValueError("shared study pool requires four distinct sorted CPU IDs")
     quota = 400 // (len(selected) * replicas) if shared_pool else 100
     contract_pin = None
     if library_contract:
@@ -381,7 +408,7 @@ def prepare(
                 else {"agent_only": "agent_only", "library_schedule": "off", "cca_library_schedule": "on"}[tooling]
             )
             cpu = 2 * replica + (mode == "on")
-            cpus = [0, 1, 2, 3] if shared_pool else [cpu]
+            cpus = list(study_pool) if shared_pool else [cpu]
             cpu_selection = ",".join(map(str, cpus))
             guidance = "on" if mode == "on" else "off"
             # Independent gates can deactivate assistance without changing a preset's control role.
@@ -412,18 +439,24 @@ def prepare(
             for name in ("submission", "baseline"):
                 if continuation:
                     seed_owner.copy_source(seed, workspace / name, ())
-                    evidence = seed_owner.build_evidence(
-                        continuation, seed, workspace / name, private / (name + "-seed-evidence")
-                    )
                     if name == "submission":
                         from merlin_experiments.phase1 import continuation_handoff, joint_seed
 
+                        evidence = seed_owner.build_evidence(
+                            continuation, seed, workspace / name, private / "submission-seed-evidence"
+                        )
                         joint_seed.stage_evidence(evidence["pin"], workspace)
+                        private_evidence = joint_seed.stage_run_evidence(evidence["pin"], private)
                         continuation_handoff.write(workspace, continuation["run"], seed)
                         continuation_record = dict(
                             continuation,
                             evidence=evidence,
+                            private_evidence=private_evidence,
                             certificate_reuse="none; prior verdicts are historical evidence",
+                        )
+                    else:
+                        seed_owner.strip_stale(
+                            workspace / name, private / "baseline-seed-notes", continuation["notes"]
                         )
                 else:
                     copy_source(seed, workspace / name)
@@ -685,7 +718,7 @@ def prepare(
                     "cpu": cpu if not shared_pool else None,
                     "cpus": cpus,
                     "cpu_quota_percent": config["cpu_quota_percent"],
-                    "launcher_obligation": f"systemd AllowedCPUs=0-3 CPUQuota={quota}%" if shared_pool else None,
+                    "launcher_obligation": f"systemd AllowedCPUs={cpu_selection} CPUQuota={quota}%" if shared_pool else None,
                     "config": str(private / "config.json"),
                     "config_sha256": digest(private / "config.json"),
                     "launch_argv": launch,

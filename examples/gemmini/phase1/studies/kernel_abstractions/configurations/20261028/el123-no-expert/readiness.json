@@ -1,0 +1,60 @@
+{
+  "schema": "operator.el123_noexpert_readiness.v1",
+  "observed_at": "2026-10-28T21:37:06.856448+00:00",
+  "source_revision": "02d14a7d523f1ff72eaf4fb6ba6c56d2bbd47b33",
+  "author_jobs_launched": 0,
+  "state": "prepared; native author preflight and sandbox qualification pending",
+  "author_s": 14400,
+  "drain_s": 900,
+  "cpus_per_arm": 15,
+  "max_helpers_per_arm": 8,
+  "max_active_ours": 3,
+  "max_active_full_size_machine": 5,
+  "expert_kernel_material": "none, including all expert Exo material",
+  "spike_model_and_feedback": "preserved",
+  "gates": {
+    "inputs": {
+      "all_passed": true,
+      "rendered_only": false,
+      "render_succeeded": false,
+      "receipt": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/preparation/inputs.json",
+      "sha256": "327be3b88ebb0e20aadbcd3cf06bd8154e3670026b353e12c544806a3327209a"
+    },
+    "seal": {
+      "all_passed": true,
+      "rendered_only": false,
+      "render_succeeded": false,
+      "receipt": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/preparation/seal.json",
+      "sha256": "98340b8ee5dbe2df710749cc499132c3c3f178d03fd846c1b35dfcadb53fd2c6"
+    },
+    "ordering": {
+      "all_passed": true,
+      "rendered_only": false,
+      "render_succeeded": false,
+      "receipt": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/preparation/ordering.json",
+      "sha256": "3d1260913d6f9ee9657a29e0cf2af8b37c635bb5ab32cfa9695e1bfdc0b1c5ba"
+    },
+    "plan": {
+      "all_passed": true,
+      "rendered_only": false,
+      "render_succeeded": false,
+      "receipt": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/preparation/plan.json",
+      "sha256": "b8dfd621ad03bca4f35db9bf106da572702c5b650d58f275e9fc04f0528608a5"
+    },
+    "preflight": {
+      "all_passed": false,
+      "rendered_only": true,
+      "render_succeeded": true,
+      "receipt": "/work/merlin/tasks/el4-grader-throughput-20261024/.tmp/xs-el123-noexpert-20261028-r1/preparation/preflight.json",
+      "sha256": "88d5c1eae65dbd1730bae198ac8543d4695a83f44dfe975afacc4eef94dc79ae"
+    }
+  },
+  "pending": [
+    "actual native preflight on each assigned15-CPU group after those CPUs are released",
+    "fresh author/helper/candidate permission and public-input readability canaries",
+    "assembled initial and resume prompt audit",
+    "fresh CPU and campaign-admission review before author launch"
+  ],
+  "active_tooling_studies": "running unchanged; scheduled author end22:32UTC, drain end22:47UTC",
+  "reference_scope_clarification": "pending for live A/B only; replacementEL123 all withhold every expert reference"
+}
