@@ -170,3 +170,9 @@ def compiler_configuration_refinement(job: dict[str, Any]) -> dict[str, Any]:
     from .compiler_configuration import check
 
     return check(job)
+
+
+def compiler_configuration_hoist_refinement(job: dict[str, Any]) -> dict[str, Any]:
+    from .compiler_configuration_hoist import check
+
+    return check(job)

@@ -19,7 +19,17 @@ from .configuration_elision_gate import Unavailable, _audit, _exact, _run, requi
 from .configuration_elision_intake import RELATION, proof_sources
 
 
-def prove(candidate, *, lean, destination, timeout, validate):
+def prove(
+    candidate,
+    *,
+    lean,
+    destination,
+    timeout,
+    validate,
+    query_module=MODULE,
+    source_plan=proof_sources,
+    relation=RELATION,
+):
     """Return audited artifacts only; no live token or delivery authority."""
     validate(candidate)
     directory = Path(destination).resolve()
@@ -41,7 +51,7 @@ def prove(candidate, *, lean, destination, timeout, validate):
         path = directory / (label + ".mlir")
         path.write_text(text)
         snapshots.append(file_ref(path))
-    query = directory / (MODULE + ".lean")
+    query = directory / (query_module + ".lean")
     query.write_text(candidate.query)
     query_ref = file_ref(query)
     mapping_records = []
@@ -53,7 +63,7 @@ def prove(candidate, *, lean, destination, timeout, validate):
         path = directory / (label + ".json")
         path.write_text(value)
         mapping_records.append(file_ref(path))
-    sources = proof_sources()
+    sources = source_plan()
     for i, row in enumerate(sources):
         obj = library / (row["module"].replace(".", "/") + ".olean")
         obj.parent.mkdir(parents=True, exist_ok=True)
@@ -68,7 +78,7 @@ def prove(candidate, *, lean, destination, timeout, validate):
         if process.returncode:
             raise Unavailable("configuration project proof source did not compile: " + row["module"])
     validate(candidate)
-    obj = library / (MODULE + ".olean")
+    obj = library / (query_module + ".olean")
     process = _run([str(executable), "-j1", "-o", str(obj), str(query)], directory, env, directory, "query", timeout)
     require_query_success(process)
     validate(candidate)
@@ -76,7 +86,10 @@ def prove(candidate, *, lean, destination, timeout, validate):
         raise Unavailable("configuration private proof objects must not be symlinks")
     library_refs = [file_ref(path) for path in sorted(library.rglob("*")) if path.is_file()]
     values = {}
-    for label, args in (("audit", [MODULE]), ("types", ["--statements", ",".join(candidate.roots), MODULE])):
+    for label, args in (
+        ("audit", [query_module]),
+        ("types", ["--statements", ",".join(candidate.roots), query_module]),
+    ):
         process = _run([str(executable), "--run", str(auditor), *args], directory, env, directory, label, timeout)
         if process.returncode:
             raise Unavailable(label + " did not establish configuration proof evidence")
@@ -87,8 +100,8 @@ def prove(candidate, *, lean, destination, timeout, validate):
     if any(type(value) is not dict for value in values.values()):
         raise Unavailable("malformed configuration audit object")
     audit, statements = values["audit"], values["types"].get("statements")
-    modules = {row["module"] for row in sources} | {MODULE}
-    _audit(audit, statements, candidate, modules)
+    modules = {row["module"] for row in sources} | {query_module}
+    _audit(audit, statements, candidate, modules, query_module=query_module)
     imports = []
     for row in audit["imports"]:
         if row["module"] in modules:
@@ -127,7 +140,7 @@ def prove(candidate, *, lean, destination, timeout, validate):
         ],
         "audit": audit,
         "statements": statements,
-        "relation": RELATION,
+        "relation": relation,
         "interpretation_is_conditional": True,
         "independently_qualified": False,
         "hardware_model_approved": False,

@@ -187,8 +187,13 @@ def program(value, isa, effects):
 def project(record):
     if record.get("schema") != "merlin.configuration-hoist.actual-kernel.v1" or record.get("revision") != REVISION:
         raise Unsupported("explicit new e048 producer/parser selection required; no4499fallback")
-    before, (position, loop) = program(record["before"], record["isa"], record["effects"])
-    after, _ = program(record["after"], record["isa"], record["effects"])
+    return project_current(record["before"], record["after"], isa=record["isa"], effects=record["effects"])
+
+
+def project_current(source, final, *, isa, effects):
+    """Project current complete trees; historical producer selection stays above."""
+    before, (position, loop) = program(source, isa, effects)
+    after, _ = program(final, isa, effects)
     if len(loop["body"]) < 2:
         raise Unsupported("one setup plus nonempty retained body required")
     setup, *body = loop["body"]

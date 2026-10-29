@@ -11,6 +11,7 @@ no instruction name, geometry, latency or initial register value is assumed.
 from __future__ import annotations
 
 import struct
+import sys
 from dataclasses import fields, replace
 
 from merlin.sched.ir import Call, Kernel, Loop, Ptr, Stage
@@ -220,7 +221,7 @@ def verify_loop_configuration_rewrite(
     }
 
 
-def hoist_loop_configuration(kernel, adapter, *, enabled=True, max_calls=4096, max_fields=256, max_depth=64):
+def _hoist_loop_configuration(kernel, adapter, *, enabled=True, max_calls=4096, max_fields=256, max_depth=64):
     """Move complete legal setup prefixes; unknown effects retain their original scope."""
     if type(enabled) is not bool:
         raise ValueError("configuration hoisting requires an explicit Boolean selection")
@@ -262,4 +263,46 @@ def hoist_loop_configuration(kernel, adapter, *, enabled=True, max_calls=4096, m
             "adapter": adapter.record(),
             "enabled": enabled,
         },
+    )
+
+
+def hoist_loop_configuration(
+    kernel,
+    adapter,
+    *,
+    enabled=True,
+    max_calls=4096,
+    max_fields=256,
+    max_depth=64,
+    pass_validation=None,
+    selected_contracts=None,
+):
+    """Run ordinary hoisting, joining an explicitly selected original proof owner."""
+    owner = sys.modules.get("merlin.verify.pass_validation")
+    active = owner.current() if owner is not None else None
+    if active is not None and pass_validation is not None and active is not pass_validation:
+        raise ValueError("hoisting validation differs from active original compiler owner")
+    validation = active if pass_validation is None else pass_validation
+    if validation is not None and "configuration_loop_hoisting" in validation.passes:
+        if selected_contracts is None:
+            raise ValueError("hoisting validation requires original typed selected ISA/effect contracts")
+        from merlin.verify.compiler_configuration_hoist import validated_hoist
+
+        return validated_hoist(
+            kernel,
+            adapter,
+            selected_contracts=selected_contracts,
+            validation=validation,
+            enabled=enabled,
+            max_calls=max_calls,
+            max_fields=max_fields,
+            max_depth=max_depth,
+        )
+    return _hoist_loop_configuration(
+        kernel,
+        adapter,
+        enabled=enabled,
+        max_calls=max_calls,
+        max_fields=max_fields,
+        max_depth=max_depth,
     )

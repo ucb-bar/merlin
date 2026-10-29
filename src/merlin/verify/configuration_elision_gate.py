@@ -128,7 +128,7 @@ def require_query_success(process):
     raise NotEstablished("closed complete configuration obligation rejected")
 
 
-def _audit(audit, statements, candidate, modules):
+def _audit(audit, statements, candidate, modules, *, query_module=MODULE):
     if (
         type(audit) is not dict
         or audit.get("violations") != []
@@ -157,7 +157,7 @@ def _audit(audit, statements, candidate, modules):
     names = [row["module"] for row in imports]
     if (
         len(names) != len(set(names))
-        or {name for name in names if name.startswith("Merlin.") or name == MODULE} != modules
+        or {name for name in names if name.startswith("Merlin.") or name == query_module} != modules
     ):
         raise Unavailable("actual configuration proof imports differ from selected closure")
 
