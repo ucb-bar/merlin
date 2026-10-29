@@ -1,8 +1,8 @@
 # Current compiler verification checkpoint — 2026-10-29
 
 Use **`feat/pass-verif-integration`**. The latest committed loop integration is
-`d52a9a135`; indexed-data hoisting is `afc3094c1`, storage-check extraction is
-`1485f4e9c`, and the untiled buffer gate is `8ec30c67e`.
+`22f46e7c1`; indexed-data hoisting is `dcdbbb7df`, storage-check extraction is
+`ed201063b`, and the untiled buffer gate is `3070f1a39`.
 Nine families have scoped compiler selectors: DCE, CSE, unroll, tile, buffer,
 Q/DQ, MACC, configuration elision and configuration hoist. Five are selected by
 `all`; proposed Q/DQ, draft MACC and ISA-specific configuration gates stay explicit.
@@ -12,9 +12,10 @@ one canonical compiler job, complete adjacent entry roots, exact delivered outpu
 172 current references and 1,690 declarations using STD3 only. Fresh untiled buffer
 qualification now covers all already-admitted i8/i16/i32/i64 widths. Indexed hoist
 admission preserves all-index `Models` and now refuses signed-index64 rendering
-overflows, including unreachable literals. Setter prefixes and selected inner-loop
-depths are undergoing canonical integration. **The human-review-only milestone
-is not yet complete.**
+overflows, including unreachable literals. Setter prefixes are integrated in
+`d4dc57e8e` with 53 distinct current-source checks and independent custody/axiom
+audit. Selected inner-loop depths are undergoing canonical integration.
+**The human-review-only milestone is not yet complete.**
 
 Start at the [current evidence and remaining work](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
 [stack/interfaces/examples](docs/guides/lean_compiler_stack.md),
@@ -23,6 +24,10 @@ Start at the [current evidence and remaining work](out/artifacts/handoff/pass-ve
 registered compiler gates. Q/DQ stays proposed and MACC stays draft pending
 independent review. Local commits have verified attribution; no new remote push
 has been verified. Earlier checkpoints below retain their stated source cuts.
+
+The [unpublished commit map](out/artifacts/handoff/pass-verif-integration-20261028/unpublished-commit-map.json)
+records a publication message-length correction. All code trees, identities and
+dates are unchanged; older evidence retains its original recorded identifiers.
 
 ---
 

@@ -353,8 +353,9 @@ complete function definitions or a closed bare module; Kernel elision currently
 requires straight-line calls. An active original validation is joined, or the
 owner can pass `pass_validation=validation` explicitly. The result stays held
 until the canonical worker completes. Target scheduling and target emission
-forward that original owner. Ordinary exported compilation remains independent
-of verifier modules when no validation is active.
+forward that original owner. Direct default producer hooks avoid importing the
+verifier when inactive. Target scheduling/emission can import validation plumbing
+when their options are selected; inactive validation launches no Lean proof.
 
 ```python
 selection = ConfigurationIRSelection(selected_contracts, "caller-effect-contract-v1")
@@ -369,8 +370,11 @@ The older elision `prepare`/`check`/`deliver` API and fresh replay remain availa
 The explicit `configuration_loop_hoisting` selector guards the real counted-
 Kernel producer and joins its original owner before returning the result. It
 requires `selected_contracts=...` on `hoist_loop_configuration`; the default
-route remains verifier-free. Its current profile has one positive top-level
-loop and constant setup/body operands; broader IV-data support is separate.
+direct producer route remains verifier-free. The current profiles share one
+positive top-level loop: V1 retains constant operands, V2 admits bounded retained
+IV-data expressions, and V3 supports multiple/overlapping pure-setter prefixes.
+Configuration dependencies remain literal; the explicit proposal adapter enables
+IV-data candidates without changing the ordinary selected adapter.
 Its state relation does not approve numerical policy or the selected
 instruction implementation.
 
@@ -391,10 +395,10 @@ invalidates knowledge; a pulse or enqueue is not a pure setter.
 Hoisting moves the setter in each iteration of a positive loop immediately
 before that loop. Its new partial-execution theorem includes failing work and
 surrounding calls. After any modeled failure, both versions retain the same
-error and terminal state. It requires one leading constant pure setter, an
-ordered body that preserves its fields, and empty completion/asynchronous
-annotations. Zero-trip loops, nesting and overlapping body writes are outside
-this initial checker, including identical overlapping writes. A zero-trip loop
+error and terminal state. V3 derives the whole prefix's last-write-wins assignment;
+retained body writes may repeat its final values while keeping their other effects.
+Conflicting writes/clobbers and nonempty completion/asynchronous annotations
+refuse. Multiple/nested Kernel loops remain engineering work. A zero-trip loop
 cannot be hoisted this way: the original executes no setter.
 
 The bridges bind complete input/output IR, parser/producer origins and the

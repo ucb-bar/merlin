@@ -58,6 +58,28 @@ canonical worker independently checks the actual original/output pair. The
 ordinary selected adapter keeps its conservative behavior. V1 is attempted
 first and retains its original domain; V2 has a distinct bound profile identity.
 
+The current V3 profile handles a nonempty prefix of pure setters, including
+overlapping writes and a loop containing only that prefix. For example:
+
+```text
+repeat 3 times:                 set a = 7
+  set a = 7                    set a = 3
+  set a = 3          →         set b = 5
+  set b = 5                    repeat 3 times:
+  work(i)                        work(i)
+```
+
+The checker derives the final assignment of the whole prefix. Retained calls
+may write the same final configuration values while keeping their other effects;
+conflicting writes and clobbers refuse. Every moved setter is still a total
+pure overwrite under `Models`. The new ten-module canonical proof preserves
+complete outcomes, including failure state; finite native comparisons remain
+separate qualification. V1/V2 keep their original nine-module proof closures.
+Installed qualification covers 53 distinct current-source cases, including four
+V3 public-producer/worker/native paths, V1/V2 compatibility and a real reversed
+setter-order proof refusal. Multiple/nested Kernel loops, completion fields and
+IV-dependent configuration values still require further engineering.
+
 This current route has no historical producer-checkout requirement. The
 standalone API below retains its original revision and source-manifest guard.
 

@@ -1,0 +1,144 @@
+{
+  "schema": "merlin.unpublished-metadata-correction.v1",
+  "authority": false,
+  "base": "a829c1a66ee36d56b9a9928585924e0ac05facc3",
+  "original_head": "05eba7e1796133634b2698a2270b8e9760a81a80",
+  "replacement_head": "d4dc57e8e8f859765aa568089cc59936a948218b",
+  "trees_unchanged": true,
+  "identities_dates_preserved": true,
+  "rows": [
+    {
+      "original": "0fd1b0294e8e17e1f854f6cf336550cb9bf08e46",
+      "replacement": "0fd1b0294e8e17e1f854f6cf336550cb9bf08e46",
+      "tree": "5e938e5b7769f39b5e8b503cc5c6ed5a084aacf9",
+      "message_changed": false,
+      "subject": "feat(verify): generalize compiler loop gate parameters"
+    },
+    {
+      "original": "e70166a6343d1c34e814bf3f72a0641aa50a187f",
+      "replacement": "e70166a6343d1c34e814bf3f72a0641aa50a187f",
+      "tree": "320f63369eeb54ab3970a808b3d3142a6a323698",
+      "message_changed": false,
+      "subject": "docs(verify): map remaining pass integration work"
+    },
+    {
+      "original": "ce43692796b8c79b3b93198d0883246644b0e2bf",
+      "replacement": "ce43692796b8c79b3b93198d0883246644b0e2bf",
+      "tree": "0b24cb4a5ce856585ee2cd7b183ee8fb3fe71247",
+      "message_changed": false,
+      "subject": "fix(verify): preserve MACC operand identity in site proofs"
+    },
+    {
+      "original": "337074195365984471d0f6ac19c5f03caa2f7255",
+      "replacement": "337074195365984471d0f6ac19c5f03caa2f7255",
+      "tree": "1ce92044cb192246ef6b7fb4e4c3336ed0a79a0b",
+      "message_changed": false,
+      "subject": "docs(verify): record overnight pass work and remaining scope"
+    },
+    {
+      "original": "a0335ce40ab90d15eadebbd6743fa2dd2c217586",
+      "replacement": "a0335ce40ab90d15eadebbd6743fa2dd2c217586",
+      "tree": "9403aaac41ab791b57ce44c0eb114d294145663a",
+      "message_changed": false,
+      "subject": "docs(verify): retain MACC producer correction alternatives"
+    },
+    {
+      "original": "84e9680c6fe48ddd534e937529b7a10c965b7ff6",
+      "replacement": "84e9680c6fe48ddd534e937529b7a10c965b7ff6",
+      "tree": "b3900aef6cd477b6a47a24b2e62dc173c4b6f358",
+      "message_changed": false,
+      "subject": "feat(verify): gate inline tail and nested-body unrolling"
+    },
+    {
+      "original": "c4cccf767c7e57e3b0e0c898a1b752f4ff958000",
+      "replacement": "c4cccf767c7e57e3b0e0c898a1b752f4ff958000",
+      "tree": "f701a37bd60b61fb76e1493e16a5fa55c9bff795",
+      "message_changed": false,
+      "subject": "feat(verify): qualify native QDQ source joins and checked prefixes"
+    },
+    {
+      "original": "3ff55012b69fa5ca44b1e40319797c4f3cce9ed8",
+      "replacement": "3ff55012b69fa5ca44b1e40319797c4f3cce9ed8",
+      "tree": "b324a62b474f075ed48ea8b4acd3d9b28f427e23",
+      "message_changed": false,
+      "subject": "fix(lower): reject unsupported draft MACC policy rewrites"
+    },
+    {
+      "original": "aa6af15c38776dba7094286f015c2abdb9f2d1e8",
+      "replacement": "aa6af15c38776dba7094286f015c2abdb9f2d1e8",
+      "tree": "8bf6cc80cba76e3cb6e87f369cf0a46d6996e008",
+      "message_changed": false,
+      "subject": "feat(verify): preserve nested bodies in inline and tail unrolling"
+    },
+    {
+      "original": "9409453b6214073984b383558366827d0bc90449",
+      "replacement": "9409453b6214073984b383558366827d0bc90449",
+      "tree": "526d534f42c4a8df015f044ba2cabed5a67d79fc",
+      "message_changed": false,
+      "subject": "fix(verify): recheck QDQ source after prefix composition"
+    },
+    {
+      "original": "b4c4705a4539d032b0830e3232e9bf69cd7b733c",
+      "replacement": "39d425177a3e3dacf8d8fb01430bd64605db516f",
+      "tree": "893bbdc520ea1effa9abab49e53430d7b0688f29",
+      "message_changed": true,
+      "subject": "feat(verify): gate configuration elision at compiler consumers"
+    },
+    {
+      "original": "584f31f5f143fd499ab772b7d882a6880b393f0b",
+      "replacement": "6f2676fb3b410ff73ae7dd5d949feded1684923e",
+      "tree": "b09b55feb9c065b12a29cb9b9721390540b07f7f",
+      "message_changed": false,
+      "subject": "fix(verify): bound compiler loop proof expansion before allocation"
+    },
+    {
+      "original": "6942b73b9ebb1f6b57be1bd78dffe4d44da611d4",
+      "replacement": "16e9665c496db7bdc30fc8f4eba2001c38358034",
+      "tree": "bbf0c01032d52e717da0779524b454372fbad423",
+      "message_changed": false,
+      "subject": "feat(verify): gate scoped configuration hoisting before Kernel consumers"
+    },
+    {
+      "original": "8ec30c67ec6db2f5a7eb7499b242cda22c909e66",
+      "replacement": "3070f1a393391d9e1eaa9c62da84dc480f5fa567",
+      "tree": "b7081e79c675ec1647daa3575f9c43e48575e8c6",
+      "message_changed": false,
+      "subject": "feat(verify): gate private buffer reuse without initializer tiling"
+    },
+    {
+      "original": "1485f4e9c5356700d3d463a6c821957209e7bef7",
+      "replacement": "ed201063bfbf1ee8b7817b829103ceeb50bd009f",
+      "tree": "6cd03b4f3395aee72bd1ae2e7f48e3bf753d0fec",
+      "message_changed": false,
+      "subject": "refactor(scheduling): share pure configuration storage checks"
+    },
+    {
+      "original": "afc3094c103d7d287c6c2946f4b8281f210e5924",
+      "replacement": "dcdbbb7dfb6c413d9e4e521fae7add9f8976e3fa",
+      "tree": "49c139c411f6d6282b5c362be4dc18c765c8d237",
+      "message_changed": false,
+      "subject": "feat(verify): admit scoped indexed data for configuration hoisting"
+    },
+    {
+      "original": "d52a9a1354ee8d08510efbbc6c09655e52d55c06",
+      "replacement": "22f46e7c1b206ee72e12593a1a126f799e77d76d",
+      "tree": "32d449a2ae81331b932c67134cb4de218c6bbcce",
+      "message_changed": false,
+      "subject": "feat(verify): compose actual loop contexts and unroll tiling chains"
+    },
+    {
+      "original": "a5b482cd101b44a708f88858506f91a80c80df6d",
+      "replacement": "3fe18074276995e59de0b7bf215f2f2a5d7ae6e1",
+      "tree": "46ecf57414c58f2fac2e325e66a3c5338ebfe05f",
+      "message_changed": false,
+      "subject": "docs(verify): refresh nine-pass stack and independent qualification"
+    },
+    {
+      "original": "05eba7e1796133634b2698a2270b8e9760a81a80",
+      "replacement": "d4dc57e8e8f859765aa568089cc59936a948218b",
+      "tree": "da69dc96fd0d2075315d8c95f854029c1ae02f87",
+      "message_changed": false,
+      "subject": "feat(verify): gate invariant configuration setter prefixes"
+    }
+  ]
+}

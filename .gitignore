@@ -445,6 +445,7 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/handoff/pass-verif-integration-20261028/merlin-lean-stack.html
 !/out/artifacts/handoff/pass-verif-integration-20261028/stack.json
 !/out/artifacts/handoff/pass-verif-integration-20261028/qualification.json
+!/out/artifacts/handoff/pass-verif-integration-20261028/unpublished-commit-map.json
 
 # Curated Q/DQ qualification handoff and specification review proposal.
 # Reproducible tools are tracked under build_tools; raw evidence stays local.

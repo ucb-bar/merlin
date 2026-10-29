@@ -18,6 +18,12 @@ paths. `configuration_loop_hoisting` also guards the public producer before its
 ordinary Kernel consumer. Both remain outside `all` and require original selected
 ISA/effect inputs. Hoisting retains its all-index `Models` premise and scoped
 positive-loop profile; finite host bounds/native examples do not discharge it.
+The additive V3 prefix checker derives sequential last-write-wins assignments
+and preserves complete partial outcomes for multiple/overlapping pure setters,
+including identical retained writes and prefix-only loops. Its canonical
+ten-module source closure and actual original-owner compiler paths are qualified;
+the existing nine-module V1/V2 closures remain intact. This adds no ISA effect,
+totality, state-completeness or hardware assumption approval.
 Their state relations
 must not be substituted for a numerical-policy proof or for one another.
 

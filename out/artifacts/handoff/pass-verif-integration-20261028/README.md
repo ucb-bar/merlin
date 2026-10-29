@@ -1,10 +1,11 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
 Work on **`feat/pass-verif-integration`**. Latest committed checkpoint is
-`d52a9a135` (actual loop contexts and composed chain), following `afc3094c1`
-(indexed-data hoist), `1485f4e9c` (storage-effect helper), `8ec30c67e` (untiled
-buffer gate) and `6942b73b9` (scoped hoist gate),
-`584f31f5f` (bounded loop proof generation), `b4c4705a4` (configuration elision),
+`d4dc57e8e` (multiple/overlapping setter prefixes), following `22f46e7c1`
+(actual loop contexts and composed chain), `dcdbbb7df`
+(indexed-data hoist), `ed201063b` (storage-effect helper), `3070f1a39` (untiled
+buffer gate) and `16e9665c4` (scoped hoist gate),
+`6f2676fb3` (bounded loop proof generation), `39d425177` (configuration elision),
 `9409453b6` (final Q/DQ source freshness), `aa6af15c3` (nested inline/tail bodies)
 and `3ff55012b` (approved MACC producer rejection).
 
@@ -25,7 +26,7 @@ MLIR/LLVM/executable/hardware fidelity separate.
 | Q/DQ | 14 native/freshness cases, seven source-byte controls, eight actual lowerings and separate-process replays, final prefix/source-mutation control passed | Proposed source semantics; broader formats/per-group/mixed source graphs and definedness remain separate |
 | MACC | Shared/init SSA binding, fresh live replay, approved atomic producer rejection; 49 producer/checker cases with three historical skips and two native regressions | Draft numerical-reference conformance, not original half-source equivalence or numerical approval |
 | Configuration elision | Original-owner function/bare-instruction/Kernel gates; actual schedule→worker→encoded bytes→native paths; independent retained-work/frame/initial-setter refusals | Straight-line current profiles and explicit original ISA/effect interpretation |
-| Configuration hoist | Original public producer→worker→C/native; static V1 plus indexed-data V2, explicit proposal helper and literal/range/alignment controls | One positive loop; all-index `Models` remains a premise. Multiple setters are undergoing installed V3 qualification |
+| Configuration hoist | Original public producer→worker→C/native; static V1 plus indexed-data V2, explicit proposal helper and literal/range/alignment controls | One positive loop; all-index `Models` remains a premise. V3 setter prefixes, overlap, identical retained writes and prefix-only loops are qualified; multiple/nested loops remain engineering |
 
 The independent validator checks the pass agents' theorem scope, actual input/
 output custody, source bindings, canonical roots, real consumer enforcement and
@@ -69,16 +70,20 @@ Important retained artifacts:
   including both real public-owner/native paths with 15 finite scenarios each.
   V2 indexed-data public/native and wrong-IV canonical cases passed on recorded
   cuts; its conservative signed-index64 tightening passed 29 current host cases.
-  A refreshed V1/V2 cohort accompanies installed V3 setter-prefix qualification.
+  Installed V3 qualification passes 53 unique cases: 46 host and seven canonical,
+  with four V3 plus V1/V2 ordinary public/worker/native paths and a genuine
+  reversed-setter refusal. V3 audits 364 declarations with STD3 and all 833 source
+  references current; V1/V2 retain nine modules and 315 declarations. The
+  independent audit is `hoist-prefix-installed-audit-v1.json`.
   V1 remains unchanged and the all-index Models premise is preserved. Default
   selected adapters remain conservative; broader rewrites use explicit untrusted
   proposals checked against independently selected original effects.
 
 Remaining engineering: selected inner-loop depth routing, broader buffer ranks
 and element representations beyond the four admitted integer widths, additional
-Q/DQ source forms/precision semantics, and configuration setter-prefix/nested-loop
-coverage. Actual top-level sibling/context and unroll-tail→tiling joins are implemented;
-they are no longer pending bridges.
+Q/DQ source forms/precision semantics, and multiple/nested configuration loops.
+Setter-prefix coverage is integrated. Actual top-level sibling/context and
+unroll-tail→tiling joins are implemented; they are no longer pending bridges.
 Human review remains distinct: proposed Q/DQ semantics/poison/definedness, draft
 MACC accumulation/fusion policy, exact ISA pure-write/frame/failure contracts,
 complete/nonaliasing state and allocator/observer assumptions. Neither native
@@ -93,6 +98,10 @@ visible; targeted verification does not certify full CI. No new push has been
 verified; the previous remote authentication failure is a delivery blocker.
 
 Earlier results below retain their stated source cuts.
+
+[unpublished-commit-map.json](unpublished-commit-map.json) maps older retained
+commit identifiers to the publication series after one message-length correction.
+All trees, identities and dates are preserved; published history is unchanged.
 
 ---
 
