@@ -146,3 +146,104 @@ def test_changed_native_source_contract_cannot_be_joined(tmp_path, pass_gate_too
         with pass_validation.validating(validation):
             assert passes_xdsl.lower_quant_ext(module) == 1
     assert gate.verdicts[0]["verdict"] == "not_established"
+
+
+def test_foreign_producer_change_after_composition_is_reconstructed(
+    tmp_path, pass_gate_tools, native_qdq_capture, monkeypatch
+):
+    """Mutate only a disposable clone after real Lean composition, then refuse."""
+    initial = select(native_qdq_capture, "quantize")
+
+    def run(command, label):
+        process = owned_process.run(command, capture_output=True, text=True, timeout=300)
+        (tmp_path / f"{label}.stdout").write_text(process.stdout)
+        (tmp_path / f"{label}.stderr").write_text(process.stderr)
+        cleanup = getattr(process, "owned_process_cleanup", None)
+        (tmp_path / f"{label}.cleanup.json").write_text(json.dumps(cleanup, sort_keys=True) + "\n")
+        assert cleanup and cleanup.get("complete") is True, cleanup
+        assert process.returncode == 0, process.stdout + process.stderr
+        return process.stdout.strip()
+
+    producer = tmp_path / "private-producer"
+    run(["git", "clone", "--shared", "--no-checkout", str(initial.producer), str(producer)], "clone")
+    origin = run(["git", "-C", str(initial.producer), "remote", "get-url", "origin"], "origin")
+    run(["git", "-C", str(producer), "remote", "set-url", "origin", origin], "set-origin")
+    commit = json.loads((initial.directory / "qdq-producer.json").read_text())["producer"]["commit"]
+    run(["git", "-C", str(producer), "checkout", "--detach", commit], "checkout")
+    capture = tmp_path / "private-capture"
+    capture.mkdir()
+    request = {
+        "imports": [str(repo_root() / "src"), str(producer), str(initial.dependencies)],
+        "producer": str(producer),
+        "wheel": str(initial.torch_wheel),
+        "original": str(initial.directory / "original.pt2"),
+        "inputs": str(initial.directory / "inputs.pt"),
+        "output": str(capture),
+    }
+    script = """import json,sys
+from pathlib import Path
+request=json.loads(sys.argv[1]);sys.path[:0]=request['imports']
+import torch
+import torch.ao.quantization.fx._decomposed
+import m2m
+from merlin.targetgen.qdq_capture import write_check
+from merlin.targetgen.qdq_capture_identity import begin
+identity=begin(Path(request['producer']),Path(request['wheel']))
+original=torch.export.load(request['original'])
+inputs=torch.load(request['inputs'],weights_only=True)
+torch.export.save(original,Path(request['output'])/'original.pt2')
+converted=m2m.convert(original,inputs,backend='fx_importer',capture_trace=True)
+report=write_check(converted,identity,Path(request['output']))
+assert report['status']=='matched',report
+print(json.dumps(report,sort_keys=True))
+"""
+    run([str(initial.python), "-I", "-B", "-c", script, json.dumps(request)], "fresh-private-capture")
+    selected = qdq.SourceCapture(
+        capture, initial.python, producer, initial.torch_wheel, initial.dependencies, prove_prefix=True
+    )
+    module = passes_xdsl.parse_mlir_text((capture / "qdq-source.mlir").read_text())
+    function = next(operation for operation in module.walk() if isinstance(operation, func.FuncOp))
+    block = function.body.block
+    block.insert_op_before(arith.ConstantOp.from_int_and_width(9, 32), block.first_op)
+    from merlin.xdsl_dialects._common import text
+
+    before = text(module, generic=True)
+    assert passes_xdsl.lower_quant_ext(module) == 1
+    directory = tmp_path / "proof"
+    directory.mkdir()
+    (directory / "before.mlir").write_text(before)
+    (directory / "after.mlir").write_text(text(module, generic=True))
+    actual_compose = qdq._compose_prefix
+    changed = []
+    target = producer / "m2m/__init__.py"
+    original_bytes = target.read_bytes()
+
+    def mutate_after_actual_composition(*args, **kwargs):
+        result = actual_compose(*args, **kwargs)
+        target.write_bytes(original_bytes + b"\n# disposable selected-producer mutation\n")
+        changed.append(target)
+        return result
+
+    monkeypatch.setattr(qdq, "_compose_prefix", mutate_after_actual_composition)
+    try:
+        with pytest.raises(GateRejected, match="fresh Q/DQ original-source reconstruction refused"):
+            qdq.check(
+                {
+                    "directory": str(directory),
+                    "before": str(directory / "before.mlir"),
+                    "after": str(directory / "after.mlir"),
+                    "label": qdq.SELECTOR,
+                    "params": {
+                        "sdk_bin": str(pass_gate_tools.sdk_bin),
+                        "compiler_python": str(pass_gate_tools.compiler_python),
+                        "index_bits": 64,
+                        "source_capture": selected.describe(),
+                    },
+                }
+            )
+        assert changed == [target]
+        assert (directory / "source-after-proof/source.stderr").is_file()
+        stderr = (directory / "source-after-proof/source.stderr").read_text()
+        assert "producer" in stderr and "differs" in stderr
+    finally:
+        target.write_bytes(original_bytes)

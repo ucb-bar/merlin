@@ -181,5 +181,18 @@ The repository deletes passed pytest temporary trees by default. Use
 replay. The checkpoint's XML/log and shared native capture survive; its passed
 per-test gate directories were cleaned. An earlier eight-boundary lowering run
 predated a checker rebuild, so its replay correctly refused the old provenance;
-fresh final-cut lowering,
-separate-process replay and a retained current-source smoke remain pending.
+the fresh `native-v3` qualification cut subsequently passed all eight actual
+lowering boundaries and their separate-process replay. Each reports verified
+refinement; quantizer definedness remains abstracted.
+
+The final prefix path reconstructs the selected foreign producer and Torch
+identity **after** fresh chain composition. This closes a source-freshness
+window in the earlier ordering. The retained positive proof is in
+`current-native-smoke-v2/prefix/`; independent review rechecked its 67
+artifact/endpoint references, 899 project hashes and exact stage join. A real
+control freshly captures with a disposable pinned producer clone, completes the
+actual Lean composition, changes only that clone, and verifies that final source
+reconstruction refuses. Its test passed, with the verified chain and refusal
+trace retained in `pytest-postcompose-v1/` and its XML/log. The ordinary selected
+producer is untouched. These checks retain proposed-model refinement and do
+not establish whole-source definedness or numerical-policy approval.

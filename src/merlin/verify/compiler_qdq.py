@@ -296,16 +296,16 @@ def check(job):
             extra.extend(refs)
     detail = tensor_refinement(job)
     if selection is not None:
+        composed = None
+        if prefix is not None:
+            composed, refs = _compose_prefix(prefix, detail, directory, params)
+            extra.extend(refs)
         last = directory / "source-after-proof"
         last.mkdir()
         repeated, refs = _capture(selection, Path(job["before"]).read_text(), last)
         if source != repeated:
             raise GateRejected("Q/DQ source/tool identity changed during the compiler proof")
         extra.extend(refs)
-        composed = None
-        if prefix is not None:
-            composed, refs = _compose_prefix(prefix, detail, directory, params)
-            extra.extend(refs)
         source = {
             **source,
             "capture_to_boundary": prefix or {"status": "exact_generic_ir"},
