@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import yaml
@@ -12,6 +15,7 @@ import yaml
 from merlin.common import bundle_snapshot as BW
 from merlin.targetgen.tool_profile import verify_tool_profile
 
+_RESOLVE_LOCK = threading.Lock()
 ACTION = "common-transform"
 SCHEMA = "merlin.common_transform_request.v1"
 MAX_REQUEST_BYTES = 256 * 1024
@@ -35,10 +39,13 @@ _FROZEN_PIPELINE_OPTIONS = frozenset(
 
 def _frozen_import_root(root, originals, frozen):
     """Map only selected import files; an empty declared root supplies no imports."""
+    # ``source.is_relative_to(root)`` is a parts-prefix test; compare tuples once per source.
+    prefix = root.parts
+    width = len(prefix)
     matching = [
-        target.parents[len(source.relative_to(root).parts) - 1]
+        target.parents[len(source.parts) - width - 1]
         for source, target in zip(originals, frozen, strict=True)
-        if source.is_relative_to(root)
+        if source.parts[:width] == prefix
     ]
     if not matching:
         return None
@@ -127,7 +134,6 @@ class CommonTransformService:
                 raise ValueError("shared compiler release manifest differs from the original profile")
 
     def _toolchain(self, work_root: Path):
-        from merlin.verify.lean_contract import LeanToolchain
 
         selection = self.profile["lean_toolchain"]
         if selection.get("selection") != "explicit_manifest":
@@ -146,6 +152,37 @@ class CommonTransformService:
         if hashlib.sha256(payload).hexdigest() != selection["manifest_sha256"]:
             raise ValueError("common proof toolchain manifest changed")
         document = json.loads(payload)
+        # The frozen closure below depends only on the manifest bytes (hashed above), the declared
+        # bundle and the frozen snapshot, all of which _verify() pins for this service. Resolve it
+        # once and reuse it only while a stamp of every frozen file and directory (regular files, no
+        # links, same inodes, same size/mtime/ctime) still equals the stamp taken right after the
+        # full snapshot_input_paths resolution. Any difference, or an unstampable closure, resolves
+        # afresh exactly as before. LeanToolchain.verify then checks the bytes (by stamp or in full).
+        key = (selection["manifest_sha256"], self.snapshot_digest, self.snapshot_marker_digest)
+        memo_dir = Path(os.environ.get("MERLIN_TOOLCHAIN_MEMO_DIR") or self.workspace.parent / "toolchain_verify_memo")
+        resolved = self.__dict__.setdefault("_resolved", {})  # per service; see the stamp rule above
+        with _RESOLVE_LOCK:
+            cached = resolved.get(key)
+            base = None
+            if cached is not None:
+                candidate, stamp = cached
+                current = candidate.inventory_stamp(stamp[1])
+                if current is not None and current[0] == stamp[0]:
+                    base = candidate
+            if base is None:
+                resolved.pop(key, None)
+                started = time.time_ns()
+                base = self._resolve_toolchain(document, original_manifest)
+                stamp = base.inventory_stamp()
+                if stamp is not None and base.stamp_settled(stamp, started):
+                    resolved[key] = (base, stamp)
+        toolchain = replace(base, work_root=work_root, memo_dir=memo_dir)
+        toolchain.verify()
+        return toolchain
+
+    def _resolve_toolchain(self, document: dict, original_manifest: Path):
+        """Map the manifest's original paths onto the frozen snapshot; does not verify file bytes."""
+        from merlin.verify.lean_contract import LeanToolchain
 
         def original(value):
             path = Path(value)
@@ -178,14 +215,13 @@ class CommonTransformService:
             executable_sha256=executable["sha256"],
             library_roots=tuple(import_roots),
             files=tuple((path, row["sha256"]) for path, row in zip(frozen[1:], files, strict=True)),
-            work_root=work_root,
+            work_root=Path("/"),
             timeout_s=document.get("timeout_s", 120),
             memory_mb=document.get("memory_mb", 1024),
             dependency_revision=document.get("dependency_revision", ""),
             sat_solver=solver,
             allow_native_reflection=document.get("allow_native_reflection", False),
         )
-        toolchain.verify()
         return toolchain
 
     def compiler_imports(self):
