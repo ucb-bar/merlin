@@ -133,16 +133,18 @@ def test_source_support_refuses_unsigned_input(tmp_path, lean_tools):
     assert invoke(lean_tools, "check-support", before, "forward")["verdict"] == "unsupported"
 
 
-@pytest.mark.parametrize("bounds,supported", [((-128, 127), True), ((0, 255), False), ((-128, 126), False)])
-def test_source_quantization_bounds_are_checked(tmp_path, lean_tools, bounds, supported):
+@pytest.mark.parametrize("bounds", [(-128, 127), (0, 255), (-128, 126)])
+def test_per_tensor_dequantization_bounds_are_metadata_only(tmp_path, lean_tools, bounds):
     before, after = export_pair(tmp_path, lean_tools, "per_tensor")
     document = json.loads(before.read_text())
     source = document["module"]["ops"][0]["regions"][0]["blocks"][0]["ops"][0]
     for key, value in zip(("quant_min", "quant_max"), bounds, strict=True):
         source["props"][key] = {"kind": "int", "value": str(value), "type": {"kind": "int", "width": 64}}
     before.write_text(json.dumps(document))
-    assert (invoke(lean_tools, "check-support", before, "forward")["verdict"] == "verified") == supported
-    assert (invoke(lean_tools, "check-c1", before, after, "forward")["verdict"] == "verified") == supported
+    # PyTorch's per-tensor dequantizer does not read either bound; per-channel
+    # validation is exercised separately in test_lean_dequant_contract.py.
+    assert invoke(lean_tools, "check-support", before, "forward")["verdict"] == "verified"
+    assert invoke(lean_tools, "check-c1", before, after, "forward")["verdict"] == "verified"
 
 
 def test_textual_per_channel_lowering_verifies(tmp_path, lean_tools):
