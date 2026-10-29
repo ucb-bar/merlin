@@ -6,14 +6,16 @@ scope below. Human semantic/trust approval has not been recorded.
 ## Integration source
 
 Worktree: `/scratch/grammy/blast/merlin-lean-dce-cse`.
-Branch: `integrate/lean-dce-cse-gate`, continuing the existing integration branch.
+Review branch: `feat/pass-verification-dce-cse`, preserving the qualified history
+from the former local name `integrate/lean-dce-cse-gate`.
 Base: `origin/main` at `e45205bf9`; starting integration commit: `15de277ec`.
 The proof and enforcement implementation qualified below is at `d73cbcfe8`; `4e59d5476`
 adds documentation only. `6990bece6` fixes test environment isolation and makes
 the absence of baseline gate instrumentation an assertion. `5c564cd11`
 clarifies the optional definedness report and adds its exact-domain regression.
 Proof/enforcement logic and the Lean binary remain unchanged since `d73cbcfe8`.
-No push, merge or pull request is part of this delivery.
+The feature branch is published for integration review; it is not merged into
+`main` and no pull request is opened by this delivery.
 
 The branch includes the Lean checker library plus two compiler gates:
 `prune_dead_pure_tensor_ops` in xDSL preprocessing, and the pipeline's leading
@@ -130,6 +132,10 @@ types, under `merlin/lean/LEDGER.md`. Review the modeled operation semantics,
 DCE erasability/CSE purity (including ledger A9 for retained source Q/DQ ops),
 SPEC_LOCK statements, exporter/host orchestration and ledger T1–T6 before
 relying on the gate. Human review has not been recorded as approved.
+In particular, the `linalg.memoized_indexing_maps` exemption needs confirmation
+that cached maps agree with the actual operation: xDSL named-op accessors can
+read this attribute. Changes to `llvm.emit_c_interface` are separately reported
+as ABI changes trusted to downstream lowering, outside the tensor claim.
 Optional source definedness concerns typed, nonpoison inputs; universal
 conditional refinement alone does not establish strict refinement for all inputs.
 Canonicalization, numerical preparation, bufferization, LLVM lowering and
@@ -148,3 +154,12 @@ remaining human review/integration work. This deliverable does not advance
 quantization proofs or numerical compiler corrections. The existing source
 semantics, specifications and SPEC_LOCK match the published reference; the
 production quantization lowerings retain the `origin/main` behavior.
+
+## Review branch
+
+The completed DCE/CSE compiler-gate implementation is published at
+[feat/pass-verification-dce-cse](https://github.com/ucb-bar/merlin/tree/feat/pass-verification-dce-cse).
+Publication updates branch-location/review notes and removes one extra EOF
+blank line from a standalone proof fixture. The proof/compiler implementation
+and qualification source points above are unchanged. Other proof families in the
+shared library retain their stated provisional scope.
