@@ -1,5 +1,17 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
+The additional host graph fusion gate checks actual emitted helper bodies,
+caller bindings and the complete public entry on both compiler routes. Its
+20-case final qualification passes without skips, including independent-process
+replay, valid target mutations, failure quarantine and native references.
+All 71 existing graph regressions also pass after two stale mock corrections.
+See the [graph qualification handoff](../../audits/host-graph-fusion-20261029/README.md)
+for exact sources, failures and paper wording. The theorem is relative to common
+typed total pure tensor actions and successful unobservable logical allocation.
+It does not establish physical fusion, primitive arithmetic correspondence or
+downstream code generation. Earlier receipts retain their original source cuts;
+the updated bound ledger requires fresh checks for current-source claims.
+
 Additional audit/strengthening based on `4d28efe5c`: see the
 [numerical review packet](../../../../docs/design/qdq_macc_numerical_contract_review.md)
 for conditional Q/DQ definedness, initialized/mixed-format MACC component proofs,
@@ -18,15 +30,16 @@ publication and both GitHub identities are verified through `4d28efe5c`,
 including the rank-one feature.
 Earlier proof records retain their own source cuts.
 
-All nine pass families have compiler selectors within their declared profiles.
-Five belong to `all`; Q/DQ, draft MACC and the two ISA configuration checks require
-explicit selection. **The human-review-only milestone remains open:** nested
+All ten pass families have compiler selectors within their declared profiles.
+Five belong to `all`; Q/DQ, draft MACC, host graph fusion and the two ISA configuration
+checks require explicit selection. **The human-review-only milestone remains open:** nested
 Kernel commands and broader source/profile coverage still require engineering.
 The proof boundary is Merlin-owned transformations through their output IR, with downstream
 MLIR/LLVM/executable/hardware fidelity separate.
 
 | Pass family | Integrated behavior and retained evidence | Main scope boundary |
 | --- | --- | --- |
+| Host graph fusion | Actual helper/call/public-output projection, fresh complete-entry proof, canonical gate on both routes, replay, mutations and native references | One fused region of static pure integer pointwise stages; typed total pure-action model and successful unobservable logical allocation |
 | Tensor DCE | Existing typed strict-refinement gate, source support and chain composition | Supported pure tensor operations and declared input types |
 | CSE | Existing leading compiler CSE gate with the same typed relation | Tensor checker support; independent downstream lowering |
 | Unrolling | Empty/inline/bulk/tail, siblings, full lexical contexts and explicit inner depths through dynamic ancestors; 20 actual cases, 18 API controls and public native checks | Actual source strides remain known positive; scalar/SCF/resource admission remains |

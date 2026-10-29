@@ -479,3 +479,8 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/audits/overnight-pass-verification-20261029/commit-roster.json
 !/out/artifacts/audits/overnight-pass-verification-20261029/half-reductions/
 !/out/artifacts/audits/overnight-pass-verification-20261029/half-reductions/results.json
+
+# Curated host graph qualification; raw proof trees and toolchains remain local.
+!/out/artifacts/audits/host-graph-fusion-20261029/
+!/out/artifacts/audits/host-graph-fusion-20261029/README.md
+!/out/artifacts/audits/host-graph-fusion-20261029/qualification.json

@@ -1,5 +1,16 @@
 # Current compiler verification checkpoint — 2026-10-29
 
+Host graph fusion now has an explicit compiler gate on both xDSL and textual
+routes. It checks actual emitted helper bodies, caller bindings and every public
+output under the existing typed total pure tensor-action model. All 20 new
+qualification cases pass without skips, including fresh-process replay, five
+actual target mutations, failure quarantine and native reference comparisons.
+All 71 existing graph regressions pass after two stale mocks were corrected.
+See the [reproducible graph handoff](out/artifacts/audits/host-graph-fusion-20261029/README.md)
+for exact sources, theorem mapping, preserved failures and paper wording.
+This is logical dispatch grouping; primitive correspondence, successful logical
+allocation and downstream/native fidelity remain explicit boundaries.
+
 Numerical review work based on `4d28efe5c` keeps f32 accumulation as the selected
 MACC contract. Additive Q/DQ conversion-domain and initialized/mixed-format MACC
 component proofs, plus the plain-reduction producer/report regression fix, are
@@ -14,8 +25,8 @@ All six lowering receipts replay; all 235 pinned statements remain unchanged.
 
 Use **`feat/pass-verif-integration`**. Retained deeper-body loop proofs are
 committed in `ef46cc269`; explicit C64 wide-count hoisting is `91661f328`.
-Nine families have scoped compiler selectors. Five belong to `all`; proposed
-Q/DQ, draft MACC and ISA-specific configuration gates remain explicit.
+Ten families have scoped compiler selectors. Five belong to `all`; proposed
+Q/DQ, draft MACC, ISA-specific configuration and host graph gates remain explicit.
 
 Selected inner-depth unrolling and tiling now preserve supported deeper bodies.
 An actual depth-two unroll→tile gate preserves a dynamic depth-three body;

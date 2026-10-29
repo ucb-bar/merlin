@@ -45,6 +45,21 @@ code_refs:
 
 # Lean verification of the Merlin compilation path outside the OOT
 
+The explicit `host_graph_fusion` gate now connects the existing logical graph
+observer theorem to actual emitted private helpers and the complete public
+entry. Its independent projector reads both boundary modules, expands actual
+calls and checks every ordered public output, including live producer fanout
+and surrounding computations. Fresh canonical Lean compilation and transitive
+axiom audit precede compiler delivery on either route. The relation is equality
+under common typed total pure tensor actions and successful unobservable logical
+allocation. Source projection, scalar-operation correspondence and ordinary call
+semantics remain trusted. Concrete arithmetic, physical storage, preceding layout
+rewrites and downstream native execution remain outside this theorem. See the
+[stack guide](../guides/lean_compiler_stack.md#logical-host-graph-fusion) for the
+admitted profile and the
+[qualification handoff](../../out/artifacts/audits/host-graph-fusion-20261029/README.md)
+for exact evidence. This additive proof changes no frozen interface or approval.
+
 The current implementation checkpoint is on `feat/pass-verif-integration`;
 see [status and next-owner tasks](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
 and [the compiler stack](../guides/lean_compiler_stack.md). Five scoped compiler
