@@ -1,4 +1,25 @@
-# Current integration checkpoint — paused for handoff, 2026-10-28
+# Current integration — qualified, 2026-10-29
+
+Use **`feat/pass-verif-integration`**, current compiler code
+`c553814aa`. The user resumed the original integration goal after the published
+colleague checkpoint and chose to keep MACC draft status until independent
+review. The code now has broader loop-entry proofs, explicit buffer identity
+prefixes, canonical artifact/dispatch controls and an actual MACC draft-contract
+compiler gate outside `all`. **204 targeted pytest cases**, fresh process replay
+for the generalized loop and both MACC formats, and the full Lean guard passed.
+The guard covers 567 source modules with 15,304 shared theorems and zero violations;
+specification pins/locks are unchanged. No full legacy-suite claim is made.
+
+Start with [the current integration handoff](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
+[the compiler stack and examples](docs/guides/lean_compiler_stack.md), and
+[quantization/MACC progress](out/artifacts/handoff/quantization-lean-20261028/README.md).
+All paused/stop statements below describe historical checkpoints and do not
+override the resumed goal. Numerical approval, native fidelity and broader
+unsupported profiles remain separate from the implemented claims.
+
+---
+
+# Published colleague checkpoint — 2026-10-28
 
 Start from **`feat/pass-verif-integration`**. Compiler-gate work is committed at
 `1ac44938b`; merge `ba4fb6b34` imports the colleague's configuration update

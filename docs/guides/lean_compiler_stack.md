@@ -3,12 +3,13 @@ title: Lean verification through the compiler stack
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-28
+last_verified: 2026-10-29
 related: [lean_pass_gate, lean_loop_transform_gate, lean_buffer_reuse_gate, lean_configuration_elision_gate, lean_configuration_hoist_gate, verified_compiler_tooling, merlin_lean_verification]
 code_refs:
   - src/merlin/verify/pass_validation.py
   - src/merlin/verify/compiler_transforms.py
   - src/merlin/verify/compiler_loop_intake.py
+  - src/merlin/verify/compiler_macc.py
   - src/merlin/verify/speculative_gate.py
   - src/merlin/llvmlower/lower.py
   - src/merlin/compile/command.py
@@ -17,20 +18,22 @@ code_refs:
 
 # Lean verification through the compiler stack
 
-Checkpoint status and the remaining merged-cut replay/qualification work are in
+Current qualification and remaining limits are in
 the [integration handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md).
-The current replay implementation has host binding controls; its new separate-
-process native replay tests still need to run against the final merged cut.
+That handoff distinguishes retained evidence from checks on the current source.
 
 Select transformations to change the compiler's output. Select validation to
 require a proof of their actual input/output boundaries. Both are opt-in.
-`--validate-passes all` selects every registered check; it does not enable loop
-or storage transformations. A selected, changing boundary that cannot be proved
+`--validate-passes all` selects DCE, CSE, loop and buffer checks. The explicit
+`bf16_f32acc_draft_contract` check stays outside `all` until independent review.
+Selecting checks does not enable transformations. A selected, changing boundary that cannot be proved
 stops compilation. An unchanged boundary needs no proof job.
 
 ```mermaid
 flowchart TD
   A[Workload or explicit MLIR] --> B[lower_model input]
+  B --> N[Optional bf16/f16 MACC under draft f32-accumulation contract]
+  N --> E
   B --> C[Optional source SCF transforms: unroll and ordered tile]
   B --> D[Optional private-storage chain: normalize, reuse, ordered tile]
   C --> E[xDSL preprocessing: dead tensor operations]
@@ -45,6 +48,7 @@ flowchart TD
   D -. exact captures .-> P
   E -. exact captures .-> P
   F -. exact captures .-> P
+  N -. exact captures .-> P
   P --> H[All requested checks accepted]
   G --> H
   H --> I[Return compiler products]
@@ -63,6 +67,7 @@ LLVM, object and shared-library products. Each job retains `request.json`,
 | `ordered_loop_unrolling` | Optional source SCF stage at `lower_model` entry | Two consecutive iterations become two ordered lanes | Same returned values, modeled errors and terminal world in the scalar/SCF interpretation |
 | `ordered_loop_segmentation` | Optional source SCF stage; also the final step of the private-buffer chain | Visit `0..10` as ordered groups of three, retaining the short last group | Scalar route: same return/error/world relation; memory route: the complete chain's successful-observation relation |
 | `buffer_reuse` | Optional source normalization→reuse→segmentation chain | Two initialized, nonoverlapping private lifetimes share storage | Same possible successful public observations, under the explicitly selected allocator model |
+| `bf16_f32acc_draft_contract` (explicit only) | Actual `lower_bf16_matmul_f32acc`, including its optional compiler-entry invocation | Extend half operands, accumulate in f32, truncate once | Conformance to the draft numerical reference; numerical approval remains abstracted |
 
 These are separate relations. A buffer success proof does not establish the
 loop checker's error/world equality or finite-memory allocator behavior. No row
@@ -149,14 +154,20 @@ process can replay with no incoming completion authority; saved JSON is input
 to a new check. The standalone pinned-producer workflow still takes its explicit
 `reference` argument.
 
-The supported source domain has one changed top-level loop, two scalar entry
-arguments, one to four word carries, a region-free body, static nonnegative
+The supported source domain has one changed top-level loop per changed function,
+zero to sixteen scalar entry arguments, one to sixteen word carries, a region-free body, static nonnegative
 bounds, positive stride and index64. Unrolling supports factors 2..4 with a
 nonempty bulk larger than the factor and no unroll remainder. Tiling supports
 sizes 2..16 and short final segments. External calls retain the modeled state
 and failure semantics. Dynamic/multidimensional tiling and arbitrary nesting
 need additional bridges. The gate does not insert a loop-lowering pass to turn
 arbitrary tensor programs into supported source SCF.
+
+Multiple changed function definitions are checked together. Exact unchanged
+scalar stages are retained in the captures and omitted from positive rewrite
+coverage; the proof covers the remaining actual adjacent changing stages.
+Private compiled objects are frozen before auditing and checked for byte or
+tree-membership changes again before delivery.
 
 ## Private buffer reuse
 
@@ -188,9 +199,13 @@ builds the factored query and audits the complete proof closure.
 roster. The compiler adapter requires its fresh live completion before the
 speculative gate accepts the chain.
 
-All three transformations must change the IR in this initial complete-chain
-route. Identity normalization or reuse needs a separate bridge; the adapter
-does not manufacture changes to obtain a proof.
+Normalization and reuse may be unchanged. The separate
+`GraphLoopsShape.Identity` checker requires a typed complete module, zero shape
+rewrite sites and identical complete source/normalized bindings. The original
+positive normalization checker is unchanged. A one-to-one epoch/slot plan uses
+the existing reuse theorem with every allocation/free binding intact. Such
+stages appear in `unchanged`, rather than positive rewrite coverage. Actual
+initializer segmentation is still required by this complete-chain route.
 
 The current subset uses static rank-two integer buffers, sequential disjoint
 private lifetimes and complete rectangular initialization. For example, two
@@ -200,6 +215,47 @@ observations and supported unchanged functions are retained. Arbitrary escaping
 pointers, asynchronous effects, external declarations and callers reaching the
 changed kernel need additional proof routes. The allocator premise does not
 establish finite capacity, native allocation failure or native allocator fidelity.
+
+## bf16/f16 MACC draft contract
+
+```sh
+merlin-compile ... --macc-f32acc \
+  --validate-passes bf16_f32acc_draft_contract \
+  --lean-sdk-bin /path/to/lean-4.35.0/bin
+```
+
+The Python transform choice is `Options(macc_f32acc=True)`; its environment
+equivalent is `MERLIN_BF16_F32ACC=1`. The flag applies the existing
+`lower_bf16_matmul_f32acc` at compiler entry. Its recorder also observes existing
+call sites when they execute inside a validation scope. Preparation already
+performed outside that scope requires its own captured boundary.
+
+For a +0-initialized half-precision matrix product, the transformation is:
+
+```text
+bf16/f16 A, B
+  → extend each operand to f32
+  → accumulate in f32 in the original index/reduction order
+  → truncate once to the original result format
+```
+
+`compiler_macc.check_boundary` exports and round-trips the complete actual
+endpoints, checks equality to the source-derived draft reference, and checks
+strict initialized-operand qualification at every recognized site. The positive
+`Bf16F32AccBoundary.check_sound` theorem also requires a nonempty site set.
+Fresh live completion and replay bind the exact bytes and checker evidence.
+
+The result is **draft-policy conformance**: `policy_reviewed=false`, numerical
+policy verdict `abstracted`, and no original-source equivalence claim. The user
+has explicitly retained this draft status pending independent review. `all`
+excludes it. Matching bf16 or matching f16 operand/result formats are supported;
+mixed source formats, nonzero initialization and incompatible named maps remain
+refused. Generic mathematical lemmas do not broaden the source recognizer.
+
+This does not establish whole-capture defined execution, IEEE/native fidelity,
+or approved numerical accuracy. Combining options still requires each boundary
+to meet its own intake domain; the scalar loop checker does not thereby accept
+arbitrary tensor MACC programs.
 
 ## Selecting and reviewing coverage
 
@@ -216,9 +272,10 @@ refuse rather than silently dropping a selected check.
 The standalone loop and buffer APIs remain available for developer workflows.
 Their raw reports describe those issuers' narrower scopes; the compiler's
 `verdict.json` records enforcement at the integrated boundary. Historical
-qualification and human approval are distinct from a new live proof. Quantization,
-floating-point policy changes and later LLVM CSE are not additional registered
-compiler gates. [The verification design](../design/merlin_lean_verification.md)
+qualification and human approval are distinct from a new live proof. Source
+Q/DQ expansion, approved numerical-policy changes and later LLVM CSE have no
+registered compiler gates. The explicit draft MACC check retains its conditional
+claim. [The verification design](../design/merlin_lean_verification.md)
 records the separate Lean-MLIR scalar integration and the policy to reuse suitable
 upstream proof components before implementing new ones.
 
@@ -238,7 +295,7 @@ These interfaces have separate selections and are not extra names in
 ## Configuration writes and loop hoisting
 
 The configuration APIs use explicit selected ISA/effect facts. They are separate
-from the five generic compiler selectors above: elision checks complete
+from the generic compiler selectors above: elision checks complete
 instruction-MLIR modules, while hoisting checks complete counted Kernel text.
 Their owner calls `prepare`, `check`, then `deliver` at that boundary before
 passing the checked bytes to its consumer. Both APIs also support fresh replay.

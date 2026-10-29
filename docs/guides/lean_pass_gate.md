@@ -221,15 +221,19 @@ upstream pass-verification and independent-review histories. Its selector
 registers `prune_dead_pure_tensor_ops`, `cse`, `ordered_loop_unrolling`,
 `ordered_loop_segmentation` and `buffer_reuse`. `--validate-passes all` selects
 all five checks, while transformations themselves remain separately opt-in.
+The separately registered `bf16_f32acc_draft_contract` check requires explicit
+selection and remains outside `all`. `--macc-f32acc` or
+`Options(macc_f32acc=True)` selects its actual production transformation;
+the accepted claim is draft-reference conformance, with numerical approval
+still abstracted. See the stack guide for its interface and limits.
 The loop and memory checks have their own narrower domains and relations;
 see [the compiler stack](lean_compiler_stack.md). The DCE/CSE historical
 qualification retains its original source/branch names and scope.
 
-Other proof families and numerical policy candidates remain standalone review
-and handoff tooling. They are not registered compiler gates and require no review
-admission to select DCE/CSE validation. Existing numerical compiler lowerings are
-inherited from development; their correctness is not claimed by these two gates.
-The gate never submits the quantization or policy boundaries.
+Other quantization proofs and approved numerical-policy gates remain separate
+review and handoff tooling. No numerical review admission is required to select
+DCE/CSE validation. Existing numerical compiler lowerings are inherited from
+development; their correctness is not claimed by the DCE/CSE checks.
 
 The separate shared native-prefix verification API retains its existing explicit
 opt-in scope; it is not selected by `--validate-passes all`. Its trusted native

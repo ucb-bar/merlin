@@ -1,9 +1,9 @@
 {
-  "schema": "merlin.pass-verification.checkpoint.v1",
-  "status": "paused_for_colleague_handoff",
+  "schema": "merlin.pass-verification.checkpoint.v2",
+  "status": "targeted_compiler_integration_qualified",
   "final_qualification_complete": false,
   "branch": "feat/pass-verif-integration",
-  "compiler_commit": "1ac44938b2",
+  "compiler_commit": "c553814aa76e6784ef62fb344d6625e01037e1e0",
   "configuration_merge": "ba4fb6b348",
   "configuration_upstream": "018c3795d3",
   "primary_upstream": "89ac040aef",
@@ -12,24 +12,13 @@
     "cse",
     "ordered_loop_unrolling",
     "ordered_loop_segmentation",
-    "buffer_reuse"
+    "buffer_reuse",
+    "bf16_f32acc_draft_contract"
   ],
   "separate_explicit_apis": [
     "configuration_elision",
     "configuration_hoist"
   ],
-  "current_focused_controls": {
-    "tests": 258,
-    "failures": 0,
-    "errors": 0,
-    "skipped": 0
-  },
-  "current_compiler_host_controls": {
-    "tests": 19,
-    "failures": 0,
-    "errors": 0,
-    "skipped": 0
-  },
   "earlier_compiler_qualification": {
     "source_cut": "before latest replay/helper inventory updates; exact25-file cut retained locally",
     "unique_tests": 35,
@@ -312,9 +301,10 @@
     "new_numerical_proofs_added": true,
     "source_qdq_proofs": "inherited; historical scope/review limits retained",
     "w8a8_policy": "review/admission pending;not registered",
-    "bf16_f16_f32acc": "review/admission pending;not registered",
+    "bf16_f16_f32acc": "explicit draft compiler conformance qualified;independent policy review/admission pending;excluded from all",
     "frozen_semantics_or_spec_lock_changed": false,
-    "new_proof_scope": "Additive composition of existing draft MACC exact-reference equality and nonempty strict local-site qualification; no new numerical law or admission"
+    "new_proof_scope": "Additive composition of existing draft MACC exact-reference equality and nonempty strict local-site qualification; no new numerical law or admission",
+    "user_decision": "Keep draft status until independent review"
   },
   "source_files": [
     {
@@ -469,10 +459,11 @@
     }
   ],
   "pending": [
-    "Complete current38-test compiler suite including new separate-process replay checks",
-    "Recheck source-binding changes on final merged source cut",
-    "Complete116 legacy nodes and retain3 proven pre-existing failures",
-    "Repeat config baseline check/replay on final installed source path if final-cut qualification is required"
+    "Independent MACC numerical/source-policy review before any approved numerical gate",
+    "Optional broader legacy regression:116 nodes remain and3 earlier failures reproduce at baseline",
+    "Unroll tails/empty/inline,arbitrary nested loops and internal-call bridges remain outside the current scalar profile",
+    "Untiled buffer initializer simulation,finite/observable allocators and complete error/world relation remain separate proof work",
+    "Repeat configuration API qualification on a final installed source path if that separate campaign is requested"
   ],
   "authority": false,
   "human_model_approved": false,
@@ -508,5 +499,296 @@
         "Obtain independent numerical policy review before admitted MACC compiler integration"
       ]
     }
-  }
+  },
+  "qualification_scope": "Requested scoped compiler integration is qualified; the historical780-case whole-tree regression remains incomplete, and numerical approval is deliberately pending.",
+  "targeted_integration_complete": true,
+  "full_legacy_regression_complete": false,
+  "initial_compiler_commit": "1ac44938b2",
+  "default_checks": [
+    "buffer_reuse",
+    "cse",
+    "ordered_loop_segmentation",
+    "ordered_loop_unrolling",
+    "prune_dead_pure_tensor_ops"
+  ],
+  "previous_checkpoint_controls": {
+    "source_cut": "Published4ef31ee8d colleague checkpoint",
+    "focused": {
+      "tests": 258,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "compiler_host": {
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "current_targeted_controls": {
+    "code_commit": "c553814aa76e6784ef62fb344d6625e01037e1e0",
+    "unique_passed": 204,
+    "groups": [
+      {
+        "name": "loop_controls",
+        "passed": 42,
+        "failed": 0,
+        "xml": "out/build/pass-verif-integration-20261028/resume-loop-final-v1.xml"
+      },
+      {
+        "name": "macc_compiler_controls",
+        "passed": 21,
+        "failed": 0,
+        "xml": "out/build/pass-verif-integration-20261028/resume-macc-compiler-final-v1.xml"
+      },
+      {
+        "name": "policy_plumbing",
+        "passed": 108,
+        "failed": 0,
+        "xml": "out/build/pass-verif-integration-20261028/resume-policy-plumbing-owned-v3.xml"
+      },
+      {
+        "name": "worker_lifecycle",
+        "passed": 30,
+        "failed": 0,
+        "xml": "out/build/pass-verif-integration-20261028/resume-worker-regression-final-v1.xml"
+      },
+      {
+        "name": "buffer_compiler",
+        "passed": 1,
+        "failed": 0,
+        "xml": "out/build/pass-verif-integration-20261028/resume-buffer-compiler-owned-v3.xml"
+      },
+      {
+        "name": "default_dce_cse",
+        "passed": 1,
+        "failed": 0,
+        "xml": "out/build/pass-verif-integration-20261028/resume-default-gates-final-v1.xml"
+      },
+      {
+        "name": "identity_reuse_direct",
+        "passed": 1,
+        "failed": 0,
+        "xml": "out/build/pass-verif-integration-20261028/resume-buffer-identity-owned-v1.xml",
+        "scope": "Only the named passing direct identity-reuse case; the other compiler case failed from live-source reload and passed fresh in v3",
+        "node": "test_identity_prefixes_check_and_deliver[False-1]"
+      }
+    ],
+    "full_test_suite_run": false
+  },
+  "current_lean_guard": {
+    "status": "passed",
+    "source_modules": 567,
+    "shared_modules": 550,
+    "shared_theorems": 15304,
+    "violations": 0,
+    "pins_or_spec_lock_changed": false,
+    "driver_counts_overlap": true,
+    "log": "out/build/pass-verif-integration-20261028/resume-full-lean-guard.log"
+  },
+  "current_replay": {
+    "loop": {
+      "fresh": true,
+      "incoming_authority": false,
+      "report": "out/build/pass-verif-integration-20261028/loop-separate-replay-final/proof/REPORT.json",
+      "exact_delivery": true,
+      "changed_definitions": 2,
+      "entry_arguments": 6
+    },
+    "macc": [
+      {
+        "fresh": true,
+        "incoming_authority": false,
+        "report": "out/build/pass-verif-integration-20261028/macc-separate-replay-v3-0/proof/draft-boundary.json",
+        "sites": 1,
+        "audit_scope": "exact_roots_and_all_imported_project_declaration_safety",
+        "exact_delivery": true
+      },
+      {
+        "fresh": true,
+        "incoming_authority": false,
+        "report": "out/build/pass-verif-integration-20261028/macc-separate-replay-v3-1/proof/draft-boundary.json",
+        "sites": 1,
+        "audit_scope": "exact_roots_and_all_imported_project_declaration_safety",
+        "exact_delivery": true
+      }
+    ],
+    "scope": "Independent fresh processes, no incoming live authority, exact target delivery; saved status is descriptive only"
+  },
+  "current_buffer_cases": {
+    "identity_normalization": "out/build/pass-verif-integration-20261028/resume-buffer-identity-normalization-proof/REPORT.json",
+    "identity_reuse": "out/build/pass-verif-integration-20261028/pytest-buffer-identity-owned-v1/test_identity_prefixes_check_a0/proof/REPORT.json",
+    "both_identity_compiler": "out/build/pass-verif-integration-20261028/resume-buffer-compiler-owned-v3.xml",
+    "relation": "equal_possible_successful_public_observations",
+    "allocation_model": "total_private_unobservable",
+    "full_error_world_or_native_allocator_equivalence": false,
+    "all_original_bound_sources_still_current": true
+  },
+  "current_source_files": [
+    {
+      "path": "merlin/lean/Audit.lean",
+      "bytes": 8962,
+      "sha256": "931a64e917da174ea55cdc629370f30a3b61e8c9cd3b7ac87d42ac66755927a3"
+    },
+    {
+      "path": "merlin/lean/LEDGER.md",
+      "bytes": 51529,
+      "sha256": "6ebb9d9f1808c5ca9a678ecc90d2496cf00cf2def1d12b9e1376a0fb6b3731c5"
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Driver/Bf16F32Acc.lean",
+      "bytes": 17884,
+      "sha256": "b3a780bfe9a780ddda93957568835aa893fc0a6b38d568ad1455fb260298f6e5"
+    },
+    {
+      "path": "src/merlin/compile/command.py",
+      "bytes": 12369,
+      "sha256": "ad4fd82255e7df3dac33544c199184144048f6edb6a290ae46f262f86b2040b5"
+    },
+    {
+      "path": "src/merlin/llvmlower/passes_xdsl.py",
+      "bytes": 62904,
+      "sha256": "d236d4ebf582944aa70ed3b5aed3338815509555ed4276a722e7750b6772e9a1"
+    },
+    {
+      "path": "src/merlin/verify/bf16_policy_gate.py",
+      "bytes": 25412,
+      "sha256": "66b395ea29a7f747fb3274af935d469e28432f82acda94adbec09a26708f48bc"
+    },
+    {
+      "path": "src/merlin/verify/buffer_reuse_emit.py",
+      "bytes": 11828,
+      "sha256": "f8ba7be7300642370d2616c2f95d37a51f7ae415564875775ff89a7654942130"
+    },
+    {
+      "path": "src/merlin/verify/compiler_loop_intake.py",
+      "bytes": 8474,
+      "sha256": "29b07fa948c0ed7199381b8c979e9614470ee5572e7894dfba27eae0917ed2c1"
+    },
+    {
+      "path": "src/merlin/verify/compiler_macc.py",
+      "bytes": 10868,
+      "sha256": "6191cde6221d9c7e15f8f14b92219cd02611e6353de393ca57a14ecfbce10bdc"
+    },
+    {
+      "path": "src/merlin/verify/compiler_transforms.py",
+      "bytes": 10937,
+      "sha256": "27c45461fbb89c6b2219dd57015213c149021be173e265417a20d665045fd369"
+    },
+    {
+      "path": "src/merlin/verify/gate_checks.py",
+      "bytes": 6813,
+      "sha256": "589ef8f9a8d910bf5fde5fd0506fc2a37f56ca25317493cadf0bca6b2d73fa86"
+    },
+    {
+      "path": "src/merlin/verify/gate_worker.py",
+      "bytes": 5356,
+      "sha256": "f6aba89a91a6e6b3da73de6f04645ed92530212bf3b721ff5904c3fe595623ac"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeIdentity.lean",
+      "bytes": 2583,
+      "sha256": "a3cf30d65f247d1eaf7d9edc3a880b6b9311c34b46c9d21883bd9e0959419fd3"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+      "bytes": 13247,
+      "sha256": "d552ec1a9a71ef8015ce0d7feca060a5c5b6e16dceafbd06f4d52e129420611e"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+      "bytes": 10272,
+      "sha256": "a7317d35525ed2ab072158310dcd7f618148ea71280d9c1b41762d27c93e11c5"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+      "bytes": 10444,
+      "sha256": "e12138b21fbf696f3fede8da4dc370f32dfb48e35d7c41902eea6e19d0496edc"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_model.py",
+      "bytes": 8273,
+      "sha256": "debe58987faf3675bb56990c99fc02b4008cda789eff82336b2b1b7ab62d78fd"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_projection.py",
+      "bytes": 14089,
+      "sha256": "24f6ebfef3c6fbc5bdd63091c32e232b57ce822819b190d4efb8b7f4e56c33dc"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+      "bytes": 20205,
+      "sha256": "7f624ec8af69a661cbb8dbed8266f3e67af3770a30a851e55d450e48b3dd28bd"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "bytes": 30064,
+      "sha256": "4c41ae91535c540d767f1912c25aa4f881c94fd101aee3c801db032cc8a5580e"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_gate.py",
+      "bytes": 14718,
+      "sha256": "c478ebfc7d6240dfd58346ce41ff1bf5a5a4d826473221861f760c3ba57494b7"
+    },
+    {
+      "path": "src/merlin/verify/pass_validation.py",
+      "bytes": 11440,
+      "sha256": "f7b3df4561293bab6b595129c88d7663e48a375490e69384e8d4bffbb8081489"
+    }
+  ],
+  "hygiene": {
+    "docs": "passed",
+    "structure_findings": 16,
+    "structure_findings_match_previously_audited_baseline_bytes": true,
+    "structure_log": "out/build/pass-verif-integration-20261028/resume-structure-check.log",
+    "provenance": {
+      "status": "refused_for_two_unchanged_retained_baseline_reports",
+      "log": "out/build/pass-verif-integration-20261028/resume-provenance-staged-final.log",
+      "findings": [
+        {
+          "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/handler-controls-v1/RESULT.json",
+          "sha256": "d7a6c1d4f97ffa43368dcbbcbd3e20fd56a8588687d565dc849436acace73c23",
+          "matches_remote_baseline": true
+        },
+        {
+          "path": "out/artifacts/verification/graham-graph-review/deliverable-1/validation.json",
+          "sha256": "5b536d9d4b4c6b004ccb23470cb31d73f99ceca4c1c0486c0a0fdd3273d4ff2e",
+          "matches_remote_baseline": true
+        }
+      ],
+      "records_or_ratchet_changed": false
+    }
+  },
+  "retained_attempts": [
+    {
+      "log": "out/build/pass-verif-integration-20261028/resume-loop-replay.log",
+      "outcome": "interrupted to enforce owned scratch temp roots;fresh owned replay passed later"
+    },
+    {
+      "log": "out/build/pass-verif-integration-20261028/resume-owned-host.log",
+      "outcome": "historical profile test driver invoked without required PRIMARY fixture;current-transform source controls passed separately"
+    },
+    {
+      "log": "out/build/pass-verif-integration-20261028/resume-buffer-identity-owned-v1.log",
+      "outcome": "direct identity reuse passed;compiler case loaded source across edits and failed;fresh compiler v3 passed"
+    },
+    {
+      "log": "out/build/pass-verif-integration-20261028/resume-buffer-compiler-owned-v2.log",
+      "outcome": "checker freshness setup refused while Main rebuild was live;fresh v3 passed"
+    },
+    {
+      "log": "out/build/pass-verif-integration-20261028/resume-policy-plumbing-owned-v1.log",
+      "outcome": "7 stale/unsupported-route expectations failed;stronger current-route controls and default unselected preparation passed108 cases in v3"
+    },
+    {
+      "log": "out/build/pass-verif-integration-20261028/resume-macc-separate-replay.log",
+      "outcome": "local evidence driver used missing verdict key;no proof attempted"
+    },
+    {
+      "log": "out/build/pass-verif-integration-20261028/resume-macc-separate-replay-v2.log",
+      "outcome": "fresh child completed;local parent driver used wrong cleanup-result API;both cases passed with owned_process.run in v3"
+    }
+  ],
+  "final_qualification_complete_scope": "The historical full legacy/regression campaign; requested targeted compiler integration is separately complete."
 }

@@ -18,7 +18,9 @@ configuration elision/hoisting retain explicit ISA/effect APIs. The
 [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
 records inherited Q/DQ proofs and outstanding numerical review. W8A8 and
 bf16/f16 policy candidates are not enabled by the compiler's `all` selector.
-Latest-cut replay/qualification remains pending as recorded in the checkpoint.
+The separate `bf16_f32acc_draft_contract` selector checks actual MACC boundaries
+without claiming numerical approval; `--macc-f32acc` selects the transformation.
+Current qualification and remaining limits are recorded in the checkpoint.
 
 The common substrate supplies executed xDSL transformations, an optional
 instruction dialect generator and an independent host Lean checking route.

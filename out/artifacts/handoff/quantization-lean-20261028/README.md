@@ -1,4 +1,4 @@
-# Quantization Lean proof handoff — 2026-10-28
+# Quantization Lean proof handoff — updated 2026-10-29
 
 ## Current integration checkpoint
 
@@ -6,14 +6,15 @@ Continue from `feat/pass-verif-integration`, which includes the inherited
 quantization histories and the configuration updates from
 `feat/pass-verification-dce-cse` at `018c3795d3`. See the
 [current integration handoff](../pass-verif-integration-20261028/README.md).
-The original integration added graph/compiler gates. The latest brief
-follow-up adds the composed draft MACC theorem described below; it does not
-enable numerical compiler gates.
+The current code cut `c553814aa` adds a composed draft MACC theorem and an
+explicit compiler conformance gate. It does not enable an approved numerical
+policy gate.
 
-The current compiler selector has five checks: tensor DCE, CSE, ordered
+The default compiler selection has five checks: tensor DCE, CSE, ordered
 unrolling, ordered segmentation and private buffer reuse. `all` selects those
 five; it does not select Q/DQ expansion, W8A8 or bf16/f16 policy proofs.
 Configuration elision and hoisting retain their separate explicit APIs.
+`bf16_f32acc_draft_contract` is an additional explicit-only compiler selector.
 
 Source Q/DQ contracts and lowering proofs are inherited, with their original
 profile exclusions and historical evidence below. The W8A8 source-domain,
@@ -26,9 +27,9 @@ assumption was changed by this checkpoint.
 For the next quantization owner: start with
 [the assumption ledger](../../../../merlin/lean/LEDGER.md),
 [the design's quantization and policy sections](../../../../docs/design/merlin_lean_verification.md),
-and the remaining review tasks below. Requalify the intended numerical path on
-this exact branch before enabling a new compiler gate. Graph proof success and
-a clean theorem audit are not human source-contract approval.
+and the remaining review tasks below. Requalify changed numerical paths and
+obtain independent review before enabling an approved numerical gate. Graph
+proof success and a clean theorem audit are not human source-contract approval.
 
 The branch/source descriptions below retain their original checkpoint scope.
 
@@ -44,25 +45,42 @@ It packages existing bf16/f16 machinery; it introduces no floating-point law.
 The module compiled with Lean 4.35.0 and its theorem audit reports only
 `propext`, `Classical.choice` and `Quot.sound`. No full suite was rerun.
 
-Existing machinery covers bf16/f16 and mixed operand formats, original maps
-and accumulation order, +0 initialization, and the admitted `none`/`contract`
-flags. The draft six-clause f32-accumulation contract was authored after the
+Existing machinery covers bf16 and f16 separately, original maps and
+accumulation order, +0 initialization, and the admitted `none`/`contract`
+flags. The source recognizer requires matching operand/result half formats;
+generic lemmas with separate format parameters do not admit mixed source formats.
+The draft six-clause f32-accumulation contract was authored after the
 pass was read; independent source/policy review and installed admission remain
 outstanding. The composed theorem neither supplies that approval nor proves
-that original half accumulation equals f32 accumulation. No compiler adapter
-or selector was added. Nonzero initialization and incompatible named maps
-remain checker refusals; the production pass was not modified.
+that original half accumulation equals f32 accumulation. Nonzero initialization
+and incompatible named maps remain checker refusals. The production pass's
+computation is unchanged; a recorder observes its exact actual boundary.
 
-The read-only reviewer also found that `bf16_policy_gate.check_policy` selects
-trusted governance roots through `repo_root()`, honoring `MERLIN_REPO_ROOT`.
-Before enabling an admitted policy gate, bind admission/source-review lookup
-to the installed source owner and add an override-refusal control. This is a
-pending hardening finding, not a demonstrated forged-admission exploit.
+Canonical governance ownership is hardened in both the policy handler and
+direct admission reader used by the review publisher. Caller-selected source,
+work or output roots cannot supply approval or proof objects; matching installed
+owner aliases remain valid. The unapproved policy route still refuses before
+opening tools or inputs.
 
-Next: independently review the numerical contract, retain conditional draft
-status meanwhile, harden admission binding, then add actual compiler-stage
-capture/delivery/replay and targeted positive/refusal controls. User requested
-a publication break here; no numerical policy choice was assumed.
+The user has since resumed integration and explicitly selected **keep draft
+status until independent review**. The compiler now captures actual boundaries
+through `Options(macc_f32acc=True)` / `--macc-f32acc` and the separate
+`bf16_f32acc_draft_contract` check. The check remains outside `all`; it must not
+be relabeled as source refinement or numerical approval. **21 compiler/capture/
+dispatch controls and 108 policy/preparation controls passed** on the current
+code. Gated/ungated LLVM is byte-identical for bf16 and f16; a corrupted actual
+producer stops compilation. Both formats passed fresh separate-process replay
+and exact delivery with no incoming authority. The full current Lean guard
+passed with 567 source modules, 15,304 shared theorems and zero violations;
+specification pins/locks remain unchanged.
+
+The per-job MACC audit checks exact consumed roots transitively against the
+standard three axioms and scans all imported project declarations for banned
+constructs. Its explicit narrower scope is preserved in reports, with canonical
+project objects and process evidence revalidated through delivery. It does not
+claim a private object snapshot or a proven runtime import map. See the
+[compiler stack](../../../../docs/guides/lean_compiler_stack.md) for the interface
+and exact claim. Earlier publication-break statements retain their source cut.
 
 ## Historical source Q/DQ checkpoint
 

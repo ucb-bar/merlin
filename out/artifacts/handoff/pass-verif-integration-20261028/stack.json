@@ -1,5 +1,19 @@
 [
   {
+    "id": "bf16_f32acc_draft_contract",
+    "stage": "0 \u00b7 Optional numerical preparation",
+    "title": "bf16/f16 MACC draft contract",
+    "kind": "draft",
+    "boundary": "Actual lower_bf16_matmul_f32acc input/output, including its optional lower_model entry invocation.",
+    "interface": "Options(macc_f32acc=True)\n--macc-f32acc\n--validate-passes bf16_f32acc_draft_contract",
+    "example": "+0-initialized half matrix product\n\u2192 extend operands to f32\n\u2192 accumulate in original order\n\u2192 truncate once to the original half format",
+    "claim": "Complete equality to the source-derived draft reference and strict nonempty local-site qualification. Numerical approval remains abstracted; no original-source equivalence claim.",
+    "proof": "MerlinVerify.Check.Bf16F32AccBoundary.check_sound\nExact reference + strict sites + complete source denominator",
+    "limit": "Explicit selection only; excluded from all. Matching bf16 or f16 formats, checked +0 initialization and maps. Mixed source formats and nonzero initialization refuse. Independent policy review is pending.",
+    "registered": true,
+    "in_all": false
+  },
+  {
     "id": "ordered_loop_unrolling",
     "stage": "1 \u00b7 Source SCF",
     "title": "Ordered unrolling",
@@ -9,8 +23,9 @@
     "example": "14 ordered iterations\n\u2192 7 groups \u00d7 2 ordered lanes\nThe accumulator passes through every lane.",
     "claim": "Equal returned values, modeled errors and terminal world, under the common scalar/SCF interpretation.",
     "proof": "Merlin.GraphGateProfileAdjacent.complete2",
-    "limit": "Static index64, one changed top-level loop, two scalar inputs, 1\u20134 word carries; factors 2\u20134, no unroll remainder.",
-    "registered": true
+    "limit": "Static index64, one changed loop per changed function, 0\u201316 scalar inputs and 1\u201316 word carries. Multiple changed definitions; factors 2\u20134, no unroll remainder.",
+    "registered": true,
+    "in_all": true
   },
   {
     "id": "ordered_loop_segmentation",
@@ -23,7 +38,8 @@
     "claim": "Scalar route: equal returns, modeled errors and terminal world. Memory route: the whole storage chain's successful-observation relation.",
     "proof": "Merlin.GraphGateProfileAdjacent.complete3",
     "limit": "Static index64 and region-free scalar source bodies; tile sizes 2\u201316. General multidimensional tiling needs another bridge.",
-    "registered": true
+    "registered": true,
+    "in_all": true
   },
   {
     "id": "buffer_reuse",
@@ -35,8 +51,9 @@
     "example": "Allocate A \u2192 initialize \u2192 use \u2192 free\nAllocate B \u2192 initialize \u2192 use \u2192 free\n\u2192 reuse one private slot for both lifetimes",
     "claim": "Equal sets of possible successful public observations under the explicitly selected total, private, unobservable allocator model.",
     "proof": "GraphMemoryAfterEntries.every_definition",
-    "limit": "Checked static rank-two integer initialization and disjoint sequential lifetimes. No finite-capacity, error/world, native allocator or asynchronous guarantee.",
-    "registered": true
+    "limit": "Static rank-two integer initialization and disjoint sequential lifetimes. Normalization/reuse may be identity; actual initializer tiling is still required. No finite-capacity, error/world, native allocator or asynchronous guarantee.",
+    "registered": true,
+    "in_all": true
   },
   {
     "id": "prune_dead_pure_tensor_ops",
@@ -49,7 +66,8 @@
     "claim": "Strict tensor-stage refinement on inputs of the declared types, with source support established.",
     "proof": "MerlinVerify.Check.TypedModule.check_sound\nMerlinVerify.Check.supportCheck_sound\ncompose_chain",
     "limit": "Only modeled effect-free tensor/scalar operations may be erased. Numerical preparation and native lowering are separate boundaries.",
-    "registered": true
+    "registered": true,
+    "in_all": true
   },
   {
     "id": "cse",
@@ -62,7 +80,8 @@
     "claim": "Strict tensor-stage refinement; operand aliases and captured region values are checked.",
     "proof": "MerlinVerify.Check.ExactCse\nMerlinVerify.Check.TypedModule.check_sound\nsource support + composed refinement",
     "limit": "The trailing LLVM CSE is not this gate. Unsupported SCF/memory inputs are not silently covered by the tensor checker.",
-    "registered": true
+    "registered": true,
+    "in_all": true
   },
   {
     "id": "configuration_elision",
@@ -75,7 +94,8 @@
     "example": "set configuration = (3, 5)\nwork\nset configuration = (3, 5)\nwork\n\u2192 retain the first setter and both work calls",
     "claim": "Equal modeled defined-entry observations, successful state and complete error/terminal state, under one admitted instruction interpretation.",
     "proof": "ActualConfigurationElision.complete_entries",
-    "limit": "Explicit 4499 producer and effect contract. Only total pure constant overwrites may disappear; unknown/unordered effects clear knowledge. No native/hardware or human-policy approval."
+    "limit": "Explicit 4499 producer and effect contract. Only total pure constant overwrites may disappear; unknown/unordered effects clear knowledge. No native/hardware or human-policy approval.",
+    "in_all": false
   },
   {
     "id": "configuration_hoist",
@@ -88,6 +108,7 @@
     "example": "repeat 3 times:\n  set configuration = (3, 5)\n  work\n\u2192 set once before the positive loop\n  repeat 3 times: work",
     "claim": "Equal complete modeled Kernel outcomes, including failing body/surrounding calls and their terminal state, under one common indexed interpretation.",
     "proof": "ActualConfigurationHoist.complete_kernel",
-    "limit": "Explicit e048 producer and manifest. One leading constant pure setter, ordered preserving body, positive static loop. No zero-trip/nested/overlapping-write/asynchronous/completion-token coverage."
+    "limit": "Explicit e048 producer and manifest. One leading constant pure setter, ordered preserving body, positive static loop. No zero-trip/nested/overlapping-write/asynchronous/completion-token coverage.",
+    "in_all": false
   }
 ]
