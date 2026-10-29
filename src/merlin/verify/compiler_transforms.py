@@ -16,6 +16,8 @@ from .compiler_loop_intake import TILE, UNROLL
 BUFFER = "buffer_reuse"
 ENV_UNROLL = "MERLIN_LOOP_UNROLL_FACTOR"
 ENV_TILE = "MERLIN_LOOP_TILE_SIZE"
+ENV_UNROLL_DEPTH = "MERLIN_LOOP_UNROLL_DEPTH"
+ENV_TILE_DEPTH = "MERLIN_LOOP_TILE_DEPTH"
 ENV_ALLOCATOR = "MERLIN_BUFFER_REUSE_ALLOCATOR"
 ENV_MACC = "MERLIN_BF16_F32ACC"
 ALLOCATOR = "total_private_unobservable"
@@ -29,6 +31,8 @@ class Options:
     buffer_allocator: str | None = None
     memory_source: bool = False
     macc_f32acc: bool = False
+    unroll_depth: int = 1
+    tile_depth: int = 1
 
     def __post_init__(self):
         if type(self.memory_source) is not bool:
@@ -39,14 +43,20 @@ class Options:
             raise ValueError("formal unrolling requires an integer factor at least two")
         if self.tile_size is not None and (type(self.tile_size) is not int or self.tile_size < 2):
             raise ValueError("formal ordered tiling requires an integer size at least two")
-        if self.buffer_allocator is not None and (
-            self.buffer_allocator != ALLOCATOR or self.unroll_factor is not None
+        for name, depth, parameter in (
+            ("unroll", self.unroll_depth, self.unroll_factor),
+            ("tile", self.tile_depth, self.tile_size),
         ):
-            raise ValueError(
-                "buffer reuse requires explicit total_private_unobservable allocator; no unroll"
-            )
+            if type(depth) is not int or depth < 1:
+                raise ValueError(f"{name} depth requires a positive integer")
+            if depth != 1 and parameter is None:
+                raise ValueError(f"{name} depth requires its transformation parameter")
+        if self.buffer_allocator is not None and (self.buffer_allocator != ALLOCATOR or self.unroll_factor is not None):
+            raise ValueError("buffer reuse requires explicit total_private_unobservable allocator; no unroll")
         if self.buffer_allocator is not None and self.tile_size is not None and self.tile_size > 16:
             raise ValueError("private buffer proof currently requires tile size at most sixteen")
+        if self.buffer_allocator is not None and self.tile_depth != 1:
+            raise ValueError("private buffer initializer tiling requires depth one")
 
     @property
     def enabled(self):
@@ -72,8 +82,30 @@ def from_environment():
     if macc not in ("", "0", "1"):
         raise ValueError(f"{ENV_MACC} requires 0 or 1")
     return Options(
-        integer(ENV_UNROLL), integer(ENV_TILE), os.environ.get(ENV_ALLOCATOR) or None, macc_f32acc=macc == "1"
+        integer(ENV_UNROLL),
+        integer(ENV_TILE),
+        os.environ.get(ENV_ALLOCATOR) or None,
+        macc_f32acc=macc == "1",
+        unroll_depth=integer(ENV_UNROLL_DEPTH) if os.environ.get(ENV_UNROLL_DEPTH, "").strip() else 1,
+        tile_depth=integer(ENV_TILE_DEPTH) if os.environ.get(ENV_TILE_DEPTH, "").strip() else 1,
     )
+
+
+def _at_depth(module, depth, parameter):
+    """Select one actual nesting depth without allocating for an absent depth."""
+    from xdsl.dialects.scf import ForOp
+
+    for operation in module.walk():
+        if type(operation) is not ForOp:
+            continue
+        nesting = 1
+        parent = operation.parent_op()
+        while parent is not None:
+            nesting += type(parent) is ForOp
+            parent = parent.parent_op()
+        if nesting == depth:
+            return (1,) * (depth - 1) + (parameter,)
+    return ()
 
 
 def apply(source, directory, *, options=None, index_bits=64):
@@ -136,9 +168,19 @@ def apply(source, directory, *, options=None, index_bits=64):
             required = (BUFFER,)
     else:
         if options.unroll_factor is not None:
-            run(UNROLL, lambda: unrolling.unroll_ordered_loops(module, (options.unroll_factor,), index_bits=64))
+            run(
+                UNROLL,
+                lambda: unrolling.unroll_ordered_loops(
+                    module, _at_depth(module, options.unroll_depth, options.unroll_factor), index_bits=64
+                ),
+            )
         if options.tile_size is not None:
-            run(TILE, lambda: loops.segment_loops(module, (options.tile_size,), index_bits=64))
+            run(
+                TILE,
+                lambda: loops.segment_loops(
+                    module, _at_depth(module, options.tile_depth, options.tile_size), index_bits=64
+                ),
+            )
         check_name = "compiler_loop_refinement"
         required = tuple(names)
     for i, text in enumerate(buffers):
@@ -146,7 +188,7 @@ def apply(source, directory, *, options=None, index_bits=64):
     validation = pass_validation.current()
     selected = [name for name in required if pass_validation.selected(name)]
     if selected and names:
-        # The memory proof covers the whole actual4 chain, including explicit
+        # The memory proof covers the complete actual storage chain, including
         # identity normalization/reuse. Scalar proofs retain adjacent roots.
         # Exact identity stages preserve the boundary bytes. Prove the changing
         # adjacent scalar stages and deliver the actual final compiler output.
@@ -176,6 +218,8 @@ def apply(source, directory, *, options=None, index_bits=64):
         "directory": str(directory),
         "buffer_allocator": options.buffer_allocator,
         "memory_source": options.memory_source or options.buffer_allocator is not None,
+        "unroll_depth": options.unroll_depth,
+        "tile_depth": options.tile_depth,
     }
     return buffers[-1], report
 

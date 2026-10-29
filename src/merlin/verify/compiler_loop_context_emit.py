@@ -10,7 +10,7 @@ def emit_suffix_bridge(row, universe):
     from merlin.verify.lean_graph_state_scalar_capture import project
 
     local = row["local"]
-    projection = project(parse_ir(row["before"]), parse_ir(row["after"]), context=universe)
+    projection = row.get("projection") or project(parse_ir(row["before"]), parse_ir(row["after"]), context=universe)
     if projection["registry"] != local["capture"]["stages"][0]["registry"]:
         raise ValueError("suffix projection differs from complete registry")
     function = next(item for item in projection["functions"] if item["name"] == row["entry"])
@@ -96,7 +96,7 @@ def emit_prefix_facts(row, universe, atomic_module, *, namespace="Merlin.LocalPr
     from merlin.verify.lean_graph_state_scalar_capture import project
 
     local = row["local"]
-    projection = project(parse_ir(row["before"]), parse_ir(row["after"]), context=universe)
+    projection = row.get("projection") or project(parse_ir(row["before"]), parse_ir(row["after"]), context=universe)
     function = next(item for item in projection["functions"] if item["name"] == row["entry"])
     pos = row["position"]
     if function["before"][:pos] != function["after"][:pos]:
@@ -104,27 +104,38 @@ def emit_prefix_facts(row, universe, atomic_module, *, namespace="Merlin.LocalPr
     n = len(local["frame"])
     k = len(function["inputs"])
     args = [f"a{i}" for i in range(k)]
+    inherited = row.get("inherited", {})
+    inherit_conditions = " ".join(
+        f"(inherit{i} : a{slot} = {value})" for i, (slot, value) in enumerate(inherited.items())
+    )
     prefix = [*function["before"][:pos], {"ret": list(range(n))}]
     check_lanes(local["capture"], [{"ret": []}], repetitions=0, environment=args, carry=[], continuation=prefix)
     base = local.get(
         "base", "Merlin.GraphStatePipeline" + ("Inline" if local["mode"] == "inline" else "Tail") + "Instance"
     )
     text = atomic_module.emit(
-        local["capture"], prefix, prefix, arguments=args, substitutions={}, model_base=base, namespace=namespace
+        local["capture"], prefix, prefix, arguments=args, substitutions=inherited, model_base=base, namespace=namespace
     )
     text = text.split("theorem actual_inputs", 1)[0]
     controls = {item["identity"]: item for item in local["capture"]["index_operations"]}
-    final, calls = _simulate(prefix, args, controls)
+    initial = [str(inherited.get(i, arg)) for i, arg in enumerate(args)]
+    final, calls = _simulate(prefix, initial, controls)
     body = function["before"][pos]["loop"]
-    substitutions = dict(zip(body["bounds"], local["controls"], strict=True))
+    substitutions = row.get("required_facts", dict(zip(body["bounds"], local["controls"], strict=True)))
     goals = [
         f"resultValues.length = {n}",
         *[f"(resultValues[{slot}]?.getD 0) = {value}" for slot, value in substitutions.items()],
     ]
     conjunction = " ∧ ".join(goals)
-    text += "theorem facts (world : World) (resultValues : List Int) (resultWorld : World)\n"
+    text += (
+        "theorem facts (world : World) (resultValues : List Int) (resultWorld : World)"
+        + (" " + inherit_conditions if inherit_conditions else "")
+        + "\n"
+    )
     text += f"    (run : evalProgram (M primitive external) P2 {lean_list(args)} world = .ok (resultValues,resultWorld)) :\n"
     text += "    " + conjunction + " := by\n"
+    if inherited:
+        text += "  simp only [" + ",".join(f"inherit{i}" for i in range(len(inherited))) + "] at run\n"
     pieces = [f"Piece2_{i}" for i in range(len(prefix))]
     nested = [f"nestedExecute2_{i}" for i, item in enumerate(prefix) if "loop" in item]
     rules = [
@@ -171,13 +182,11 @@ def emit_prefix_facts(row, universe, atomic_module, *, namespace="Merlin.LocalPr
 def emit_stage(row, universe, atomic_module):
     from merlin.transforms.certificates import parse_ir
     from merlin.verify.lean_graph_state_pipeline import lean_list
-    from merlin.verify.lean_graph_state_pipeline_emit import entry_arguments, unpack
-    from merlin.verify.lean_graph_state_scalar import program, types
     from merlin.verify.lean_graph_state_scalar_capture import project
 
     local = row["local"]
     capture = local["capture"]
-    projection = project(parse_ir(row["before"]), parse_ir(row["after"]), context=universe)
+    projection = row.get("projection") or project(parse_ir(row["before"]), parse_ir(row["after"]), context=universe)
     function = next(item for item in projection["functions"] if item["name"] == row["entry"])
     pos, width = row["position"], row["target_width"]
     loop = function["before"][pos]["loop"]
@@ -244,22 +253,56 @@ def emit_stage(row, universe, atomic_module):
     text += f"      ({suffixbase}.target_factor primitive external {vector} world rfl).symm\n"
     text += "end Merlin.LocalRestBridge\n"
     prefixtext, info = emit_prefix_facts(row, universe, atomic_module)
-    text += prefixtext
+    whole, info = emit_whole_context(row, function, base, n, prefixtext, info)
+    return text + whole, info
+
+
+def emit_whole_context(
+    row,
+    function,
+    base,
+    n,
+    prefixtext,
+    info,
+    *,
+    rest_namespace="Merlin.LocalRestBridge",
+    suffix_namespace="Merlin.LocalUnrollSuffixBridge",
+    whole_namespace="Merlin.LocalWholeBridge",
+):
+    from merlin.verify.lean_graph_state_pipeline import lean_list
+    from merlin.verify.lean_graph_state_pipeline_emit import unpack
+    from merlin.verify.lean_graph_state_scalar import program, types
+
+    text = prefixtext
+    model = f"({base}.M primitive external)"
+    suffixbase = suffix_namespace
+    substitutions = info["substitutions"]
+    controltext = " ".join(f"control{i}" for i in range(len(substitutions)))
     prefixbase = info["namespace"]
     k = len(function["inputs"])
     entryargs = [f"a{i}" for i in range(k)]
     entrytext = " ".join(entryargs)
     entryvector = lean_list(entryargs)
-    text += "namespace Merlin.LocalWholeBridge\nopen Merlin.GraphState.Scalar Merlin.GraphState.Pipeline\n"
+    inherited = row.get("inherited", {})
+    inherited_names = " ".join(f"inherit{i}" for i in range(len(inherited)))
+    inherited_conditions = " ".join(
+        f"(inherit{i} : a{slot} = {value})" for i, (slot, value) in enumerate(inherited.items())
+    )
+    text += f"namespace {whole_namespace}\nopen Merlin.GraphState.Scalar Merlin.GraphState.Pipeline\n"
     text += f"abbrev registry := {base}.registry\n"
     text += (
         f"def inputs : List Ty := {types(function['inputs'])}\ndef outputs : List Ty := {types(function['outputs'])}\n"
     )
-    text += f"def S0 : Program := {program(function['before'])}\ndef S1 : Program := {program(function['after'])}\n"
-    text += "theorem typed0 : checkTypes registry inputs outputs S0 = true := by decide\ntheorem typed1 : checkTypes registry inputs outputs S1 = true := by decide\n"
+    modifier = "@[irreducible] " if "scope_path" in row else ""
+    text += f"{modifier}def S0 : Program := {program(function['before'])}\n{modifier}def S1 : Program := {program(function['after'])}\n"
+    for number in (0, 1):
+        proof = f"by unfold S{number}; decide" if modifier else "by decide"
+        text += f"theorem typed{number} : checkTypes registry inputs outputs S{number} = true := {proof}\n"
     text += f"abbrev Prefix := {prefixbase}.P2\n"
-    text += f"theorem sourceJoin : Context.plug Prefix {suffixbase}.SourceRest = S0 := rfl\n"
-    text += f"theorem targetJoin : Context.plug Prefix {suffixbase}.TargetRest = S1 := rfl\n"
+    for side, label in (("source", "Source"), ("target", "Target")):
+        number = 0 if side == "source" else 1
+        proof = f"by unfold S{number}; rfl" if modifier else "rfl"
+        text += f"theorem {side}Join : Context.plug Prefix {suffixbase}.{label}Rest = S{number} := {proof}\n"
     text += f"theorem prefixGrowth : {k} + Context.frameGrowth registry Prefix = {n} := by decide\n"
     text += f"theorem prefixReturnsAll (environment : List Int) (size : environment.length = {n}) :\n"
     text += (
@@ -281,24 +324,99 @@ def emit_stage(row, universe, atomic_module):
         text += f"  apply Context.segment_factor {model} Prefix {suffixbase}.{rest} {suffixbase}.{rest} {k} arguments world arity\n"
         text += "  intro final state size\n  rw [prefixGrowth] at size\n"
         text += f"  exact prefix_capture primitive external {suffixbase}.{rest} final state size\n"
-    text += "theorem actual_inputs " + ("(" + entrytext + " : Int) " if entryargs else "") + "(world : World) :\n"
-    text += f"    evalProgram {model} S0 {entryvector} world = evalProgram {model} S1 {entryvector} world := by\n"
-    text += f"  rw [source_factor primitive external {entryvector} world rfl,target_factor primitive external {entryvector} world rfl]\n"
-    text += f"  cases run : evalProgram {model} Prefix {entryvector} world with\n  | error failure => rfl\n  | ok result =>\n    rcases result with ⟨values,afterPrefix⟩\n    simp only [Except.bind]\n"
-    text += f"    have facts := {prefixbase}.facts primitive external {entrytext} world values afterPrefix run\n"
-    text += "    rcases facts with ⟨size," + ",".join(f"control{i}" for i in range(len(substitutions))) + "⟩\n"
-    text += unpack("values", "size", n, "p", "    ")
-    text += (
-        "    exact Merlin.LocalRestBridge.actual_inputs primitive external "
-        + " ".join(f"p{i}" for i in range(n))
-        + " afterPrefix "
-        + controltext
-        + "\n"
-    )
-    text += "theorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n"
-    text += (
-        f"    evalProgram {model} S0 arguments world = evalProgram {model} S1 arguments world := by\n"
-        + entry_arguments(k, "actual_inputs")
-    )
-    text += "end Merlin.LocalWholeBridge\n"
+    if modifier:
+        text += "theorem bind_context (computation : Outcome Int World Error)\n"
+        text += "    (first second : List Int → World → Outcome Int World Error)\n"
+        text += "    (same : ∀ values state, computation = .ok (values,state) → first values state = second values state) :\n"
+        text += "    computation.bind (fun result => first result.1 result.2) = computation.bind (fun result => second result.1 result.2) := by\n"
+        text += "  cases computation with\n  | error failure => rfl\n  | ok result =>\n    rcases result with ⟨values,state⟩\n    exact same values state rfl\n"
+    if modifier:
+        text += (
+            "theorem actual_inputs "
+            + ("(" + entrytext + " : Int) " if entryargs else "")
+            + "(world : World)"
+            + (" " + inherited_conditions if inherited_conditions else "")
+            + " :\n"
+        )
+        text += f"    evalProgram {model} S0 {entryvector} world = evalProgram {model} S1 {entryvector} world := by\n"
+        text += f"  refine (source_factor primitive external {entryvector} world rfl).trans ?_\n"
+        text += f"  refine Eq.trans ?_ (target_factor primitive external {entryvector} world rfl).symm\n"
+        text += f"  apply bind_context (evalProgram {model} Prefix {entryvector} world)\n"
+        text += f"    (fun values state => evalProgram {model} {suffixbase}.SourceRest values state)\n"
+        text += f"    (fun values state => evalProgram {model} {suffixbase}.TargetRest values state)\n"
+        text += "  intro values afterPrefix run\n"
+        text += (
+            f"  have facts := {prefixbase}.facts primitive external {entrytext} world values afterPrefix"
+            + (" " + inherited_names if inherited_names else "")
+            + " run\n"
+        )
+        text += "  rcases facts with ⟨size," + ",".join(f"control{i}" for i in range(len(substitutions))) + "⟩\n"
+        text += unpack("values", "size", n, "p", "  ")
+        text += (
+            f"  exact {rest_namespace}.actual_inputs primitive external "
+            + " ".join(f"p{i}" for i in range(n))
+            + " afterPrefix "
+            + controltext
+            + "\n"
+        )
+    else:
+        text += (
+            "theorem actual_inputs "
+            + ("(" + entrytext + " : Int) " if entryargs else "")
+            + "(world : World)"
+            + (" " + inherited_conditions if inherited_conditions else "")
+            + " :\n"
+        )
+        text += f"    evalProgram {model} S0 {entryvector} world = evalProgram {model} S1 {entryvector} world := by\n"
+        text += f"  rw [source_factor primitive external {entryvector} world rfl,target_factor primitive external {entryvector} world rfl]\n"
+        text += f"  cases run : evalProgram {model} Prefix {entryvector} world with\n  | error failure => rfl\n  | ok result =>\n    rcases result with ⟨values,afterPrefix⟩\n    simp only [Except.bind]\n"
+        text += (
+            f"    have facts := {prefixbase}.facts primitive external {entrytext} world values afterPrefix"
+            + (" " + inherited_names if inherited_names else "")
+            + " run\n"
+        )
+        text += "    rcases facts with ⟨size," + ",".join(f"control{i}" for i in range(len(substitutions))) + "⟩\n"
+        text += unpack("values", "size", n, "p", "    ")
+        text += (
+            f"    exact {rest_namespace}.actual_inputs primitive external "
+            + " ".join(f"p{i}" for i in range(n))
+            + " afterPrefix "
+            + controltext
+            + "\n"
+        )
+    if not inherited:
+        from merlin.verify.lean_graph_state_pipeline_emit import entry_arguments
+
+        text += "theorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n"
+        text += (
+            f"    evalProgram {model} S0 arguments world = evalProgram {model} S1 arguments world := by\n"
+            + entry_arguments(k, "actual_inputs")
+        )
+    else:
+        generic_conditions = " ".join(
+            f"(inherit{i} : (arguments[{slot}]?.getD 0) = {value})" for i, (slot, value) in enumerate(inherited.items())
+        )
+        text += (
+            "theorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) "
+            + generic_conditions
+            + " :\n"
+        )
+        text += f"    evalProgram {model} S0 arguments world = evalProgram {model} S1 arguments world := by\n"
+        text += f"  have size : arguments.length = {k} := by simpa only [inputs,List.length_cons,List.length_nil] using arity\n"
+        text += unpack("arguments", "size", k, "x")
+        if inherited:
+            text += (
+                "  simp only [List.getElem?_cons_succ,List.getElem?_cons_zero,Option.getD_some] at "
+                + inherited_names
+                + "\n"
+            )
+        text += (
+            "  exact actual_inputs primitive external "
+            + " ".join(f"x{i}" for i in range(k))
+            + " world "
+            + inherited_names
+            + "\n"
+        )
+
+    text += f"end {whole_namespace}\n"
     return text, info

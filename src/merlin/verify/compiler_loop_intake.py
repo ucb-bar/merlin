@@ -52,6 +52,8 @@ class PreparedCompilerLoop:
 
 
 def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
+    from xdsl.utils.exceptions import VerifyException
+
     from merlin.transforms.certificates import parse_ir
     from merlin.transforms.loops import segment_loops
 
@@ -79,8 +81,8 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
 
         try:
             mode = prepare_mode(buffers, factor=factor, tile=tile)
-        except (ValueError, KeyError, TypeError, IndexError) as exc:
-            raise Unsupported(str(exc)) from exc
+        except (ValueError, KeyError, TypeError, IndexError, VerifyException):
+            mode = None
         if mode is not None:
             return mode
     actual_buffers = buffers
@@ -149,15 +151,20 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
         query = emit(capture, identity_unroll=kinds == (TILE,), flexible_parameters=True)
         adjacent, _, _ = _adjacent_rosters({"pipeline": capture}, "Merlin.GraphStatePipelineInstance.", changed)
         query += adjacent
-    except (ValueError, KeyError, TypeError, IndexError) as exc:
+    except (ValueError, KeyError, TypeError, IndexError, VerifyException):
         if kinds in ((TILE,), (UNROLL, TILE)):
             from .compiler_loop_context_intake import prepare as prepare_context
 
             try:
                 return prepare_context(actual_buffers, kinds=kinds, factor=max(2, factor), tile=tile)
-            except (ValueError, KeyError, TypeError, IndexError) as context_error:
-                raise Unsupported(str(context_error)) from context_error
-        raise Unsupported(str(exc)) from exc
+            except (ValueError, KeyError, TypeError, IndexError, VerifyException):
+                pass
+        from .compiler_loop_inner_intake import prepare as prepare_inner
+
+        try:
+            return prepare_inner(actual_buffers, kinds=kinds, factor=max(2, factor), tile=tile)
+        except (ValueError, KeyError, TypeError, IndexError, VerifyException) as error:
+            raise Unsupported(str(error)) from error
     roots, namespaces = [], []
     for line in query.splitlines():
         words = line.split()

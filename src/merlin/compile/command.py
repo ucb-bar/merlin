@@ -22,6 +22,13 @@ def _loop_parameter(raw: str) -> int:
     return value
 
 
+def _loop_depth(raw: str) -> int:
+    value = int(raw)
+    if value < 1:
+        raise argparse.ArgumentTypeError("loop depth must be at least one")
+    return value
+
+
 def parser(
     rvv_dtypes: Sequence[str], runs: Sequence[str], rvv_run: str, sustained: Sequence[str]
 ) -> argparse.ArgumentParser:
@@ -159,6 +166,16 @@ def parser(
         help="opt in to private buffer reuse under this explicit allocator model",
     )
     ap.add_argument(
+        "--loop-unroll-depth",
+        type=_loop_depth,
+        help="select original source SCF nesting depth for unrolling (outermost is 1)",
+    )
+    ap.add_argument(
+        "--loop-tile-depth",
+        type=_loop_depth,
+        help="select SCF nesting depth at the tiling stage (outermost is 1)",
+    )
+    ap.add_argument(
         "--list-passes",
         action="store_true",
         help="list the optional lowering passes (stage, exactness, default, effect) and exit",
@@ -282,6 +299,8 @@ def apply_pass_validation(a: argparse.Namespace) -> None:
     for field, key in (
         ("loop_unroll_factor", compiler_transforms.ENV_UNROLL),
         ("loop_tile_size", compiler_transforms.ENV_TILE),
+        ("loop_unroll_depth", compiler_transforms.ENV_UNROLL_DEPTH),
+        ("loop_tile_depth", compiler_transforms.ENV_TILE_DEPTH),
         ("buffer_reuse_allocator", compiler_transforms.ENV_ALLOCATOR),
     ):
         value = getattr(a, field, None)
