@@ -107,3 +107,16 @@ def test_as_strided_reads_row_major_storage_and_diagonal_is_one_of_them():
     ):
         with pytest.raises(integer_ops.IntegerOpError):
             integer_ops.move(_t([6, 6]), {"form": "as_strided", **bad}, None)
+
+
+@pytest.mark.parametrize(("code", "broadcasting", "work"), [(0, "none", "zero_fill"), (5, "outer", "broadcast")])
+def test_fill_command_observes_its_class_and_work(code, broadcasting, work):
+    from merlin.targetgen.interface_observations import command_rows
+
+    cb = {
+        "abi_version": "0.1", "target": "fixture",
+        "tensors": {"Y": {"shape": [4, 4], "dtype": "i8", "role": "output"}},
+        "commands": [{"opcode": "FILL", "operands": {"dst": "Y"}, "attributes": {"value_code": code, "output_dtype": "i8"}}],
+    }  # fmt: skip
+    [row] = [r for r in command_rows(cb) if r["operation"] == "fill"]
+    assert (row["broadcasting"], row["movement_form"], row["operand_dtypes"]) == (broadcasting, work, ["i8"])

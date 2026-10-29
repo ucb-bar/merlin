@@ -396,6 +396,15 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
             # an axis permutation needs the transposing mechanism; a reshape relabels row-major bytes (a copy).
             if row.get("broadcasting") == "none" and attributes.get("form") in _VIEW_FORM_WORK:
                 row["movement_form"] = _VIEW_FORM_WORK[attributes["form"]]
+        if family == "movement" and operation == "fill" and not typed_sources and _static(result):
+            # A fill reads no operand: its element type is the result's, and it writes one quantized code
+            # everywhere. Code 0 is the zero_fill form (a load from DRAM address 0: nothing is read or
+            # replayed, class none); any other code is one constant row replayed (class outer).
+            row["operand_dtypes"] = [result["dtype"]]
+            code = attributes.get("value_code")
+            if type(code) is int:
+                row["broadcasting"] = "none" if code == 0 else "outer"
+                row["movement_form"] = "zero_fill" if code == 0 else "broadcast"
         if family == "movement" and "broadcasting" not in row and operation in {"concat", "insert_slice"}:
             observed = _joined_movement_broadcasting(operation, attributes, typed_sources, result)
             if observed is not None:
