@@ -176,6 +176,7 @@ def prepare(buffers, *, reference, settings=Settings()):
         "lean_graph_pipeline_gate_profile_prepare.py",
         "lean_graph_pipeline_gate_projection.py",
         "loop_transform_gate.py",
+        "compiler_loop_intake.py",
         "loop_transform_cli.py",
     ):
         sources.append(file_ref(Path(__file__).with_name(name)))

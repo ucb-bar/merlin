@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: verification
 last_verified: 2026-10-28
-related: [verification, compiler_verification]
+related: [verification, compiler_verification, lean_compiler_stack]
 code_refs:
   - src/merlin/verify/pass_validation.py
   - src/merlin/verify/gate_checks.py
@@ -33,6 +33,10 @@ code_refs:
 ---
 
 # Gate dead-code pruning and cse on Merlin's Lean proofs
+
+For the integrated loop and private-buffer gates, their compiler locations and
+examples, see [Lean verification through the compiler stack](lean_compiler_stack.md).
+This guide details the two tensor checks.
 
 Merlin can check two of its compile steps against the `MerlinVerify` proofs while it compiles: the
 dead-code pruning in preprocessing and the tensor-level `cse` every lowering pipeline starts with.
@@ -172,7 +176,7 @@ normalizers are retained.
 
 ## Quantization handoff
 
-This branch gates pruning and tensor CSE only. Quantization proof progress, branches, evidence,
+The tensor checks gate pruning and tensor CSE only. Quantization proof progress, branches, evidence,
 review obligations and integration boundaries are recorded in the separate
 [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md).
 Its numerical lowering and proof coverage are not extended by this deliverable.
@@ -212,13 +216,17 @@ records the qualified source points, executed checks, retained evidence and scop
 
 ## Development integration and gate scope
 
-`feat/pass-verification-dce-cse` and `feat/megaphase-feedback-integration`
-retain the complete original pass-verification and independent-review histories.
-The production selector remains exactly `prune_dead_pure_tensor_ops,cse`.
-`--validate-passes all` means these two checks only.
+`feat/pass-verif-integration` retains the original DCE/CSE integration and the
+upstream pass-verification and independent-review histories. Its selector
+registers `prune_dead_pure_tensor_ops`, `cse`, `ordered_loop_unrolling`,
+`ordered_loop_segmentation` and `buffer_reuse`. `--validate-passes all` selects
+all five checks, while transformations themselves remain separately opt-in.
+The loop and memory checks have their own narrower domains and relations;
+see [the compiler stack](lean_compiler_stack.md). The DCE/CSE historical
+qualification retains its original source/branch names and scope.
 
-Other proof families and numerical policy candidates are standalone review and
-handoff tooling. They are not registered compiler gates and require no review
+Other proof families and numerical policy candidates remain standalone review
+and handoff tooling. They are not registered compiler gates and require no review
 admission to select DCE/CSE validation. Existing numerical compiler lowerings are
 inherited from development; their correctness is not claimed by these two gates.
 The gate never submits the quantization or policy boundaries.

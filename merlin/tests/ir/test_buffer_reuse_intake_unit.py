@@ -2,20 +2,22 @@
 
 import copy
 import json
-import os
 from dataclasses import replace
-from pathlib import Path
 
 import pytest
+from buffer_test_inputs import case_root
 
-from merlin.common.paths import repo_root
 from merlin.verify.buffer_reuse_intake import ALLOCATOR, ROOT, prepare, revalidate
 
 
 @pytest.fixture(scope="module")
-def raw_case():
-    default = repo_root().parent / "merlin/out/artifacts/verification/graph-shape-normalization"
-    base = Path(os.environ.get("MERLIN_BUFFER_REUSE_CASE_ROOT", default))
+def raw_case_root(tmp_path_factory):
+    return case_root(tmp_path_factory)
+
+
+@pytest.fixture(scope="module")
+def raw_case(raw_case_root):
+    base = raw_case_root
     paths = [
         base / "epoch-cases-v1/two_epochs/source.mlir",
         base / "epoch-cases-v1/two_epochs/memory/after.mlir",
@@ -23,7 +25,7 @@ def raw_case():
     ]
     missing = [str(p) for p in paths if not p.is_file()]
     if missing:
-        pytest.skip("explicit retained buffer input data unavailable: " + str(missing))
+        pytest.fail("selected buffer input data unavailable: " + str(missing))
     return paths[0].read_text(), paths[1].read_text(), json.loads(paths[2].read_text())
 
 
@@ -75,11 +77,10 @@ def test_fake_hint_approval_is_not_authority(raw_case, candidate):
     assert result.describe()["authority"] is False
 
 
-def test_raw_chain_reconstructs_without_saved_plan(raw_case):
+def test_raw_chain_reconstructs_without_saved_plan(raw_case, raw_case_root):
     from merlin.verify.buffer_reuse_intake import prepare_chain
 
-    default = repo_root().parent / "merlin/out/artifacts/verification/graph-shape-normalization"
-    base = Path(os.environ.get("MERLIN_BUFFER_REUSE_CASE_ROOT", default)) / "epoch-cases-v1/two_epochs"
+    base = raw_case_root / "epoch-cases-v1/two_epochs"
     buffers = tuple(
         (base / name).read_text()
         for name in ("source.mlir", "shape/after.mlir", "memory/middle.mlir", "memory/after.mlir")
@@ -91,11 +92,10 @@ def test_raw_chain_reconstructs_without_saved_plan(raw_case):
 
 
 @pytest.mark.parametrize("mutation", ["missing", "swapped_middle", "changed_control", "stale_chain"])
-def test_complete_raw_chain_cannot_be_substituted(raw_case, mutation):
+def test_complete_raw_chain_cannot_be_substituted(raw_case, raw_case_root, mutation):
     from merlin.verify.buffer_reuse_intake import prepare_chain
 
-    default = repo_root().parent / "merlin/out/artifacts/verification/graph-shape-normalization"
-    base = Path(os.environ.get("MERLIN_BUFFER_REUSE_CASE_ROOT", default)) / "epoch-cases-v1/two_epochs"
+    base = raw_case_root / "epoch-cases-v1/two_epochs"
     buffers = tuple(
         (base / name).read_text()
         for name in ("source.mlir", "shape/after.mlir", "memory/middle.mlir", "memory/after.mlir")

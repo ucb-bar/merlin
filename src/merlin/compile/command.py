@@ -119,10 +119,27 @@ def parser(
     ap.add_argument(
         "--validate-passes",
         metavar="PASSES",
-        help="check DCE (prune_dead_pure_tensor_ops) and CSE against Lean proofs "
-        "('all' selects both, or supply their comma list); a failed check stops the compile",
+        help="check selected DCE, CSE, ordered loop and private-buffer boundaries with Lean "
+        "('all' selects every registered check, or supply a comma list); failed checks stop the compile",
     )
     ap.add_argument("--lean-sdk-bin", metavar="DIR", help="Lean SDK bin directory for --validate-passes")
+    ap.add_argument(
+        "--loop-unroll-factor",
+        type=int,
+        choices=range(2, 5),
+        help="opt in to ordered source SCF unrolling (factor 2..4)",
+    )
+    ap.add_argument(
+        "--loop-tile-size",
+        type=int,
+        choices=range(2, 17),
+        help="opt in to ordered one-dimensional source SCF tiling (size 2..16)",
+    )
+    ap.add_argument(
+        "--buffer-reuse-allocator",
+        choices=("total_private_unobservable",),
+        help="opt in to private buffer reuse under this explicit allocator model; requires loop tiling",
+    )
     ap.add_argument(
         "--list-passes",
         action="store_true",
@@ -235,3 +252,13 @@ def apply_pass_validation(a: argparse.Namespace) -> None:
         os.environ[pass_validation.ENV_PASSES] = a.validate_passes
     if a.lean_sdk_bin:
         os.environ[pass_validation.ENV_SDK_BIN] = a.lean_sdk_bin
+    from merlin.verify import compiler_transforms
+
+    for field, key in (
+        ("loop_unroll_factor", compiler_transforms.ENV_UNROLL),
+        ("loop_tile_size", compiler_transforms.ENV_TILE),
+        ("buffer_reuse_allocator", compiler_transforms.ENV_ALLOCATOR),
+    ):
+        value = getattr(a, field, None)
+        if value is not None:
+            os.environ[key] = str(value)

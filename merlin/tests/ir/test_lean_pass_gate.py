@@ -84,8 +84,7 @@ def test_real_lowering_proves_pruning_and_cse(tmp_path, validation):
     )
 
 
-
-def test_all_runs_only_dce_cse_in_the_real_compiler(tmp_path, tools, monkeypatch):
+def test_all_registers_formal_gates_without_draft_numerical_policy(tmp_path, tools, monkeypatch):
     from merlin.verify import bf16_policy_gate as draft_policy
 
     def forbidden(*args, **kwargs):
@@ -109,9 +108,10 @@ def test_all_runs_only_dce_cse_in_the_real_compiler(tmp_path, tools, monkeypatch
     assert result.ll_path.is_file()
     assert len(validations) == 1
     validation = validations[0]
-    assert validation.passes == frozenset({"prune_dead_pure_tensor_ops", "cse"})
+    assert validation.passes == frozenset(pass_validation.CHECKS)
     assert {v["label"]: v["verdict"] for v in validation.gate.verdicts} == {
-        "prune_dead_pure_tensor_ops": "accepted", "cse": "accepted"
+        "prune_dead_pure_tensor_ops": "accepted",
+        "cse": "accepted",
     }
 
 
@@ -285,7 +285,9 @@ def test_a_failed_check_leaves_no_usable_artifact(tmp_path, tools, monkeypatch):
                 kernel("pruned"),
                 work,
                 targets=(),
-                pass_validation=pass_validation.PassValidation(gate, tools, frozenset({"prune_dead_pure_tensor_ops", "cse"})),
+                pass_validation=pass_validation.PassValidation(
+                    gate, tools, frozenset({"prune_dead_pure_tensor_ops", "cse"})
+                ),
             )
     finally:
         gate.close()

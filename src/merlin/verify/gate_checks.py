@@ -140,3 +140,15 @@ def tensor_refinement(job: dict[str, Any]) -> dict[str, Any]:
 
     with reuse_receipts():
         return _tensor_refinement(job)
+
+
+def compiler_loop_refinement(job: dict[str, Any]) -> dict[str, Any]:
+    from .compiler_transforms import loop_check
+
+    return loop_check(job)
+
+
+def compiler_buffer_refinement(job: dict[str, Any]) -> dict[str, Any]:
+    from .compiler_transforms import buffer_check
+
+    return buffer_check(job)

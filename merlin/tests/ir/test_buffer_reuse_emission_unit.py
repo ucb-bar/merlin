@@ -4,19 +4,19 @@ import json
 from dataclasses import replace
 
 import pytest
+from buffer_test_inputs import case_root
 
-from merlin.common.paths import repo_root
 from merlin.verify import buffer_reuse_gate as gate
 from merlin.verify.buffer_reuse_emit import MODULES, factor, theorem_roster
 from merlin.verify.buffer_reuse_intake import ALLOCATOR, ROOT, canonical, prepare_chain
 
 
 @pytest.fixture(scope="module")
-def candidate():
-    base = repo_root().parent / "merlin/out/artifacts/verification/graph-shape-normalization/epoch-cases-v1/two_epochs"
+def candidate(tmp_path_factory):
+    base = case_root(tmp_path_factory) / "epoch-cases-v1/two_epochs"
     paths = [base / name for name in ("source.mlir", "shape/after.mlir", "memory/middle.mlir", "memory/after.mlir")]
     if not all(path.is_file() for path in paths):
-        pytest.skip("explicit retained two_epochs raw4 data unavailable")
+        pytest.fail("selected two_epochs raw4 data unavailable")
     return prepare_chain(tuple(path.read_text() for path in paths), allocator=ALLOCATOR)
 
 

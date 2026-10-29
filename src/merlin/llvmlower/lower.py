@@ -23,8 +23,8 @@ if TYPE_CHECKING:
 from merlin.common import compile_trace
 from merlin.common.digest import sha256_file, sha256_text
 from merlin.common.ir_audit import IrAudit, audit_mode
-from merlin.verify import pass_validation as _validation
 from merlin.common.jsonio import write_pretty_json
+from merlin.verify import pass_validation as _validation
 
 from ..verify.lean import stages as _lean_stages
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
@@ -36,13 +36,13 @@ from .concat_dps import ensure_registered as _register_concat_dps
 # whole-model backend imports to lower, so by the time a feature set is normalized for a lowering the
 # entry exists. Idempotent, so a second import is a no-op.
 from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
+from .guarded_zero_contraction import ensure_registered as _register_guarded_zero_contraction
 from .im2col_pack import ensure_registered as _register_im2col_panel_pack
 from .masked_contraction import MaskEffectContract
 from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
 from .passes_xdsl import PREPROCESS_STAGES, preprocess_text
 from .pipeline import lower_to_llvm_ir
 from .prov_cse import ensure_registered as _register_cse_through_provenance
-from .guarded_zero_contraction import ensure_registered as _register_guarded_zero_contraction
 from .source_expression_interval import IntervalEffectContract
 from .source_scalar_carrier_binding import host_admitted
 from .tensor_provenance_cse import ensure_registered as _register_tensor_preparation_cse
@@ -152,6 +152,7 @@ def lower_model(
     descriptor_result_identities: tuple = (),
     descriptor_result_effects=None,
     source_recomputation: SourceRecomputationSelection | None = None,
+    formal_transforms=None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
@@ -273,7 +274,8 @@ def lower_model(
         from .descriptor_result_preparation import DescriptorResultPreparation
 
         descriptor_preparation = DescriptorResultPreparation(
-            descriptor_result_identities, effects=descriptor_result_effects, additional_calls=borrowed_buffer_calls)
+            descriptor_result_identities, effects=descriptor_result_effects, additional_calls=borrowed_buffer_calls
+        )
         descriptor_check = descriptor_preparation.revalidate
         if (
             shared_source_lowerings
@@ -360,6 +362,32 @@ def lower_model(
             (work / name).unlink(missing_ok=True)
 
         audit.stage("input", mlir_text)
+        from merlin.verify.compiler_transforms import apply as apply_formal_transforms
+
+        mlir_text, formal_transform_report = apply_formal_transforms(
+            mlir_text,
+            work / "formal-transforms",
+            options=formal_transforms,
+            index_bits=64 if index_bits is None else index_bits,
+        )
+        if formal_transform_report is not None:
+            if any(
+                (
+                    shared_pass_verification,
+                    shared_pass_preparation,
+                    source_recomputation,
+                    descriptor_result_identities,
+                    source_optimizations,
+                    shared_source_lowerings,
+                    borrowed_buffer_calls,
+                    source_scalar_carrier,
+                    source_observation_effects,
+                )
+            ):
+                raise ValueError(
+                    "formal source transforms require a separate original source from other owned selections"
+                )
+            audit.stage("formal-source-transforms", mlir_text)
         if recomputation is not None:
             recomputation.retain(work)
             mlir_text = recomputation.selected_source
@@ -383,7 +411,8 @@ def lower_model(
         # schedules and explicit source-bound observers retain their route
         # until their physical output forwarding has independent qualification.
         serial_rows = not (
-            vectorize
+            (formal_transform_report is not None and formal_transform_report["memory_source"])
+            or vectorize
             or parallel
             or transform_schedule is not None
             or parallel_harts is not None
@@ -530,7 +559,9 @@ def lower_model(
         from .broadcast_divisor_hoisting import UNIT_FEATURE as broadcast_unit_divisor_feature
 
         divisor_features = {
-            broadcast_divisor_feature, broadcast_unit_divisor_feature, broadcast_sum_unit_divisor_feature,
+            broadcast_divisor_feature,
+            broadcast_unit_divisor_feature,
+            broadcast_sum_unit_divisor_feature,
             broadcast_power_two_feature,
         }
         if divisor_features & set(features or ()):
@@ -540,14 +571,22 @@ def lower_model(
             selected_power_two = broadcast_power_two_feature in (features or ())
             selected_sum_proof = selected_power_two or broadcast_sum_unit_divisor_feature in (features or ())
             selected_unit_guard = selected_sum_proof or broadcast_unit_divisor_feature in (features or ())
-            mlir_text, rewrites = rewrite_text(mlir_text, unit_guard=selected_unit_guard,
-                                             sum_unit_proof=selected_sum_proof,
-                                             power_two_guard=selected_power_two)
+            mlir_text, rewrites = rewrite_text(
+                mlir_text,
+                unit_guard=selected_unit_guard,
+                sum_unit_proof=selected_sum_proof,
+                power_two_guard=selected_power_two,
+            )
             broadcast_divisor_report = {
-                "schema": ("merlin.broadcast_power_two_divisor_guard.v1" if selected_power_two
-                           else "merlin.broadcast_sum_unit_divisor_guard.v1" if selected_sum_proof
-                           else "merlin.broadcast_unit_divisor_guard.v1" if selected_unit_guard
-                           else "merlin.broadcast_divisor_hoisting.v1"),
+                "schema": (
+                    "merlin.broadcast_power_two_divisor_guard.v1"
+                    if selected_power_two
+                    else "merlin.broadcast_sum_unit_divisor_guard.v1"
+                    if selected_sum_proof
+                    else "merlin.broadcast_unit_divisor_guard.v1"
+                    if selected_unit_guard
+                    else "merlin.broadcast_divisor_hoisting.v1"
+                ),
                 "source_sha256": before_divisors,
                 "output_sha256": sha256_text(mlir_text),
                 "rewrites": rewrites,
@@ -555,11 +594,11 @@ def lower_model(
                     "Exact same-tensor ordinary row sum and positive normal power-of-two divisor "
                     "with normal exact reciprocal permit the identical rounded multiplication; "
                     "unit-copy and literal original divide fallback remain"
-                    if selected_power_two else
-                    "Positive-unit divisor and finite-row certificate (same-tensor sum or word scan) "
+                    if selected_power_two
+                    else "Positive-unit divisor and finite-row certificate (same-tensor sum or word scan) "
                     "permit exact copy in every rounding mode; literal original divide fallback"
-                    if selected_sum_proof else
-                    "Positive-unit divisor and finite-word row scan permit exact copy in every "
+                    if selected_sum_proof
+                    else "Positive-unit divisor and finite-word row scan permit exact copy in every "
                     "rounding mode; original divide fallback; immutable tensor value semantics"
                     if selected_unit_guard
                     else "unchanged original divide; immutable tensor value semantics"
@@ -632,6 +671,8 @@ def lower_model(
             upstream_text, stats = preprocess(mlir_text)
             handoff.write_text(upstream_text, encoding="utf-8")
             _lean_stages.record_handoff(handoff)
+        if formal_transform_report is not None:
+            stats["formal_transforms"] = formal_transform_report
         if descriptor_preparation is not None:
             descriptor_check()
         if graph_report is not None:
@@ -672,12 +713,30 @@ def lower_model(
         audit.stage("upstream", upstream_text)
         lowering_selection: dict[str, Any] = {}
         borrowed_arena_lifetimes = []
+        memory_pipeline = None
+        if formal_transform_report is not None and formal_transform_report["memory_source"]:
+            from merlin.verify.compiler_transforms import memory_lowering_pipeline
+
+            if any(
+                (
+                    vectorize,
+                    parallel,
+                    transform_schedule,
+                    parallel_harts,
+                    parallel_chunks,
+                    features,
+                    masked_contraction_effects,
+                )
+            ):
+                raise ValueError("explicit memory source lowering requires its scalar pipeline without tensor features")
+            memory_pipeline = memory_lowering_pipeline()
         try:
             if descriptor_preparation is not None:
                 descriptor_check()
             ll_text = lower_to_llvm_ir(
                 upstream_text,
                 workdir=work,
+                **({"pipeline": memory_pipeline} if memory_pipeline is not None else {}),
                 audit=audit,
                 vectorize=vectorize,
                 transform_schedule=transform_schedule,
@@ -756,9 +815,7 @@ def lower_model(
             # and the `.ll` is byte-identical to the frozen baseline.
             from .arena_bind import bind_arena
 
-            ll_text, arena_report = bind_arena(
-                ll_text, borrowed_lifetime=next(iter(borrowed_arena_lifetimes), None)
-            )
+            ll_text, arena_report = bind_arena(ll_text, borrowed_lifetime=next(iter(borrowed_arena_lifetimes), None))
             stats["static_arena"] = arena_report.to_dict()
         # MLIR's C wrapper expands each memref pointer into the implementation's flattened descriptor
         # ABI.  An external call can make LLVM decline to inline a hundreds-of-arguments boundary,
@@ -854,6 +911,7 @@ def lower_model_file(
     descriptor_result_identities: tuple = (),
     descriptor_result_effects=None,
     source_recomputation: SourceRecomputationSelection | None = None,
+    formal_transforms=None,
 ) -> LowerResult:
     audit_mode(ir_audit)
     if type(descriptor_result_identities) is not tuple:
@@ -888,6 +946,7 @@ def lower_model_file(
         shared_pass_preparation=shared_pass_preparation,
         verify_native_prefix=verify_native_prefix,
         pass_validation=pass_validation,
+        formal_transforms=formal_transforms,
         retain_llvm_dialect=retain_llvm_dialect,
         graph_optimizations=graph_optimizations,
         op_profile=op_profile,

@@ -23,6 +23,11 @@ only after fresh Lean compilation and theorem audits. It is separate from the
 [compiler pass gate](lean_pass_gate.md); it does not install compiler-wide loop
 enforcement or establish numerical or hardware fidelity.
 
+The separate [compiler integration](lean_compiler_stack.md) captures current
+compiler buffers and supports individual unrolling, individual tiling and their
+composition. It reuses this checker without requiring the historical producer
+checkout. The standalone API described below retains its pinned-producer contract.
+
 The reference checkout must contain revision
 `4499eebb959c0f92cefd92cc6d80646ba66474ed`. The bridge checks its revision and the
 bytes of imported producer sources. Use the repository Python environment with

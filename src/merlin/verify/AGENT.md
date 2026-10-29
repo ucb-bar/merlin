@@ -66,6 +66,15 @@ and working log: `docs/design/compiler_verification.md`.
 
 ## Invariants
 
+- `compiler_transforms` captures the optional actual source-SCF and explicit
+  private-memory chains at `lower_model` entry. Its speculative worker accepts
+  only a fresh audited `loop_transform_gate` or `buffer_reuse_gate` completion.
+  `compiler_loop_intake` supplies current-buffer projection and adjacent all-entry
+  roots without the standalone API's historical producer requirement. Keep
+  loop return/error/world equality separate from buffer possible-success
+  observations and its explicit allocator premise. These checks do not supply
+  tensor-to-SCF, native allocator or object/hardware fidelity.
+
 - `lean_contract.py` owns public result data and strict modeled coverage; it cannot issue
   accepted evidence. `lean_export.py` projects actual pure integer SSA under explicit
   primitive semantics. `lean_checker.py` runs the selected Lean kernel and owns live

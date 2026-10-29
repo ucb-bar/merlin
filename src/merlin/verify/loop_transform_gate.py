@@ -143,9 +143,14 @@ def check(prepared, *, lean, destination, timeout=120):
     destination must be NEW. No historical object/receipt/caller callback supplies
     authority. F qualifies this same code path in a separate private output tree.
     """
-    if type(prepared) is not PreparedLoop:
+    from .compiler_loop_intake import PreparedCompilerLoop, refresh
+
+    if type(prepared) is PreparedLoop:
+        fresh = prepare(prepared.buffers, reference=prepared.reference, settings=prepared.settings)
+    elif type(prepared) is PreparedCompilerLoop:
+        fresh = refresh(prepared)
+    else:
         raise Unavailable("exact prepared request required")
-    fresh = prepare(prepared.buffers, reference=prepared.reference, settings=prepared.settings)
     if fresh != prepared:
         raise Unavailable("stale or forged preparation/query/roots/domain")
     directory = Path(destination).resolve()
@@ -210,7 +215,7 @@ def check(prepared, *, lean, destination, timeout=120):
             if not path.is_relative_to(library):
                 raise Unavailable("project proof object escaped fresh private build")
             imports.append(file_ref(path))
-    revalidate(prepared)
+    _revalidate(prepared)
     if file_ref(lean) != tool or file_ref(audit_source) != auditor or file_ref(query) != query_ref:
         raise Unavailable("tool/source/query changed during proof")
     report = {
@@ -227,7 +232,9 @@ def check(prepared, *, lean, destination, timeout=120):
         "built_artifacts": [file_ref(p) for p in sorted(library.rglob("*")) if p.is_file()],
         "audit": audit,
         "statements": statements,
-        "scope": "scoped direct loop consumer; not compiler-wide enforcement",
+        "scope": "actual compiler loop boundary"
+        if type(prepared) is PreparedCompilerLoop
+        else "scoped direct loop consumer; not compiler-wide enforcement",
         "relation": "all defined entries equal returned values/errors/terminal world",
         "premises": (
             "trusted full-IR Python projection; common total pure primitives; "
@@ -254,7 +261,7 @@ def validate_completion(completion, prepared):
         or file_ref(completion.report) != report_ref
     ):
         raise Unavailable("live completion/request/report changed")
-    revalidate(prepared)
+    _revalidate(prepared)
     for ref in [
         *report["buffers"],
         report["query"],
@@ -269,8 +276,22 @@ def validate_completion(completion, prepared):
     return True
 
 
+def _revalidate(prepared):
+    from .compiler_loop_intake import PreparedCompilerLoop
+    from .compiler_loop_intake import revalidate as compiler_revalidate
+
+    if type(prepared) is PreparedCompilerLoop:
+        compiler_revalidate(prepared)
+    else:
+        revalidate(prepared)
+
+
 def deliver(completion, prepared, consumer):
     validate_completion(completion, prepared)
+    from .compiler_loop_intake import PreparedCompilerLoop
+
+    if type(prepared) is PreparedCompilerLoop:
+        return consumer(prepared.actual_target)
     return consumer(prepared.buffers[-1])
 
 
@@ -282,17 +303,35 @@ def transform(source, *, reference, lean, destination, consumer, settings=Settin
     return deliver(completion, prepared, consumer)
 
 
-def replay(report_path, *, reference, lean, destination):
-    """Reconstruct and recheck original3 snapshots; saved status grants no authority."""
+def replay(report_path, *, lean, destination, reference=None, consumer=None, timeout=120):
+    """Rebuild the exact scoped workflow; saved status grants no authority."""
     recorded = json.loads(Path(report_path).read_text())
     refs = recorded["buffers"]
     for ref in refs:
         if file_ref(ref["path"]) != ref:
             raise Unavailable("replay input snapshot changed")
     settings = Settings(**recorded["prepared"]["settings"])
-    prepared = prepare(tuple(Path(r["path"]).read_text() for r in refs), reference=reference, settings=settings)
-    if prepared.describe() != recorded["prepared"]:
+    buffers = tuple(Path(r["path"]).read_text() for r in refs)
+    if recorded["prepared"].get("schema") == "merlin.compiler-loop.prepared.v1":
+        from .compiler_loop_intake import TILE, UNROLL
+        from .compiler_loop_intake import prepare as compiler_prepare
+
+        kinds = tuple(recorded["prepared"]["kinds"])
+        if kinds == (UNROLL,):
+            buffers = buffers[:2]
+        elif kinds == (TILE,):
+            buffers = (buffers[0], buffers[2])
+        prepared = compiler_prepare(
+            buffers, kinds=kinds, factor=max(2, settings.factor), tile=settings.tile, index_bits=settings.index_bits
+        )
+    else:
+        if reference is None:
+            raise Unavailable("standalone loop replay requires its explicit producer reference")
+        prepared = prepare(buffers, reference=reference, settings=settings)
+    if canonical(prepared.describe()) != canonical(recorded["prepared"]):
         raise Unavailable("reconstructed replay identity differs")
-    completion = check(prepared, lean=lean, destination=destination)
+    completion = check(prepared, lean=lean, destination=destination, timeout=timeout)
     validate_completion(completion, prepared)
+    if consumer is not None:
+        deliver(completion, prepared, consumer)
     return completion

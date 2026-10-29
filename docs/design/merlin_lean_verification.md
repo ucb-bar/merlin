@@ -253,12 +253,12 @@ it cannot produce a false "verified". Several Merlin passes already expose rewri
 (`lower_quant_ext(on_rewrite=...)`, `carry_provenance`), so most need a recorder call rather than a
 redesign.
 
-### D3. Our own semantics in Lean 4 + Mathlib; Lean-MLIR as a reference, not a dependency
+### D3. MerlinVerify semantics in Lean 4 + Mathlib; selective Lean-MLIR reuse
 
 - **Lean-MLIR** ([opencompl/lean-mlir](https://github.com/opencompl/lean-mlir)) proves SSA peephole
   rewrites with intrinsically typed programs and bit-vector semantics. Its `denote_rewritePeepholeAt`
   theorem is the analog of our congruence theorem (§5.1).
-- **We do not depend on it,** for three reasons, checked against its `main` at `b8c4a77`
+- **The MerlinVerify tensor checker does not depend on it,** for three reasons, checked against its `main` at `b8c4a77`
   (2026-07-28):
   - It is pinned to `leanprover/lean4:nightly-2025-12-01` with a Mathlib `nightly-testing` revision.
     It cannot share a Lake workspace with a v4.35.0 project without a port.
@@ -272,6 +272,17 @@ redesign.
   - **Reuse:** where licensing permits (Apache-2.0), we copy integer and LLVM op definitions with
     attribution.
   - **Reference checkout:** `~/Projects/lean-mlir`.
+- **Separate existing integration:** `src/merlin/verify/lean/Merlin/Foundation.lean`
+  imports `LeanMLIR.Framework.Basic` and supplies a wrapping-integer dialect for
+  the shared scalar checker. This is a distinct selected toolchain from
+  `merlin/lean/MerlinVerify`; neither its import nor its generic lemmas certify
+  the tensor DCE/CSE boundary.
+- **Future reuse:** retain the current DCE/CSE approach. Before implementing a new
+  proof mechanism, inspect Lean-MLIR for an existing suitable component. Prefer
+  reuse when its semantic premises and toolchain fit; establish a semantics-
+  preserving bridge before applying its theorems to actual Merlin IR. Its
+  generic DCE/CSE algorithms and SSA rewrite infrastructure remain candidates
+  for future work, without committing this checker to a wholesale port.
 - **Mathlib** provides algebra on `BitVec` and `Fin`-indexed sums: commutativity and associativity
   lemmas for reordering integer reductions, and permutation and big-operator reasoning. Its build cost
   is paid once via `lake exe cache get`.

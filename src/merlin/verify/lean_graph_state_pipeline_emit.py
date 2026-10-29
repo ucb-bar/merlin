@@ -156,10 +156,12 @@ def body_group_text(capture, loops, envs, count, factor, step):
                 term = program([row, {"ret": []}])
                 if term.count("(.ret [])") != 1:
                     raise ValueError("unique structural suffix continuation required")
-                term = term.replace("(.ret [])", f"Piece{stage}_{i+1}", 1)
+                term = term.replace("(.ret [])", f"Piece{stage}_{i + 1}", 1)
             result += f"@[irreducible] def Piece{stage}_{i} : Program := {term}\n"
         result += f"theorem B{stage}_factored : B{stage} = Piece{stage}_0 := by\n"
-        result += "  unfold B" + str(stage) + " " + " ".join(f"Piece{stage}_{i}" for i in range(len(records))) + "\n  rfl\n"
+        result += (
+            "  unfold B" + str(stage) + " " + " ".join(f"Piece{stage}_{i}" for i in range(len(records))) + "\n  rfl\n"
+        )
     source_calls = len(groups[2]) - 1
     if len(groups[3]) - 1 != factor * source_calls:
         raise ValueError("actual target external prefix count differs from source lanes")
@@ -175,8 +177,13 @@ def body_group_text(capture, loops, envs, count, factor, step):
     calls = []
     for lane in range(factor):
         iv = "base" if lane == 0 else f"(base+{step * lane})"
-        values, more = symbolic_body(loops[2]["body"], [iv,*values,*envs[2]], control_map,
-                                     len(calls), "world" if not calls else f"w{len(calls)-1}")
+        values, more = symbolic_body(
+            loops[2]["body"],
+            [iv, *values, *envs[2]],
+            control_map,
+            len(calls),
+            "world" if not calls else f"w{len(calls) - 1}",
+        )
         calls += more
     if len(calls) > 16:
         raise ValueError("bounded lane proof supports at most sixteen retained calls")
@@ -184,8 +191,8 @@ def body_group_text(capture, loops, envs, count, factor, step):
         pad = "  " + "  " * depth
         index, identity = call["index"], call["identity"]
         args, world = lean_list(call["arguments"]), call["world"]
-        next_defs = groups[3][index+1] + groups[2][(index+1) % source_calls]
-        if (index+1) % source_calls == 0:
+        next_defs = groups[3][index + 1] + groups[2][(index + 1) % source_calls]
+        if (index + 1) % source_calls == 0:
             next_defs += groups[2][-1]
         definitions = ",".join(next_defs)
         result += f"{pad}cases step{index} : external.run {identity} {args} {world} with\n"
@@ -290,11 +297,11 @@ theorem outer_same (base : Nat) (carry : List Int) (world : World) (arity : carr
     return result + "    rfl\n"
 
 
-def compose_text(count, bounds, bulk_bounds, factor, groups, tile, bits, initial):
+def compose_text(count, bounds, bulk_bounds, factor, groups, tile, bits, initial, *, identity_unroll=False):
     lower, upper, step = bounds
     bulk_lower, bulk_upper, stride = bulk_bounds
     outer_stride = stride * tile
-    return f"""def unrollBounds : Merlin.GraphLoopsUnroll.Bounds :=
+    text = f"""def unrollBounds : Merlin.GraphLoopsUnroll.Bounds :=
   {{ bits := {bits}, lower := {lower}, upper := {upper}, step := {step}, factor := {factor}, count := {groups * factor}, groups := {groups}, remainder := 0 }}
 def segmentBounds : Merlin.GraphLoopsSegment.Bounds :=
   {{ bits := {bits}, lower := {bulk_lower}, upper := {bulk_upper}, step := {stride}, tile := {tile} }}
@@ -351,9 +358,23 @@ theorem actual (arguments : List Int) (world : World) (arity : arguments.length 
       subst later
       exact actual_inputs primitive external first second world
 """
+    if identity_unroll:
+        # A standalone segmentation boundary has identical S2/S3 syntax. Do not
+        # claim that factor one satisfies the separate unrolling contract.
+        start = text.index("theorem unrollBoundsChecked")
+        end = text.index("theorem segment_actual")
+        text = (
+            text[:start]
+            + "theorem segmentBoundsChecked : segmentBounds.Valid := by decide\n"
+            + """theorem unroll_actual (world : World) :
+    evalProgram (M primitive external) S2 [x0,x1] world = evalProgram (M primitive external) S3 [x0,x1] world := rfl
+"""
+            + text[end:]
+        )
+    return text
 
 
-def emit(capture):
+def emit(capture, *, identity_unroll=False):
     stages = capture["stages"]
     if len(stages) != 4 or any(
         s["registry"] != stages[0]["registry"] or s["types"] != stages[0]["types"] for s in stages
@@ -363,7 +384,7 @@ def emit(capture):
     factor, tile, bits = capture["factor"], capture["tile"], capture["index_bits"]
     for value in (factor, tile, bits):
         integer(value, natural=True)
-    if not 2 <= factor <= 4 or not 2 <= tile <= 16 or bits not in (32, 64):
+    if not (factor == 1 if identity_unroll else 2 <= factor <= 4) or not 2 <= tile <= 16 or bits not in (32, 64):
         raise ValueError("supported factor2..4/tile2..16/signed32-or64 profile required")
     for index, function in enumerate(stages[0]["functions"]):
         if function["declaration"]:
@@ -431,9 +452,11 @@ def emit(capture):
             raise ValueError("positive static source stride and ordered bounds required")
         trips = (upper - lower + step - 1) // step
         groups, remainder = divmod(trips, factor)
-        if trips <= factor or remainder:
+        if trips < 1 if identity_unroll else trips <= factor or remainder:
             raise ValueError("inline/empty/tail explicitly outside supported no-tail bulk mode")
-        expected_bulk = [lower, lower + step * trips, step * factor]
+        expected_bulk = bounds if identity_unroll else [lower, lower + step * trips, step * factor]
+        if identity_unroll and records[2] != records[3]:
+            raise ValueError("standalone segmentation requires identical source/unroll stages")
         if bulk_bounds != expected_bulk or static_controls(records[4], capture) != [
             lower,
             expected_bulk[1],
@@ -454,11 +477,14 @@ def emit(capture):
             args = " ".join(env[i] for i in loop["bounds"])
             initial = lean_list([env[i] for i in loop["initial"]])
             text += f"theorem form{stage} (world : World) : evalProgram (M primitive external) S{stage} [x0,x1] world =\n  (loopEval {len(loop['carries'])} (fun i carry w => evalProgram (M primitive external) B{stage} (i::carry++E{stage} primitive x0 x1) w)\n    (indexIterations {args}) {initial} world).bind\n      (fun result => evalProgram (M primitive external) N{stage} (result.1++E{stage} primitive x0 x1) result.2) := by rfl\n"
-        text += body_group_text(capture, loops, envs, count, factor, step)
+        if not identity_unroll:
+            text += body_group_text(capture, loops, envs, count, factor, step)
         text += scope_text(capture, loops, envs, count)
         text += outer_text(count, bulk_bounds[1], bulk_bounds[2], tile)
         initial = lean_list([envs[2][i] for i in loops[2]["initial"]])
-        text += compose_text(count, bounds, bulk_bounds, factor, groups, tile, bits, initial)
+        text += compose_text(
+            count, bounds, bulk_bounds, factor, groups, tile, bits, initial, identity_unroll=identity_unroll
+        )
         text += f"end F{index}\n"
     defined = [i for i, f in enumerate(stages[0]["functions"]) if not f["declaration"]]
 

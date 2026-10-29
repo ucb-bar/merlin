@@ -62,6 +62,14 @@ generated transpose and the same exact inverse proof; other uses survive.
 
 ## Purpose
 
+`lower_model` may explicitly select `compiler_transforms.Options` before normal
+preprocessing. Capture each actual loop/storage boundary for the selected Lean
+gate; the enclosing validation scope must finish before products return. Explicit
+memory source inputs already own their frees and use the direct scalar/SCF/memref
+lowering route rather than tensor ownership inference. Do not silently combine
+that route with tensor features or vector/parallel schedules. Tensor source
+defaults and separately owned source selections retain their original contracts.
+
 Aggregate fresh deallocation splitting recognizes selected borrowed calls only
 through `_obl_borrowed_calls` and its actual-operation set. Exact current
 declaration types, ordered result roles, forwarding bodies and fresh/disjoint

@@ -22,6 +22,12 @@ decodes the complete endpoints and generates Lean obligations linking actual
 source syntax, descriptors, lifetimes, initialization, addresses and final code.
 It does not install compiler-wide enforcement or numerical/hardware approval.
 
+The [compiler stack guide](lean_compiler_stack.md) describes the separate
+`lower_model` adapter, its `buffer_reuse` selector and its explicit memory-source
+LLVM route. That adapter uses this same direct checker and requires its fresh
+completion before compiler products are returned. The API below remains usable
+independently of compiler enforcement.
+
 Capture the four complete modules from the selected producer and record its
 revision/configuration. The intake itself checks the IR relationship, not the
 producer's identity. Actual producer reexecution and attribution are separate

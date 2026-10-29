@@ -436,3 +436,12 @@ merlin/tests/data/lit/.lit_test_times.txt
 /examples/gemmini/phase2/el4_20261018/runtime_transport_experiment/
 /experiments/phase2_drafts/evidence-handoff.json
 /experiments/reference-data/joint-ready-epoch/
+
+# Curated compiler-gate handoff; raw proofs, builds and test logs stay local.
+!/out/artifacts/
+!/out/artifacts/handoff/
+!/out/artifacts/handoff/pass-verif-integration-20261028/
+!/out/artifacts/handoff/pass-verif-integration-20261028/README.md
+!/out/artifacts/handoff/pass-verif-integration-20261028/merlin-lean-stack.html
+!/out/artifacts/handoff/pass-verif-integration-20261028/stack.json
+!/out/artifacts/handoff/pass-verif-integration-20261028/qualification.json

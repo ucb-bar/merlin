@@ -1,18 +1,18 @@
-"""The production compile selector admits only the delivered DCE/CSE boundaries."""
+"""The compile selector admits integrated proofs and excludes draft numerical policy."""
 
 import sys
 
 import pytest
 
-from merlin.verify import gate_checks, gate_worker, pass_validation
 from merlin.verify import bf16_policy_gate as draft_policy
+from merlin.verify import gate_checks, gate_worker, pass_validation
 
 
 def forbidden(*args, **kwargs):
     raise AssertionError("draft policy or proof tooling entered the compiler gate")
 
 
-def test_all_selects_only_dce_cse_without_policy_admission(tmp_path, monkeypatch):
+def test_all_selects_integrated_proofs_without_policy_admission(tmp_path, monkeypatch):
     # SDK-free selection test: no request is submitted, and fake tools grant no proof.
     monkeypatch.setattr(pass_validation.CheckerTools, "__post_init__", lambda self: None)
     monkeypatch.setattr(draft_policy, "require_admission", forbidden)
@@ -22,9 +22,15 @@ def test_all_selects_only_dce_cse_without_policy_admission(tmp_path, monkeypatch
     monkeypatch.setenv(pass_validation.ENV_COMPILER_PYTHON, sys.executable)
     validation = pass_validation.from_environment(tmp_path)
     try:
-        assert validation.passes == frozenset({"prune_dead_pure_tensor_ops", "cse"})
+        assert validation.passes == frozenset(
+            {"prune_dead_pure_tensor_ops", "cse", "ordered_loop_unrolling", "ordered_loop_segmentation", "buffer_reuse"}
+        )
         assert set(pass_validation.CHECKS) == set(validation.passes)
-        assert gate_worker.BUILTIN_CHECKS == ("tensor_refinement",)
+        assert gate_worker.BUILTIN_CHECKS == (
+            "tensor_refinement",
+            "compiler_loop_refinement",
+            "compiler_buffer_refinement",
+        )
         assert not hasattr(gate_checks, "bf16_f32acc_policy")
         with pass_validation.validating(validation):
             calls = []
