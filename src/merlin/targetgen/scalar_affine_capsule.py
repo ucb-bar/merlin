@@ -26,6 +26,14 @@ def scalar_affine_program(entry: dict, binding: CorpusBinding) -> dict:
     if any(type(extent) is not int or extent < 1 for extent in (M, N)):
         raise ValueError(f"{entry.get('name')}: scalar affine needs resolved positive M and N")
     src, out = entry.get("lhs", "A0"), entry.get("out", "Y0")
+    if entry.get("relu"):
+        # max(x, 0), no immediates: the activation as a standalone elementwise map (aten.relu).
+        return {
+            "schema": SCHEMA_V2,
+            "inputs": [{"name": src, "role": "input", "shape": [M, N], "dtype": "operand"}],
+            "nodes": [{"name": "mapped", "op": "relu", "inputs": [src], "dtype": "accumulator"}],
+            "outputs": [{"name": out, "value": "mapped"}],
+        }  # fmt: skip
     if entry.get("cast"):
         # The identity map read out at accumulator width: the int8 -> int32 sign-extending widening (aten._to_copy).
         return {

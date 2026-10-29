@@ -77,6 +77,8 @@ def evaluate(capsule):
                 [int(a) - int(b) for a, b in zip(args[0].data, args[1].data, strict=True)],
                 node["dtype"],
             )
+        elif op == "relu":
+            output = Tensor(tuple(node["shape"]), [max(int(value), 0) for value in args[0].data], node["dtype"])
         elif op == "affine":
             output = Tensor(
                 tuple(node["shape"]),

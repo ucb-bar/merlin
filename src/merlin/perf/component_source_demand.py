@@ -75,7 +75,7 @@ def _metadata(program, operand_dtype, accumulator_dtype, limits):
         op = row.get("op") if type(row) is dict else None
         extra = (
             {"dtype"}
-            if v2 and op == "cast"
+            if v2 and op in {"cast", "relu"}
             else {"weight", "bias", "dtype"}
             if v2 and op == "affine"
             else {"dtype"}

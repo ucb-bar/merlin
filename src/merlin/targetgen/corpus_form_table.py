@@ -214,6 +214,8 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     # neg is the multiplier -1 (a signed int8 weight; -1 is representable, so no limb decomposition is involved).
     ("elementwise_map", "scalar_neg"): FormEntry("scalar_affine", _scalar_affine(-1, 0)),
     # aten._to_copy int8 -> int32: the identity map read out at accumulator width (sign extension).
+    # aten.relu as a standalone max(x, 0): the activation of the readout (AccumulatorScale) applied to the identity map.
+    ("elementwise_map", "relu"): FormEntry("scalar_affine", lambda m, n: {"relu": True}),
     ("elementwise_map", "cast_widen"): FormEntry("scalar_affine", lambda m, n: {"cast": True}),
     # reduction standalone: div.Scalar by a power-of-two divisor, the readout scale of a one-element window sum.
     ("reduction", "scalar_div"): FormEntry("window_sum", _scalar_div(2)),

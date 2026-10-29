@@ -462,7 +462,7 @@ operations:
   elementwise_map_scalar_affine:
     status: reviewed
     families: [elementwise_map]
-    forms: [scalar_add, scalar_sub, scalar_mul, scalar_neg, cast_widen]
+    forms: [scalar_add, scalar_sub, scalar_mul, scalar_neg, cast_widen, relu]
     hardware: standalone
     arithmetic: integer_affine
     max_tensor_operands: 2
@@ -492,7 +492,13 @@ operations:
         decomposition is a separate claim). scalar_neg is weight -1, a signed int8 that needs no limb decomposition;
         cast_widen is the identity weight read out at accumulator width, which the contract names as the int8 -> int32
         widening (sign extension of a signed byte; an unsigned or wider source is outside this row). Division by a scalar is NOT this row: integer division is not an affine
-        map, and a reciprocal readout scale is a different (rounded) construction.
+        map, and a reciprocal readout scale is a different (rounded) construction. Addendum (relu, reviewed by Loren Hung
+        (approved in operator chat 2026-10-29); the stated evidence and qualification scope remain mandatory): relu is
+        the standalone max(x, 0) over one int8 operand, i.e. the identity map with the readout activation in
+        {none, relu} the contract states (AccumulatorScale.scala:118-138, relu applied before the output scale), read
+        out at accumulator width. Primitives required: the same identity-weight accumulate-on-load / mesh path plus
+        the readout relu activation; no scale, no saturation, no immediate. A relu epilogue on a contraction commit is
+        a different (fused) row and does not exercise this form.
     emission_obligations: *elementwise_standalone_obligations
   # Two-operand difference form of the standalone elementwise map: Y = X0 - X1 (aten.sub.Tensor with alpha 1).
   # A separate row from elementwise_map_scalar_affine (forms differ by operand count); the constraints and the

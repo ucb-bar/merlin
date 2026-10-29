@@ -67,7 +67,7 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
         name, op, args = node["name"], node.get("op"), node.get("inputs")
         extra = (
             {"dtype"}
-            if op == "cast"
+            if op in {"cast", "relu"}
             else {"weight", "bias", "dtype"}
             if op == "affine"
             else {"dtype"}
@@ -143,6 +143,13 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
                 raise ValueError("component affine weight must be a signed int8 literal")
             if int(lhs.dtype[1:]) > int(dtype[1:]):
                 raise ValueError("component affine requires a result at least as wide as its input")
+            result = ValueType(tuple(lhs.shape), dtype)
+        elif op == "relu":
+            # max(x, 0) over one tensor operand, no immediates besides the zero: the activation as an
+            # elementwise op of its own, read out at the node's (wide) dtype.
+            dtype = _integer_dtype(node["dtype"], operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
+            if int(lhs.dtype[1:]) > int(dtype[1:]):
+                raise ValueError("component relu requires a result at least as wide as its input")
             result = ValueType(tuple(lhs.shape), dtype)
         elif op in {"cast", "reduce_sum"}:
             dtype = _integer_dtype(node["dtype"], operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
@@ -280,7 +287,7 @@ def render(program, *, operand_dtype, accumulator_dtype):
                     f"outs({temporary('empty')} : {result.mlir}) permutation = [1, 0]"
                 )
             continue
-        if op in {"cast", "reduce_sum", "affine"}:
+        if op in {"cast", "reduce_sum", "affine", "relu"}:
             source = types[actual[0]]
             reduction = op == "reduce_sum"
             axis = node.get("axis")
@@ -306,7 +313,7 @@ def render(program, *, operand_dtype, accumulator_dtype):
                 f"iterator_types = {iterators}}} "
                 f"ins({values[actual[0]]} : {source.mlir}) outs({destination} : {inner.mlir}) "
                 f'attrs = {{prov.region_id = "component_{node["ordinal"]}", prov.op = "{op}", '
-                f'prov.family = "{"reduction" if reduction else "elementwise" if op == "affine" else "cast"}"}} {{'
+                f'prov.family = "{"reduction" if reduction else "elementwise" if op in {"affine", "relu"} else "cast"}"}} {{'
             )
             lines.append(
                 f"      ^bb{node['ordinal']}({scalar('element')}: {source.dtype}, {scalar('old')}: {result.dtype}):"
@@ -321,6 +328,10 @@ def render(program, *, operand_dtype, accumulator_dtype):
             if reduction:
                 lines.append(f"        {scalar('sum')} = arith.addi {scalar('old')}, {element} : {result.dtype}")
                 element = scalar("sum")
+            if op == "relu":
+                lines.append(f"        {scalar('zero')} = arith.constant 0 : {result.dtype}")
+                lines.append(f"        {scalar('rectified')} = arith.maxsi {element}, {scalar('zero')} : {result.dtype}")
+                element = scalar("rectified")
             if op == "affine":
                 weight, bias = node["weight"], node["bias"]
                 if weight != 1:

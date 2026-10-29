@@ -125,6 +125,8 @@ def derive(source, semantics):
                 interval = prefix
             elif op == "sub":
                 interval = args[0][0] - args[1][1], args[0][1] - args[1][0]
+            elif op == "relu":
+                interval = max(args[0][0], 0), max(args[0][1], 0)
             elif op == "affine":
                 ends = [value * node["weight"] + node["bias"] for value in args[0]]
                 interval = min(ends), max(ends)

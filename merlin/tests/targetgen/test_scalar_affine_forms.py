@@ -22,6 +22,7 @@ pytestmark = pytest.mark.target("gemmini")
 _FORMS = {
     "scalar_add": (1, 3, "arith.addi"), "scalar_sub": (1, -3, "arith.subi"), "scalar_mul": (3, 0, "arith.muli"),
     "scalar_neg": (-1, 0, "arith.muli"), "cast_widen": (1, 0, "arith.extsi"),
+    "relu": (1, 0, "arith.maxsi"),
 }  # fmt: skip
 
 
@@ -53,6 +54,9 @@ def test_form_builds_and_grades_exactly(form, m, n):
     capsule["integer_partial_sum_bound"] = derive(source_for_capsule(capsule), semantics)
     leaves = materialize_capsule_leaves(capsule)["A0"]
     want = [[int(leaves.data[r * n + c]) * weight + bias for c in range(n)] for r in range(m)]
+    if form == "relu":
+        want = [[max(v, 0) for v in row] for row in want]
+        assert any(v < 0 for v in leaves.data), "the stimulus must reach below zero to test the rectifier"
     assert capsule_golden.golden(capsule, None)["Y0"] == want
 
 
