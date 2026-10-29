@@ -14,8 +14,8 @@ audit checks 4,272 theorems with no violations; all 235 existing pins match.
 Work on **`feat/pass-verif-integration`**. Latest implementation commits are
 `5f9fb92de` (rank-one complete-entry bridges), `ef46cc269` (retained deeper loop
 bodies) and `91661f328` (original C64 consumer and wide-count hoisting). Remote
-publication and both GitHub identities are verified through `0c52a8b5e`;
-the newer rank-one feature is being prepared for publication.
+publication and both GitHub identities are verified through `4d28efe5c`,
+including the rank-one feature.
 Earlier proof records retain their own source cuts.
 
 All nine pass families have compiler selectors within their declared profiles.
@@ -151,14 +151,19 @@ New independently reviewed source cuts:
   closures have 9/11 modules, 15/25 roots and 315/392 STD3 declarations; refs are
   861/868/882 by profile. No huge native compilation/execution occurred.
 
-Rank-one buffer integration is committed in `5f9fb92de`. Its initial actual
-three-buffer gate passes 250 canonical roots and a 2,545-theorem STD3 audit,
-with exact live target delivery; independent review rechecks all 1,970 hashes.
-Twelve installed host controls pass. The remaining 21 tests in the 33-case
-compiler/native/replay/mutation cohort are running serially on CPU28, nice19;
-no broader qualification is claimed. Evidence is under
-`out/build/buffer-rank-one-20261029/{first-untiled-v1,installed-qualification-v1}`
-and the validator's `rank-one-first-untiled-gate-audit-v1.json`. The staged captured-uniform-seed profile excludes pure
+Rank-one buffer integration is committed in `5f9fb92de`. All **33 distinct
+installed qualification cases pass**: 12 host controls and 21 SDK/native cases,
+without retries, failures, skips, timeouts or source edits. Actual untiled and
+tiled gates audit 250 canonical roots and 2,545 STD3 theorems. Both public
+compiler routes, direct extents 1/3/65,536 and two fresh-process replays pass.
+Ten actual target mutations produce three genuine closed Lean refusals and
+seven explicit host refusals; three initializer-link component controls also produce
+closed fact refusals. The two public routes retain 24 native wrap observations
+and six untouched-entry assertions across independent source/baseline/checked
+arms. Evidence is under `out/build/buffer-rank-one-20261029/installed-qualification-v1/`
+in `RESULT.json`, `EVIDENCE-SUMMARY.json`, both XMLs and retained proof trees;
+independent review is `out/build/validator-alignment-20261029/rank-one-final33-qualification-audit-v1.json`.
+The captured-uniform-seed profile excludes pure
 computed initializer bodies, which the actual producer can transform. This is
 remaining engineering, not human-review-only readiness. The current producer
 reuses identical memref types/alignment; equal-byte differently shaped objects
@@ -170,25 +175,37 @@ Further current-cut evidence and interface findings:
   tiled four-buffer output. Independent audit of the true tiled case verifies
   1,971 current refs, 134 successful processes, 250 roots and 2,545 STD3 theorems;
   actual loop count changes from two to four with one-dimensional views. The
-  extent3 untiled case and raw-only fresh-process replay also pass. The remaining
-  cohort continues serially; compiler/native/mutation readiness is still pending.
+  extent3 untiled case and raw-only fresh-process replay also pass. The completed
+  33-case cohort and final independent audit supersede this initial checkpoint.
 - `out/build/validator-alignment-20261029/default-all-memory-composition-audit-v1.json`
   records a reproducible integration gap: default `all` submits the later changed
   memory DCE stage to a tensor-only checker and rejects skip-only memory CSE.
   Exactly one unused `%dim0 = arith.constant 3 : index` is deleted on both routes.
   Explicit BUFFER[/TILE] subsets remain the compiler interface within the
-  previously qualified buffer profiles; rank-one compiler qualification is pending.
+  qualified buffer profiles, now including rank-one captured uniform seeds.
 - `out/build/default-all-memory-20261029/COMPONENT-PLAN.md` and its staged math/
   host files describe the actual fix: a same-mode dead-index-constant proof over
   complete ordinary entries, exact independent target/frame/SSA joins, and an
   original-memory CSE scope observing actual identity without new proof/credit.
-  Production is unchanged; generated queries and six host predictions are not
-  kernel evidence. The earlier proposal to require a fresh CSE identity proof
+  Production is unchanged. The plan-parametric recursive library and seven
+  finite theorem probes compile in exploratory SDK preflight; nine host
+  predictions include typed dynamic controls, retained casts/dimensions,
+  preserved nested literals and actual target mutations. The first actual
+  query's default recursion-budget exhaustion is retained as Unavailable, not
+  a proof refusal. Closed actual-pair gates, full fresh canonical closure,
+  default-all delivery and replay remain pending. The original-memory scope
+  passes 42 fake-native host protocol controls, independently reviewed;
+  actual native capture qualification remains pending. The earlier proposal to require a fresh CSE identity proof
   was corrected against the existing no-op policy.
 - `out/build/buffer-rank-one-20261029/pure-prefix/` records fourteen actual host
   forms and an additive typed-prefix execution proposal. Three concrete foundation
   files remain uncompiled. They preserve the existing false-pure specialization;
   no computed-prefix compiler profile is admitted by this source work.
+
+Q/DQ lowering and bf16/f16 MACC are now handled by the colleague. This lane
+continues the other MLIR/xDSL pass proofs and compiler gates with one independent
+reviewer; LLVM formal verification is outside the agreed scope. Existing numerical
+draft/proposed status remains unchanged.
 
 ---
 

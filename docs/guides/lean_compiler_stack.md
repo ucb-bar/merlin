@@ -280,12 +280,13 @@ Independent qualification covers fresh untiled gates and exact delivery at each
 admitted integer width. For i8, i16 and i64, 30 finite native observations include
 the true untransformed source, modular overflow and high-bit values. These tests
 qualify the existing width domain. The additive rank-one uniform-seed bridge
-has a first complete actual three-buffer kernel check, with 250 roots, 2,545
-audited theorems and independently rechecked exact delivery. Its broader
-compiler/native/replay/mutation cohort is running. Actual one-loop and optional
+passes all 33 installed host/compiler/native/replay/mutation cases, with 250
+roots and 2,545 audited theorems. Both public compiler routes have exact
+delivery and finite native wrap checks; separate fresh-process replay checks
+the corresponding raw chains. Actual one-loop and optional
 tiled point-loop syntax use the same API; pure computed initializer prefixes
 and rank-three source bridges remain engineering work. The [buffer guide](lean_buffer_reuse_gate.md)
-distinguishes the initial proof from completed width qualification.
+describes the qualified profiles and remaining allocator/source boundaries.
 
 ## bf16/f16 MACC draft contract
 

@@ -34,17 +34,22 @@ All-index `Models`, complete-state and selected ISA-effect premises remain.
 
 **The human-review-only milestone remains open.** Nested Kernel commands,
 broader memory ranks/source profiles and remaining source-contract coverage need
-engineering. Rank-one buffer source/target bridges are committed in `5f9fb92de`:
-the first complete actual three-buffer check and twelve host controls pass.
-Broader compiler/native/replay/mutation qualification is still running. Q/DQ stays proposed and MACC stays
+engineering. Rank-one buffer source/target bridges are committed in `5f9fb92de`.
+Their installed qualification now passes all 33 distinct cases: 12 host and 21
+SDK/native cases, including both public compiler routes, fresh-process replay,
+actual target mutations and initializer-link component refusals. Q/DQ stays proposed and MACC stays
 draft pending independent review. No protected Core/Sem/Spec definitions or locks changed.
+
+Q/DQ lowering and bf16/f16 MACC are now the colleague's workstream. This lane
+continues the remaining MLIR/xDSL pass proofs and compiler gates, with one
+independent reviewer. LLVM formal verification is outside the agreed scope.
 
 Start at the [current evidence and remaining work](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
 [stack/interfaces/examples](docs/guides/lean_compiler_stack.md),
 [completion scope](docs/design/lean_pass_integration_completion.md) and
 [assumption ledger](merlin/lean/LEDGER.md). Remote publication and both GitHub
-identities were verified through `0c52a8b5e`; the newer rank-one feature is
-being prepared for publication. Earlier evidence retains its
+identities were verified through `4d28efe5c`, including the rank-one feature.
+Earlier evidence retains its
 recorded source cut; changing bound sources requires a fresh check.
 
 The [unpublished commit map](out/artifacts/handoff/pass-verif-integration-20261028/unpublished-commit-map.json)

@@ -11,6 +11,28 @@ are included in the accompanying documentation checkpoint.
 The selected numerical policy remains ordered f32 accumulation. Specifications,
 frozen interfaces, `SPEC_LOCK` and approval flags are unchanged.
 
+## Publication merge and receipt refresh
+
+The publication merge combines local checkpoint `501fafffa` with Graham's
+rank-one qualification documentation update `85dc14726`. All 1,159 bound
+source hashes were compared: only `merlin/lean/LEDGER.md` changed, to SHA-256
+`fba8f937f72cb2f4d951260689a6c570ff2c10af34322684fd9ff3a54abdb610`.
+Compiler, proof, test and frozen-specification sources are unchanged. The
+original manifests and results below retain their historical source identities;
+checkout `501fafffa` to recover that exact ledger.
+
+Fresh evidence for the merged ledger is retained locally under
+`push-merge-20261029/`: all six Q/DQ pairs generate and replay successfully,
+and the actual multiply-to-add mutation is rejected. Unrestricted quantizer
+definedness remains `abstracted`. All ten numerical-domain and mixed-module
+MACC delivery/replay/mutation regressions pass without skips against this ledger
+(`regressions.xml`; select `quantizer or initialized or unrelated_reduction`
+from `test_lean_numerical_domains.py` and `test_compiler_macc.py`).
+The same reproduction commands below apply
+with a fresh output directory. Documentation, frozen-file and staged-artifact
+checks pass; structure retains the same 16 pre-existing findings. Graham's
+rank-one results remain his qualification evidence, not a new rerun here.
+
 ## Findings and changes
 
 1. **Confirmed producer/report regression in `3ff55012b`:** all half-result

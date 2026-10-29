@@ -92,10 +92,11 @@ The additive rank-one source and actual tiled/untiled target bridges derive
 one-dimensional Cell/SCF execution, exact source/configuration alpha binding,
 private-slot/world partition and local simulation through the complete-entry
 root. They introduce no whole-run equality or local-simulation premise. The
-first actual three-buffer gate passes 250 roots and a 2,545-theorem STD3 audit;
-independent review rechecks all 1,970 recorded source/tool/product hashes and
-exact live delivery. Twelve installed host controls also pass. The broader
-33-case compiler/native/replay/mutation suite is running, not yet qualified.
+installed actual gates pass 250 roots and a 2,545-theorem STD3 audit. All 33
+distinct qualification cases pass: 12 host and 21 SDK/native, including both
+public compiler routes, two independent-process replays, ten actual target
+mutations and three initializer-link component refusals. Independent review checks the
+exact source/tool/product joins and finite native wrap observations.
 Only captured-uniform-seed initializer bodies are in this additive profile;
 computed initializer prefixes need a typed pure-execution bridge. Allocator,
 possible-success, typed-input and native/error review boundaries remain intact.
