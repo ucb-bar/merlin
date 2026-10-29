@@ -54,7 +54,7 @@ def test_declared_forms_checked_against_contract_primitives():
     assert kept == {"movement": ["slice"]} and refused[0]["form"] == "pad_constant"
 
 
-@pytest.mark.parametrize("form", sorted(f for _, f in ft.FORM_TABLE))
+@pytest.mark.parametrize("form", sorted(f for fam, f in ft.FORM_TABLE if fam == "movement"))
 def test_every_form_builds_a_capsule_and_golden(form):
     from merlin.targetgen import corpus_spec as CS
     binding = CS.CorpusBinding(

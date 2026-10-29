@@ -123,6 +123,8 @@ def _joined_movement_broadcasting(operation: str, attributes: dict, sources: lis
                 return None
         return "none"
     return None
+
+
 #: The static window parameters each ``window_sum`` mode states (``WINDOW_SUM`` in the command-buffer ABI);
 #: the adaptive modes state none -- their windows follow from the source and result extents alone.
 _WINDOW_SUM_GEOMETRY = {

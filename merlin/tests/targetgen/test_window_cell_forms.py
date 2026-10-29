@@ -67,3 +67,20 @@ def test_every_form_is_a_geometry_the_exact_definition_computes(form):
     src = Tensor(tuple(entry["shape"]), [int(v) for v in values.reshape(-1)], "i8")
     out = integer_ops.window_sum(src, attrs, entry["out_shape"])
     assert list(out.shape) == entry["out_shape"]
+
+
+@pytest.mark.parametrize("form", sorted(WINDOW_FORMS))
+def test_every_form_builds_a_window_sum_capsule(form):
+    from merlin.targetgen import corpus_spec as CS
+
+    binding = CS.CorpusBinding(
+        target="gemmini", tile_dim=16, operand_dtype="int8", accum_dtype="i32", integer=True,
+        tiers=["L0"], compare="exact_int",
+    )  # fmt: skip
+    row = FORM_TABLE[("reduction", form)]
+    entry = {
+        "name": f"T_{form}", "kind": "isa", "op": row.op, "source_role": "synthesized", "source_reference": "t",
+        **entry_fields("reduction", form, 16, 16),
+    }  # fmt: skip
+    cap, mlir = CS.BUILDERS[row.op](entry, binding)
+    assert cap["operation"]["op"] == "window_sum" and "merlin_iface.window_sum" in mlir
