@@ -70,6 +70,20 @@
     "in_all": true
   },
   {
+    "id": "lower_quant_ext",
+    "stage": "2 \u00b7 Q/DQ preprocessing",
+    "title": "Q/DQ proposed-model refinement",
+    "kind": "qdq",
+    "boundary": "Actual xDSL Q/DQ pass, or complete textual preprocessing including its returned output.",
+    "interface": "--validate-passes lower_quant_ext\nOptional: --qdq-source-capture /path/to/fresh/capture",
+    "example": "Q/DQ source operations\n\u2192 specified ordered scalar expansion\nAn injected multiply-to-add bug stops compilation.",
+    "claim": "Strict typed refinement under the proposed Q/DQ source semantics. Optional fresh original PT2/source correspondence is reported separately; source-spec approval is false.",
+    "proof": "TypedModule.check_sound + supportCheck_sound + compose_chain",
+    "limit": "Explicit-only, outside all. Source capture requires exact original graph/IR and pinned producer/Torch tools. Quantizer definedness, source-spec approval and framework/native fidelity remain separate.",
+    "registered": true,
+    "in_all": false
+  },
+  {
     "id": "cse",
     "stage": "3 \u00b7 Native runner's leading tensor CSE",
     "title": "Common-subexpression elimination",

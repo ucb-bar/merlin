@@ -800,5 +800,208 @@
     "upstream_qualification_rerun_here": false,
     "legacy_counts_predate_qdq_regression_updates": true,
     "scope": "Separate opt-in Q/DQ source correspondence and qualification tooling; no source-spec approval or new automatic Q/DQ compiler selector"
+  },
+  "qdq_compiler_followup": {
+    "code_commit": "0a463e7254e3af9794182092da4b9d91e1717f0b",
+    "base_commit": "14cd217115ea253e3bd458e7a23b953c55ef8093",
+    "status": "lowering_gate_qualified_original_capture_native_qualification_deferred",
+    "selector": "lower_quant_ext",
+    "handler": "compiler_qdq_refinement",
+    "in_all": false,
+    "source_model_status": "proposed",
+    "source_spec_approved": false,
+    "framework_equivalence": false,
+    "native_fidelity": false,
+    "unique_passed": 80,
+    "groups": [
+      {
+        "name": "qdq_compiler_and_capture_host",
+        "passed": 54,
+        "xml": "out/build/qdq-compiler-gate-20261029/targeted-v2.xml"
+      },
+      {
+        "name": "default_and_macc_controls",
+        "passed": 21,
+        "xml": "out/build/qdq-compiler-gate-20261029/default-v1.xml"
+      },
+      {
+        "name": "original_graph_host_controls",
+        "passed": 5,
+        "xml": "out/build/qdq-compiler-gate-20261029/source-host-v1.xml"
+      }
+    ],
+    "test_ids": [
+      "merlin.tests.ir.test_compiler_macc_wiring::test_actual_pass_and_entry_capture_exactly_one_draft_job[bf16]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_actual_pass_and_entry_capture_exactly_one_draft_job[f16]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_actual_pass_identity_submits_no_draft_job",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_all_excludes_draft_and_explicit_selection_preserves_it",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_capture_includes_mutation_after_decorated_producer",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_cli_selects_macc_transform_separately_from_draft_validation",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[alias-bf16_f32acc_draft_contract]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[alias-buffer_reuse]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[alias-cse]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[alias-lower_quant_ext]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[alias-ordered_loop_segmentation]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[alias-ordered_loop_unrolling]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[alias-prune_dead_pure_tensor_ops]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[worker_path-bf16_f32acc_draft_contract]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[worker_path-buffer_reuse]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[worker_path-cse]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[worker_path-lower_quant_ext]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[worker_path-ordered_loop_segmentation]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[worker_path-ordered_loop_unrolling]",
+      "merlin.tests.ir.test_compiler_macc_wiring::test_formal_selection_cannot_be_rerouted[worker_path-prune_dead_pure_tensor_ops]",
+      "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[False-channel]",
+      "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[False-quantize]",
+      "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[False-tensor]",
+      "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[True-channel]",
+      "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[True-quantize]",
+      "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[True-tensor]",
+      "merlin.tests.ir.test_compiler_qdq::test_actual_corrupted_qdq_output_stops_compilation[False]",
+      "merlin.tests.ir.test_compiler_qdq::test_actual_corrupted_qdq_output_stops_compilation[True]",
+      "merlin.tests.ir.test_compiler_qdq::test_other_index_domains_refuse_before_tools[32]",
+      "merlin.tests.ir.test_compiler_qdq::test_other_index_domains_refuse_before_tools[True]",
+      "merlin.tests.ir.test_compiler_qdq::test_pending_or_approved_status_cannot_replace_a_qdq_result[None]",
+      "merlin.tests.ir.test_compiler_qdq::test_pending_or_approved_status_cannot_replace_a_qdq_result[detail1]",
+      "merlin.tests.ir.test_compiler_qdq::test_pending_or_approved_status_cannot_replace_a_qdq_result[detail2]",
+      "merlin.tests.ir.test_compiler_qdq::test_qdq_stays_outside_all",
+      "merlin.tests.ir.test_compiler_qdq::test_saved_matched_status_cannot_bind_another_actual_input",
+      "merlin.tests.ir.test_compiler_qdq::test_source_selection_requires_all_explicit_tools",
+      "merlin.tests.ir.test_compiler_qdq::test_textual_and_nested_xdsl_capture_one_complete_actual_boundary",
+      "merlin.tests.ir.test_compiler_qdq_source::test_original_program_must_match_complete_recorded_graph[None]",
+      "merlin.tests.ir.test_compiler_qdq_source::test_original_program_must_match_complete_recorded_graph[argument]",
+      "merlin.tests.ir.test_compiler_qdq_source::test_original_program_must_match_complete_recorded_graph[producer_identity]",
+      "merlin.tests.ir.test_compiler_qdq_source::test_original_program_must_match_complete_recorded_graph[result_type]",
+      "merlin.tests.ir.test_compiler_qdq_source::test_original_program_must_match_complete_recorded_graph[return]",
+      "merlin.tests.ir.test_lean_pass_gate::test_all_registers_formal_gates_without_draft_numerical_policy",
+      "merlin.tests.ir.test_lean_quantize_contract::test_an_injected_quantizer_bug_stops_compilation",
+      "merlin.tests.targetgen.test_qdq_capture::test_caller_repository_cannot_replace_the_torch_pin",
+      "merlin.tests.targetgen.test_qdq_capture::test_dequantization_does_not_invent_a_reciprocal_exception",
+      "merlin.tests.targetgen.test_qdq_capture::test_exact_positive_f32_scales_are_supported[0.125]",
+      "merlin.tests.targetgen.test_qdq_capture::test_exact_positive_f32_scales_are_supported[1.0]",
+      "merlin.tests.targetgen.test_qdq_capture::test_exact_positive_f32_scales_are_supported[1.1754943508222875e-38]",
+      "merlin.tests.targetgen.test_qdq_capture::test_executed_producer_inventory_is_checked_beyond_a_pin_label[None]",
+      "merlin.tests.targetgen.test_qdq_capture::test_executed_producer_inventory_is_checked_beyond_a_pin_label[dirty]",
+      "merlin.tests.targetgen.test_qdq_capture::test_executed_producer_inventory_is_checked_beyond_a_pin_label[foreign_import]",
+      "merlin.tests.targetgen.test_qdq_capture::test_executed_producer_inventory_is_checked_beyond_a_pin_label[untracked]",
+      "merlin.tests.targetgen.test_qdq_capture::test_incompatible_scales_are_refused[-0.0-positive]",
+      "merlin.tests.targetgen.test_qdq_capture::test_incompatible_scales_are_refused[-1.0-positive]",
+      "merlin.tests.targetgen.test_qdq_capture::test_incompatible_scales_are_refused[0.0-positive]",
+      "merlin.tests.targetgen.test_qdq_capture::test_incompatible_scales_are_refused[0.0023796888063332034-loses precision]",
+      "merlin.tests.targetgen.test_qdq_capture::test_incompatible_scales_are_refused[1.401298464324817e-45-reciprocal]",
+      "merlin.tests.targetgen.test_qdq_capture::test_incompatible_scales_are_refused[1e+100-outside f32]",
+      "merlin.tests.targetgen.test_qdq_capture::test_incompatible_scales_are_refused[True-Python float]",
+      "merlin.tests.targetgen.test_qdq_capture::test_incompatible_scales_are_refused[inf-finite]",
+      "merlin.tests.targetgen.test_qdq_capture::test_incompatible_scales_are_refused[nan-finite]",
+      "merlin.tests.targetgen.test_qdq_capture::test_missing_original_graph_cannot_qualify_a_historical_capture",
+      "merlin.tests.targetgen.test_qdq_capture::test_mutated_source_or_emitted_binding_is_refused[attribute]",
+      "merlin.tests.targetgen.test_qdq_capture::test_mutated_source_or_emitted_binding_is_refused[bounds]",
+      "merlin.tests.targetgen.test_qdq_capture::test_mutated_source_or_emitted_binding_is_refused[identity]",
+      "merlin.tests.targetgen.test_qdq_capture::test_mutated_source_or_emitted_binding_is_refused[original_input]",
+      "merlin.tests.targetgen.test_qdq_capture::test_mutated_source_or_emitted_binding_is_refused[original_output]",
+      "merlin.tests.targetgen.test_qdq_capture::test_mutated_source_or_emitted_binding_is_refused[overload]",
+      "merlin.tests.targetgen.test_qdq_capture::test_mutated_source_or_emitted_binding_is_refused[precision]",
+      "merlin.tests.targetgen.test_qdq_capture::test_mutated_source_or_emitted_binding_is_refused[prepared_input]",
+      "merlin.tests.targetgen.test_qdq_capture::test_mutated_source_or_emitted_binding_is_refused[scale]",
+      "merlin.tests.targetgen.test_qdq_capture::test_mutated_source_or_emitted_binding_is_refused[zero]",
+      "merlin.tests.targetgen.test_qdq_capture::test_original_scalar_call_and_actual_ssa_match",
+      "merlin.tests.targetgen.test_qdq_capture::test_same_typed_tensor_inputs_cannot_be_swapped_in_ir",
+      "merlin.tests.targetgen.test_qdq_capture::test_serialized_receipt_status_is_not_an_input_to_source_check",
+      "merlin.tests.targetgen.test_qdq_capture::test_torch_identity_checks_archive_and_installed_bytes[None]",
+      "merlin.tests.targetgen.test_qdq_capture::test_torch_identity_checks_archive_and_installed_bytes[import_owner]",
+      "merlin.tests.targetgen.test_qdq_capture::test_torch_identity_checks_archive_and_installed_bytes[installed_payload]",
+      "merlin.tests.targetgen.test_qdq_capture::test_torch_identity_checks_archive_and_installed_bytes[wheel]"
+    ],
+    "compiler_pairs_llvm_identical": 6,
+    "injected_bug_controls_prevent_product_delivery": 3,
+    "fresh_replay": {
+      "status": "accepted",
+      "fresh_process_and_worker": true,
+      "saved_status_used_as_authority": false,
+      "exact_boundary_hashes_rechecked": true,
+      "source_spec_approved": false,
+      "source_correspondence": {
+        "original_program_bound": false,
+        "status": "not_requested"
+      },
+      "request": "out/build/qdq-compiler-gate-20261029/pytest-v2/test_actual_compiler_qdq_gate_0/gate/0001-lower-quant-ext/request.json"
+    },
+    "fresh_replay_log": "out/build/qdq-compiler-gate-20261029/fresh-boundary-replay.log",
+    "source_files": [
+      {
+        "path": "merlin/lean/LEDGER.md",
+        "bytes": 52307,
+        "sha256": "eb791a4b9b3fc0c5da16b021d2e4b559caf0546e56cdffb5c736bf9ebcc7ab01"
+      },
+      {
+        "path": "src/merlin/compile/command.py",
+        "bytes": 12790,
+        "sha256": "4607db910923429045b8ab7bfc8ec1ce4d07ccd725e3f60abfd3165b811610b5"
+      },
+      {
+        "path": "src/merlin/llvmlower/lower.py",
+        "bytes": 48709,
+        "sha256": "06d3bfa4ce75c59a8c3a40fe6d93cd652f8c5574bd865c3ff6ed6d1117415287"
+      },
+      {
+        "path": "src/merlin/llvmlower/passes_xdsl.py",
+        "bytes": 62933,
+        "sha256": "b47e810143856d0294351f888cb8680d20031de4878cf4335c16eada54e33427"
+      },
+      {
+        "path": "src/merlin/targetgen/qdq_capture_identity.py",
+        "bytes": 6000,
+        "sha256": "42a46f2b4dfa94f4e979d20d0075496a3b56a5a4f1b9c5d27c2353ce99886a27"
+      },
+      {
+        "path": "src/merlin/verify/compiler_qdq.py",
+        "bytes": 9486,
+        "sha256": "026b1e1f2b5c533845b1debad9948176050461792007844293c05f9657edd99f"
+      },
+      {
+        "path": "src/merlin/verify/compiler_qdq_source.py",
+        "bytes": 2040,
+        "sha256": "b7bf94e2f9d199f2738bd0e1e1d62e9ec9b600de54272caf5753cffc5090a33d"
+      },
+      {
+        "path": "src/merlin/verify/gate_checks.py",
+        "bytes": 6942,
+        "sha256": "f5ded062f786585f12d6856b7942fea559fc41136f2b4ec7e179702f6b845474"
+      },
+      {
+        "path": "src/merlin/verify/gate_worker.py",
+        "bytes": 6915,
+        "sha256": "294dd8b71c0bd5f407031f25543e11f49b8094cfc7abd4322aeaf9d7fee8baa2"
+      },
+      {
+        "path": "src/merlin/verify/pass_validation.py",
+        "bytes": 12130,
+        "sha256": "da0ed565c1a46a5803cbbe17fadaeba4e06e387954ec76eb6c300bad25ce1b19"
+      }
+    ],
+    "original_capture_native_qualification": {
+      "status": "deferred_by_user",
+      "host_controls": 5,
+      "frontend_substituted_in_host_controls": true,
+      "native_success_claim": false,
+      "tools_downloaded": false
+    },
+    "frozen_semantics_spec_lock_or_pins_changed": false,
+    "full_suite_or_full_lean_audit_repeated": false,
+    "lean_guard": "lock-only passed; pinned statements not rechecked",
+    "hygiene": {
+      "structure_findings": 16,
+      "structure_diagnostics_identical_to_previous_baseline": true,
+      "provenance_findings": 2,
+      "provenance_findings_match_previous_report_bytes": true,
+      "ratchets_changed": false,
+      "docs": "passed",
+      "python_format_and_lint": "passed"
+    },
+    "retained_attempt": {
+      "log": "out/build/qdq-compiler-gate-20261029/targeted-v1.log",
+      "outcome": "first successful proof refused by new tuple/list result-shape mismatch; owned run interrupted, representation fixed, full targeted rerun passed"
+    },
+    "prior_evidence_scope": "Earlier current_* fields retain c553814aa and earlier cuts; their bound sources changed. Do not sum overlapping historical/current test IDs or recover live authority from saved status."
   }
 }

@@ -1,4 +1,26 @@
-# Current integration — qualified, 2026-10-29
+# Current Q/DQ compiler integration — 2026-10-29
+
+`feat/pass-verif-integration`, compiler code `0a463e725`, now registers explicit `lower_quant_ext` validation
+for actual xDSL and textual Q/DQ lowerings. It remains outside `all`, which
+still selects the same five default checks. Acceptance establishes typed
+refinement under the proposed Q/DQ source semantics, with source-spec approval
+and framework/native fidelity unestablished.
+
+**80 distinct targeted cases passed**, including six matching gated/ungated LLVM
+pairs and injected lowering failures that prevented product delivery. The
+optional original-PT2 source intake has host controls; its native qualification
+was explicitly deferred by the user until the pinned capture tools are available.
+The [Q/DQ guide](docs/guides/lean_qdq_gate.md) explains the three claims and
+interfaces. See the [current handoff](out/artifacts/handoff/pass-verif-integration-20261028/README.md)
+for evidence, replay and retained attempts.
+
+Earlier qualification below belongs to its stated source cut. Q/DQ integration
+changed bound Python/ledger sources, so earlier source inventories are retained
+history rather than current completion authority.
+
+---
+
+# Earlier loop/buffer/MACC qualification — 2026-10-29
 
 Use **`feat/pass-verif-integration`**, current compiler code
 `c553814aa`. The user resumed the original integration goal after the published

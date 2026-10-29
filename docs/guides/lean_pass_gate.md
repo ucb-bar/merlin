@@ -221,6 +221,10 @@ upstream pass-verification and independent-review histories. Its selector
 registers `prune_dead_pure_tensor_ops`, `cse`, `ordered_loop_unrolling`,
 `ordered_loop_segmentation` and `buffer_reuse`. `--validate-passes all` selects
 all five checks, while transformations themselves remain separately opt-in.
+The explicit `lower_quant_ext` selector checks actual xDSL/textual Q/DQ
+lowering under the proposed source semantics and stays outside `all`.
+Optional original-source qualification is separate from specification approval;
+see [the Q/DQ gate guide](lean_qdq_gate.md).
 The separately registered `bf16_f32acc_draft_contract` check requires explicit
 selection and remains outside `all`. `--macc-f32acc` or
 `Options(macc_f32acc=True)` selects its actual production transformation;

@@ -1,4 +1,49 @@
-# Pass verification integration — qualified compiler cut, 2026-10-29
+# Q/DQ compiler integration follow-up — 2026-10-29
+
+Compiler code `0a463e725` integrates the colleague's `85b354f0d` tooling with explicit
+`--validate-passes lower_quant_ext`. The existing xDSL recorder and an outer
+textual recorder submit actual complete boundaries to the canonical owned
+worker. The textual boundary includes its slice repairs and ABI annotation;
+every edit must pass the full proof. Nested xDSL calls are covered once.
+
+Acceptance is **strict typed refinement under the proposed Q/DQ source model**,
+with source support and chain composition. It does not approve the source
+specification, prove unrestricted framework/IEEE behavior or establish native
+fidelity. Quantizer definedness remains a separate unestablished strengthening.
+Q/DQ and draft MACC remain outside `all`; its five default checks are unchanged.
+
+**80 distinct targeted cases passed**: 54 Q/DQ/capture-host controls, 21 default
+and MACC dispatch controls, and five original-graph reconstruction host controls.
+Six real compiler pairs (quantization, per-tensor dequantization and per-channel
+dequantization, through xDSL/textual paths) have byte-identical gated/ungated LLVM.
+Three injected-quantizer controls prevent compiler product delivery. Counts are
+separate from the older 204-case source cut below and must not be summed.
+
+A fresh process and worker replayed a saved actual quantizer boundary and
+rechecked its exact input/output hashes. Only source bytes and tool selections
+were reused; the earlier accepted status was not proof authority.
+
+Optional `SourceCapture` selection reconstructs original PT2 nodes/returns,
+reuses producer/Torch/graph/IR checks, and rechecks before and after the Lean
+proof. It retains actual endpoint and source/capture hashes, and uses the
+installed owner's wheel pin. **Native source-intake qualification is deferred
+by the user** until the pinned capture tools are available; its five host
+controls substitute the frontend and establish no native success claim.
+Earlier captures require fresh qualification after changed checker-source hashes.
+
+See [the Q/DQ guide](../../../../docs/guides/lean_qdq_gate.md),
+[the nine-interface stack](../../../../docs/guides/lean_compiler_stack.md), and
+[qualification.json](qualification.json) for this follow-up's source manifest,
+logs, fresh replay and retained failed/interrupted attempt. The lock-only Lean
+guard and docs checks passed. No Lean semantics, specification, software pin or
+SPEC_LOCK changed; no full test suite or full Lean audit was repeated.
+
+Everything below retains the earlier loop/buffer/MACC source cut. Its tests and
+audits remain historical evidence; bound sources changed in this follow-up.
+
+---
+
+# Earlier loop/buffer/MACC qualification — code cut `c553814aa`
 
 **Targeted compiler integration is qualified. MACC remains an explicitly selected draft contract.**
 Continue from `feat/pass-verif-integration`. Compiler work is committed at

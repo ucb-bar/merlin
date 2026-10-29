@@ -10,6 +10,7 @@ code_refs:
   - src/merlin/verify/compiler_transforms.py
   - src/merlin/verify/compiler_loop_intake.py
   - src/merlin/verify/compiler_macc.py
+  - src/merlin/verify/compiler_qdq.py
   - src/merlin/verify/speculative_gate.py
   - src/merlin/llvmlower/lower.py
   - src/merlin/compile/command.py
@@ -25,7 +26,8 @@ That handoff distinguishes retained evidence from checks on the current source.
 Select transformations to change the compiler's output. Select validation to
 require a proof of their actual input/output boundaries. Both are opt-in.
 `--validate-passes all` selects DCE, CSE, loop and buffer checks. The explicit
-`bf16_f32acc_draft_contract` check stays outside `all` until independent review.
+`bf16_f32acc_draft_contract` and proposed-model `lower_quant_ext` checks stay
+outside `all`.
 Selecting checks does not enable transformations. A selected, changing boundary that cannot be proved
 stops compilation. An unchanged boundary needs no proof job.
 
@@ -68,6 +70,7 @@ LLVM, object and shared-library products. Each job retains `request.json`,
 | `ordered_loop_segmentation` | Optional source SCF stage; also the final step of the private-buffer chain | Visit `0..10` as ordered groups of three, retaining the short last group | Scalar route: same return/error/world relation; memory route: the complete chain's successful-observation relation |
 | `buffer_reuse` | Optional source normalization→reuse→segmentation chain | Two initialized, nonoverlapping private lifetimes share storage | Same possible successful public observations, under the explicitly selected allocator model |
 | `bf16_f32acc_draft_contract` (explicit only) | Actual `lower_bf16_matmul_f32acc`, including its optional compiler-entry invocation | Extend half operands, accumulate in f32, truncate once | Conformance to the draft numerical reference; numerical approval remains abstracted |
+| `lower_quant_ext` (explicit only) | Actual xDSL Q/DQ pass or complete textual preprocessing | Expand Q/DQ into the specified ordered scalar operations | Strict typed refinement under the proposed Q/DQ source model; optional fresh original-source correspondence |
 
 These are separate relations. A buffer success proof does not establish the
 loop checker's error/world equality or finite-memory allocator behavior. No row
@@ -257,6 +260,21 @@ or approved numerical accuracy. Combining options still requires each boundary
 to meet its own intake domain; the scalar loop checker does not thereby accept
 arbitrary tensor MACC programs.
 
+## Q/DQ expansion under the proposed source model
+
+Select `--validate-passes lower_quant_ext` to require a fresh proof of actual
+Q/DQ lowering. It remains outside `all`. For example, an injected quantizer
+multiply-to-add bug must stop compilation before products return. This reuses
+the existing typed-module, source-support and chain-composition proofs.
+`source_spec_approved=false` distinguishes proof acceptance from source-model
+approval; quantizer definedness and framework/native fidelity remain separate.
+
+An optional `--qdq-source-capture` binds the actual boundary to a freshly
+reconstructed original PT2 graph, pinned producer and Torch payload. It requires
+explicit source tools and complete capture artifacts, rather than a saved
+`matched` flag. See [the Q/DQ gate guide](lean_qdq_gate.md) for the interfaces,
+three distinct guarantees and source-domain limits.
+
 ## Selecting and reviewing coverage
 
 Environment equivalents are `MERLIN_LOOP_UNROLL_FACTOR`, `MERLIN_LOOP_TILE_SIZE`
@@ -272,10 +290,10 @@ refuse rather than silently dropping a selected check.
 The standalone loop and buffer APIs remain available for developer workflows.
 Their raw reports describe those issuers' narrower scopes; the compiler's
 `verdict.json` records enforcement at the integrated boundary. Historical
-qualification and human approval are distinct from a new live proof. Source
-Q/DQ expansion, approved numerical-policy changes and later LLVM CSE have no
-registered compiler gates. The explicit draft MACC check retains its conditional
-claim. [The verification design](../design/merlin_lean_verification.md)
+qualification and human approval are distinct from a new live proof.
+Approved numerical-policy changes and later LLVM CSE have no registered
+compiler gates. The explicit Q/DQ and draft MACC checks retain their qualified
+claims. [The verification design](../design/merlin_lean_verification.md)
 records the separate Lean-MLIR scalar integration and the policy to reuse suitable
 upstream proof components before implementing new ones.
 

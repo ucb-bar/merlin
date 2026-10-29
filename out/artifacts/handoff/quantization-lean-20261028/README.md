@@ -1,5 +1,18 @@
 # Quantization Lean proof handoff — updated 2026-10-29
 
+## Q/DQ compiler-gate follow-up
+
+The new explicit `lower_quant_ext` selector integrates actual xDSL/textual
+lowering checks into compiler enforcement. It remains outside `all` and reports
+refinement under the proposed Q/DQ source model, with no source-spec approval.
+Optional `SourceCapture` reconstruction binds a retained original PT2 graph,
+the pinned producer/Torch payload and complete actual input IR before and after
+the Lean proof. See [the gate guide](../../../../docs/guides/lean_qdq_gate.md)
+for the distinction between source binding, lowering refinement and numerical
+approval. Current test/tool limits are recorded in the integration handoff.
+Earlier statements below about absent Q/DQ gate registration describe the
+`85b354f0d` publication cut and its predecessors.
+
 ## Current integration checkpoint
 
 Continue from `feat/pass-verif-integration`, which includes the inherited

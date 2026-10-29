@@ -54,6 +54,10 @@ check remains outside `all`. Scalar compiler intake now supports multiple
 changed definitions and general argument/carry lists within its bounded domain;
 identity normalization/reuse have explicit proof routes. Current qualification
 and retained source cuts are recorded in the handoff.
+The explicit `lower_quant_ext` compiler gate also remains outside `all`.
+It checks actual xDSL/textual lowering under the proposed Q/DQ source model;
+optional original PT2/capture binding is a separate component. Neither acceptance
+approves the source specification. See [the Q/DQ gate guide](../guides/lean_qdq_gate.md).
 The [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
 records inherited source Q/DQ proofs and the independent numerical review still
 required. MACC acceptance establishes candidate-reference conformance, with
