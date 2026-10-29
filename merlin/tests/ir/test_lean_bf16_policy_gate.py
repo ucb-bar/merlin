@@ -107,7 +107,7 @@ def forbidden(*args, **kwargs):
 
 
 def test_pending_policy_refuses_before_tool_or_boundary_reads(tmp_path, monkeypatch):
-    monkeypatch.setattr(gate, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gate, "installed_root", lambda: tmp_path)
     monkeypatch.setattr(gate, "_tools", forbidden)
     monkeypatch.setattr(gate, "_ref", forbidden)
     monkeypatch.setattr(gate.subprocess, "run", forbidden)
@@ -137,7 +137,7 @@ def test_report_consistency_is_separate_from_admission(tmp_path, monkeypatch):
     # local proof acceptance, but this return is NOT a live gate verdict.
     report.update(conditional_match=False, qualification_passed=False)
     assert gate.validate_report(report, source_export()) == raw_report()["pass_boundary"]["site_obligations"]
-    monkeypatch.setattr(gate, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gate, "installed_root", lambda: tmp_path)
     with pytest.raises(GateRejected):
         gate.check_policy(job(tmp_path))
 
@@ -296,6 +296,7 @@ def test_policy_is_standalone_and_not_a_compiler_gate():
 
 def test_actual_preparation_preserves_bytes_without_policy_observers(tmp_path, monkeypatch):
     from lean_bf16_f32acc_cases import bmm
+
     from merlin.runtime.backends import zephyr_model
 
     source = tmp_path / "source.mlir"
@@ -314,6 +315,7 @@ def test_actual_preparation_preserves_bytes_without_policy_observers(tmp_path, m
 @pytest.mark.parametrize("source_init", ["0.000000e+00", "1.000000e+00"])
 def test_pending_policy_cannot_block_normal_preparation(tmp_path, monkeypatch, source_init):
     from lean_bf16_f32acc_cases import bmm
+
     from merlin.runtime.backends import zephyr_model
     from merlin.verify.speculative_gate import SpeculativeGate
 
@@ -390,6 +392,7 @@ def synthetic_admission(root: Path):
 )
 def test_matching_hashes_do_not_replace_attributable_review(tmp_path, monkeypatch, mutation):
     sources, review, admitted = synthetic_admission(tmp_path)
+    monkeypatch.setattr(gate, "installed_root", lambda: tmp_path)
     monkeypatch.setattr(gate, "source_bindings", lambda _: sources)
     # Coherent synthetic fixture is only documentary parsing, never real admission.
     assert gate.require_admission(tmp_path) == admitted

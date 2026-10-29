@@ -4,6 +4,7 @@ contract is a review candidate, so no result is reported as a reviewed policy ve
 import MerlinVerify.Core.Json
 import MerlinVerify.Check.Bf16F32AccChain
 import MerlinVerify.Check.Bf16F32AccSites
+import MerlinVerify.Check.Bf16F32AccBoundary
 
 namespace MerlinVerify.Driver.Bf16F32Acc
 
@@ -167,6 +168,8 @@ def siteReport (ib : Nat) (before after : Module) : Json := Id.run do
       ("qualification_passed", toJson qualified)]]
   return Json.mkObj [
     ("checked", toJson (Bf16F32AccSites.accept ib exactMatch pairs)),
+    ("positive_boundary_checked", toJson (Bf16F32AccBoundary.check ib before after)),
+    ("positive_boundary_theorem", toJson "MerlinVerify.Check.Bf16F32AccBoundary.check_sound"),
     ("semantic_match", toJson exactMatch),
     ("semantic_match_theorem", toJson "MerlinVerify.Check.Bf16F32AccExact.check_sound"),
     ("site_qualification_passed", toJson allQualified),

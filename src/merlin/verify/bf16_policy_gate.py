@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from merlin.common.paths import repo_root
+from merlin.common.paths import build_dir, checkout_root
 
 from .gate_errors import GateRejected, GateUnavailable, GateUnsupported
 from .lean import bf16_f32acc as policy
@@ -93,6 +93,8 @@ def source_bindings(root: Path) -> dict[str, str]:
             "merlin/contract/schemas/lean_receipt.schema.json",
             "build_tools/scripts/prepare_bf16_review.py",
             "src/merlin/common/paths.py",
+            "src/merlin/common/owned_process.py",
+            "src/merlin/common/owned_children.py",
             "src/merlin/llvmlower/passes_xdsl.py",
             "src/merlin/runtime/backends/zephyr_model.py",
             "src/merlin/frontends/linalg_mlir.py",
@@ -109,12 +111,39 @@ def source_bindings(root: Path) -> dict[str, str]:
     return {str(p.relative_to(root)): _digest(p.read_bytes()) for p in sorted(files)}
 
 
+def installed_root() -> Path:
+    """Resolve governance and proof resources from this installed implementation.
+
+    The ordinary repository/output helpers support caller-selected work roots.
+    Such a root must never supply policy approval, proof sources or checker
+    executables to this trusted gate. Matching aliases are harmless; a different
+    owner refuses before opening governance records or tools.
+    """
+    root = checkout_root()
+    if root is None or (root / "src/merlin/verify/bf16_policy_gate.py").resolve() != Path(__file__).resolve():
+        raise GateUnavailable("bf16 policy requires its installed source owner")
+    root = root.resolve()
+    for name, expected in (
+        ("MERLIN_REPO_ROOT", root),
+        ("MERLIN_WORK_DIR", root),
+        ("MERLIN_OUT_ROOT", root / "out"),
+    ):
+        selected = os.environ.get(name)
+        if selected and Path(selected).resolve() != expected.resolve():
+            raise GateRejected(f"bf16 trusted source owner cannot be overridden by {name}")
+    return root
+
+
 def require_admission(root: Path) -> dict:
     """Only the fixed, coordinator-installed record can select an approved policy.
 
     Absence refuses before any native/tool read. Attribution is an explicit trusted
     installation premise; hashes alone and caller booleans cannot grant approval.
     """
+    owner = installed_root()
+    if Path(root).resolve() != owner:
+        raise GateRejected("bf16 admission must belong to the installed source owner")
+    root = owner
     path = root / ADMISSION
     if not path.is_file():
         raise GateRejected("human_review_pending: no installed bf16 policy admission")
@@ -295,7 +324,7 @@ def _bound(ref: dict) -> None:
         raise GateRejected("bound checker/input/report bytes changed")
 
 
-def _tools(params: dict, admitted: dict) -> dict:
+def _tools(params: dict, admitted: dict | None = None) -> dict:
     """Use ordinary repository freshness and receipt identity, not a custom SDK provider."""
     from .lean import check
     from .pass_validation import CheckerTools
@@ -305,9 +334,9 @@ def _tools(params: dict, admitted: dict) -> dict:
     # package discovery rather than the configured compiler environment.
     python = Path(params["compiler_python"]).absolute()
     CheckerTools(sdk, python)
-    if check._lean_block() != admitted["lean"]:
+    if admitted is not None and check._lean_block() != admitted["lean"]:
         raise GateRejected("checker/spec identity differs from approved policy build")
-    if {**check._exporter_block(python), "round_trip": "identical"} != admitted["exporter"]:
+    if admitted is not None and {**check._exporter_block(python), "round_trip": "identical"} != admitted["exporter"]:
         raise GateRejected("exporter identity differs from approved policy build")
     paths = {
         "lake": sdk / "lake",
@@ -319,31 +348,95 @@ def _tools(params: dict, admitted: dict) -> dict:
     return {k: _ref(p) for k, p in paths.items()}
 
 
-def audit_candidate(tools: dict, work: Path) -> dict:
+def project_objects(root: Path) -> list[dict]:
+    """Current project import objects, separate from the compiled checker image."""
+    if root != installed_root():
+        raise GateRejected("project import inventory must belong to the installed source owner")
+    base = build_dir() / "lean/build/lib/lean"
+    paths = sorted(p for p in base.rglob("*.olean*") if p.is_file() and not p.name.endswith(".hash"))
+    if not paths or not (base / "Main.olean").is_file():
+        raise GateUnavailable("canonical project import objects unavailable")
+    return [_ref(path) for path in paths]
+
+
+def audit_candidate(tools: dict, work: Path, *, roots: dict | None = None, roots_mode: bool = False) -> dict:
     """Exact selected lake env/auditor; no implicit build or ~/.elan fallback."""
     from .lean import check
 
+    selected = ROOTS if roots is None else roots
     env = {**os.environ, "PATH": str(Path(tools["lake"]["path"]).parent) + os.pathsep + os.environ.get("PATH", "")}
+    artifacts = []
 
     def run(label, arguments):
-        proc = subprocess.run(
+        runner = subprocess.run
+        kwargs = {"check": False}
+        if roots_mode:
+            from merlin.common import owned_process
+
+            runner, kwargs = owned_process.run, {}
+        proc = runner(
             [tools["lake"]["path"], "env", tools["audit"]["path"], *arguments],
             cwd=check.lean_root(),
             env=env,
             capture_output=True,
             text=True,
             timeout=300,
-            check=False,
+            **kwargs,
         )
-        (work / (label + ".stdout")).write_text(proc.stdout)
-        (work / (label + ".stderr")).write_text(proc.stderr)
+        for suffix, output in (("stdout", proc.stdout), ("stderr", proc.stderr)):
+            path = work / (label + "." + suffix)
+            path.write_text(output)
+            artifacts.append(_ref(path))
+        if roots_mode:
+            cleanup = getattr(proc, "owned_process_cleanup", None)
+            if type(cleanup) is not dict or cleanup.get("complete") is not True:
+                raise GateUnavailable("draft MACC auditor child cleanup is unknown")
+            path = work / (label + ".cleanup.json")
+            path.write_text(json.dumps(cleanup, sort_keys=True) + "\n")
+            artifacts.append(_ref(path))
         if proc.returncode != 0:
             raise GateUnavailable(f"bf16 audit {label} failed: exit {proc.returncode}")
         return json.loads(proc.stdout.strip().splitlines()[-1])
 
     for ref in tools.values():
         _bound(ref)
-    modules = sorted(set(ROOTS.values()))
+    modules = sorted(set(selected.values()))
+    if roots_mode:
+        root = installed_root()
+        objects = project_objects(root)
+        result = run("roots", ["--roots", ",".join(selected), "Main", *modules])
+        if (
+            result.get("audit_scope") != "exact_roots_and_all_imported_project_declaration_safety"
+            or result.get("roots") != list(selected)
+            or type(result.get("theorems_audited")) is not int
+            or result["theorems_audited"] != len(selected)
+            or result.get("violations") != []
+        ):
+            raise GateRejected("draft MACC exact-root/declaration-safety audit refused")
+        axioms, statements = result.get("root_axioms"), result.get("statements")
+        if type(axioms) is not dict or set(axioms) != set(selected):
+            raise GateUnavailable("incomplete draft MACC transitive axiom roster")
+        if type(statements) is not dict or set(statements) != set(selected):
+            raise GateUnavailable("incomplete draft MACC theorem statement roster")
+        for name in selected:
+            if type(statements[name]) is not str or not statements[name]:
+                raise GateUnavailable("missing draft MACC theorem type")
+            if type(axioms[name]) is not list or any(type(a) is not str for a in axioms[name]):
+                raise GateUnavailable("malformed draft MACC transitive axioms")
+            if not set(axioms[name]) <= STD3:
+                raise GateRejected("draft MACC theorem is not standard-three-only")
+        for ref in [*tools.values(), *artifacts, *objects]:
+            _bound(ref)
+        if project_objects(root) != objects:
+            raise GateRejected("draft MACC imported project objects changed during audit")
+        return {
+            "audit_scope": result["audit_scope"],
+            "axioms": axioms,
+            "statements": statements,
+            "closure": result,
+            "artifacts": artifacts,
+            "project_objects": objects,
+        }
     closure = run("closure", ["Main", *modules])
     if (
         closure.get("violations") != []
@@ -351,11 +444,11 @@ def audit_candidate(tools: dict, work: Path) -> dict:
         or closure["theorems_audited"] <= 0
     ):
         raise GateRejected("checker dependency audit refused")
-    statements = run("statements", ["--statements", ",".join(ROOTS), *modules]).get("statements")
-    if type(statements) is not dict or set(statements) != set(ROOTS):
+    statements = run("statements", ["--statements", ",".join(selected), *modules]).get("statements")
+    if type(statements) is not dict or set(statements) != set(selected):
         raise GateUnavailable("incomplete live theorem statement roster")
     axioms = {}
-    for i, (name, module) in enumerate(ROOTS.items()):
+    for i, (name, module) in enumerate(selected.items()):
         result = run(f"root-{i}", ["--axioms", name, module])
         ax = result.get("axioms")
         if (
@@ -380,7 +473,7 @@ def check_policy(job: dict[str, Any]) -> dict[str, Any]:
         raise GateUnsupported("bf16 policy gate supports index64 only")
     if any(type(params[k]) is not str or not params[k] for k in ("sdk_bin", "compiler_python")):
         raise GateUnsupported("explicit tool paths required")
-    root = repo_root()
+    root = installed_root()
     admitted = require_admission(root)  # MUST precede tool/SDK access.
     try:
         before, after = _ref(Path(job["before"])), _ref(Path(job["after"]))

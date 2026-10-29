@@ -82,3 +82,17 @@ def test_refused_human_admission_keeps_publication_pending(tmp_path, monkeypatch
 
     monkeypatch.setattr(module, "require_admission", pending)
     assert not module.reviewed(tmp_path, lock, statements)
+
+
+def test_publisher_cannot_consume_review_from_a_caller_tree(tmp_path, monkeypatch):
+    from merlin.verify import bf16_policy_gate
+
+    module = publisher()
+    lean = tmp_path / "merlin/lean"
+    lock, statements = installed(lean, module)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("publisher opened caller-selected policy governance")
+
+    monkeypatch.setattr(bf16_policy_gate, "_json", forbidden)
+    assert not module.reviewed(lean, lock, statements)

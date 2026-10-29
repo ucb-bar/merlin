@@ -14,6 +14,10 @@ import Lean
 `merlin-lean-audit --axioms <decl> <module>...` prints one declaration's axioms as JSON.
 `merlin-lean-audit --statements <decl>,<decl>,... <module>...` prints each declaration's elaborated
 statement (its type, fully explicit) as JSON, so the guard can pin what each claim theorem says.
+`merlin-lean-audit --roots <decl>,<decl>,... <module>...` scans the complete imported project
+declaration environment for banned constructs and audits the transitive axiom closure of exactly
+the requested theorem roots. It reports that narrower scope explicitly; it does not audit the
+axiom closure of unrelated imported theorems. The default full audit is unchanged.
 Exit status: 0 clean, 1 violations, 2 usage/import error.
 -/
 
@@ -76,19 +80,30 @@ def jsonStrList (xs : List String) : String := (jsonStrListJson xs).compress
 
 def main (args : List String) : IO UInt32 := do
   initSearchPath (← findSysroot)
-  let (axiomTarget, statementTargets, declaredIn, mods) := match args with
-    | "--axioms" :: d :: ms => (some d, [], none, ms)
-    | "--statements" :: ds :: ms => (none, ds.splitOn ",", none, ms)
-    | "--defined-in" :: m :: ms => (none, [], some m, ms)
-    | ms => (none, [], none, ms)
+  let (axiomTarget, statementTargets, declaredIn, roots, mods) := match args with
+    | "--axioms" :: d :: ms => (some d, [], none, none, ms)
+    | "--statements" :: ds :: ms => (none, ds.splitOn ",", none, none, ms)
+    | "--defined-in" :: m :: ms => (none, [], some m, none, ms)
+    | "--roots" :: ds :: ms => (none, [], none, some (ds.splitOn ","), ms)
+    | ms => (none, [], none, none, ms)
   if mods.isEmpty then
-    IO.eprintln "usage: merlin-lean-audit [--axioms <decl> | --statements <decl>,... | --defined-in <module>] <module>..."
+    IO.eprintln "usage: merlin-lean-audit [--axioms <decl> | --statements <decl>,... | --defined-in <module> | --roots <decl>,...] <module>..."
     return 2
   if let some m := declaredIn then
     if !mods.contains m then
       IO.eprintln "--defined-in must name an explicitly imported module"
       return 2
   let env ← importModules (mods.toArray.map fun m => { module := m.toName }) {} (loadExts := false)
+  if let some names := roots then
+    if names.isEmpty || names.any String.isEmpty || names.eraseDups.length != names.length then
+      IO.eprintln "--roots requires a nonempty, duplicate-free theorem roster"
+      return 2
+    for name in names do
+      match env.find? name.toName with
+      | some (.thmInfo _) => pure ()
+      | _ =>
+        IO.eprintln s!"unknown or non-theorem root: {name}"
+        return 2
   if let some d := axiomTarget then
     let axs ← axiomsOf env d.toName
     IO.println (Json.mkObj [("decl", d), ("axioms", jsonStrListJson (axs.toList.map toString))]).compress
@@ -123,10 +138,29 @@ def main (args : List String) : IO UInt32 := do
         violations := violations.push s!"axiom outside a reviewed Assumptions module: {n}"
     | .thmInfo _ =>
       theorems := theorems + 1
-      for a in (← axiomsOf env n) do
-        if !(allowedAxioms.contains a || reviewedAssumption env a) then
-          violations := violations.push s!"theorem {n} depends on axiom {a}"
+      if roots.isNone then
+        for a in (← axiomsOf env n) do
+          if !(allowedAxioms.contains a || reviewedAssumption env a) then
+            violations := violations.push s!"theorem {n} depends on axiom {a}"
     | _ => pure ()
+  if let some names := roots then
+    let mut axioms : Array (String × Json) := #[]
+    let mut statements : Array (String × Json) := #[]
+    for name in names do
+      let axs ← axiomsOf env name.toName
+      axioms := axioms.push (name, jsonStrListJson (axs.toList.map toString))
+      if let some ci := env.find? name.toName then
+        statements := statements.push (name, Json.str (toString (canonBinders 0 ci.type)))
+      for a in axs do
+        if !allowedAxioms.contains a then
+          violations := violations.push s!"root theorem {name} depends on axiom {a}"
+    IO.println (Json.mkObj [
+      ("audit_scope", toJson "exact_roots_and_all_imported_project_declaration_safety"),
+      ("roots", toJson names), ("root_axioms", Json.mkObj axioms.toList),
+      ("statements", Json.mkObj statements.toList),
+      ("theorems_audited", toJson names.length), ("project_theorems_scanned", toJson theorems),
+      ("violations", jsonStrListJson (violations.toList.map toString))]).compress
+    return (if violations.isEmpty then 0 else 1)
   IO.println (Json.mkObj [("theorems_audited", toJson theorems),
     ("defined_in", jsonStrListJson declaredIn.toList),
     ("violations", jsonStrListJson (violations.toList.map toString))]).compress

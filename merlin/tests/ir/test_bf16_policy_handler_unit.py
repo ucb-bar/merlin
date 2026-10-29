@@ -134,7 +134,7 @@ def test_wrong_policy_status_width(pair, field, value):
 
 
 def test_missing_admission_never_opens_tools_or_inputs(tmp_path, monkeypatch):
-    monkeypatch.setattr(gate, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gate, "installed_root", lambda: tmp_path)
 
     def forbidden(*a, **kw):
         raise AssertionError("tool/source invocation before approval")
