@@ -47,7 +47,7 @@ def _workspace(tmp_path, cohort=("big", "mid", "small")):
     (ws / "OPTIMIZATION_SUGGESTIONS.json").write_text(json.dumps({"all_mechanisms": CATALOGUE}))
     (ws / "PUBLIC_CAPABILITIES.json").write_text(json.dumps({
         "schema": "merlin.public_capability_inventory.v1",
-        "members": {name: {"workload_role": "large_kernel"} for name in cohort},
+        "members": {name: {"workload_role": "large_kernel", "selfcheck_suite": "scalability"} for name in cohort},
     }))
     (run / "qa_history").mkdir(parents=True)
     verdict = {"joint_test_selection": {"performance_cohorts": {"primary": list(cohort)}},
@@ -236,7 +236,10 @@ def test_in_flight_work_is_sized_from_free_cpus(tmp_path, gates, monkeypatch):
     _running(ws)
     gates["slots"] = 3
     assert tick() == "tuning submitted"
-    assert len(_requests(ws)) == 4  # every variant has one experiment now
+    assert len(_requests(ws)) == 5  # finish b's two siblings, then start a in the remaining slot
+    _running(ws)
+    assert tick() == "tuning submitted"  # a's two siblings are still owed, even after its representative ran
+    assert sum(len(body["capsules"].split(",")) for body in _requests(ws).values()) == 12
     _running(ws)
     assert tick() == "estimates current; no untried tuning candidate"
     # The caps are optional: an operator may still bound experiments in flight.
@@ -414,10 +417,13 @@ def test_author_variant_checks_are_ranked_and_not_timed_again(tmp_path, gates, m
     assert tick() == "tuning submitted"
     jobs = sorted((b["submission"], b["capsules"]) for b in _requests(ws).values())
     # Bundles in value order (newest variant first within one); "mine" is not timed again on "mid",
-    # where the author already timed it, so the first bundle gets only "other".
-    assert jobs == [("variants/other", "big"), ("variants/other", "mid,small")]
+    # where the author already timed it; its still-unchecked sibling is retained.
+    assert jobs == [("variants/mine", "small"), ("variants/other", "mid,small")]
     _running(ws)
     gates["slots"] = 1
+    assert tick() == "tuning submitted"
+    assert ("variants/other", "big") in [(b["submission"], b["capsules"]) for b in _requests(ws).values()]
+    _running(ws)
     assert tick() == "tuning submitted"
     assert ("variants/mine", "big") in [(b["submission"], b["capsules"]) for b in _requests(ws).values()]
     rows = {(r["candidate"]["label"], r["test_case"]): r for r in _ledger(ws)["experiments"]}
@@ -683,3 +689,86 @@ def test_partial_current_cohort_sweeps_while_refreshing_missing_baselines(tmp_pa
     assert {'mid', 'small'} <= timed
     work = [(r['submission_sha256'], n) for r in _requests(ws).values() for n in r['capsules'].split(',')]
     assert len(work) == len(set(work))
+
+
+def test_mixed_public_bundle_routes_every_case_and_preserves_overrides(tmp_path, gates, monkeypatch):
+    """The live failure: a scalability representative carried core/calibration siblings."""
+    ws, _run = _workspace(tmp_path, cohort=("primary", "control", "program"))
+    suites = {"primary": "scalability", "control": "core", "program": "programs"}
+    inventory = json.loads((ws / "PUBLIC_CAPABILITIES.json").read_text())
+    for name, suite in suites.items():
+        inventory["members"][name]["selfcheck_suite"] = suite
+    (ws / "PUBLIC_CAPABILITIES.json").write_text(json.dumps(inventory))
+    _knobs(ws)
+    _baseline(ws, "d1", {"primary": 900, "control": 300, "program": 500})
+    _bundles(ws, monkeypatch, [{"label": "mixed", "representative": "primary",
+                              "siblings": ["control", "program"]}])
+    tuner = U.IdleTuner(ws)
+    channel = ws / ".qa_channel"
+    jobs = tuner.plan(channel, "d1", list(suites), dict.fromkeys(suites, "pass"), I.estimates(channel))
+    assert {(job["suite"], tuple(job["cases"])) for job in jobs} == {
+        (suite, (name,)) for name, suite in suites.items()}
+    for job in jobs:
+        tuner.submit(channel, job, job["cases"], "d1", timeout=37)
+    bodies = list(_requests(ws).values())
+    assert len(bodies) == 3
+    for body in bodies:
+        assert body["suite"] == suites[body["capsules"]]
+        assert body["tuning_overrides"] == {"ready_readout": True}
+        assert body["submission_sha256"] == body["tuning_experiment"]["base_sha256"] == "d1"
+        assert body["sim"] == "spike" and body["timeout"] == 37
+        assert body.get("tiers") == ("L0,L1,L2" if body["suite"] == "core" else None)
+    assert json.loads((ws / "submission/tuning.json").read_text()) == {"ready_readout": False}
+
+
+def test_refused_or_partial_requests_do_not_cover_unreturned_cases(tmp_path, gates):
+    ws, _run = _workspace(tmp_path, cohort=("primary", "control"))
+    _knobs(ws)
+    channel = ws / ".qa_channel"
+    body = {"request_id": "bad", "submission": "submission", "submission_sha256": "d1",
+            "suite": "scalability", "capsules": "primary,control",
+            "tuning_overrides": {"ready_readout": True}, "deadline_unix_ns": 2**62}
+    (channel / "req_bad.json").write_text(json.dumps(body))
+    (channel / "resp_bad.json").write_text(json.dumps({
+        "error": "public scalability request names unknown or empty cases", "all_pass": False}))
+    assert U.IdleTuner(ws)._tried(channel, {}, None)[1] == set()
+    body["request_id"] = "partial"
+    (channel / "req_partial.json").write_text(json.dumps(body))
+    _answer(ws, "partial", {**body, "capsules": "primary", "tuning_experiment": None}, {"primary": 100})
+    assert U.IdleTuner(ws)._tried(channel, {}, None)[1] == {("knob:ready_readout=true", "primary")}
+
+
+def test_core_candidate_missing_baseline_uses_same_route_without_extra_cpu_budget(tmp_path, gates):
+    ws, run = _workspace(tmp_path, cohort=("control",))
+    inventory = json.loads((ws / "PUBLIC_CAPABILITIES.json").read_text())
+    inventory["members"]["control"]["selfcheck_suite"] = "core"
+    (ws / "PUBLIC_CAPABILITIES.json").write_text(json.dumps(inventory))
+    _knobs(ws)
+    measurer = I.IdleMeasurer(ws, run, digest=lambda _root: "d1")
+    candidate = measurer.tuner.candidates("d1", None)[0]
+    job = {"candidate": candidate, "cases": ["control"], "suite": "core"}
+    assert measurer._experiment(ws / ".qa_channel", job, "d1", {}, 1, {}) == 0
+    assert not _requests(ws, I.REQUEST_PREFIX)
+    assert measurer._experiment(ws / ".qa_channel", job, "d1", {}, 2, {}) == 2
+    bodies = list(_requests(ws, I.REQUEST_PREFIX).values())
+    assert len(bodies) == 2 and all(b["suite"] == "core" and b["tiers"] == "L0,L1,L2" for b in bodies)
+
+
+def test_empty_result_retries_are_bounded_without_claiming_case_coverage(tmp_path, gates):
+    ws, _run = _workspace(tmp_path, cohort=("big",))
+    _knobs(ws)
+    _baseline(ws, "d1", {"big": 900})
+    channel = ws / ".qa_channel"
+    tuner = U.IdleTuner(ws)
+    known = I.estimates(channel)
+    for _attempt in range(2):
+        job, = tuner.plan(channel, "d1", ["big"], {"big": "pass"}, known)
+        rid = tuner.submit(channel, job, ["big"], "d1")
+        (channel / f"resp_{rid}.json").write_text(json.dumps({"all_pass": False, "error": "no case result"}))
+    assert tuner._tried(channel, known, None)[1] == set()
+    assert tuner.plan(channel, "d1", ["big"], {"big": "pass"}, known) == []
+    progress = tuner.progress(channel, "d1", known, cohort=["big"], l2={"big": "pass"})
+    assert progress["status"] == "retry_deferred" and progress["outstanding_candidate_cases"] == 1
+    assert progress["retry_deferred_candidate_cases"] == 1
+    assert tuner.plan(channel, "d1", ["big"], {"big": "pass"}, known, selection="new-model")
+    assert tuner._empty_attempts(channel, "d2", None, candidates=tuner.candidates("d2", None)) == {}

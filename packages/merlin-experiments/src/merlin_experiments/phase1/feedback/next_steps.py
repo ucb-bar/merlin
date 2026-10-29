@@ -686,6 +686,10 @@ def _bundle_lines(families: dict, steps: list[dict]) -> None:
 
 
 def attach(document: dict, rows, brief, *, workspace=None, families=None, context=None) -> None:
+    from ..author_profiles import modern_advice
+
+    if not modern_advice():
+        return
     """Put :data:`KEY` on ``document``; never raises (the response stays as it was)."""
     try:
         found = block(document, rows, brief, workspace=workspace, families=families, context=context)

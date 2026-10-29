@@ -41,7 +41,7 @@ from merlin_experiments.phase1.brokers import selfcheck_sources as sources
 from merlin_experiments.phase1.brokers import selfcheck_tuning as tuning
 from merlin_experiments.phase1.context import add_context_arguments, context_argv, resolve_context
 from merlin_experiments.phase1.feedback.dispatch import REQUIRED_SIM, grade_selection_for
-from merlin_experiments.phase1.feedback.idle_performance import OPERATOR_ORIGINS
+from merlin_experiments.phase1.feedback.idle_performance import OPERATOR_ORIGINS, TUNING_ORIGIN
 from merlin_experiments.phase1.feedback.idle_performance import ORIGIN as IDLE_ORIGIN  # noqa: F401 -- stable name
 from merlin_experiments.phase1.feedback.idle_performance import REQUEST_PREFIX as IDLE_REQUEST_PREFIX
 from merlin_experiments.phase1.feedback.selfcheck import _public_capsules, worker_command
@@ -170,6 +170,14 @@ def _log_tail(path: Path, limit: int) -> str:
     return agent_visible_text(window)[-limit:]
 
 
+def _advisory_request(request: dict) -> bool:
+    """Background timings and sweep baselines are observations, never promotion inputs."""
+    experiment = request.get("tuning_experiment")
+    return request.get("origin") in (IDLE_ORIGIN, TUNING_ORIGIN) or (
+        isinstance(experiment, dict) and experiment.get("schema") == "merlin.idle_tuning_experiment.v1"
+    )
+
+
 def _decorate_response(
     raw: str, request: dict, rid: str, submission_sha256: str, *, started_ns: int, completed_ns: int
 ) -> dict:
@@ -214,6 +222,8 @@ def _decorate_response(
     # Which tree this verdict is about, on every response; a variant's also says it is not official.
     body.update(sources.response_fields(request, submission_sha256))
     body.update(tuning.response_fields(request))  # knob overrides grade a private copy, never submission/
+    if _advisory_request(request):
+        body.update(official=False, advisory_only=True)
     from ..feedback import reference_experiments
     body.pop("reference_experiment_result", None)  # only the owned request/result join can issue this observation
     reference_experiments.attach(body, current_compiler_sha256=submission_sha256)
@@ -1018,6 +1028,17 @@ def main(
                     _atomic_write(resp, json.dumps(doc))
                     _atomic_write(ch / f"done_{rid}", "err")
                     continue
+            from ..author_profiles import check_broker_action
+
+            try:
+                check_broker_action("candidate-diagnostics" if r.get("candidate_diagnostics") else r.get("action"))
+            except FileNotFoundError as error:
+                body = {"status": "unavailable", "reason": str(error), "all_pass": False}
+                doc = _decorate_response(json.dumps(body), r, rid, graded_digest,
+                                         started_ns=started_ns, completed_ns=time.time_ns())
+                _atomic_write(resp, json.dumps(doc))
+                _atomic_write(ch / f"done_{rid}", "ok")
+                continue
             if r.get("action") == "mechanism-question":
                 try:
                     from ..joint_mechanism_questions import submit
@@ -1106,6 +1127,7 @@ def main(
                 continue
             inspection = r.get("caller_layout") or r.get("candidate_diagnostics") or r.get("compile_only")
             suite = r.get("suite", "core")
+            advisory = _advisory_request(r)
             suite_error = None
             measurement = None  # an operator-authorized idle gSIM measurement (joint_gsim_measurement)
             if suite in {"scalability", "programs"}:
@@ -1121,7 +1143,13 @@ def main(
                 measurement = broker_admission(rid, r) if admits else None
                 try:
                     if measurement is None:
-                        request_policy(r.get("sim"), r.get("tiers"), inspection=probing)
+                        source_inspection = None
+                        if suite == "scalability":
+                            from ..feedback.public_scalability_inspection import requested
+
+                            source_inspection = requested(r)
+                        request_policy(r.get("sim"), r.get("tiers"),
+                                       inspection=probing and source_inspection is None)
                     if selected(context) is None:
                         raise ValueError("no operator public suite is selected")
                 except (ValueError, TypeError) as exc:
@@ -1283,6 +1311,7 @@ def main(
                 if (
                     suite == "core"
                     and not variant
+                    and not advisory
                     and not r.get("caller_layout")
                     and not any(r.get(key) for key in FORWARDED_PROBES)
                 ):
@@ -1307,7 +1336,7 @@ def main(
 
                     # The foreground marker describes submission/ work; a variant publishes none.
                     foreground = contextlib.nullcontext()
-                    if suite == "core" and not variant:
+                    if suite == "core" and not variant and not advisory:
                         foreground = active_full_selfcheck(
                             ws=ws,
                             process=proc,
@@ -1406,7 +1435,7 @@ def main(
             # The optional queueing below must never hash the newly edited live workspace.
             promotion_source = None
             try:
-                if resp.exists() and not variant and suite == "core":  # only core results can promote
+                if resp.exists() and not variant and not advisory and suite == "core":
                     from ..feedback.result_details import hydrate
 
                     passed = hydrate(json.loads(resp.read_text()), workspace=ws)
@@ -1431,7 +1460,7 @@ def main(
             # optional promotion: promotion is not part of the request and must not delay broker shutdown.
             if _should_stop(ch, orig_ppid):
                 continue
-            if inspection or variant or suite != "core":
+            if inspection or variant or advisory or suite != "core":
                 # Static observations cannot trigger a numerical/RTL promotion or
                 # pay for a simulator after a deliberately no-execution request.
                 # A variant is never submission/: its verdict promotes nothing.

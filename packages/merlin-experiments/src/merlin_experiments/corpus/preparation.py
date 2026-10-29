@@ -1132,6 +1132,9 @@ def scaffold(
     public_program_suite: dict | None = None,
     host_capability_selection: tuple[Path, str] | None = None,
     public_reference_manifest: Path | None = None,
+    author_profile=None,
+    author_profile_sources=None,
+    author_profile_common_inputs=None,
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
@@ -1394,6 +1397,11 @@ def scaffold(
             ),
         )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
+    if author_profile:
+        from merlin_experiments.phase1.author_profiles import stage_release_bundles
+
+        inputs["author_profile"] = stage_release_bundles(experiment, promoted, profile=author_profile,
+            source_selection=author_profile_sources, common_inputs=author_profile_common_inputs)
     if common_substrate is not None or python_source_root is not None:
         inputs["bundle_generation"]["compiler_source"] = {
             "common_substrate": substrate,

@@ -33,7 +33,7 @@ reviewed_phase0 = "merlin_experiments.corpus.release:verify_exact_offload_bindin
 where = ["src"]
 
 [tool.setuptools.package-data]
-merlin_experiments = ["resources/*.json", "phase1/author_skills/*/SKILL.md", "phase1/author_skills/*/scripts/*.py", "phase1/author_skills/*/reference/*.md"]
+merlin_experiments = ["resources/*.json", "phase1/fresh10_profile_data.json", "phase1/author_skills/*/SKILL.md", "phase1/author_skills/*/scripts/*.py", "phase1/author_skills/*/reference/*.md"]
 "merlin_experiments.execution" = ["container_guardian.c"]
 
 [tool.pytest.ini_options]

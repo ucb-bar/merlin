@@ -70,10 +70,62 @@ COEVOLUTION_FEEDBACK_GUIDANCE = (
 )
 
 
+def profile_authoring_prompt(*, continuation: bool = False) -> str | None:
+    """Common instructions for the restricted versioned profiles, before legacy dispatch.
+
+    Counts, budgets, source availability and routing come from the selected sealed
+    task and runtime guidance. None is inferred from historical experiment levels.
+    """
+    from ..author_profiles import current
+
+    profile = current()
+    if profile is None or profile.modern or profile.fresh10:
+        return None
+    return ("Continue developing the same compiler. " if continuation else "Develop one general compiler. ") + (
+        "Read TASK.md, AUTHOR_PROFILE.json, applicable workspace instructions and the current "
+        "qa/round_brief.md and qa/verdict.json when present. The sealed task and public inventory "
+        "define the selected cases, source/tool availability, resource limits, authoring deadline "
+        "and evaluation policy. Follow that actual contract; unavailable optional tooling is not "
+        "a required discovery step. Use the supplied implementation material where useful and "
+        "author additional general compiler code within the declared constraints.\n\n"
+        "Build or improve the compiler under submission/ from its declared origin. Preserve all "
+        "selected numerical, layout, placement, ISA and output requirements. Write valid executable "
+        "entrypoints and submission/manifest.yaml so the evaluator has a candidate to assess. "
+        "Use public source semantics and hardware facts to choose reusable implementations, "
+        "and retain correctness while improving complete-call performance. Do not hardcode case "
+        "identities or reference answers, alter grading contracts or read private evaluation data.\n\n"
+        "Use the supplied agent_selfcheck.py interface for affected named cases under the task's "
+        "selected engine and tier policy. Submit related cases together, use --wait-budget 5 "
+        "to collect a request ID, keep useful work progressing, and retrieve results with --attach ID. "
+        "Use --list to inspect requests. Avoid duplicate equivalent requests and repeated broad "
+        "sweeps after small edits. Missing or pending results are not passes. Match each result to "
+        "its actual source snapshot; report correctness, estimates and qualified measurements separately.\n\n"
+        "Delegate useful independent work within the recorded helper and shared CPU limits. Give "
+        "helpers narrow ownership and clear interfaces, integrate completed changes promptly, and "
+        "preserve evidence and tested incumbents while exploring alternatives. Keep concise notes "
+        "on hypotheses, changes, checks, failures and measured or modeled results. Follow the "
+        "original authoring deadline, including interruptions, and report demonstrated results. "
+        "Begin now."
+    )
+
+
 def authoring_prompt() -> str:
     """Required startup discovery precedes authoring; a submitted manifest then enables grading."""
+    selected_profile_prompt = profile_authoring_prompt()
+    if selected_profile_prompt is not None:
+        return selected_profile_prompt
+
     from .. import joint_control
     from ..full_compiler_workspace import selected as full_compiler_selected
+    from ..author_profiles import current
+
+    profile = current()
+    if profile is not None and profile.fresh10:
+        from ..fresh10_disclosure import author_prompt
+
+        return author_prompt(_full_compiler_prompt(
+            joint_control.selfcheck_routing_guidance() if joint_control.selected() else ""),
+            continuation=profile.seeded)
 
     if full_compiler_selected() is not None:
         return _full_compiler_prompt(joint_control.selfcheck_routing_guidance() if joint_control.selected() else "")
@@ -117,7 +169,7 @@ def authoring_prompt() -> str:
             "L3 and selected calibration tiers remain mandatory. Expected refusals remain refusals. "
             "Large cases use Spike, not gSIM. "
             + joint_control.selfcheck_routing_guidance() + "\n\n"
-            "Use up to 16 independent helpers when supported by the selected ceiling, with all 20 CPUs "
+            "Use independent helpers up to the selected helper ceiling, with the selected CPUs "
             "dynamically shared. Parallelize frontend/graph transforms, scheduling/codegen, and numerical "
             "or performance diagnosis when useful. Give each bounded file ownership, integrate completed "
             "work frequently into the same compiler, and retain reusable passes and semantic/shape/resource "
@@ -243,10 +295,10 @@ def _full_compiler_prompt(routing: str) -> str:
         "runtime policy requires a declaration, follow its actual tool feedback without adding extra gates. "
         "A tiny executable is often a cheap way to expose ABI mistakes, but start any useful independent "
         "construction, compile check or eligible simulation as soon as it can produce actionable feedback.\n\n"
-        "Use up to 16 helpers within the selected ceiling when independent work is available. Divide "
+        "Use the selected helper ceiling when independent work is available. Divide "
         "components and changes with clear ownership; integrate completed work frequently into the same "
         "compiler. There is no minimum helper count and no need to occupy workers with duplicate tasks. "
-        "All 20 CPUs form one dynamically shared pool. Keep useful tests concurrent within that resource "
+        "All selected CPUs form one dynamically shared pool. Keep useful tests concurrent within that resource "
         "budget; avoid duplicate equivalent requests and repeated broad checks after small changes. "
         "Keep editing and integrating while immutable snapshots grade. Do not wait for all helpers, "
         "source quiet or an entire batch to consume a completed result.\n\n"

@@ -2,6 +2,7 @@
 
 import pytest
 
+from merlin.common.digest import sha256_file
 from merlin.targetgen.owned_host_model_execution import _host_call_proof, _mandatory_source_commands
 
 
@@ -439,7 +440,8 @@ def test_empty_global_class_roster_is_explicit_only_for_source_bound_models(tmp_
     monkeypatch.setattr(
         target_experiment,
         "load_target_experiment",
-        lambda path: SimpleNamespace(target="synthetic", capsule_corpus=corpus / "isa"),
+        lambda path: SimpleNamespace(target="synthetic", capsule_corpus=corpus / "isa",
+                                     descriptor_sha256=sha256_file(descriptor)),
     )
     with pytest.raises(NativeModelExecutionError, match="coverage"):
         _frozen_model_policy(capsule, target="synthetic")
@@ -492,7 +494,7 @@ def test_direct_model_slice_reads_exact_declared_instruction_policy(tmp_path, mo
     )
     monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
     monkeypatch.setattr(target_experiment, "load_target_experiment", lambda path: SimpleNamespace(
-        target="synthetic", capsule_corpus=corpus / "isa"
+        target="synthetic", capsule_corpus=corpus / "isa", descriptor_sha256=sha256_file(descriptor)
     ))
     policy = _frozen_model_policy(capsule, target="synthetic", source_bound_groups=True)
     assert policy["instruction_coverage"] == policy["capsule_declaration"]

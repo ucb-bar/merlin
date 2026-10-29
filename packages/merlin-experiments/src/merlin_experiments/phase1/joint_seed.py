@@ -15,9 +15,11 @@ operator review, and both default to off):
 * ``previous_session: {run_dir, workspace}`` stages ``PREVIOUS_SESSION.md``
   (:mod:`.continuation_handoff`), built from the previous session's own outputs.
 * ``seed_evidence: {path, sha256}`` stages an operator-prepared evidence directory (the seed
-  run's optimization rules, experiment records and notes moved out of the compiler) at the
-  workspace root, outside ``submission/``, after checking its tree digest. It is reference
-  material only and grants nothing.
+  run's optimization rules, experiment records, variants, performance history and notes moved out
+  of the compiler) at the workspace root, outside ``submission/``, after checking its tree digest.
+  It is reference material only and grants nothing. Its ``RUN_PRIVATE/`` entry is never staged in
+  the workspace: its files (the seed's model cycles by executable bytes, its fast-estimate
+  calibration pairs and its per-case baseline) go to the run directory, where the grader reads them.
 """
 from __future__ import annotations
 
@@ -33,6 +35,8 @@ PREVIOUS = 'previous_session'
 EVIDENCE = 'seed_evidence'
 #: Evidence entries the author keeps maintaining; everything else is staged read-only.
 EVIDENCE_EDITABLE = frozenset({'OPTIMIZATION_RULES.json'})
+#: Evidence entry copied into the run directory (read by the grader), never into the workspace.
+RUN_PRIVATE = 'RUN_PRIVATE'
 
 
 def selected(options, policy=None):
@@ -127,6 +131,7 @@ def stage(options, workspace, run_dir):
         result['previous_session'] = write_handoff(workspace, origin[PREVIOUS], Path(workspace) / 'submission')
     if origin.get(EVIDENCE) is not None:
         result['seed_evidence'] = stage_evidence(origin[EVIDENCE], workspace)
+        result['seed_evidence']['run_private'] = stage_run_evidence(origin[EVIDENCE], run_dir)
     (Path(run_dir) / 'seed_submission.json').write_text(json.dumps(result, indent=2) + '\n')
     return result
 
@@ -139,7 +144,8 @@ def stage_evidence(pin, workspace):
     staged, skipped = [], []
     for entry in sorted(source.iterdir()):
         target = root / entry.name
-        if entry.is_symlink() or entry.name == 'submission' or target.exists() or target.is_symlink():
+        if (entry.is_symlink() or entry.name in ('submission', RUN_PRIVATE) or target.exists()
+                or target.is_symlink()):
             skipped.append(entry.name)
             continue
         if entry.is_dir():
@@ -153,3 +159,21 @@ def stage_evidence(pin, workspace):
                     path.chmod(0o444)
         staged.append(entry.name)
     return {'source': str(source), 'sha256': pin['sha256'], 'staged': staged, 'skipped': skipped}
+
+
+def stage_run_evidence(pin, run_dir):
+    """Copy the evidence's ``RUN_PRIVATE/`` files into the run directory; never replaces a file there."""
+    import shutil
+
+    source, root = Path(pin['path']) / RUN_PRIVATE, Path(run_dir)
+    staged, skipped = [], []
+    if not source.is_dir() or source.is_symlink():
+        return {'staged': staged, 'skipped': skipped}
+    for entry in sorted(source.iterdir()):
+        target = root / entry.name
+        if entry.is_symlink() or target.exists() or target.is_symlink():
+            skipped.append(entry.name)
+            continue
+        (shutil.copytree if entry.is_dir() else shutil.copyfile)(entry, target)
+        staged.append(entry.name)
+    return {'staged': staged, 'skipped': skipped}

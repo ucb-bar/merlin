@@ -38,12 +38,17 @@ def workflow_conformance(
     try:
         from merlin_experiments.phase1 import conformance as _CONF
 
-        from .full_compiler_workspace import selected as full_selection
+        from .author_profiles import current as current_author_profile
         from .feedback.snapshot_execution import selected as external_selection
+        from .full_compiler_workspace import selected as full_selection
 
         treatment = {}
-        if external_selection() and full_selection() is not None:
-            treatment = {"compiler_access": "full_compiler", "compiler_execution": "snapshot_external_v1"}
+        if external_selection():
+            treatment = {"compiler_access": "full_compiler" if full_selection() is not None else "selected_library",
+                         "compiler_execution": "snapshot_external_v1"}
+        profile = current_author_profile()
+        if profile is not None:
+            treatment["author_profile"] = profile.name
         conf = _CONF.compute(tpath, submission_dir, arm, endpoint_kind,
                              resolved_tools=resolved_tools, **treatment)
     except Exception as exc:  # noqa: BLE001 — conformance is a formal gate; unavailable means false

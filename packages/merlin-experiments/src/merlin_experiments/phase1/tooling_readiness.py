@@ -27,6 +27,175 @@ def _check(name: str, ok: bool, detail: str) -> dict:
     return {"name": name, "ok": bool(ok), "detail": detail}
 
 
+def _component_selection(bundle):
+    """Reopen the exact sealed EL1-3 source boundary, independently of legacy grants."""
+    from . import author_profiles as A
+    from . import full_compiler_workspace as F
+
+    record = bundle.get("author_profile")
+    if record is None:
+        return None
+    profile = A.resolve(record.get("name"))
+    if profile is None or profile.seeded or (profile.level > 3 and not profile.fresh10):
+        return None
+    A.verify_bundle(profile, bundle)
+    source = bundle.get("author_profile_sources")
+    selection = None if source is None else F.select(**{
+        key: source[key] for key in ("root", "manifest_path", "manifest_sha256")})
+    A.verify_sources(profile, selection, bundle=bundle)
+    return profile, selection
+
+
+def _component_schema_path(bundle, *, repo=None):
+    """Select one public ABI schema from its explicit original grant owner."""
+    from merlin.common.paths import resolve_grant
+
+    schemas = set()
+    for row in bundle.get("allowed", ()):
+        path = Path(row["path"])
+        if path.name not in {"command_buffer.schema.json", "schemas"}:
+            continue
+        if not path.is_absolute():
+            if repo is None:
+                raise ValueError("relative schema grants need the selected repository owner")
+            path = resolve_grant(str(path), root=Path(repo))
+        if path.name == "command_buffer.schema.json":
+            schemas.add(path)
+        else:
+            schemas.add(path / "command_buffer.schema.json")
+    if len(schemas) != 1:
+        raise ValueError("EL3 readiness needs exactly one granted public command-buffer schema")
+    return next(iter(schemas))
+
+
+def _component_probe(bundle, *, repo=None, schema_path=None):
+    """Exercise supplied APIs and denied imports in the actual masked namespace."""
+    component = _component_selection(bundle)
+    if component is None:
+        return ""
+    profile, selection = component
+    lines = ["import hashlib, importlib, shutil, subprocess, sys", "from pathlib import Path",
+             "_sdk = Path.cwd() / 'compiler_library'", "sys.path.insert(0, str(_sdk))"]
+    if selection is not None:
+        if profile.fresh10:
+            lines += ["import json", "_raw_manifest = Path('profile-source-manifest.json').read_bytes()",
+                      f"assert hashlib.sha256(_raw_manifest).hexdigest() == {selection.manifest_sha256!r}",
+                      "_inventory = json.loads(_raw_manifest)",
+                      "_modules = {row['module']: row for row in _inventory['members'] if row['module']}",
+                      "for _row in _inventory['members']:",
+                      "    assert hashlib.sha256((_sdk / _row['path']).read_bytes()).hexdigest() == _row['sha256'], _row['path']",
+                      "for _name in _inventory['entry_modules']:",
+                      "    _row = _modules[_name]",
+                      "    _module = importlib.import_module(_name)",
+                      "    assert Path(_module.__file__).resolve() == (_sdk / _row['path']).resolve(), _module.__file__"]
+        else:
+            members = tuple((path, digest) for path, digest, _ in selection.members)
+            lines += [f"_members = {members!r}",
+                      "for _relative, _digest in _members:",
+                      "    assert hashlib.sha256((_sdk / _relative).read_bytes()).hexdigest() == _digest, _relative"]
+            modules = {module: (path, digest) for path, digest, module in selection.members}
+            for name in profile.entries:
+                relative, digest = modules[name]
+                lines += [f"_module = importlib.import_module({name!r})",
+                          f"assert Path(_module.__file__).resolve() == (_sdk / {relative!r}).resolve(), _module.__file__",
+                          f"assert hashlib.sha256(Path(_module.__file__).read_bytes()).hexdigest() == {digest!r}"]
+        lines += ["from merlin.targetgen.generate import mlir_scaffold, llvm_plan, target_repo",
+                  "_plan = {'target': 'readiness', 'dialect_name': 'readiness',",
+                  "         'ops': [{'name': 'stage'}], 'types': []}",
+                  "_artifacts = mlir_scaffold.generate(_plan)",
+                  "assert _artifacts and any(a.relpath.endswith('.td') and 'Dialect' in a.content for a in _artifacts)",
+                  "assert any(a.relpath.endswith('.cpp') for a in _artifacts)",
+                  "assert llvm_plan.generate({'target': 'readiness'})",
+                  "assert target_repo.generate_skeleton('readiness')"]
+    negative = ["merlin_experiments.phase1.session", "merlin.runtime.reference"]
+    if profile.level == 1:
+        negative += ["merlin", "xdsl.ir"]
+    elif not profile.fresh10:
+        negative += ["merlin.sched.ir", "merlin.transforms.dense_planning",
+                     "merlin.compile.scheduling.schedule_ir", "merlin.targetgen.oot_starterkit.transforms"]
+        if profile.level == 2:
+            negative += ["xdsl.ir", "merlin.targetgen.generate.xdsl"]
+    if profile.fresh10:
+        negative += ["merlin.mining", "merlin.kernels", "merlin.xdsl_dialects.cca"]
+        if not profile.allows("scheduling_semantics"):
+            negative += ["merlin.sched.ir.kernel", "merlin.xdsl_dialects.schedule"]
+        if not profile.allows("transform_library"):
+            negative += ["merlin.transforms.tensor_views", "merlin.transforms.pipeline",
+                         "merlin.compile.scheduling.dense_panel_epochs", "merlin.sched.primitives"]
+    for name in negative:
+        lines += ["try:", f"    importlib.import_module({name!r})", "except ModuleNotFoundError:",
+                  "    pass", "else:", f"    raise AssertionError('withheld module is importable: {name}')"]
+    if profile.level < 3:
+        lines += ["_cxx = shutil.which('clang++') or shutil.which('c++') or shutil.which('g++')",
+                  "assert _cxx, 'ordinary C++ compiler is absent'",
+                  "_run = subprocess.run([_cxx, '-std=c++17', '-x', 'c++', '-fsyntax-only', '-'],",
+                  "                      input='int readiness(int x) { return x; }', text=True, capture_output=True, timeout=30)",
+                  "assert _run.returncode == 0, (_run.stdout, _run.stderr)",
+                  "_mlir = shutil.which('mlir-opt')",
+                  "assert _mlir, 'ordinary MLIR toolchain is absent'",
+                  "_run = subprocess.run([_mlir], input='module {}', text=True, capture_output=True, timeout=30)",
+                  "assert _run.returncode == 0, (_run.stdout, _run.stderr)"]
+    else:
+        # The source-only EL3 closure deliberately has no packaged data. Bind
+        # validation to its explicit common public schema, never an ambient SDK.
+        schema = _component_schema_path(bundle, repo=repo) if schema_path is None else Path(schema_path)
+        lines += [f"_schema = Path({str(schema)!r})",
+                  "assert _schema.is_file(), 'selected public command-buffer schema is unavailable'",
+                  "from merlin.targetgen.oot_starterkit.cmdbuf import CommandBufferBuilder",
+                  "from merlin.targetgen.oot_starterkit.verify import validate as _validate",
+                  "_builder = CommandBufferBuilder('readiness', schema_path=_schema).command('EVICT')",
+                  "_buffer = _builder.to_dict()",
+                  "assert _validate(cb=_buffer, schema_path=_schema)['ok']",
+                  "_invalid = dict(_buffer, commands=[{'opcode': '__invalid_readiness_opcode__'}])",
+                  "_verdict = _validate(cb=_invalid, schema_path=_schema)",
+                  "assert not _verdict['ok'] and any('schema:' in item for item in _verdict['findings'])",
+                  "from merlin.targetgen.generate import xdsl as _generator",
+                  "_generated = next(a for a in _generator.generate(_plan) if a.relpath.endswith('_dialect.py'))",
+                  "_namespace = {'__name__': '_readiness_generated_dialect'}",
+                  "exec(compile(_generated.content, _generated.relpath, 'exec'), _namespace)",
+                  "assert _namespace['HAS_XDSL'] and _namespace['get_dialect']() is not None",
+                  "from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context",
+                  "from merlin.targetgen.oot_starterkit.verify import verify_module",
+                  "from xdsl.parser import Parser",
+                  "_parsed = Parser(make_llvm_context(), 'builtin.module {}').parse_module()",
+                  "assert verify_module(_parsed) == []"]
+    if profile.fresh10 and profile.allows("scheduling_semantics"):
+        from .fresh10_semantics_probe import command
+
+        lines.append(command())
+    if profile.fresh10:
+        # An explicit synthetic metadata provider exercises the original APIs
+        # without relying on denied automatic corpus/provider discovery. No
+        # target backend, lowering, benchmark inputs or claimed facts are used.
+        lines += ["import json, os",
+                  "_provider = Path.cwd() / '_readiness_support'",
+                  "(_provider / 'contracts').mkdir(parents=True)",
+                  "_contract = {'name':'profile_readiness','version':1,'features':[],",
+                  "             'ops':[],'types':[],'runtime':{'backends':[]}}",
+                  "(_provider / 'contracts/target_contract.yaml').write_text(json.dumps(_contract))",
+                  "_old_target_path = os.environ.get('MERLIN_TARGET_PATH')",
+                  "_old_target_contract = os.environ.get('MERLIN_TARGET_CONTRACT')",
+                  "os.environ['MERLIN_TARGET_PATH'] = str(_provider)",
+                  "os.environ['MERLIN_TARGET_CONTRACT'] = str(_provider / 'contracts/target_contract.yaml')",
+                  "try:",
+                  "    from merlin.targetgen.evidence.store import Evidence",
+                  "    from merlin.targetgen import synthesize as _synthesis",
+                  "    _evidence = Evidence(target='profile_readiness', sources={})",
+                  "    _contract = _synthesis.synthesize_target_contract(_evidence, 'profile_readiness')",
+                  "    assert isinstance(_contract, dict) and _contract",
+                  "    for _synth in (_synthesis.synthesize_dialect_plan, _synthesis.synthesize_runtime_adapter_plan,",
+                  "                   _synthesis.synthesize_zephyr_plan, _synthesis.synthesize_llvm_extension_plan):",
+                  "        assert _synth(_evidence, _contract)",
+                  "finally:",
+                  "    if _old_target_path is None: os.environ.pop('MERLIN_TARGET_PATH', None)",
+                  "    else: os.environ['MERLIN_TARGET_PATH'] = _old_target_path",
+                  "    if _old_target_contract is None: os.environ.pop('MERLIN_TARGET_CONTRACT', None)",
+                  "    else: os.environ['MERLIN_TARGET_CONTRACT'] = _old_target_contract",
+                  "print('SELECTED_FIVE_SYNTHESIS_APIS_OK')"]
+    lines.append("print('COMPONENT_PROFILE_BOUNDARY_AND_APIS_OK')")
+    return "\n".join(lines) + "\n"
+
+
 def _grant_checks(te, bundle: dict, tools: tuple[str, ...]) -> list[dict]:
     """Match the registry's promised files to this selected manifest, not a public sibling."""
     allowed = {
@@ -48,10 +217,27 @@ def _grant_checks(te, bundle: dict, tools: tuple[str, ...]) -> list[dict]:
     if len(anchors) > 1:
         raise RuntimeError("selected bundle has multiple Merlin Python source roots")
     sources = {Path(python_source_dir()) / "merlin", *anchors}
+    component = _component_selection(bundle)
     checks = []
+    if component is not None:
+        profile, selection = component
+        checks.append(_check("selected_component_sources", True,
+                             "no Merlin sources" if selection is None else selection.manifest_sha256))
     for name in tools:
+        if name == "cpp_oot_generators" and component is not None:
+            checks.append(_check("grant:cpp_oot_generators:component_closure", True,
+                                 component[1].manifest_sha256))
+            continue
         spec = TR.spec(name)
         for logical in (*spec.bundle_paths, *(str(getattr(te, attr)) for attr in spec.derived_paths)):
+            if component is not None and component[0].fresh10 and logical.startswith("merlin/python/merlin/"):
+                # Fresh10 removal profiles replace every original source grant
+                # with one hash-pinned module projection. Its public API list,
+                # import origins and actual five-tool roundtrips are checked;
+                # regranting the old broad SDK here would undo the treatment.
+                checks.append(_check(f"grant:{name}:{logical}:projected_source", True,
+                                     component[1].manifest_sha256))
+                continue
             candidates = {logical}
             prefix = "merlin/python/merlin/"
             selected_logical = logical
@@ -199,13 +385,14 @@ def _sandbox_probe(
     common_profile_sha256: str | None = None,
     common_modules: tuple[str, ...] | None = None,
     withheld_cca: bool = False,
+    projected_source: bool = False,
 ) -> str:
     from .feedback import snapshot_execution
 
     external = snapshot_execution.selected()
     has = set(tools)
     lines = ["import json, subprocess, sys"]
-    if not external:
+    if not external and not projected_source:
         lines += _selected_library_probe().splitlines()
     if common_substrate and not external:
         from merlin.targetgen.tool_profile import COMMON_PUBLIC_MODULES
@@ -328,7 +515,8 @@ def _sandbox_probe(
 
 @contextmanager
 def public_probe_session(
-    context, ws: Path, bundle: dict, tools: tuple[str, ...], *, facts_workspace: Path | None = None
+    context, ws: Path, bundle: dict, tools: tuple[str, ...], *, facts_workspace: Path | None = None,
+    component_schema: Path | None = None,
 ):
     """Run the existing selected public brokers for a tool probe, without oracle jobs."""
     from merlin_experiments.frozen_python import inherited_python_command
@@ -388,14 +576,18 @@ def public_probe_session(
                 argv += ["--rtl-facts", str(selected_facts)]
             with (channel / "broker.log").open("w", encoding="utf-8") as log:
                 processes.append(subprocess.Popen(inherited_python_command(argv), stdout=log, stderr=subprocess.STDOUT))
-        yield _sandbox_probe(
+        component = _component_selection(bundle)
+        fresh10 = component is not None and component[0].fresh10
+        yield _component_probe(bundle, repo=context.repo, schema_path=component_schema) + _sandbox_probe(
             context.target,
             tools,
             _asm_probe(context) if "isa_tools" in tools else "",
-            common_substrate=bundle.get("compiler_tool_profile") is not None,
+            common_substrate=(bundle.get("compiler_tool_profile") is not None
+                              and (not fresh10 or component[0].allows("transform_library"))),
             common_profile_sha256=(bundle.get("compiler_tool_profile") or {}).get("sha256"),
             common_modules=tuple((bundle.get("compiler_tool_profile") or {}).get("common_public_modules", ())) or None,
             withheld_cca=_cca_withheld(bundle),
+            projected_source=fresh10,
         )
     finally:
         for channel in channels:
@@ -415,7 +607,26 @@ def _live_probe(context, te, ws: Path, bundle: dict, tools: tuple[str, ...]) -> 
 
     with tempfile.TemporaryDirectory(prefix="tooling-readiness-", dir=ws.parent) as directory:
         probe_ws = Path(directory)
-        with public_probe_session(context, probe_ws, bundle, tools, facts_workspace=ws) as probe:
+        component = _component_selection(bundle)
+        if component is not None and component[1] is not None:
+            from .full_compiler_workspace import stage
+
+            stage(component[1], probe_ws)
+            if component[0].fresh10:
+                manifest = probe_ws / 'profile-source-manifest.json'
+                manifest.write_bytes(component[1].manifest_path.read_bytes())
+                manifest.chmod(0o444)
+        probe_schema = None
+        if component is not None and (component[0].level == 3 or component[0].fresh10):
+            source = _component_schema_path(bundle, repo=context.repo)
+            [frozen] = BW.snapshot_input_paths(ws, bundle, [source], repo=context.repo)
+            # This is the same explicit public data an authored package can copy.
+            # A generic preflight box need not expose original checkout aliases.
+            probe_schema = probe_ws / "public-command-buffer.schema.json"
+            probe_schema.write_bytes(frozen.read_bytes())
+            probe_schema.chmod(0o444)
+        with public_probe_session(context, probe_ws, bundle, tools, facts_workspace=ws,
+                                  component_schema=probe_schema) as probe:
             argv = BW.full_argv(te, probe_ws, bundle)
             command = TC.sandbox_env(te, probe_ws, bundle=bundle) + " python3 -c " + shlex.quote(probe)
             result = subprocess.run(
@@ -466,7 +677,19 @@ def assess(
             arm3 = set(TR.ARM_TOOLS["merlin_assisted"])
             arm4 = set(TR.ARM_TOOLS["merlin_rtlchecks"])
             checks.append(_check("arm4_grant_superset", arm3 <= arm4, f"added={sorted(arm4 - arm3)}"))
-        required = set(TR.ARM_TOOLS[selected_arm]) - set(without_tools)
+        author_profile = bundle.get("author_profile")
+        if author_profile is not None:
+            from .author_profiles import resolve, verify_bundle
+
+            selected_profile = resolve(author_profile.get("name"))
+            if selected_profile is None:
+                raise ValueError("versioned author bundle requires an explicit profile")
+            verify_bundle(selected_profile, bundle)
+            required = set(selected_profile.tools)
+            if without_tools or set(selected) != required:
+                raise ValueError("selected tools differ from the sealed author profile")
+        else:
+            required = set(TR.ARM_TOOLS[selected_arm]) - set(without_tools)
         missing = required - set(selected)
         checks.append(
             _check(

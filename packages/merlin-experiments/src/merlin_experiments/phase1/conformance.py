@@ -667,6 +667,7 @@ def _is_selfcheck_report(result: str) -> bool:
 def compute(
     tpath: Path, sub_dir: Path, arm: str, endpoint_kind: str, *, resolved_tools: Iterable[str] | None = None,
     compiler_access: str = "selected_library", compiler_execution: str = "profile_strict_v1",
+    author_profile: str = "",
 ) -> dict:
     """Compute the conformance verdict for one round. Returns a dict with per-check booleans (or None when
     the check does not apply to this tool set), the regex-hit detail, and the overall ``conformant`` flag.
@@ -680,13 +681,20 @@ def compute(
     # to invoke an API, use a dialect, avoid regex, order discovery or issue a
     # particular selfcheck command. Actual complete numerical/ISA/placement and
     # isolation grading remains independent of this workflow-only projection.
-    if compiler_access == "full_compiler" and compiler_execution == "snapshot_external_v1":
+    from .author_profiles import resolve as resolve_author_profile
+
+    profile = resolve_author_profile(author_profile)
+    if profile is not None and compiler_execution != "snapshot_external_v1":
+        raise ValueError("versioned author workflow requires isolated snapshot execution")
+    if profile is not None or (compiler_access == "full_compiler"
+                               and compiler_execution == "snapshot_external_v1"):
         return {
             "conformant": True, "checks": {}, "regex_hits": [], "vendored_regex_files": [],
             "arm": arm, "endpoint_kind": endpoint_kind,
             "resolved_tools": sorted(str(t) for t in resolved_tools) if resolved_tools is not None else None,
             "arm4_tooling_required": False,
-            "workflow_policy": "full_compiler_guidance_v1",
+            "workflow_policy": "author_profile_guidance_v1" if profile else "full_compiler_guidance_v1",
+            **({"author_profile": profile.name} if profile else {}),
             "compiler_access": compiler_access, "compiler_execution": compiler_execution,
             "qualification_authority": False,
             "scope": "No mandatory tool-use or discovery-order workflow; independent grading still required.",

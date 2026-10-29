@@ -183,9 +183,23 @@ def workspace_gap(workspace):
 # --------------------------------------------------------------------------- labels
 
 
+def _passing(document: dict) -> bool:
+    """A pass, or a result whose only shortfall is a required tier this grade cannot reach.
+
+    A development grade runs the functional screen only: every case that clears it reads ``incomplete``
+    (its elaborated-RTL tier is unreachable here), never ``pass``. Such a case carried in full is exactly
+    what the seed proved, so it is labelled too; any failed or errored tier is not."""
+    if document.get("status") == "pass":
+        return True
+    failure = document.get("failure") if isinstance(document.get("failure"), dict) else {}
+    tiers = document.get("tiers") or {}
+    return (document.get("status") == "incomplete" and failure.get("plane") == "oracle_unavailable"
+            and not any(isinstance(r, dict) and r.get("status") in ("fail", "error") for r in tiers.values()))
+
+
 def label(document: dict, oracle_tiers=None) -> str | None:
     """``carried from <run>`` for a passing result whose oracle verdicts were all carried, else ``None``."""
-    if not isinstance(document, dict) or document.get("status") != "pass" or not fully_carried(document, oracle_tiers):
+    if not isinstance(document, dict) or not _passing(document) or not fully_carried(document, oracle_tiers):
         return None
     runs = []
     for record in (document.get("tiers") or {}).values():

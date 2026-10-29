@@ -167,6 +167,13 @@ def _pinned(root: Path, payload: bytes, relative: str = STAGED) -> bool:
 
 def load(workspace) -> dict | None:
     """The staged baselines document of ``workspace`` (validated, digest-checked), else None; never raises."""
+    from ..author_profiles import current
+
+    profile = current()
+    if profile is not None and profile.fresh10:
+        # The removal study supplies no reference performance targets in any
+        # arm, independently of whether raw source/ELF references are selected.
+        return None
     root = Path(workspace if workspace is not None else Path.cwd()) / REFERENCE_ROOT
     try:
         path = staged_file(root)

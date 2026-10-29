@@ -571,9 +571,11 @@ class IdleMeasurer:
                 size = min(knob("MERLIN_IDLE_PERF_MAX_CASES"), budget)
                 if jobs and budget > 1:
                     size = min(size, max(1, budget // 2))
-                names = timing[:size]
-                timing = timing[len(names):]
-                budget -= self._time(channel, names, digest, records)
+                from ..tools.selfcheck import _case_groups
+
+                suite, names = _case_groups(self.workspace, timing[:size])[0]
+                timing = [name for name in timing if name not in names]
+                budget -= self._time(channel, names, digest, records, suite=suite)
                 timed, live = timed + 1, live + 1
             else:
                 spent = self._tuning(self._experiment, channel, jobs.pop(0), digest, known, budget, records)
@@ -595,10 +597,11 @@ class IdleMeasurer:
             return "; ".join(statuses)
         return "estimates current; no untried tuning candidate" if not timing else "cpus busy"
 
-    def _time(self, channel: Path, names: list[str], digest: str, records: dict, why: str = "") -> int:
+    def _time(self, channel: Path, names: list[str], digest: str, records: dict, why: str = "",
+              *, suite: str = "scalability") -> int:
         """Submit one Spike timing request of ``submission/`` for ``names``; returns the CPUs it asks for."""
         timeout, deferred = request_timeout(names, records)
-        self._submit(channel, names, digest, timeout=timeout)
+        self._submit(channel, names, digest, timeout=timeout, suite=suite)
         self.requested.update((name, digest) for name in names)
         scratch_retention.say(
             f"[idle-perf] background Spike timing request for {len(names)} case(s): {', '.join(names)}"
@@ -641,7 +644,8 @@ class IdleMeasurer:
                               for r in self.tuner._requests(channel)) >= source_cap:
             return 0
         if need:
-            self._time(channel, need, digest, records, why=f"baseline for {candidate['key']}")
+            self._time(channel, need, digest, records, why=f"baseline for {candidate['key']}",
+                       suite=job.get("suite", "scalability"))
         timeout, _ = request_timeout(names, records, base=tuning_knob("MERLIN_IDLE_TUNE_TIMEOUT_S"))
         self.tuner.submit(channel, job, names, digest, timeout=timeout)
         return len(names) + len(need)
@@ -671,10 +675,12 @@ class IdleMeasurer:
             scratch_retention.say(f"[idle-tune] skipped: {type(error).__name__}: {str(error)[:200]}")
             return None
 
-    def _submit(self, channel: Path, names: list[str], digest: str, timeout: int | None = None) -> str:
+    def _submit(self, channel: Path, names: list[str], digest: str, timeout: int | None = None,
+                *, suite: str = "scalability") -> str:
         return submit(
             channel, names, digest, origin=ORIGIN, prefix=REQUEST_PREFIX,
             timeout=knob("MERLIN_IDLE_PERF_TIMEOUT_S") if timeout is None else timeout,
+            extra={"suite": suite, **({"tiers": "L0,L1,L2"} if suite == "core" else {})},
         )
 
 

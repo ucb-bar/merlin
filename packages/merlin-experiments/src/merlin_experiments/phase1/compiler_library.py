@@ -115,6 +115,38 @@ def _performance_guidance(workspace, run_dir, inventory, *, repo=None, descripto
 
 def append_guidance(workspace, run_dir, record, selection, *, repo=None, descriptor=None,
                     staging_record=None):
+    from .author_profiles import current
+
+    profile = current()
+    if profile is not None and profile.fresh10:
+        from . import fresh10_sources, fresh10_disclosure
+        from .full_compiler_workspace import selected as full_selection
+
+        full = full_selection()
+        if profile.coverage:
+            # Current reviewed sources and SDK, each already bound by its own sealed selection.
+            entries = tuple(module for _path, _digest, module in full.members)
+        else:
+            fresh10_sources.verify_sources(profile.name, full)
+            fresh10_sources.verify_library(profile.name, selection)
+            entries = fresh10_sources.entry_modules(profile.name)
+        details = json.dumps(full.record(), sort_keys=True, indent=2) + "\n"
+        library_details = json.dumps(selection.record(), sort_keys=True, indent=2) + "\n"
+        for directory in (workspace, run_dir):
+            (directory / 'FULL_COMPILER_SOURCE_SELECTION.json').write_text(details)
+            (directory / 'COMPILER_LIBRARY_API.json').write_text(library_details)
+        if profile.allows("transform_library"):
+            inventory = {"public_modules": [{"module": module} for module in entries],
+                         "contract_sha256": full.manifest_sha256}
+            guidance = _performance_guidance(workspace, run_dir, inventory, repo=repo, descriptor=descriptor)
+            guidance = fresh10_disclosure.filter_markdown(guidance, library=True, references=False)
+            for directory in (workspace, run_dir):
+                (directory / 'SELECTED_LIBRARY_GUIDANCE.md').write_text(guidance)
+        # Common TASK assembly owns the objective and all correctness/runtime
+        # obligations; selected-library advice is an explicit separate surface.
+        return
+    if profile is not None and not profile.modern:
+        return
     from .full_compiler_workspace import selected as full_selection
     full = full_selection()
     if full is not None:
@@ -125,8 +157,8 @@ def append_guidance(workspace, run_dir, record, selection, *, repo=None, descrip
             "add implementation modules as needed. The target backend remains your authored implementation. "
             "There is no required per-pass API menu or proof receipt for exploratory compiler calls. "
             "You choose component ownership, construction order and useful tests; no fixed pass order, "
-            "first-capsule sequence or helper-count minimum is imposed by this guidance. Use up to 16 helpers "
-            "within the selected ceiling when independent work exists, sharing all 20 CPUs dynamically. "
+            "first-capsule sequence or helper-count minimum is imposed by this guidance. Use the selected "
+            "helper ceiling and CPU allocation when independent work exists. "
             "Evaluate useful independent cases concurrently against immutable snapshots while continuing "
             "edits and integrating completed helper work; there is no all-153 prerequisite for larger cases. "
             "Private numerical, ISA, timing and isolation grading uses independent evaluator code; editing "

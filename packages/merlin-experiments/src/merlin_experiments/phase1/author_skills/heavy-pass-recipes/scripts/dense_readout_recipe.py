@@ -1,6 +1,7 @@
 """Dense readout alternatives on one capacity-legal segmented or full-K block.
 
-    python dense_readout_recipe.py [--facts rtl_facts/facts.json] [--shape M,K,N] [--family segmented|retained] [--library DIR]
+    python dense_readout_recipe.py [--facts rtl_facts/facts.json] [--shape M,K,N]
+                                  [--family segmented|retained] [--library DIR]
 
 When the whole output needs more accumulator rows than the store has, every output group is computed,
 read out and drained before the next one starts, and the readouts serialize behind compute. The single
@@ -79,12 +80,17 @@ def recipe(facts: str | None = None, shape=None, *, family="segmented", input_pi
         modes = (("segmented", False, "separate"), ("batched_readouts", True, "separate"),
                  ("readout_overlap", True, "disjoint"), ("ready_readout", True, "ready"))
     else:
-        def full_k(b):
-            return b.k == p.tiles[1] and (not input_pipeline or (
-                p.tiles[0] // b.m >= 2 and 2 * b.m * b.k * p.tile_m <= s.lhs.capacity
-                and 2 * b.m * b.k * p.tile_m * s.lhs.unit_bytes
-                    + b.k * b.n * p.tile_k * s.rhs.unit_bytes <= r.operand_bytes))
-        block = S.pick(S.blocks(p, s, r), full_k)
+        placement = None
+        if input_pipeline:
+            from merlin.compile.scheduling.dense_ready_readout import dense_ready_input_choices
+
+            choices = dense_ready_input_choices(p, r, s)
+            if not choices:
+                raise SystemExit("no retained full-K choice fits two advancing inputs in the owned capacity")
+            placement = choices[0]
+            block = placement.block
+        else:
+            block = S.pick(S.blocks(p, s, r), lambda b: b.k == p.tiles[1])
         pipeline = S.retained_pipeline
         modes = (("retained", False, "separate"), ("batched_readouts", True, "separate"),
                  ("ready_readout", True, "ready"))
@@ -92,7 +98,8 @@ def recipe(facts: str | None = None, shape=None, *, family="segmented", input_pi
             modes += (("input_pipeline", True, "ready"),)
     variants = {}
     for name, batch, mode in modes:
-        options = (dict(retained_operand="weight", input_pipeline=name == "input_pipeline")
+        options = (dict(retained_operand="weight", input_pipeline=name == "input_pipeline",
+                        input_pipeline_placement=placement if name == "input_pipeline" else None)
                    if input_pipeline else {})
         result, _ = pipeline(p, s, r, a, block, name=name, batch=batch, readout_mode=mode, **options)
         epochs = result.realization.get("epochs", ())

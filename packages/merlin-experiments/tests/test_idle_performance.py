@@ -18,7 +18,8 @@ def _run(tmp_path, cohort=("big", "small", "never"), passing=("big", "small", "n
     roles = {name: 'large_kernel' for name in cohort}
     (ws / 'PUBLIC_CAPABILITIES.json').write_text(json.dumps({
         'schema': 'merlin.public_capability_inventory.v1',
-        'members': {name: {'workload_role': role} for name, role in roles.items()}}))
+        'members': {name: {'workload_role': role, 'selfcheck_suite': 'scalability'}
+                    for name, role in roles.items()}}))
     verdict = {"joint_test_selection": {"performance_cohorts": {"primary": list(cohort)}, 'workload_roles': roles},
                "per_capsule": [{"capsule": n, "tiers": {"L2": "pass" if n in passing else "fail"}} for n in cohort]}
     (run / "qa_history" / "verdict_fast_1.json").write_text(json.dumps(verdict))

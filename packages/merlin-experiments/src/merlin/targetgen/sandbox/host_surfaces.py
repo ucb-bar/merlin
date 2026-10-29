@@ -65,6 +65,10 @@ def _final_answer_policy(
         if BW.coverage_gap(result, support):
             raise RuntimeError("selected support package remains exposed after final masking")
 
+    if bundle.get("author_profile") is not None:
+        from merlin_experiments.phase1.author_profiles import runtime_masks
+
+        result = runtime_masks(result, bundle)
     return [*result, "--unsetenv", "MERLIN_FROZEN_PYTHON_CONTEXT"], tuple(answers)
 
 

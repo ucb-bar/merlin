@@ -169,7 +169,7 @@ regression) so a helper improves the actual bottleneck rather than adding flags.
 ## One evolving compiler, parallel bounded work
 
 Act as one compiler coordinator and delegate bounded, independent tasks to the
-available parallel workers, up to the selected ceiling of 16 helpers when supported.
+available parallel workers, up to the selected helper ceiling.
 Start independent capability construction promptly; use fewer workers when ownership,
 CPU or token budgets would make more redundant. Choose tasks from the current bottlenecks: frontend
 operator coverage, connected-region legality and fusion, scheduling/pass policy,
@@ -190,7 +190,7 @@ artifact paths in each short handoff. Pass relevant contracts and a compact capa
 brief to helpers; retrieve detailed source or logs only for their current boundary. Reuse an existing equivalent request/result
 only when those relevant identities match. Avoid full-cohort checks on every edit;
 reserve them for declared milestones/final validation. Report untested coverage.
-All 20 selected CPUs are dynamically shared through the existing pool: no fixed
+All selected CPUs are dynamically shared through the existing pool: no fixed
 CPU assignments to author, compilation, grading, or calibration roles. Available
 worker count is a concurrency ceiling, not a requirement to launch redundant work.
 A protected evaluator/library upgrade may request a checkpoint; ordinary compiler

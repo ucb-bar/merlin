@@ -189,7 +189,7 @@ def segmented_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="se
 
 
 def retained_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="separate",
-                      retained_operand="lhs", input_pipeline=False):
+                      retained_operand="lhs", input_pipeline=False, input_pipeline_placement=None):
     """Full-K panel plus optional causal readouts, including a single primitive K tile.
 
     The target must supply its own reduction/readout declarations. These test-only
@@ -219,6 +219,8 @@ def retained_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="sep
         raise ValueError("full-K recipe requires the entire reduction panel")
     if input_pipeline and (retained_operand != "weight" or readout_mode != "ready"):
         raise ValueError("advancing-input recipe needs invariant weights and causal readouts")
+    if input_pipeline_placement is not None and not input_pipeline:
+        raise ValueError("input placement must be consumed by the advancing-input variant")
     order = ("m", "n") if retained_operand == "lhs" else ("n", "m")
     law = example()._laws(a, block, segmented=False)
     if batch or readout_mode == "ready":
@@ -245,7 +247,9 @@ def retained_pipeline(p, s, r, a, block, *, name, batch=False, readout_mode="sep
         external_buffers_disjoint=True, schedule_plan=parse_dense_schedule_plan(text),
         pipeline_admission=law, batch_readouts=batch,
         readout_mode=readout_mode, readout_admission=readout,
-        input_pipeline_row_offset=block.m * block.k * p.tile_m if input_pipeline else None,
+        input_pipeline_row_offset=(block.m * block.k * p.tile_m
+                                   if input_pipeline and input_pipeline_placement is None else None),
+        input_pipeline_placement=input_pipeline_placement,
     )
     result.materialize_scf().verify()
     return result, text

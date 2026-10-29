@@ -374,6 +374,11 @@ def attach(verdict, submission, *, context, output, timeout, contract=None, **kw
 
 
 def cli(args, *, context):
+    from . import public_scalability_inspection
+
+    inspection = public_scalability_inspection.requested(vars(args))
+    if inspection is not None:
+        return public_scalability_inspection.cli(args, context=context, mode=inspection)
     if args.sim == "gsim":
         # Only an operator-authorized idle measurement passes here; it re-checks its own authorization.
         from .scalability_gsim import cli as measure

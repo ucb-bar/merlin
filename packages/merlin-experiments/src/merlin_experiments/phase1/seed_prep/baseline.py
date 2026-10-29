@@ -2,8 +2,9 @@
 
 Each case runs in a fresh child (``timing_child.py``) whose ``PYTHONPATH`` is the
 export's, so grading, the timing observer and the model pin are exactly what the
-runs used.  The child's CPU set, I/O class and niceness come from the caller's
-``--cpus``; nothing here picks a CPU.  A case whose complete timing-model
+runs used.  Children run at normal priority on the shared pool; ``--nice`` (with
+idle I/O class) and ``--cpus`` apply only when the caller passes them -- nothing
+here picks a CPU or a priority.  A case whose complete timing-model
 estimate does not finish in its budget gets the calibrated fast estimate from
 its emitted command census (labelled as such), so no row is left without cycles
 when the census exists.  Only a case with neither stays ``UNKNOWN``.
@@ -46,7 +47,7 @@ class Grader:
     compiler_library: Path | None = None
     env: dict[str, str] = field(default_factory=dict)
     cpus: str | None = None
-    nice: int = 19
+    nice: int | None = None
     budget_s: int = 900
     slack_s: int = 600
 
@@ -63,9 +64,9 @@ class Grader:
         return env
 
     def prefix(self) -> list[str]:
-        if not self.cpus:
-            return []
-        return ["ionice", "-c3", "nice", "-n", str(self.nice), "taskset", "-c", self.cpus]
+        """Normal priority and no pinning unless the caller asks for a niceness or a CPU set."""
+        argv = [] if self.nice is None else ["ionice", "-c3", "nice", "-n", str(self.nice)]
+        return argv + (["taskset", "-c", self.cpus] if self.cpus else [])
 
 
 def case_family(case: str) -> str:
@@ -175,13 +176,31 @@ def _evidence_lines(run_dir: Path | None, limit: int = 6) -> list[str]:
 
 
 def _fast_estimate(run_dir: Path | None, performance: dict) -> dict | None:
-    if run_dir is None:
-        return None
+    """The calibrated fast estimate from the case's decoded stream, else from its recorded counts."""
     from ..feedback import fast_estimate
 
-    block = fast_estimate.for_case(run_dir, performance.get("structural_roofline") or {},
-                                   facts_sha256=performance.get("facts_sha256"))
-    return block if block.get("status") == "ESTIMATED" else dict(block)
+    recorded = performance.get("fast_estimate")
+    if isinstance(recorded, dict) and recorded.get("status") == "ESTIMATED":
+        return recorded
+    structural, facts = performance.get("structural_roofline") or {}, performance.get("facts_sha256")
+    if run_dir is not None:
+        return fast_estimate.for_case(run_dir, structural, facts_sha256=facts)
+    counts = performance.get("feature_counts") or {}
+    commands, fences = counts.get("target.commands"), counts.get(FENCE_KEY)
+    if not isinstance(commands, int) or not isinstance(fences, int) or commands <= 0:
+        return None
+    # Recorded totals: target.commands counts non-fence commands, as the census does.
+    counted = {"commands": commands, "fences": fences, "sites": None, "unproved_sites": 0,
+               "complete": True, "source": "recorded feature counts"}
+    try:
+        return fast_estimate.estimate(counted, structural, fast_estimate.calibration(facts))
+    except (OSError, ValueError, TypeError, KeyError, ZeroDivisionError):
+        return None
+
+
+def _tier_status(tier) -> str | None:
+    """A tier as a grader row records it: a status string, or a block carrying ``status``."""
+    return tier.get("status") if isinstance(tier, dict) else tier
 
 
 def summarize(case: str, doc: dict) -> dict:
@@ -197,7 +216,7 @@ def summarize(case: str, doc: dict) -> dict:
     row: dict = {
         "case": case,
         "family": case_family(case),
-        "numerics": ((observed.get("tiers") or {}).get("L2") or {}).get("status"),
+        "numerics": _tier_status((observed.get("tiers") or {}).get("L2")),
         "wall_s": doc.get("wall_s"),
         "roofline_cycles": round(bound, 1) if bound else None,
         "bound_by": bound_by,

@@ -35,6 +35,46 @@ def test_whole_call_has_its_own_scope_and_actual_invocation_not_a_kernel_alias()
         O.scope_digest(dict(selection, owned_model_scope={}))
 
 
+def ordinary_runtime_listing():
+    return E.parse_disassembly("""00000100 <main>:
+      100: csrr s0,mcycle
+      104: jal 300 <merlin_reset_session>
+      108: li a0,0
+      10c: jal 350 <merlin_prepare_step>
+      110: li a0,4
+      114: jal 400 <merlin_run_multi>
+      118: csrr s1,mcycle
+    """)
+
+
+def test_whole_runtime_scope_keeps_actual_reset_and_preparation_inside_roi():
+    result = O.synchronous_window(ordinary_runtime_listing(), counter_asm="csrr %0, mcycle")
+    assert result["begin_pc"] == 0x100 and result["end_pc"] == 0x118
+    assert result["invocation_call_pc"] == 0x114
+    assert result["included_runtime_calls"] == [
+        dict(symbol="merlin_reset_session",pc=0x104),
+        dict(symbol="merlin_prepare_step",pc=0x10c),
+        dict(symbol="merlin_run_multi",pc=0x114),
+    ]
+
+
+@pytest.mark.parametrize("damage", ["reorder", "missing_setup", "extra_call", "indirect", "branch"])
+def test_whole_runtime_scope_refuses_changed_or_bypassable_preparation(damage):
+    rows = ordinary_runtime_listing()
+    if damage == "reorder":
+        rows[1]["symbols"], rows[3]["symbols"] = rows[3]["symbols"], rows[1]["symbols"]
+    elif damage == "missing_setup":
+        rows.pop(1)
+    elif damage == "extra_call":
+        rows[2].update(mnemonic="jal",symbols=["helper"])
+    elif damage == "indirect":
+        rows[3]["mnemonic"] = "jalr"
+    else:
+        rows[2]["mnemonic"] = "beqz"
+    with pytest.raises(ValueError):
+        O.synchronous_window(rows,counter_asm="csrr %0, mcycle")
+
+
 @pytest.mark.parametrize(
     "damage", ["extra_counter", "missing_counter", "indirect", "branch", "wrong_call", "extra_call"]
 )

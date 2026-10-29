@@ -492,6 +492,10 @@ def _cases(workspace, rows, brief, edge):
 
 def build(workspace=None, *, rows=(), brief=None, edge=None) -> dict | None:
     """``{schema, scope, families, bundles, lines}`` for the workspace's cases; None when none has a family."""
+    from ..author_profiles import modern_advice
+
+    if not modern_advice("performance_diagnostics"):
+        return None
     workspace = Path(workspace) if workspace is not None else Path.cwd()
     from .result_details import load_row
 
@@ -500,7 +504,7 @@ def build(workspace=None, *, rows=(), brief=None, edge=None) -> dict | None:
     cases = _cases(workspace, rows, brief, edge)
     if not cases:
         return None
-    entries = _selection_entries(workspace)
+    entries = _selection_entries(workspace) if modern_advice("catalog_advice") else {}
     groups: dict[str, list] = {}
     for case in cases:
         groups.setdefault(case.family, []).append(case)

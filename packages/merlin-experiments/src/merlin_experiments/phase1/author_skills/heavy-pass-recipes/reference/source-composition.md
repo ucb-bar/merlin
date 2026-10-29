@@ -70,8 +70,10 @@ through the same request when the original caller explicitly supplies its live
 This uses the existing `BorrowedBufferCalls` interface for the actual prepared source, exact
 argument/result positions and layouts, compiled shim and kernel objects. The candidate request
 and host-storage policy grant no noescape, release or completion effects. Missing qualification
-keeps the opaque route; spatial/sibling composition and later host LLVM rewrites still refuse this
-bridge. Inspect `output.descriptor_results` alongside the final storage report.
+keeps the opaque route; spatial/sibling composition and unknown later host LLVM rewrites still
+refuse this bridge. The existing late bounded-RNE callback retains its original numerical checks
+and carries lifetime only after exact scalar-effect conformance. The final storage report retains
+`scalar_legalizations` for that live join. Inspect `output.descriptor_results` alongside it.
 
 ## Find what applies, then check what happened
 

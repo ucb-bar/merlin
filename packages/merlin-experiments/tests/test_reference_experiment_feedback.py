@@ -135,6 +135,30 @@ def test_current_analysis_records_only_the_exact_executed_request(tmp_path):
         assert reference.project(current_compiler_sha256=fixture["compiler"])["observed_requests"]
 
 
+def test_missing_comparison_evidence_reaches_feedback_as_a_native_diagnostic(tmp_path):
+    from merlin_experiments.phase1.feedback import reference_analysis
+
+    fixture, _ = _live_fixture(tmp_path)
+    report = dict(kind="reference_candidate_comparison", semantic_compatibility="unknown",
+        schedule_consumption="unknown", cca=dict(status="compared",
+            compared_axes=["dispatch.loop_offloaded"], divergences=[],
+            unknowns=[dict(axis="compute.op", reason="value_unavailable", missing_sides=["expert", "ours"])]))
+    with reference.invocation(fixture["path"], fixture["sha"], tasks=False):
+        generated = reference.record_analysis(report, workspace=tmp_path, compiler_sha256=fixture["compiler"])
+        found = reference.project(current_compiler_sha256=fixture["compiler"])
+        assert not reference.pending_requests(fixture["compiler"])
+    assert found["task_status"] == "blocked" and found["qualification_issued"] is False
+    diagnostic, = found["next_action"]["diagnostics"]
+    assert diagnostic["argv"][-1] == "--candidate-diagnostics"
+    assert diagnostic["argv"][diagnostic["argv"].index("--capsules") + 1] == "declared-case"
+    assert not found["required_selfchecks"] and not found["observed_requests"]
+    assert found["lines"][0].startswith("reference evidence")
+    assert any(line.startswith("emission diagnostic:") and "--candidate-diagnostics" in line for line in found["lines"])
+    summary = reference_analysis._analysis_summary(dict(kind=report["kind"], experiment=generated))
+    compact_diagnostic, = summary["experiment"]["tasks"][0]["next_action"]["diagnostics"]
+    assert compact_diagnostic["command"] == diagnostic["command"]
+
+
 def test_source_drift_withholds_requests_until_fresh_analysis(tmp_path):
     fixture, report = _live_fixture(tmp_path)
     with reference.invocation(fixture["path"], fixture["sha"], tasks=False):
@@ -629,3 +653,158 @@ def test_result_metadata_is_never_authority_without_actual_join(tmp_path, mismat
         response = _response(request, compiler, raw=raw)
     assert "reference_experiment_result" not in response
     assert response["all_pass"] is True
+
+
+def _scoped_program(elf="1" * 64, **changes):
+    """Original evaluator projection; no author-provided effect claims."""
+    return dict(schema="merlin.phase1.joint_performance.v1", complete_event_accounting=True,
+                capsule_sha256="2" * 64, selection_sha256="3" * 64, model_sha256="4" * 64,
+                comparison_domain_sha256="5" * 64, scope_sha256="6" * 64, elf_sha256=elf,
+                feature_counts={"target.class.load": 2048}, **changes)
+
+
+def _observed_pair(tmp_path, *, before=None, after=None, variant_first=False):
+    fixture, report = _live_fixture(tmp_path)
+    responses = {}
+    with reference.invocation(fixture["path"], fixture["sha"], tasks=False):
+        fixture["generated"] = reference.record_analysis(
+            report, workspace=tmp_path, compiler_sha256=fixture["compiler"])
+        plans = reference.pending_requests(fixture["compiler"])
+        assert {p["role"] for p in plans} == {"baseline", "variant"}
+        order = sorted(plans, key=lambda p: p["role"] == ("baseline" if variant_first else "variant"))
+        for plan in order:
+            import shutil
+            snapshot = tmp_path / ("private-" + plan["role"]) / "submission"
+            shutil.copytree(tmp_path / "submission", snapshot)
+            request = dict(plan["broker_payload"], reference_experiment_request_id=plan["request_id"])
+            request = tuning.apply_request(snapshot, request, digest=broker._submission_digest)
+            record = before if plan["role"] == "baseline" else after
+            raw = dict(all_pass=True, sim="spike", per_capsule=[dict(capsule="declared-case", status="passed",
+                numerical_execution_passed=True, performance=record)],
+                candidate_sha256=(request.get(tuning.APPLIED_KEY) or {}).get("sha256", fixture["compiler"]))
+            responses[plan["role"]] = _response(request, fixture["compiler"], raw=raw)
+        projected = reference.project(current_compiler_sha256=fixture["compiler"])
+    return fixture, responses, projected
+
+
+@pytest.mark.parametrize("variant_first", [False, True])
+def test_owned_identical_scoped_elf_surfaces_advisory_construction_gap(tmp_path, variant_first):
+    fixture, responses, projected = _observed_pair(tmp_path, before=_scoped_program(),
+        after=_scoped_program(), variant_first=variant_first)
+    assert projected["experiment_status"] == "requested_but_no_emitted_change"
+    effect, = projected["emitted_effects"]
+    assert effect["reason"] == "identical_matched_emitted_program"
+    assert effect["application_status"] == "optimization_did_not_apply_emitted_fallback"
+    assert effect["fallback_scope"] == "retained_baseline_program"
+    assert effect["application_scope"] == "requested_variant_relative_to_matched_baseline"
+    assert effect["capsule"] == "declared-case"
+    assert effect["mechanism_status"] == "unknown" and not effect["qualification_issued"]
+    assert projected["next_action"]["route"] == "construction_gap"
+    assert "construction gap" in "\n".join(projected["lines"])
+    latest = responses["baseline" if variant_first else "variant"]
+    assert latest[reference.KEY]["experiment_status"] == "requested_but_no_emitted_change"
+    assert "same matched emitted program" in "\n".join(latest["next_steps"]["lines"])
+    assert "optimization did not apply; emitted fallback" in "\n".join(latest["next_steps"]["lines"])
+    assert latest["all_pass"] is True  # no grade/promotion change
+    assert all(r["reference_experiment_result"]["mechanism_status"] == "unknown" for r in responses.values())
+    with reference.invocation(fixture["path"], fixture["sha"], tasks=False):
+        persisted = reference.project(current_compiler_sha256=fixture["compiler"])
+        assert persisted["emitted_effects"] == projected["emitted_effects"]
+
+
+@pytest.mark.parametrize("change", ["missing", "capsule", "selection", "model", "domain", "scope",
+                                   "counts", "incomplete"])
+def test_noop_needs_matching_complete_owned_scope_not_just_same_elf(tmp_path, change):
+    before, after = _scoped_program(), _scoped_program()
+    key = {"capsule": "capsule_sha256", "selection": "selection_sha256", "model": "model_sha256",
+           "domain": "comparison_domain_sha256", "scope": "scope_sha256"}.get(change)
+    if key:
+        after[key] = "7" * 64
+    elif change == "missing":
+        after.pop("elf_sha256")
+    elif change == "counts":
+        after["feature_counts"] = {"target.class.load": 1024}
+    else:
+        after["complete_event_accounting"] = False
+    _, responses, projected = _observed_pair(tmp_path, before=before, after=after)
+    assert projected["emitted_effects"][0]["status"] == "unknown"
+    assert projected["experiment_status"] == "observed_mechanism_unresolved"
+    assert responses["variant"]["reference_experiment_result"]["mechanism_status"] == "unknown"
+
+
+def test_changed_elf_and_equal_counts_do_not_prove_requested_mechanism(tmp_path):
+    _, _, projected = _observed_pair(tmp_path, before=_scoped_program(), after=_scoped_program("8" * 64))
+    effect, = projected["emitted_effects"]
+    assert effect["status"] == "emitted_program_changed"
+    assert effect["mechanism_status"] == "unknown" and not effect["qualification_issued"]
+    assert projected["experiment_status"] == "observed_mechanism_unresolved"
+
+
+def test_unbound_or_mismatched_source_program_echo_cannot_issue_effect_witness():
+    value = dict(candidate_sha256="a" * 64, per_capsule=[dict(capsule="G", performance=_scoped_program())])
+    assert reference._emitted_program(value, capsule="G", compiler_sha256="b" * 64) is None
+    value.pop("candidate_sha256")
+    value["per_capsule"][0].pop("performance")
+    value["emitted_program"] = _scoped_program()  # proposed effect metadata is not an observation
+    assert reference._emitted_program(value, capsule="G", compiler_sha256="b" * 64) is None
+
+
+@pytest.mark.parametrize("mismatch", ["engine", "source", "context", "suite", "tiers"])
+def test_effect_pair_cannot_borrow_another_execution_context(tmp_path, mismatch):
+    fixture, _, projected = _observed_pair(tmp_path, before=_scoped_program(), after=_scoped_program())
+    task = fixture["generated"]["tasks"][0]
+    outcomes = {row["request_id"]: copy.deepcopy(row) for row in projected["observed_requests"]}
+    variant = next(row for row in outcomes.values() if row["role"] == "variant")
+    key, value = {"engine": ("sim", "gsim"), "source": ("executed_compiler_sha256", "9" * 64),
+                  "context": ("context_identity", "9" * 64), "suite": ("suite", "programs"),
+                  "tiers": ("tiers", "L3")}[mismatch]
+    variant[key] = value
+    effect, = reference._emitted_effects(task, outcomes)
+    assert effect["status"] == "unknown" and not effect["qualification_issued"]
+
+
+def test_emitted_program_advice_is_inert_without_reference_selection(tmp_path):
+    fixture = _fixture(tmp_path)
+    request = _request(fixture)
+    response = _response(request, fixture["compiler"], raw=dict(all_pass=True, sim="spike",
+        per_capsule=[dict(capsule="declared-case", status="passed", performance=_scoped_program())]))
+    assert reference.KEY not in response and "reference_experiment_result" not in response
+    assert response["all_pass"] is True
+
+
+@pytest.mark.parametrize("second_changes_program", [False, True])
+def test_immediate_effect_feedback_uses_exact_observed_task_not_first_pending(tmp_path, second_changes_program):
+    import shutil
+
+    fixture, report = _live_fixture(tmp_path)
+    report["gaps"] = [dict(kind="adapter_gap", goals=["memory.reuse"], reason="a separate task")]
+    with reference.invocation(fixture["path"], fixture["sha"], tasks=False):
+        generated = reference.record_analysis(report, workspace=tmp_path, compiler_sha256=fixture["compiler"])
+        first, second = generated["tasks"]
+        plans = reference.pending_requests(fixture["compiler"])
+        latest = None
+        for task in (first, second):
+            pair = [plan for plan in plans if plan["task_id"] == task["task_id"]]
+            assert {plan["role"] for plan in pair} == {"baseline", "variant"}
+            for plan in pair:
+                snapshot = tmp_path / (task["task_id"] + "-" + plan["role"]) / "submission"
+                shutil.copytree(tmp_path / "submission", snapshot)
+                request = dict(plan["broker_payload"], reference_experiment_request_id=plan["request_id"])
+                request = tuning.apply_request(snapshot, request, digest=broker._submission_digest)
+                changed = second_changes_program and task is second and plan["role"] == "variant"
+                raw = dict(all_pass=True, sim="spike", candidate_sha256=(request.get(tuning.APPLIED_KEY) or {}).get(
+                    "sha256", fixture["compiler"]), per_capsule=[dict(capsule="declared-case", status="passed",
+                    performance=_scoped_program("8" * 64 if changed else "1" * 64))])
+                latest = _response(request, fixture["compiler"], raw=raw)
+        feedback = latest[reference.KEY]
+        assert feedback["latest_observation"]["task_id"] == second["task_id"]
+        effect, = feedback["emitted_effects"]
+        assert effect["task_id"] == second["task_id"]
+        if second_changes_program:
+            assert feedback["experiment_status"] == "observed_mechanism_unresolved"
+            assert feedback["next_action"]["route"] == "inspect_emitted_mechanism"
+            assert effect["status"] == "emitted_program_changed"
+        else:
+            assert feedback["experiment_status"] == "requested_but_no_emitted_change"
+            assert feedback["next_action"]["task_id"] == second["task_id"]
+        assert feedback["latest_observation"]["mechanism_status"] == "unknown"

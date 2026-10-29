@@ -1,5 +1,30 @@
 # A connected chain through the composition catalog (`spatial_chain_recipe.py`)
 
+## Direct device producer bands
+
+For an original staged Q1/Q2 `SpatialProducerPlan`,
+`spatial_producer_band_choices(source, max_output_rows=...)` enumerates heights
+that fit the assigned ACC and intermediate byte window. Each choice reports
+actual halo recomputation, logical MACs and storage. A selected
+`SpatialProducerBandAdmission` must bind rectangular pool addressing, field
+limits, command tracking, unchanged Q1/Q2 and full completion before reuse.
+`emit_spatial_producer_band` actually emits the producer union, Q1 stores and
+reloads, then the original Q2 multirow pool readout.
+
+`spatial_producer_pass_space(..., output_row_limits=..., rhs_choices=...,
+verify_source=..., realize=...)` uses the existing pass registry. Independent
+band and complete immutable RHS planning can exchange order; both precede
+realization. The target's `realize(alternative)` consumes the actual checked
+band/RHS owners and returns `EmittedProgram` bound to `alternative.identity`.
+`explore_spatial_producer` deduplicates identical emitted bytes before feedback.
+Compare complete same-source region cycles and exact outputs; fewer transfers
+or recomputed MACs do not supply a latency score. The connected host route uses
+`alternative.band.source` with its complete original ABI and assigned scratch.
+
+Rolling host panels and `SpatialReadoutCache` use `RollingPackedSpatialPlan`;
+they require that actual representation before composition. A direct device
+band does not grant those storage mappings or asynchronous completion.
+
 ## Which routes apply to one case
 
 ```

@@ -82,13 +82,17 @@ def verify(record, workspace, bundle, *, repo):
 def append_guidance(record, workspace, run_dir):
     if record is None:
         return
+    from .author_profiles import modern_advice
+
+    usage = ("Use this readable data leaf with `read_scheduling_contracts`; " if modern_advice()
+             else "This is a readable data declaration; ")
     task = workspace / "TASK.md"
     task.write_text(
         task.read_text()
         + "\n## Selected public software declaration\n\n"
         + f"Read `{record['path']}` for the original selected software semantics "
-        + f"(SHA-256 `{record['sha256']}`). Use this readable data leaf with "
-        + "`read_scheduling_contracts`; the original backend tree remains withheld. "
+        + f"(SHA-256 `{record['sha256']}`). " + usage
+        + "The original backend tree remains withheld. "
         + "This identical-byte alias grants no additional implementation or qualification.\n"
     )
     (run_dir / "TASK.md").write_bytes(task.read_bytes())

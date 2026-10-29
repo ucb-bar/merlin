@@ -230,6 +230,7 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
     unavailable_detail = None
     need = deferred = None
     passed = False
+    seed = None
     try:
         source_capsule = selected_capsule(selection, capsule)
         epoch = choose(selection, capsule_identity(source_capsule))
@@ -242,7 +243,10 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
         stage = "numerical_screen"
         numeric = result.get("numeric") or {}
         tier = (result.get("tiers") or {}).get("L2") or {}
-        passed = numeric.get("status") == "pass" and tier.get("status") == "pass"
+        # A carried screen did not compare outputs again (numeric stays "skipped"): the same executable
+        # passed that comparison when its verdict was earned, so it is timed like one that just passed.
+        carried = isinstance(tier.get("carried"), dict) and tier["carried"].get("carried") is True
+        passed = tier.get("status") == "pass" and (numeric.get("status") == "pass" or carried)
         from . import observation_need as ON
 
         need = ON.need_seconds(structural)
@@ -253,6 +257,10 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
             reason = "original complete numerical screen did not pass"
         elif tier.get("engine") != "spike":
             reason = "timing observation only follows original Spike execution"
+        elif (seed := _seed_timing(root, epoch, selection, pin, source_capsule, result)) is not None:
+            # A seeded run: the seed timed exactly these bytes under this model (.seed_timing).
+            stage, reason = "seed_timing", seed["performance"]["reason"]
+            model_review = seed["performance"].get("model_review")
         elif budget < 1:
             # Nothing of this request's observation budget was left when the case's turn came.
             reason, deferred = "observation not started: shared budget exhausted", need
@@ -300,7 +308,7 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
             from merlin.common.path_scrub import scrub_host_paths
 
             unavailable_detail = scrub_host_paths(str(error))[:240]
-    row["performance"] = project(
+    row["performance"] = seed["performance"] if seed is not None else project(
         report, observation, structural, selection_sha256=pin["sha256"], reason=reason,
     )
     row["performance"]["capsule_sha256"] = capsule_identity(source_capsule if source_capsule is not None else capsule)
@@ -342,6 +350,10 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
             "comparison_domain_sha256", "scope_sha256")}
     from .joint_performance_priority import project as search_priority
     row["performance"]["search_priority"] = search_priority(result, row["performance"])
+    if seed is not None:
+        if seed.get("compiler_diagnostics") is not None:
+            row["compiler_diagnostics"] = seed["compiler_diagnostics"]
+        return
     try:
         from .joint_diagnostics_feedback import attach as attach_diagnostics
         attach_diagnostics(row, root, report=report, observation=observation, result=result, compiler=compiler)
@@ -356,6 +368,21 @@ def attach(row, root, *, result, context, compiler, capsule, remaining_s, reques
         # Registration cannot change the original numerical/performance verdict.
         row["performance"]["calibration_registration"] = "unavailable"
 
+
+
+def _seed_timing(root, epoch, selection, pin, source_capsule, result):
+    """A seeded run's carried model cycles for exactly this executable (:mod:`.seed_timing`), else None."""
+    from . import seed_timing
+
+    run_dir = seed_timing._run_dir()
+    if (run_dir is None or not (run_dir / seed_timing.TIMING_DIR).is_dir() or not epoch.get("runtime")
+            or result.get("owned_host_native_execution") is not None or not isinstance(source_capsule, dict)):
+        return None
+    runtime = _runtime(epoch["runtime"], facts_pin=selection["facts"])
+    key = {"capsule_sha256": capsule_identity(source_capsule), "selection_sha256": pin["sha256"],
+           "model_sha256": F.digest(runtime.model_path), "facts_sha256": selection["facts"]["sha256"],
+           "timing_epoch": epoch["epoch"]}
+    return seed_timing.carried(original_executable(root), capsule=str(source_capsule.get("name")), key=key)
 
 
 def original_executable(root):

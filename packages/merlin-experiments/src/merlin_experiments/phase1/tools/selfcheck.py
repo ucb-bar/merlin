@@ -523,6 +523,37 @@ def _sweep_cases(ws: Path, capsules: str, bundle: str) -> str:
     return ",".join(dict.fromkeys(names))
 
 
+def _case_groups(ws: Path, names: list[str]) -> list[tuple[str, list[str]]]:
+    """Route public names by the staged inventory, never by a case-name convention.
+
+    A performance bundle may include a core/calibration control or a separately
+    selected program. Each native suite owns a distinct input roster. Partition
+    before publishing requests; changing the suite cannot grant another input.
+    Historical workspaces without an inventory retain their scalability route.
+    """
+    if not names:
+        raise ValueError("public case routing needs named cases")
+    path = ws / "PUBLIC_CAPABILITIES.json"
+    if not path.exists() and not path.is_symlink():
+        return [("scalability", list(dict.fromkeys(names)))]
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 16 << 20:
+        raise ValueError("public case routing requires an ordinary bounded inventory file")
+    inventory = _read_json(path)
+    members = inventory.get("members") if isinstance(inventory, dict) else None
+    if not isinstance(members, dict):
+        raise ValueError("public case routing requires the staged capability inventory")
+    groups = {}
+    for name in dict.fromkeys(names):
+        row = members.get(name)
+        suite = row.get("selfcheck_suite") if isinstance(row, dict) else None
+        if suite not in {"core", "scalability", "programs"}:
+            raise ValueError("case has no declared public self-check suite: " + str(name))
+        groups.setdefault(suite, []).append(name)
+    if not groups:
+        raise ValueError("public case routing needs named cases")
+    return list(groups.items())
+
+
 def _sweep_rows(ws: Path, document: dict) -> dict:
     """Read verified public detail pointers; incomplete or altered details never supply cycle evidence."""
     found = {}
@@ -559,20 +590,30 @@ def _sweep_passed(row: dict) -> bool:
 
 def _sweep_rank(ws: Path, manifest: dict, responses: dict) -> tuple[list, list]:
     """Compare each member with this sweep's baseline only, under identical case/model scopes."""
-    baseline = responses.get(manifest["baseline_request_id"]) or {}
-    before_rows = _sweep_rows(ws, baseline)
-    comparisons, rankings = [], []
-    for request in manifest["requests"][1:]:
+    comparisons, rankings, groups = [], [], {}
+    for request in manifest["requests"]:
+        if (request.get("key") == "baseline" or request["request_id"] in
+                manifest.get("baseline_request_ids", [manifest["baseline_request_id"]])):
+            continue
+        baseline = responses.get(request.get("baseline_request_id", manifest["baseline_request_id"])) or {}
+        before_rows = _sweep_rows(ws, baseline)
         document = responses.get(request["request_id"])
         if not isinstance(document, dict):
             continue
         group = []
         candidate_sha = (document.get("variant") or {}).get("sha256") or document.get("submission_sha256")
-        for name, row in _sweep_rows(ws, document).items():
+        after_rows = _sweep_rows(ws, document)
+        names = request.get("capsules", list(after_rows))
+        names = names.split(",") if isinstance(names, str) else names
+        for name in dict.fromkeys(names):
+            row = after_rows.get(name) or {}
             before = before_rows.get(name) or {}
             bp, cp = before.get("performance") or {}, row.get("performance") or {}
             before_cycles, after_cycles = bp.get("estimated_whole_soc_cycles"), cp.get("estimated_whole_soc_cycles")
             reason = next(("estimates differ in " + k for k in _MODEL_KEYS if bp.get(k) != cp.get(k)), None)
+            if (request.get("tuning_overrides")
+                    and baseline.get("submission_sha256") != document.get("submission_sha256")):
+                reason = "knob copy and baseline differ in submission_sha256"
             required = ("model_sha256", "timing_mode", "scope_sha256", "comparison_domain_sha256", "elf_sha256")
             if reason is None and (any(not p.get(k) for p in (bp, cp) for k in required)
                                    or any(type(p.get("timing_epoch")) is not int for p in (bp, cp))):
@@ -582,6 +623,7 @@ def _sweep_rank(ws: Path, manifest: dict, responses: dict) -> tuple[list, list]:
                 reason = "no complete model estimate on both sides"
             unchanged = _sweep_passed(before) and _sweep_passed(row)
             identity = {"candidate_sha256": candidate_sha, "baseline_sha256": baseline.get("submission_sha256"),
+                        "candidate_base_sha256": document.get("submission_sha256"),
                         "case": name, "candidate_elf_sha256": cp.get("elf_sha256"),
                         "baseline_elf_sha256": bp.get("elf_sha256"),
                         "model": {k: cp.get(k) for k in _MODEL_KEYS},
@@ -596,14 +638,24 @@ def _sweep_rank(ws: Path, manifest: dict, responses: dict) -> tuple[list, list]:
                 comparison["not_compared"] = reason
             comparisons.append(comparison)
             group.append(comparison)
+        ranked = groups.setdefault((request["key"], candidate_sha), {
+            "candidate": request["key"], "candidate_sha256": candidate_sha,
+            "rows": [], "request_ids": [], "errors": []})
+        ranked["rows"].extend(group)
+        ranked["request_ids"].append(request["request_id"])
+        if document.get("error"):
+            ranked["errors"].append(document["error"])
+    for ranked in groups.values():
+        group = ranked.pop("rows")
         usable = [c for c in group if c["numerics"] == "unchanged" and c["ratio"] is not None]
-        rankings.append({"candidate": request["key"], "candidate_sha256": candidate_sha,
+        rankings.append({"candidate": ranked["candidate"], "candidate_sha256": ranked["candidate_sha256"],
                          "geomean_ratio": round(math.exp(sum(math.log(c["ratio"]) for c in usable)
                                                           / len(usable)), 4) if usable else None,
                          "cases_compared": len(usable), "faster": sum(c["ratio"] < 1 for c in usable),
                          "slower": sum(c["ratio"] > 1 for c in usable),
                          "numerics_changed_or_unknown": sum(c["numerics"] != "unchanged" for c in group),
-                         "error": document.get("error"), "request_id": request["request_id"]})
+                         "error": ranked["errors"][0] if ranked["errors"] else None,
+                         "request_id": ranked["request_ids"][0], "request_ids": ranked["request_ids"]})
     rankings.sort(key=lambda r: (r["numerics_changed_or_unknown"] > 0, r["geomean_ratio"] is None,
                                  r["geomean_ratio"] or 0, r["candidate"]))
     comparisons.sort(key=lambda c: (c["numerics"] != "unchanged", c["delta_pct"] is None,
@@ -615,31 +667,42 @@ def _run_sweep(a, ws: Path, ch: Path, manifest: dict | None = None) -> int:
     if manifest is None:
         candidates = _sweep_candidates(ws, a.sweep or "", a.knob)
         cases = _sweep_cases(ws, a.capsules, a.bundle)
+        groups = _case_groups(ws, cases.split(","))
         sid = "sweep_" + _request_id()
         base = _submission_digest(ws / _SUBMISSION)
         now = time.time_ns()
         deadline = time.time() + _request_budget_seconds(a.timeout, capsules=cases, workers=a.workers)
         caller = os.environ.get("CODEX_THREAD_ID", "").strip()[:128]
         requests, bodies = [], []
-        for index, candidate in enumerate([{"submission": _SUBMISSION, "key": "baseline"}, *candidates]):
-            label, rid = candidate["submission"], f"{sid}_{index}"
-            digest = base if label == _SUBMISSION else _submission_digest(ws / label)
-            member = {**candidate, "request_id": rid, "submission_sha256": digest}
-            requests.append(member)
-            body = {"protocol": PROTOCOL_VERSION, "request_id": rid, "requested_at_unix_ns": now,
-                    "requester": _requester_identity(), "deadline_unix_ns": int(deadline * 1e9),
-                    "submission": label, "submission_sha256": digest, "suite": "scalability", "sim": "spike",
-                    "capsules": cases, "workers": a.workers, "timeout": a.timeout,
-                    **({"caller_thread_id": caller} if caller else {})}
-            if index:
-                kind = "knob" if candidate.get("tuning_overrides") else "variant"
+        baselines = []
+        for suite, names in groups:
+            baseline_id = f"{sid}_{len(requests)}"
+            baselines.append(baseline_id)
+            for candidate in [{"submission": _SUBMISSION, "key": "baseline"}, *candidates]:
+                label, rid = candidate["submission"], f"{sid}_{len(requests)}"
+                digest = base if label == _SUBMISSION else _submission_digest(ws / label)
+                member = {**candidate, "request_id": rid, "submission_sha256": digest,
+                          "suite": suite, "capsules": list(names), "baseline_request_id": baseline_id}
+                requests.append(member)
+                body = {"protocol": PROTOCOL_VERSION, "request_id": rid, "requested_at_unix_ns": now,
+                        "requester": _requester_identity(), "deadline_unix_ns": int(deadline * 1e9),
+                        "submission": label, "submission_sha256": digest, "suite": suite, "sim": "spike",
+                        "capsules": ",".join(names), "workers": a.workers, "timeout": a.timeout,
+                        **({"tiers": "L0,L1,L2"} if suite == "core" else {}),
+                        **({"caller_thread_id": caller} if caller else {})}
                 body["tuning_experiment"] = {"schema": _EXPERIMENT_SCHEMA, "base_sha256": base,
-                    "candidate": {"kind": kind, "key": candidate["key"]}, "test_cases": cases.split(","),
+                    "candidate": {"kind": "baseline", "key": "baseline"}, "test_cases": list(names),
                     "origin": "author_sweep", "sweep": sid}
-                if kind == "knob":
-                    body["tuning_overrides"] = candidate["tuning_overrides"]
-            bodies.append(body)
+                if candidate["key"] != "baseline":
+                    kind = "knob" if candidate.get("tuning_overrides") else "variant"
+                    body["tuning_experiment"] = {"schema": _EXPERIMENT_SCHEMA, "base_sha256": base,
+                        "candidate": {"kind": kind, "key": candidate["key"]}, "test_cases": list(names),
+                        "origin": "author_sweep", "sweep": sid}
+                    if kind == "knob":
+                        body["tuning_overrides"] = candidate["tuning_overrides"]
+                bodies.append(body)
         manifest = {"schema": _SWEEP_SCHEMA, "sweep_id": sid, "baseline_request_id": requests[0]["request_id"],
+                    "baseline_request_ids": baselines,
                     "requests": requests, "capsules": cases, "deadline_unix_ns": int(deadline * 1e9)}
         _atomic_write(ch / f"{sid}.json", json.dumps(manifest))
         for body in bodies:
@@ -679,8 +742,9 @@ def _run_sweep(a, ws: Path, ch: Path, manifest: dict | None = None) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     report = {"schema": _SWEEP_SCHEMA, "sweep_id": sid, "official": False, "advisory_only": True,
               "status": "complete" if complete else "in_progress", "n_completed": len(responses),
-              "baseline_status": ("current" if _submission_digest(ws / _SUBMISSION) ==
-                  (responses.get(manifest["baseline_request_id"]) or {}).get("submission_sha256") else "older_source"),
+              "baseline_status": ("current" if all(_submission_digest(ws / _SUBMISSION) ==
+                  (responses.get(rid) or {}).get("submission_sha256") for rid in
+                  manifest.get("baseline_request_ids", [manifest["baseline_request_id"]])) else "older_source"),
               "n_expected": len(manifest["requests"]), "errors": faults,
               "all_pass": (all(d.get("all_pass") is True for d in responses.values())
                            if complete and not faults else None),
@@ -867,20 +931,29 @@ def main(argv=None):
                     "compare accepts owned before/after files on both sides")
     ap.add_argument("--reference-format", default="auto",
                     choices=("auto", "c_source", "python_schedule", "listing", "disassembly", "elf",
-                             "schedule_mlir", "semantic_region", "interface_mlir", "command_buffer", "artifact_views"),
+                             "schedule_mlir", "semantic_region", "interface_mlir", "source_mlir", "emitted_mlir",
+                             "command_buffer", "artifact_views", "candidate_build"),
                     help="schedule_mlir is an actual schedule.plan; for emitted LLVM use a pinned artifact_views "
-                         "manifest created with --write-reference-views")
+                         "manifest created with --write-reference-views; candidate_build selects an original "
+                         "owned linked view")
     ap.add_argument("--reference-member", default="", help="member of an already visible ZIP; no extraction")
     ap.add_argument("--reference-entry", default="", help="pinned reference-map entry ID; selects its file/locator")
     ap.add_argument("--reference-symbol", default="", help="exact source or disassembly function symbol")
+    ap.add_argument("--reference-region", default="", help="stable machine region identity returned by lift/inventory")
+    ap.add_argument("--reference-instruction-offset", type=int, default=0,
+                    help="first instruction in the selected region's bounded instruction page")
     ap.add_argument("--reference-offset", type=int, default=0)
     ap.add_argument("--reference-limit", type=int, default=8)
     ap.add_argument("--candidate-path", default="", help="compare only: owned submission/, variants/, "
                     "selfcheck_out/ or artifacts/ file")
     ap.add_argument("--candidate-format", default="auto",
                     choices=("auto", "c_source", "python_schedule", "listing", "disassembly", "elf",
-                             "schedule_mlir", "semantic_region", "interface_mlir", "command_buffer", "artifact_views"))
+                             "schedule_mlir", "semantic_region", "interface_mlir", "source_mlir", "emitted_mlir",
+                             "command_buffer", "artifact_views", "candidate_build"))
     ap.add_argument("--candidate-symbol", default="", help="compare only: exact emitted function symbol")
+    ap.add_argument("--candidate-region", default="", help="compare only: stable emitted machine region identity")
+    ap.add_argument("--candidate-instruction-offset", type=int, default=0,
+                    help="compare only: first instruction in the candidate region's instruction page")
     ap.add_argument("--candidate-offset", type=int, default=0)
     ap.add_argument(
         "--mechanism-question",
@@ -895,7 +968,9 @@ def main(argv=None):
     if a.write_reference_views:
         if (a.reference_analysis or a.attach or a.list or a.sweep is not None or a.panel or a.mechanism_question
                 or a.tuning_overrides or a.reference_request or a.reference_path or a.reference_entry
-                or a.reference_member or a.reference_format != "auto" or a.candidate_path
+                or a.reference_member or a.reference_region or a.candidate_region
+                or a.reference_instruction_offset or a.candidate_instruction_offset
+                or a.reference_format != "auto" or a.candidate_path
                 or a.candidate_format != "auto" or a.candidate_symbol or a.candidate_offset
                 or a.suite != "core" or a.capsules != "all" or a.knob or a.bundle
                 or a.reference_offset or a.reference_limit != 8 or a.submission != _SUBMISSION
@@ -915,7 +990,8 @@ def main(argv=None):
                 or any(getattr(a, key) for key in ("candidate_diagnostics", "compile_only", "caller_layout",
                     "shape_coverage", "offload_census", "model_layers", "dynamic_census", "scale_probe"))):
             ap.error("--reference-analysis is a separate read-only diagnostic action")
-        if not 0 <= a.reference_offset or not 0 <= a.candidate_offset or not 1 <= a.reference_limit <= 16:
+        if (not 0 <= a.reference_offset or not 0 <= a.candidate_offset or not 1 <= a.reference_limit <= 16
+                or a.reference_instruction_offset < 0 or a.candidate_instruction_offset < 0):
             ap.error("reference analysis requires a nonnegative offset and limit1..16")
         a.reference_path = a.reference_path or ("reference-kernels" if a.reference_analysis == "inventory" else "")
         if not a.reference_path and not a.reference_entry:
@@ -925,11 +1001,13 @@ def main(argv=None):
         if a.reference_analysis == "compare":
             if not a.candidate_path:
                 ap.error("--reference-analysis compare requires --candidate-path")
-        elif a.candidate_path or a.candidate_format != "auto" or a.candidate_symbol or a.candidate_offset:
+        elif (a.candidate_path or a.candidate_format != "auto" or a.candidate_symbol or a.candidate_offset
+              or a.candidate_region or a.candidate_instruction_offset):
             ap.error("candidate comparison options require --reference-analysis compare")
     elif (a.reference_path or a.reference_member or a.reference_format != "auto" or a.reference_offset
           or a.reference_entry or a.reference_symbol or a.candidate_path or a.candidate_format != "auto"
-          or a.candidate_symbol or a.candidate_offset):
+          or a.candidate_symbol or a.candidate_offset or a.reference_region or a.candidate_region
+          or a.reference_instruction_offset or a.candidate_instruction_offset):
         ap.error("reference input options require --reference-analysis")
     if a.sweep is not None:
         if (a.submission != _SUBMISSION or a.panel or a.attach or a.list or a.mechanism_question
@@ -998,7 +1076,12 @@ def main(argv=None):
             ap.error("public Spike suites accept only --sim spike")
         a.sim = "spike"
         tiers = [v.strip() for v in a.tiers.split(",") if v.strip()]
-        if (tiers and tiers != ["L0", "L1", "L2"]) or any(
+        source_inspection = (a.suite == "scalability" and a.sweep is None
+            and a.compile_only != a.candidate_diagnostics
+            and not any(getattr(a, key, False) for key in (
+                "caller_layout", "shape_coverage", "offload_census", "model_layers", "dynamic_census", "scale_probe"))
+            and not (a.tuning_overrides or a.reference_request or a.mechanism_question))
+        probing = any(
             getattr(a, k, False)
             for k in (
                 "compile_only",
@@ -1010,7 +1093,8 @@ def main(argv=None):
                 "dynamic_census",
                 "scale_probe",
             )
-        ):
+        )
+        if (tiers and tiers != ["L0", "L1", "L2"]) or probing and not source_inspection:
             ap.error("public Spike suites require L0,L1,L2 and refuse inspection/RTL requests")
     if a.timeout is None:
         a.timeout = 3600 if a.sim == "gsim" else 1800
@@ -1108,8 +1192,13 @@ def main(argv=None):
                         operation=a.reference_analysis, path=a.reference_path, format=a.reference_format,
                         member=a.reference_member, offset=a.reference_offset, limit=a.reference_limit,
                         symbol=a.reference_symbol, entry=a.reference_entry,
+                        **(dict(region=a.reference_region) if a.reference_region else {}),
+                        **(dict(instruction_offset=a.reference_instruction_offset) if a.reference_instruction_offset else {}),
                         **(dict(candidate=dict(path=a.candidate_path, format=a.candidate_format,
-                            symbol=a.candidate_symbol, offset=a.candidate_offset))
+                            symbol=a.candidate_symbol, offset=a.candidate_offset,
+                            **(dict(region=a.candidate_region) if a.candidate_region else {}),
+                            **(dict(instruction_offset=a.candidate_instruction_offset)
+                               if a.candidate_instruction_offset else {})))
                            if a.reference_analysis == "compare" else {})))
                        if a.reference_analysis else {}),
                     "deadline_unix_ns": int(deadline * 1_000_000_000),

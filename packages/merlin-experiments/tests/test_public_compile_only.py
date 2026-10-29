@@ -63,6 +63,23 @@ def test_public_scale_and_frontier_cases_allocate_only_source_text(tmp_path):
     assert not list(tmp_path.rglob("*.npz")) and not list(tmp_path.rglob("*.npy"))
 
 
+def test_source_and_metadata_have_separate_bounded_intake_limits(tmp_path):
+    original = capsule(tmp_path)
+    root = Path(original["__dir__"])
+    metadata = root / "capsule.yaml"
+    value = json.loads(metadata.read_bytes())
+    value["source_notes"] = "x" * SOURCES.MAX_SOURCE_BYTES
+    metadata.write_text(json.dumps(value))
+    cases, manifest = SOURCES.derive([original], scales=(1,))
+    assert len(cases) == 1 and not manifest["unavailable"]
+    cases[0].verify()
+    (root / "source.mlir").write_text(" " * (SOURCES.MAX_SOURCE_BYTES + 1))
+    assert not SOURCES.derive([original], scales=(1,))[0]
+    metadata.write_text(" " * (SOURCES.MAX_METADATA_BYTES + 1))
+    cases, manifest = SOURCES.derive([original], scales=(1,))
+    assert not cases and manifest["unavailable"][0]["member"] == original["name"]
+
+
 def test_replayed_composition_scales_without_opening_hidden_source(tmp_path):
     original = capsule(tmp_path, graph=True)
     hidden = {"name": "withheld", "label": "hidden", "__dir__": str(tmp_path / "absent-private")}
@@ -272,26 +289,34 @@ def test_v26_style_missing_policy_is_per_case_unavailable_without_building(tmp_p
     assert result["all_pass"] is False
 
 
-def test_compile_only_reuses_and_pins_actual_selected_native_policy(tmp_path, monkeypatch):
+def test_public_layer_reuses_and_pins_global_policy_without_model_sidecar(tmp_path, monkeypatch):
     from merlin.targetgen import target_experiment
     from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
     original = capsule(tmp_path)
-    original.pop("performance")
-    original.update(expected={"instruction_classes": ["LOAD"]}, required_oracle_tiers=["L0", "L1", "L2"])
+    original.update(kind="layer", performance=None, expected={"instruction_classes": ["LOAD"]},
+                    required_oracle_tiers=["L0", "L1", "L2"])
     root = Path(original["__dir__"])
     (root / "capsule.yaml").write_text(json.dumps({k: v for k, v in original.items() if k != "__dir__"}))
-    (root / "expected_instruction_coverage.yaml").write_text('{"instruction_classes":["LOAD"]}')
     descriptor, manifest = tmp_path / "experiment.yaml", tmp_path / "MANIFEST.yaml"
     descriptor.write_text("selected: fixture\n")
     manifest.write_text('{"instruction_policy":{"status":"resolved",'
                         '"prohibited_instruction_roles":["selected_role"]}}')
     monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
     monkeypatch.setattr(target_experiment, "load_target_experiment", lambda path:
-                        SimpleNamespace(target="fixture", capsule_corpus=tmp_path / "isa"))
+                        SimpleNamespace(target="fixture", capsule_corpus=tmp_path / "isa",
+                                        descriptor_sha256=ORIGINAL.sha256_file(descriptor)))
     selected = ORIGINAL._case_instruction_policy(original, target="fixture")
     assert selected["diagnostic"] is None and selected["roles"] == ("selected_role",)
     assert str(manifest) in dict(selected["pins"])
+    assert str(root / "capsule.yaml") in dict(selected["pins"])
+    assert not (root / "expected_instruction_coverage.yaml").exists()
+    # A source-only build has no model coverage/tier authority. The certifying
+    # model reader must still reject exactly this absent original sidecar.
+    from merlin.targetgen import native_model_policy
+
+    with pytest.raises(FileNotFoundError):
+        native_model_policy._frozen_model_policy(root, target="fixture")
     checker = ORIGINAL._InstructionPolicy("fixture", selected["roles"], {}, tmp_path / "facts")
     source = Path(ORIGINAL.__file__).resolve()
     admission = LinkedElfAdmissionService("fixture", checker.evaluate, (
@@ -307,6 +332,68 @@ def test_compile_only_reuses_and_pins_actual_selected_native_policy(tmp_path, mo
     refused = ORIGINAL._case_instruction_policy(original, target="fixture")
     assert refused["roles"] is None
     assert refused["diagnostic"]["code"] == "selected_native_instruction_policy_unavailable"
+
+
+@pytest.mark.parametrize("instruction", [None, {}, {"status": "pending", "prohibited_instruction_roles": []},
+    {"status": "resolved"}, {"status": "resolved", "prohibited_instruction_roles": "restricted"},
+    {"status": "resolved", "prohibited_instruction_roles": [17]},
+    {"status": "resolved", "prohibited_instruction_roles": [""]}])
+def test_unresolved_global_policy_cannot_be_hidden_by_declared_empty_policy(tmp_path, monkeypatch, instruction):
+    from merlin.targetgen import target_experiment
+
+    original = capsule(tmp_path)
+    descriptor = tmp_path / "descriptor.yaml"
+    descriptor.write_text("target: fixture\n")
+    (tmp_path / "MANIFEST.yaml").write_text(json.dumps({"instruction_policy": instruction}))
+    monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda path:
+                        SimpleNamespace(target="fixture", capsule_corpus=tmp_path / "isa",
+                                        descriptor_sha256=ORIGINAL.sha256_file(descriptor)))
+    selected = ORIGINAL._case_instruction_policy(original, target="fixture")
+    assert selected["roles"] is None and selected["diagnostic"]["permission_inferred"] is False
+
+
+def test_global_and_declared_restrictions_are_both_retained(tmp_path, monkeypatch):
+    from merlin.targetgen import target_experiment
+
+    original = capsule(tmp_path)
+    original["performance"]["arms"]["candidate"]["instruction_policy"]["prohibited_instruction_roles"] = ["local"]
+    descriptor = tmp_path / "descriptor.yaml"
+    descriptor.write_text("target: fixture\n")
+    manifest = tmp_path / "MANIFEST.yaml"
+    manifest.write_text('{"instruction_policy":{"status":"resolved","prohibited_instruction_roles":["global"]}}')
+    monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda path:
+                        SimpleNamespace(target="fixture", capsule_corpus=tmp_path / "isa",
+                                        descriptor_sha256=ORIGINAL.sha256_file(descriptor)))
+    assert ORIGINAL._case_instruction_policy(original, target="fixture")["roles"] == ("global", "local")
+    manifest.write_text('{"instruction_policy":{"status":"resolved","prohibited_instruction_roles":[]}}')
+    assert ORIGINAL._case_instruction_policy(original, target="fixture")["roles"] == ("local",)
+    # No reader may silently follow an indirect replacement of original policy.
+    original_manifest = tmp_path / "original.yaml"
+    manifest.rename(original_manifest)
+    manifest.symlink_to(original_manifest)
+    assert ORIGINAL._case_instruction_policy(original, target="fixture")["roles"] is None
+
+
+def test_descriptor_replacement_during_policy_load_refuses(tmp_path, monkeypatch):
+    from merlin.targetgen import native_model_policy, target_experiment
+    from merlin.targetgen.native_model_execution import NativeModelExecutionError
+
+    descriptor = tmp_path / "descriptor.yaml"
+    descriptor.write_text("target: fixture\n")
+    original_sha = ORIGINAL.sha256_file(descriptor)
+    (tmp_path / "MANIFEST.yaml").write_text(
+        '{"instruction_policy":{"status":"resolved","prohibited_instruction_roles":[]}}')
+    monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
+
+    def load(path):
+        descriptor.write_text("target: replaced\n")
+        return SimpleNamespace(target="fixture", capsule_corpus=tmp_path / "isa", descriptor_sha256=original_sha)
+
+    monkeypatch.setattr(target_experiment, "load_target_experiment", load)
+    with pytest.raises(NativeModelExecutionError, match="changed"):
+        native_model_policy._frozen_corpus_instruction_policy(target="fixture")
 
 
 def test_plain_profile_dict_cannot_select_compiler_import_authority(tmp_path):
@@ -397,6 +484,7 @@ def test_queued_compile_only_refuses_nested_numeric_credit(feedback):
 
 def test_queue_uses_compile_only_only_when_phase1_admitted(monkeypatch):
     inputs = object.__new__(SearchInputs)
+    inputs.diagnostic = False
     inputs.ordinary, inputs.policy = True, object()
     monkeypatch.setattr(QUEUED, "available", lambda _: False)
     assert QUEUED.KIND not in inputs.kinds
@@ -415,19 +503,13 @@ def test_compile_only_uses_cpu_grant_without_waiting_for_busy_engine(tmp_path):
     pool.grant = EP.JobResources(1, 1024, 1024, 1)
     pool.capacity = EP.JobResources(3, 4096, 4096, 1)
     pool.beam = 3
-    running = SimpleNamespace(kind=ORDINARY_KIND, state="cleanup_unknown", cpus=(0,))
-    waiting = SimpleNamespace(kind=ORDINARY_KIND, state="queued", cpus=())
-    compile_only = SimpleNamespace(kind=QUEUED.KIND, state="queued", cpus=())
+    running = SimpleNamespace(kind=ORDINARY_KIND, state="cleanup_unknown", cpus=(0,), completion_deadline=None)
+    waiting = SimpleNamespace(kind=ORDINARY_KIND, state="queued", cpus=(), completion_deadline=None)
+    compile_only = SimpleNamespace(kind=QUEUED.KIND, state="queued", cpus=(), completion_deadline=None)
     pool._jobs = {"active": running, "waiting": waiting, "compile": compile_only}
     pool._retained_output_bytes = lambda: 0
-    started = []
-
-    def start(job, cpus):
-        job.state, job.cpus = "running", cpus
-        started.append(job)
-
-    pool._start = start
-    pool._tick()
-    assert started == [compile_only] and compile_only.cpus == (1,)
+    selected_job, selected_cpus = pool._tick()
+    assert selected_job is compile_only and selected_cpus == (1,)
+    assert compile_only.state == "starting"
     assert waiting.state == "queued"
     assert EP._engine_slots(compile_only, pool.grant, ordinary=False) == 1

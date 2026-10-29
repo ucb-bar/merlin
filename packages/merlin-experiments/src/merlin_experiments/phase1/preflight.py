@@ -26,6 +26,9 @@ def complete(prepared) -> int:
 
     validate_preflight_options(request.options)
     identity = verify_prepared_inputs(prepared)
+    from .feedback.reference_analysis_probe import for_prepared as reference_analysis_probe
+
+    reference_analysis = reference_analysis_probe(prepared)
     record = {
         "schema": "phase1_readiness_preflight.v1",
         "mode": "preflight_only",
@@ -35,6 +38,7 @@ def complete(prepared) -> int:
         **({"runtime_selection": prepared.selected_codex_runtime.record()} if request.options.codex_binary else {}),
         "bundle_manifest_sha256": identity,
         "snapshot_content_sha256": prepared.environment["bundle_input_snapshot"]["content_sha256"],
+        **({"reference_analysis_probe": reference_analysis} if reference_analysis is not None else {}),
         "scope": "ordinary native startup only; no author/client isolation, compiler, runtime or phase qualification",
     }
     path = prepared.run_dir / "preflight_result.json"

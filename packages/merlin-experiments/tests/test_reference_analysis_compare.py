@@ -193,6 +193,18 @@ object: .word 0
     assert region["cfg"]["trip_counts"] == region["schedule_model"]["realization"] == "unknown"
     assert region["cca"]["dispatch"] is None
 
+    # The same complete textual extraction must not fall back to the setup
+    # prefix when the caller names the symbol and local relocation labels exist.
+    scope = subprocess.check_output([objdump_bin(), '-d', '-M', 'no-aliases',
+        '--section=.text.selected', str(output)], text=True)
+    lifted = analysis._lift(scope.encode(), 'disassembly', dict(path='selected.dis', sha256='a'*64,
+        size_bytes=len(scope.encode())),
+        facts=fixture['facts'], offset=0, limit=1, candidate=False, symbol='kernel')
+    text_region, = lifted['regions']
+    assert text_region['listed_instructions'] == 5
+    assert text_region['selected_decode']['counts']['load'] == 2
+    assert text_region['symbol_status'] == 'listing_label_inferred_static_span'
+
 
 def test_elf_without_retained_function_boundary_is_an_actionable_gap(tmp_path, monkeypatch):
     fixture = _world(tmp_path)

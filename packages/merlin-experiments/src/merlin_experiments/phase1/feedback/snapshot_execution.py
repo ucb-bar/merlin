@@ -87,6 +87,10 @@ class SnapshotExecutor:
             raise ValueError("compiler invocation escaped its admitted snapshot owner")
         if pkg.integrity_exempt:
             raise ValueError("snapshot compiler cannot claim an integrity exemption")
+        profile = self.owner.bundle.get("author_profile")
+        if profile is not None and profile.get("level") in (1, 2):
+            if pkg.language != "cpp" or not pkg.manifest.get("build"):
+                raise ValueError("EL1/EL2 require a built C++/MLIR compiler package")
 
     def concurrent_entrypoints_v1(self):
         return active_snapshot() is self

@@ -78,6 +78,11 @@ def _integer_reference_bound(entry: dict, cap: dict) -> dict:
     semantics = entry.get("numerical_semantics") or {}
     operation = cap["operation"]
     op, attrs = operation["op"], operation.get("attributes") or {}
+    if op == "quantized_producer_sum":
+        producer=attrs.get("producer") or {}
+        if producer.get("op") not in ("matmul","conv2d"):
+            raise ValueError("quantized pair lacks its original source contraction")
+        return _integer_reference_bound(entry,{**cap,"operation":producer})
     if op == "spatial_producer_pool":
         producer = attrs.get("producer") or {}
         if producer.get("op") != "conv2d":

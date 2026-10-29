@@ -75,6 +75,32 @@ def test_assisted_missing_selected_grant_fails_before_sandbox(tmp_path, monkeypa
     assert any(row["name"].startswith("grant:xdsl_kit:") and not row["ok"] for row in result["checks"])
 
 
+@pytest.mark.parametrize("name", ["xs-f6-v1/inherited", "xs-f6-v1/dense-epochs", "xs-el-v1/el4"])
+def test_versioned_profile_probes_exact_supplied_tools(tmp_path, monkeypatch, name):
+    from merlin_experiments.phase1.author_profiles import resolve
+    from merlin_experiments.phase1.feedback import snapshot_execution
+
+    context, te, ws = _inputs(tmp_path)
+    profile = resolve(name)
+    bundle = dict(bundle_id="selected", arm="merlin_assisted", allowed=[],
+                  author_profile=profile.record(), tools=list(profile.tools))
+    monkeypatch.setattr(snapshot_execution, "selected", lambda: True)
+    probes = []
+
+    def live_probe(_context, _te, _ws, _bundle, tools):
+        probes.append(tools)
+        return R._check("selected_sandbox_authoring", True, "test probe")
+
+    monkeypatch.setattr(R, "_live_probe", live_probe)
+    result = R.assess(context, te, ws, bundle, profile.tools, tmp_path)
+    assert result["status"] == "ready", result
+    assert probes == [profile.tools]
+    probes.clear()
+    changed = tuple(set(profile.tools) ^ {"cca_tools"})
+    assert R.assess(context, te, ws, bundle, changed, tmp_path)["status"] == "no_go"
+    assert probes == []
+
+
 def test_selected_source_grants_survive_a_different_installed_python(tmp_path, monkeypatch):
     _, te, _ = _inputs(tmp_path)
     source = tmp_path / "source"
@@ -256,6 +282,8 @@ def test_filecheck_lookup_includes_declared_sim_family(tmp_path, monkeypatch):
     sim_bin = tmp_path / "sim-tools" / "bin"
     sim_bin.mkdir(parents=True)
     (sim_bin / "FileCheck").write_text("tool")
+    monkeypatch.setattr(toolchain.ToolchainPaths, "from_checkout",
+                        lambda: SimpleNamespace(llvm=tmp_path / "absent-primary-toolchain"))
     monkeypatch.setattr(toolchain, "_sim", lambda selected: toolchain.SimToolchain(path_dirs=(str(sim_bin),)))
     monkeypatch.setattr(R.BW, "resolve_grant", lambda path, repo: tmp_path / "facts.json")
     monkeypatch.setattr(R.BW, "snapshot_input_paths", lambda ws, bundle, sources, repo: [frozen])

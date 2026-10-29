@@ -43,6 +43,11 @@ def import_probe() -> None:
 
     for name in FULL_CHILD_IMPORTS:
         importlib.import_module(name)
+    # The child classifies a kernel's gate failure in this interpreter too. A classification that
+    # needs a package this interpreter lacks replaces every such failure with an import error.
+    from merlin.targetgen.capsule_common import _cat
+
+    _cat("TOOL_CRASH")
 
 
 def capture_import_failure(python: str, *, cwd: Path | None = None, env: dict | None = None,

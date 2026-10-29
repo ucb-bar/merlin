@@ -480,6 +480,15 @@ def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, li
     return _recompute_golden(capsule)
 
 
+def _original_residual_output(attrs,env,out_name):
+    """One original residual source evaluator, also consumed after staged Q1."""
+    from merlin.runtime.commandbuffer import residual_add_params
+    lhs_scale,rhs_scale,_bound=residual_add_params(attrs,op=f"residual_add {out_name!r}")
+    result=env[attrs["lhs"]].residual_add_scaled(env[attrs["rhs"]],lhs_scale,rhs_scale)
+    result=_narrow_to_dtype(result,str(attrs.get("output_dtype","i32")))
+    return result.relu() if "relu" in (attrs.get("epilogue") or ()) else result
+
+
 def _recompute_golden(capsule: dict) -> dict[str, list]:
     """Compute the capsule's expected outputs on the integer Tensor engine (the integer-datapath path).
 
@@ -500,6 +509,24 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         from merlin_experiments.phase0.component_numerics import evaluate
 
         return evaluate(capsule)
+    if capsule["operation"]["op"] == "quantized_producer_sum":
+        attrs=capsule["operation"].get("attributes") or {}
+        if set(attrs)!={"producer","residual","producer_result_operand","intermediate_shape","intermediate_dtype","out"}:
+            raise ValueError("closed original quantized producer/sum attributes required")
+        producer,residual=attrs["producer"],attrs["residual"]
+        side=attrs["producer_result_operand"]
+        if (producer.get("op") not in ("matmul","conv2d") or residual.get("op")!="residual_add"
+                or type(side)is not int or side not in (0,1) or attrs["intermediate_dtype"]!="i8"
+                or producer["attributes"].get("output_dtype")!="i8"):
+            raise ValueError("original INT8 Q1 and ordered sum source stages required")
+        edge=producer["attributes"]["out"]
+        if residual["attributes"].get(("lhs","rhs")[side])!=edge or residual["attributes"].get("out")!=attrs["out"]:
+            raise ValueError("quantized pair lost its complete original source edge")
+        values=_recompute_golden({**capsule,"operation":producer})
+        if set(values)!={edge}:raise ValueError("quantized producer has another observed output")
+        env=materialize_capsule_leaves(capsule)
+        env[edge]=Tensor(tuple(attrs["intermediate_shape"]),list(_flat(values[edge])),"i8")
+        return {attrs["out"]:_original_residual_output(residual["attributes"],env,attrs["out"]).to_list()}
     if capsule["operation"]["op"] == "spatial_producer_pool":
         attrs = capsule["operation"].get("attributes") or {}
         if set(attrs) != {"producer", "pool", "intermediate_shape", "intermediate_dtype", "out"}:
@@ -636,16 +663,7 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         return {out_name: _apply_epilogue(src, {**attrs, "epilogue": stages, "bias": _bias_name()}, env).to_list()}
 
     if op == "residual_add":
-        # The single-rounding reference; the capsule's `bound_lsb` (carried into its numeric policy
-        # as the comparison tolerance) is how far a target may lie from it.
-        from merlin.runtime.commandbuffer import residual_add_params
-
-        lhs_scale, rhs_scale, _bound = residual_add_params(attrs, op=f"residual_add {out_name!r}")
-        t = env[attrs["lhs"]].residual_add_scaled(env[attrs["rhs"]], lhs_scale, rhs_scale)
-        t = _narrow_to_dtype(t, str(attrs.get("output_dtype", "i32")))
-        if "relu" in (attrs.get("epilogue") or ()):
-            t = t.relu()
-        return {out_name: t.to_list()}
+        return {out_name: _original_residual_output(attrs,env,out_name).to_list()}
 
     if op == "sibling_feed":
         from merlin.targetgen.corpus_sibling_feed import golden as sibling_feed_golden
@@ -1036,6 +1054,76 @@ def compare(
     if rep.get("outputs_never_written"):
         rep["failure_class"] = "output_never_written"
     return rep
+
+
+def compare_declared_outputs(
+    expected: dict[str, list],
+    observed: dict[str, list],
+    policy: dict,
+    *,
+    readback_outputs=(),
+    required_outputs=None,
+    golden_source: str = "merlin_tensor_int",
+) -> dict:
+    """Compare semantic results while allowing the ABI's declared intermediate readbacks.
+
+    The independent golden owns the required roster. Reference/simulator maps can carry more
+    published tensors, so their callers pass that same roster explicitly. Extra console outputs
+    must belong to the public logical readback boundary; they never expand the semantic golden
+    or acquire a numeric policy of their own. This rule is independent of kernel ABI kind.
+
+    Keep ``compare`` unchanged for its other consumers. In particular, project both maps before
+    calling its strict, complete-roster per-output policy implementation.
+    """
+    required = tuple(expected if required_outputs is None else required_outputs)
+    allowed = set(required) | set(readback_outputs)
+    issues = {}
+    if not required:
+        issues["__outputs__"] = {"status": "fail", "reason": "empty semantic output roster"}
+    for name in required:
+        if name not in expected:
+            issues[name] = {"status": "fail", "reason": "missing from expected"}
+            continue
+        wanted = _flat(expected[name])
+        actual = _flat(observed[name]) if name in observed else []
+        if not wanted:
+            issues[name] = {"status": "fail", "reason": "empty expected output"}
+        elif name not in observed:
+            issues[name] = {"status": "fail", "reason": "missing from observed"}
+        elif not actual:
+            issues[name] = {"status": "fail", "reason": "empty observed output"}
+        else:
+            leaf_policy = (
+                (policy.get("outputs") or {}).get(name, {}) if policy.get("compare") == "per_output" else policy
+            )
+            mode = leaf_policy.get("compare", "exact_int")
+            if any(not _per_output_value(v, mode) for values in (wanted, actual) for v in values):
+                issues[name] = {"status": "fail", "reason": "invalid numeric output value"}
+    unexpected = sorted(set(observed) - allowed)
+    for name in unexpected:
+        issues[name] = {"status": "fail", "reason": "not a declared readback output"}
+    if issues:
+        report = {
+            "policy": policy.get("compare", "exact_int"),
+            "golden_source": golden_source,
+            "status": "fail",
+            "failure_class": "output_contract_mismatch",
+            "mismatch_count": sum(max(1, len(_flat(expected.get(name, [])))) for name in issues),
+            "max_abs_error": 0,
+            "max_rel_error": 0.0,
+            "first_mismatch": None,
+            "per_output": issues,
+        }
+        if unexpected:
+            report["unexpected_outputs"] = unexpected
+        return report
+    return compare(
+        {name: expected[name] for name in required},
+        {name: observed[name] for name in required},
+        policy,
+        golden_source=golden_source,
+        _strict_values=True,
+    )
 
 
 def write_numeric_report(path: str | Path, report: dict) -> None:

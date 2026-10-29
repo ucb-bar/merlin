@@ -715,7 +715,8 @@ def test_frozen_tier_policy_allows_explicit_empty_prohibitions_but_not_empty_tie
     monkeypatch.setattr(
         target_experiment,
         "load_target_experiment",
-        lambda path: SimpleNamespace(target="synthetic", capsule_corpus=corpus / "isa"),
+        lambda path: SimpleNamespace(target="synthetic", capsule_corpus=corpus / "isa",
+                                     descriptor_sha256=_digest(descriptor)["sha256"]),
     )
     policy = _frozen_model_policy(capsule, target="synthetic")
     assert policy["prohibited_instruction_roles"] == []

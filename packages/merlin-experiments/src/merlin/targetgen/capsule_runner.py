@@ -186,6 +186,7 @@ def _grade_cpu_stages() -> dict[int, str]:
         "l0_reference": reference_outputs,
         "l1_simulate": simulate,
         "numeric_compare": CG.compare,
+        "declared_numeric_compare": CG.compare_declared_outputs,
         "policy_match": _match_by_policy,
         "tree_hash": hash_tree,
         "work_volume": command_buffer_evidence,
@@ -533,7 +534,9 @@ def _cb_with_leaf_values(cb: dict) -> dict:
 
 
 @_host_timing.measured("order_after_certificate")
-def _order_after_certificate(target, cfg, tiers, trace, generated, *, gold, policy, gsource, trigger=None):
+def _order_after_certificate(
+    target, cfg, tiers, trace, generated, *, gold, policy, gsource, trigger=None, readback_outputs=()
+):
     """The opt-in memory-order tier (:mod:`merlin.targetgen.load_order`), judged by this capsule's golden.
 
     A reordered run is held to exactly the standard the certificate was: the capsule's own comparison
@@ -552,7 +555,9 @@ def _order_after_certificate(target, cfg, tiers, trace, generated, *, gold, poli
         return _backends_mod.parse_console(text, strip_warnings=True, tolerant_metric=True)[0]
 
     def _compare(outputs):
-        return CG.compare(gold, outputs, policy, golden_source=gsource)["status"] == "pass"
+        return CG.compare_declared_outputs(
+            gold, outputs, policy, golden_source=gsource, readback_outputs=readback_outputs
+        )["status"] == "pass"
 
     return _LO.after_certificate(
         target=target,
@@ -4902,6 +4907,21 @@ def run_capsule(
         # names it via the commit op). Rename the sole output leaf to the declared name so preload, kernel,
         # readback, and golden all agree on one name+address. Scoped to linalg_positional cbs (no-op else).
         _bind_positional_output_name(cb, capsule)
+        # The semantic roster comes from the independent golden; the public logical ABI alone
+        # determines which additional published/intermediate console readbacks are legitimate.
+        # Apply the same boundary to ordinary and whole-program kernels and every numeric tier.
+        from merlin.compile.logical_abi import HarnessRenderError, logical_abi, logical_interface
+
+        try:
+            readback_outputs = tuple(buf.name for buf in logical_interface(cb, logical_abi()) if buf.kind == "output")
+        except HarnessRenderError as ce:
+            raise CertFailure("command_buffer", _cat("INTERFACE_MISMATCH"), str(ce)) from ce
+
+        output_contract = {
+            "required_outputs": tuple(gold),
+            "readback_outputs": readback_outputs,
+            "golden_source": gsource,
+        }
 
         # A program-oracle (self-hosted-ISA) target must run its emitted kernel on the SAME operands the
         # independent golden used. Attach the capsule's canonical leaf-input bytes (golden.yaml raws) to
@@ -5069,7 +5089,7 @@ def run_capsule(
                     f"({type(ce).__name__}: {ce}); check operand ranks/shapes and that each command's op "
                     f"is one the reference interpreter models (e.g. a windowed op lowered to a 2D matmul)",
                 ) from ce
-            nrep = _grade_cpu_step(CG.compare, gold, ref, capsule["numeric_policy"], golden_source=gsource)
+            nrep = _grade_cpu_step(CG.compare_declared_outputs, gold, ref, capsule["numeric_policy"], **output_contract)
             numeric = {
                 "status": nrep["status"],
                 "policy": nrep["policy"],
@@ -5106,7 +5126,9 @@ def run_capsule(
                     ),
                 )
 
-            l1_ok = _grade_cpu_step(_match_by_policy, ref, sim, policy)
+            l1_ok = (
+                _grade_cpu_step(CG.compare_declared_outputs, ref, sim, policy, **output_contract)["status"] == "pass"
+            )
             tiers["L1"] = TierResult(
                 "L1",
                 "pass" if l1_ok else "fail",
@@ -5802,7 +5824,7 @@ def run_capsule(
                 # this is the independent golden.yaml; for an explicit whole-program integer kernel it
                 # is the independently recomputed operation golden.  In both cases the measured answer
                 # comes only from the submitted ELF -- never from harness-side model arithmetic.
-                onrep = _grade_cpu_step(CG.compare, gold, res["outputs"], policy, golden_source=gsource)
+                onrep = _grade_cpu_step(CG.compare_declared_outputs, gold, res["outputs"], policy, **output_contract)
                 okt = onrep["status"] == "pass"
                 # The numeric verdict must ride the MANDATORY/gold tier, not an additive one: otherwise an
                 # additive tier later in the ladder (e.g. an approximate or unbuilt model) would overwrite
@@ -5826,10 +5848,11 @@ def run_capsule(
                     }
                     CG.write_numeric_report(paths.generated / "numeric_report.yaml", onrep)
             else:
-                okt = (
-                    _grade_cpu_step(_match_by_policy, res["outputs"], gold, policy)
-                    and _grade_cpu_step(_match_by_policy, res["outputs"], ref, policy)
-                    and _grade_cpu_step(_match_by_policy, res["outputs"], sim, policy)
+                okt = all(
+                    _grade_cpu_step(CG.compare_declared_outputs, expected, res["outputs"], policy, **output_contract)[
+                        "status"
+                    ] == "pass"
+                    for expected in (gold, ref, sim)
                 )
             # tier_sim is a display LABEL; a tier supplied by an adapter (e.g. arc L3) may have no static
             # label, so fall back to the adapter's oracle-provenance string, else the tier name.
@@ -5993,7 +6016,8 @@ def run_capsule(
             # completion-order verdict above when one was reached.
             _order = _order_after_certificate(eff_target, cfg, tiers, decoded_trace, paths.generated,
                                               gold=gold, policy=policy, gsource=gsource,
-                                              trigger=completion_order)  # fmt: skip
+                                              trigger=completion_order,
+                                              readback_outputs=output_contract["readback_outputs"])  # fmt: skip
             if _order is not None:
                 order_check = _order.record
                 if _order.failed:

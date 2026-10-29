@@ -135,63 +135,54 @@ def test_summarize_reads_counts_roofline_and_labels_evidence(tmp_path):
     assert unknown["status"] == "UNKNOWN" and unknown["model_cycles"] is None
 
 
-def _records_workspace(tmp_path, seed_source):
-    ws = tmp_path / "ws"
-    (ws / "qa").mkdir(parents=True)
-    rows = [
-        {"kind": "modeled", "test_case": "M_m64k64n64_raw", "cycles": 900, "roofline_bound_cycles": 100,
-         "source_sha256": "old", "t": 1, "evidence": "modeled: other"},
-        {"kind": "modeled", "test_case": "M_m64k64n64_raw", "cycles": 500, "roofline_bound_cycles": 100,
-         "source_sha256": seed_source, "t": 2, "evidence": "modeled: graded",
-         "performance_identity": {"model_sha256": "m"}},
-        {"kind": "modeled", "test_case": "C_conv_c8_raw", "cycles": 700, "roofline_bound_cycles": 70,
-         "source_sha256": "older", "t": 3, "evidence": "modeled: older"},
-    ]
-    (ws / "qa" / "perf_history.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
-    grade = {"graded_source_sha256": seed_source, "per_capsule": [
-        {"capsule": "M_m64k64n64_raw", "tiers": {"L2": "pass"}, "graded": {"token": "1", "graded_source_sha256": seed_source}},
-        {"capsule": "C_conv_c8_raw", "tiers": {"L2": "pass"}, "graded": {"token": "1", "graded_source_sha256": "x"}},
-    ]}
-    (ws / "qa" / "latest_completed_grade.json").write_text(json.dumps(grade))
-    return ws
-
-
-def test_record_baseline_prefers_the_graded_source_and_labels_everything_else(tmp_path):
+def _workspace(tmp_path):
     from merlin_experiments.phase1.seed_prep import records
 
-    ws = _records_workspace(tmp_path, "seedsrc")
-    rows = {r["case"]: r for r in records.baseline_rows(
-        ws, None, ["M_m64k64n64_raw", "C_conv_c8_raw", "N_new_case"], seed_source="seedsrc", facts_sha256=None)}
-    assert (rows["M_m64k64n64_raw"]["status"], rows["M_m64k64n64_raw"]["model_cycles"]) == ("timed", 500)
-    assert rows["M_m64k64n64_raw"]["headroom_cycles"] == 400
-    assert rows["C_conv_c8_raw"]["status"] == "recorded_other_snapshot"
-    assert "may differ from the seed" in rows["C_conv_c8_raw"]["evidence"]
-    assert rows["N_new_case"]["status"] == "UNKNOWN"
-    assert "not graded by the seed run" in rows["N_new_case"]["unknown_reason"]
+    ws = tmp_path / "ws"
+    (ws / "qa" / "cases" / "A").mkdir(parents=True)
+    ident = {"model_sha256": "m"}
+    history = [
+        {"kind": "modeled", "test_case": "A", "t": 1, "cycles": 900, "roofline_bound_cycles": 100,
+         "graded_source_sha256": "old", "performance_identity": ident},
+        {"kind": "modeled", "test_case": "A", "t": 2, "cycles": 800, "roofline_bound_cycles": 100,
+         "graded_source_sha256": "newer", "performance_identity": ident},
+        {"kind": "modeled", "test_case": "B", "t": 1, "cycles": 50, "roofline_bound_cycles": 10,
+         "graded_source_sha256": "seed", "performance_identity": ident},
+        {"kind": "status", "test_case": "A", "t": 3},
+    ]
+    (ws / "qa" / "perf_history.jsonl").write_text("\n".join(json.dumps(r) for r in history) + "\n")
+    detail = {"capsule": "A", "tiers": {"L2": "pass"}, "performance": {
+        "status": "PROVISIONAL", "estimated_whole_soc_cycles": 800, "model_sha256": "m",
+        "structural_roofline": {"structural_compute_floor_cycles": 100},
+        "feature_counts": {"target.class.load": 7, "target.class.store": 2, "target.fences": 4}}}
+    (ws / "qa" / "cases" / "A" / "d.json").write_text(json.dumps(detail))
+    (ws / "qa" / "completed_rows.jsonl").write_text(json.dumps(
+        {"capsule": "A", "detail": {"path": "qa/cases/A/d.json"},
+         "graded": {"graded_source_sha256": "newer", "graded_at": "2026-10-28T00:00:00+00:00"}}) + "\n")
+    tuning = {"experiments": [
+        {"candidate": {"kind": "variant", "name": "v"}, "test_case": "A", "measured_cycles_before": 900,
+         "measured_cycles_after": 700, "numerics": "unchanged: both pass", "graded_at_unix_ns": 1},
+        {"candidate": {"kind": "variant", "name": "w"}, "test_case": "A", "measured_cycles_before": 900,
+         "measured_cycles_after": 850, "numerics": "unchanged: both pass", "graded_at_unix_ns": 1}]}
+    (ws / "qa" / "idle_tuning.json").write_text(json.dumps(tuning))
+    return records, ws
 
 
-def test_from_records_never_starts_a_simulation(tmp_path, monkeypatch):
-    from merlin_experiments.phase1.seed_prep import __main__ as M
-    from merlin_experiments.phase1.seed_prep import baseline
+def test_record_baseline_prefers_seed_bytes_then_newest_and_keeps_counts(tmp_path):
+    records, ws = _workspace(tmp_path)
+    rows = {r["case"]: r for r in records.baseline("seed", ["A", "B", "C"], ws)}
+    assert rows["B"]["model_cycles"] == 50 and rows["B"]["source_match"] == "seed"
+    assert rows["A"]["model_cycles"] == 800 and rows["A"]["source_match"] == "older source"
+    assert rows["A"]["loads"] == 7 and rows["A"]["fences_per_output_tile"] == 2.0
+    assert rows["C"]["status"] == "UNKNOWN" and "--measure" in rows["C"]["unknown_reason"]
 
-    ws = _records_workspace(tmp_path, "seedsrc")
-    seed = tmp_path / "seed"
-    _write(seed / "dense.py", "a = 1\n", 0)
-    descriptor = tmp_path / "rel/payload/experiment/target_experiment.yaml"
-    _write(descriptor, "x: 1\n", 0)
-    (tmp_path / "rel/payload/corpus/suite/cases").mkdir(parents=True)
-    (tmp_path / "rel/payload/corpus/suite/selection.json").write_text("{}")
-    selection = tmp_path / "selection.json"
-    selection.write_text(json.dumps({"members": {"M_m64k64n64_raw": {}}, "facts": {"sha256": "f"}}))
 
-    def refuse(*_a, **_k):
-        raise AssertionError("no simulation in --from-records")
-
-    monkeypatch.setattr(baseline, "run_cases", refuse)
-    monkeypatch.setattr(baseline, "Grader", refuse)
-    out = tmp_path / "out"
-    assert M.main(["--seed", str(seed), "--export", str(tmp_path), "--out", str(out), "--descriptor", str(descriptor),
-                   "--performance-selection", str(selection), "--from-records", str(ws)]) == 0
-    doc = json.loads((out / "SEED_BASELINE.json").read_text())
-    assert doc["baseline"]["status_counts"] == {"timed": 1}
-    assert (out / "SEED_STRUCTURE.md").is_file()
+def test_record_decisions_compare_variant_records_with_the_seed_baseline(tmp_path):
+    records, ws = _workspace(tmp_path)
+    seed_rows = {r["case"]: r for r in records.baseline("seed", ["A"], ws)}
+    recorded = records.variant_records(ws)
+    faster = records.decide("applicable", recorded["v"], seed_rows)
+    slower = records.decide("applicable", recorded["w"], seed_rows)
+    assert faster["promote"] and faster["gain_cycles"] == 100
+    assert not slower["promote"]
+    assert not records.decide("conflict", recorded["v"], seed_rows)["promote"]

@@ -40,6 +40,40 @@ def inputs():
     return source, cb, emitted
 
 
+@pytest.mark.parametrize("role", ["source", "command_buffer", "emitted"])
+def test_live_artifact_analysis_reopens_every_candidate_leaf_without_changing_byte_comparisons(tmp_path, role):
+    fixture = _world(tmp_path)
+    directory = tmp_path / "variants/trial"
+    directory.mkdir(parents=True)
+    source, cb, emitted = inputs()
+    raw = dict(source=source, command_buffer=json.dumps(cb).encode(), emitted=emitted)
+    bundle = dict(schema="merlin.reference_artifact_views.v1")
+    for name, payload in raw.items():
+        path = directory / name
+        path.write_bytes(payload)
+        bundle[name] = dict(path=path.relative_to(tmp_path).as_posix(), sha256=hashlib.sha256(payload).hexdigest())
+    path = directory / "views.json"
+    path.write_text(json.dumps(bundle))
+    with selected.invocation(fixture["path"], fixture["sha"], tasks=False):
+        response = analysis.handle(
+            _request("candidate", path.relative_to(tmp_path).as_posix(), format="artifact_views"),
+            workspace=tmp_path, compiler_sha256=fixture["compiler"])
+        assert response["status"] == "analyzed"
+        report = response["report"]
+        # Keep source byte equivalence independent of the files' visible names.
+        assert report["inputs"] == artifact_views(
+            source_mlir=source, command_buffer=raw["command_buffer"], emitted_mlir=emitted)["inputs"]
+        assert all("path" not in pin for pin in report["inputs"].values())
+        assert report["artifact_inputs"][role]["path"] == bundle[role]["path"]
+        before = selected.project(current_compiler_sha256=fixture["compiler"])
+        assert before["status"] == "pending_experiment"
+        # The manifest and compiler stay unchanged; only one referenced leaf changes.
+        (directory / role).write_bytes(raw[role] + b"\n")
+        after = selected.project(current_compiler_sha256=fixture["compiler"])
+        assert after["status"] == "unknown"
+        assert after["reason"] == "selected_reference_input_stale_or_unavailable"
+
+
 def observe(source=None, cb=None, emitted=None, **kw):
     original_source, original_cb, original_emitted = inputs()
     return artifact_views(source_mlir=source or original_source,
@@ -56,6 +90,42 @@ def test_complete_source_operands_outputs_numeric_and_abi_join_without_execution
     assert report["native"]["command_counts"] is None
     assert report["numerical_status"] == report["timing_status"] == report["mechanism_status"] == "unknown"
     assert report["gaps"][0]["goals"] == ["evidence.native_issue"]
+
+
+def test_direct_whole_operation_output_uses_original_typed_abi_without_product_capture_credit():
+    from merlin_experiments.phase1.feedback.reference_capture_views import candidate_view
+
+    from merlin.compile.logical_abi import kernel_abi_from_commands
+
+    cb = dict(abi_version="0.1", target="fixture", tensors=dict(
+        image=dict(shape=[2, 7, 7, 2], dtype="i8", role="input"),
+        weight=dict(shape=[18, 3], dtype="i8", role="weight"),
+        bias=dict(shape=[3], dtype="i32", role="bias"),
+        result=dict(shape=[98, 3], dtype="i8", role="output")), commands=[
+            dict(opcode="RES_PACK", operands=dict(src="weight", dst="packed"),
+                 attributes=dict(layout="packed_conv_rhs")),
+            dict(opcode="CONV2D", operands=dict(ifm="image", weight="packed", dst="result"),
+                 attributes=dict(kernel=[3, 3, 2, 3], stride=[1, 1], padding=[1, 1, 1, 1],
+                                 dilation=[1, 1], bias="bias", epilogue=["bias_add"],
+                                 output_dtype="i8", layout="nhwc")),
+            dict(opcode="EVICT", operands=dict(handle="packed")),
+        ])
+    source = emit_interface_mlir(cb).encode()
+    cb["kernel_abi"] = kernel_abi_from_commands(cb)
+    emitted = (b"builtin.module { llvm.func @kernel_entry(%a: !llvm.ptr, %b: !llvm.ptr, "
+               b"%c: !llvm.ptr, %d: !llvm.ptr) { llvm.return } }")
+    report = observe(source=source, cb=cb, emitted=emitted)
+    assert report["source_command_join"] == "matches_declared_source"
+    assert report["source"]["outputs"] == dict(result=dict(shape=[98, 3], dtype="i8", role="output"))
+    assert report["source"]["argument_order"] == ["image", "weight", "bias", "result"]
+    assert report["source"]["mechanism_observations"]["shared_input_coverage"]["status"] == "partial"
+    capture, cca = candidate_view(dict(source=source, emitted=emitted), entry_symbol="kernel_entry", decoder={})
+    assert cca is None and capture["status"] == "unknown" and report["source"]["products"] == 0
+    assert report["semantic_equivalence"] == report["numerical_status"] == "unknown"
+    cb["kernel_abi"]["outputs"] = []
+    refused = observe(source=source, cb=cb, emitted=emitted)
+    assert refused["source_command_join"] == "mismatch"
+    assert dict(axis="source.abi_roster", status="mismatch") in refused["mismatches"]
 
 
 @pytest.mark.parametrize("mutation,axis", [

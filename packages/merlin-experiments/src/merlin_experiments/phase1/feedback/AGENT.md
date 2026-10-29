@@ -164,6 +164,15 @@ edges retain partial unproved obligations; covered failures reject the build.
 Explicit compile-only transport avoids duplicate checking. Trace custody does not prove internal pass history,
 terminal lowering, dispatch, host optimization or machine/numerical/RTL behavior.
 
+`candidate_build_views` publishes only the original retained linked function and
+source/command/LLVM leaves through the existing selfcheck or compile-only owner.
+Keep its registration outside the author workspace, pin every consumed byte and
+publish through ordinary directory FDs. An author manifest is only a locator.
+Only the original owner's before/after compiler snapshot can attribute emission
+to a compiler; a native build chain alone leaves that attribution unknown.
+Never expose harness ELF/data or infer numerical, execution, timing or source
+semantic correspondence from these structural observations.
+
 `candidate_observations` supplies the public emission-only `--candidate-diagnostics`
 projection before compiler admission. Use original package integrity/build/ABI
 entrypoints and exact public member selection. No numerical or simulator call is

@@ -108,6 +108,7 @@ def run(
         bundle_manifest.parent,
         options.experiment,
         language=language,
+        author_profile=options.author_profile,
         add_tools=tuple(options.with_tool),
         drop_tools=tuple(options.without_tool),
         shared_pass_requirement=requirement,

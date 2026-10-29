@@ -193,6 +193,90 @@ def test_host_readiness_success_cannot_mask_author_tool_private_path_refusal(nat
     assert not (inputs.output / "compiler_origin.json").exists()
 
 
+@pytest.mark.parametrize("level", (1, 2, 3))
+@pytest.mark.parametrize("transport", ("copies", "masked-aliases", "changed-copy"))
+def test_actual_provider_preflight_reads_frozen_public_contracts_before_inference(
+    native_inputs, monkeypatch, level, transport
+):
+    from merlin_experiments.phase1 import public_contract_staging as P
+    from merlin_experiments.phase1.providers.execution import CodexSandboxCommand
+
+    from merlin.targetgen.sandbox import bwrap as BW
+
+    inputs, _, _ = native_inputs
+    frozen_root = inputs.output / "frozen-public-contracts"
+    frozen_root.mkdir()
+    entries = [dict(path=P.PREFIX + name, mode="ro", **{"as": name}) for name in sorted(P.PUBLIC_FILES)]
+    entries.append(dict(path=P.SCHEMAS, mode="ro", **{"as": "schemas"}))
+    frozen_paths = []
+    for entry in entries:
+        source = frozen_root / entry["as"]
+        if entry["as"] == "schemas":
+            source.mkdir()
+            for index in range(16):
+                (source / f"public{index}.schema.json").write_text(json.dumps(dict(public_schema=index)))
+        else:
+            source.write_text("owned frozen public ABI declaration: " + entry["path"])
+        frozen_paths.append(source)
+        destination = inputs.candidate / entry["as"]
+        P.copy_grant(entry, source, destination)
+    if transport == "changed-copy":
+        destination = inputs.candidate / "VERSION"
+        destination.chmod(0o644)
+        destination.write_text("different bytes from the selected snapshot")
+    bundle = dict(author_profile=dict(name=f"xs-el-v1/el{level}"), allowed=entries)
+    monkeypatch.setattr(BW, "snapshot_input_paths", lambda *_a, **_kw: frozen_paths)
+    home = inputs.output / "positive-public-preflight-home"
+    home.mkdir()
+    (home / "config.toml").write_text(CA._candidate_permission_config(
+        home, read_paths=("/component-inputs", *(grant.destination for grant in inputs.control_runtime))
+    ))
+    auth = home / "auth.json"
+    auth.write_text('{"private_owned_canary":"NOT_A_CREDENTIAL"}')
+    policy = list(T.strict_tool_policy(
+        inputs.view, inputs.candidate, runtime=inputs.control_runtime,
+        candidate_destination=str(inputs.candidate), bwrap_binary=inputs.sandbox_binary,
+    ))
+    policy.insert(policy.index("--unshare-all") + 1, "--share-net")
+    policy += ["--tmpfs", str(frozen_root)]
+    if transport == "masked-aliases":
+        # Build the fixture's initial component policy before simulating the
+        # ordinary workspace transport bug; component admission itself forbids
+        # initial symlinks and is not the provider permission gate under test.
+        for entry, source in zip(entries, frozen_paths, strict=True):
+            destination = inputs.candidate / entry["as"]
+            if destination.is_dir():
+                destination.chmod(0o755)
+                for member in destination.iterdir():
+                    member.unlink()
+                destination.rmdir()
+            else:
+                destination.unlink()
+            destination.symlink_to(source)
+            assert destination.exists()  # Host existence is insufficient.
+    binds = ["--bind", str(home), str(home), "--setenv", "CODEX_HOME", str(home)]
+    plan = SimpleNamespace(command=lambda inner: shlex.join([*policy, *binds, "--", "/bin/sh", "-c", inner]))
+    owner = CodexSandboxCommand(SimpleNamespace(repo=inputs.output), inputs.output)
+    rounds = inputs.output / "positive-public-rounds"
+
+    def check():
+        CA._preflight_candidate_sandbox(
+            inputs.candidate, home, inputs.codex_destination, bundle, owner, rounds, 0, prepared_plan=plan
+        )
+
+    receipt = rounds / "round_00.public_contract_preflight.json"
+    if transport == "copies":
+        check()
+        record = json.loads(receipt.read_bytes())
+        assert record["native_readability_verified"] is True and record["files_count"] == 23
+        assert record["profile"] == f"xs-el-v1/el{level}"
+    else:
+        with pytest.raises(RuntimeError, match="refusing untrusted launch"):
+            check()
+        assert not receipt.exists()
+    assert auth.read_text() == '{"private_owned_canary":"NOT_A_CREDENTIAL"}'
+
+
 def test_actual_native_preflight_cannot_seed_a_compiler_from_tool_probe(native_inputs):
     inputs, _, _ = native_inputs
     before = O._tree(inputs.candidate)

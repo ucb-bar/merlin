@@ -127,6 +127,7 @@ def _run_scripted(tmp_path, monkeypatch, plan):
 
 
 def test_progress_resets_the_refusal_count_and_backoff(tmp_path, monkeypatch):
+    monkeypatch.setattr(capacity, "MAX_CONSECUTIVE", 6)
     # More refusals than the consecutive bound, each after a turn that did real work: one long session
     # with refusals spread over it is not an outage, so none of them may accumulate or end the round.
     worked = [(["command_execution", "file_change"], False), (["agent_message"], False), (["mcp_tool_call"], False)]

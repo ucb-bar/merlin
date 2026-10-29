@@ -378,7 +378,7 @@ def test_prompt_selected_and_custody_checked_without_changing_legacy(tmp_path, m
     ws, run = tmp_path / "workspace", tmp_path / "run"
     ws.mkdir()
     run.mkdir()
-    config = SimpleNamespace(context=context, shared_pass_requirement=None)
+    config = SimpleNamespace(context=context, shared_pass_requirement=None, author_profile=None)
 
     def original(*args, **kwargs):
         (ws / "TASK.md").write_text("Original task body\n")

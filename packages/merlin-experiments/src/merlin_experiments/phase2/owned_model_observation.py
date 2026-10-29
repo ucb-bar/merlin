@@ -34,7 +34,7 @@ def scope_digest(selection):
 
 
 def synchronous_window(rows, *, counter_asm):
-    """Exactly one direct synchronous model invocation between two CSR reads.
+    """The selected runtime's direct synchronous model invocation and setup.
 
     Completion is supplied by the separately checked owned model contract, not
     by renaming a kernel or assuming a function return drains an accelerator.
@@ -58,8 +58,17 @@ def synchronous_window(rows, *, counter_asm):
     calls = [row for row in middle if "merlin_run_multi" in row["symbols"]]
     if len(calls) != 1 or calls[0]["mnemonic"] not in {"jal", "call"}:
         raise ValueError("owned model counter pair lacks one direct full model call")
-    # Only straight-line argument setup surrounds the call in the owned caller.
-    # Indirect control, another call, or a branch can bypass/repeat the boundary.
+    direct = [row for row in middle if row["mnemonic"] in {"jal", "call"}]
+    sequences = (("merlin_run_multi",),
+                 ("merlin_reset_session", "merlin_prepare_step", "merlin_run_multi"))
+    admitted = next((names for names in sequences if len(names) == len(direct)
+                     and all(name in row["symbols"] for name, row in zip(names, direct, strict=True))), None)
+    if admitted is None:
+        raise ValueError("owned model counter pair has unsupported runtime call order")
+    # The original driver and dispatcher sources are separately checked by
+    # _runtime_sources. Their ordinary reset/step setup belongs to this whole
+    # runtime ROI. No other call, indirect control or branch is admitted.
+    admitted_calls = {id(row) for row in direct}
     allowed = {
         "li",
         "lui",
@@ -80,7 +89,7 @@ def synchronous_window(rows, *, counter_asm):
         "sw",
         "nop",
     }
-    if any(row is not calls[0] and row["mnemonic"] not in allowed for row in middle):
+    if any(id(row) not in admitted_calls and row["mnemonic"] not in allowed for row in middle):
         raise ValueError("owned model counter window has unsupported control or work")
     return dict(
         caller="main",
@@ -89,6 +98,8 @@ def synchronous_window(rows, *, counter_asm):
         occurrence=0,
         invocation_symbol="merlin_run_multi",
         invocation_call_pc=calls[0]["pc"],
+        included_runtime_calls=[dict(symbol=name, pc=row["pc"])
+                                for name, row in zip(admitted, direct, strict=True)],
         completion="all dispatched device functions return after selected completion fence",
         counter_reads=[dict(pc=r["pc"], mnemonic=r["mnemonic"], operands=list(r["operands"])) for r in reads],
         program_counter_reads=2,

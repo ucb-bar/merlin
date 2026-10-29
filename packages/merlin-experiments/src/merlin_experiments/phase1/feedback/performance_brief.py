@@ -183,6 +183,10 @@ def _role_summary(passing, entries, roles):
 
 def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, context=None) -> dict | None:
     """The brief for one response's rows (``per_capsule`` or ``cases``); None when nothing passed."""
+    from ..author_profiles import modern_advice
+
+    if not modern_advice("performance_diagnostics"):
+        return None
     workspace = Path(workspace) if workspace is not None else Path.cwd()
     from .result_details import load_row
 
@@ -192,6 +196,8 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
         return None
     selection = (context.selection if context is not None else mechanism_hints.with_source_evidence(
         mechanism_hints.load_selection(workspace), workspace))
+    if not modern_advice("catalog_advice"):
+        selection = None
     from ..workload_roles import PRIMARY, workspace_roles
 
     roles = context.roles if context is not None else (workspace_roles(workspace) or {})
@@ -279,6 +285,9 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
     baselines = reference_baselines.load(workspace)
     reference_baselines.annotate(entries, reference_baselines.index(baselines))
     compared = reference_baselines.summary(entries, baselines)
+    from . import seed_timing
+
+    versus_seed = seed_timing.annotate(entries + diagnostics, by_name)
     brief = {
         "schema": SCHEMA, "advisory_only": True,
         "note": ("Performance of primary-role passing test cases in this request, largest headroom first. "
@@ -296,6 +305,10 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
         "diagnostic_control_count": len(diagnostics),
         "workload_role_summary": role_summary,
     }
+    if not modern_advice("catalog_advice"):
+        brief["note"] = ("Primary-role passing cases ranked by complete-call cycle headroom; "
+                         "controls retain diagnostics. Array attainment and resource reservations "
+                         "are modeled diagnostics, not measured occupancy or optimization proof. " + RANKED_LIST)
     classified = PRIMARY | {'correctness', 'calibration', 'diagnostic_control'}
     unclassified = sorted(name for name in by_name if roles.get(name) not in classified)
     if unclassified:
@@ -327,9 +340,14 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
     fence_bound = fence_overlap.summary(
         {name: block for name, block in fences.items() if roles.get(name) in PRIMARY}, selection)
     if fence_bound is not None:
+        if not modern_advice("catalog_advice"):
+            fence_bound["note"] = ("Fences and static overlap describe emitted order; compare "
+                                    "legal authored alternatives on the same cases by complete-call cycles.")
         brief["fence_bound"] = fence_bound
     if compared is not None:
         brief["reference_baselines"] = {**compared, "line": reference_baselines.headline_line(compared)}
+    if versus_seed is not None:
+        brief["vs_seed"] = versus_seed
     if calibrated is not None:
         brief["model_calibration"] = _summary(calibrated)
     if missing:
@@ -343,7 +361,7 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
                            "alternatives and inspect their emitted products: operand traffic and reloads, "
                            "packing frequency, storage lifetimes, tile coverage, completion boundaries and "
                            "CPU work. Retain alternatives with different resource tradeoffs; check affected "
-                           "Spike numerics and independent shapes/tails. See explore-schedules and "
+                           "Spike numerics and independent shapes/tails. See "
                            "cycle-model-and-gsim. Each passing case's calibrated fast estimate (evidence kind "
                            "fast_estimate) ranks it until a complete estimate arrives: decide on it and revert "
                            "if a later measurement disagrees. Large cases do not acquire gSIM permission."),
@@ -366,7 +384,7 @@ def build(rows, *, workspace=None, artifact_root=None, debuggable: bool = True, 
             "skill": "shape-schedule-selection",
             "signals": {key: entry[key] for key in (
                 "cycles", "evidence", "evidence_kind", "array_utilization_pct",
-                "roofline_bound_cycles", "gap_ratio", "dominant_modeled_resource",
+                "roofline_bound_cycles", "gap_ratio", "dominant_modeled_resource", "seed_cycles", "vs_seed",
                 "capacity_use", "reading", "schedule_activity") if key in entry},
         }
     for name in sorted(missing):
@@ -480,10 +498,16 @@ def _summary(calibrated: dict) -> dict:
 
 def attach(document: dict, rows, **kwargs) -> dict:
     """Add ``performance_brief`` to a response in place; any failure leaves the response unchanged."""
+    from ..author_profiles import modern_advice
+
     from . import next_steps
 
+    if not modern_advice("performance_diagnostics"):
+        return document
+    guidance = modern_advice("catalog_advice")
+
     try:
-        context = next_steps.Context(kwargs.get('workspace'), document, rows)
+        context = next_steps.Context(kwargs.get('workspace'), document, rows) if guidance else None
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         context = None
     try:
@@ -494,6 +518,7 @@ def attach(document: dict, rows, **kwargs) -> dict:
 
     if brief is not None:
         document["performance_brief"] = brief
+    if brief is not None and guidance:
         from . import library_pass
 
         # Adds the matching library pass and its paste-ready A/B to each ranked case's advice.
@@ -501,7 +526,8 @@ def attach(document: dict, rows, **kwargs) -> dict:
                               context=context)
     # Composition routes for chain cases and source_composition.json options for model and program cases,
     # beside the library pass; cases without ranked advice get them on their own row.
-    composition_next.annotate(document, rows, brief, workspace=kwargs.get("workspace"), context=context)
+    if guidance:
+        composition_next.annotate(document, rows, brief, workspace=kwargs.get("workspace"), context=context)
     from . import family_rollup
 
     # Preserve compact case hydration and per-family held-out readiness.
@@ -509,8 +535,9 @@ def attach(document: dict, rows, **kwargs) -> dict:
     from . import reference_map
 
     # Matching operator-mapped reference regions for passing performance targets only.
-    reference_map.attach(brief, families, workspace=kwargs.get("workspace"))
-    next_steps.attach(document, rows, brief, workspace=kwargs.get("workspace"), families=families, context=context)
+    if guidance:
+        reference_map.attach(brief, families, workspace=kwargs.get("workspace"))
+        next_steps.attach(document, rows, brief, workspace=kwargs.get("workspace"), families=families, context=context)
     if brief is not None:
         advice = brief.get("per_case_advice", {})
         for key in ("per_capsule", "cases"):

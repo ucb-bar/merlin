@@ -154,7 +154,8 @@ def test_only_original_public_source_can_declare_zero_device_obligations(capsule
     monkeypatch.setattr(
         target_experiment,
         "load_target_experiment",
-        lambda _p: SimpleNamespace(target="synthetic", capsule_corpus=corpus / "isa"),
+        lambda _p: SimpleNamespace(target="synthetic", capsule_corpus=corpus / "isa",
+                                  descriptor_sha256=hashlib.sha256(descriptor.read_bytes()).hexdigest()),
     )
     (source / "capsule.yaml").write_text(yaml.safe_dump(capsule))
     policy = _frozen_model_policy(source, target="synthetic")

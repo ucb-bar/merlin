@@ -44,19 +44,6 @@ At ``--sandbox none`` Codex's own ``workspace-write`` sandbox is used.
 
 from __future__ import annotations
 
-from merlin_experiments.phase1.providers.codex_transcript import (
-    _INSTRUCTION_FILES as _INSTRUCTION_FILES,
-    _TOOL_OUTPUT_CAP as _TOOL_OUTPUT_CAP,
-    ITEM_COMMAND_EXECUTION as ITEM_COMMAND_EXECUTION,
-    ITEM_FILE_CHANGE as ITEM_FILE_CHANGE,
-    _instruction_files as _instruction_files,
-    _clip_tool_output as _clip_tool_output,
-    _tool_block as _tool_block,
-    _Transcript as _Transcript,
-    last_message_path as last_message_path,
-    _error_text as _error_text,
-)
-
 import json
 import os
 import selectors
@@ -64,7 +51,6 @@ import shlex
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -72,10 +58,43 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.paths import module_source_path
-from merlin_experiments.phase1.providers.authoring_prompt import authoring_prompt
-from merlin_experiments.phase1.providers.codex_usage import usage_to_claude_shape as usage_to_claude_shape
 from merlin_experiments.phase1.providers import codex_context as _CTX
+from merlin_experiments.phase1.providers.authoring_prompt import (
+    authoring_prompt,
+    profile_authoring_prompt,
+)
 from merlin_experiments.phase1.providers.codex_context import delegation_user_prompt as delegation_user_prompt
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _INSTRUCTION_FILES as _INSTRUCTION_FILES,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _TOOL_OUTPUT_CAP as _TOOL_OUTPUT_CAP,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    ITEM_COMMAND_EXECUTION as ITEM_COMMAND_EXECUTION,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    ITEM_FILE_CHANGE as ITEM_FILE_CHANGE,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _clip_tool_output as _clip_tool_output,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _error_text as _error_text,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _instruction_files as _instruction_files,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _tool_block as _tool_block,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    _Transcript as _Transcript,
+)
+from merlin_experiments.phase1.providers.codex_transcript import (
+    last_message_path as last_message_path,
+)
+from merlin_experiments.phase1.providers.codex_usage import usage_to_claude_shape as usage_to_claude_shape
 from merlin_experiments.phase1.telemetry import startup as _START
 
 # --- The measured event contract (codex-cli 0.147.0) ------------------------
@@ -690,6 +709,14 @@ def _preflight_candidate_sandbox(
         f"test -r {shlex.quote(str(ws))} && test -w {shlex.quote(str(ws))} && "
         "command -v python3 >/dev/null && python3 --version >/dev/null"
     )
+    from .. import public_contract_preflight
+    from .execution import CodexSandboxCommand
+
+    expected_public = public_contract_preflight.expected_reads(
+        ws, bundle, repo=sandbox_command.context.repo if type(sandbox_command) is CodexSandboxCommand else None
+    )
+    if expected_public is not None:
+        probe += " && " + public_contract_preflight.command(expected_public)
     auth = shlex.quote(str(codex_home / "auth.json"))
     native_probe = shlex.join(
         (
@@ -720,6 +747,8 @@ def _preflight_candidate_sandbox(
             "Codex candidate permission profile preflight failed; refusing untrusted launch "
             f"(rc={result.returncode}, stderr={result.stderr[-1200:].strip()!r})"
         )
+    if expected_public is not None:
+        public_contract_preflight.record_success(expected_public, result.stdout, rounds, rnd)
 
 
 @_START.observed
@@ -964,7 +993,7 @@ def run_round(
     _CONTINUE_MSG = (
         continuation_prompt
         if continuation_prompt is not None
-        else (
+        else profile_authoring_prompt(continuation=True) or (
             "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
             "backend under submission/. Follow TASK.md for the selected engine routing and physical "
             "qualification gates. With agent_selfcheck, check capsules an edit affects in one request with "

@@ -174,6 +174,14 @@ def paths_for_bundle(ws: Path, bundle: dict, *, paths: ToolchainPaths | None = N
 
     paths = paths if paths is not None else ToolchainPaths.from_checkout()
     profile = verify_tool_profile(bundle)
+    author = bundle.get("author_profile")
+    if author is not None:
+        from merlin_experiments.phase1.author_profiles import resolve, verify_bundle
+
+        verify_bundle(resolve(author.get("name")), bundle)
+        # The legacy SDK remains a host-only judge input. Its metadata cannot
+        # select an author import root; the exact staged profile supplies one.
+        return paths
     resources = (profile or {}).get("shared_scheduling_resources")
     if resources is None:
         return paths

@@ -12,27 +12,71 @@ from pathlib import Path
 from typing import Any
 
 
-def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups: bool = False) -> dict[str, Any]:
-    """Read the selected reviewed corpus policy, not an ambient/default ISA rule."""
+def _policy_bytes(path: Path):
+    """Pin the bounded ordinary bytes actually parsed, including ancestor custody."""
+    from merlin.compile.analysis.artifact_reader import identity, open_ordinary
+
+    from .native_model_execution import NativeModelExecutionError
+
+    fd = open_ordinary(path)
+    try:
+        before = os.fstat(fd)
+        if not 0 < before.st_size <= 4 << 20:
+            raise NativeModelExecutionError("selected instruction policy exceeds its byte bound")
+        raw = os.pread(fd, before.st_size, 0)
+        if len(raw) != before.st_size or identity(before) != identity(os.fstat(fd)):
+            raise NativeModelExecutionError("selected instruction policy changed while reading")
+        return raw, {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest(), "size_bytes": len(raw)}
+    finally:
+        os.close(fd)
+
+
+def _frozen_corpus_instruction_policy(*, target: str) -> dict[str, Any]:
+    """Read only the original corpus's explicit global static prohibitions.
+
+    Model coverage sidecars and required numerical tiers remain the separate
+    model reader's responsibility. No absent or unresolved policy grants roles.
+    """
     import yaml
 
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    from .native_model_execution import NativeModelExecutionError, _digest
+    from .native_model_execution import NativeModelExecutionError
 
     descriptor_name = os.environ.get("MERLIN_TARGET_EXPERIMENT")
     if not descriptor_name:
         raise NativeModelExecutionError("selected reviewed target experiment is absent")
-    descriptor = Path(descriptor_name).resolve(strict=True)
-    if descriptor.is_symlink() or not descriptor.is_file():
+    descriptor = Path(descriptor_name).absolute()
+    if descriptor.resolve(strict=True) != descriptor:
         raise NativeModelExecutionError("selected experiment is not an ordinary file")
+    _, descriptor_pin = _policy_bytes(descriptor)
     experiment = load_target_experiment(descriptor)
-    if experiment.target != target:
+    if experiment.target != target or experiment.descriptor_sha256 != descriptor_pin["sha256"]:
         raise NativeModelExecutionError("selected experiment names a different target")
     manifest = experiment.capsule_corpus.parent / "MANIFEST.yaml"
-    if manifest.is_symlink() or not manifest.is_file():
-        raise NativeModelExecutionError("selected corpus has no ordinary instruction-policy manifest")
-    corpus = yaml.safe_load(manifest.read_text(encoding="utf-8"))
+    raw, manifest_pin = _policy_bytes(manifest)
+    corpus = yaml.safe_load(raw)
+    instruction = corpus.get("instruction_policy") if isinstance(corpus, dict) else None
+    roles = instruction.get("prohibited_instruction_roles") if isinstance(instruction, dict) else None
+    if (
+        not isinstance(instruction, dict)
+        or instruction.get("status") != "resolved"
+        or not isinstance(roles, list)
+        or any(not isinstance(role, str) or not role for role in roles)
+    ):
+        raise NativeModelExecutionError("frozen prohibited-role policy is unresolved")
+    if _policy_bytes(descriptor)[1] != descriptor_pin:
+        raise NativeModelExecutionError("selected experiment changed while reading policy")
+    return {"descriptor": descriptor_pin, "manifest": manifest_pin, "prohibited_instruction_roles": roles}
+
+
+def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups: bool = False) -> dict[str, Any]:
+    """Join the global policy with unchanged model coverage and tier obligations."""
+    import yaml
+
+    from .native_model_execution import NativeModelExecutionError, _digest
+
+    selected = _frozen_corpus_instruction_policy(target=target)
     declaration_path = capsule_dir / "capsule.yaml"
     declaration = yaml.safe_load(declaration_path.read_text(encoding="utf-8"))
     coverage_path = capsule_dir / "expected_instruction_coverage.yaml"
@@ -52,10 +96,8 @@ def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups:
         coverage = declaration.get("expected")
     else:
         coverage = yaml.safe_load(coverage_path.read_text(encoding="utf-8"))
-    if not all(isinstance(doc, dict) for doc in (corpus, declaration, coverage)):
+    if not all(isinstance(doc, dict) for doc in (declaration, coverage)):
         raise NativeModelExecutionError("frozen model instruction policy is malformed")
-    instruction = corpus.get("instruction_policy") or {}
-    roles = instruction.get("prohibited_instruction_roles")
     expected = (declaration.get("expected") or {}).get("instruction_classes")
     from merlin.targetgen.public_program_timing import is_public_program
 
@@ -65,10 +107,7 @@ def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups:
         and expected == []
     )
     if (
-        instruction.get("status") != "resolved"
-        or not isinstance(roles, list)
-        or any(not isinstance(role, str) or not role for role in roles)
-        or not isinstance(expected, list)
+        not isinstance(expected, list)
         or (not expected and not public_zero_device_demand and not source_bound_groups)
         or any(not isinstance(name, str) or not name for name in expected)
         or coverage.get("instruction_classes") != expected
@@ -87,16 +126,15 @@ def _frozen_model_policy(capsule_dir: Path, *, target: str, source_bound_groups:
     ):
         raise NativeModelExecutionError("frozen required oracle tiers are malformed")
     return {
-        "descriptor": _digest(descriptor),
-        "manifest": _digest(manifest),
+        **selected,
         "capsule_declaration": _digest(declaration_path),
         "instruction_coverage": _digest(coverage_path),
         "required_tiers": required,
         "expected_instruction_classes": expected,
-        "prohibited_instruction_roles": roles,
         **({"instruction_coverage_origin": "capsule_declaration.expected"} if declaration_coverage else {}),
         **({"public_zero_device_demand": True} if public_zero_device_demand else {}),
-        **({"instruction_class_scope": "global reviewed requirements plus independently mandatory source-bound group work"}
+        **({"instruction_class_scope": "global reviewed requirements plus independently mandatory "
+                                     "source-bound group work"}
            if source_bound_groups else {}),
     }
 

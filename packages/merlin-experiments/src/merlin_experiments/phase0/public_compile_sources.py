@@ -24,6 +24,7 @@ from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
 SCHEMA = "merlin.public_compile_sources.v2"
 SCALES = (1, 8, 64)
 MAX_SOURCE_BYTES = 256 * 1024
+MAX_METADATA_BYTES = 4 * 1024 * 1024
 MAX_CASES = 256
 SCALABLE_COMPONENT_OPS = frozenset({"matmul", "add", "copy", "transpose", "alias", "update", "cast"})
 
@@ -32,12 +33,12 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def _file(path):
+def _file(path, *, limit=MAX_SOURCE_BYTES):
     path = Path(path).absolute()
     if path.resolve() != path or not path.is_file() or any(p.is_symlink() for p in (path, *path.parents)):
         raise ValueError("public compile source must be an original ordinary file")
-    if path.stat().st_size > MAX_SOURCE_BYTES:
-        raise ValueError("public compile source exceeds the metadata budget")
+    if path.stat().st_size > limit:
+        raise ValueError("public compile input exceeds its byte budget")
     return path.read_bytes()
 
 
@@ -52,7 +53,8 @@ class PublicCompileCase:
 
     def verify(self):
         self.original_abi.record()
-        if any(hashlib.sha256(_file(path)).hexdigest() != digest for path, digest in self.provenance):
+        if any(hashlib.sha256(_file(path, limit=MAX_METADATA_BYTES)).hexdigest() != digest
+               for path, digest in self.provenance):
             raise ValueError("original public compile source changed")
         if len(self.source_ir.encode()) > MAX_SOURCE_BYTES:
             raise ValueError("public compile source exceeds its source-text budget")
@@ -156,7 +158,7 @@ def derive(capsules, *, selected="all", scales=SCALES, index_bits=None):
         issued = len(cases)
         try:
             root = Path(capsule["__dir__"]).absolute()
-            metadata = _file(root / "capsule.yaml")
+            metadata = _file(root / "capsule.yaml", limit=MAX_METADATA_BYTES)
             relative = Path(capsule.get("linalg_mlir") or "")
             if not relative.parts or relative.is_absolute() or ".." in relative.parts:
                 raise ValueError("public member has no retained tensor source")

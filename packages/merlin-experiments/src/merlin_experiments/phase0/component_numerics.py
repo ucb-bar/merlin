@@ -63,6 +63,19 @@ def evaluate(capsule):
                 else [sum(int(args[0].data[row * cols + col]) for col in range(cols)) for row in range(rows)]
             )
             output = Tensor(tuple(node["shape"]), values, node["dtype"])
+        elif op == "extract_slice":
+            rows, cols = node["sizes"]
+            ro, co = node["offsets"]
+            rs, cs = node["strides"]
+            width = args[0].shape[1]
+            output = Tensor(tuple(node["shape"]),
+                            [args[0].data[(ro + r * rs) * width + co + c * cs]
+                             for r in range(rows) for c in range(cols)], node["dtype"])
+        elif op == "concat":
+            values = ([value for arg in args for value in arg.data] if node["axis"] == 0 else
+                      [value for row in range(node["shape"][0]) for arg in args
+                       for value in arg.data[row * arg.shape[1]:(row + 1) * arg.shape[1]]])
+            output = Tensor(tuple(node["shape"]), values, node["dtype"])
         else:
             output = Tensor(tuple(node["shape"]), list(args[0].data), node["dtype"])
         # Standard unflagged MLIR integer operations have modular width. This

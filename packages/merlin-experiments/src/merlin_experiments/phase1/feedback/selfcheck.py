@@ -762,6 +762,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
     shutil.copytree(sub, _isodir / "submission", ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
     sub = _isodir / "submission"
     _strip_build_state(sub)  # every grade builds from scratch in its OWN path — see helper
+    from ..brokers.selfcheck import _submission_digest
+
+    original_compiler_sha = _submission_digest(sub)
 
     _tgt, _sim_via = _target_sim_via(context)
     try:
@@ -1089,6 +1092,15 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy(src, dst)
                 own[art] = str(dst)
+        linked_view = None
+        if a.compiler_bundle_manifest is not None:
+            from .candidate_build_views import publish_feedback, registry_root
+
+            linked_view = publish_feedback(
+                workspace=Path.cwd(), public_root=(out_dir / name).absolute(),
+                private_root=registry_root(a.compiler_bundle_manifest), generated=gen.absolute(),
+                compiler=sub.absolute(), compiler_snapshot_sha256=original_compiler_sha,
+            )
         tr = {}
         try:
             t = json.loads((gen / "instruction_trace.json").read_text())
@@ -1106,6 +1118,11 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             "barrier_declared": barrier_tier,
             "barrier_status": bar,
         }
+        if linked_view is not None:
+            row["candidate_build_view"] = linked_view
+        carried_from = (d.get("tier_reuse") or {}).get("carried_from") if isinstance(d.get("tier_reuse"), dict) else None
+        if isinstance(carried_from, str) and carried_from.startswith("carried from ") and len(carried_from) <= 160:
+            row["carried_from"] = carried_from  # a seeded grade's pass, carried in full (merlin.targetgen.seeded_grade)
         from . import joint_physical_correctness, tier_boundary_join
         if name in joint_physical_correctness.roster() and bar_used in {'L2', 'L3'}:
             row['tier_boundary'] = tier_boundary_join.optional_observation(cr, tier=bar_used)

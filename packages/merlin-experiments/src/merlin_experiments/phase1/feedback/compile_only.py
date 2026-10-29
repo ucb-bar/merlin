@@ -436,9 +436,13 @@ def _case_instruction_policy(capsule, *, target):
         from merlin.targetgen import native_model_policy
 
         try:
-            selected = native_model_policy._frozen_model_policy(Path(capsule["__dir__"]), target=target)
+            # Source-only inspection consumes the corpus's static prohibitions.
+            # Public source selection/ABI custody remain with the source owner;
+            # model coverage sidecars and numerical tiers cannot authorize this
+            # build and are deliberately not evaluated here.
+            selected = native_model_policy._frozen_corpus_instruction_policy(target=target)
             roles.update(selected["prohibited_instruction_roles"])
-            for name in ("descriptor", "manifest", "capsule_declaration", "instruction_coverage"):
+            for name in ("descriptor", "manifest"):
                 pin = selected[name]
                 path = Path(pin["path"])
                 if path.resolve() != path or path.is_symlink() or sha256_file(path) != pin["sha256"]:
@@ -514,6 +518,7 @@ def observe(
     sandbox_inputs=None,
     scale_probe=False,
     ir_budget=None,
+    public_artifact_root=None,
 ):
     """Run exact original public cases and reopen actual linked products.
 
@@ -572,6 +577,9 @@ def observe(
                 capsules, selected=selected, index_bits=original_profile.get("host_index_bits")
             )
         before = exact_tree_record(candidate)["sha256"]
+        from ..brokers.selfcheck import _submission_digest
+
+        original_compiler_sha = _submission_digest(candidate) if public_artifact_root is not None else None
         work_root.mkdir(parents=True, mode=0o700)
         sources = work_root / "sources"
         sources.mkdir()
@@ -604,7 +612,7 @@ def observe(
             )
         )
     deadline_started = time.monotonic()
-    deadline, rows = deadline_started + timeout_s, []
+    deadline, rows, publications = deadline_started + timeout_s, [], []
     # Every case of this one request shares its immutable package-policy setup.
     policy_scope = PC.PackagePolicyScope()
     dispatch_timing = {}
@@ -716,6 +724,8 @@ def observe(
                         for key in ("status", "scope", "outside_formal_coverage")
                     },
                 )
+                if public_artifact_root is not None:
+                    publications.append((row, root, index, actual["retained_entry"]["symbol"]))
             except Exception as error:  # noqa: BLE001 - failures are incomplete observations, never grades
                 row.update(compilation_status="unavailable", reason=type(error).__name__)
                 if scale_probe:
@@ -736,6 +746,17 @@ def observe(
     if before != exact_tree_record(candidate)["sha256"] or facts_path.read_bytes() != facts_raw:
         raise ValueError("compile-only compiler or frozen hardware inputs changed during original compilation")
     common_service._verify()
+    if publications:
+        from .candidate_build_views import publish_feedback, registry_root
+
+        for row, root, index, entry_symbol in publications:
+            row["candidate_build_view"] = publish_feedback(
+                workspace=common_service.workspace,
+                public_root=Path(public_artifact_root).absolute() / f"case-{index:03d}",
+                private_root=registry_root(common_service.bundle_manifest),
+                generated=root / "generated", build_root=root / "build", compiler=candidate,
+                entry_symbol=entry_symbol, compiler_snapshot_sha256=original_compiler_sha,
+            )
     result = {
         "schema": SCHEMA,
         "candidate_sha256": before,
@@ -779,6 +800,7 @@ def run(
     sandbox_inputs=None,
     scale_probe=False,
     ir_budget=None,
+    public_artifact_root=None,
 ):
     # Discover metadata/source only; run_capsule/reference/harness generators are
     # deliberately absent from this path.
@@ -796,4 +818,5 @@ def run(
         sandbox_inputs=sandbox_inputs,
         scale_probe=scale_probe,
         ir_budget=ir_budget,
+        public_artifact_root=public_artifact_root,
     )

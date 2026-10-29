@@ -496,6 +496,9 @@ def prepare(
     public_program_suite: Path | None = None,
     host_capability_selection: tuple[Path, str] | None = None,
     public_reference_manifest: Path | None = None,
+    author_profile=None,
+    author_profile_sources=None,
+    author_profile_common_inputs=None,
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
@@ -649,6 +652,8 @@ def prepare(
                    if host_capability_selection is not None else {}),
                 **({"public_reference_manifest": public_reference_manifest}
                    if public_reference_manifest is not None else {}),
+                **(dict(author_profile=author_profile, author_profile_sources=author_profile_sources,
+                        author_profile_common_inputs=author_profile_common_inputs) if author_profile else {}),
             )
             if public_reference_manifest is not None:
                 from .performance_baselines import verify_corpus

@@ -102,3 +102,28 @@ def test_actual_bwrap_uses_frozen_sdk_origin_and_hides_ungranted_siblings(select
     )
     assert result.returncode == 0, (result.stdout, result.stderr)
     assert result.stdout.strip() == "FROZEN_PUBLIC_IMPORT_OK"
+
+
+@pytest.mark.parametrize("level", [1, 2, 3])
+def test_versioned_author_profile_keeps_legacy_sdk_host_only(selected, tmp_path, monkeypatch, level):
+    from merlin_experiments.phase1 import author_profiles as A
+
+    s = selected
+    common = tmp_path / "raw-isa.h"
+    common.write_text("/* common raw ISA input */\n")
+    source = A.prepare_sources(repo_root(), tmp_path / "author-source",
+                               profile=A.NAMES[level - 1], review_id="profile import-root regression")
+    bundle = A.materialize_bundle(s.bundle, profile=A.NAMES[level - 1],
+        common_allowed=[dict(path=str(common), mode="ro")], source_selection=source)
+    assert bundle["compiler_tool_profile"]["shared_scheduling_resources"]
+    assert all(row["path"] != str(s.sdk / "shared-library.json") for row in bundle["allowed"])
+    # Independent judge metadata must never ask for a denied public SDK mount.
+    monkeypatch.setattr(BW, "_snapshot_grants", lambda *args, **kwargs: pytest.fail("host-only SDK used as author import root"))
+    assert TC.paths_for_bundle(s.ws, bundle, paths=s.paths) is s.paths
+    environment = TC.sandbox_env(SimpleNamespace(target="neutral"), s.ws, paths=s.paths,
+                                 sim=TC.SimToolchain(), harness="", bundle=bundle)
+    assert str(s.sdk) not in environment
+    assert str(s.repo / "src") in environment
+    bundle["author_profile"]["live_cca"] = True
+    with pytest.raises(ValueError, match="author profile differs"):
+        TC.paths_for_bundle(s.ws, bundle, paths=s.paths)

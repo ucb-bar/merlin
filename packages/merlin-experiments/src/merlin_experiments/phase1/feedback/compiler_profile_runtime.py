@@ -305,6 +305,7 @@ def selfcheck_compile_only(a, *, context):
                 selected=a.capsules,
                 scale_probe=scale_probe,
                 ir_budget=ir_budget,
+                public_artifact_root=Path(getattr(a, "artifact_root", None) or "selfcheck_out/compile-only").absolute(),
             )
         owner._verify()
     except Exception as error:
@@ -376,7 +377,14 @@ def _public_package_parts(argv, env_prefix, owner):
     """Compose exact original grants; internal callers must close masks last."""
     from merlin.targetgen.sandbox import bwrap as BW
 
-    roots = _public_python_roots(owner)
+    from ..author_profiles import resolve, verify_bundle
+
+    author = owner.bundle.get("author_profile")
+    if author is not None:
+        verify_bundle(resolve(author.get("name")), owner.bundle)
+        roots = ()
+    else:
+        roots = _public_python_roots(owner)
     prefix = [*argv, *BW._bundle_mount_args(owner.workspace, owner.bundle, owner.repo, visibility_prefix=list(argv))]
     root = shlex.quote(":".join(map(str, roots)))
     return prefix, env_prefix + f"export PYTHONPATH={root}:$PYTHONPATH; "

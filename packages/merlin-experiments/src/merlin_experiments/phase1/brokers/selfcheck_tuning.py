@@ -32,8 +32,8 @@ REQUEST_KEY = "tuning_overrides"
 #: Request key the broker fills after applying the overrides; a client-supplied value is replaced.
 APPLIED_KEY = "_tuning_applied"
 #: Bounds on what one declaration and one request may carry.
-MAX_KNOBS = 16
-MAX_VALUES = 8
+MAX_KNOBS = 256  # generous bound only: a seeded compiler starts with all of its seed's knobs
+MAX_VALUES = 64
 MAX_OVERRIDES = 4
 MAX_TEXT = 200
 MAX_BYTES = 1 << 20

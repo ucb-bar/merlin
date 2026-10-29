@@ -22,14 +22,19 @@ def _pin(raw):
     return dict(sha256=hashlib.sha256(raw).hexdigest(), size_bytes=len(raw))
 
 
-def source_view(source_mlir):
+def source_view(source_mlir, *, reduction_lanes=None):
     """Observe SSA operand sharing and every original declared result type.
 
     Reuse the closed interface grammar, including its shape tokenizer. The
     command parser omits COMMIT result tensors, so those types must be read
     independently from the original declaration before joining a candidate CB.
     """
-    from merlin.compile.logical_abi import HarnessRenderError, commit_output_shape, kernel_arg_order
+    from merlin.compile.logical_abi import (
+        HarnessRenderError,
+        commit_output_shape,
+        kernel_abi_from_commands,
+        kernel_arg_order,
+    )
     from merlin.perf.candidate_source import source_observation
     from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET
     from merlin.targetgen.contract import interface_emit as grammar
@@ -49,7 +54,16 @@ def source_view(source_mlir):
         if name in outputs or not name or any(type(d) is not int or d <= 0 for d in shape):
             raise ValueError("source readouts require unique static typed results")
         outputs[name] = dict(shape=shape, dtype=dtype, role="output")
+    # Whole interface operations declare their named results directly. The
+    # original parser retains these types; COMMIT is only one output form.
+    for name, spec in cb["tensors"].items():
+        if spec.get("role") == "output" and name not in outputs:
+            if any(type(d) is not int or d <= 0 for d in spec.get("shape", ())):
+                raise ValueError("source readouts require unique static typed results")
+            outputs[name] = dict(spec)
     cb["tensors"] = {**cb["tensors"], **outputs}
+    original_outputs = kernel_abi_from_commands(cb)["outputs"]
+    outputs = {name: outputs[name] for name in original_outputs}
     products, groups, packs = {}, defaultdict(list), {}
     for ordinal, command in enumerate(cb["commands"]):
         operands = command.get("operands", {})
@@ -95,15 +109,18 @@ def source_view(source_mlir):
             groups[product["rhs"]].append(dict(**product, output=operands["dst"],
                 result=result, readout_attributes=attrs))
     grouped = [dict(rhs=rhs, members=members) for rhs, members in groups.items() if len(members) > 1]
+    from .reference_mechanisms import interface_sharing
+
     return dict(status="observed_source", input=pin, observation=observed,
         command_buffer=cb, groups=grouped, products=len(products), outputs=outputs,
+        mechanism_observations=interface_sharing(products.values(), pin=pin, command_buffer=cb, lanes=reduction_lanes),
         argument_order=kernel_arg_order(cb), source_semantics="declared_interface_contract",
         numerical_equivalence="unknown", emitted_mechanism="unknown")
 
 
 def artifact_views(*, source_mlir, command_buffer, emitted_mlir, entry_symbol="kernel_entry",
                    native_capture=None, isa=None, native_decoder=None, semantics=None, target=None,
-                   decoder_inputs=()):
+                   decoder_inputs=(), reduction_lanes=None, producer_binding=None):
     """Reopen all supplied byte domains and diagnose mismatches before proposing work.
 
     ``native_capture`` is host-supplied ``{raw: bytes, evidence: KernelEvidence,
@@ -119,31 +136,39 @@ def artifact_views(*, source_mlir, command_buffer, emitted_mlir, entry_symbol="k
     from merlin.perf.emitted_work import assembly_site_kind, summarize_emitted_work
     from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
+    from .reference_schedule_receipts import inspect_schedule_receipts
+
     pins = dict(source=_pin(source_mlir), command_buffer=_pin(command_buffer), emitted=_pin(emitted_mlir))
-    source = source_view(source_mlir)
+    if b"merlin_iface." in source_mlir:
+        source = source_view(source_mlir, reduction_lanes=reduction_lanes)
+    else:
+        from .reference_source_structure import source_structure
+
+        source = source_structure(source_mlir, pin=pins["source"], reduction_lanes=reduction_lanes)
     cb = json.loads(command_buffer)
     if (not isinstance(cb, dict) or not isinstance(cb.get("tensors"), dict)
             or not isinstance(cb.get("commands"), list)
             or any(not isinstance(row, dict) for row in cb["tensors"].values())):
         raise ValueError("command buffer must be an object")
-    expected = source["command_buffer"]
+    expected = source.get("command_buffer")
     mismatches = []
-    for key in ("abi_version", "target", "commands"):
-        if cb.get(key) != expected.get(key):
-            mismatches.append(dict(axis="source." + key, status="mismatch"))
-    for name, spec in expected["tensors"].items():
-        actual = cb.get("tensors", {}).get(name, {})
-        if any(actual.get(key) != spec.get(key) for key in ("shape", "dtype", "role")):
-            mismatches.append(dict(axis="source.tensor", tensor=name, status="mismatch"))
-    if set(cb.get("tensors", {})) != set(expected["tensors"]):
-        mismatches.append(dict(axis="source.tensor_roster", status="mismatch"))
+    if expected is not None:
+        for key in ("abi_version", "target", "commands"):
+            if cb.get(key) != expected.get(key):
+                mismatches.append(dict(axis="source." + key, status="mismatch"))
+        for name, spec in expected["tensors"].items():
+            actual = cb.get("tensors", {}).get(name, {})
+            if any(actual.get(key) != spec.get(key) for key in ("shape", "dtype", "role")):
+                mismatches.append(dict(axis="source.tensor", tensor=name, status="mismatch"))
+        if set(cb.get("tensors", {})) != set(expected["tensors"]):
+            mismatches.append(dict(axis="source.tensor_roster", status="mismatch"))
     abi = cb.get("kernel_abi")
     if abi is not None:
         if (not isinstance(abi, dict) or not isinstance(abi.get("args"), list)
                 or any(not isinstance(row, dict) for row in abi["args"])):
             raise ValueError("command buffer ABI must declare typed argument records")
         args = [row.get("tensor") for row in abi.get("args", [])]
-        if args != source["argument_order"] or abi.get("outputs") != list(source["outputs"]):
+        if expected is not None and (args != source["argument_order"] or abi.get("outputs") != list(source["outputs"])):
             mismatches.append(dict(axis="source.abi_roster", status="mismatch"))
     try:
         with IR_LOCK:
@@ -156,10 +181,12 @@ def artifact_views(*, source_mlir, command_buffer, emitted_mlir, entry_symbol="k
     if len(entries) != 1 or sum(1 for _ in module.walk()) > MAX_OPERATIONS:
         raise ValueError("emitted view requires one bounded defined entry")
     entry, = entries
+    from merlin.kernels.consumer_structure import consumer_structure
+
     entry_block = next(iter(entry.body.blocks))
     arity = len(entry_block.args)
-    if arity != len(source["argument_order"]) or any(
-            not isinstance(arg.type, llvm.LLVMPointerType) for arg in entry_block.args):
+    if expected is not None and (arity != len(source["argument_order"]) or any(
+            not isinstance(arg.type, llvm.LLVMPointerType) for arg in entry_block.args)):
         mismatches.append(dict(axis="emitted.abi_arity", expected=len(source["argument_order"]),
                                actual=arity, status="mismatch"))
     static = Counter(assembly_site_kind(op) for op in entry.walk() if op.name == "llvm.inline_asm")
@@ -190,6 +217,8 @@ def artifact_views(*, source_mlir, command_buffer, emitted_mlir, entry_symbol="k
         counted = dict(status="unknown", reason=str(error), command_counts=None)
     native = _native(native_capture, pins, arity, isa=isa, decoder=native_decoder) if native_capture else dict(
         status="unknown", reason="original_native_capture_absent", command_counts=None, fence_count=None)
+    construction = inspect_schedule_receipts(source_mlir=source_mlir, command_buffer=command_buffer,
+                                             emitted_mlir=emitted_mlir, producer_binding=producer_binding)
     gaps = [dict(kind="evidence_or_adapter_gap", goals=[row["axis"]], reason="cross-view mismatch",
                  witnesses=[row], next_action="repair_original_source_command_or_emitted_binding")
             for row in mismatches]
@@ -202,11 +231,14 @@ def artifact_views(*, source_mlir, command_buffer, emitted_mlir, entry_symbol="k
     return dict(kind="artifact_cross_view_analysis", inputs=pins,
         source={k: v for k, v in source.items() if k not in ("command_buffer", "observation")},
         declared_representations=representation_activity(cb),
-        source_command_join="mismatch" if mismatches else "matches_declared_source",
+        source_command_join=("mismatch" if mismatches else
+                             "matches_declared_source" if expected is not None else "unknown"),
         emitted=dict(entry=entry_symbol, abi_arity=arity, static_assembly_sites=dict(static), counted_work=counted,
+                     consumer_structure=consumer_structure(module, symbol=entry_symbol),
                      selected_decode=decoded_static),
-        native=native, gaps=gaps, mismatches=mismatches,
-        semantic_equivalence="unknown", mechanism_status="unknown", schedule_consumption="unknown",
+        native=native, gaps=gaps, mismatches=mismatches, construction_receipts=construction,
+        semantic_equivalence="unknown", mechanism_status="unknown",
+        schedule_consumption=construction["schedule_consumption"],
         numerical_status="unknown", timing_status="unknown", heldout_status="unknown",
         next_action="Compare complete-region alternatives; retain load, configuration, fence and alias costs "
                     "separately.")
@@ -271,7 +303,11 @@ def _native(capture, pins, arity, *, isa, decoder):
 
 def compare_views(reference, candidate):
     """Report supported tradeoffs; never reward retention or fewer commands alone."""
+    from .reference_mechanisms import align_questions
+    from .reference_schedule_receipts import compare_schedule_receipts
+
     compatible = (reference["inputs"]["source"] == candidate["inputs"]["source"]
+                  and reference["source_command_join"] == candidate["source_command_join"] == "matches_declared_source"
                   and not reference["mismatches"] and not candidate["mismatches"])
     counts = {}
     complete_scope = (reference["native"].get("capture_complete") is True
@@ -294,6 +330,11 @@ def compare_views(reference, candidate):
             witnesses=[dict(status="observed_source", source=reference["inputs"]["source"],
                             issue_comparison=counts, execution_origin="unverified")]))
     return dict(kind="artifact_cross_view_comparison", reference=reference, candidate=candidate, gaps=gaps,
+        construction_comparison=compare_schedule_receipts(reference.get("construction_receipts", {}),
+                                                         candidate.get("construction_receipts", {})),
+        mechanism_alignment=align_questions(
+            dict(views=dict(source=reference["source"], emitted=reference["emitted"])),
+            dict(views=dict(source=candidate["source"], emitted=candidate["emitted"]))),
         declared_source_join="identical_bytes" if compatible else "unknown_or_mismatch",
         issue_comparison=counts, mechanism_status="unknown", semantic_equivalence="unknown",
         numerical_status="unknown", timing_status="unknown", heldout_status="unknown",

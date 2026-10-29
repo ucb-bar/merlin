@@ -468,6 +468,10 @@ def _analysis_pins(report, workspace):
     return list(pins.values())
 
 
+#: The experiment owner (``merlin.mining``) is not importable in this environment.
+DEPENDENCY_UNAVAILABLE = "analysis_experiment_dependency_unavailable"
+
+
 def record_analysis(report, *, workspace, compiler_sha256):
     """Publish fresh broker analysis through the existing packet/observation owners.
 
@@ -479,8 +483,13 @@ def record_analysis(report, *, workspace, compiler_sha256):
     if selected is None or not _sha(compiler_sha256):
         return None
     from merlin.compile.tuning_knobs import DECLARATION
-    from merlin.mining.reconstruction_experiments import build_experiment_packet, workspace_tuning
 
+    try:
+        from merlin.mining.reconstruction_experiments import build_experiment_packet, workspace_tuning
+    except ImportError:
+        # One optional dependency missing from the broker environment degrades
+        # the experiment binding; the analysis itself still answers.
+        return dict(status="unknown", reason=DEPENDENCY_UNAVAILABLE, tasks=[], requests=[])
     from ..brokers.selfcheck import _submission_digest
 
     packet, context = _load(selected)
@@ -520,6 +529,70 @@ def record_analysis(report, *, workspace, compiler_sha256):
 
 def _text(value, limit=220):
     return " ".join(str(value).split())[:limit]
+
+
+def _emitted_program(document, *, capsule, compiler_sha256):
+    """Read only the evaluator's complete scoped program observation, never knob claims."""
+    rows = document.get("per_capsule", document.get("cases", ()))
+    rows = [row for row in rows if isinstance(row, dict) and row.get("capsule") == capsule]
+    if len(rows) != 1 or document.get("candidate_sha256", compiler_sha256) != compiler_sha256:
+        return None
+    value = rows[0].get("performance") or {}
+    fields = ("capsule_sha256", "selection_sha256", "model_sha256", "comparison_domain_sha256",
+              "scope_sha256", "elf_sha256")
+    if (not isinstance(value, dict) or value.get("schema") != "merlin.phase1.joint_performance.v1"
+            or value.get("complete_event_accounting") is not True
+            or any(not _sha(value.get(key)) for key in fields)):
+        return None
+    return dict(compiler_sha256=compiler_sha256, **{key: value[key] for key in fields},
+                counts_sha256=document_digest(value.get("feature_counts", {})))
+
+
+def _emitted_effects(task, outcomes):
+    """An unchanged matched ELF is negative effect evidence, never mechanism admission."""
+    requests = {row["request_id"]: row for row in task.get("requests", [])}
+    effects = []
+    for request in requests.values():
+        if request.get("role") != "variant" or request["request_id"] not in outcomes:
+            continue
+        variant = outcomes[request["request_id"]]
+        baseline = outcomes.get(request.get("baseline_request_id"), {})
+        before, after = baseline.get("emitted_program"), variant.get("emitted_program")
+        status, reason = "unknown", "paired_scoped_emitted_program_witness_missing"
+        if isinstance(before, dict) and isinstance(after, dict):
+            keys = ("capsule_sha256", "selection_sha256", "model_sha256", "comparison_domain_sha256", "scope_sha256")
+            matched = (baseline.get("role") == "baseline" and baseline.get("task_id") == variant.get("task_id")
+                and all(baseline.get(k) == variant.get(k) for k in
+                        ("context_identity", "base_compiler_sha256", "capsule", "sim", "suite", "tiers"))
+                and baseline.get("settings_sha256") != variant.get("settings_sha256")
+                and all(_sha(before.get(k)) and before[k] == after.get(k) for k in keys)
+                and before.get("compiler_sha256") == baseline.get("executed_compiler_sha256")
+                and after.get("compiler_sha256") == variant.get("executed_compiler_sha256")
+                and before.get("compiler_sha256") != after.get("compiler_sha256")
+                and all(_sha(row.get("elf_sha256")) for row in (before, after)))
+            if matched:
+                same = before["elf_sha256"] == after["elf_sha256"]
+                if not same or before.get("counts_sha256") == after.get("counts_sha256"):
+                    status = "requested_but_no_emitted_change" if same else "emitted_program_changed"
+                    reason = "identical_matched_emitted_program" if same else "goal_specific_mechanism_still_unknown"
+        effects.append(dict(task_id=task["task_id"], request_id=request["request_id"],
+            baseline_request_id=request.get("baseline_request_id"),
+            capsule=request.get("capsule"),
+            status=status, reason=reason, goals=task.get("goals", []),
+            application_status=("optimization_did_not_apply_emitted_fallback"
+                if status == "requested_but_no_emitted_change" else "emitted_change_requires_mechanism_check"
+                if status == "emitted_program_changed" else "unknown"),
+            application_scope="requested_variant_relative_to_matched_baseline",
+            fallback_scope="retained_baseline_program" if status == "requested_but_no_emitted_change" else None,
+            baseline=copy.deepcopy(before), candidate=copy.deepcopy(after),
+            advisory_only=True, mechanism_status="unknown", qualification_issued=False))
+    return effects
+
+
+def _construction_action(task):
+    return dict(route="construction_gap", action="inspect_applicability_and_library_route", task_id=task["task_id"],
+                gaps=["construction.requested_but_no_emitted_change"],
+                library_routes=copy.deepcopy((task.get("next_action") or {}).get("library_routes", [])))
 
 
 def _attempt_text(value):
@@ -679,8 +752,13 @@ def project(document=None, *, current_compiler_sha256=None):
     observed_requests = [outcomes[row["request_id"]] for row in requests if row["request_id"] in outcomes]
     requests = [row for row in requests if row["request_id"] not in outcomes]
     attempts = attempts + observed_requests
+    effects = _emitted_effects(task, outcomes)
+    no_effect = any(row["status"] == "requested_but_no_emitted_change" for row in effects)
     evidence = task.get("evidence") or []
-    lines = ["reference experiment (advisory; verify the emitted result): "
+    action = task.get("next_action") or {}
+    diagnostics = action.get("diagnostics") or []
+    label = "reference evidence" if action.get("phase") == "evidence_collection" else "reference experiment"
+    lines = [label + " (advisory; verify the emitted result): "
              + _text(task.get("summary", task["task_id"]))]
     if evidence:
         lines.append("observed/inferred: " + _text(evidence[0]))
@@ -688,13 +766,20 @@ def project(document=None, *, current_compiler_sha256=None):
         lines.append("hypothesis: " + _text(hypotheses[0].get("summary", hypotheses[0])))
     if attempts:
         lines.append("previous trial: " + _attempt_text(attempts[-1]))
+    if no_effect:
+        lines.append("construction gap: requested settings produced the same matched emitted program; "
+                     "inspect applicability and the library route before another trial.")
     if requests:
         command = shlex.join(requests[0]["argv"])
         lines.append("required selfcheck: " + (command if len(command.encode()) <= 600
                      else "use the complete required_selfchecks[0].argv in the response JSON"))
-    elif observed_requests:
+    elif diagnostics and not no_effect:
+        command = shlex.join(diagnostics[0]["argv"])
+        lines.append("emission diagnostic: " + (command if len(command.encode()) <= 600
+                     else "use the complete next_action.diagnostics[0].argv in the response JSON"))
+    elif observed_requests and not no_effect:
         lines.append("required evidence: inspect the executed mechanism and paired complete-region performance.")
-    else:
+    elif not no_effect:
         action = (task.get("next_action") or {}).get("action", "acquire new evidence")
         lines.append("required evidence: " + _text(action))
     lines.append("acceptance: executable mechanism checks, unchanged numerics, comparable complete-region cycles, "
@@ -704,9 +789,12 @@ def project(document=None, *, current_compiler_sha256=None):
                 execution_context_identity=packet.get("execution_context_identity"), task_id=task["task_id"],
                 task_status=task.get("status"), observed=copy.deepcopy(evidence), hypotheses=copy.deepcopy(hypotheses),
                 prior_attempts=copy.deepcopy(attempts), required_selfchecks=copy.deepcopy(requests),
-                experiment_status="observed_mechanism_unresolved" if observed_requests else "pending",
+                experiment_status="requested_but_no_emitted_change" if no_effect else
+                                  "observed_mechanism_unresolved" if observed_requests else "pending",
+                emitted_effects=effects,
                 observed_requests=copy.deepcopy(observed_requests),
-                acceptance=copy.deepcopy(task["acceptance"]), next_action=copy.deepcopy(task.get("next_action")),
+                acceptance=copy.deepcopy(task["acceptance"]),
+                next_action=_construction_action(task) if no_effect else copy.deepcopy(task.get("next_action")),
                 advisory_only=True, qualification_issued=False, completion_authority="trusted evaluator closure only",
                 lines=lines)
 
@@ -858,7 +946,9 @@ def observe_result(request, document, *, base_compiler_sha256):
                       role=planned.get("role"), status="observed", task_complete=False,
                       mechanism_status="unknown", base_compiler_sha256=base_compiler_sha256,
                       executed_compiler_sha256=executed_source, settings_sha256=planned["settings_sha256"],
-                      capsule=capsule, sim=actual_sim, observations=observations,
+                      capsule=capsule, sim=actual_sim, suite=request.get("suite", "core"),
+                      tiers=request.get("tiers"), observations=observations,
+                      emitted_program=_emitted_program(document, capsule=capsule, compiler_sha256=executed_source),
                       all_pass=document.get("all_pass"), numerical_status=numerical, qualification_issued=False,
                       required_next="Check emitted mechanism and paired complete-region performance "
                                     "before accepting the hypothesis.")
@@ -869,15 +959,24 @@ def observe_result(request, document, *, base_compiler_sha256):
         feedback = document.get(KEY)
         if isinstance(feedback, dict):
             feedback["latest_observation"] = copy.deepcopy(result)
-            feedback["experiment_status"] = "observed_mechanism_unresolved"
+            task = next(row for row in packet["tasks"] if row["task_id"] == planned["task_id"])
+            effects = _emitted_effects(task, _outcomes(selected, packet))
+            no_effect = any(row["status"] == "requested_but_no_emitted_change" for row in effects)
+            feedback["emitted_effects"] = effects
+            feedback["experiment_status"] = ("requested_but_no_emitted_change" if no_effect
+                                             else "observed_mechanism_unresolved")
             feedback["completion_authority"] = "trusted evaluator closure and executable mechanism proof required"
-            feedback["next_action"] = dict(route="inspect_emitted_mechanism",
+            feedback["next_action"] = _construction_action(task) if no_effect else dict(
+                route="inspect_emitted_mechanism",
                 action="Inspect the executed kernel and compare a paired baseline before accepting the hypothesis.")
             steps = document.get("next_steps")
             if isinstance(steps, dict):
                 outcome = {"pass": "passed", "fail": "failed"}.get(numerical, "unresolved")
                 line = "observed reference trial: " + _text(planned["request_id"], 100)
-                line += "; numerical check " + outcome + "; emitted mechanism remains unresolved."
+                line += "; numerical check " + outcome + ("; construction gap: requested settings produced the "
+                    "same matched emitted program; optimization did not apply; emitted fallback for "
+                    + _text(capsule, 100) + "; inspect applicability and the library route."
+                    if no_effect else "; emitted mechanism remains unresolved.")
                 previous = steps.get("reference_experiment_lines", [])
                 retained = [value for value in steps.get("lines", []) if value not in previous]
                 shown = [previous[0], line] if previous else [line]

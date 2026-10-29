@@ -35,6 +35,8 @@ def policy(path):
             raise ValueError(f"invalid joint campaign {key}")
     if not value["drain_s"] <= value["final_model_s"] < value["duration_s"]:
         raise ValueError("joint campaign windows must be nested")
+    from .study_protocol import validate as validate_study_protocol
+    validate_study_protocol(value)
     mode = value.get("compiler_execution_mode", "profile_strict_v1")
     if mode not in {"profile_strict_v1", "snapshot_external_v1"}:
         raise ValueError("invalid joint compiler execution mode")
@@ -231,6 +233,9 @@ def require_full_model(*, engine="spike", now=None):
     value = selected()
     if value is None:
         return None
+    from .study_protocol import validate as study_protocol
+    if study_protocol(value["policy"]) is not None:
+        raise RuntimeError("private whole-model campaigns are outside the selected-capsule study")
     left = remaining(now=now)
     external = value["policy"].get("compiler_execution_mode") == "snapshot_external_v1"
     if engine != "spike" or left <= 0 or (not external and left > value["policy"]["final_model_s"]):
@@ -605,6 +610,10 @@ def prompt_block():
     value = selected()
     if value is None:
         return ""
+    from .study_protocol import prompt as study_prompt
+    study = study_prompt(value["policy"])
+    if study:
+        return study + instruction_policy_line(value["policy"])
     return _campaign_prompt_block(value["policy"]) + instruction_policy_line(value["policy"])
 
 
@@ -734,7 +743,7 @@ def _full_compiler_prompt_block(policy):
         "representations, schedules, allocation, lowering and host generation as useful. There is no "
         "mandatory pass order, discovery sequence, tiny-canary prerequisite or minimum helper count. "
         "Choose component ownership and testing order; up to the selected helper ceiling can work "
-        "concurrently toward the same compiler. Use all 20 CPUs as one shared pool.\n\n"
+        "concurrently toward the same compiler. Use the selected CPUs as one shared pool.\n\n"
         "Test useful eligible cases as soon as they can provide feedback, including large and connected "
         "cases. A tiny executable can cheaply expose ABI faults but does not gate unrelated work. "
         "Keep editing while immutable snapshots grade and integrate completed changes promptly. "

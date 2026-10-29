@@ -139,6 +139,7 @@ class RunRequest:
             "compiler_execution": a.compiler_execution,
             "sandbox_reuse": getattr(a, "sandbox_reuse", "per_call"),
             "compiler_access": a.compiler_access,
+            **({"author_profile": a.author_profile} if a.author_profile else {}),
             "full_compiler_manifest_sha256": a.full_compiler_manifest_sha256,
             "reference_experiments_sha256": a.reference_experiments_sha256,
             **({"reference_experiments_tasks": "off"} if a.reference_experiments_tasks == "off" else {}),
@@ -463,6 +464,9 @@ def phase_run_dir(context, arm: str, run_id: str, *, resume: bool) -> Path:
 
 def validate_preflight_options(a: RunOptions) -> None:
     """Pure selection checks, before native probes and when reopening preparation."""
+    from .author_profiles import validate_options as validate_author_profile
+
+    validate_author_profile(a)
     reference = (a.reference_experiments, a.reference_experiments_sha256)
     if any(reference):
         if (not all(reference) or len(reference[1]) != 64
@@ -616,6 +620,19 @@ def _prepare(
         raise ValueError("preflight bundle identity differs from the explicitly selected manifest")
     if not isinstance(bundle, dict):
         raise ValueError("bundle identity requires a manifest mapping")
+    from . import author_profiles as AP
+
+    _author_profile = AP.resolve(a.author_profile)
+    if _author_profile is not None:
+        AP.verify_bundle(_author_profile, bundle)
+        if _author_profile.fresh10 and not _author_profile.coverage:
+            from .fresh10_sources import verify_library
+
+            verify_library(_author_profile.name, request.compiler_library_selection)
+        elif request.compiler_library_selection is not None and not _author_profile.seeded:
+            raise ValueError("scratch author profiles cannot acquire a legacy additional SDK")
+    elif bundle.get("author_profile") is not None:
+        raise ValueError("versioned profile bundle requires its explicit author-profile option")
     _compiler_tool_profile = verify_tool_profile(bundle)
     bundle_dir = request.bundle_manifest.parent
     _corpus_seal = a.corpus_seal or os.environ.get("MERLIN_CORPUS_SEAL", "").strip()
@@ -651,6 +668,8 @@ def _prepare(
         if prior_mode != a.compiler_execution:
             raise RuntimeError(
                 "resume refused: compiler execution treatment changed; use a new checkpoint continuation")
+        if (_environment_record.get("run_config") or {}).get("author_profile", "") != a.author_profile:
+            raise RuntimeError("resume refused: versioned author profile changed")
         prior_access = (_environment_record.get("run_config") or {}).get("compiler_access", "selected_library")
         prior_manifest = (_environment_record.get("run_config") or {}).get("full_compiler_manifest_sha256", "")
         if (prior_access, prior_manifest) != (a.compiler_access, a.full_compiler_manifest_sha256):
@@ -785,6 +804,8 @@ def _prepare(
         from . import full_compiler_workspace as FCW
 
         selection = FCW.select(a.full_compiler_root, a.full_compiler_manifest, a.full_compiler_manifest_sha256)
+        if _author_profile is not None:
+            AP.verify_sources(_author_profile, selection, bundle=bundle)
         if _resuming:
             _full_compiler_record = _environment_record.get("full_compiler_workspace")
             if (not isinstance(_full_compiler_record, dict)
@@ -792,6 +813,8 @@ def _prepare(
                 raise RuntimeError("resume refused: full compiler baseline selection changed")
         else:
             _full_compiler_record = FCW.stage(selection, ws / "submission")
+    if _author_profile is not None:
+        AP.stage_record(ws, run_dir, _author_profile, selection if a.compiler_access == "full_compiler" else None)
     _bundle_snapshot_record = None
     _model_host_lane_snapshot = None
     _hidden_snapshot_record = None
@@ -1030,13 +1053,22 @@ def _prepare(
             require_public_members(
                 resource_policy, (row.get("name") for row in public_members if row.get("name") not in excluded)
             )
-        append_resource_guidance(
-            ws,
-            run_dir,
-            a,
-            **({"public_codegen_policy": resource_policy} if resource_policy is not None else {}),
-            **({"task_staging_config": request.task_staging_config} if request.task_staging_config is not None else {}),
-        )
+        if _author_profile is not None and not _author_profile.fresh10:
+            from .profile_guidance import append_profile_guidance
+
+            append_profile_guidance(
+                ws, run_dir, a, context=context,
+                public_roots=[_public_root] if _public_root is not None else _te().graded_roots(),
+                contract=_contract_root or context.repo / "merlin/contract",
+            )
+        else:
+            append_resource_guidance(
+                ws,
+                run_dir,
+                a,
+                **({"public_codegen_policy": resource_policy} if resource_policy is not None else {}),
+                **({"task_staging_config": request.task_staging_config} if request.task_staging_config is not None else {}),
+            )
     elif not (ws / "TASK.md").is_file():
         raise RuntimeError("resume refused: sealed workspace TASK.md is missing")
 
@@ -1047,7 +1079,9 @@ def _prepare(
         PSD.append_guidance(_public_software, ws, run_dir)
         from .capability_inventory import stage_selected as stage_capabilities
 
-        stage_capabilities(
+        capability_append = (stage_capabilities if _author_profile is None or _author_profile.modern or _author_profile.fresh10
+                             else (lambda *args, **kwargs: None))
+        capability_append(
             ws, run_dir, context=context,
             public_roots=[_public_root] if _public_root is not None else _te().graded_roots(),
             contract=_contract_root or context.repo / "merlin/contract",
@@ -1061,6 +1095,10 @@ def _prepare(
         stage_reference_map(ws, run_dir)  # the same pinned map in every arm, before the selection's section
         stage_guidance(ws, run_dir)
         stage_study(ws, run_dir, a)
+        if _author_profile is not None and _author_profile.fresh10:
+            from . import fresh10_disclosure
+
+            fresh10_disclosure.stage_task(ws, run_dir, _author_profile.name, a)
         _skills_record = _run_config.get(SK.KEY) or {}
         if (CTX.selection(a) or {}).get("task_skills"):
             from .task_disclosure import stage as stage_disclosure

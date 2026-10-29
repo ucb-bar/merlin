@@ -73,6 +73,7 @@ PUBLIC_HELPERS = (
     "merlin.targetgen.isa_dialect_gen",
     "merlin.targetgen.isa_header_gen",
     "merlin.targetgen.oot_starterkit.cmdbuf",
+    "merlin.targetgen.oot_starterkit.iface",
     "merlin.perf.emitted_work",
     "merlin.perf.model_group_work",
     "merlin.runtime.operation_profile",
@@ -185,7 +186,7 @@ def select(root, manifest_path, manifest_sha256):
             or (
                 module is None
                 and (
-                    PurePosixPath(path).suffix not in SUPPORT_SUFFIXES
+                    (PurePosixPath(path).suffix not in SUPPORT_SUFFIXES and path not in {"LICENSE", "NOTICE"})
                     or forbidden(".".join(PurePosixPath(path).with_suffix("").parts))
                 )
             )
@@ -283,7 +284,7 @@ def stage(selection, submission):
     }
 
 
-def prepare(repo, destination, *, review_id, modules=None):
+def prepare(repo, destination, *, review_id, modules=None, include_runtime_support=True, extra_modules=()):
     """Operator preparation: generic compiler directories plus source dependencies.
 
     Missing/withheld dependencies are explicit, never silently granted. This
@@ -308,6 +309,11 @@ def prepare(repo, destination, *, review_id, modules=None):
             if _module(relative) != module or forbidden(module) or not (source / relative).is_file():
                 raise ValueError(f"component entry is not an existing public compiler module: {module}")
             pending.append(relative)
+    for module in extra_modules:
+        relative = module.replace(".", "/") + ".py"
+        if _module(relative) != module or forbidden(module) or not (source / relative).is_file():
+            raise ValueError("additional component is not an existing public compiler module")
+        pending.append(relative)
     members, denied, missing = {}, set(), set()
     while pending:
         relative = pending.pop()
@@ -345,7 +351,7 @@ def prepare(repo, destination, *, review_id, modules=None):
                 pending.append(found)
             elif dependency in direct:
                 missing.add(dependency)
-    for path in (source / "merlin/runtime").glob("portable_*"):
+    for path in (source / "merlin/runtime").glob("portable_*") if include_runtime_support else ():
         if path.suffix in (".c", ".h", ".LICENSE"):
             relative = path.relative_to(source).as_posix()
             members[relative] = (_read(source, relative), None)
@@ -435,7 +441,7 @@ def candidate_sources(selection, submission):
         if not path.is_file() or (module is not None and not selection.permits(module)):
             raise ValueError(f"editable compiler source outside public namespace: {relative}")
         if module is None:
-            if path.suffix not in SUPPORT_SUFFIXES:
+            if path.suffix not in SUPPORT_SUFFIXES and relative not in {"LICENSE", "NOTICE"}:
                 raise ValueError(f"editable compiler contains non-source member: {relative}")
             # Data/config files do not create an escape from the public namespace
             # boundary (e.g. a private reference module renamed to .json).

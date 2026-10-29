@@ -222,3 +222,18 @@ def test_staged_tree_reads_extents_and_fuses_past_bare(staged):
     assert result["extent"] == [4, 8, 8, 3]
     assert result["regions"] == [["matmul", 4, 8, 8, 3]]
     assert result["cut"] == "requant", result["refusals"]
+
+
+def test_bounded_rne_public_component_closes_without_target_runtime(tmp_path):
+    """The custody leaf must freeze under the same exact import checker as SDK releases."""
+    from merlin.targetgen.compiler_library import freeze_compiler_library
+
+    entries = ("merlin.llvmlower.bounded_rne_custody", "merlin.llvmlower.host_transform_dispatch")
+    component = F.prepare(repo_root(), tmp_path / "bounded-rne-public",
+                          review_id="bounded RNE public dependency closure", modules=entries,
+                          include_runtime_support=False)
+    assert not component.diagnostics
+    assert not any(m and F.forbidden(m) for _p, _d, m in component.members)
+    assert not any(m and m.startswith("merlin.runtime.backends") for _p, _d, m in component.members)
+    freeze_compiler_library(component.root, review_id="bounded RNE exact public import closure",
+                            public_modules=entries, sources=tuple((p, m) for p, _d, m in component.members))

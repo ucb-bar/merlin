@@ -9,8 +9,10 @@ model or start another grader, and retries stay within its wall budget.
 # later, equally transient refusal. A turn that completed, or that completed any
 # work item before it was refused, resets the count (and so the backoff): one
 # long turn met four refusals 11-55 minutes apart with real work between them,
-# and a count reset only by a completed turn reached 4 of 6.
-MAX_CONSECUTIVE = 6
+# and a count reset only by a completed turn reached 4 of 6. Six refusals at the capped backoff covered only
+# about a quarter hour of outage, and a longer one ended the whole authoring session; the bound now spans
+# more than a 12-hour clock at the 300 s cap, so in practice the session's own wall budget ends retries.
+MAX_CONSECUTIVE = 160
 _CAPACITY_BACKOFF_S = 20
 _CAPACITY_BACKOFF_MAX_S = 300
 _CAPACITY_MESSAGE = "selected model is at capacity"

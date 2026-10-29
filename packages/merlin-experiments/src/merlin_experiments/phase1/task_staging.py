@@ -39,6 +39,7 @@ class TaskStagingConfig:
     drop_tools: tuple[str, ...] = ()
     shared_pass_requirement: dict | None = None
     shared_pass_library: object | None = None
+    author_profile: str = ""
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,12 @@ def callbacks(config: TaskStagingConfig) -> TaskCallbacks:
         return build_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
 
     def resolve_selected_tools():
+        if config.author_profile:
+            from .author_profiles import resolve, verify_bundle
+
+            profile = resolve(config.author_profile)
+            verify_bundle(profile, yaml.safe_load((config.bundle_dir / "input_bundle_manifest.yaml").read_text()))
+            return profile.tools
         return resolved_tools(
             config.bundle_id,
             bundle_dir=config.bundle_dir,
@@ -494,6 +501,10 @@ def verify_shared_pass_prompt(config, workspace, run_dir):
     """Reconstruct from live original inputs, never from saved successful JSON."""
     from merlin.targetgen.generate_prompt import shared_pass_prompt_block
 
+    if config.author_profile:
+        if (workspace / "TASK.md").read_bytes() != (run_dir / "TASK.md").read_bytes():
+            raise ValueError("profile task differs from its archived task")
+        return None
     from .feedback.public_scalability import prompt_block
     from .feedback.public_programs import prompt_block as program_prompt
 
@@ -579,6 +590,16 @@ def _build_task(
     never altered — the addendum only adds allowances, so grading stays apples-to-apples."""
     context = config.context
     bundle_dir, experiment = config.bundle_dir, config.experiment
+    profile = None
+    if config.author_profile:
+        from .author_profiles import resolve, task
+
+        profile = resolve(config.author_profile)
+        if not profile.fresh10:
+            body = task(profile)
+            for root in (ws, run_dir):
+                (root / "TASK.md").write_text(body)
+            return
     _te = partial(load_target_experiment, context.descriptor)
     _manifest = partial(load_capability_manifest, context.target)
     if (
@@ -589,7 +610,10 @@ def _build_task(
         body = full_model_task(config, sandbox, task_scope)
         (ws / "TASK.md").write_text(body)
         shutil.copy(ws / "TASK.md", run_dir / "TASK.md")
-        for doc in RI.MERLIN_WS_DOCS:
+        # Fresh10 receives the generated full-model contract and its later
+        # capability-specific disclosure. Legacy bundle side documents can
+        # advertise services deliberately withheld by that selection.
+        for doc in (() if profile is not None and profile.fresh10 else RI.MERLIN_WS_DOCS):
             src = bundle_dir / doc
             if src.exists():
                 shutil.copy(src, ws / doc)
@@ -730,6 +754,12 @@ def _build_task(
 
 def build_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scope=None, policy_root=None):
     _build_selected_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
+    if config.author_profile:
+        from .author_profiles import resolve
+
+        if not resolve(config.author_profile).fresh10:
+            verify_shared_pass_prompt(config, ws, run_dir)
+            return
     from ..corpus import public_program_suite as programs
     program_selection = programs.selected(load_target_experiment(config.context.descriptor))
     if program_selection is not None:

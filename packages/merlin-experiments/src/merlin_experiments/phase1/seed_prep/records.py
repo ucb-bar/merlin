@@ -1,20 +1,17 @@
-"""The seed baseline and variant promotion from the seed run's own records: no simulation at all.
+"""Seed preparation from the seed run's own records (the default, launch-path mode).
 
-``seed_prep --from-records <workspace>`` reads what the seed run already measured instead of timing
-the seed again:
+The seed run already timed its cases on the Spike cycle model and compared its variants.
+This module reads those records instead of simulating again:
 
-* per case, the newest complete timing-model row of the seed run's ``qa/perf_history.jsonl`` whose
-  source is the case's graded source (the source that earned the verdict the last completed grade
-  reports) or the seed's graded source: ``status: timed``;
-* otherwise the calibrated fast estimate (:mod:`..feedback.fast_estimate`) of the decoded instruction
-  stream the seed run's grade left for that case: ``status: fast_estimate``;
-* otherwise, when the run timed the case only on another snapshot, that row, labelled with its source:
-  ``status: recorded_other_snapshot``; else ``UNKNOWN`` with the reason;
-* a variant is promoted only when the run recorded complete timings for the variant's own tree, every
-  recorded case is faster than the seed's recorded cycles and the run recorded a passing L2 status for
-  that tree; every other applicable variant is a candidate for the run to measure.
+* baseline cycles per case come from ``qa/perf_history.jsonl`` (complete timing-model rows) and
+  the per-case detail rows of the last completed grade (``qa/cases/<case>/<sha>.json``, which also
+  carry command counts); a record whose graded source is the seed's own tree hash is preferred,
+  otherwise the newest record is used and labelled with the source it was measured on;
+* a case recorded only with counts gets the calibrated fast estimate from those counts, labelled;
+* variant decisions come from the run's A/B records (``qa/idle_tuning.json`` experiments: the
+  same model and timing epoch for the baseline and the candidate, plus the numerical comparison).
 
-Rows keep the shape :func:`.baseline.summarize` gives, so the report and the ranked gaps are unchanged.
+Nothing here starts a simulator.  ``--measure`` in the CLI is the opt-in path that re-times.
 """
 
 from __future__ import annotations
@@ -22,165 +19,207 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .baseline import case_family
+from . import baseline as B
+
+PERF_HISTORY = ("qa", "perf_history.jsonl")
+LATEST_GRADE = ("qa", "latest_completed_grade.json")
+IDLE_TUNING = ("qa", "idle_tuning.json")
+UNCHANGED_NUMERICS = "unchanged"
 
 
-def _rows(path: Path) -> list[dict]:
-    rows = []
-    if path.is_file():
-        for line in path.read_text(encoding="utf-8").splitlines():
-            try:
-                row = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(row, dict):
-                rows.append(row)
-    return rows
-
-
-def _newest(rows):
-    return max(rows, key=lambda r: float(r.get("t") or 0)) if rows else None
-
-
-def _grade_dir(run_dir: Path | None, token, case: str) -> Path | None:
-    if run_dir is None or not token:
+def _read_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return None
-    hits = sorted((run_dir / "_qa_work" / f"fruns_{token}" / "runs").glob(f"*/{case}"))
-    return hits[0] if hits else None
 
 
-def _timed(case: str, row: dict, status: str, evidence: str) -> dict:
-    cycles, bound = row.get("cycles"), row.get("roofline_bound_cycles")
-    identity = row.get("performance_identity") or {}
-    return {
-        "status": status, "evidence": evidence, "model_cycles": cycles,
-        "roofline_cycles": bound, "bound_by": row.get("bound_by"),
-        "utilization_pct": row.get("array_utilization_pct"),
-        "headroom_cycles": int(cycles - bound) if cycles and bound else None,
-        "model_sha256": identity.get("model_sha256"),
-        "recorded": {"source_sha256": row.get("source_sha256"), "grade_token": row.get("grade_token"),
-                     "evidence": row.get("evidence"), "t": row.get("t")},
-    }
-
-
-def baseline_rows(workspace: Path, run_dir: Path | None, cases, *, seed_source: str | None,
-                  facts_sha256: str | None) -> list[dict]:
-    """One baseline row per case from the seed run's records (see the module docstring)."""
-    from ..feedback import fast_estimate as FE
-
-    history = _rows(workspace / "qa" / "perf_history.jsonl")
-    modeled = [r for r in history if r.get("kind") == "modeled" and isinstance(r.get("cycles"), int)]
-    grade_path = workspace / "qa" / "latest_completed_grade.json"
-    grade = json.loads(grade_path.read_text(encoding="utf-8")) if grade_path.is_file() else {}
-    per_case = {r.get("capsule"): r for r in grade.get("per_capsule") or () if isinstance(r, dict)}
-    calibrated = FE.calibration(facts_sha256, path=Path("/nonexistent-ledger")) if facts_sha256 else None
-    out = []
-    for case in cases:
-        verdict = per_case.get(case) or {}
-        graded = verdict.get("graded") or {}
-        sources = {s for s in (graded.get("graded_source_sha256"), seed_source) if s}
-        mine = [r for r in modeled if r.get("test_case") == case]
-        row = {"case": case, "family": case_family(case),
-               "numerics": (verdict.get("tiers") or {}).get("L2"), "wall_s": 0.0,
-               "graded": {k: graded.get(k) for k in ("token", "graded_source_sha256", "currency")} if graded else None}
-        exact = _newest([r for r in mine if r.get("source_sha256") in sources])
-        root = _grade_dir(run_dir, graded.get("token"), case)
-        counted = FE.census(FE.trace_for(root)) if root is not None else None
-        if counted:
-            row.update(commands=counted.get("commands"), fences=counted.get("fences"))
-        if exact is not None:
-            row.update(_timed(case, exact, "timed", "recorded complete Spike timing model of the graded source"))
-        elif counted:
-            structural = {k: v for k, v in (_newest(mine) or {}).items()
-                          if k in ("useful_macs", "structural_peak_macs_per_cycle", "roofline_bound_cycles")}
-            if "roofline_bound_cycles" in structural:
-                structural["bound_cycles"] = structural.pop("roofline_bound_cycles")
-            estimate = FE.estimate(counted, structural, calibrated)
-            if estimate.get("status") == "ESTIMATED":
-                row.update(status="fast_estimate", model_cycles=estimate["cycles"],
-                           evidence=f"fast census estimate of the graded executable (band {estimate.get('low_cycles')}-"
-                                    f"{estimate.get('high_cycles')})",
-                           fast_estimate={k: estimate.get(k) for k in ("cycles", "low_cycles", "high_cycles",
-                                                                        "lower_bound", "limited_by")})
-                bound, useful = structural.get("bound_cycles"), structural.get("useful_macs")
-                peak = structural.get("structural_peak_macs_per_cycle")
-                row.update(roofline_cycles=bound, headroom_cycles=int(estimate["cycles"] - bound) if bound else None,
-                           utilization_pct=round(100.0 * useful / (estimate["cycles"] * peak), 2)
-                           if useful and peak else None)
-            else:
-                row.update(status="UNKNOWN", model_cycles=None, unknown_reason=estimate.get("reason"))
-        if row.get("status") in (None, "UNKNOWN") and mine:
-            other = _newest(mine)
-            row.update(_timed(case, other, "recorded_other_snapshot",
-                              f"recorded complete Spike timing model of another seed-run snapshot "
-                              f"({str(other.get('source_sha256'))[:12]}); may differ from the seed"))
-        if row.get("status") is None:
-            row.update(status="UNKNOWN", model_cycles=None,
-                       unknown_reason="the seed run recorded no timing and no decoded stream for this case"
-                       + ("" if verdict else " (not graded by the seed run)"))
-        row.setdefault("roofline_cycles", None)
-        row.setdefault("headroom_cycles", None)
-        row.setdefault("utilization_pct", None)
-        out.append(row)
+def perf_history(workspace: Path, model_sha256: str | None = None) -> dict[str, list[dict]]:
+    """Complete timing-model rows per case, oldest first."""
+    out: dict[str, list[dict]] = {}
+    path = workspace.joinpath(*PERF_HISTORY)
+    if not path.is_file():
+        return out
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if row.get("kind") != "modeled" or not isinstance(row.get("cycles"), int):
+            continue
+        ident = (row.get("performance_identity") or {}).get("model_sha256")
+        if model_sha256 and ident and ident != model_sha256:
+            continue
+        out.setdefault(row.get("test_case"), []).append(row)
+    for rows in out.values():
+        rows.sort(key=lambda r: float(r.get("t") or 0))
     return out
 
 
-def promotion(workspace: Path, seed: Path, rows: dict[str, dict], variants_root: Path | None) -> dict:
-    """Promote variants only on recorded evidence; every other applicable variant is a candidate."""
-    from merlin.common.tree_hash import hash_tree
+COMPLETED_ROWS = ("qa", "completed_rows.jsonl")
+COUNT_KEYS = ("loads", "computes", "stores", "fences", "fences_per_output_tile", "transfer_widths",
+              "capacity_fallback", "refusal_records")
 
-    from . import variants as V
 
-    result: dict = {"basis": "the seed run's own records; no simulation", "promoted": [], "candidates": [],
-                    "not_applicable": [], "examined": 0}
-    if variants_root is None or not Path(variants_root).is_dir():
-        return result
-    history = _rows(workspace / "qa" / "perf_history.jsonl")
-    by_source: dict[str, list[dict]] = {}
-    for r in history:
-        by_source.setdefault(r.get("source_sha256") or r.get("graded_source_sha256"), []).append(r)
-    found = V.discover(Path(variants_root), seed, [p for p in (Path(variants_root).parent / "checkpoints").glob("*")
-                                                   if p.is_dir()])
-    statuses: dict[str, int] = {}
-    for change, _merged in found:
-        statuses[change.status] = statuses.get(change.status, 0) + 1
-    result["discovered"] = statuses
-    for change, _merged in found:
-        if change.status != "applicable":
-            result["not_applicable"].append({"name": change.name, "status": change.status})
+def _when(stamp) -> float:
+    from datetime import datetime
+
+    try:
+        return datetime.fromisoformat(str(stamp)).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def case_details(workspace: Path, cases: set[str]) -> dict[str, list[dict]]:
+    """Every graded detail row the run kept for ``cases``, with the source and time it was graded on."""
+    out: dict[str, list[dict]] = {}
+    path = workspace.joinpath(*COMPLETED_ROWS)
+    seen: set[str] = set()
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
             continue
-        result["examined"] += 1
-        tree = Path(variants_root) / change.name
-        recorded = by_source.get(hash_tree(tree)["sha256"], []) if tree.is_dir() else []
-        timed = {}
-        for r in sorted((r for r in recorded if r.get("kind") == "modeled"), key=lambda r: float(r.get("t") or 0)):
-            timed[r.get("test_case")] = r.get("cycles")
-        passing = {r.get("test_case") for r in recorded if r.get("kind") == "status" and r.get("l2") == "pass"}
-        entry = {"name": change.name, "files": change.files, "cases": []}
-        before_total = after_total = 0
-        faster = bool(timed)
-        for case, cycles in sorted(timed.items()):
-            seed_row = rows.get(case) or {}
-            before = seed_row.get("model_cycles") if seed_row.get("status") == "timed" else None
-            entry["cases"].append({"case": case, "before": before, "after": cycles,
-                                   "before_evidence": seed_row.get("status"), "after_evidence": "recorded",
-                                   "numerics": "pass" if case in passing else None})
-            if before and cycles:
-                before_total += before
-                after_total += cycles
-                faster = faster and cycles < before
-            else:
-                faster = False
-        if faster and timed and set(timed) <= passing and after_total < before_total:
-            entry["reason"] = (f"recorded faster {before_total:,}->{after_total:,} model cycles on every recorded case "
-                               "with recorded passing numerics")
-            entry["gain_cycles"] = before_total - after_total
-            result["promoted"].append(entry)
+        case, detail = row.get("capsule"), (row.get("detail") or {}).get("path")
+        if case not in cases or not detail or detail in seen:
+            continue
+        seen.add(detail)
+        record = _read_json(workspace / detail)
+        if isinstance(record, dict):
+            graded = row.get("graded") or {}
+            out.setdefault(case, []).append({"row": record, "source": graded.get("graded_source_sha256") or "",
+                                             "t": _when(graded.get("graded_at"))})
+    return out
+
+
+def _row_from_history(case: str, rec: dict) -> dict:
+    cycles, bound = rec["cycles"], rec.get("roofline_bound_cycles")
+    return {
+        "case": case, "family": B.case_family(case), "status": "timed", "model_cycles": cycles,
+        "evidence": rec.get("evidence") or "recorded Spike timing model",
+        "roofline_cycles": round(bound, 1) if isinstance(bound, (int, float)) else None,
+        "bound_by": rec.get("bound_by"), "utilization_pct": rec.get("array_utilization_pct"),
+        "headroom_cycles": int(cycles - bound) if isinstance(bound, (int, float)) else None,
+        "model_sha256": (rec.get("performance_identity") or {}).get("model_sha256"),
+        "loads": None, "computes": None, "stores": None, "fences": None, "fences_per_output_tile": None,
+        "transfer_widths": {}, "capacity_fallback": None, "refusal_records": [],
+    }
+
+
+def baseline(seed_sha256: str, cases: list[str], workspace: Path, model_sha256: str | None = None,
+             measured: dict[str, dict] | None = None) -> list[dict]:
+    """One row per case from the records; ``source_match`` says whether the bytes are the seed's.
+
+    ``measured`` rows (an earlier ``--measure`` run on these exact seed bytes) count as exact records.
+    """
+    if model_sha256 is None:
+        # One model per baseline: the one most of the run's complete estimates were made with.
+        tally: dict[str, int] = {}
+        for rows_ in perf_history(workspace).values():
+            for rec in rows_:
+                ident = (rec.get("performance_identity") or {}).get("model_sha256")
+                if ident:
+                    tally[ident] = tally.get(ident, 0) + 1
+        model_sha256 = max(tally, key=tally.get) if tally else None
+    history = perf_history(workspace, model_sha256)
+    details = case_details(workspace, set(cases))
+    rows: list[dict] = []
+    for case in cases:
+        options: list[tuple[int, float, int, dict, str, str]] = []  # (exact, time, has counts, row, source, kind)
+        for rec in history.get(case, []):
+            source = rec.get("graded_source_sha256") or rec.get("source_sha256") or ""
+            exact = seed_sha256 in (rec.get("graded_source_sha256"), rec.get("source_sha256"))
+            options.append((int(exact), float(rec.get("t") or 0), 0, _row_from_history(case, rec), source, "history"))
+        counted: list[dict] = []
+        for item in details.get(case, []):
+            perf = item["row"].get("performance") or {}
+            model = perf.get("model_sha256")
+            if model_sha256 and model and model != model_sha256:
+                continue
+            row = B.summarize(case, {"observed": {"performance": perf, "tiers": item["row"].get("tiers") or {}}})
+            if row.get("loads") is not None:
+                counted.append(row)
+            options.append((int(item["source"] == seed_sha256), item["t"], int(row.get("loads") is not None),
+                            row, item["source"], "grade"))
+        mine = (measured or {}).get(case)
+        if mine and mine.get("status") in ("timed", "fast_estimate"):
+            options.append((1, float("inf"), int(mine.get("loads") is not None), dict(mine), seed_sha256, "measured"))
+        usable = [o for o in options if o[3]["status"] != "UNKNOWN"]
+        if not usable:
+            reason = next((o[3].get("unknown_reason") or o[3].get("timing_reason") for o in options), None)
+            rows.append({"case": case, "family": B.case_family(case), "status": "UNKNOWN", "model_cycles": None,
+                         "unknown_reason": (reason or "no record for this case in the seed run")
+                         + "; time it with --measure"})
+            continue
+        exact, _t, _c, row, source, kind = max(usable, key=lambda o: (o[0], o[1], o[2]))
+        row = dict(row)
+        if row.get("loads") is None:
+            # Counts come from a graded row of the same executable cost when one exists.
+            same = next((c for c in counted if c.get("model_cycles") == row.get("model_cycles")), None)
+            if same:
+                row.update({k: same.get(k) for k in COUNT_KEYS})
+        row["record"] = kind
+        row["record_source_sha256"] = source
+        row["source_match"] = "seed" if exact else "older source"
+        label = {"history": "recorded Spike timing model", "grade": "recorded Spike timing model (graded row)",
+                 "measured": "measured on the seed bytes (--measure)"}[kind]
+        if row["status"] == "fast_estimate":
+            label = "fast estimate from recorded counts"
+        row["evidence"] = label + ("" if exact else f", source {source[:12]}, not the seed's bytes")
+        rows.append(row)
+    return rows
+
+
+def variant_records(workspace: Path) -> dict[str, list[dict]]:
+    """The run's A/B experiments grouped by variant name (same model and epoch on both sides)."""
+    doc = _read_json(workspace.joinpath(*IDLE_TUNING)) or {}
+    out: dict[str, list[dict]] = {}
+    for exp in doc.get("experiments") or []:
+        cand = exp.get("candidate") or {}
+        if cand.get("kind") != "variant" or not cand.get("name"):
+            continue
+        before, after = exp.get("measured_cycles_before"), exp.get("measured_cycles_after")
+        if not isinstance(after, int):
+            continue
+        out.setdefault(cand["name"], []).append({
+            "case": exp.get("test_case"), "recorded_before": before, "after": after,
+            "numerics": exp.get("numerics"), "baseline_status": exp.get("baseline_status"),
+            "candidate_current": exp.get("candidate_current"), "graded_at_unix_ns": exp.get("graded_at_unix_ns"),
+        })
+    for name, items in out.items():
+        newest: dict[str, dict] = {}
+        for item in sorted(items, key=lambda i: i.get("graded_at_unix_ns") or 0):
+            newest[item["case"]] = item
+        out[name] = list(newest.values())
+    return out
+
+
+def decide(change_status: str, records: list[dict], seed_rows: dict[str, dict]) -> dict:
+    """Promotion decision for one variant from its records against the seed's baseline rows."""
+    cases = []
+    ok = bool(records)
+    before_total = after_total = 0
+    for item in records:
+        seed = seed_rows.get(item["case"]) or {}
+        before = seed.get("model_cycles") if seed.get("status") == "timed" else None
+        numerics = str(item.get("numerics") or "")
+        passed = numerics.startswith(UNCHANGED_NUMERICS)
+        cases.append({"case": item["case"], "before": before, "after": item["after"],
+                      "recorded_before": item.get("recorded_before"), "numerics": "pass" if passed else numerics})
+        if before is None or not passed or item["after"] >= before:
+            ok = False
         else:
-            entry["reason"] = ("candidate: no recorded timing of this variant's tree; fast-estimate delta unavailable "
-                               "from the records (no decoded stream attributable to the tree); measure it in the run"
-                               if not timed else
-                               "candidate: recorded timings do not show it faster on every case with recorded "
-                               "passing numerics; measure it in the run")
-            result["candidates"].append(entry)
-    return result
+            before_total += before
+            after_total += item["after"]
+    if change_status != "applicable":
+        reason = f"change is {change_status} against the seed"
+        ok = False
+    elif not records:
+        reason = "no A/B record in the seed run"
+    elif ok:
+        reason = (f"recorded faster on every compared case {before_total:,}->{after_total:,} model cycles "
+                  "(after = the variant tree's record; seed = baseline map) with unchanged numerics")
+    else:
+        reason = "not faster than the seed on every recorded case with unchanged numerics"
+    return {"promote": ok, "reason": reason, "cases": cases, "gain_cycles": before_total - after_total}

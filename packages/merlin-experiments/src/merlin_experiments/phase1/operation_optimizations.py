@@ -421,8 +421,13 @@ def task_section(selection: dict) -> str:
     return text + "\n\n" + COMPOSITION_TEXT + "\n"
 
 
-def stage(workspace, run_dir, *, declarations, policy=None, repo) -> dict:
+def stage(workspace, run_dir, *, declarations, policy=None, repo) -> dict | None:
     """Write ``OPTIMIZATION_BY_OPERATION.json`` and the TASK.md section to the workspace and run directory."""
+    from .author_profiles import current
+
+    profile = current()
+    if profile is not None and profile.fresh10 and not profile.allows("catalog_advice"):
+        return None
     declarations = list(declarations)
     catalog = validate(load(repo), repo=repo)
     mechanism_catalog = json.loads((Path(repo) / MECHANISM_CATALOG).read_text(encoding="utf-8"))

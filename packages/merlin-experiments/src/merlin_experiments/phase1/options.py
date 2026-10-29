@@ -109,6 +109,7 @@ class RunOptions:
     reference_experiments: str = ""
     reference_experiments_sha256: str = ""
     reference_experiments_tasks: str = "on"
+    author_profile: str = ""
 
 
 def _public_object_build_budget(value: str) -> int:
@@ -154,6 +155,10 @@ def build_parser(
         help="stable runner arm: EL1 raw_baseline, EL2 cpp_merlininfra, or EL3–EL6 merlin_assisted "
         "(the selected bundle and treatment distinguish EL3 from EL4; default EL1)",
     )
+    from .author_profiles import NAMES
+
+    ap.add_argument("--author-profile", choices=NAMES, default="",
+                    help="versioned author environment; historical experiment levels remain unchanged")
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--joint-campaign", default="", metavar="POLICY_JSON",
                     help="opt into joint correctness/performance development in the native loop")

@@ -31,6 +31,15 @@ From `merlin_experiments.phase1.feedback.selfcheck`:
 - For each graded case the self-check copies `command_buffer.json`, `instruction_trace.json` and
   `lowered.llvm.mlir` from the run's `generated/` into `ROOT/CASE/`. It records their paths in the
   row as `your_artifacts`.
+- When the original linked producer chain is available, `candidate_build_view` points to
+  `candidate_build.json`, alongside the original input, commands, emitted LLVM and
+  `kernel.linked.dis`. The last file contains only the retained candidate entry function's
+  instructions from the original linked image. The harness ELF and its data stay private.
+  Compile-only requests publish this view before their private build products are released.
+  Analyze it with `--reference-analysis candidate --reference-format candidate_build
+  --reference-path PATH`. A host-private index supplies the original build/source identity;
+  editing the public manifest cannot register a producer. Historical views keep their original
+  compiler identity when the live submission changes. Missing linked provenance remains UNKNOWN.
 - A failing row also carries `tiers`, `numeric` (every statistic; `first_mismatch` keeps `output`,
   `index`, `your_value`, and the expected value is withheld), `trace_summary`, `trace_check`,
   `failure` and `sim_console_tail`.
@@ -77,8 +86,8 @@ Inside `generated/`, grouped by who wrote the file:
   - `liveness_report.json` and `placement_census.json` are analyses of the same output.
   - `coverage_certificate.json` comes from the same analyses.
 
-The operator grade keeps these trees on the host side. An ordinary self-check returns only the three
-copied files, so reproduce the object steps yourself when you need them (the `inspect-kernel` skill).
+The operator grade keeps these trees on the host side. The linked candidate view exposes no
+harness program or data. Reproduce additional object diagnostics when needed with `inspect-kernel`.
 
 ## Diffing
 

@@ -27,7 +27,8 @@ When. :meth:`.idle_performance.IdleMeasurer.tick` interleaves baseline timing re
 while free CPUs remain (:meth:`IdleTuner.plan` proposes; the measurer sizes each experiment to the
 free CPUs and starts as many as fit). An experiment needs an estimate of ``submission/`` on the same
 cases, so the measurer times a missing baseline beside it. Experiments do not wait until every case
-has a current estimate. One experiment is an operator ``suite: scalability`` Spike request with origin
+has a current estimate. A mixed bundle is partitioned by its staged public suite;
+each experiment is an operator Spike request with origin
 ``operator_idle_tuning`` and an ``op_idle_tune_`` id: the broker leases at the AUXILIARY class and
 dispatches it after every author request, so author requests keep their priority through the lease
 class, not by leaving CPUs idle.
@@ -58,6 +59,7 @@ from pathlib import Path
 
 from ..brokers import selfcheck_sources as sources
 from ..brokers import selfcheck_tuning as tuning_knobs
+from ..tools.selfcheck import _case_groups
 from . import idle_performance, mechanism_hints, scratch_retention
 from . import idle_tuning_results as R
 from .performance_headroom import _bound, _dominant_resource, _positive
@@ -70,6 +72,9 @@ REQUEST_PREFIX = idle_performance.REQUEST_PREFIX + "tune_"
 SCHEMA = "merlin.idle_tuning_experiments.v1"
 EXPERIMENT_SCHEMA = R.EXPERIMENT_SCHEMA
 LEDGER = Path("qa") / "idle_tuning.json"
+# No-row failures are not coverage, but a broken candidate must not consume an
+# unbounded stream of retries. Source/model/suite identity changes reopen work.
+_EMPTY_RESULT_ATTEMPTS = 2
 #: Optional caps, each an environment override (name: default; 0 = no cap). Work is sized from the free
 #: CPUs the idle measurer saw.
 KNOBS = {
@@ -282,12 +287,30 @@ def _variant_names(workspace: Path, cap: int | None = None) -> list[str]:
     return names[:cap] if cap else names
 
 
+def offer() -> str:
+    """The shared authored-variant interface, without a withheld catalogue requirement."""
+    from ..author_profiles import modern_advice
+
+    return OFFER if modern_advice() else OFFER.replace("<catalogue id>", "<descriptive label>")
+
+
 def construction_task(workspace: Path) -> dict:
     """Concrete missing integration work, without importing the author's backend.
 
     File presence is discovery only. Existing declared knobs/changed variants
     remain executable without this conventional library-pass adapter.
     """
+    from ..author_profiles import modern_advice
+
+    if not modern_advice():
+        return dict(
+            kind="declare_alternatives",
+            action="Keep alternative authored compiler implementations in immutable variants/ folders, "
+                   "or declare finite legal settings in submission/TUNING_KNOBS.json consumed by the "
+                   "same compiler. Compare alternatives on the same selected cases.",
+            qualification="All alternatives retain the original numerical, instruction and timing checks; "
+                          "a candidate or setting alone is not qualification.",
+        )
     from .library_pass import skill_root
 
     package = Path(workspace) / sources.SUBMISSION
@@ -413,8 +436,11 @@ class IdleTuner:
                 body = idle_performance._load(path)
                 self._bodies[path.name] = None if not isinstance(body, dict) else {
                     "label": body.get("submission") or sources.SUBMISSION, "sha": body.get("submission_sha256"),
+                    "suite": body.get("suite", "core"),
                     "cases": _request_cases(body), "overrides": body.get(tuning_knobs.REQUEST_KEY),
-                    "timed": body.get("suite") == "scalability",
+                    "timed": (body.get("suite") == "scalability" or
+                              body.get("suite", "core") in {"core", "programs"}
+                              and body.get("sim") == "spike"),
                     "requested_at": body.get("requested_at_unix_ns") or 0,
                     "deadline": idle_performance._deadline_s(body, path),
                     "operator": path.name.startswith("req_" + REQUEST_PREFIX),
@@ -524,6 +550,9 @@ class IdleTuner:
             label, cases = request["label"], request["cases"]
             result = parsed.get(request["rid"])
             rows = {row["test_case"]: row for row in (result or {}).get("rows") or ()}
+            # A refused/malformed request with no completed case never tested its
+            # candidate. Retain it as evidence, but allow the correctly routed retry.
+            cases = [case for case in cases if request["live"] or case in rows]
 
             def other_model(case):
                 row = rows.get(case)
@@ -545,6 +574,30 @@ class IdleTuner:
                     if request["live"] or not R.changed_since(known.get(case) or [], request["requested_at"]):
                         knobs.add((key, case))
         return variants, knobs, authored
+
+    def _empty_attempts(self, channel: Path, digest: str, selection, *, candidates) -> dict:
+        """Count missing case results only for the corrected, exact source/model route."""
+        parsed = {item["request_id"]: item for item in R.scan(channel, self._responses)}
+        identities = {identity(candidate, digest, selection) for candidate in candidates}
+        counts = {}
+        for request in self._requests(channel):
+            experiment = request["experiment"] or {}
+            if (not request["answered"] or experiment.get("base_sha256") != digest
+                    or experiment.get("public_suite") != request["suite"]):
+                continue  # Legacy wrong-suite refusals do not exhaust a corrected route.
+            candidate = experiment.get("candidate")
+            candidate = candidate if isinstance(candidate, dict) else {}
+            expected = list(identity(candidate, digest, selection)) if candidate.get("kind") in {
+                "knob", "variant"} and candidate.get("key") else None
+            if (experiment.get("identity") != expected or expected is None
+                    or tuple(expected) not in identities):
+                continue
+            returned = {row["test_case"] for row in (parsed.get(request["rid"]) or {}).get("rows") or ()}
+            for case in request["cases"]:
+                if case not in returned:
+                    key = (candidate["key"], case, request["suite"])
+                    counts[key] = counts.get(key, 0) + 1
+        return counts
 
     # -- proposals --------------------------------------------------------------------------------
 
@@ -568,6 +621,7 @@ class IdleTuner:
         if not candidates:
             return []
         variants, knobs, authored = self._tried(channel, known, selection)
+        empty = self._empty_attempts(channel, digest, selection, candidates=candidates)
         per_case = knob("MERLIN_IDLE_TUNE_MAX_CASES")
         pairs = []
         ready = {row["test_case"]: row for row in ready_cases(cohort, l2, known, digest, limit=len(cohort))}
@@ -577,13 +631,16 @@ class IdleTuner:
             names = candidate["test_cases"]
             if (len(names) > per_case or any(name not in ready for name in names)
                     or any((candidate["key"], name) in knobs for name in names)
+                    or any(empty.get((candidate["key"], name, "scalability"), 0) >= _EMPTY_RESULT_ATTEMPTS
+                           for name in names)
                     or len({ready[name]["model"] for name in names}) != 1):
                 continue
             pairs.append((-3, -1, order, {"candidate": candidate, "cases": names,
                           "bundle": "selected reference experiment", "suggested": [],
-                          "relevance": 3, "model": selection}))
+                          "relevance": 3, "model": selection, "suite": "scalability"}))
         for index, bundle in enumerate(bundles):
             cases = [bundle["representative"], *bundle["siblings"]][:per_case]
+            groups = _case_groups(self.workspace, cases)
             suggested = self._suggested(catalogue, bundle["representative"], known)
             for order, candidate in enumerate(candidates):
                 if "reference_experiment" in candidate:
@@ -594,14 +651,17 @@ class IdleTuner:
                 else:
                     untried = [c for c in cases if (candidate["key"], c) not in knobs]
                     relevant = 0
-                if bundle["representative"] not in untried:
-                    continue  # a pair is timed once; siblings follow their representative
                 if suggested & set(candidate["mechanisms"]):
                     relevant = max(relevant, 1)
-                pairs.append((-relevant, index, order, {
-                    "candidate": candidate, "cases": untried, "bundle": bundle["label"],
-                    "suggested": sorted(str(s) for s in suggested if s), "relevance": relevant,
-                    "model": selection}))
+                for suite, members in groups:
+                    remaining = [case for case in members if case in untried
+                                 and empty.get((candidate["key"], case, suite), 0) < _EMPTY_RESULT_ATTEMPTS]
+                    if not remaining:
+                        continue
+                    pairs.append((-relevant, index, order, {
+                        "candidate": candidate, "cases": remaining, "bundle": bundle["label"],
+                        "suggested": sorted(str(s) for s in suggested if s), "relevance": relevant,
+                        "model": selection, "suite": suite}))
         pairs.sort(key=lambda item: item[:3])
         return [job for *_, job in pairs[:limit]]
 
@@ -623,6 +683,10 @@ class IdleTuner:
         candidate = job["candidate"]
         if "reference_experiment" in candidate and names != candidate["test_cases"]:
             raise ValueError("reference experiments require their exact selected cases")
+        groups = _case_groups(self.workspace, names)
+        if len(groups) != 1 or groups[0][0] != job.get("suite", "scalability"):
+            raise ValueError("idle tuning request must use its declared public case suite")
+        suite = groups[0][0]
         catalogue = mechanism_hints.load_selection(self.workspace)
         public = {key: candidate[key] for key in ("kind", "key", "name", "sha256", "overrides", "settings_file",
                                                    "current") if key in candidate}
@@ -630,11 +694,14 @@ class IdleTuner:
                       "test_cases": names, "mechanism": candidate["label"], "origin": "idle_tuning",
                       "bundle": job.get("bundle"), "mechanism_ids": candidate["mechanisms"],
                       "api": _api(catalogue, candidate["mechanisms"]),
+                      "public_suite": suite,
                       "suggested_for_these_cases": job.get("suggested") or [],
                       "identity": list(identity(candidate, digest, job.get("model")))}
         if "reference_experiment" in candidate:
             experiment["reference_experiment"] = candidate["reference_experiment"]
-        extra = {"tuning_experiment": experiment}
+        extra = {"tuning_experiment": experiment, "suite": suite}
+        if suite == "core":
+            extra["tiers"] = "L0,L1,L2"  # Spike development evidence; no RTL/certification request.
         target = digest
         if candidate["kind"] == "variant":
             extra["submission"] = f"{sources.VARIANTS}/{candidate['name']}"
@@ -671,10 +738,19 @@ class IdleTuner:
                 covered = variants if candidate["kind"] == "variant" else knobs
                 remaining += (key, case["test_case"]) not in covered
         live = self.in_flight(channel)
+        empty = self._empty_attempts(channel, digest, None, candidates=candidates)
+        for selection in coverage:
+            empty.update(self._empty_attempts(channel, digest, selection, candidates=candidates))
+        deferred = sum(count >= _EMPTY_RESULT_ATTEMPTS and name in {case["test_case"] for case in ready}
+                       for (_candidate, name, _suite), count in empty.items())
         models = [dict(model) for model in dict.fromkeys(c["model"] for c in ready)]
         return dict(source_sha256=digest, ready_baselines=len(ready), declared_candidates=len(candidates),
                     outstanding_candidate_cases=remaining, requests_in_flight=live,
-                    model_domains=models[:4], status=("running" if live else "waiting_baseline" if not ready
+                    model_domains=models[:4], retry_deferred_candidate_cases=deferred,
+                    retry_note=("Missing case results remain unknown; retries resume after source/model changes."
+                                if deferred else None),
+                    status=("running" if live else "waiting_baseline" if not ready
+                        else "retry_deferred" if remaining and deferred >= remaining
                         else "ready" if remaining else "complete_declared_work"
                         if candidates else "construction_required"),
                     **({"construction_task": construction_task(self.workspace)} if not candidates else {}))
@@ -699,7 +775,7 @@ class IdleTuner:
                 member.setdefault(name, bundle["label"])
         counts = {status: sum(r.get("baseline_status") == status for r in found) for status in R.STATUSES}
         document = {"schema": SCHEMA, "advisory_only": True, "promotion_authority": False,
-                    "source_sha256": digest, "note": NOTE, "offer": OFFER, "counts": counts,
+                    "source_sha256": digest, "note": NOTE, "offer": offer(), "counts": counts,
                     "ranked_candidates": R.by_candidate(found), "ranked_cases": R.by_case(found, member),
                     "bundles": [{"label": b["label"], "representative": b["representative"],
                                  "siblings": b["siblings"][:LEDGER_SIBLINGS]} for b in self.bundles[:LEDGER_BUNDLES]],
@@ -787,7 +863,7 @@ def attach(document: dict, workspace) -> dict:
                                 "ranked_candidates": [{k: r.get(k) for k in (
                                     "candidate", "geomean_ratio", "cases_compared", "faster", "slower",
                                     "numerics_changed")} for r in ranked],
-                                "all": LEDGER.as_posix(), "note": NOTE, "offer": OFFER}
+                                "all": LEDGER.as_posix(), "note": NOTE, "offer": offer()}
         progress = matching_progress(ledger, document)
         if progress is not None:
             brief["idle_tuning"]["progress"] = progress

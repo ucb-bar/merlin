@@ -383,3 +383,110 @@ def test_a_partial_live_grade_still_leads_with_every_case_by_cohort(tmp_path):
     summary = (ws / "qa" / CG.SUMMARY_FILENAME).read_text().splitlines()
     assert summary[2].startswith("Correctness: 5/6 cases pass numerics (L2) (by cohort: functional 2/3")
     assert "1 stable case(s) carried (sampled)" in summary[2]
+
+
+# Profile-limited authors keep the common diagnostic evidence, without advice
+# for the modern pass catalogue or skills withheld from those environments.
+def _profile_guidance_fixture(monkeypatch):
+    from merlin_experiments.phase1.feedback import fence_overlap, mechanism_hints
+
+    calls = []
+    hint = {"id": "withheld_schedule_pass", "api": "merlin.compile.scheduling:withheld_pass"}
+
+    def selection(workspace):
+        calls.append("catalogue")
+        return {"all_mechanisms": []}
+
+    def hints(*args, **kwargs):
+        calls.append("mechanisms")
+        return [hint]
+
+    def fence(name, workspace, performance=None, *, selection=None, **kwargs):
+        return {
+            "fences": 8, "output_tiles": 8, "tiles_per_fence": 1.0,
+            "count_kind": "static", "static_overlap_ratio": 0.25,
+            "fence_per_tile": True, "reading": "eight fences for eight output tiles",
+            **({"suggested_mechanisms": [hint]} if selection else {}),
+        }
+
+    def context(*args):
+        calls.append("next_step_context")
+        return object()
+
+    monkeypatch.setattr(mechanism_hints, "load_selection", selection)
+    monkeypatch.setattr(mechanism_hints, "hints", hints)
+    monkeypatch.setattr(fence_overlap, "for_entry", fence)
+    monkeypatch.setattr(HL, "_next_steps", context)
+    monkeypatch.setattr(HL, "_step", lambda *args: {
+        "kind": "mechanism", "choice": hint["id"], "api": hint["api"],
+        "choice_text": "modern pass", "apply": "python apply_library_pass.py --pass withheld_schedule_pass",
+        "read": ".agents/skills/ab-library-pass/SKILL.md",
+    })
+    return calls
+
+
+@pytest.mark.parametrize("profile", ["xs-el-v1/el1", "xs-el-v1/el2", "xs-el-v1/el3"])
+def test_restricted_profiles_preserve_numeric_timing_and_fence_evidence_without_modern_advice(
+    tmp_path, monkeypatch, profile
+):
+    import copy
+
+    ws, verdict = _workspace(tmp_path)
+    (ws / "qa" / "idle_tuning.json").write_text(json.dumps({"experiments": [{
+        "test_case": "gemm_square_i8", "mechanism": "withheld_schedule_pass",
+        "delta_pct": -12.5, "numerics": "unchanged: both variants pass",
+    }]}))
+    calls = _profile_guidance_fixture(monkeypatch)
+    monkeypatch.delenv("MERLIN_AUTHOR_PROFILE", raising=False)
+    ordinary = H.attach(ws, copy.deepcopy(verdict))
+    ordinary_headline = ordinary[HL.KEY]
+    ordinary_block = ordinary["feedback_brief"]["performance_priority"]["development_headroom"]
+    assert ordinary_headline["skills"]
+    assert ordinary_headline["top_headroom"][0]["next_step"]["apply"]
+    assert ordinary_block["largest_headroom"][0]["suggested_mechanisms"]
+    prior_calls = list(calls)
+
+    monkeypatch.setenv("MERLIN_AUTHOR_PROFILE", profile)
+    restricted = H.attach(ws, copy.deepcopy(verdict))
+    headline = restricted[HL.KEY]
+    block = restricted["feedback_brief"]["performance_priority"]["development_headroom"]
+    assert calls == prior_calls, "restricted feedback must not read the catalogue or build modern next steps"
+    assert restricted["per_capsule"] == ordinary["per_capsule"]
+    for key in ("grade", "correctness", "numerics", "performance"):
+        assert headline[key] == ordinary_headline[key]
+    assert headline["skills"] == []
+    assert "gemm_square_i8 -12.5%" in headline["idle_tuning"]
+    assert block["counts"] == ordinary_block["counts"]
+    assert block["lowest_utilization"] == ordinary_block["lowest_utilization"]
+    assert block["median_array_utilization_pct"] == ordinary_block["median_array_utilization_pct"]
+    assert block["fence_bound"]["cases"] == ordinary_block["fence_bound"]["cases"]
+    for restricted_row, ordinary_row in zip(block["largest_headroom"], ordinary_block["largest_headroom"]):
+        expected = copy.deepcopy(ordinary_row)
+        expected.pop("suggested_mechanisms", None)
+        expected["fence_overlap"].pop("suggested_mechanisms", None)
+        assert restricted_row == expected
+    forbidden = ("withheld_schedule_pass", "merlin.compile.scheduling", "apply_library_pass.py",
+                 "roofline-and-utilization", "ab-library-pass", "pass-library")
+    assert all(token not in json.dumps(restricted) for token in forbidden)
+    assert all(token not in "\n".join(HL.render(headline)) for token in forbidden)
+
+    # A retained block created before the profile restriction must not restore
+    # mechanism ids or commands when the headline alone is refreshed.
+    replayed = HL.build(ws, verdict, ranked=ordinary_block["largest_headroom"], block=ordinary_block,
+                        tier_state={}, measured={}, estimates={})
+    assert all(token not in json.dumps(replayed) for token in forbidden)
+
+
+@pytest.mark.parametrize("profile", [None, "xs-el-v1/el4"])
+def test_unprofiled_and_modern_profiles_keep_existing_guidance(tmp_path, monkeypatch, profile):
+    if profile is None:
+        monkeypatch.delenv("MERLIN_AUTHOR_PROFILE", raising=False)
+    else:
+        monkeypatch.setenv("MERLIN_AUTHOR_PROFILE", profile)
+    _profile_guidance_fixture(monkeypatch)
+    ws, verdict = _workspace(tmp_path)
+    document = H.attach(ws, verdict)
+    assert "roofline-and-utilization" in document[HL.KEY]["skills"]
+    assert document[HL.KEY]["top_headroom"][0]["next_step"]["apply"].startswith("python apply_library_pass.py")
+    block = document["feedback_brief"]["performance_priority"]["development_headroom"]
+    assert block["largest_headroom"][0]["suggested_mechanisms"][0]["id"] == "withheld_schedule_pass"

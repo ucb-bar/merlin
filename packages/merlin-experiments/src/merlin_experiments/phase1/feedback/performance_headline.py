@@ -287,7 +287,7 @@ def _step(entry: dict, context) -> dict | None:
     return {key: found[key] for key in ("kind", "choice", "api", "choice_text", "apply", "read")}
 
 
-def _top(block: dict, context=None) -> list[dict]:
+def _top(block: dict, context=None, *, guidance: bool = True) -> list[dict]:
     out = []
     for entry in (block.get("largest_headroom") or ())[:TOP]:
         busiest = (entry.get("dominant_modeled_resource") or {}).get("name")
@@ -299,20 +299,21 @@ def _top(block: dict, context=None) -> list[dict]:
             "gap_to_roofline": entry.get("gap_ratio"),
             "bound_by": entry.get("bound_by"),
             "busiest_unit": busiest,
-            "mechanisms": [
+            "mechanisms": ([
                 m.get("id") for m in entry.get("suggested_mechanisms") or () if isinstance(m, dict) and m.get("id")
-            ][:MECHANISMS],
+            ][:MECHANISMS] if guidance else []),
         }
         fence = entry.get("fence_overlap") if isinstance(entry.get("fence_overlap"), dict) else {}
         if fence.get("fence_per_tile"):
             item["fences"] = fence.get("reading")
-            fenced = [m.get("id") for m in fence.get("suggested_mechanisms") or () if isinstance(m, dict)]
-            item["mechanisms"] = list(dict.fromkeys([*fenced, *item["mechanisms"]]))[:MECHANISMS]
+            if guidance:
+                fenced = [m.get("id") for m in fence.get("suggested_mechanisms") or () if isinstance(m, dict)]
+                item["mechanisms"] = list(dict.fromkeys([*fenced, *item["mechanisms"]]))[:MECHANISMS]
         if entry.get("measured_on_earlier_source"):
             item["measured_on_earlier_source"] = True
         if entry.get("reference_baselines"):
             item["vs_reference"] = reference_baselines.compact(entry["reference_baselines"])
-        step = _step(entry, context)
+        step = _step(entry, context) if guidance else None
         if step is not None:
             item["next_step"] = step
         out.append({key: value for key, value in item.items() if value not in (None, [])})
@@ -350,7 +351,7 @@ def _skills() -> list[str]:
     return [name for name in SKILLS if (root / name).is_dir()]
 
 
-def _idle_tuning(workspace: Path) -> str | None:
+def _idle_tuning(workspace: Path, *, guidance: bool = True) -> str | None:
     from .idle_tuning import LEDGER
 
     path = Path(workspace) / LEDGER
@@ -373,7 +374,8 @@ def _idle_tuning(workspace: Path) -> str | None:
     text = f"{LEDGER.as_posix()}: {len(rows)} current result(s), {len(faster)} faster with numerics unchanged"
     if faster:
         best = min(faster, key=lambda r: r["delta_pct"])
-        text += f"; best {best.get('test_case')} {best.get('mechanism')} {best['delta_pct']}%"
+        mechanism = f" {best.get('mechanism')}" if guidance else ""
+        text += f"; best {best.get('test_case')}{mechanism} {best['delta_pct']}%"
     return text
 
 
@@ -389,6 +391,9 @@ def build(
     advisory: dict | None = None,
 ) -> dict:
     """The headline for ``verdict`` from the headroom evidence already collected for it."""
+    from ..author_profiles import modern_advice
+
+    guidance = modern_advice()
     correctness, nearly, counts = _correctness(verdict, tier_state if isinstance(tier_state, dict) else {}, workspace)
     models = {}
     for row in verdict.get("per_capsule") or ():
@@ -426,12 +431,14 @@ def build(
             "by_label": compared.get("by_label"),
             "detail": f"{DETAIL}.reference_baselines and each entry's reference_baselines",
         }
-    headline["top_headroom"] = _top(block, _next_steps(workspace, verdict))
+    headline["top_headroom"] = _top(
+        block, _next_steps(workspace, verdict) if guidance else None, guidance=guidance
+    )
     families = _families(workspace, verdict)
     if families:
         headline["families"] = families
-    headline["skills"] = _skills()
-    tuning = _idle_tuning(Path(workspace))
+    headline["skills"] = _skills() if guidance else []
+    tuning = _idle_tuning(Path(workspace), guidance=guidance)
     if tuning:
         headline["idle_tuning"] = tuning
     headline["detail"] = DETAIL

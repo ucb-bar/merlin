@@ -35,6 +35,8 @@ def complete(prepared, *, verdict, rounds, workflow_conformant, final_coverage=N
         if member.is_file():
             member.chmod(member.stat().st_mode & ~0o222)
     state = joint_control.selected()
+    from .study_protocol import validate as study_protocol
+    study = study_protocol(state.get("policy", {}))
     summary = {
         "schema": "merlin.joint_campaign_completion.v1",
         "converged": False, "formal_complete": False, "legacy_certificate_issued": False,
@@ -54,7 +56,15 @@ def complete(prepared, *, verdict, rounds, workflow_conformant, final_coverage=N
         "required": True, "complete": False, "passed": False,
         "status": "not_run", "reason": summary["completion_reason"],
     }
-    if summary["completion_reason"] == "freeze_drain":
+    if study is not None:
+        summary["final_validation"]["scope"] = ["selected_capsules", "frozen_transfer_panel"]
+        summary["final_cheap_coverage"].update(
+            status="deferred", reason="operator evaluation after all authors freeze",
+            frozen_compiler=str(destination), compiler_sha256=digest,
+        )
+        summary["numeric_all_pass"] = None
+        summary["study_protocol"] = study
+    elif summary["completion_reason"] == "freeze_drain":
         try:
             if final_coverage is None:
                 raise RuntimeError("native final coverage callback is missing")
@@ -75,6 +85,8 @@ def complete(prepared, *, verdict, rounds, workflow_conformant, final_coverage=N
     print(f"[joint] compiler frozen: {digest}; no historical Phase 1 certificate issued", flush=True)
     if summary["completion_reason"] == "library_epoch":
         return 0  # An epoch checkpoint is explicitly not campaign completion.
+    if study is not None:
+        return 0 if summary["completion_reason"] == "freeze_drain" else 1
     coverage = summary["final_cheap_coverage"]
     return 0 if (summary["completion_reason"] == "freeze_drain"
                  and coverage.get("complete") is True and coverage.get("passed") is True) else 1

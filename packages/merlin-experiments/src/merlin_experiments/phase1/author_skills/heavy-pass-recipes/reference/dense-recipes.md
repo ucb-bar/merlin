@@ -77,10 +77,19 @@ producer-to-readout completion laws before target execution. Host checks and dra
 establish target performance: the report leaves cycles UNKNOWN for your normal cycle evaluator.
 
 Add `--input-pipeline` to compare two advancing LHS slots with invariant weights. All controls
-then retain weights on the same full-K block. The extra alternative derives its LHS slot offset
-from the padded panel footprint and refuses if two panels do not fit the original owned window,
-the combined operand budget, or at least two advancing groups. Its separate mixed-load/readout
+then retain weights on the same full-K block. `dense_ready_input_choices` filters the bounded
+retained choices using two padded LHS footprints, one RHS and the original single ACC window.
+The recipe passes the selected `input_pipeline_placement` to `schedule_dense_pipeline`; actual
+projected load/read rows must agree with that placement. Explicit plans and manual offsets never
+shrink on refusal. There must be at least two advancing groups. Its separate mixed-load/readout
 law is test-only. Bind selected target laws and measure cycles before retaining this alternative.
+
+The same checked entry accepts an independent `DenseArrayRetentionAdmission` as
+`array_prefix_admission`. This explicit full-K ready alternative partitions the counted K run:
+the pure prefix keeps K,N,M fresh/STAY reuse, while every final-K pair stays fresh and is followed
+by its original causal store. It needs at least two K slices and a reusable M run. The original
+input/ACC slots, numerical descriptors and final drains remain; wide loads use the same checked
+ready consumer. This option does not authorize STAY through a store or infer a target law.
 
 ## Long K (`long_k_recipe.py`)
 

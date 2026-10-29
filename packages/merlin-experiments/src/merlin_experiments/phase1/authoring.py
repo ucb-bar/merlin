@@ -29,10 +29,10 @@ from merlin_experiments.phase1 import recovery as ROQ
 from merlin_experiments.phase1 import run_inputs as RI
 from merlin_experiments.phase1 import spend as SPEND
 from merlin_experiments.phase1 import treatments as T
-from merlin_experiments.phase1.authoring_config import AuthoringRuntime as AuthoringRuntime
+from merlin_experiments.phase1.audit import AnswerAudit
 from merlin_experiments.phase1.authoring_config import _PASS_LINE as _PASS_LINE
 from merlin_experiments.phase1.authoring_config import _STATUS_LINES as _STATUS_LINES
-from merlin_experiments.phase1.audit import AnswerAudit
+from merlin_experiments.phase1.authoring_config import AuthoringRuntime as AuthoringRuntime
 from merlin_experiments.phase1.authoring_conformance import conformance_ever as _conformance_ever
 from merlin_experiments.phase1.authoring_conformance import live_launch as _live_launch
 from merlin_experiments.phase1.authoring_conformance import workflow_conformance as _workflow_conformance
@@ -573,6 +573,7 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
         return 1
 
     cost_capped = False  # set if the batch dollar ceiling (MERLIN_MAX_SPEND_USD) is reached
+    study_snapshots = None
 
     def _keep_going() -> bool:
         """Should the loop run another agent invocation?
@@ -622,6 +623,12 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             _RBlaunch.refresh_before_launch(run_dir, ws, rnd)
             if joint:
                 JC.start()
+                if study_snapshots is None:
+                    from .study_protocol import start_snapshots
+                    study_snapshots = start_snapshots(
+                        ws, run_dir, context=context, public_roots=_scope_roots["public_roots"],
+                        contract=_scope_roots["contract"], environment=_environment_record,
+                    )
             rc, tpath = _launch(
                 ws,
                 run_dir,
@@ -879,6 +886,8 @@ def execute(prepared: PreparedRun, runtime: AuthoringRuntime) -> int:
             break
 
     if joint:
+        if study_snapshots is not None:
+            study_snapshots.close()
         from .joint_completion import complete
         from .joint_final_coverage import validate
 

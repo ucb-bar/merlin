@@ -293,9 +293,17 @@ def build(workspace, verdict, *, limit=LIMIT, evidence=None, observe=None) -> di
     # Operator-measured reference compilers on the same cases: cycles and same-engine ratios, advisory.
     baselines = evidence.get("reference_baselines")
     reference_baselines.annotate(evidence["ranked"], reference_baselines.index(baselines))
+    from . import seed_timing
+
+    versus_seed = seed_timing.annotate(evidence["ranked"], {
+        str(row.get("capsule", row.get("name"))): row for row in passing})
+    if versus_seed is not None:
+        evidence["vs_seed"] = versus_seed
+    from ..author_profiles import modern_advice
     from .mechanism_hints import hints, load_selection
 
-    selection = load_selection(workspace)
+    guidance = modern_advice()
+    selection = load_selection(workspace) if guidance else None
     from . import model_calibration
     from .performance_brief import _bound_class, _summary
 
@@ -310,7 +318,8 @@ def build(workspace, verdict, *, limit=LIMIT, evidence=None, observe=None) -> di
             if fence is not None:
                 fences[name] = fence
     for entry in ranked[:limit]:
-        suggested = hints(selection, dominant=entry.get("dominant_modeled_resource"), bound_by=entry.get("bound_by"))
+        suggested = (hints(selection, dominant=entry.get("dominant_modeled_resource"), bound_by=entry.get("bound_by"))
+                     if guidance else [])
         if suggested:
             entry["suggested_mechanisms"] = suggested
         if str(entry["test_case"]) in fences:
@@ -330,6 +339,14 @@ def build(workspace, verdict, *, limit=LIMIT, evidence=None, observe=None) -> di
                 or {}
             )
     utilization = sorted(e["array_utilization_pct"] for e in ranked if "array_utilization_pct" in e)
+    fence_bound = fence_overlap.summary(fences, selection)
+    if fence_bound and not guidance:
+        fence_bound["note"] = (
+            "Test cases whose command stream drains the whole device after nearly every output tile: "
+            "the next tile's loads wait for the current tile's compute and readout. Fences, tiles per "
+            "fence and the static overlap ratio come from the emitted order; compare variants on the "
+            "same cases by cycles."
+        )
     return {
         "schema": SCHEMA,
         "advisory_only": True,
@@ -358,7 +375,8 @@ def build(workspace, verdict, *, limit=LIMIT, evidence=None, observe=None) -> di
             "catalogue mechanisms this target's architecture supports, matched to each "
             "entry's busiest modeled resource (mechanisms naming its storage unit first, then "
             "by facet); candidates to try and A/B by cycles, not a pass order"
-            if selection
+            if selection and guidance
+            else "withheld by the selected author profile" if not guidance
             else "unavailable: the architecture selection was not staged"
         ),
         "model_calibration": _summary(calibrated) if calibrated is not None else None,
@@ -377,7 +395,7 @@ def build(workspace, verdict, *, limit=LIMIT, evidence=None, observe=None) -> di
             )[:UTILIZATION_LIMIT]
         ],
         "without_evidence": sorted(str(name) for name in missing)[:20],
-        "fence_bound": fence_overlap.summary(fences, selection),
+        "fence_bound": fence_bound,
         **({"reference_baselines": compared} if (compared := reference_baselines.summary(ranked, baselines)) else {}),
     }
 

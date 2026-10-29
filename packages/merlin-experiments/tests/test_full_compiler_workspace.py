@@ -28,6 +28,7 @@ def selection(tmp_path):
         'merlin/targetgen/_dynamic_integer_reference.py': 'private_oracle=123\n',
         'merlin/targetgen/materialized_reference.py': 'private_reference_reader=123\n',
         'merlin/kernels/known_answer.py': 'do_not_copy=1\n',
+        'merlin/targetgen/oot_starterkit/iface.py': 'def parse_interface(text): return text\n',
     }
     for name, text in sources.items():
         path = repo / 'src' / name
@@ -43,6 +44,7 @@ def test_complete_public_sources_exclude_answers_and_report_unavailable_dependen
     names = {row[0] for row in selection.members}
     assert 'merlin/compile/example.py' in names
     assert 'merlin/common/helper.py' in names
+    assert 'merlin/targetgen/oot_starterkit/iface.py' in names
     assert not any('reference.py' in p or 'known_answer' in p or 'golden' in p for p in names)
     assert 'merlin.runtime.reference' in selection.diagnostics
     assert selection.permits('merlin.compile.new_agent_pass')

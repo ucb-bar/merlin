@@ -225,3 +225,15 @@ def test_probe_refuses_ancestor_link_exposing_selected_corpus(inputs):
     (ws / "innocent").symlink_to(corpus.parent)
     result = W.probe(ws, {}, "none", context=context)
     assert result["pilot_golden_visible_to_agent"] == "LEAK"
+
+
+@pytest.mark.parametrize("path, shadowed", [
+    ("merlin/common/yaml.py", True),     # installed third-party package (PyYAML)
+    ("merlin/common/json.py", True),     # standard library
+    ("merlin/common/digest.py", False),  # no importable top-level module of that name
+])
+def test_root_alias_never_shadows_an_importable_top_level_module(path, shadowed):
+    alias = W._implicit_alias({"path": path})
+    assert (alias == path.rsplit("/", 1)[-1]) is not shadowed
+    if shadowed:
+        assert alias == path.replace("/", "_")
