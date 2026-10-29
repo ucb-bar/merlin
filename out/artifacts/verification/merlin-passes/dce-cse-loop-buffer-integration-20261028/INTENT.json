@@ -1,0 +1,13 @@
+{
+  "status": "COMBINED_TREE_CHECKS_STARTED",
+  "graham_base": "8215c0015",
+  "primary_source": "d45415489",
+  "merge": "d3ffd69f1",
+  "merge_conflict": "Only generated docs/README.md; regenerated with target branch generator",
+  "compatibility_change": "Bind actual new common/owned_children.py in loop and buffer source fingerprints; stale-helper regressions added",
+  "initial_focused_tests": "145 passed before dependency binding fix",
+  "process_infrastructure_tests": "33 passed",
+  "full_fivecase_newqualification": false,
+  "historical_buffer_lineage": "Historical F2 allfive186; W corrected191 baseline/replay; new merged192 baseline validation is separate",
+  "structure": "16 existing branch violations; failing source paths unchanged from8215; to verify equality before publication"
+}

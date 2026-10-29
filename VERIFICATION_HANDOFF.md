@@ -1,3 +1,15 @@
+# Latest target integration — 2026-10-28
+
+This branch integrates the published primary loop/buffer checkpoint d45415489
+with Graham/Agustin DCE/CSE base8215c0015. Start with the
+[combined-tree handoff and fresh evidence](out/artifacts/handoff/loop-buffer-integration-20261028/README.md).
+The compiler selector remains DCE/CSE-only; scoped loop/buffer APIs have fresh
+checks and separate-process replays. Existing structure failures remain.
+Primary feat/pass-verification and the three configuration workers were not
+switched or rebased; their historical instructions below retain their own scope.
+
+---
+
 # Current continuation — 2026-10-28 buffer merged; configuration active
 
 The current user request is to keep the three existing workers active until a

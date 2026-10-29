@@ -1,0 +1,36 @@
+{
+  "status": "ALL5_ACTUAL_QUERIES_PARTS_ROOTS_IDENTICAL_ON_MERGED_SOURCE",
+  "cases": [
+    {
+      "case": "alignment32_tile3",
+      "source_fingerprint_count": 192,
+      "query_parts_roots_exactly_equal_prior_qualification": true,
+      "query_sha256": "54de54ee25c819880f9feb783c2ed3892822a18360d3eba4d46a24697063d1d6"
+    },
+    {
+      "case": "retained_two_epochs",
+      "source_fingerprint_count": 192,
+      "query_parts_roots_exactly_equal_prior_qualification": true,
+      "query_sha256": "c1ba6703c5069f45ddb66079cb6bd6016d966e962c11ddf78de9624bc0fabd2c"
+    },
+    {
+      "case": "rows1_columns1_tile3",
+      "source_fingerprint_count": 192,
+      "query_parts_roots_exactly_equal_prior_qualification": true,
+      "query_sha256": "f8637233b36eef597e88256deadc641cb7320eeda615ff6fe258e663a8f65be7"
+    },
+    {
+      "case": "rows3_columns2_tile2_short",
+      "source_fingerprint_count": 192,
+      "query_parts_roots_exactly_equal_prior_qualification": true,
+      "query_sha256": "ec3ea8f70cd6f33262974154d2d857d893a40cc729b664c300f2277494a8f14a"
+    },
+    {
+      "case": "three_disjoint_epochs",
+      "source_fingerprint_count": 192,
+      "query_parts_roots_exactly_equal_prior_qualification": true,
+      "query_sha256": "b351f5e2e90cf5886add5eb6adfa12ab33cfe6b5b700b4fb02808b738cd6ba7b"
+    }
+  ],
+  "not_a_new_fivecase_native_qualification": true
+}

@@ -1,0 +1,6 @@
+/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean:128:18: warning: `simp` already closes the goal
+
+Hint: Use `simp` instead of `simpa`:
+  [apply] simp only [GraphLoopsShape.invoke, absent] at run
+
+Note: This linter can be disabled with `set_option linter.unnecessarySimpa false`

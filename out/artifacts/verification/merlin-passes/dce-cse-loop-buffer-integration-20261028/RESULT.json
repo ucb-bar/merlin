@@ -1,0 +1,103 @@
+{
+  "status": "COMBINED_TREE_SCOPED_VALIDATION_PASSED",
+  "target_branch": "feat/pass-verification-dce-cse",
+  "target_before": "8215c0015",
+  "source_primary": "d45415489",
+  "merge": "d3ffd69f1",
+  "compatibility_commit": "ca62a42b7",
+  "focused_tests": {
+    "kind": "coordinator_observed_tool_result",
+    "passed": 147,
+    "skipped": 0
+  },
+  "process_infrastructure_tests": {
+    "kind": "coordinator_observed_tool_result",
+    "passed": 33
+  },
+  "lint": "four changed Python files passed",
+  "native": [
+    {
+      "case": "loop-check",
+      "original_report": {
+        "path": "/home/jeremy/Projects/merlin-dce-cse-integration/out/build/dce-cse-loop-buffer-integration-20261028/loop-check/REPORT.json",
+        "bytes": 221542,
+        "sha256": "987dcb8937508fa52c35d63dc68d87f9f1047da1a48ffb8fa351eec6040a4f6b"
+      },
+      "retained_report": "out/artifacts/verification/merlin-passes/dce-cse-loop-buffer-integration-20261028/native-reports/loop-check.json",
+      "types": 44,
+      "theorems": 927,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": [],
+      "sources": 51
+    },
+    {
+      "case": "loop-replay",
+      "original_report": {
+        "path": "/home/jeremy/Projects/merlin-dce-cse-integration/out/build/dce-cse-loop-buffer-integration-20261028/loop-replay/REPORT.json",
+        "bytes": 221622,
+        "sha256": "e12ffaf3cbfc52fc9cf43e122eed91546af8a625c807adb1b24cfa1717b1d643"
+      },
+      "retained_report": "out/artifacts/verification/merlin-passes/dce-cse-loop-buffer-integration-20261028/native-reports/loop-replay.json",
+      "types": 44,
+      "theorems": 927,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": [],
+      "sources": 51
+    },
+    {
+      "case": "buffer-check",
+      "original_report": {
+        "path": "/home/jeremy/Projects/merlin-dce-cse-integration/out/build/dce-cse-loop-buffer-integration-20261028/buffer-check/REPORT.json",
+        "bytes": 918925,
+        "sha256": "4f5c0374eb57c2af1c2b72ba1477f6500c0e27ab42bd1179e5639e91c224a0d8"
+      },
+      "retained_report": "out/artifacts/verification/merlin-passes/dce-cse-loop-buffer-integration-20261028/native-reports/buffer-check.json",
+      "types": 250,
+      "theorems": 2338,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": [],
+      "sources": 192
+    },
+    {
+      "case": "buffer-replay",
+      "original_report": {
+        "path": "/home/jeremy/Projects/merlin-dce-cse-integration/out/build/dce-cse-loop-buffer-integration-20261028/buffer-replay/REPORT.json",
+        "bytes": 919700,
+        "sha256": "f69f201c5705c081bb770c10c2865f66205f78736690e24c04323d3b80e99177"
+      },
+      "retained_report": "out/artifacts/verification/merlin-passes/dce-cse-loop-buffer-integration-20261028/native-reports/buffer-replay.json",
+      "types": 250,
+      "theorems": 2338,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": [],
+      "sources": 192
+    }
+  ],
+  "all5_projection_comparison": "ALL5-PROJECTION-COMPARISON.json",
+  "two_live_consumers_exact": true,
+  "separate_Python_fresh_replays": true,
+  "buffer_fingerprint": 192,
+  "full_new_fivecase_native_qualification": false,
+  "structure": "16 inherited failures, exact offending files unchanged from target_before; see structure-baseline-match.json",
+  "whole_pass_verified": false,
+  "independent_human_approved": false,
+  "native_fidelity": false,
+  "compiler_wide_loop_or_buffer_enforcement": false,
+  "time": "2026-10-29T03:07:43.447267+00:00"
+}

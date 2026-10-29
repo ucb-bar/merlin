@@ -1,0 +1,14 @@
+/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean:21:22: warning: This simp argument is unused:
+  same
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [swapName, Ne.symm same]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean:24:24: warning: This simp argument is unused:
+  same
+
+Hint: Omit it from the simp argument list.
+  [apply] simp [swapName, Ne.symm same]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`

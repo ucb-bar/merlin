@@ -1,0 +1,14 @@
+/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean:99:30: warning: This simp argument is unused:
+  slot_put
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Epoch.Atom.step, slotRuntime]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean:99:40: warning: This simp argument is unused:
+  slotRuntime
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Epoch.Atom.step, slot_put]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
