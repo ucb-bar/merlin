@@ -59,10 +59,12 @@ For every validated boundary the worker requires all of:
    buffers exported by MLIR's own parser and round-tripped identically through Lean;
 2. `MerlinVerify.Check.supportCheck_sound` on every function of the input (it never gets stuck),
    which makes the refinement strict rather than conditional;
-3. `compose_chain` replaying both, with `refinement_verdict: verified`.
+3. `compose_chain` validating and composing both, with `refinement_verdict: verified`.
+   Only live results from the same job can avoid duplicate checker execution, as described below.
 
 It attempts two strengthenings and reports them without requiring them: the universal boundary
-conditional theorem (`moduleCheck_sound`, for all inputs) and source definedness. The strict claim
+conditional theorem (`moduleCheck_sound`, for all inputs) and source definedness on typed,
+nonpoison inputs. The strict claim
 retains the declared input types, where source support was established; a universal conditional
 boundary alone does not widen that domain. The receipt's `claim` says exactly what was established.
 Axioms: `propext`, `Classical.choice`, `Quot.sound`.
@@ -205,3 +207,5 @@ A pass that changes nothing submits nothing.
 Set `MERLIN_LEAN_REQUIRED=1` to turn a missing tool into a failure instead of a skip. Whole models
 are qualified with `build_tools/scripts/verify_lean_pass_models.py --capture <mlir> ...`, which
 compiles each with and without the gate and requires byte-identical LLVM output.
+The [integration qualification](../../out/artifacts/handoff/cse-dce-integration-20261028/README.md)
+records the qualified source points, executed checks, retained evidence and scope limits.
