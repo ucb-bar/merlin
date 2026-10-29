@@ -18,14 +18,15 @@ from .compiler_configuration_intake import _sources as configuration_sources
 from .compiler_configuration_intake import reopen, request
 from .compiler_configuration_kernel import tree
 from .configuration_elision_bridge import canonical, digest, file_ref
-from .configuration_hoist_bridge import Unsupported, project_current
+from .configuration_hoist_bridge import Unsupported, project_current, sequence
 from .configuration_hoist_emit import MODULE, ROOT, emit
 from .configuration_hoist_intake import proof_sources as single_proof_sources
 
 DOMAIN = "current-compiler-one-positive-loop-constant-pure-hoist-v1"
 INDEXED_DOMAIN = "current-compiler-one-positive-loop-indexed-retained-data-hoist-v2"
 PREFIX_DOMAIN = "current-compiler-one-positive-loop-pure-prefix-fixed-state-hoist-v3"
-DOMAINS = frozenset({DOMAIN, INDEXED_DOMAIN, PREFIX_DOMAIN})
+MULTI_DOMAIN = "current-compiler-multiple-positive-flat-loops-pure-prefix-hoist-v4"
+DOMAINS = frozenset({DOMAIN, INDEXED_DOMAIN, PREFIX_DOMAIN, MULTI_DOMAIN})
 RELATION = "equal_conditional_complete_kernel_error_terminal_state_hoist"
 
 
@@ -37,6 +38,10 @@ def _program(text):
 
 
 def proof_sources(domain=DOMAIN):
+    if domain == MULTI_DOMAIN:
+        from .compiler_configuration_hoist_multi import proof_sources as multi_sources
+
+        return multi_sources()
     if domain == PREFIX_DOMAIN:
         from .compiler_configuration_hoist_prefix import proof_sources as prefix_sources
 
@@ -47,6 +52,10 @@ def proof_sources(domain=DOMAIN):
 
 
 def emit_profile(projection, domain):
+    if domain == MULTI_DOMAIN:
+        from .configuration_hoist_multi_emit import emit as multi_emit
+
+        return multi_emit(projection)
     if domain == PREFIX_DOMAIN:
         from .configuration_hoist_prefix_emit import emit as prefix_emit
 
@@ -56,7 +65,7 @@ def emit_profile(projection, domain):
     return emit(projection)
 
 
-def _sources(selection, *, indexed=False, prefix=False):
+def _sources(selection, *, indexed=False, prefix=False, multi=False):
     rows = list(configuration_sources(selection))
     if indexed:
         rows.append(file_ref(module_source_path("merlin.verify.compiler_configuration_hoist_indexed")))
@@ -66,6 +75,14 @@ def _sources(selection, *, indexed=False, prefix=False):
             for name in (
                 "merlin.verify.compiler_configuration_hoist_prefix",
                 "merlin.verify.configuration_hoist_prefix_emit",
+            )
+        ]
+    if multi:
+        rows += [
+            file_ref(module_source_path(name))
+            for name in (
+                "merlin.verify.compiler_configuration_hoist_multi",
+                "merlin.verify.configuration_hoist_multi_emit",
             )
         ]
     rows += [
@@ -83,7 +100,7 @@ def _sources(selection, *, indexed=False, prefix=False):
     ]
     rows += [
         {key: row[key] for key in ("path", "sha256", "bytes")}
-        for row in proof_sources(PREFIX_DOMAIN if prefix else DOMAIN)
+        for row in proof_sources(MULTI_DOMAIN if multi else PREFIX_DOMAIN if prefix else DOMAIN)
     ]
     return sorted({row["path"]: row for row in rows}.values(), key=lambda row: row["path"])
 
@@ -130,7 +147,21 @@ class CurrentHoistCandidate:
                 "trusted_host_index64_bounds" if projection.get("indexed_data_analysis") else "static_constants"
             ),
             "all_index_model_premise_retained": True,
-            "moved_setter_count": len(projection["move"]["setups"]) if self.domain == PREFIX_DOMAIN else 1,
+            "moved_setter_count": (
+                sum(len(stage["focus"]["move"]["setups"]) for stage in projection["stages"])
+                if self.domain == MULTI_DOMAIN
+                else len(projection["move"]["setups"])
+                if self.domain == PREFIX_DOMAIN
+                else 1
+            ),
+            **(
+                {
+                    "actual_loop_count": projection["actual_loop_count"],
+                    "focused_loop_count": projection["focused_loop_count"],
+                }
+                if self.domain == MULTI_DOMAIN
+                else {}
+            ),
             "premises": [
                 "trusted complete typed Kernel parser/projection and original selected ISA/effect interpretation",
                 "exact nonaliasing configuration/world cells and complete relevant "
@@ -164,8 +195,24 @@ def prepare(source, final, *, selection):
         except Unsupported:
             from .compiler_configuration_hoist_prefix import project as prefix_project
 
-            projection = prefix_project(source_tree, final_tree, isa=isa, effects=effects)
-            domain = PREFIX_DOMAIN
+            try:
+                projection = prefix_project(source_tree, final_tree, isa=isa, effects=effects)
+                domain = PREFIX_DOMAIN
+            except Unsupported:
+                # Preserve single-loop profile refusals and diagnostics. V4 is
+                # considered only for actual multiple top-level loop scopes.
+                if (
+                    sum(
+                        row.get("class") == "merlin.sched.ir.kernel.Loop"
+                        for row in sequence(source_tree["fields"]["body"])
+                    )
+                    < 2
+                ):
+                    raise
+                from .compiler_configuration_hoist_multi import project as multi_project
+
+                projection = multi_project(source_tree, final_tree, isa=isa, effects=effects)
+                domain = MULTI_DOMAIN
     if (
         len(projection["before"]["atoms"]) > selection.max_operations
         or len(projection["fields"]) > selection.max_fields
@@ -186,7 +233,14 @@ def prepare(source, final, *, selection):
         canonical(projection),
         generated["query"],
         tuple(generated["roots"]),
-        canonical(_sources(selection, indexed=domain != DOMAIN, prefix=domain == PREFIX_DOMAIN)),
+        canonical(
+            _sources(
+                selection,
+                indexed=domain != DOMAIN,
+                prefix=domain in {PREFIX_DOMAIN, MULTI_DOMAIN},
+                multi=domain == MULTI_DOMAIN,
+            )
+        ),
         canonical(proof_sources(domain)),
         domain=domain,
     )

@@ -132,7 +132,9 @@ def decode_effect(value, isa, declarations):
     return result
 
 
-def program(value, isa, effects):
+def program(value, isa, effects, *, allow_multiple=False):
+    if type(allow_multiple) is not bool:
+        raise Unsupported("explicit multiple-loop parsing profile required")
     kernel = node(value, "Kernel", ("name", "args", "body", "attrs"))
     # All actual tensor descriptors and arbitrary retained attrs stay in frame.
     frame = canonical({key: item for key, item in kernel.items() if key != "body"})
@@ -179,9 +181,9 @@ def program(value, isa, effects):
         }
         commands.append(command)
         loops.append((len(commands) - 1, command["loop"]))
-    if len(loops) != 1 or len(atoms) > 4096:
+    if (not allow_multiple and len(loops) != 1) or len(atoms) > 4096:
         raise Unsupported("phase1 requires exactly one complete top-level loop and bounded calls")
-    return {"frame": frame, "atoms": atoms, "commands": commands}, loops[0]
+    return {"frame": frame, "atoms": atoms, "commands": commands}, loops if allow_multiple else loops[0]
 
 
 def project(record):

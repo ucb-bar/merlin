@@ -212,7 +212,9 @@ def _substitute(call, isa, declarations, domains, records):
     return result
 
 
-def program_current(value, isa, effects, *, analyses):
+def program_current(value, isa, effects, *, analyses, allow_multiple=False):
+    if type(allow_multiple) is not bool:
+        raise Unsupported("explicit multiple-loop parsing profile required")
     original_calls = []
     substituted = copy.deepcopy(value)
     kernel = node(substituted, "Kernel", ("name", "args", "body", "attrs"))
@@ -232,7 +234,7 @@ def program_current(value, isa, effects, *, analyses):
         for index, call in enumerate(sequence(loop["body"])):
             original_calls.append(copy.deepcopy(call))
             loop["body"]["tuple"][index] = _substitute(call, isa, effects, domains, analyses)
-    projected, descriptor = program(substituted, isa, effects)
+    projected, descriptor = program(substituted, isa, effects, allow_multiple=allow_multiple)
     if len(projected["atoms"]) != len(original_calls):
         raise ValueError("actual indexed atom roster changed")
     for atom, call in zip(projected["atoms"], original_calls, strict=True):
