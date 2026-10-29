@@ -757,9 +757,10 @@ operations:
         scale can differ from the golden by one LSB at an exact tie. Such divisors, and a divisor outside the
         integers (a fractional float scalar), are outside this row and stay with the backend-evidence route
         (the case still runs on the device under the spec_int8 numeric policy; this row does not extend its claim).
-        The int8-world meaning of the op (aten.div.Scalar is in the affine_map quantization family: output scale
-        s_o is chosen on its own power-of-two grid, so the readout gain is s_x / (d * s_o), a power of two for a
-        power-of-two d) is the recipe's, not this row's; this row states only the unit-scale integer readout 1/d.
+        The int8-world meaning of the op is the recipe's, not this row's: the captured canonical program is the float
+        `arith.divf x, 2.0` (backend-verify corpus_193 aten.div.Scalar), which the recipe quantizes as an
+        affine_map island; this row states only the unit-scale integer readout 1/d of an int8 operand and makes no
+        statement about the island's output scale.
       basis: >-
         Same evidence as reduction_standalone (operator decision D3a, 2026-10-17: Spike and stock
         GemminiRocketConfig RTL bit-exact for the mean / average-pool window sums with a float readout scale;

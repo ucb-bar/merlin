@@ -90,3 +90,47 @@ def test_the_form_builds_a_one_element_window_sum_with_the_divisor(m, n):
     assert cap["operation"]["op"] == "window_sum" and "merlin_iface.window_sum" in text
     assert attrs["kernel"] == [1, 1] and attrs["divisor_override"] == 2 and attrs["readout_scale"] == 1.0
     assert cap["inputs"][0]["shape"] == [1, 1, m, n]
+
+
+def _fixture_module():
+    """The phase-0 admission test module's contract and spec fixtures (it is not an importable package)."""
+    import importlib.util
+
+    path = repo_root() / "packages/merlin-experiments/tests/test_phase0_program_admission.py"
+    spec = importlib.util.spec_from_file_location("_phase0_admission_fixtures", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_one_element_window_command_is_observed_and_admitted_by_the_standalone_sum_row():
+    from copy import deepcopy
+
+    from merlin.targetgen.interface_observations import command_rows
+    from merlin.targetgen.operation_accounting import admit_operation_row
+    from merlin.targetgen.software_spec import validate_software_spec
+
+    fx = _fixture_module()
+    entry = ft.entry_fields("reduction", "scalar_div", 16, 16)
+    cb = fx._window_sum_cb(
+        {k: entry[k] for k in ("mode", "kernel", "stride", "padding", "count_include_pad", "divisor_override")},
+        entry["shape"], entry["out_shape"],
+    )  # fmt: skip
+    contract = deepcopy(fx._CONTRACT)
+    contract["compute_units"][0]["semantic_capabilities"].append(
+        {"family": "reduction", "dtypes": ["int8"], "kinds": ["sum"]}
+    )
+    row_spec = load_yaml(repo_root() / "examples/gemmini/target/software-spec.yaml")["operations"]["reduction_scalar_div"]
+    spec = dict(fx._SPEC)
+    spec["operations"] = {
+        **fx._SPEC["operations"],
+        "reduction_scalar_div": {
+            k: row_spec[k] for k in ("families", "arithmetic", "kinds", "ranks", "layouts", "tails", "aliasing")
+        } | {"placement": "accelerator", "dtypes": ["int8"]},
+    }
+    spec = validate_software_spec(spec, "fixture")
+    [row] = [r for r in command_rows(cb) if r["operation"] == "window_sum"]
+    assert row["semantic_family"] == "reduction" and row["reduction_kind"] == "sum"
+    assert row["tails"] == "zero_pad_valid_window"
+    admitted = admit_operation_row(row, software_spec=spec, capability_contract=contract, host_capabilities=None)
+    assert admitted["accelerator_admission"]["status"] == "admitted", admitted["accelerator_admission"]
