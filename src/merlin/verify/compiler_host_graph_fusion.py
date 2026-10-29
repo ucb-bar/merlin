@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import configuration_elision_runner as runner
-from .configuration_elision_bridge import canonical, file_ref
+from .configuration_elision_bridge import canonical, digest, file_ref
 from .configuration_elision_gate import NotEstablished, Unavailable, _exact
 from .gate_errors import GateRejected, GateUnavailable, GateUnsupported
 from .host_graph_fusion_intake import DOMAIN, MODULE, RELATION, prepare, proof_sources, ready
@@ -105,19 +105,42 @@ def deliver(completion):
     return _LIVE[completion][2].final
 
 
+def _check_input_refs(refs, paths):
+    try:
+        if any(file_ref(path) != ref for path, ref in zip(paths, refs, strict=True)):
+            raise ValueError("original input reference changed")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise GateUnavailable("host fusion source changed") from error
+
+
+def _read_bound_inputs(refs, paths):
+    _check_input_refs(refs, paths)
+    try:
+        raw = tuple(path.read_bytes() for path in paths)
+        if any(digest(data) != ref["sha256"] or len(data) != ref["bytes"] for data, ref in zip(raw, refs, strict=True)):
+            raise ValueError("actual input bytes differ from the captured references")
+        # Decode the exact bytes without universal-newline normalization.
+        return tuple(data.decode("utf-8") for data in raw)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise GateUnavailable("host fusion source changed during independent read") from error
+
+
 def replay(report_path, destination, *, lean, timeout=120):
     report = json.loads(Path(report_path).read_text())
     if report.get("schema") != "merlin.host-graph-fusion.checked.v1" or len(report.get("buffers", [])) != 2:
         raise GateUnavailable("host fusion replay requires its actual source pair")
     try:
-        for row in report["buffers"]:
-            _exact(row)
-    except (Unavailable, OSError, ValueError) as error:
+        refs = tuple(report["buffers"])
+        paths = tuple(Path(row["path"]) for row in refs)
+    except (KeyError, TypeError, ValueError) as error:
         raise GateUnavailable("host fusion replay source changed") from error
     # Never restore a saved success. Reproject and kernel-check with current sources.
-    return check_boundary(
-        *(Path(row["path"]).read_text() for row in report["buffers"]), destination, lean=lean, timeout=timeout
-    )
+    before, after = _read_bound_inputs(refs, paths)
+    completion = check_boundary(before, after, destination, lean=lean, timeout=timeout)
+    if deliver(completion) != after:
+        raise GateRejected("host fusion replay delivery differs from the actual target")
+    _check_input_refs(refs, paths)
+    return completion
 
 
 def check(job):
@@ -127,11 +150,17 @@ def check(job):
     lean = Path(params["sdk_bin"]) / "lean"
     if not lean.is_file():
         raise GateUnavailable("selected Lean executable is unavailable")
-    before, after = (Path(job[key]).read_text() for key in ("before", "after"))
+    try:
+        paths = tuple(Path(job[key]) for key in ("before", "after"))
+        refs = tuple(file_ref(path) for path in paths)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise GateUnavailable("host fusion source is unavailable") from error
+    before, after = _read_bound_inputs(refs, paths)
     completion = check_boundary(before, after, Path(job["directory"]) / "proof", lean=lean)
     report = validate_completion(completion)
     if deliver(completion) != after:
         raise GateRejected("host fusion delivery differs from the actual target")
+    _check_input_refs(refs, paths)
     return {
         "schema": "merlin.host-graph-fusion.gate.v1",
         "status": "checked",
