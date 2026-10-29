@@ -371,6 +371,8 @@ def source_admission(pass_name, before, *, predicate=None):
         return admit_source(before, pass_name=pass_name, validation=validation)
     except SourceOutsideProfile as exclusion:
         return exclusion
+    except GateFailure:
+        raise
     except Exception as error:  # noqa: BLE001 -- every unexpected admission failure must quarantine products
         raise GateFailure(
             {
