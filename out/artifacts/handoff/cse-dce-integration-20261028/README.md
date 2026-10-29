@@ -262,7 +262,7 @@ Focused checks on the converged source:
   Mocked native-prefix controls are host plumbing tests, not new Lean proofs.
 * Five live compiler tests passed: pruning/CSE acceptance, injected prune and
   CSE bug rejection, and normal/dead-code representative chunk comparisons.
-* Frozen lock, docs and artifact layout pass. The Lean proof-source directory
+* Frozen lock and docs pass. The Lean proof-source directory
   and SPEC_LOCK are byte-identical to the qualified DCE/CSE candidate.
 
 The repository-wide structure gate remains failed on 16 inherited development
@@ -276,3 +276,9 @@ Logs and the branch/publication audit are under
 `out/build/dce-cse-ancestry-repair-20261028/`.
 These focused checks do not replace broad qualification of every restored
 upstream component, numerical policy approval or human semantic/trust review.
+
+The separate artifact-layout scan reports 48 inherited development findings
+(stale generated-root literals and two tracked event traces outside the output
+root). Every affected file is byte-identical to the original development
+snapshot; see `inherited-artifact-findings.json`. The artifact-layout gate is
+failed, not waived or counted as passing.
