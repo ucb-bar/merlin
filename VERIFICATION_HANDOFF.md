@@ -1,5 +1,17 @@
 # Current compiler verification checkpoint — 2026-10-29
 
+The latest user policy keeps ordinary compiler transformations for original
+sources outside an explicit Lean profile and logs those boundaries as unverified
+at invocation completion. Admitted source boundaries still block on unsuccessful
+proofs, unsupported targets, missing tools or custody failures. This supersedes
+the proposed skip/no-op policy. See the [bounded profile catalogue](docs/guides/lean_bounded_pass_profiles.md).
+End coverage is per boundary, finalized after worker join; it grants no proof of
+an unverified suffix or downstream LLVM/native behavior. Current root tests pass
+30 cases (23 input/journal controls, four compiler-policy cases, three real
+source-only recognizer/export checks); buffer/configuration source predicates
+separately pass 30 host checks. Fresh boundary qualification is recorded separately
+from these admission/protocol tests and from historical receipts.
+
 The [merge qualification](out/artifacts/audits/ledger-review-20261029/merge-README.md)
 combines the ledger/fusion corrections with Graham's published memory-gate
 changes through `df8799c42`. Its evidence binds the combined sources; the older
@@ -47,11 +59,13 @@ tile-size-32 tail cases both pass: four accepted workers, 24 finite native
 kernel observations and six untouched-entry checks. The memory DCE theorem
 equates complete successful returned-value/world relations; it adds no
 categorized-error, allocator or downstream fidelity proof. Unchanged CSE
-submits zero jobs and receives zero proof credit; changed memory CSE refuses.
+submits zero jobs and receives zero proof credit; changed memory CSE now runs
+with explicit unverified coverage under the bounded source-admission policy.
 Private-buffer tile resource policy now permits sizes through 65,536 while
 retaining signed-index64 safety checks. Evidence and earlier safe refusals are
-under `out/build/default-all-memory-20261029/`; the completed compiler run is
-`installed-qualification-v3/`.
+under `out/build/default-all-memory-20261029/`; `installed-qualification-v3/`
+is the completed historical compiler run before the current admission/controller
+changes. A final current-source refresh is queued separately.
 
 Selected inner-depth unrolling and tiling now preserve supported deeper bodies.
 An actual depth-two unroll→tile gate preserves a dynamic depth-three body;
@@ -74,9 +88,12 @@ legacy reconstruction checks, fresh replay and 27 finite native state/failure
 observations pass. Commits `30ec04967` and `0990c2806` add the proof and gate.
 All-environment instruction/effect Models remains an explicit premise.
 
-**The human-review-only milestone remains open.** General LLM data contexts,
-computed initializer prefixes, broader memory/source profiles and remaining
-source-contract coverage need engineering. Rank-one buffer source/target bridges are committed in `5f9fb92de`.
+**The bounded stopping milestone is finishing qualification and publication.**
+Generic-value UNROLL has an installed compiler worker and fresh replay: 41 roots
+and 940 audited declarations per check, standard logical axioms only. Generic
+TILE integration is separately under qualification. Computed initializer prefixes,
+broader memory ranks and more generic loop bodies are documented future domain
+extensions, not prerequisites for the bounded gates. Rank-one buffer source/target bridges are committed in `5f9fb92de`.
 Their installed qualification now passes all 33 distinct cases: 12 host and 21
 SDK/native cases, including both public compiler routes, fresh-process replay,
 actual target mutations and initializer-link component refusals. Q/DQ stays proposed and MACC stays
@@ -102,7 +119,7 @@ identities and dates.
 
 ---
 
-# Pass proof completion plan and loop generalization — 2026-10-29
+# Historical broader completion plan and loop generalization — 2026-10-29
 
 Continue on **`feat/pass-verif-integration`**. Code `0fd1b0294` removes separate
 compiler argument/carry caps (including zero carries) and scalar unroll-factor /

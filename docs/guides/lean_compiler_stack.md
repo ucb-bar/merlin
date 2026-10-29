@@ -28,7 +28,9 @@ code_refs:
 > proved in Lean. For supported loop and configuration transformations, the proofs
 > cover complete entries and preserve modeled outcomes and state, including
 > failures and surrounding effects. Validation is enforced at the compiler
-> boundary, and products are released only after all requested checks succeed.
+> boundary. For inputs admitted to a selected proof profile, products are released
+> only after the required checks succeed. Inputs outside a profile use ordinary
+> compilation and are explicitly listed as unverified.
 
 These claims use each gate's declared IR, input domain and semantic/effect
 contracts. Buffer reuse preserves possible successful public observations under
@@ -53,8 +55,12 @@ require a proof of their actual input/output boundaries. Both are opt-in.
 `bf16_f32acc_draft_contract`, proposed-model `lower_quant_ext` and ISA-specific
 `configuration_write_elision` / `configuration_loop_hoisting` checks stay outside `all`,
 as does the logical `host_graph_fusion` profile.
-Selecting checks does not enable transformations. A selected, changing boundary that cannot be proved
-stops compilation. An unchanged boundary needs no proof job.
+Selecting checks does not enable transformations. The [bounded profile catalogue](lean_bounded_pass_profiles.md)
+defines original-source admission and exclusions for each family. An excluded
+source runs ordinary lowering and is logged as unverified at invocation end.
+Once admitted, a changing boundary that cannot be checked stops compilation;
+target failure cannot be relabeled as a source exclusion. An unchanged boundary
+needs no proof job and earns zero proof credit.
 
 ```mermaid
 flowchart TD
@@ -78,7 +84,7 @@ flowchart TD
   E -. exact captures .-> P
   F -. exact captures .-> P
   N -. exact captures .-> P
-  P --> H[All requested checks accepted]
+  P --> H[Admitted checks accepted; exclusions reported unverified]
   G --> H
   H --> I[Return compiler products]
 ```
@@ -88,6 +94,11 @@ actual captured bytes. Compilation may proceed concurrently, but its products
 are returned only after the enclosing gate accepts. Failure quarantines emitted
 LLVM, object and shared-library products. Each job retains `request.json`,
 `verdict.json`, `worker.log` and its proof evidence.
+
+The final `coverage.json` is written after worker join. It distinguishes verified,
+unverified and unchanged boundaries, binds each verified row to its actual owned
+job inputs, and lists explicit source exclusions. Compilation success with
+unverified stages is not a whole-pipeline preservation theorem.
 
 The directory name `llvmlower` includes both MLIR lowering and LLVM IR emission.
 Unrolling, ordered tiling, buffer normalization/reuse, DCE, Q/DQ lowering, MACC and
@@ -309,6 +320,38 @@ coverage; the proof covers the remaining actual adjacent changing stages.
 Private compiled objects are frozen before auditing and checked for byte or
 tree-membership changes again before delivery.
 
+### Generic data around an ordered loop
+
+The separate generic-value route keeps tensor/float payloads as arbitrary typed
+values. Its initial bounded source has one selected top-level zero-carry SCF loop,
+three actual constant controls immediately before it, one zero-result body event
+using the IV and one captured data value, and one captured returned value.
+The source/target capture retains the actual opaque prefix, callees, regions,
+metadata, suffix and every other defined entry. Factor-two unrolling requires
+an odd trip count at least three and fitting signed-index64 controls. More body
+events, carried data or selected nesting require a broader profile.
+
+For example, retain `r = prefix(x)`, unroll five ordered `tick(i, y)` calls into
+two groups of two and one tail, then return `r`. `prefix` and `tick` can have
+partial modeled behavior. The gate proves the complete operational entry
+relation rather than assuming the prefix succeeds.
+
+The interface remains `Options(unroll_factor=2)` plus the ordinary
+`ordered_loop_unrolling` validation selector. Original-source admission chooses
+the generic profile. Actual transformation output goes to the canonical
+`compiler_loop_generic_refinement` worker, which checks complete typed captures,
+per-occurrence control roles, raw control joins and the complete-entry roots.
+Freshly audited proof objects issue an owned live completion; delivery uses the
+exact checked output bytes. Saved JSON only locates inputs for a new check.
+
+The installed UNROLL worker and fresh replay have independent qualification.
+Generic TILE uses a separately bounded source/target adapter and is undergoing
+its own qualification; a private proof does not enable a public claim by itself.
+Generic UNROLL→TILE composition is excluded until there is a proved common-model
+join. These operational claims use the explicit occurrence-aware projection
+premise; they do not prove arbitrary opaque actions agree with concrete MLIR,
+IEEE or native implementations.
+
 ## Private buffer reuse
 
 ```sh
@@ -340,7 +383,9 @@ separate ordinary-memory DCE checker validates actual dead index-constant
 deletions after BUFFER; its source must join the original selected memory
 epoch. Original live ownership also binds the actual native leading CSE pair,
 upstream module, pipeline and runner. Exact unchanged CSE has zero jobs and
-zero proof credit; changed memory CSE and missing/skip-only captures refuse.
+zero proof credit. Changed memory CSE runs with explicit unverified coverage;
+missing or skip-only captures still refuse because they do not establish what
+the compiler actually ran.
 Both untiled and tile-size-32 tail cases pass actual default-`all` compiler
 qualification. The DCE relation equates complete successful returned-value
 and world outcomes, without an allocator or source-success premise; categorized

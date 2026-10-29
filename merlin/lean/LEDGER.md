@@ -12,6 +12,24 @@ Lean source paths below are relative to the repository root. The tensor/numerica
 tree is `merlin/lean/MerlinVerify/`; the separate graph/loop/state library is
 `src/merlin/verify/lean/Merlin/`. A theorem namespace is not a filesystem path.
 
+## Bounded compiler coverage policy
+
+Source eligibility is separate from proof acceptance. The original source and
+selected options choose a declared bounded model. A known source exclusion may
+run ordinary compiler lowering and is logged unverified at invocation end with
+zero proof credit. Supported-source target/proof/tool/resource/custody failures
+still block delivery. No failed target check may be relabeled as a source
+exclusion. Source-only recognizer diagnostics and coverage JSON grant no live
+proof or numerical-policy authority. Per-boundary claims do not compose through
+an unverified suffix. Standalone proof APIs remain strict. See the
+[profile catalogue](../../docs/guides/lean_bounded_pass_profiles.md).
+
+This execution policy changes no theorem, frozen semantics, assumption approval,
+source-specification review or numerical admission. Q/DQ remains proposed-model;
+MACC remains draft. The existing T7/A10 and allocator/floating premises apply to
+each accepted bounded claim. Historical receipts retain their recorded ledger
+hashes; source freshness requires a new check.
+
 ## Actual logical host dispatch fusion
 
 The explicit `host_graph_fusion` compiler check is outside `all`.
@@ -255,6 +273,7 @@ separate; these IDs do not make their claims interchangeable.
 | Family | Correspondence code | Ledger entries |
 | --- | --- | --- |
 | Scalar/SCF and ordered loop composition | `src/merlin/verify/compiler_loop_intake.py`, `src/merlin/verify/loop_transform_intake.py`, `src/merlin/verify/lean_graph_pipeline_gate_projection.py` | T7, A10 |
+| Bounded generic-value ordered loops | `src/merlin/verify/compiler_loop_generic.py`, `src/merlin/verify/compiler_loop_generic_intake.py`, `src/merlin/verify/lean_graph_generic_projection.py`, `src/merlin/verify/lean_graph_generic_roles.py` | T7 occurrence-aware typed data/control projection, checked selected/generated control roles and signed-index fitting; one common partial opaque-action interpretation. This is not arbitrary raw `External` equivalence or concrete MLIR/IEEE fidelity. |
 | Buffer reuse and storage/shape projections | `src/merlin/verify/buffer_reuse_bridge.py`, `src/merlin/verify/lean_graph_loops_reuse_projection.py`, `src/merlin/verify/lean_graph_loops_memory_scf.py` | T7, A10, the explicit allocator premise |
 | Configuration elision and hoisting | `src/merlin/verify/configuration_elision_bridge.py`, `src/merlin/verify/compiler_configuration_intake.py`, `src/merlin/verify/compiler_configuration_hoist_intake.py`, `src/merlin/verify/configuration_hoist_bridge.py` | T7, A10, including all-index `Models` |
 | Graph regions, state/schedule and actual host fusion | `src/merlin/verify/lean_graph_regions_projection.py`, `src/merlin/verify/lean_graph_state_capture.py`, `src/merlin/verify/host_graph_fusion_projection.py` | T7, A10 |

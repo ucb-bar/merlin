@@ -33,6 +33,25 @@ code_refs:
 
 # Completing Merlin pass proofs and compiler integration
 
+## Bounded integration endpoint — latest policy
+
+The current milestone is a real compiler gate for explicitly bounded source
+models, described in the [profile catalogue](../guides/lean_bounded_pass_profiles.md).
+Broader ranks, computed initializer prefixes and general loop bodies remain
+documented extensions rather than blockers to this endpoint. The producer still
+runs normally outside a proof profile; the final coverage log labels that actual
+boundary unverified with zero proof credit. This supersedes the earlier proposal
+to skip unsupported optimizations or stop compilation for every model exclusion.
+For admitted sources, target/proof/tool/resource/custody failures still block.
+An earlier verified boundary gives no composed proof through an unverified suffix.
+
+Installed source predicates and runtime coverage are being qualified separately.
+The new root cohort passes 30 checks: 23 input/journal protocol controls, four
+ordinary-transform/blocking-worker policy cases and three actual source-only
+rulebook/export checks. Buffer/configuration source predicates pass 30 host
+checks. These are not new whole-compiler or numerical approval claims. The
+chronological coverage estimates below retain their original broader endpoint.
+
 The [Q/DQ and MACC review packet](qdq_macc_numerical_contract_review.md) records
 additive domain/initialized-accumulator proofs and the remaining source-profile,
 SSA, map, native-reference and independent numerical-review acceptance criteria.
@@ -93,8 +112,9 @@ decodes both endpoints and checks their exact frame and SSA joins. Original
 live memory ownership binds this stage to its compiler source, and binds the
 later native CSE capture to the actual upstream input, pipeline and runner.
 Authentic unchanged CSE follows the zero-job, zero-credit identity contract.
-Missing/skip-only captures, changed memory CSE and caller allow-skip flags still
-refuse. This closes the observed default-all delivery gap for the admitted
+Missing/skip-only captures and caller allow-skip flags still refuse. Changed
+memory CSE now runs with explicit unverified coverage under the latest bounded
+policy. The original evidence closes the observed default-all delivery gap for the admitted
 memory profiles; it adds no categorized-error, allocator, canonicalization or
 downstream native-fidelity proof. Evidence is retained under
 `out/build/default-all-memory-20261029/installed-qualification-v3/`.
@@ -111,7 +131,11 @@ converting arbitrary tensor/float payloads to mathematical integers.
 
 The effort table below is the earlier scope estimate, not remaining effort.
 Broader buffer ranks, producer-language coverage and numerical/source-contract
-coverage remain engineering; the human-review-only exit has not been reached.
+coverage remain engineering for the earlier broader endpoint. The latest bounded
+milestone instead requires finishing current-source qualification, per-pass
+supported/excluded-case documentation and compiler gate publication. Broader
+domains remain optional extensions; numerical and ISA/effect approvals stay
+separate human-review items.
 
 The existing theorems prove their stated relations. A theorem quantified over
 arbitrary states or lists can be fully proved even when the compiler adapter
@@ -123,8 +147,9 @@ Completion requires coverage of the cases the actual selected Merlin producers
 can transform in the promised IR language. Inventory those branches from the
 producer code before choosing examples. Do not redefine coverage around a small
 successful corpus or make a transformation a no-op to avoid proving it.
-Existing genuine producer no-ops can receive an identity proof and zero positive
-rewrite credit. Inputs outside the declared language remain explicit refusals.
+Existing genuine producer no-ops receive zero positive rewrite credit.
+Inputs outside a declared source profile use ordinary compilation with explicit
+unverified coverage; standalone proof APIs continue to refuse those inputs.
 Timeout, missing tools and resource exhaustion remain unavailable outcomes;
 accepting arbitrarily large IR within a fixed budget is not a proof requirement.
 

@@ -1,5 +1,63 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
+## Current bounded-profile policy
+
+Original sources outside a declared proof profile still run ordinary compiler
+lowering. Their actual boundaries are logged as **unverified at the end**, with
+reasons and zero proof credit. A source admitted to a selected profile must pass
+its actual target check; failed/unsupported targets, unavailable tools, resource
+failures and broken byte/owner binding remain blocking. The earlier proposed
+skip-optimization policy is superseded. See the [per-pass profile catalogue](../../../../docs/guides/lean_bounded_pass_profiles.md).
+
+The final coverage journal joins actual owned job/request/endpoint bytes to
+unique completed verdicts after the outer worker guard. A successful mixed
+invocation makes only its individual bounded claims, not a preservation claim
+through unverified stages. Standalone proof/replay APIs remain strict.
+
+Current root qualification: **30 passed in 15.10s**, with no skips: 23 synthetic
+input/journal custody controls, four ordinary-transform/real-unavailable-worker
+policy cases and three actual authoritative-export/source-rulebook cases.
+Evidence: `out/build/pass-bounded-models-20261029/root-policy-v1/`. The separate
+installed buffer/configuration source-predicate cohort passes **30/30**. Neither
+cohort is a new boundary proof or numerical approval. Generic loop and refreshed
+configuration runtime qualifications are tracked separately at their exact cuts.
+
+Subsequent focused results retain distinct scopes: 54 corrected host controls
+pass, including the real memory epoch join and rejection of a synthetic sink
+that issues no actual proof job. Eleven registry/identity controls pass. Four
+actual numerical admission/fallback tests pass: bf16/f16 zero initialization is
+admitted, nonzero initialization is excluded, and per-channel i64 DQ matches
+ordinary compilation on both routes with unverified coverage. Source/export
+mutation controls and unexpected host parser failure controls also pass.
+
+Generic UNROLL now has independent installed-worker/replay audit: exact actual
+source/output delivery, 41 roots and 940 audited declarations per tree, standard
+logical axioms only. This remains a bounded arbitrary-Value operational model,
+not concrete primitive/IEEE/native fidelity. Generic TILE is separately under
+qualification. Configuration's first revised three-case SDK cohort passes,
+including four proof invocations and 27 small native observations; pytest removed
+passed-case directories, so those terminal results are not retained-receipt audit
+evidence. A retention-enabled final-source refresh is queued.
+
+Completed implementation commits include `7ba2b8e6a` (generic loop math),
+`d6661c5b1` (portable projection), `2ba2fbce3` (source profiles), `39877dee3`
+(bounded controller/coverage/worker) and `8a7693738` (configuration consumer and
+replay integration). They remain unpublished until the normal series review
+and remote-tip/attribution checks complete. Broader generic bodies, buffer ranks
+and initializer expressions are documented future extensions; the remaining
+bounded stopping work is qualification, final case lists and publication.
+
+The original scalar-NaN custody hardening passed 137 canonical host tests and a
+26-case classification follow-up. Distinct scalar NaN metadata is refused by
+the affected word/memory models, dense-literal parsing is bounded before splat
+expansion, and resources remain unavailable rather than accepted. Root commit
+`4562eca8a` separately binds host-fusion checks/replay to exact original raw reads;
+its 40-case qualification contains 20 real SDK/native cases and 20 synthetic
+custody controls. These recorded cuts predate the new controller changes and
+must not be reported as fresh qualification of every current gate.
+
+## Earlier qualified checkpoints
+
 The [merge qualification](../../audits/ledger-review-20261029/merge-README.md)
 combines the host-fusion and ledger work with published memory-gate changes
 through `df8799c42`. Fresh merged-source evidence is separate from earlier cuts.
