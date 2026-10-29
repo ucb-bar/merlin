@@ -33,6 +33,7 @@ from merlin.perf import lowering_coverage as _LOWERING_COVERAGE
 
 from . import capsule_runner as CR
 from . import coverage_report as CV
+from . import outcome_class as _OUTCOME_CLASS
 from . import tier_integrity as _TIER_INTEGRITY
 from .capsule_common import NOT_MEASURED_STATUSES, host_guards_pass, lane_entry_fields, readback_kw, score_lanes
 from .capsule_common import tier_field as _tier_field
@@ -2215,7 +2216,12 @@ def grade(
             for k in ("contract_obligations", "tiers_unexercised"):
                 if r.get(k):
                     entry[k] = r[k]
+        # TRUE OUTCOME AND FAILURE CATEGORY, record-only (never read by any decision). Without it a
+        # host-compute veto or MUST_REFUSE_VIOLATED row showed only its L0/L1 "skipped" tier text.
+        entry.update(_OUTCOME_CLASS.outcome_fields(r, tiers))
         score["per_capsule"].append({**entry, **lane_entry_fields(r)})
+
+    score["outcome_summary"] = _OUTCOME_CLASS.summarize(score["per_capsule"])
 
     # active-vs-waiting rollup: wall is the suite wall-clock (overlapped under parallelism); the sum of
     # active_sim across capsules can exceed wall (that ratio IS the parallel speedup). oracle_wait_s is

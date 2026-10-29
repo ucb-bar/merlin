@@ -61,6 +61,11 @@ def _apply_score(group, score):
             "native_status": status, "tiers": row.get("tiers", {}), "numeric": row.get("numeric"),
             "reason": row.get("background_deferred") or row.get("failure_detail") or row.get("tier_reasons"),
         }
+        # Record-only: the true outcome and failure category, so a veto/refusal failure is not read as
+        # the L0/L1 tier_reasons text above. Absent on rows from a grader that predates the fields.
+        for key in ("outcome", "failure_category", "failure_plane", "failure_tier", "failure_stage"):
+            if row.get(key) is not None:
+                group["obligations"][name][key] = row[key]
     group["passed"] = (
         exact and _original_cohort_complete(score)
         and score.get("gradeable") is True
