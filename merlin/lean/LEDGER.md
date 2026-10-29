@@ -142,6 +142,22 @@ Only captured-uniform-seed initializer bodies are in this additive profile;
 computed initializer prefixes need a typed pure-execution bridge. Allocator,
 possible-success, typed-input and native/error review boundaries remain intact.
 
+The default-all memory composition adds
+`GraphLoopsShape.DeadConstants.checked_complete`, proved by recursive dead
+index-literal deletion over ordinary Code, unchanged partial actions/handlers
+and complete module call depths. Actual endpoints have independent validity,
+frame and SSA-renaming obligations. Both modes remain ordinary; no
+normalization-mode, allocator, source-success or local-simulation premise is
+introduced. Its relation equates successful complete return/world outcomes,
+without categorized-error or divergence equivalence. The actual compiler
+worker audits eight roots and 1,137 STD3 declarations. Installed default-all
+untiled and tiled-tail cases pass with exact BUFFER→DCE joins. Original live
+memory ownership binds native CSE input, pipeline, runner and whole-module
+capture; only raw unchanged CSE has zero jobs and zero proof credit. Changed
+memory CSE refuses. This supplies no canonicalization or LLVM/native proof.
+The private-buffer tile-size resource ceiling is now 65,536; actual signed
+index64 obligations and initializer/allocator domains are unchanged.
+
 Current outer-loop unrolling supports empty, full-inline and bulk-plus-tail
 forms, retaining arbitrary supported nested bodies with dynamic inner bounds
 and modeled external effects. Thirty distinct loop-lane tests passed across

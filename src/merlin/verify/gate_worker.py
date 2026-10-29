@@ -20,6 +20,7 @@ BUILTIN_CHECKS = (
     "tensor_refinement",
     "compiler_loop_refinement",
     "compiler_buffer_refinement",
+    "compiler_memory_dce_refinement",
     "compiler_macc_contract",
     "compiler_qdq_refinement",
     "compiler_configuration_refinement",
@@ -85,6 +86,35 @@ def _require_builtin_result(name, detail):
             or not 2 <= detail["fused_stages"] <= 128
         ):
             raise GateRejected("host fusion handler did not establish complete public-result preservation")
+        return
+    if name == "compiler_memory_dce_refinement":
+        from .compiler_memory_dce import DOMAIN, RELATION, ROOTS
+        from .gate_errors import GateRejected
+
+        if (
+            type(detail) is not dict
+            or detail.get("schema") != "merlin.compiler-memory-dce.gate.v1"
+            or detail.get("status") != "checked"
+            or detail.get("domain") != DOMAIN
+            or detail.get("relation") != RELATION
+            or detail.get("theorems") != list(ROOTS)
+            or detail.get("compiler_enforcement") is not True
+            or detail.get("ordinary_same_mode") is not True
+            or detail.get("normalization_mode_used") is not False
+            or detail.get("full_error_or_world_equivalence") is not False
+            or detail.get("native_fidelity_proved") is not False
+            or detail.get("allocator_policy_required") is not False
+            or detail.get("assurance") != "lean_kernel_std3_no_native_reflection"
+            or type(detail.get("axioms")) is not list
+            or not set(detail["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"}
+            or type(detail.get("entry_points")) is not list
+            or not detail["entry_points"]
+            or any(type(entry) is not str or not entry for entry in detail["entry_points"])
+            or len(set(detail["entry_points"])) != len(detail["entry_points"])
+            or type(detail.get("changed_sites")) is not int
+            or detail["changed_sites"] < 0
+        ):
+            raise GateRejected("memory DCE handler did not establish its exact complete graph outcome relation")
         return
     if name == "compiler_configuration_hoist_refinement":
         from .compiler_configuration_hoist_intake import DOMAINS, RELATION, WIDE_DOMAIN

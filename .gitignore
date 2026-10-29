@@ -490,3 +490,5 @@ merlin/tests/data/lit/.lit_test_times.txt
 !/out/artifacts/audits/ledger-review-20261029/README.md
 !/out/artifacts/audits/ledger-review-20261029/results.json
 !/out/artifacts/audits/ledger-review-20261029/projection-inventory.json
+!/out/artifacts/audits/ledger-review-20261029/merge-README.md
+!/out/artifacts/audits/ledger-review-20261029/merge-results.json

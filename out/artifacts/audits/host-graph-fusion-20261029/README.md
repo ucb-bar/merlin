@@ -183,8 +183,9 @@ failing whole-repository scan.
 
 The historical `test_lean_graph_regions.py` and
 `test_lean_graph_regions_source.py` capture suites were not run. Their fixed
-`/home/jeremy/Projects/merlin-graph-proof-intake` producer checkout and
-`/home/jeremy/Projects/model2MLIR/.venv/bin/python` oracle do not exist here.
+`/home/<user>/Projects/merlin-graph-proof-intake` producer checkout and
+`/home/<user>/Projects/model2MLIR/.venv/bin/python` oracle do not exist here
+(account directory redacted in this published summary).
 This qualification instead exercises the current branch's real host graph
 producer and installed compiler on both routes. It does not refresh those older
 pinned capture receipts. The native MLIR execution-engine helper library and

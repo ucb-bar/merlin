@@ -17,11 +17,23 @@ code_refs:
   - src/merlin/verify/lean/Merlin/HostGraphFusion.lean
   - src/merlin/verify/speculative_gate.py
   - src/merlin/llvmlower/lower.py
+  - src/merlin/llvmlower/pipeline.py
   - src/merlin/compile/command.py
   - merlin/tests/ir/test_compiler_formal_transforms.py
 ---
 
 # Lean verification through the compiler stack
+
+> Merlin validates actual compiler boundaries using checkers whose soundness is
+> proved in Lean. For supported loop and configuration transformations, the proofs
+> cover complete entries and preserve modeled outcomes and state, including
+> failures and surrounding effects. Validation is enforced at the compiler
+> boundary, and products are released only after all requested checks succeed.
+
+These claims use each gate's declared IR, input domain and semantic/effect
+contracts. Buffer reuse preserves possible successful public observations under
+its explicit allocator model. Q/DQ source-model and MACC numerical-policy approval
+remain separate from their checked compiler boundaries and component theorems.
 
 The [numerical contract review packet](../design/qdq_macc_numerical_contract_review.md)
 maps the new conditional Q/DQ definedness and initialized MACC component theorems
@@ -57,8 +69,10 @@ flowchart TD
   E --> F[Native leading CSE: tensor gate when selected]
   F --> T[Tensor route: bufferization and SCF/LLVM lowering]
   F --> M[Explicit memory route: direct SCF/memref lowering]
-  T --> G[LLVM/object generation]
-  M --> G
+  T --> L[LLVM dialect: still MLIR]
+  M --> L
+  L --> R[Translate to LLVM IR: model.ll]
+  R --> G[Object/shared-library generation]
   C -. exact captures .-> P[Owned Lean gate workers]
   D -. exact captures .-> P
   E -. exact captures .-> P
@@ -74,6 +88,21 @@ actual captured bytes. Compilation may proceed concurrently, but its products
 are returned only after the enclosing gate accepts. Failure quarantines emitted
 LLVM, object and shared-library products. Each job retains `request.json`,
 `verdict.json`, `worker.log` and its proof evidence.
+
+The directory name `llvmlower` includes both MLIR lowering and LLVM IR emission.
+Unrolling, ordered tiling, buffer normalization/reuse, DCE, Q/DQ lowering, MACC and
+the leading CSE operate on MLIR. xDSL is a Python implementation of that IR;
+the native C++ CSE is also an MLIR pass. Configuration proofs additionally use
+Merlin's scheduling `Kernel`/command IR at its actual consumers, including the
+controlled C emitter. None of these is an LLVM IR rewrite proof.
+
+The LLVM dialect (`llvm.func`, `llvm.load`, and related operations) is still
+MLIR. Translation produces actual LLVM IR (`model.ll`), followed by object or
+shared-library generation. The normal route translates in the runner; the
+OpenMP route retains an LLVM-dialect module and invokes
+`mlir-translate --mlir-to-llvmir`. Those downstream translations and LLVM
+optimizations are outside the current Lean pass-proof boundary. Comparing
+emitted `.ll` and executing native outputs provide finite regression evidence.
 
 | Registered check | Where it runs | Small example | Established relation |
 | --- | --- | --- | --- |
@@ -294,7 +323,8 @@ The equivalent options are
 This selection explicitly states the allocator model. Tiling is optional:
 `Options(buffer_allocator="total_private_unobservable")` checks the actual
 three-buffer normalization→reuse chain and delivers its untiled output. When
-requested, the private-buffer tile-size domain remains 2..16.
+requested, the private-buffer tile resource policy permits 2..65,536, with
+actual signed-index64 safety checked separately.
 It is separate from source unrolling.
 
 These inputs already own their `memref.alloc`/`memref.dealloc` lifetimes. The
@@ -304,6 +334,17 @@ inference on explicit frees. For an independent untransformed native baseline,
 `Options(memory_source=True)` selects that same lowering without requesting
 storage transformations. Explicit tensor features and vector/parallel schedules
 are refused on this route.
+
+Default `--validate-passes all` also works within these memory profiles. A
+separate ordinary-memory DCE checker validates actual dead index-constant
+deletions after BUFFER; its source must join the original selected memory
+epoch. Original live ownership also binds the actual native leading CSE pair,
+upstream module, pipeline and runner. Exact unchanged CSE has zero jobs and
+zero proof credit; changed memory CSE and missing/skip-only captures refuse.
+Both untiled and tile-size-32 tail cases pass actual default-`all` compiler
+qualification. The DCE relation equates complete successful returned-value
+and world outcomes, without an allocator or source-success premise; categorized
+errors and downstream canonicalization/native fidelity remain separate.
 
 The compiler retains three actual modules: original, shape-normalized and reused.
 A fourth segmented module is captured only when tiling is requested.

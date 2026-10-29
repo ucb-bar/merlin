@@ -23,6 +23,13 @@ class SingleDecoder(Decoder):
     def define(self, values, context, *, known=None):
         return self.bind(values, values, {}, context, known=known)
 
+    def check_loop_controls(self, operands):
+        if (
+            any(row["kind"] != dict(tag="index") or row["known"] is None for row in operands[:3])
+            or operands[2]["known"] <= 0
+        ):
+            raise ValueError("ordinary SCF requires static controls and positive stride")
+
     def ordinary_block(self, block, context, *, terminal):
         if not block["operations"]:
             raise ValueError("complete ordinary block requires a terminator")
@@ -94,11 +101,7 @@ class SingleDecoder(Decoder):
             elif op["regions"]:
                 if name != "scf.for" or op["attributes"] or op["properties"] or len(operands) < 3:
                     raise ValueError("ordinary region outside the single-body SCF subset")
-                if (
-                    any(row["kind"] != dict(tag="index") or row["known"] is None for row in operands[:3])
-                    or operands[2]["known"] <= 0
-                ):
-                    raise ValueError("ordinary SCF requires static controls and positive stride")
+                self.check_loop_controls(operands)
                 body = _one_block(op)
                 if _types(body["arguments"]) != ["index", *_types(op["results"])]:
                     raise ValueError("ordinary SCF induction/carry signature differs")

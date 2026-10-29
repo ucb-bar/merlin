@@ -182,3 +182,9 @@ def compiler_host_graph_fusion(job: dict[str, Any]) -> dict[str, Any]:
     from .compiler_host_graph_fusion import check
 
     return check(job)
+
+
+def compiler_memory_dce_refinement(job: dict[str, Any]) -> dict[str, Any]:
+    from .compiler_memory_dce import check
+
+    return check(job)

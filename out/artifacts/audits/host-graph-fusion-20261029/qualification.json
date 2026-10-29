@@ -562,9 +562,10 @@
   },
   "schema": "merlin.host-graph-fusion.qualification.v1",
   "scope_exclusions": {
+    "legacy_graph_capture_paths_account_redacted": true,
     "legacy_graph_capture_prerequisites": {
-      "/home/jeremy/Projects/merlin-graph-proof-intake": false,
-      "/home/jeremy/Projects/model2MLIR/.venv/bin/python": false
+      "/home/<user>/Projects/merlin-graph-proof-intake": false,
+      "/home/<user>/Projects/model2MLIR/.venv/bin/python": false
     },
     "release_wheel_qualification": "not performed",
     "remaining_representative_corpus_cases": "not run; broad DCE/CSE sweep interrupted"

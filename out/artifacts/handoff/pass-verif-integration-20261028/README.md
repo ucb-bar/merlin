@@ -1,5 +1,9 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
+The [merge qualification](../../audits/ledger-review-20261029/merge-README.md)
+combines the host-fusion and ledger work with published memory-gate changes
+through `df8799c42`. Fresh merged-source evidence is separate from earlier cuts.
+
 The [ledger review](../../audits/ledger-review-20261029/README.md) resolves the
 injectivity overclaim with an additive theorem covering noninjective conversions,
 adds T7/A10 citations, reconciles F12 and dispatcher status, and corrects obsolete
@@ -32,8 +36,9 @@ audit checks 4,272 theorems with no violations; all 235 existing pins match.
 Work on **`feat/pass-verif-integration`**. Latest implementation commits are
 `5f9fb92de` (rank-one complete-entry bridges), `ef46cc269` (retained deeper loop
 bodies) and `91661f328` (original C64 consumer and wide-count hoisting). Remote
-publication and both GitHub identities are verified through `4d28efe5c`,
-including the rank-one feature.
+publication and both GitHub identities are verified through `85dc14726`,
+including complete rank-one qualification documentation. Incoming numerical
+changes were fast-forwarded through `c95fb1012`, preserving colleague authorship.
 Earlier proof records retain their own source cuts.
 
 All ten pass families have compiler selectors within their declared profiles.
@@ -46,8 +51,8 @@ MLIR/LLVM/executable/hardware fidelity separate.
 | Pass family | Integrated behavior and retained evidence | Main scope boundary |
 | --- | --- | --- |
 | Host graph fusion | Actual helper/call/public-output projection, fresh complete-entry proof, canonical gate on both routes, replay, mutations and native references | One fused region of static pure integer pointwise stages; typed total pure-action model and successful unobservable logical allocation |
-| Tensor DCE | Existing typed strict-refinement gate, source support and chain composition | Supported pure tensor operations and declared input types |
-| CSE | Existing leading compiler CSE gate with the same typed relation | Tensor checker support; independent downstream lowering |
+| DCE | Typed tensor refinement; separate ordinary-memory dead-index-constant gate qualified in actual default-all routes | Memory relation equates successful complete return/world outcomes; no categorized-error or downstream fidelity proof |
+| CSE | Leading tensor gate; original live memory route binds authentic unchanged native CSE with zero jobs/credit | Changed memory CSE refuses; downstream lowering remains independent |
 | Unrolling | Empty/inline/bulk/tail, siblings, full lexical contexts and explicit inner depths through dynamic ancestors; 20 actual cases, 18 API controls and public native checks | Actual source strides remain known positive; scalar/SCF/resource admission remains |
 | Ordered tiling | Explicit inner depth, partial effects and short tails; independent public TILE and combined UNROLL→TILE one-worker/native controls pass with exact middle/final joins | Static selected index64 controls and supported scalar/SCF contexts |
 | Buffer reuse | Actual three-buffer untiled or four-buffer tiled chain; direct check, fresh-process replay and ordinary compiler passed; 2,372 audited declarations, eight finite native observations | Rank-two i8/i16/i32/i64 profile, possible-success relation, explicit total/private/unobservable allocator |
@@ -197,25 +202,36 @@ Further current-cut evidence and interface findings:
   extent3 untiled case and raw-only fresh-process replay also pass. The completed
   33-case cohort and final independent audit supersede this initial checkpoint.
 - `out/build/validator-alignment-20261029/default-all-memory-composition-audit-v1.json`
-  records a reproducible integration gap: default `all` submits the later changed
+  records the initial integration gap: default `all` submitted the later changed
   memory DCE stage to a tensor-only checker and rejects skip-only memory CSE.
   Exactly one unused `%dim0 = arith.constant 3 : index` is deleted on both routes.
-  Explicit BUFFER[/TILE] subsets remain the compiler interface within the
-  qualified buffer profiles, now including rank-one captured uniform seeds.
-- `out/build/default-all-memory-20261029/COMPONENT-PLAN.md` and its staged math/
-  host files describe the actual fix: a same-mode dead-index-constant proof over
+- `out/build/default-all-memory-20261029/installed-qualification-v3/` closes
+  that delivery gap within the admitted memory profiles. Both untiled extent3
+  and tiled32 extent257 tail cases pass in 1,207.78 seconds, with four accepted
+  workers, 24 native kernel observations and six executed untouched-entry checks.
+  Each BUFFER worker audits 250 roots/2,545 STD3 theorems; each following memory
+  DCE worker audits eight roots/1,137 STD3 theorems. These are per-worker counts,
+  not unique-theorem totals. The independently reviewed source/product joins
+  bind authentic unchanged CSE with zero jobs and zero proof credit. Actual
+  changed memory CSE, missing/skip-only records and forged owners still refuse.
+  The installed fix uses a same-mode dead-index-constant proof over
   complete ordinary entries, exact independent target/frame/SSA joins, and an
-  original-memory CSE scope observing actual identity without new proof/credit.
-  Production is unchanged. The plan-parametric recursive library and seven
-  finite theorem probes compile in exploratory SDK preflight; nine host
-  predictions include typed dynamic controls, retained casts/dimensions,
-  preserved nested literals and actual target mutations. The first actual
-  query's default recursion-budget exhaustion is retained as Unavailable, not
-  a proof refusal. Closed actual-pair gates, full fresh canonical closure,
-  default-all delivery and replay remain pending. The original-memory scope
-  passes 42 fake-native host protocol controls, independently reviewed;
-  actual native capture qualification remains pending. The earlier proposal to require a fresh CSE identity proof
-  was corrected against the existing no-op policy.
+  original live memory-CSE scope. It equates successful complete return/world
+  outcomes, not categorized errors, divergence or native fidelity. The earlier
+  exploratory preflight, native property-dictionary-order refusal and missing
+  incoming checker artifacts remain separate retained attempts; the latter was
+  repaired by rebuilding the current checker, without changing sources or flags.
+  Current property-order/ownership host controls pass all 46 cases. Private
+  buffer tiles now permit 2..65,536 with unchanged signed-index64 safety checks.
+  Implementation commits are `d1c018532` (generic rule and actual endpoint
+  obligations) and `1b158739a` (compiler enforcement/ownership); the practical
+  tile policy is `d2b7c977b`. Each recorded run retains its exact source cut.
+  Six later Python formatting changes have independently checked identical
+  executable ASTs; the default-all test additionally fixes only its stale
+  module description. The formatted successor passes all 76 memory host cases.
+  Separate-process direct DCE delivery/replay passed in 230.12 seconds on the
+  pre-format cut, including ignored forged approval fields and copied-token
+  refusal; fresh reports remain evidence, never saved delivery authority.
 - `out/build/buffer-rank-one-20261029/pure-prefix/` records fourteen actual host
   forms and an additive typed-prefix execution proposal. Three concrete foundation
   files remain uncompiled. They preserve the existing false-pure specialization;

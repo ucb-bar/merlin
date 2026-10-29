@@ -1335,6 +1335,7 @@ def _select_runner(
 
     source = bind_automatic_host_runner(source, features=feats)
     from .adjacent_exp import bind_runner as bind_exact_exp_runner
+
     source = bind_exact_exp_runner(source, features=feats)
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)
     # Every variant runs elementwise fusion under the broadcast control function (fusion_guard).
@@ -1712,7 +1713,7 @@ def lower_to_llvm_ir(
         runner_src = shared_pass_native.bind_runner(runner_src, timeout=timeout)
     from .leading_cse import bind_runner as _record_leading_cse
 
-    runner_src = _record_leading_cse(runner_src, work)
+    runner_src = _record_leading_cse(runner_src, work, pipeline=pipeline, upstream=(src, mlir_text))
     if borrowed_buffer_calls is not None:
         from .borrowed_buffer_calls import prepare_native
 
@@ -1901,7 +1902,11 @@ def lower_to_llvm_ir(
         scalar_carrier=source_scalar_carrier,
         native_verification=shared_pass_native,
     )
-    if proc.returncode != 0 or not stage_out.is_file() or (shared_pass_native is not None and not stage_out.stat().st_size):
+    if (
+        proc.returncode != 0
+        or not stage_out.is_file()
+        or (shared_pass_native is not None and not stage_out.stat().st_size)
+    ):
         error = PipelineError(
             f"upstream lowering failed (returncode={proc.returncode}, "
             f"output_exists={stage_out.is_file()}):\n{proc.stdout}\n{proc.stderr}"

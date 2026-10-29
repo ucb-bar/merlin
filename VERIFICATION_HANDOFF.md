@@ -1,5 +1,10 @@
 # Current compiler verification checkpoint — 2026-10-29
 
+The [merge qualification](out/artifacts/audits/ledger-review-20261029/merge-README.md)
+combines the ledger/fusion corrections with Graham's published memory-gate
+changes through `df8799c42`. Its evidence binds the combined sources; the older
+records below retain their original source cuts.
+
 The [ledger review](out/artifacts/audits/ledger-review-20261029/README.md) corrects
 the numerical and projection assumptions without changing frozen statements or
 approvals. An additive MACC fusion theorem now works for noninjective extensions;
@@ -36,6 +41,18 @@ committed in `ef46cc269`; explicit C64 wide-count hoisting is `91661f328`.
 Ten families have scoped compiler selectors. Five belong to `all`; proposed
 Q/DQ, draft MACC, ISA-specific configuration and host graph gates remain explicit.
 
+Default `all` now composes the actual private-memory route through later DCE
+and an authentic unchanged native CSE observation. Installed untiled and
+tile-size-32 tail cases both pass: four accepted workers, 24 finite native
+kernel observations and six untouched-entry checks. The memory DCE theorem
+equates complete successful returned-value/world relations; it adds no
+categorized-error, allocator or downstream fidelity proof. Unchanged CSE
+submits zero jobs and receives zero proof credit; changed memory CSE refuses.
+Private-buffer tile resource policy now permits sizes through 65,536 while
+retaining signed-index64 safety checks. Evidence and earlier safe refusals are
+under `out/build/default-all-memory-20261029/`; the completed compiler run is
+`installed-qualification-v3/`.
+
 Selected inner-depth unrolling and tiling now preserve supported deeper bodies.
 An actual depth-two unroll→tile gate preserves a dynamic depth-three body;
 compiled boundary/wrap cases, fresh independent-process replay and two genuine
@@ -67,7 +84,9 @@ Start at the [current evidence and remaining work](out/artifacts/handoff/pass-ve
 [stack/interfaces/examples](docs/guides/lean_compiler_stack.md),
 [completion scope](docs/design/lean_pass_integration_completion.md) and
 [assumption ledger](merlin/lean/LEDGER.md). Remote publication and both GitHub
-identities were verified through `4d28efe5c`, including the rank-one feature.
+identities were verified through `85dc14726`, including complete rank-one
+qualification documentation. Colleague numerical changes were fast-forwarded
+through merge `c95fb1012`, preserving Jeremy Mills's authorship.
 Earlier evidence retains its
 recorded source cut; changing bound sources requires a fresh check.
 

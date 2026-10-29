@@ -284,6 +284,29 @@ def submit(pass_name: str, before: str, after: str, *, label: str | None = None)
     validation = _ACTIVE.get()
     if validation is None or pass_name not in validation.passes or before == after:
         return False
+    if pass_name == "prune_dead_pure_tensor_ops":
+        from .compiler_memory_origin import current as memory_origin
+
+        original = memory_origin()
+        if original is not None:
+            from .compiler_memory_dce import CHECK
+
+            original.validate_dce_before(before)
+            if original.validation is not validation:
+                raise ValueError("memory DCE observation differs from its original compiler owner")
+            require_canonical_handler(validation, CHECK)
+            validation.gate.submit(
+                CHECK,
+                before=before,
+                after=after,
+                params={
+                    "schema": "merlin.compiler-memory-dce.job.v1",
+                    "sdk_bin": str(validation.tools.sdk_bin),
+                    "index_bits": validation.index_bits,
+                },
+                label=label or pass_name,
+            )
+            return True
     require_canonical_handler(validation, CHECKS[pass_name])
     params = {
         "sdk_bin": str(validation.tools.sdk_bin),

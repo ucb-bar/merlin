@@ -1,0 +1,347 @@
+{
+  "baseline_checks": {
+    "all_cited_sources_unchanged_from_prior_qualification": true,
+    "dependency_findings": 2,
+    "pipeline_matches_remote": true,
+    "staged_import_order": "pipeline.py matches published remote byte-for-byte; pre-existing import ordering fails the staged formatter against local parent",
+    "structure_findings": 16
+  },
+  "compatibility_fix": {
+    "change": "Explicit empty AST fields on Python 3.13+; original fingerprint unchanged",
+    "checked_python_versions": [
+      "3.12.3",
+      "3.14.4"
+    ],
+    "file": "merlin/tests/ir/test_compiler_memory_origin.py",
+    "preserved_ast_sha256": "a3c28874d2a2d50563279c1c9ebee9b7e0d0ec44a01c1487148e19f65098414c"
+  },
+  "frozen_file_guard": "passed",
+  "integration_status": "targeted_merge_qualification_complete_broad_run_interrupted",
+  "integration_tests": [
+    "test_compiler_host_graph_fusion.py",
+    "test_compiler_memory_dce.py",
+    "test_compiler_memory_origin.py",
+    "test_compiler_default_memory.py",
+    "test_private_buffer_tile_policy.py",
+    "test_compiler_formal_transforms.py",
+    "test_host_graph_optimizations.py",
+    "test_host_graph_policy.py"
+  ],
+  "interrupted_broad_run_plan": "Stop after completed untiled default-all native case; do not claim tiled default-all or legacy loop/native corpus rerun.",
+  "ledger_sha256": "a4df634d3201ae389ea6829ae7244ef79fd4dd53b699194b94d00b08a0161cd8",
+  "local_parent": "8c8c1e5dd4b624e523f2dc5f5399a234f5b4b7d2",
+  "logs": {
+    "compatibility.log": "a37ca6eb787c76f5363ba011e368331340aa6fb32f7f52a29dd5fd3b330198ef",
+    "core-dependencies.log": "8822a10b30abccf8d197683cdadd162241b11c3506153b58864d2bb8ec830bea",
+    "host-fusion-refresh.log": "39cc068ab6fe538ca8465bc5cebc5b4316d18c698c8ec9adea524590d1156599",
+    "macc-refresh.log": "fdb6d76a311fbedb1b120076d7444f6f7b0103e52f869f837ddc784d98647691",
+    "memory-origin-diagnostic.log": "a068b91a780624f9901cc15026965ee1d26624603bb51923d5b97a4f861d55da",
+    "memory-origin-fixed.log": "9d2dcadcb23c85c04a02253e79a92ea6f5016e6f3d1429c3c9fffd63018665a4",
+    "qdq-refresh.log": "d780b96a95f25d102932eb762f18451f85b27cd827774a0490a8b2ec8288ed2b",
+    "structure.log": "0397169f0c1766627120248a410271fba65b8bead51505351b7aded2f2be07aa"
+  },
+  "not_rerun": [
+    "tiled default-all memory case",
+    "remaining legacy loop/native corpus"
+  ],
+  "path_basis": "repository-relative paths in curated summary; retained raw evidence uses original paths",
+  "published_summary_redaction": "Account directory redacted in two historical missing-tool paths; raw evidence unchanged.",
+  "qdq": {
+    "generate": {
+      "dequantize_channel-textual": {
+        "after_sha256": "80efb3c3ace91e5eaf87eb7c557772c8fa9aa6c8d675f88743bdebd2d004a533",
+        "before_sha256": "ba6e93ad0fbaaf9141786266f80fde88a6e66da9c15d8225573af4021d6e5515",
+        "boundary": "preprocess_text_textual.dequant_to_generic",
+        "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "verified",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "7cb700c4e50f7d52756881426c252985b20296310d8772b8899e1e5c36b56f03",
+        "textual_stats": {
+          "c_interface_funcs": 1,
+          "dequantize_lowered": 1,
+          "quant_ext_lowered": 0
+        },
+        "typed_receipt_sha256": "5b30e62ff5d4954da5001eb5c19164e1fc660896aa44b90b59bc9a6890c7963d",
+        "verdict": "verified"
+      },
+      "dequantize_channel-xdsl": {
+        "after_sha256": "fca6a7a5028c1851a61bd85cee08cc33234ba548a5926a47a159fa912cb8b3ee",
+        "before_sha256": "e824f9c9197d564f721bae815c4694a43c2f5399dea5ac05d2a19aa88ad7e947",
+        "boundary": "lower_quant_ext",
+        "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "verified",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "348664bc292b9cb3fb3abdba7d501b25ddad0e1cd90c2125796165d9fe3875ea",
+        "textual_stats": null,
+        "typed_receipt_sha256": "d255f1711b6558f58079a05990e944b21a41dc8c8d032352692cd15f51b4ccbd",
+        "verdict": "verified"
+      },
+      "dequantize_tensor-textual": {
+        "after_sha256": "bfee0bd9a9f2bd01c3fade7f05a7e78bf437a1c2c768a15c596955a456d2fd05",
+        "before_sha256": "284943559dc7666c2ef0f5fabc17605f0be164e1c2eef11216776bf18755b555",
+        "boundary": "lower_quant_ext",
+        "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "verified",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "531e2f1ce0cd32dc9a0cceb572e1d558f97a70516de69ada785dbd4d44b59138",
+        "textual_stats": {
+          "c_interface_funcs": 1,
+          "dequantize_lowered": 0,
+          "quant_ext_lowered": 1
+        },
+        "typed_receipt_sha256": "47a49fb760b37e2c6b1c062b907dc2141fb15c90f242adc29536b4ff9a2bf619",
+        "verdict": "verified"
+      },
+      "dequantize_tensor-xdsl": {
+        "after_sha256": "08a7d58efb173634884e99634bef0dd2d0ed3dcdaa553eb81ff1b972bd08e2c8",
+        "before_sha256": "e640bfcd7db33cbf786ba2467c25141b23caeb622dcc29d61a9e80c32a0efac5",
+        "boundary": "lower_quant_ext",
+        "claim": "strict refinement on inputs of the declared types; defined on typed, nonpoison inputs (no UB or poison)",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "verified",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "3d77f64a2fc7fdcf5b654b9a63cb9b4a5659a74e4a408464a91dbd9b8c57cbcb",
+        "textual_stats": null,
+        "typed_receipt_sha256": "e0eab795b9025c3603b4028f68bda8a7f2ffe786a63d9d359cd5351baf09e638",
+        "verdict": "verified"
+      },
+      "quantize-textual": {
+        "after_sha256": "a9c64d2ad56fabb350f419821a31f94f52f91e51cf3847a1825f7539c250377b",
+        "before_sha256": "8f424a2f28595c951b7555939fa81a3d2ab0d6d88b5a9e069860808ad26c2cbd",
+        "boundary": "lower_quant_ext",
+        "claim": "strict refinement on inputs of the declared types; definedness not established",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "abstracted",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "7510f25d57ecb3039d4d3a849f4b87249da0abd5b8aeec5f0c1ea201d481ee4f",
+        "textual_stats": {
+          "c_interface_funcs": 1,
+          "dequantize_lowered": 0,
+          "quant_ext_lowered": 1
+        },
+        "typed_receipt_sha256": "88c6871a5413402b4037b276019c67e5379f962b53a2d76d9ee8e77ee0f48c04",
+        "verdict": "abstracted"
+      },
+      "quantize-xdsl": {
+        "after_sha256": "5d1c23fca776b38cb29dfe5f2d24da15664e2636557654eef07681470291708d",
+        "before_sha256": "5722f4b9dab2a4b10b2b4ffafd3657624a5d901d0cb791211b3af4e4f14df00e",
+        "boundary": "lower_quant_ext",
+        "claim": "strict refinement on inputs of the declared types; definedness not established",
+        "refinement_verdict": "verified",
+        "strengthenings": {
+          "definedness": "abstracted",
+          "universal_boundary": "verified"
+        },
+        "support_receipt_sha256": "4450426dabc277a8542f4804c3e3bd0f058488e37b1cb75c5ada8dbe74750275",
+        "textual_stats": null,
+        "typed_receipt_sha256": "366e05331c0d6b615e2252fac6a721b10fbbdac17dafd2bfe0c970acb44f7727",
+        "verdict": "abstracted"
+      }
+    },
+    "mutate": {
+      "after_sha256": "b4fac9e990bfc39c4c9ac70c602f95c6db2247380d736c541becbb84a48e3f3f",
+      "before_sha256": "5722f4b9dab2a4b10b2b4ffafd3657624a5d901d0cb791211b3af4e4f14df00e",
+      "reason": "MerlinVerify.Check.TypedModule.check_sound did not verify the pass: a function body did not verify",
+      "receipt_sha256": "0ebf438b340496e02a8137c7d6bcdfcdef859c73334f4b4f5a455970e234e67c",
+      "verdict": "rejected"
+    },
+    "replay": {
+      "dequantize_channel-textual": {
+        "after_sha256": "80efb3c3ace91e5eaf87eb7c557772c8fa9aa6c8d675f88743bdebd2d004a533",
+        "before_sha256": "ba6e93ad0fbaaf9141786266f80fde88a6e66da9c15d8225573af4021d6e5515",
+        "reason": null,
+        "refinement_verdict": "verified",
+        "verdict": "verified"
+      },
+      "dequantize_channel-xdsl": {
+        "after_sha256": "fca6a7a5028c1851a61bd85cee08cc33234ba548a5926a47a159fa912cb8b3ee",
+        "before_sha256": "e824f9c9197d564f721bae815c4694a43c2f5399dea5ac05d2a19aa88ad7e947",
+        "reason": null,
+        "refinement_verdict": "verified",
+        "verdict": "verified"
+      },
+      "dequantize_tensor-textual": {
+        "after_sha256": "bfee0bd9a9f2bd01c3fade7f05a7e78bf437a1c2c768a15c596955a456d2fd05",
+        "before_sha256": "284943559dc7666c2ef0f5fabc17605f0be164e1c2eef11216776bf18755b555",
+        "reason": null,
+        "refinement_verdict": "verified",
+        "verdict": "verified"
+      },
+      "dequantize_tensor-xdsl": {
+        "after_sha256": "08a7d58efb173634884e99634bef0dd2d0ed3dcdaa553eb81ff1b972bd08e2c8",
+        "before_sha256": "e640bfcd7db33cbf786ba2467c25141b23caeb622dcc29d61a9e80c32a0efac5",
+        "reason": null,
+        "refinement_verdict": "verified",
+        "verdict": "verified"
+      },
+      "quantize-textual": {
+        "after_sha256": "a9c64d2ad56fabb350f419821a31f94f52f91e51cf3847a1825f7539c250377b",
+        "before_sha256": "8f424a2f28595c951b7555939fa81a3d2ab0d6d88b5a9e069860808ad26c2cbd",
+        "reason": "source definedness: no source-definedness receipt was provided; NotStuck permits UB and poison",
+        "refinement_verdict": "verified",
+        "verdict": "abstracted"
+      },
+      "quantize-xdsl": {
+        "after_sha256": "5d1c23fca776b38cb29dfe5f2d24da15664e2636557654eef07681470291708d",
+        "before_sha256": "5722f4b9dab2a4b10b2b4ffafd3657624a5d901d0cb791211b3af4e4f14df00e",
+        "reason": "source definedness: no source-definedness receipt was provided; NotStuck permits UB and poison",
+        "refinement_verdict": "verified",
+        "verdict": "abstracted"
+      }
+    }
+  },
+  "receipts": [
+    {
+      "file_references_checked": 616,
+      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/macc-bf16/proof/draft-boundary.json",
+      "sha256": "8a273ebc27c596a249bafbea97ffbc061708769fcf62d464e68463f25ef0f6d8",
+      "source_references": 928
+    },
+    {
+      "file_references_checked": 616,
+      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/macc-bf16/replay/draft-boundary.json",
+      "sha256": "f32a26377d2cbe684ac07a87530bc303a9fb8d02baa316367694431fada39702",
+      "source_references": 928
+    },
+    {
+      "file_references_checked": 616,
+      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/macc-f16/proof/draft-boundary.json",
+      "sha256": "063dbebc63f12b7a0de1c3482639b42fa750563ba31b7ad9d4075558a8cdbd94",
+      "source_references": 928
+    },
+    {
+      "file_references_checked": 616,
+      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/macc-f16/replay/draft-boundary.json",
+      "sha256": "95d5136cf8c7e3852a707bb2292c0958a97b022a58fe87bca640ec93173da726",
+      "source_references": 928
+    },
+    {
+      "file_references_checked": 1178,
+      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/host-fusion-0/REPORT.json",
+      "sha256": "2c686b9743068d670ba08b69a3ed9c7d04dc3be77d190129c0cbf6da61999250",
+      "source_references": 474
+    },
+    {
+      "file_references_checked": 1178,
+      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/host-fusion-1/REPORT.json",
+      "sha256": "14001878f0823274b5a0f324589817435ad8ea4c624a75b7a6bcaceb6951e253",
+      "source_references": 474
+    }
+  ],
+  "remote_parent": "df8799c42b71aa70b49e39e7f9b8510e5b367388",
+  "runs": {
+    "compatibility": {
+      "errors": "0",
+      "failures": "0",
+      "failures_detail": [],
+      "hostname": "jmills-framework",
+      "log_sha256": "a37ca6eb787c76f5363ba011e368331340aa6fb32f7f52a29dd5fd3b330198ef",
+      "name": "pytest",
+      "skipped": "0",
+      "skips": [],
+      "tests": "97",
+      "time": "1.979",
+      "timestamp": "2026-10-29T14:03:09.224536-07:00",
+      "xml_sha256": "1f98307b6ae2818630f2e4b170eb6ce6f6a772f38ac89cfae55ab387e4c9274c"
+    },
+    "integration": {
+      "errors": "0",
+      "failures": "1",
+      "failures_detail": [
+        {
+          "message": "AssertionError: assert '73c8bdf45de2...cb290e7b3638b' == 'a3c28874d2a2...e19f65098414c'\n  \n  - a3c28874d2a2d50563279c1c9ebee9b7e0d0ec44a01c1487148e19f65098414c\n  + 73c8bdf45de20e9e53965d77699e4291ef0c4d7cfc25a356edacb290e7b3638b",
+          "test": "merlin.tests.ir.test_compiler_memory_origin::test_diagnostic_apply_body_and_unselected_runner_stay_legacy"
+        }
+      ],
+      "hostname": "jmills-framework",
+      "interrupt_teardown_error": "pytest tmp_path stash KeyError after intentional SIGINT; retained in the raw log",
+      "interrupted": true,
+      "log_sha256": "e423182e2025a6282f9db6ed036b0452c8142d93d805a95b4135f4c15ed7b3c9",
+      "name": "pytest",
+      "skipped": "0",
+      "skips": [],
+      "tests": "82",
+      "time": "553.514",
+      "timestamp": "2026-10-29T13:57:17.932554-07:00",
+      "xml_sha256": "bee1c9e619365fc9da0f13ab3b42fa62028c7108fc8ca3f8e92cd76a5ad06f33"
+    },
+    "memory-origin-fixed": {
+      "errors": "0",
+      "failures": "0",
+      "failures_detail": [],
+      "hostname": "jmills-framework",
+      "log_sha256": "9d2dcadcb23c85c04a02253e79a92ea6f5016e6f3d1429c3c9fffd63018665a4",
+      "name": "pytest",
+      "skipped": "0",
+      "skips": [],
+      "tests": "46",
+      "time": "4.455",
+      "timestamp": "2026-10-29T14:02:22.857859-07:00",
+      "xml_sha256": "54115e3173b6a399e8d73cb509ffa008129045afcbb686c64b2720a6eb9f0aea"
+    }
+  },
+  "schema": "merlin.ledger-merge-review.v1",
+  "sources": {
+    ".gitignore": "34599b6fdfd8bdad9248abd56365d422eccf7403397e15eafe407430b19e1b0d",
+    "VERIFICATION_HANDOFF.md": "c1d2a64a807cd57d5df5d97ff0b4e44e06067791e9cd2ae16f1f609ee0475c70",
+    "docs/design/lean_pass_integration_completion.md": "806becc2c37da26380b9c8790c39ce62f5085bff817a3b8166125bc2f126d336",
+    "docs/design/merlin_lean_verification.md": "c48287c9c18965db1a823d978c441b3fb76d721d697b424eeb2d43e2fb02027f",
+    "docs/design/qdq_macc_numerical_contract_review.md": "08ab0a9c5ff7c923b14097beedc2c49e28e75f83b77c8a22f75a7bc1f79f3911",
+    "docs/guides/lean_compiler_stack.md": "0e918e6c1bd10d8eadc3c8748adc6b812d04198f57341aaddbcffe09ee7ea89c",
+    "merlin/lean/LEDGER.md": "a4df634d3201ae389ea6829ae7244ef79fd4dd53b699194b94d00b08a0161cd8",
+    "merlin/lean/MerlinVerify/Driver/Bf16F32Acc.lean": "d5e7fc55fd18fb5acc4f52d1ebadee9672f80d3e7045eb6b1ccfd71e292511e0",
+    "merlin/lean/MerlinVerify/Rules/Bf16F32AccFusion.lean": "97653789b49bd6bc626c3ac89646bb98e470256c361647784a90c357cfd01e88",
+    "merlin/lean/findings.md": "0f394ee2525fcc9bcfa7ae94bcc0c3894966cdc1ec74dbc66f73764537cb4aff",
+    "merlin/tests/ir/host_graph_fusion_cases.py": "e82dbb8f204e609c0a78e37803b13ca04b87797dab39729050c4e9d1178dc147",
+    "merlin/tests/ir/test_compiler_host_graph_fusion.py": "d6c3081a98db6e346f3e9a4c48eba24474916cb6b04dc3f99b308046426adc57",
+    "merlin/tests/ir/test_compiler_memory_origin.py": "7a5867876eeb15e35164374a5e9bb1ec99b8d906c71122922fa36c10c81ded41",
+    "merlin/tests/ir/test_host_graph_optimizations.py": "018cf59eacc5c3b89ef881a09e1b484304ff1a18d92e106e45db004892e95928",
+    "merlin/tests/ir/test_host_graph_policy.py": "cfe441b62bad6fe72ed4812082df63fbfa3f8fae3fc9808fcce383bfc7ca2a8c",
+    "merlin/tests/ir/test_lean_bf16_f32acc.py": "8c4018c072477d361095e0b39339b191bb5168f399ff48ae4e0249b3bdeba9f7",
+    "merlin/tests/ir/test_lean_numerical_domains.py": "6397b95980622068f2d2a57ed88a9b07c81683b460df30f6d274eb85dad54925",
+    "merlin/tests/ir/test_lean_w8a8_dequant_width.py": "607b25d9535dff78ddac680870294c13c54869db2f277469161ad0d118daab71",
+    "src/merlin/llvmlower/graph_optimizations.py": "f624204db1581aec4ce756c57e538d593f679b543cae41ad8ea1d25981650d3d",
+    "src/merlin/verify/compiler_host_graph_fusion.py": "e6103be46804dea9c2994b8ffd01e5213d6d136a64ba17bba12b053f8edfe095",
+    "src/merlin/verify/gate_checks.py": "efb598aac7b6c52868c3e8562f6f4b1952e732bf6eccf4b2a003a06e1c65a1a9",
+    "src/merlin/verify/gate_worker.py": "cfc31f9181ea25c607efd9ddf526ff96d98d36336ba4b94022fdd7d46926f45a",
+    "src/merlin/verify/host_graph_fusion_intake.py": "d68127ddb8b3b1c02b94829bb8814a5718d3d06476b01819ed43f7ef66ed8380",
+    "src/merlin/verify/host_graph_fusion_projection.py": "a78f753112acf4dc8e77a6e7f342fa0f705478e6efde208196a641085b4a3651",
+    "src/merlin/verify/lean/Merlin/HostGraphFusion.lean": "49eb779117356e0755f03897a28e042628ad850ad10d3826a8af478cd2da1f95",
+    "src/merlin/verify/lean/bf16_f32acc.py": "7e2fbec2292931d568e85c14c81d12b9ca5d42b49069fe161a57171739f858f1",
+    "src/merlin/verify/pass_validation.py": "ac3a86320210d7703b09e7c51f2c14dcd9cf62dc6048919beec2fc24a1c659d7"
+  },
+  "unique_completed_cases_after_corrected_followup": 179,
+  "unresolved_test_failures": [],
+  "untiled_native": {
+    "observations": 12,
+    "observations_path": "out/build/push-merge-20261029/integration/test_actual_default_all_memory0/NATIVE-OBSERVATIONS.json",
+    "observations_sha256": "7b7c277a64a83faa543190b5b45da96cf104c28baa9163a5bae7b052f862c977",
+    "worker_verdicts": [
+      {
+        "job": "0001-buffer-reuse",
+        "path": "out/build/push-merge-20261029/integration/test_actual_default_all_memory0/worker/0001-buffer-reuse/verdict.json",
+        "sha256": "3e2accf89cc79287aa53696c0da24d19ef833be241ac6cde2e90820060b6995a",
+        "verdict": "accepted"
+      },
+      {
+        "job": "0002-prune-dead-pure-tensor-ops",
+        "path": "out/build/push-merge-20261029/integration/test_actual_default_all_memory0/worker/0002-prune-dead-pure-tensor-ops/verdict.json",
+        "sha256": "1ebe05e02bddee4395e0c0cd3935c5ad09e9c272e9631e78a543a2b77f533866",
+        "verdict": "accepted"
+      }
+    ]
+  }
+}
