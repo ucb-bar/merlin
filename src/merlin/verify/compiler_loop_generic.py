@@ -30,7 +30,14 @@ MODULE = "CompilerGenericLoopQuery"
 ROOT = "Merlin.GraphStatePipelineInstance.complete"
 ADJACENT = "Merlin.GraphStatePipelineInstance.complete2"
 UNROLL = "ordered_loop_unrolling"
+TILE = "ordered_loop_segmentation"
 _LIVE = weakref.WeakKeyDictionary()
+
+
+def adjacent(kind):
+    if kind not in (UNROLL, TILE):
+        raise ValueError("one bounded generic adjacent pass required")
+    return "Merlin.GraphStatePipelineInstance.complete" + ("2" if kind == UNROLL else "3")
 
 
 def proof_sources(query):
@@ -121,7 +128,7 @@ class Candidate:
             "query_sha256": digest(self.query),
             "roots": list(self.roots),
             "module": MODULE,
-            "kind": UNROLL,
+            "kind": json.loads(self.request_json)["kind"],
             "entries": [f["name"] for f in capture["capture"]["functions"][0] if not f["declaration"]],
             "premises": [
                 "trusted complete typed/capture/callee/metadata projection and selected signed-index64 correspondence",
@@ -134,12 +141,12 @@ class Candidate:
         }
 
 
-def prepare(source, final, *, kind=UNROLL, factor=2, index_bits=64):
-    if kind != UNROLL:
-        raise ValueError("registered generic loop profile supports only singleton UNROLL")
-    leaf = prepare_query(source, final, factor=factor, index_bits=index_bits)
+def prepare(source, final, *, kind=UNROLL, factor=2, tile=3, index_bits=64):
+    if kind not in (UNROLL, TILE):
+        raise ValueError("registered generic loop profile supports one singleton UNROLL or TILE")
+    leaf = prepare_query(source, final, kind=kind, factor=factor, tile=tile, index_bits=index_bits)
     roots = tuple(leaf["roots"])
-    if len(set(roots)) != len(roots) or ROOT not in roots or ADJACENT not in roots:
+    if len(set(roots)) != len(roots) or ROOT not in roots or adjacent(kind) not in roots:
         raise Unavailable("generic complete/adjacent root roster is incomplete")
     query = leaf["query"]
     proofs = proof_sources(query)
@@ -149,6 +156,8 @@ def prepare(source, final, *, kind=UNROLL, factor=2, index_bits=64):
         "factor": factor,
         "index_bits": index_bits,
     }
+    if kind == TILE:
+        request.update(schema="merlin.compiler-generic-loop.source.v2", tile=tile)
     return Candidate(
         source,
         final,
@@ -177,13 +186,19 @@ def ready(candidate):
 
 def _request(raw):
     value = json.loads(raw)
-    if (
-        type(value) is not dict
-        or set(value) != {"schema", "kind", "factor", "index_bits"}
-        or value["schema"] != "merlin.compiler-generic-loop.source.v1"
-    ):
+    if type(value) is not dict:
         raise ValueError("exact generic loop original-source request required")
-    return {key: value[key] for key in ("kind", "factor", "index_bits")}
+    keys = {"schema", "kind", "factor", "index_bits"}
+    if value.get("kind") == UNROLL:
+        schema = "merlin.compiler-generic-loop.source.v1"
+    elif value.get("kind") == TILE:
+        keys.add("tile")
+        schema = "merlin.compiler-generic-loop.source.v2"
+    else:
+        raise ValueError("one registered generic loop original-source kind required")
+    if set(value) != keys or value["schema"] != schema:
+        raise ValueError("exact versioned generic loop original-source request required")
+    return {key: value[key] for key in keys - {"schema"}}
 
 
 @dataclass(frozen=True, eq=False)
@@ -299,14 +314,14 @@ def replay(report_path, *, lean, destination, timeout=300):
     return completion, candidate
 
 
-def job_params(*, sdk_bin, factor=2, tile=3, index_bits=64):
+def job_params(*, sdk_bin, kind=UNROLL, factor=2, tile=3, index_bits=64):
     return {
         "sdk_bin": str(sdk_bin),
         "index_bits": index_bits,
         "factor": factor,
         "tile": tile,
-        "kinds": [UNROLL],
-        "selected": [UNROLL],
+        "kinds": [kind],
+        "selected": [kind],
         "intermediates": [],
         "allocator": None,
     }
@@ -319,22 +334,29 @@ def check(job):
     if (
         type(params) is not dict
         or set(params) != {"sdk_bin", "index_bits", "factor", "tile", "kinds", "selected", "intermediates", "allocator"}
-        or params["kinds"] != [UNROLL]
-        or params["selected"] != [UNROLL]
+        or params["kinds"] not in ([UNROLL], [TILE])
+        or params["selected"] != params["kinds"]
         or params["intermediates"] != []
         or params["allocator"] is not None
         or type(params["factor"]) is not int
-        or params["factor"] != 2
+        or (params["kinds"] == [UNROLL] and params["factor"] != 2)
         or type(params["index_bits"]) is not int
         or params["index_bits"] != 64
         or type(params["tile"]) is not int
         or params["tile"] < 2
+        or (params["kinds"] == [TILE] and params["tile"] > 65536)
     ):
-        raise GateUnsupported("exact bounded generic singleton UNROLL compiler selection/tool required")
+        raise GateUnsupported("exact bounded generic singleton UNROLL/TILE compiler selection/tool required")
     try:
         inputs = _input_snapshot(job)
         originals = list(inputs.refs)
-        candidate = prepare(*inputs.buffers, kind=UNROLL, factor=params["factor"], index_bits=params["index_bits"])
+        candidate = prepare(
+            *inputs.buffers,
+            kind=params["kinds"][0],
+            factor=params["factor"],
+            tile=params["tile"],
+            index_bits=params["index_bits"],
+        )
         completion = check_candidate(
             candidate, lean=Path(params["sdk_bin"]) / "lean", destination=Path(job["directory"]) / "generic-loop-proof"
         )
@@ -363,7 +385,7 @@ def check(job):
         "status": "checked",
         "domain": DOMAIN,
         "relation": RELATION,
-        "kind": UNROLL,
+        "kind": params["kinds"][0],
         "receipt": completion.report,
         "theorems": list(candidate.roots),
         "axioms": report["audit"]["axioms_used"],

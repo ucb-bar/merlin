@@ -10,6 +10,8 @@ from merlin.common.paths import module_source_path, repo_root
 from .compiler_loop_generic_profile import source_profile
 from .gate_errors import GateUnavailable
 from .lean_graph_generic_prepare import prepare
+from .lean_graph_generic_tile_emit import emit as emit_tile
+from .lean_graph_generic_tile_prepare import prepare as prepare_tile
 from .lean_graph_generic_unroll_emit import emit
 
 ROOT = Path(__file__).resolve().parent
@@ -21,11 +23,18 @@ def ref(path):
     return {"path": str(path), "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
 
 
-def prepare_query(before, after, *, factor=2, index_bits=64):
-    profile = source_profile(before, kind="ordered_loop_unrolling", factor=factor, index_bits=index_bits)
-    value = prepare(before, after, factor=factor, index_bits=index_bits)
+def prepare_query(before, after, *, kind="ordered_loop_unrolling", factor=2, tile=3, index_bits=64):
+    # Preserve the UNROLL v1 replay request: its unused compatibility tile
+    # parameter never participates in that profile's capture or interpretation.
+    selected_tile = tile if kind == "ordered_loop_segmentation" else 3
+    profile = source_profile(before, kind=kind, factor=factor, tile=selected_tile, index_bits=index_bits)
+    if kind == "ordered_loop_unrolling":
+        value = prepare(before, after, factor=factor, index_bits=index_bits)
+        query = emit(value)
+    else:
+        value = prepare_tile(before, after, tile=tile, index_bits=index_bits)
+        query = emit_tile(value)
     value["source_profile"] = profile
-    query = emit(value)
     if len(query.encode()) > 4 * 1024 * 1024:
         raise GateUnavailable("generic compiler query4MiB resource policy exceeded")
     value.pop("raw_buffers")
@@ -68,6 +77,19 @@ def prepare_query(before, after, *, factor=2, index_bits=64):
         )
         names += [f"F{i}.{name}" for name in local]
     names += ["complete", "complete2", "completeData"]
+    if kind == "ordered_loop_segmentation":
+        import re
+
+        namespaces = []
+        roots = []
+        for line in query.splitlines():
+            if match := re.fullmatch(r"namespace ([A-Za-z0-9_.]+)", line):
+                namespaces.append(match[1])
+            elif line.startswith("end "):
+                namespaces.pop()
+            elif match := re.match(r"theorem ([A-Za-z0-9_]+)", line):
+                roots.append(".".join([*namespaces, match[1]]))
+        names = [root.removeprefix(prefix) for root in roots]
     sources = [
         ROOT / name
         for name in (
@@ -77,6 +99,10 @@ def prepare_query(before, after, *, factor=2, index_bits=64):
             "lean_graph_generic_parser.py",
             "memory_scalar_nan_admission.py",
             "lean_graph_generic_unroll_emit.py",
+            "lean_graph_generic_tile_prepare.py",
+            "lean_graph_generic_tile_roles.py",
+            "lean_graph_generic_tile_emit.py",
+            "lean_graph_generic_tile_common.py",
             "lean_graph_generic_roles.py",
             "lean_graph_generic_affine.py",
             "lean_graph_generic_admission.py",
@@ -106,6 +132,7 @@ def prepare_query(before, after, *, factor=2, index_bits=64):
             "verify/gate_errors.py",
             "xdsl_dialects/fp8.py",
             "transforms/unrolling.py",
+            "transforms/loops.py",
             "transforms/certificates.py",
             "verify/lean_graph_state_pipeline_capture.py",
             "verify/lean_graph_state_scalar.py",

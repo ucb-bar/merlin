@@ -30,8 +30,8 @@ class OutsideProfile(ValueError):
 def source_profile(raw, *, kind, factor=2, tile=3, index_bits=64, depth=1):
     if type(raw) is not str or len(raw.encode()) > MAX_RAW_BYTES:
         raise OutsideProfile("generic source must fit the4MiB declared raw intake policy")
-    if kind != "ordered_loop_unrolling":
-        raise OutsideProfile("installed generic profile supports only singleton ordered UNROLL")
+    if kind not in ("ordered_loop_unrolling", "ordered_loop_segmentation"):
+        raise OutsideProfile("generic profile supports one singleton ordered UNROLL or TILE")
     if type(index_bits) is not int or index_bits != 64 or type(depth) is not int or depth != 1:
         raise OutsideProfile("generic profile supports signed-index64 top-level selected loops")
     if kind == "ordered_loop_unrolling" and (type(factor) is not int or factor != 2):
@@ -98,6 +98,8 @@ def source_profile(raw, *, kind, factor=2, tile=3, index_bits=64, depth=1):
             growth = step * factor
         else:
             trips = (upper - lower + step - 1) // step
+            if trips < 1:
+                raise OutsideProfile("initial generic TILE source requires at least one iteration")
             growth = step * tile
         if upper + growth >= 2**63 or upper + step >= 2**63:
             raise OutsideProfile("generic selected/generated index controls do not fit signed64")

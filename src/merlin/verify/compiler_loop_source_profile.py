@@ -139,8 +139,8 @@ def admit_source(raw, *, kind, factor=2, tile=3, depth=1, index_bits=64):
         return _word(module, kind=kind, factor=factor, tile=tile, depth=depth)
     except SourceOutsideProfile as word_error:
         # The bounded generic profile is an extension of source coverage, not a
-        # target-side fallback. Its selector remains UNROLL-only until TILE is
-        # separately qualified and installed.
+        # target-side fallback. Each bounded generic adjacent pass is checked
+        # independently; a sibling-loop middle is outside its singleton model.
         from .compiler_loop_generic_profile import OutsideProfile, source_profile
 
         try:

@@ -51,14 +51,15 @@ func.return %r:tensor<4xf32>
 """
 
 
-def test_bounded_tensor_context_uses_generic_model_without_integer_payload_claim():
-    assert profile.admit_source(TENSOR_SOURCE, kind=profile.UNROLL) == profile.GENERIC_PROFILE
+@pytest.mark.parametrize("kind", [profile.UNROLL, profile.TILE])
+def test_bounded_tensor_context_uses_generic_model_without_integer_payload_claim(kind):
+    assert profile.admit_source(TENSOR_SOURCE, kind=kind) == profile.GENERIC_PROFILE
 
 
 @pytest.mark.parametrize(
     "source,settings",
     [
-        (TENSOR_SOURCE, {"kind": profile.TILE}),
+        (TENSOR_SOURCE, {"kind": profile.TILE, "depth": 2}),
         (TENSOR_SOURCE, {"kind": profile.UNROLL, "factor": 4}),
         (effect_source(5), {"kind": profile.UNROLL, "depth": 10**12}),
         (effect_source(5), {"kind": profile.UNROLL, "factor": True}),

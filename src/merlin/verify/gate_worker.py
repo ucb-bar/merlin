@@ -68,7 +68,7 @@ def _stop_group(signum, frame) -> None:
 
 def _require_builtin_result(name, detail):
     if name == "compiler_loop_generic_refinement":
-        from .compiler_loop_generic import ADJACENT, DOMAIN, RELATION, ROOT, UNROLL
+        from .compiler_loop_generic import DOMAIN, RELATION, ROOT, TILE, UNROLL, adjacent
         from .gate_errors import GateRejected
 
         if (
@@ -77,12 +77,12 @@ def _require_builtin_result(name, detail):
             or detail.get("status") != "checked"
             or detail.get("domain") != DOMAIN
             or detail.get("relation") != RELATION
-            or detail.get("kind") != UNROLL
+            or detail.get("kind") not in (UNROLL, TILE)
             or detail.get("compiler_enforcement") is not True
             or detail.get("native_fidelity_proved") is not False
             or type(detail.get("theorems")) is not list
             or ROOT not in detail["theorems"]
-            or ADJACENT not in detail["theorems"]
+            or adjacent(detail["kind"]) not in detail["theorems"]
             or "Merlin.GraphStatePipelineInstance.completeData" not in detail["theorems"]
             or len(set(detail["theorems"])) != len(detail["theorems"])
             or type(detail.get("axioms")) is not list

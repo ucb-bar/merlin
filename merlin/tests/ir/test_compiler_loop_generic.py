@@ -58,6 +58,16 @@ def test_changed_preparation_cannot_be_reopened_as_canonical(field):
         gate.ready(altered)
 
 
+@pytest.mark.parametrize("unused_tile", [32, 65537])
+def test_unroll_v1_capture_and_replay_request_ignore_unused_tile(unused_tile):
+    before, after = pair()
+    ordinary = gate.prepare(before, after)
+    compatibility = gate.prepare(before, after, tile=unused_tile)
+    assert compatibility == ordinary
+    assert "tile" not in json.loads(compatibility.request_json)
+    gate.ready(compatibility)
+
+
 def test_saved_constructed_or_copied_tokens_have_no_delivery_authority(tmp_path):
     value = gate.prepare(*pair())
     fake = gate.Completion(value.identity, str(tmp_path / "REPORT.json"))
