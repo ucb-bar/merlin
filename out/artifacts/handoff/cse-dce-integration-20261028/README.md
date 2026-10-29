@@ -6,8 +6,9 @@ scope below. Human semantic/trust approval has not been recorded.
 ## Integration source
 
 Worktree: `/scratch/grammy/blast/merlin-lean-dce-cse`.
-Review branch: `feat/pass-verification-dce-cse`, preserving the qualified history
-from the former local name `integrate/lean-dce-cse-gate`.
+Review branch: `feat/pass-verif-dce-cse`. The published replacement separates
+the original checker import into 29 dependency-complete components and retains
+the subsequent gate integration, tests, cleanup fixes and performance milestones.
 Base: `origin/main` at `e45205bf9`; starting integration commit: `15de277ec`.
 The proof and enforcement implementation qualified below is at `d73cbcfe8`; `4e59d5476`
 adds documentation only. `6990bece6` fixes test environment isolation and makes
@@ -158,8 +159,43 @@ production quantization lowerings retain the `origin/main` behavior.
 ## Review branch
 
 The completed DCE/CSE compiler-gate implementation is published at
-[feat/pass-verification-dce-cse](https://github.com/ucb-bar/merlin/tree/feat/pass-verification-dce-cse).
+[feat/pass-verif-dce-cse](https://github.com/ucb-bar/merlin/tree/feat/pass-verif-dce-cse).
 Publication updates branch-location/review notes and removes one extra EOF
 blank line from a standalone proof fixture. The proof/compiler implementation
 and qualification source points above are unchanged. Other proof families in the
 shared library retain their stated provisional scope.
+
+## Qualification provenance after the history split
+
+The original published history is preserved by tag
+`archive/pass-verification-dce-cse-20261028`, at `b3273ff0c`.
+The former branch `feat/pass-verification-dce-cse` is retired in favor of
+`feat/pass-verif-dce-cse`; no force-push or merge is required.
+The 29 import commits expose components of the already published bootstrap
+`3eafa092d`; they do not represent newly written proofs or independent historical
+qualification. Every local Lean import is available at its component boundary.
+
+Before this provenance-only update, the replacement head `c2d0da63670476746ee9d24b7b8f38ea3e1a64de`
+has exactly the same Git tree as the original head `b3273ff0c`
+(tree `3b06d1870308790cbb172d3612cfbb8854662cdb`). All recreated
+integration milestones likewise have the same tree as their corresponding
+original commit. Qualification artifacts retain their original revision IDs;
+use the mapping below rather than changing historical evidence.
+
+| Original qualified/publication commit | Equivalent replacement commit | Change |
+| --- | --- | --- |
+| `6aa4284b2` | `cb9af3b55` | feat(verify): run gate checks speculatively in owned workers |
+| `64bb4d1b1` | `e09c6b3de` | feat(verify): gate dead-code pruning and the leading cse on Lean proofs |
+| `7696785a7` | `141fc93ac` | test(verify): gate pruning and cse on representative model kernels |
+| `4d5c26bd5` | `e0773c2fe` | docs(verify): describe the pruning and cse gate and what needs review |
+| `4cab23215` | `cf9aa2224` | fix(verify): stop gate workers when the compile process dies |
+| `15de277ec` | `ae79dcdf8` | test(verify): keep a real kernel live in pruned chunks and cover all |
+| `8925f5b44` | `506e0d1be` | fix(verify): clean checker groups after worker crashes |
+| `6affac56b` | `60e8260b9` | perf(lean): index alpha comparisons with a proved equal checker |
+| `d73cbcfe8` | `8e8ccf1d4` | perf(verify): reuse only live gate proof results |
+| `4e59d5476` | `483e8553c` | docs(verify): document gate performance and quantization handoff |
+| `6990bece6` | `b8976ec9d` | test(verify): isolate ungated compiler comparisons |
+| `5c564cd11` | `594daa537` | fix(verify): state the nonpoison definedness domain |
+| `5ce3a78d8` | `8177ea191` | docs(verify): record DCE and CSE integration qualification |
+| `3d68daee9` | `82dc06387` | chore(lean): remove a trailing blank line from a proof fixture |
+| `b3273ff0c` | `c2d0da636` | docs(verify): identify the DCE and CSE review branch |

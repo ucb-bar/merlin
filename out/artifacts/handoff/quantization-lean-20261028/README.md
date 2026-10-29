@@ -13,7 +13,7 @@ implementation to existing callers, including the dequantizer body checker.
   quantization gates and regression tests. This is the published reference.
 * `feat/lean-prune-gate` and `feat/lean-quant-contract` currently point to
   `a21388cd3`, the earlier combined compiler integration worktree state.
-* `feat/pass-verification-dce-cse` (formerly `integrate/lean-dce-cse-gate`) is
+* `feat/pass-verif-dce-cse` (formerly `integrate/lean-dce-cse-gate`) is
   the current DCE/CSE integration-review branch.
   Its gate roster contains only `prune_dead_pure_tensor_ops` and tensor `cse`.
   The quantization specifications, source semantics and SPEC_LOCK match the
