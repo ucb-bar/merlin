@@ -53,6 +53,8 @@ _COPY_CARRIERS = frozenset(
         "linalg.copy",
         "memref.copy",
         "merlin_iface.movement",
+        "merlin_iface.concat",
+        "merlin_iface.insert_slice",
         "tensor.concat",
         "tensor.insert_slice",
         "tensor.extract_slice",
@@ -574,6 +576,10 @@ _OP_FAMILY: dict[str, str] = {
     "expand": "movement",
     "pack": "movement",
     "copy": "movement",
+    # Tensors joined along one axis / a tensor written into a strided slice of another: strided copies of
+    # selected blocks (the contract movement form `copy`); the interface commands concat / insert_slice.
+    "concat": "movement",
+    "insert_slice": "movement",
     # A replay of one value or row along new dimensions (linalg.broadcast): motion, no arithmetic.
     "broadcast": "movement",
     # ...captured-model movement spellings. A constant fill writes a value per element with no arithmetic

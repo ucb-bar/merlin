@@ -87,6 +87,44 @@ def _movement_broadcasting(attributes: dict, source: dict | None, result: dict |
     return None
 
 
+def _joined_movement_broadcasting(operation: str, attributes: dict, sources: list, result: dict | None) -> str | None:
+    """Broadcast class of a multi-source movement (``concat`` / ``insert_slice``), from its static geometry.
+
+    ``concat`` writes each source into its own disjoint extent of the result along ``axis``; ``insert_slice``
+    writes ``src`` at ``offsets`` with ``strides`` into a copy of ``dest``. Each result element is read from
+    exactly one source element: ``none``. Stated only when the typed geometry proves it (ranks equal, every
+    other extent equal, the written extents inside the result); otherwise no observation (unresolved).
+    """
+    if not sources or not _static(*sources, result):
+        return None
+    out = result["shape"]
+    shapes = [item["shape"] for item in sources]
+    if any(len(shape) != len(out) for shape in shapes):
+        return None
+    if operation == "concat":
+        axis = attributes.get("axis")
+        if type(axis) is not int or not -len(out) <= axis < len(out):
+            return None
+        axis %= len(out)
+        if sum(shape[axis] for shape in shapes) != out[axis]:
+            return None
+        if any(shape[i] != out[i] for shape in shapes for i in range(len(out)) if i != axis):
+            return None
+        return "none"
+    if operation == "insert_slice":
+        offsets, strides = attributes.get("offsets"), attributes.get("strides")
+        if len(shapes) != 2 or shapes[0] != out:
+            return None
+        for stated in (offsets, strides):
+            if not isinstance(stated, list) or len(stated) != len(out) or any(type(x) is not int for x in stated):
+                return None
+        for extent, size, offset, stride in zip(out, shapes[1], offsets, strides):
+            if offset < 0 or stride < 1 or offset + (size - 1) * stride >= extent:
+                return None
+        return "none"
+    return None
+
+
 def _row(index: int, opcode: str, operation: str, family: str | None, **fields) -> dict:
     return {
         "ordinals": [index],
@@ -269,6 +307,10 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
                 row["broadcasting"] = "none"
         if family == "movement" and "broadcasting" not in row and len(typed_sources) == 1:
             observed = _movement_broadcasting(attributes, typed_sources[0], result)
+            if observed is not None:
+                row["broadcasting"] = observed
+        if family == "movement" and "broadcasting" not in row and operation in {"concat", "insert_slice"}:
+            observed = _joined_movement_broadcasting(operation, attributes, typed_sources, result)
             if observed is not None:
                 row["broadcasting"] = observed
         if opcode == "RESIDUAL_ADD" and len(typed_sources) == 2 and all(item is not None for item in typed_sources):
