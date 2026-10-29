@@ -207,3 +207,11 @@ def test_second_window_geometries_are_built_graded_and_admitted(form):
     path.write_text(text)
     rows = account_interface(path, target="gemmini", evidence=evidence, numeric_screens=[])
     assert summarize(rows, host_only=False, scope="test")["status"] == "admitted"
+
+
+def test_rank_zero_fill_has_a_publication_identity():
+    from merlin_experiments.corpus.publication import operand_extents
+
+    capsule, _text = _fs()
+    assert capsule["inputs"] == [] and capsule["operation"]["attributes"]["shape"] == []
+    assert operand_extents(capsule) == ((),)

@@ -147,7 +147,8 @@ def operand_extents(document, *, residual_preludes=True) -> tuple[tuple[int, ...
         # A fill reads no operand: its only extents are the declared result's, so that is its identity
         # (a constant tensor cannot carry a held-out layer's operands).
         shape = (operation.get("attributes") or {}).get("shape")
-        if isinstance(shape, list) and shape and all(type(size) is int and size > 0 for size in shape):
+        # A rank-0 result (scalar_tensor) has the empty shape: the same identity as a one-element fill, ((),).
+        if isinstance(shape, list) and all(type(size) is int and size > 0 for size in shape):
             return (tuple(sorted(size for size in shape if size != 1)),)
         return None
     if (
