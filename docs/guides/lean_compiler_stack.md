@@ -202,10 +202,13 @@ and failure semantics. Actual prefix/suffix contexts, including partial external
 calls, are composed around each selected rewrite. Local wrapper control equations
 are derived from the actual prefix; they are absent from the final whole-entry
 theorem. Combined unroll→tiling checks join the actual original, intermediate and
-final buffers in one canonical job. Selecting an inner loop that itself retains
-deeper loops can still refuse when its proof wrapper captures a stride; that
-auxiliary-projection extension is undergoing qualification. Untouched context
-must also fit the scalar/SCF projection.
+final buffers in one canonical job. A selected inner loop may itself retain
+supported deeper loops. Controlled proof wrappers accept unchanged stride block
+arguments while actual source projection retains its strict known-positive
+stride check. An actual depth-two combined gate preserving a dynamic depth-three
+body passes native boundary/wrap cases, independent-process fresh replay and
+genuine Lean callee/stride mutation refusals. Untouched context must also fit
+the scalar/SCF projection.
 The gate does not insert a loop-lowering pass to turn
 arbitrary tensor programs into supported source SCF.
 
@@ -401,6 +404,12 @@ pure-setter prefixes. V4 composes those motions across multiple flat top-level
 loops, binding each full command context and the exact complete final program.
 Configuration dependencies remain literal; the explicit proposal adapter enables
 IV-data candidates without changing the ordinary selected adapter.
+An explicit original `ConfigurationCConsumer(index_bits=64)` additionally binds
+the actual C emission domain, original selected contracts and checked products
+through `result.emit_c(...)`. Its V5 profile admits positive extents through
+2^63−1; huge cases are checked symbolically. Ordinary V1–V4 calls retain their
+existing cap and schemas. See the [hoisting guide](lean_configuration_hoist_gate.md)
+for the controlled API and independent replay.
 Its state relation does not approve numerical policy or the selected
 instruction implementation.
 

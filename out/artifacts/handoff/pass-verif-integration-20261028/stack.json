@@ -23,7 +23,7 @@
     "example": "Dynamic outer loop stays in place.\nIts inner 5 iterations become 2 groups \u00d7 2 lanes + 1 tail.\nZero outer trips still execute no inner work.",
     "claim": "Equal returned values, modeled errors and terminal world, under the common scalar/SCF interpretation.",
     "proof": "Merlin.GraphGateProfileAdjacent.complete2",
-    "limit": "Explicit one-based depth; static selected index64 controls, arbitrary supported dynamic ancestors and partial calls. Current selected-depth qualification covers innermost loops. Captured strides in retained deeper bodies remain a safe refusal pending auxiliary projection qualification. Resource limits apply.",
+    "limit": "Explicit one-based depth; static selected index64 controls, arbitrary supported dynamic ancestors and partial calls. Actual combined inner-depth qualification now preserves deeper dynamic bodies, with native checks, fresh replay and real Lean callee/stride refusals. Actual source strides remain known positive. Resource limits apply.",
     "registered": true,
     "in_all": true
   },
@@ -37,7 +37,7 @@
     "example": "7 groups\n\u2192 segments [3, 3, 1]\nA short final segment retains the original order.",
     "claim": "Scalar route: equal returns, modeled errors and terminal world. Memory route: the whole storage chain's successful-observation relation.",
     "proof": "Merlin.GraphGateProfileAdjacent.complete3",
-    "limit": "Depth is selected at the actual tiling stage after unrolling. Public inner TILE and combined UNROLL\u2192TILE gates/native controls pass with exact intermediate/output custody. Retained deeper-body captures remain under qualification; private-buffer tiles retain size2\u201316.",
+    "limit": "Depth is selected at the actual tiling stage after unrolling. Public inner TILE and combined UNROLL\u2192TILE gates/native controls pass with exact intermediate/output custody. Retained deeper-body captures are qualified through the controlled auxiliary projection; actual source stride checks remain strict. Private-buffer tiles retain size2\u201316.",
     "registered": true,
     "in_all": true
   },
@@ -122,7 +122,7 @@
     "example": "loop A: set cfg=3; workA(i)\nloop B: set cfg=5; workB(j)\n\u2192 set3; loop A: workA(i)\n   set5; loop B: workB(j)",
     "claim": "Complete modeled outcome/error/terminal-state equality under all-index Models, with exact full command contexts, frame/atoms and terminal join for each motion.",
     "proof": "ActualConfigurationHoist.complete_kernel",
-    "limit": "V1 static, V2 retained IV data, V3 overlapping setter prefixes, V4 multiple flat positive loops. 90 distinct current-source cases, fresh replay and prior-profile compatibility pass. Current extent admission is at most 1,000,000. Nested commands, completion fields and dynamic configuration values remain unsupported; model/hardware approval stays separate.",
+    "limit": "V1 static, V2 retained IV data, V3 overlapping setter prefixes, V4 multiple flat positive loops. Explicit original C64 consumers add V5 through extent2^63\u22121 and bind actual controlled emission. 129 distinct cases, symbolic wide boundaries, fresh replay and prior-profile compatibility pass. Default profiles keep their existing cap. Nested commands, completion fields and dynamic configuration values remain unsupported; model/hardware approval stays separate.",
     "in_all": false
   }
 ]

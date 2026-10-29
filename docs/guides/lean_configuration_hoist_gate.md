@@ -3,7 +3,7 @@ title: Check scoped configuration loop hoisting with Lean
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-28
+last_verified: 2026-10-29
 related: [verification, lean_configuration_elision_gate, lean_loop_transform_gate]
 code_refs:
   - src/merlin/verify/configuration_hoist_intake.py
@@ -15,6 +15,8 @@ code_refs:
   - src/merlin/verify/compiler_configuration_hoist_multi.py
   - src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistFocus.lean
   - src/merlin/compile/scheduling/configuration_loops.py
+  - src/merlin/compile/scheduling/configuration_c_consumer.py
+  - src/merlin/verify/compiler_configuration_hoist_wide.py
   - src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistChecker.lean
 ---
 
@@ -94,8 +96,50 @@ The 153 native initial/failure observations remain finite qualification.
 Counted Kernel IR requires positive extents. Zero-extent Kernel inputs are
 rejected by the existing structure checker and producer before optimization;
 they receive no coverage. Nested Kernel commands and completion fields remain
-unsupported. Current admission retains the inherited extent cap of 1,000,000;
-an audit is checking its relationship to explicit emitted integer domains.
+unsupported. Ordinary calls retain the inherited extent cap of 1,000,000.
+
+An explicit original C64 consumer supports a separate current-only V5 wide
+profile; smaller counts retain V1–V4 selection:
+
+```python
+from merlin.compile.scheduling.configuration_c_consumer import ConfigurationCConsumer
+
+consumer = ConfigurationCConsumer(index_bits=64)  # select before the producer
+result = consumer.hoist(
+    kernel, adapter, selected_contracts=original_selected_contracts,
+    pass_validation=validation,
+)
+c_source = result.emit_c(instruction_set, symbol="kernel")
+```
+
+The original validation also selects index64. The consumer checks both actual
+Kernel endpoints against the builtin emitter's signed integer domain, including
+literals in dead expression branches. Its controlled emission uses the same
+captured width and revalidates original selected contracts, endpoint text and
+checked source/proof products before and after emission. Constructed, copied,
+serialized or foreign-thread result carriers do not own that operation.
+A caller-supplied width or an unchecked default C emitter is not a domain proof.
+
+Positive extents through 2^63−1 are admitted by V5; the existing Focus theorem
+checks counts algebraically. No huge loop is compiled or executed. V1–V4 math,
+default behavior and legacy job/request/report shapes remain unchanged. The
+versioned C-bound route reconstructs a fresh consumer for worker/replay requests;
+a saved report is descriptive input, never live completion authority. For fresh
+controlled replay use a newly selected original consumer:
+
+```python
+fresh = ConfigurationCConsumer(index_bits=64)
+replayed = fresh.replay(report_path, lean=selected_lean, destination=fresh_directory)
+c_source = replayed.emit_c(instruction_set, symbol="kernel")
+```
+
+Installed independent qualification passes 129 distinct cases: 45 consumer
+controls, 79 legacy controls and five canonical cases (six SDK invocations,
+including MAX63 replay). It covers 1,000,001 and 2^63−1 symbolically, a real Lean
+changed-count refusal, preserved legacy V4 schemas and 15 small compiled
+state/failure comparisons. This establishes the declared consumer-domain binding;
+all-index `Models`, actual instruction/rendering/encoding/native fidelity and
+human effect-policy review remain separate.
 
 This current route has no historical producer-checkout requirement. The
 standalone API below retains its original revision and source-manifest guard.

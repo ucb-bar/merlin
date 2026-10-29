@@ -30,6 +30,15 @@ terminal join. Its eleven-module canonical closure, live delivery, fresh replay,
 four closed kernel refusals and V1/V2/V3 compatibility pass independent audit.
 Ninety distinct current-source cases pass, with 153 finite native observations;
 these do not discharge all-index `Models` or approve the selected ISA effects.
+The explicit original C64 consumer adds a current-only V5 profile for positive
+static extents through 2^63−1. Its versioned request binds the actual builtin
+C emitter, both endpoint domains and original selected contracts, retaining
+live source/proof-product checks through controlled emission. V1–V4 defaults
+and legacy schemas remain intact. All 129 current-cut cases pass, including
+symbolic large-count proofs, fresh controlled MAX63 replay, an actual Lean
+changed-count refusal and 15 small native state/failure comparisons. Huge
+loops were not compiled or executed. This binds the declared C integer domain;
+it does not prove C/encoding/native equivalence or discharge all-index `Models`.
 Their state relations
 must not be substituted for a numerical-policy proof or for one another.
 
@@ -90,8 +99,12 @@ entry roots retain no source-success premise. Explicit one-based depth selection
 now checks innermost loops through arbitrary supported dynamic ancestors, with
 complete actual-entry roots and public worker/native controls at depths two and
 three. Independent public inner tiling and combined three-buffer checks also
-pass. Wrappers capturing strides of retained deeper bodies still refuse; their
-auxiliary-only projection extension is undergoing qualification. Passing test
+pass. Selected inner loops can now retain supported deeper bodies: an actual
+combined gate, native boundary/wrap checks, fresh independent replay and genuine
+callee/stride Lean refusals qualify the new route. Only controlled auxiliary
+wrappers may capture unchanged stride block arguments; actual source projection
+still requires known positive strides. The roots add no control or success
+premise. Passing test
 logs are not live completion authority; retained final-cut replay remains
 separate. No frozen semantics or new axiom is introduced.
 

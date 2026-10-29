@@ -1,34 +1,38 @@
 # Current compiler verification checkpoint — 2026-10-29
 
-Use **`feat/pass-verif-integration`**. Selected inner-depth compiler gates are
-committed in `59c61dc71`; multiple flat Kernel-loop hoisting is `c6f454c7b`.
+Use **`feat/pass-verif-integration`**. Retained deeper-body loop proofs are
+committed in `ef46cc269`; explicit C64 wide-count hoisting is `91661f328`.
 Nine families have scoped compiler selectors. Five belong to `all`; proposed
 Q/DQ, draft MACC and ISA-specific configuration gates remain explicit.
 
-Selected-depth qualification passes 20 actual cases plus 18 current API controls.
-Independent public inner tiling and combined unroll→tile checks also pass, with
-one actual three-buffer job, exact adjacent roots and native boundary/wrap cases.
-The innermost-loop profile restores dynamic ancestors without inherited-control
-or source-success premises. Captured strides in retained deeper bodies still
-refuse; that auxiliary-only extension is undergoing qualification.
+Selected inner-depth unrolling and tiling now preserve supported deeper bodies.
+An actual depth-two unroll→tile gate preserves a dynamic depth-three body;
+compiled boundary/wrap cases, fresh independent-process replay and two genuine
+Lean callee/stride mutation refusals pass. Auxiliary wrappers may capture a
+stride only as an unchanged block argument; actual source controls retain their
+existing strict positive/static admission. The final roots have no inherited
+control or source-success premise.
 
-Multiple-loop configuration hoisting passes 90 distinct current-source cases,
-fresh replay and V1/V2/V3 compatibility. Independent audit verifies 841 current
-references, eleven modules, 25 roots and 392 STD3 declarations. All-index
-`Models`, complete state and ISA effect premises remain explicit. Counted Kernel
-IR requires positive extents; source-SCF empty loops have separate support.
+The explicit original `ConfigurationCConsumer(index_bits=64)` binds actual
+controlled C emission, selected contracts and exact source/proof products.
+It admits positive counts through 2^63−1 without changing V1–V4 defaults.
+129 targeted cases pass, including symbolic wide boundaries, fresh MAX63 replay,
+one genuine Lean count refusal and 15 small native state/failure observations.
+All-index `Models`, complete-state and selected ISA-effect premises remain.
 
 **The human-review-only milestone remains open.** Nested Kernel commands,
 broader memory ranks/source profiles and remaining source-contract coverage need
-engineering. Q/DQ stays proposed and MACC stays draft pending independent review.
-No protected Core/Sem/Spec definitions or locks changed.
+engineering. Actual rank-one buffer source/target bridges are being completed;
+they are not yet an admitted compiler profile. Q/DQ stays proposed and MACC stays
+draft pending independent review. No protected Core/Sem/Spec definitions or locks changed.
 
 Start at the [current evidence and remaining work](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
 [stack/interfaces/examples](docs/guides/lean_compiler_stack.md),
 [completion scope](docs/design/lean_pass_integration_completion.md) and
 [assumption ledger](merlin/lean/LEDGER.md). Remote publication and both GitHub
-identities were verified through `820879de6`; subsequent qualified work is being
-prepared for publication. Earlier checkpoints retain their source cuts.
+identities were verified through `adfb4debd`; the two newer features are local
+qualified commits being prepared for publication. Earlier evidence retains its
+recorded source cut; changing bound sources requires a fresh check.
 
 The [unpublished commit map](out/artifacts/handoff/pass-verif-integration-20261028/unpublished-commit-map.json)
 records a prepublication message-length correction with unchanged code trees,
