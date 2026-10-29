@@ -119,6 +119,16 @@ def obligation(adapter):
         "Merlin.GraphLoopsShape.Epoch.shape_outcomes",
         "Merlin.GraphLoopsShape.Epoch.Kernel.checked_chain",
     ]
+    if adapter["shape"].get("identity_normalization") is True:
+        roots.extend(
+            "Merlin.GraphLoopsShape.Identity." + name
+            for name in (
+                "check_sound",
+                "checked_complete",
+                "checked_memory",
+                "checked_context",
+            )
+        )
     extra = []
     for index, row in enumerate(adapter["initializers"]):
         name = "initializer" + str(index)

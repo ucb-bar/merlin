@@ -77,7 +77,7 @@ def apply(source, directory, *, options=None, index_bits=64):
     if index_bits != 64:
         raise ValueError("formal source transformations require explicit index64")
     module = parse_ir(source)
-    buffers, names = [ir_text(module)], []
+    buffers, names, identities = [ir_text(module)], [], []
     changing_buffers = [buffers[0]]
 
     def run(kind, action):
@@ -88,6 +88,8 @@ def apply(source, directory, *, options=None, index_bits=64):
         if before != after:
             names.append(kind)
             changing_buffers.append(after)
+        else:
+            identities.append(kind)
         buffers.append(after)
 
     if options.buffer_allocator is not None:
@@ -95,7 +97,7 @@ def apply(source, directory, *, options=None, index_bits=64):
         run(BUFFER, lambda: planning.reuse_storage(module, planning.plan_storage(module)))
         run(TILE, lambda: loops.segment_loops(module, (options.tile_size,), index_bits=64))
         check_name = "compiler_buffer_refinement"
-        required = (BUFFER, TILE)
+        required = tuple(name for name in names if name in (BUFFER, TILE))
     else:
         if options.unroll_factor is not None:
             run(UNROLL, lambda: unrolling.unroll_ordered_loops(module, (options.unroll_factor,), index_bits=64))
@@ -112,8 +114,6 @@ def apply(source, directory, *, options=None, index_bits=64):
     if selected and names:
         # The memory proof covers the whole actual4 chain. Scalar loop proofs
         # additionally retain all-entry adjacent theorems for each actual pass.
-        if options.buffer_allocator is not None and len(names) != 3:
-            raise ValueError("selected buffer proof requires changing normalization, reuse and tiling boundaries")
         # Exact identity stages preserve the complete scalar boundary bytes.
         proof_buffers = buffers if options.buffer_allocator is not None else changing_buffers
         validation.gate.submit(
@@ -135,6 +135,7 @@ def apply(source, directory, *, options=None, index_bits=64):
     report = {
         "schema": "merlin.compiler-transforms.v1",
         "changed": names,
+        "unchanged": identities,
         "selected_checks": selected,
         "directory": str(directory),
         "buffer_allocator": options.buffer_allocator,

@@ -28,8 +28,6 @@ class ReuseBinding(Decoder):
         first, second = self.operation(self.before["tree"], self.after["tree"], self.env)
         if self.live_targets or any(epoch["slot"] is None for epoch in self.epochs):
             raise ValueError("missing final physical free or unbound logical epoch")
-        if len(self.slots) >= len(self.epochs):
-            raise ValueError("identity/declined reuse is not this changed composition")
         return dict(
             bits=self.bits,
             sourceContext=_key(first),

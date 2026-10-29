@@ -79,40 +79,51 @@ def shape_validity(query, *, count, bits):
     stops = [i for i, line in enumerate(lines) if line == "end GraphShapeObligation\n"]
     if len(starts) != 1 or len(stops) != 1 or starts[0] >= stops[0]:
         raise ValueError("complete unique actual Shape namespace required")
-    valid = [i for i in range(starts[0], stops[0]) if lines[i] == "theorem valid : Model.Valid actual := by\n"]
-    accepted = [i for i in range(starts[0], stops[0])
-                if lines[i] == "theorem accepted : Model.check actual = true := by\n"]
+    mode = "Identity" if "theorem valid : Identity.Valid actual := by\n" in lines else "Model"
+    valid = [i for i in range(starts[0], stops[0]) if lines[i] == f"theorem valid : {mode}.Valid actual := by\n"]
+    accepted = [
+        i for i in range(starts[0], stops[0]) if lines[i] == f"theorem accepted : {mode}.check actual = true := by\n"
+    ]
     if len(valid) != 1 or len(accepted) != 1 or valid[0] >= accepted[0]:
         raise ValueError("exact existing Shape validity statement/check required")
-    previous = ("  simp [Model.Valid, Module.Valid, Function.Valid, GraphLoopsShape.Valid, Scope,\n"
-                "    CastFacts, DimensionFacts, ConstantFacts, AllBound, Plain, Fresh, names,\n"
-                "    extendContext, extendAliases, resolve, ValidDimension, actual]\n"
-                "  all_goals decide\n")
-    proof = (f"  have width : actual.bits = {bits} := rfl\n"
-             "  refine ⟨?_, ?_, ?_, ?_⟩\n"
-             "  · refine ⟨by decide, by decide, ?_, by decide⟩\n"
-             "    intro function member\n"
-             "    simp only [actual, List.mem_cons, List.not_mem_nil, or_false] at member\n"
-             "    rcases member with " + " | ".join(["rfl"]*count) + "\n"
-             "    all_goals\n"
-             "      repeat' first\n"
-             "        | apply And.intro\n"
-             "        | (simp [width, AllBound, Plain, Fresh, names,\n"
-             "            extendContext, extendAliases, resolve] <;> decide)\n"
-             "  · decide\n"
-             "  · simp [actual]\n"
-             "  · simp [actual]\n")
-    existing = "".join(lines[valid[0]+1:accepted[0]])
+    previous = (
+        f"  simp [{mode}.Valid, Module.Valid, Function.Valid, GraphLoopsShape.Valid, Scope,\n"
+        "    CastFacts, DimensionFacts, ConstantFacts, AllBound, Plain, Fresh, names,\n"
+        "    extendContext, extendAliases, resolve, ValidDimension, actual]\n"
+        "  all_goals decide\n"
+    )
+    proof = (
+        f"  have width : actual.bits = {bits} := rfl\n"
+        "  refine ⟨?_, ?_, ?_, ?_⟩\n"
+        "  · refine ⟨by decide, by decide, ?_, by decide⟩\n"
+        "    intro function member\n"
+        "    simp only [actual, List.mem_cons, List.not_mem_nil, or_false] at member\n"
+        "    rcases member with " + " | ".join(["rfl"] * count) + "\n"
+        "    all_goals\n"
+        "      repeat' first\n"
+        "        | apply And.intro\n"
+        "        | (simp [width, AllBound, Plain, Fresh, names,\n"
+        "            extendContext, extendAliases, resolve] <;> decide)\n"
+        "  · decide\n"
+        "  · simp [actual]\n"
+        "  · simp [actual]\n"
+    )
+    existing = "".join(lines[valid[0] + 1 : accepted[0]])
     if existing not in (previous, proof):
         raise ValueError("unknown Shape proof construction; explicit successor review required")
-    return "".join(lines[:valid[0]+1]) + proof + "".join(lines[accepted[0]:])
+    return "".join(lines[: valid[0] + 1]) + proof + "".join(lines[accepted[0] :])
 
 
 def epoch_parts(part):
     """Losslessly partition exact declaration groups; replicate original scope."""
     lines = part["source"].splitlines(True)
-    markers = ("def actualNormalized :", "def plan :", "theorem plan_valid :",
-               "def kernel :", "theorem complete_adapter ")
+    markers = (
+        "def actualNormalized :",
+        "def plan :",
+        "theorem plan_valid :",
+        "def kernel :",
+        "theorem complete_adapter ",
+    )
     starts = []
     for marker in markers:
         found = [i for i, line in enumerate(lines) if line.startswith(marker)]
@@ -122,27 +133,35 @@ def epoch_parts(part):
     ends = [i for i, line in enumerate(lines) if line == "end GraphShapeEpochObligation\n"]
     if len(ends) != 1 or starts != sorted(set(starts)) or starts[-1] >= ends[0]:
         raise ValueError("exact epoch namespace/declaration order required")
-    header = "".join(lines[1:starts[0]])
-    if header != ("namespace GraphShapeEpochObligation\nset_option autoImplicit false\n"
-                  "set_option maxRecDepth 16384\nset_option maxHeartbeats 4000000\n"
-                  "open Merlin Merlin.GraphLoopsShape\n"):
+    header = "".join(lines[1 : starts[0]])
+    if header != (
+        "namespace GraphShapeEpochObligation\nset_option autoImplicit false\n"
+        "set_option maxRecDepth 16384\nset_option maxHeartbeats 4000000\n"
+        "open Merlin Merlin.GraphLoopsShape\n"
+    ):
         raise ValueError("exact original epoch namespace/options required")
-    if lines[0] != "import WholeMemory\n" or any(line.strip() for line in lines[ends[0]+1:]):
+    if lines[0] != "import WholeMemory\n" or any(line.strip() for line in lines[ends[0] + 1 :]):
         raise ValueError("complete epoch import/trailing source required")
     stops = starts[1:] + [ends[0]]
     bodies = ["".join(lines[start:stop]) for start, stop in zip(starts, stops, strict=True)]
-    if "".join(bodies) != "".join(lines[starts[0]:ends[0]]):
+    if "".join(bodies) != "".join(lines[starts[0] : ends[0]]):
         raise ValueError("complete epoch body reconstruction failed")
     result = []
     for index, (name, start, stop, body) in enumerate(zip(EPOCH_MODULES, starts, stops, bodies, strict=True)):
-        parent = "WholeMemory" if index == 0 else EPOCH_MODULES[index-1]
-        rendered = body if index < len(EPOCH_MODULES)-1 else body.rstrip() + "\n"
+        parent = "WholeMemory" if index == 0 else EPOCH_MODULES[index - 1]
+        rendered = body if index < len(EPOCH_MODULES) - 1 else body.rstrip() + "\n"
         source = "import " + parent + "\n" + header + rendered + "\nend GraphShapeEpochObligation\n"
-        result.append({"module": name, "source": source, "imports": [parent], "sha256": digest(source),
-                       "canonical_span": [part["canonical_span"][0]+start-1,
-                                          part["canonical_span"][0]+stop-1],
-                       "canonical_span_sha256": digest(body),
-                       "unfactored_epoch_sha256": part["sha256"]})
+        result.append(
+            {
+                "module": name,
+                "source": source,
+                "imports": [parent],
+                "sha256": digest(source),
+                "canonical_span": [part["canonical_span"][0] + start - 1, part["canonical_span"][0] + stop - 1],
+                "canonical_span_sha256": digest(body),
+                "unfactored_epoch_sha256": part["sha256"],
+            }
+        )
     if set(theorem_roster(part["source"])) != set(root for row in result for root in theorem_roster(row["source"])):
         raise ValueError("finer factoring lost an epoch declaration/root")
     return result

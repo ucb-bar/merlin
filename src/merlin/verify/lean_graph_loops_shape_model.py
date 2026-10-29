@@ -133,6 +133,8 @@ def function(row):
 
 def obligation(projection):
     module = projection["module"]
+    mode = "Identity" if projection.get("identity_normalization") is True else "Model"
+    identity_import = "import Merlin.GraphLoopsShapeIdentity\n" if mode == "Identity" else ""
     if set(module) != {"functions", "calls"}:
         raise ValueError("complete function/call environment required")
     calls = _list(module["calls"], lambda pair: "(" + _string(pair[0]) + ", " + _string(pair[1]) + ")")
@@ -150,38 +152,38 @@ def obligation(projection):
     )
     roots = "\n".join("#print axioms " + root for root in SHAPE_ROOTS)
     return f"""import Merlin.GraphLoopsShapeCountermodels
-set_option autoImplicit false
+{identity_import}set_option autoImplicit false
 set_option maxRecDepth 16384
 set_option maxHeartbeats 4000000
 open Merlin Merlin.GraphLoopsShape
 namespace GraphShapeObligation
 def actual : Model.Projection := {literal}
-theorem valid : Model.Valid actual := by
-  simp [Model.Valid, Module.Valid, Function.Valid, GraphLoopsShape.Valid, Scope,
+theorem valid : {mode}.Valid actual := by
+  simp [{mode}.Valid, Module.Valid, Function.Valid, GraphLoopsShape.Valid, Scope,
     CastFacts, DimensionFacts, ConstantFacts, AllBound, Plain, Fresh, names,
     extendContext, extendAliases, resolve, ValidDimension, actual]
   all_goals decide
-theorem accepted : Model.check actual = true := by
-  simp only [Model.check, valid, decide_true]
+theorem accepted : {mode}.check actual = true := by
+  simp only [{mode}.check, valid, decide_true]
 theorem complete {{Value World : Type}} (meaning : Interpretation Value World)
     (name : String) (inputs : List (Runtime Value)) (before : World)
     (outputs : List (Runtime Value)) (after : World) :
     GraphLoopsShape.complete meaning actual.module false name inputs before outputs after ↔
       GraphLoopsShape.complete meaning actual.module true name inputs before outputs after :=
-  Model.checked_complete accepted meaning name inputs before outputs after
+  {mode}.checked_complete accepted meaning name inputs before outputs after
 theorem memory {{Value Public : Type}} (meaning : Interpretation Value (MemoryWorld Value Public))
     (classify : String → MemoryOpcode) (name : String) (inputs : List (Runtime Value))
     (before : MemoryWorld Value Public) (outputs : List (Runtime Value)) (after : MemoryWorld Value Public) :
     GraphLoopsShape.complete (withMemory meaning classify) actual.module false name inputs before outputs after ↔
       GraphLoopsShape.complete (withMemory meaning classify) actual.module true name inputs before outputs after :=
-  Model.checked_memory accepted meaning classify name inputs before outputs after
+  {mode}.checked_memory accepted meaning classify name inputs before outputs after
 theorem contextual {{Value World Outcome : Type}} (meaning : Interpretation Value World)
     (context : (String → RegionMeaning Value World) → Outcome) :
     context (GraphLoopsShape.complete meaning actual.module false) =
-      context (GraphLoopsShape.complete meaning actual.module true) := Model.checked_context accepted meaning context
+      context (GraphLoopsShape.complete meaning actual.module true) := {mode}.checked_context accepted meaning context
 theorem call_depth {{Value World : Type}} (meaning : Interpretation Value World) (depth : Nat) :
     invoke meaning actual.module false depth = invoke meaning actual.module true depth :=
-  Module.checked_calls actual.module actual.bits (Model.check_sound accepted).1 meaning depth
+  Module.checked_calls actual.module actual.bits ({mode}.check_sound accepted).1 meaning depth
 end GraphShapeObligation
 {roots}
 """

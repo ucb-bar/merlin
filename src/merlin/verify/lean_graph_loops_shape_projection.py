@@ -215,7 +215,7 @@ class Decoder:
             code = dict(command, rest=code)
         return code
 
-    def project(self):
+    def project(self, *, allow_identity=False):
         source, target = self.before["tree"], self.after["tree"]
         if (
             source["name"] != "builtin.module"
@@ -249,9 +249,9 @@ class Decoder:
                     code=code,
                 )
             )
-        if not self.changed:
+        if not self.changed and (not allow_identity or source != target):
             raise ValueError("identity/declined normalization is separate from changed qualification")
-        return dict(
+        result = dict(
             bits=self.bits,
             module=dict(functions=functions, calls=self.calls),
             changed_sites=self.sites,
@@ -261,6 +261,9 @@ class Decoder:
             typed_descriptor_conformance_is_premise=True,
             python_projection_trusted=True,
         )
+        if allow_identity and not self.changed:
+            result["identity_normalization"] = True
+        return result
 
 
 def project_exports(before, after, *, index_bits, max_nodes):

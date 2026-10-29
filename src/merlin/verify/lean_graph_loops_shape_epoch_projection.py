@@ -112,7 +112,7 @@ def uniform(region):
 
 def project_adapter(before, after, *, index_bits, max_nodes):
     decoder = BoundDecoder(before, after, index_bits=index_bits, max_nodes=max_nodes)
-    source = decoder.project()
+    source = decoder.project(allow_identity=True)
     plain = plain_module(after, index_bits=index_bits, max_nodes=max_nodes)
     renamed = rename_bindings(plain, decoder.candidate_to_source)
     initializers = []
