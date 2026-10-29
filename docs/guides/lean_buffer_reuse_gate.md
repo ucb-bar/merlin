@@ -45,6 +45,16 @@ LLVM route. That adapter uses this same direct checker and requires its fresh
 completion before compiler products are returned. The API below remains usable
 independently of compiler enforcement.
 
+Select the scoped buffer checks shown in the compiler stack examples. Default
+`all` currently refuses this explicit-memory route: after storage transforms,
+DCE can remove an unused index constant in a memref module, which the existing
+tensor checker cannot model; leading memory CSE is also outside its recorded
+tensor boundary. An actual untiled/tiled counterexample is retained in the
+integration audit. A memory-context dead-constant proof and original memory-CSE
+observation are being staged; neither is installed or qualified yet. Changed
+DCE is not skipped. An actually observed unchanged CSE can use the existing
+zero-job, zero-credit identity contract; a missing/skip-only record cannot.
+
 Capture the three complete modules from the selected producer, adding the
 fourth only when segmentation is requested, and record its revision/configuration.
 The intake checks the actual IR relationship. Producer reexecution and source

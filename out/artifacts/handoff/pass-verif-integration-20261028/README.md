@@ -153,6 +153,32 @@ remaining engineering, not human-review-only readiness. The current producer
 reuses identical memref types/alignment; equal-byte differently shaped objects
 are not a supported reuse case of that producer.
 
+Further current-cut evidence and interface findings:
+
+- Rank-one kernel cases at extent1 pass for both actual untiled three-buffer and
+  tiled four-buffer output. Independent audit of the true tiled case verifies
+  1,971 current refs, 134 successful processes, 250 roots and 2,545 STD3 theorems;
+  actual loop count changes from two to four with one-dimensional views. The
+  extent3 untiled case and raw-only fresh-process replay also pass. The remaining
+  cohort continues serially; compiler/native/mutation readiness is still pending.
+- `out/build/validator-alignment-20261029/default-all-memory-composition-audit-v1.json`
+  records a reproducible integration gap: default `all` submits the later changed
+  memory DCE stage to a tensor-only checker and rejects skip-only memory CSE.
+  Exactly one unused `%dim0 = arith.constant 3 : index` is deleted on both routes.
+  Explicit BUFFER[/TILE] subsets remain the compiler interface within the
+  previously qualified buffer profiles; rank-one compiler qualification is pending.
+- `out/build/default-all-memory-20261029/COMPONENT-PLAN.md` and its staged math/
+  host files describe the actual fix: a same-mode dead-index-constant proof over
+  complete ordinary entries, exact independent target/frame/SSA joins, and an
+  original-memory CSE scope observing actual identity without new proof/credit.
+  Production is unchanged; generated queries and six host predictions are not
+  kernel evidence. The earlier proposal to require a fresh CSE identity proof
+  was corrected against the existing no-op policy.
+- `out/build/buffer-rank-one-20261029/pure-prefix/` records fourteen actual host
+  forms and an additive typed-prefix execution proposal. Three concrete foundation
+  files remain uncompiled. They preserve the existing false-pure specialization;
+  no computed-prefix compiler profile is admitted by this source work.
+
 ---
 
 # Completion plan and scalar loop generalization — 2026-10-29

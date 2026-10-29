@@ -64,6 +64,15 @@ memory/source profiles remain engineering work. The first actual rank-one
 three-buffer check now passes through the complete-entry root; broader compiler,
 native, replay and mutation qualification is running. Computed initializer
 prefixes and rank-three source bridges still need engineering.
+Default-all composition is another concrete integration item: the original
+explicit-memory route runs later scalar DCE that the tensor checker cannot
+represent, and records memory CSE as skipped. Actual probes show one unused
+index-constant deletion on both tiled and untiled outputs. A new same-mode
+memory-context rule must prove that changed stage; authentic unchanged CSE can
+follow the existing no-op contract under its original memory scope. Missing
+records, changed unsupported stages and caller allow-skip flags still refuse.
+These changes are staged, uncompiled and unregistered while current source-cut
+qualification runs.
 The effort table below is the earlier scope estimate, not remaining effort.
 Broader buffer ranks, producer-language coverage and numerical/source-contract
 coverage remain engineering; the human-review-only exit has not been reached.
