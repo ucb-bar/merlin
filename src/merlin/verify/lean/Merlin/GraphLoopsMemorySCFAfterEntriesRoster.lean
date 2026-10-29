@@ -78,7 +78,7 @@ def EntryDomain {Value : Type} (source : Module) (plan : Epoch.PlanContext) (ker
   (∀ input ∈ inputs, ExternalInput plan.objects.length input) ∧
   match row.route with
   | .kernel => ValuesHold kernel.function.parameters inputs ∧
-      Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv kernel.function.parameters inputs)
+      Epoch.CallersValid plan.objects.length plan.callers (GraphLoopsShape.assign emptyEnv kernel.function.parameters inputs)
   | .unchanged _ => ∃ function, functionAt source row.name = some function ∧ ValuesHold function.parameters inputs
 
 theorem roster_has_every_definition (source actualFinal : Module) (sourceHeaders finalHeaders : List EntryHeader)
@@ -96,7 +96,7 @@ theorem typed_input_arity {Value : Type} (bindings : List Binding) (inputs : Lis
   | nil => rfl
   | cons holds typed induction => exact congrArg Nat.succ induction
 
-theorem wrong_arity_no_success {Value World : Type} (meaning : Interpretation Value World) (module : Module)
+theorem wrong_arity_no_success {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World) (module : Module)
     (name : String) (function : Function) (found : functionAt module name = some function)
     (inputs : List (Runtime Value)) (wrong : inputs.length ≠ function.parameters.length)
     (before : World) (outputs : List (Runtime Value)) (after : World) :

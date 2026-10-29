@@ -58,7 +58,7 @@ instance (first second : Module) (names : List String) : Decidable (ClosedAgreem
 wrapper that calls a changed kernel fails ClosedAgreement rather than inheriting
 an unproved complete-world/contextual congruence from a public-outcome theorem.
 -/
-theorem closed_invoke_agreement {Value World : Type} (meaning : Interpretation Value World)
+theorem closed_invoke_agreement {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World)
     (first second : Module) (names : List String) (agreement : ClosedAgreement first second names)
     (depth : Nat) (name : String) (member : name ∈ names) :
     GraphLoopsShape.invoke meaning first false depth name = GraphLoopsShape.invoke meaning second false depth name := by
@@ -80,10 +80,10 @@ theorem closed_invoke_agreement {Value World : Type} (meaning : Interpretation V
         | none => rfl
         | some target =>
           have targetMember := closed_target first names agreement.2.1 name member function found key used target called
-          rw [← agreement.2.2 target targetMember, induction target targetMember]
+          simp only [← agreement.2.2 target targetMember, induction target targetMember]
       · rfl
 
-theorem closed_complete_agreement {Value World : Type} (meaning : Interpretation Value World)
+theorem closed_complete_agreement {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World)
     (first second : Module) (names : List String) (agreement : ClosedAgreement first second names)
     (name : String) (member : name ∈ names) (inputs : List (Runtime Value))
     (before : World) (outputs : List (Runtime Value)) (after : World) :
@@ -92,7 +92,7 @@ theorem closed_complete_agreement {Value World : Type} (meaning : Interpretation
   apply exists_congr; intro depth
   rw [closed_invoke_agreement meaning first second names agreement depth name member]
 
-theorem closed_invoke_extension {Value World : Type} (first second : Interpretation Value World)
+theorem closed_invoke_extension {Value World : Type} (first second : GraphLoopsShape.Interpretation Value World)
     (module : Module) (names : List String) (closed : CallClosed module names)
     (actions : ∀ name ∈ names, ∀ function, functionAt module name = some function →
       ∀ key ∈ actionKeys function.code, first.action key = second.action key)
@@ -115,13 +115,10 @@ theorem closed_invoke_extension {Value World : Type} (first second : Interpretat
         | none => exact actions name member function found key used
         | some target =>
           have targetMember := closed_target module names closed name member function found key used target called
-          rw [induction target targetMember]
-          split
-          · rfl
-          · exact actions name member function found key used
+          simp only [induction target targetMember, actions name member function found key used]
       · exact regions
 
-theorem absent_entry_no_success {Value World : Type} (meaning : Interpretation Value World) (module : Module)
+theorem absent_entry_no_success {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World) (module : Module)
     (name : String) (absent : functionAt module name = none) (inputs : List (Runtime Value))
     (before : World) (outputs : List (Runtime Value)) (after : World) :
     ¬ complete meaning module false name inputs before outputs after := by

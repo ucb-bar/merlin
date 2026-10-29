@@ -37,7 +37,7 @@ theorem Expansion.local_checked {Value User : Type} (bits : Nat) (indices : Inde
       | false => exact False.elim facts
       | true =>
         rcases checked.1 with ⟨itemValid, _, opcode, notCall⟩
-        have action := (expanded_primitive bits indices plan kernel target noOverrides scalar depth operation
+        have action := (expanded_primitive (User := User) bits indices plan kernel target noOverrides scalar depth operation
           (.allocate item.shape item.element) opcode notCall).trans
             (Epoch.graph_allocate plan.opcodes scalar operation item.shape item.element opcode)
         exact allocate_local plan context sourceClock clock operation item checked (inside item.object itemValid.2.1)
@@ -47,19 +47,19 @@ theorem Expansion.local_checked {Value User : Type} (bits : Nat) (indices : Inde
       | false => exact False.elim facts
       | true =>
         rcases checked.1 with ⟨itemValid, opcode, notCall⟩
-        have action := (expanded_primitive bits indices plan kernel target noOverrides scalar depth operation .release
+        have action := (expanded_primitive (User := User) bits indices plan kernel target noOverrides scalar depth operation .release
           opcode notCall).trans (Epoch.graph_release plan.opcodes scalar operation opcode)
         exact release_local plan context sourceClock clock operation item checked (inside item.object itemValid.2.1) scalar _ action
     | «initialize» link => exact False.elim facts
     | load key operation access result =>
       rcases checked.1 with ⟨_, accessValid, opcode, notCall, _⟩
-      have action := (expanded_primitive bits indices plan kernel target noOverrides scalar depth operation .load
+      have action := (expanded_primitive (User := User) bits indices plan kernel target noOverrides scalar depth operation .load
         opcode notCall).trans (Epoch.graph_load plan.opcodes scalar operation opcode)
       exact load_local plan context sourceClock clock key operation access result checked
         (inside access.object accessValid.1.2.1) scalar _ action
     | store key operation access operand =>
       rcases checked.1 with ⟨_, accessValid, opcode, notCall, _⟩
-      have action := (expanded_primitive bits indices plan kernel target noOverrides scalar depth operation .store
+      have action := (expanded_primitive (User := User) bits indices plan kernel target noOverrides scalar depth operation .store
         opcode notCall).trans (Epoch.graph_store plan.opcodes scalar operation opcode)
       exact store_local plan context sourceClock clock key operation access operand checked
         (inside access.object accessValid.1.2.1) scalar _ action
@@ -75,7 +75,7 @@ theorem Expansion.local_checked {Value User : Type} (bits : Nat) (indices : Inde
     rcases facts with ⟨_, sameUniform, _, _, controls, bounds, fresh,
       addIndex, minIndex, addOld, minOld, addNotCall, minNotCall⟩
     rcases checked.1 with ⟨_, _, _, _, objectInside, storeOpcode, loopOpcode⟩
-    let base : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
+    let base : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
       withCalls (withIndex (Epoch.scalarAllocationBase plan.opcodes scalar) bits indices)
         (expandedModule plan kernel target)
         (GraphLoopsShape.invoke (finalMeaning bits indices plan.opcodes scalar)

@@ -21,7 +21,7 @@ def slotRuntime {Value : Type} (objects : GraphLoopsReuse.Objects) : Runtime Val
   | .view type descriptor valid =>
       .view type { descriptor with allocation := slotAllocation objects descriptor.allocation } valid
 
-def slotEnv {Value : Type} (objects : GraphLoopsReuse.Objects) (env : Env Value) : Env Value :=
+def slotEnv {Value : Type} (objects : GraphLoopsReuse.Objects) (env : GraphLoopsShape.Env Value) : GraphLoopsShape.Env Value :=
   fun name => slotRuntime objects (env name)
 
 theorem slot_kind {Value : Type} (objects : GraphLoopsReuse.Objects) (value : Runtime Value) :
@@ -35,29 +35,29 @@ theorem slot_holds {Value : Type} (objects : GraphLoopsReuse.Objects) (binding :
   rfl
 
 theorem slot_typed {Value : Type} (objects : GraphLoopsReuse.Objects) (context : Context)
-    (env : Env Value) (typed : Typed context env) : Typed context (slotEnv objects env) :=
+    (env : GraphLoopsShape.Env Value) (typed : Typed context env) : Typed context (slotEnv objects env) :=
   fun binding member => slot_holds objects binding (env binding.name) (typed binding member)
 
-theorem slot_put {Value : Type} (objects : GraphLoopsReuse.Objects) (env : Env Value)
+theorem slot_put {Value : Type} (objects : GraphLoopsReuse.Objects) (env : GraphLoopsShape.Env Value)
     (name : Nat) (value : Runtime Value) :
-    slotEnv objects (put env name value) = put (slotEnv objects env) name (slotRuntime objects value) := by
+    slotEnv objects (GraphLoopsShape.put env name value) = GraphLoopsShape.put (slotEnv objects env) name (slotRuntime objects value) := by
   funext other
-  by_cases equal : other = name <;> simp only [slotEnv, put, equal, ↓reduceIte]
+  by_cases equal : other = name <;> simp only [slotEnv, GraphLoopsShape.put, equal, ↓reduceIte]
 
-theorem slot_assign {Value : Type} (objects : GraphLoopsReuse.Objects) (env : Env Value)
+theorem slot_assign {Value : Type} (objects : GraphLoopsReuse.Objects) (env : GraphLoopsShape.Env Value)
     (bindings : List Binding) (values : List (Runtime Value)) :
-    slotEnv objects (assign env bindings values) =
-      assign (slotEnv objects env) bindings (values.map (slotRuntime objects)) := by
+    slotEnv objects (GraphLoopsShape.assign env bindings values) =
+      GraphLoopsShape.assign (slotEnv objects env) bindings (values.map (slotRuntime objects)) := by
   induction bindings generalizing env values with
   | nil => rfl
   | cons binding rest induction =>
     cases values with
     | nil => rfl
     | cons value tail =>
-      simp only [assign, List.map_cons]
+      simp only [GraphLoopsShape.assign, List.map_cons]
       rw [induction, slot_put]
 
-theorem slot_arguments {Value : Type} (objects : GraphLoopsReuse.Objects) (env : Env Value)
+theorem slot_arguments {Value : Type} (objects : GraphLoopsReuse.Objects) (env : GraphLoopsShape.Env Value)
     (bindings : List Binding) (aliases : Aliases) :
     readArguments false aliases (slotEnv objects env) bindings =
       (readArguments false aliases env bindings).map (slotRuntime objects) := by
@@ -79,7 +79,7 @@ Thus the old initializer environment is preserved, not separately assumed. -/
 theorem erase_slot {Value : Type} (objects : GraphLoopsReuse.Objects) (value : Runtime Value) :
     Epoch.erase (slotRuntime objects value) = Epoch.erase value := by cases value <;> rfl
 
-theorem erase_slot_env {Value : Type} (objects : GraphLoopsReuse.Objects) (env : Env Value) :
+theorem erase_slot_env {Value : Type} (objects : GraphLoopsReuse.Objects) (env : GraphLoopsShape.Env Value) :
     Epoch.eraseEnv (slotEnv objects env) = Epoch.eraseEnv env := by
   funext name
   exact erase_slot objects (env name)

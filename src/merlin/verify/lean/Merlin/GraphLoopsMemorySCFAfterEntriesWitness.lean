@@ -47,7 +47,7 @@ theorem sample_cell_initialized (object index : Nat) : sampleHeap object index =
 chosen to be inhabited. No source execution is assumed. The ordinary Eval
 definition supplies both SSA writes and the final return.
 -/
-theorem literal_binary_execution {World : Type} (meaning : Interpretation Unit World)
+theorem literal_binary_execution {World : Type} (meaning : GraphLoopsShape.Interpretation Unit World)
     (literalKey binaryKey element : String) (input literalResult result : Binding)
     (literalKind : literalResult.kind = .scalar element) (literalPlain : literalResult.known = none)
     (resultKind : result.kind = .scalar element) (resultPlain : result.known = none)
@@ -68,13 +68,13 @@ theorem literal_binary_execution {World : Type} (meaning : Interpretation Unit W
     · rw [binary]
       refine ⟨(), (), (), ?_, trivial, rfl, rfl⟩
       simp only [readArguments, List.map_cons, List.map_nil, Bool.false_eq_true, ↓reduceIte,
-        assign, GraphLoopsShape.put, separate, read]
+        GraphLoopsShape.assign, GraphLoopsShape.put, separate, read]
     · exact ⟨by simp only [readArguments, List.map_cons, List.map_nil, Bool.false_eq_true,
-        ↓reduceIte, assign, GraphLoopsShape.put], rfl⟩
+        ↓reduceIte, GraphLoopsShape.assign, GraphLoopsShape.put], rfl⟩
 
 /-- Construct a complete finite-depth entry execution from its actual body and
 primitive selections. No whole-run or successful-execution premise is used. -/
-theorem literal_binary_complete {World : Type} (meaning : Interpretation Unit World)
+theorem literal_binary_complete {World : Type} (meaning : GraphLoopsShape.Interpretation Unit World)
     (module : Module) (function : Function) (found : functionAt module function.name = some function)
     (literalKey binaryKey element : String) (input literalResult result : Binding)
     (parameters : function.parameters = [input])
@@ -94,6 +94,6 @@ theorem literal_binary_complete {World : Type} (meaning : Interpretation Unit Wo
   refine ⟨.cons (Binding.holds_plain input _ inputKind.symm inputPlain) .nil, ?_⟩
   apply literal_binary_execution _ literalKey binaryKey element input literalResult result literalKind literalPlain
     resultKind resultPlain separate literal binary
-  simp only [assign, GraphLoopsShape.put, ↓reduceIte]
+  simp only [GraphLoopsShape.assign, GraphLoopsShape.put, ↓reduceIte]
 
 end Merlin.GraphLoopsMemorySCF.After

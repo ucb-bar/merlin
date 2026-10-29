@@ -16,7 +16,7 @@ theorem expanded_depth_equivalent {Value User : Type} (bits : Nat) (indices : In
     (expansions : List Expansion) (binding : ExpansionBinding bits plan kernel indices expansions)
     (boundary : BoundaryFacts plan kernel expansions) (scalar : Epoch.BinaryMeaning Value) (depth : Nat)
     (inputs : List (Runtime Value)) (typed : ValuesHold kernel.function.parameters inputs)
-    (callers : Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv kernel.function.parameters inputs))
+    (callers : Epoch.CallersValid plan.objects.length plan.callers (GraphLoopsShape.assign emptyEnv kernel.function.parameters inputs))
     (heap : Heap Value) (user : User) (outputs : List (Runtime Value))
     (world : MemoryWorld Value (Epoch.AllocationPublic User)) :
     GraphLoopsShape.invoke (finalMeaning bits indices plan.opcodes scalar) (expandedModule plan kernel expansions) false
@@ -27,22 +27,22 @@ theorem expanded_depth_equivalent {Value User : Type} (bits : Nat) (indices : In
         world = Epoch.clockWorld plan.objects.length (physicalFinalClock 0 expansions) after := by
   simp only [GraphLoopsShape.invoke, boundary.2.2.2.2, Function.invoke, typed, true_and]
   rw [Epoch.eval_aliases _ _ _ []]
-  have local := bound_local_simulations bits indices plan planValid kernel facts expansions binding boundary scalar depth
+  have localLaw := bound_local_simulations (User := User) bits indices plan planValid kernel facts expansions binding boundary scalar depth
   have commands : Epoch.CommandsValid plan kernel.function.parameters 0 (expansions.map Expansion.source) := by
     rw [binding.1]; exact facts.2.2.1
   have returnBound : AllBound (Epoch.finalContext kernel.function.parameters (expansions.map Expansion.source)) kernel.returned := by
     rw [binding.1]; exact boundary.2.2.1
   have whole := expanded_block plan scalar (expandedMeaning bits indices plan kernel expansions scalar depth)
-    expansions kernel.function.parameters 0 0 commands local kernel.returnKey kernel.returned facts.2.2.2.1
+    expansions kernel.function.parameters 0 0 commands localLaw kernel.returnKey kernel.returned facts.2.2.2.1
     returnBound binding.2.2.2.1 (Epoch.entryMemory plan kernel.function inputs heap user)
-    (assign emptyEnv kernel.function.parameters inputs)
+    (GraphLoopsShape.assign emptyEnv kernel.function.parameters inputs)
     (Epoch.entry_registers plan kernel.function facts.2.2.2.2.1 inputs typed heap user)
     (Epoch.entry_callers plan kernel.function facts.2.2.2.2.1 inputs callers heap user)
     (entry_related plan kernel.function facts.2.2.2.2.1 boundary.2.1 inputs typed callers heap user) outputs world
   rw [Epoch.entry_world, binding.1] at whole
   exact whole
 
-theorem fragments_refused {Value World : Type} (meaning : Interpretation Value World) (fragments : List Fragment)
+theorem fragments_refused {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World) (fragments : List Fragment)
     (fragment : Fragment) (member : fragment ∈ fragments)
     (refused : ∀ env before next after, ¬ fragment.step meaning env before next after)
     (actual next : GraphLoopsShape.Env Value) (before after : World) :
@@ -94,7 +94,7 @@ theorem expanded_complete_equivalent {Value User : Type} (bits : Nat) (indices :
     (expansions : List Expansion) (binding : ExpansionBinding bits plan kernel indices expansions)
     (boundary : BoundaryFacts plan kernel expansions) (scalar : Epoch.BinaryMeaning Value)
     (inputs : List (Runtime Value)) (typed : ValuesHold kernel.function.parameters inputs)
-    (callers : Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv kernel.function.parameters inputs))
+    (callers : Epoch.CallersValid plan.objects.length plan.callers (GraphLoopsShape.assign emptyEnv kernel.function.parameters inputs))
     (heap : Heap Value) (user : User) (outputs : List (Runtime Value))
     (world : MemoryWorld Value (Epoch.AllocationPublic User)) :
     complete (finalMeaning bits indices plan.opcodes scalar) (expandedModule plan kernel expansions) false
@@ -130,7 +130,7 @@ theorem actual_final_equivalent {Value User : Type} (bits : Nat) (indices : Inde
       ⟨bits, expandedModule plan kernel expansions, actualFinal, swaps, sourceFrame, finalFrame⟩ = true)
     (scalar : Epoch.BinaryMeaning Value)
     (inputs : List (Runtime Value)) (typed : ValuesHold kernel.function.parameters inputs)
-    (callers : Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv kernel.function.parameters inputs))
+    (callers : Epoch.CallersValid plan.objects.length plan.callers (GraphLoopsShape.assign emptyEnv kernel.function.parameters inputs))
     (heap : Heap Value) (user : User) (outputs : List (Runtime Value))
     (world : MemoryWorld Value (Epoch.AllocationPublic User)) :
     complete (finalMeaning bits indices plan.opcodes scalar) actualFinal false kernel.function.name

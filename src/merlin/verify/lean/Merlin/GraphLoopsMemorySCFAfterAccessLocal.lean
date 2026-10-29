@@ -15,7 +15,7 @@ theorem load_local {Value User : Type} (plan : Epoch.PlanContext)
     (checked : (Epoch.Command.load key operation access result).Valid plan context sourceClock)
     (slotInside : GraphLoopsReuse.slotOf plan.objects access.object < plan.objects.length)
     (scalar : Epoch.BinaryMeaning Value)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (load : meaning.action operation = Load) :
     LocalSimulation plan scalar meaning context clock (.keep (.load key operation access result)) := by
   have accessValid := checked.1.2.1
@@ -49,7 +49,7 @@ theorem store_local {Value User : Type} (plan : Epoch.PlanContext)
     (checked : (Epoch.Command.store key operation access operand).Valid plan context sourceClock)
     (slotInside : GraphLoopsReuse.slotOf plan.objects access.object < plan.objects.length)
     (scalar : Epoch.BinaryMeaning Value)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (store : meaning.action operation = Store) :
     LocalSimulation plan scalar meaning context clock (.keep (.store key operation access operand)) := by
   have accessValid := checked.1.2.1
