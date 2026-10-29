@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import configuration_elision_runner as runner
+from .compiler_configuration import _read_bound_buffers
 from .compiler_configuration_hoist_intake import DOMAIN as DOMAIN
 from .compiler_configuration_hoist_intake import (
     DOMAINS,
@@ -92,7 +93,7 @@ def check_candidate(candidate, *, lean, destination, timeout=120):
     path = Path(destination).resolve() / "REPORT.json"
     path.write_text(canonical(report))
     completion = Completion(candidate.identity, str(path))
-    _LIVE[completion] = (os.getpid(), threading.get_ident(), candidate, file_ref(path), report)
+    _LIVE[completion] = (os.getpid(), threading.get_ident(), candidate, file_ref(path), report, ())
     validate_completion(completion, candidate)
     return completion
 
@@ -100,12 +101,14 @@ def check_candidate(candidate, *, lean, destination, timeout=120):
 def validate_completion(completion, candidate):
     if type(completion) is not Completion or completion not in _LIVE:
         raise Unavailable("saved/constructed/copied configuration completion has no authority")
-    pid, thread, original, report_ref, report = _LIVE[completion]
+    pid, thread, original, report_ref, report, origins = _LIVE[completion]
     if (pid, thread) != (os.getpid(), threading.get_ident()) or original is not candidate:
         raise Unavailable("compiler configuration completion belongs to a different live invocation")
     if completion.identity != candidate.identity or file_ref(completion.report) != report_ref:
         raise Unavailable("compiler configuration report/candidate identity changed")
     ready(candidate)
+    if origins:
+        _read_bound_buffers(origins)
     library = Path(report["library_root"])
     if any(path.is_symlink() for path in library.rglob("*")):
         raise Unavailable("private configuration proof objects may not be symlinks")
@@ -134,28 +137,37 @@ def deliver(completion, candidate):
 
 
 def replay(report_path, *, lean, destination, timeout=120):
-    saved = json.loads(Path(report_path).read_text())
+    saved = json.loads(Path(report_path).read_bytes().decode("utf-8"))
     if (
         saved.get("schema")
         not in {"merlin.compiler-configuration-hoist.checked.v1", "merlin.compiler-configuration-hoist.checked.v2"}
         or len(saved.get("buffers", [])) != 2
     ):
         raise Unavailable("current complete compiler configuration replay record required")
-    for row in saved["buffers"]:
-        _exact(row)
+    origins = saved["buffers"]
+    raw = _read_bound_buffers(origins)
     current_request = saved["source_request"]
     bound_consumer = current_request.get("schema") == "merlin.compiler-configuration-hoist.request.v2"
     if bound_consumer != (saved["schema"] == "merlin.compiler-configuration-hoist.checked.v2"):
         raise Unavailable("checked hoist report/request schema or C-consumer binding differs")
     selection, c_consumer = reopen_request(current_request)
     candidate = prepare(
-        *(Path(row["path"]).read_text() for row in saved["buffers"]),
+        *raw,
         selection=selection,
         c_consumer=c_consumer,
     )
+    if (candidate.source, candidate.final) != raw:
+        raise Unavailable("configuration hoist replay preparation changed original bytes")
     # Replay intentionally uses current canonical proof/host sources. A saved
     # report locates the source pair, never approves the reconstructed result.
     completion = check_candidate(candidate, lean=lean, destination=destination, timeout=timeout)
+    if _read_bound_buffers(origins) != raw:
+        raise Unavailable("configuration hoist replay originals changed during proof")
+    record = _LIVE.get(completion)
+    if record is None:
+        raise Unavailable("configuration hoist replay did not obtain an owned live completion")
+    _LIVE[completion] = (*record[:5], tuple(json.loads(canonical(origins))))
+    validate_completion(completion, candidate)
     return completion, candidate
 
 
@@ -348,6 +360,19 @@ def validated_hoist(
     before = kernel.text()
 
     def produce():
+        from .compiler_configuration_source_profile import HOIST_ID, admit_hoist_source
+        from .compiler_coverage import boundary
+        from .compiler_profile import SourceOutsideProfile
+
+        exclusion = None
+        try:
+            admit_hoist_source(kernel, selection=selection, c_consumer=c_consumer)
+        except SourceOutsideProfile as error:
+            if error.profile_id != HOIST_ID:
+                raise ValueError("hoisting source exclusion belongs to a different profile") from error
+            exclusion = error
+        if kernel.text() != before:
+            raise ValueError("hoisting source changed during source-profile admission")
         result = _hoist_loop_configuration(
             kernel,
             adapter,
@@ -360,7 +385,12 @@ def validated_hoist(
         if kernel.text() != before:
             raise ValueError("hoisting producer changed original compiler input")
         proof_inputs, transport_refs = (), ()
-        if before != after:
+        if exclusion is not None:
+            # Ordinary changed output remains explicitly UNVERIFIED. Empty proof
+            # inputs confer no theorem claim; original C-domain/owner custody
+            # is independently retained by ConfigurationCConsumer._issue.
+            boundary(SELECTOR, before, after, profile_id=HOIST_ID, exclusion=exclusion)
+        elif before != after:
             if c_consumer is not None:
                 bound = prepare(before, after, selection=selection, c_consumer=c_consumer)
                 proof_inputs = tuple(json.loads(bound.sources_json))
@@ -372,11 +402,14 @@ def validated_hoist(
                 label=SELECTOR,
                 params=original_params,
             )
+            boundary(SELECTOR, before, after, profile_id=HOIST_ID, job=job)
             validation.gate.join()
             for row in proof_inputs:
                 _exact(row)
             if c_consumer is not None:
                 transport_refs = _joined_c_delivery(validation, job, bound, c_consumer, original_params)
+        else:
+            boundary(SELECTOR, before, after, profile_id=HOIST_ID)
         selection.revalidate()
         if kernel.text() != before or result.kernel.text() != after:
             raise ValueError("hoisting source/result changed before actual compiler delivery")
@@ -398,15 +431,14 @@ def replay_to_c_consumer(report_path, *, c_consumer, lean, destination, timeout=
     if type(c_consumer) is not ConfigurationCConsumer:
         raise Unavailable("original typed C consumer required for controlled replay emission")
     c_consumer.revalidate()
-    saved = json.loads(Path(report_path).read_text())
+    saved = json.loads(Path(report_path).read_bytes().decode("utf-8"))
     if saved.get("schema") != "merlin.compiler-configuration-hoist.checked.v2" or len(saved.get("buffers", [])) != 2:
         raise Unavailable("exact C-bound descriptive replay record required")
     selection, requested = reopen_request(saved["source_request"])
     if requested is None or requested.record() != c_consumer.record():
         raise Unavailable("fresh original C consumer differs from replay input domain")
-    for row in saved["buffers"]:
-        _exact(row)
-    texts = [Path(row["path"]).read_text() for row in saved["buffers"]]
+    origins = saved["buffers"]
+    texts = _read_bound_buffers(origins)
     original = parse_kernel(texts[0])
     selected_record = _canonical(selection.selected_contracts.record())
     before = prepare(*texts, selection=selection, c_consumer=c_consumer)
@@ -414,6 +446,8 @@ def replay_to_c_consumer(report_path, *, c_consumer, lean, destination, timeout=
     completion, fresh = replay(report_path, lean=lean, destination=destination, timeout=timeout)
     if fresh != before or deliver(completion, fresh) != texts[1]:
         raise Unavailable("fresh replay source/target/consumer inputs changed")
+    if _read_bound_buffers(origins) != texts:
+        raise Unavailable("C-consumer replay originals changed during fresh proof")
     for row in (*proof_inputs, *saved["buffers"]):
         _exact(row)
     report = validate_completion(completion, fresh)

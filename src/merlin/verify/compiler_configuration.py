@@ -71,7 +71,7 @@ def check_candidate(candidate, *, lean, destination, timeout=120):
     path = Path(destination).resolve() / "REPORT.json"
     path.write_text(canonical(report))
     completion = Completion(candidate.identity, str(path))
-    _LIVE[completion] = (os.getpid(), threading.get_ident(), candidate, file_ref(path), report)
+    _LIVE[completion] = (os.getpid(), threading.get_ident(), candidate, file_ref(path), report, ())
     validate_completion(completion, candidate)
     return completion
 
@@ -79,12 +79,14 @@ def check_candidate(candidate, *, lean, destination, timeout=120):
 def validate_completion(completion, candidate):
     if type(completion) is not Completion or completion not in _LIVE:
         raise Unavailable("saved/constructed/copied configuration completion has no authority")
-    pid, thread, original, report_ref, report = _LIVE[completion]
+    pid, thread, original, report_ref, report, origins = _LIVE[completion]
     if (pid, thread) != (os.getpid(), threading.get_ident()) or original is not candidate:
         raise Unavailable("compiler configuration completion belongs to a different live invocation")
     if completion.identity != candidate.identity or file_ref(completion.report) != report_ref:
         raise Unavailable("compiler configuration report/candidate identity changed")
     ready(candidate)
+    if origins:
+        _read_bound_buffers(origins)
     library = Path(report["library_root"])
     if any(path.is_symlink() for path in library.rglob("*")):
         raise Unavailable("private configuration proof objects may not be symlinks")
@@ -112,21 +114,50 @@ def deliver(completion, candidate):
     return candidate.final
 
 
+def _read_bound_buffers(rows):
+    """Read exactly the saved endpoint bytes; never normalize their newlines."""
+    if type(rows) not in (list, tuple) or len(rows) != 2:
+        raise Unavailable("exact two bound configuration replay buffers required")
+    result = []
+    try:
+        for row in rows:
+            if type(row) is not dict or set(row) != {"path", "sha256", "bytes"}:
+                raise Unavailable("exact configuration replay file reference required")
+            _exact(row)
+            raw = Path(row["path"]).read_bytes()
+            if digest(raw) != row["sha256"] or len(raw) != row["bytes"]:
+                raise Unavailable("configuration replay bytes differ from bound original")
+            result.append(raw.decode("utf-8"))
+            _exact(row)
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError) as error:
+        raise Unavailable("configuration replay original bytes unavailable or changed") from error
+    return tuple(result)
+
+
 def replay(report_path, *, lean, destination, timeout=120):
-    saved = json.loads(Path(report_path).read_text())
+    saved = json.loads(Path(report_path).read_bytes().decode("utf-8"))
     if saved.get("schema") != "merlin.compiler-configuration.checked.v1" or len(saved.get("buffers", [])) != 2:
         raise Unavailable("current complete compiler configuration replay record required")
-    for row in saved["buffers"]:
-        _exact(row)
+    origins = saved["buffers"]
+    raw = _read_bound_buffers(origins)
     selection = reopen(saved["source_request"])
     candidate = prepare(
-        *(Path(row["path"]).read_text() for row in saved["buffers"]),
+        *raw,
         selection=selection,
         representation=saved["candidate"]["representation"],
     )
+    if (candidate.source, candidate.final) != raw:
+        raise Unavailable("configuration replay preparation changed original bytes")
     # Replay intentionally uses current canonical proof/host sources. A saved
     # report locates the source pair, never approves the reconstructed result.
     completion = check_candidate(candidate, lean=lean, destination=destination, timeout=timeout)
+    if _read_bound_buffers(origins) != raw:
+        raise Unavailable("configuration replay originals changed during proof")
+    record = _LIVE.get(completion)
+    if record is None:
+        raise Unavailable("configuration replay did not obtain an owned live completion")
+    _LIVE[completion] = (*record[:5], tuple(json.loads(canonical(origins))))
+    validate_completion(completion, candidate)
     return completion, candidate
 
 
@@ -196,26 +227,30 @@ def check(job):
 
 
 def observe(selection, original, result):
-    """Original-host hook after the actual producer, before publishing its result."""
+    """Strict admitted boundary; source exclusion belongs to the original wrapper."""
     from merlin.transforms.certificates import ir_text
 
     from . import pass_validation
+    from .compiler_configuration_source_profile import ELISION_ID
+    from .compiler_coverage import boundary
 
     if not pass_validation.selected(SELECTOR):
         return result
     result.revalidate()
     before, after = ir_text(original), ir_text(result.module)
     if before == after:
+        boundary(SELECTOR, before, after, profile_id=ELISION_ID)
         return result
     validation = pass_validation.current()
     pass_validation.require_canonical_handler(validation, CHECK)
-    validation.gate.submit(
+    job = validation.gate.submit(
         CHECK,
         before=before,
         after=after,
         label=SELECTOR,
         params=job_params(selection, sdk_bin=validation.tools.sdk_bin),
     )
+    boundary(SELECTOR, before, after, profile_id=ELISION_ID, job=job)
     return result
 
 
@@ -231,12 +266,27 @@ def validated_apply(selection, module, validation):
     pass_validation.require_canonical_handler(validation, CHECK)
 
     def produce():
+        from .compiler_configuration_source_profile import ELISION_ID, admit_elision_source
+        from .compiler_coverage import boundary
+        from .compiler_profile import SourceOutsideProfile
+
         original = module.clone()
         before = ir_text(original)
+        exclusion = None
+        try:
+            admit_elision_source(before, selection=selection, representation="instruction_mlir")
+        except SourceOutsideProfile as error:
+            if error.profile_id != ELISION_ID:
+                raise ValueError("configuration source exclusion belongs to a different profile") from error
+            exclusion = error
         result = _eliminate(module, selection)
         if ir_text(result.source) != before or ir_text(original) != before:
             raise ValueError("configuration producer source differs from original compiler input")
-        observe(selection, original, result)
+        result.revalidate()
+        if exclusion is None:
+            observe(selection, original, result)
+        else:
+            boundary(SELECTOR, before, ir_text(result.module), profile_id=ELISION_ID, exclusion=exclusion)
         return result
 
     active = pass_validation.current()
@@ -274,18 +324,33 @@ def validated_kernel_result(
         selected_contracts, qualification_identity, max_operations=max_calls, enabled=enabled
     )
     before, after = original.text(), result.kernel.text()
-    if before == after:
-        return result
 
     def submit():
-        validation.gate.submit(
-            CHECK,
-            before=before,
-            after=after,
-            label=SELECTOR,
-            params=job_params(selection, sdk_bin=validation.tools.sdk_bin, representation="schedule_kernel"),
-        )
-        validation.gate.join()
+        from .compiler_configuration_source_profile import ELISION_ID, admit_elision_source
+        from .compiler_coverage import boundary
+        from .compiler_profile import SourceOutsideProfile
+
+        exclusion = None
+        try:
+            admit_elision_source(before, selection=selection, representation="schedule_kernel")
+        except SourceOutsideProfile as error:
+            if error.profile_id != ELISION_ID:
+                raise ValueError("configuration source exclusion belongs to a different profile") from error
+            exclusion = error
+        if exclusion is not None:
+            boundary(SELECTOR, before, after, profile_id=ELISION_ID, exclusion=exclusion)
+        elif before == after:
+            boundary(SELECTOR, before, after, profile_id=ELISION_ID)
+        else:
+            job = validation.gate.submit(
+                CHECK,
+                before=before,
+                after=after,
+                label=SELECTOR,
+                params=job_params(selection, sdk_bin=validation.tools.sdk_bin, representation="schedule_kernel"),
+            )
+            boundary(SELECTOR, before, after, profile_id=ELISION_ID, job=job)
+            validation.gate.join()
         selection.revalidate()
         if original.text() != before or result.kernel.text() != after:
             raise ValueError("actual complete configuration Kernel changed before delivery")
