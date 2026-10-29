@@ -1,0 +1,2 @@
+'Merlin.GraphState.Integer.Relation.sound' depends on axioms: [propext]
+'Merlin.GraphState.Integer.programs_sound' depends on axioms: [propext, Quot.sound]

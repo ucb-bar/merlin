@@ -1,0 +1,12 @@
+{
+  "command": [
+    "python3",
+    "-I",
+    "-S",
+    "-B",
+    "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/tools/freeze_profiles.py"
+  ],
+  "exit_code": 0,
+  "seconds": 0.09261481813155115,
+  "source_only": true
+}

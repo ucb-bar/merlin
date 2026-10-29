@@ -1,0 +1,106 @@
+{
+  "source_sha256": "20dc637e3ae6c6d16ba149314007fc0a8e324af128fecd53882ada3100674b3a",
+  "target_sha256": "b94811d88e8eeb4c8f2e6efb1e19eeaf8929ebd363d269f6bdd3ea9b49857391",
+  "contract_sha256": "6350b3d87ead276544e518ab457f47f67e685645efb38968f834faf84f333f19",
+  "block_index": 1,
+  "order": [
+    1,
+    0,
+    2,
+    3
+  ],
+  "nodes": [
+    {
+      "operation_index": 0,
+      "operation_name": "arith.addi",
+      "operation_sha256": "df55fae7654aa2b434227197b3bc0f16a56dc68ea7e8ee0c3e3e0eeb5517c5a1",
+      "reads": [
+        0
+      ],
+      "writes": [
+        2
+      ]
+    },
+    {
+      "operation_index": 1,
+      "operation_name": "arith.muli",
+      "operation_sha256": "c0af44eee256d8ec57935e8ab7745721ae86dea248c776769601a55999aafa31",
+      "reads": [
+        1
+      ],
+      "writes": [
+        3
+      ]
+    },
+    {
+      "operation_index": 2,
+      "operation_name": "arith.subi",
+      "operation_sha256": "8162828d36b03a0632242925f74de51f68a616095ac394e0224e9c917291db95",
+      "reads": [
+        2,
+        3
+      ],
+      "writes": [
+        4
+      ]
+    },
+    {
+      "operation_index": 3,
+      "operation_name": "func.return",
+      "operation_sha256": "d3bb00645553ff5ad1de36f171cc401b294e238925b8d613229f5103d9eb41f4",
+      "reads": [
+        4
+      ],
+      "writes": []
+    }
+  ],
+  "cells": [
+    "ssa:block:1:0",
+    "ssa:block:1:1",
+    "ssa:operation:2:0",
+    "ssa:operation:3:0",
+    "ssa:operation:4:0"
+  ],
+  "dependencies": [
+    [
+      0,
+      2
+    ],
+    [
+      0,
+      3
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      1,
+      3
+    ],
+    [
+      2,
+      3
+    ]
+  ],
+  "exchanges": [
+    {
+      "position": 0,
+      "first": 0,
+      "second": 1
+    }
+  ],
+  "scope": [
+    "actual_whole_ir_reorder_correspondence",
+    "typed_ssa_dependencies",
+    "admitted_deterministic_read_write_frames",
+    "conservative_memory_aliases",
+    "sequential_complete_state_and_observations"
+  ],
+  "assumptions": [
+    "original host operation admissions are complete deterministic total read-local write-framed semantics",
+    "standard memref accesses and source indices are defined; selected allocation premises hold",
+    "sequential IR state has no asynchronous or timing-sensitive unmodeled observations",
+    "actual IR correspondence and semantic effect projection are trusted; machine/RTL execution is separate"
+  ]
+}

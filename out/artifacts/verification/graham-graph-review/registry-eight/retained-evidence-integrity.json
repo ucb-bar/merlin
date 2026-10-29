@@ -1,0 +1,729 @@
+{
+  "packet": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example",
+  "files": [
+    {
+      "path": "EVIDENCE-SUMMARY.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "README.md",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/actual/after.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/actual/before.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/actual/middle.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/actual/producer-execution.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/actual/projection.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/actual/stage-000.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/actual/stage-001.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/after.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/before.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/kernel/GraphStateScalarInstance.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/kernel/audit.stderr",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/kernel/audit.stdout",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/kernel/kernel.stderr",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/kernel/kernel.stdout",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/kernel/report.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/kernel/statements.stderr",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/kernel/statements.stdout",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/middle.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/projection/after.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/projection/before.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/projection/middle.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/projection/producer-execution.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/projection/projection.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/projection.stderr",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/projection.stdout",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/report.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/000-GraphStateAudit.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/001-GraphStateScalar.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/002-GraphStateScalarContract.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/003-GraphStateScalarInitialized.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/004-GraphStateScalarNormalize.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/005-GraphStateScalarSound.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/006-GraphStateScalarSteps.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/007-GraphStateScalarTyping.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/008-lean_graph_state.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/009-lean_graph_state_scalar.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/010-lean_graph_state_scalar_capture.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/011-lean_graph_state_scalar_chain.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/012-lean_graph_state_scalar_execution.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/013-lean_graph_state_scalar_kernel.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/014-lean_graph_state_scalar_models.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/015-lean_graph_state_scalar_receipt.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/016-__init__.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/017-__init__.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/018-dense_float_ir.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/019-__init__.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/020-certificates.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/021-loops.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/022-normalization.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/023-pipeline.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/024-pipeline_state.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/025-planning.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/026-pure_scalar.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/027-scalar_witness.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/checked/source-closure/028-validation.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/producer.stderr",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/producer.stdout",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/receipt.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/selection.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "original/source.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "qualification/PAPER_ROWS.md",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "qualification/README.md",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "qualification/REPRODUCE.md",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "qualification/delivery.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "qualification/dependencies.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "qualification/shared-binding-check-once.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/after.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/before.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/kernel/GraphStateScalarInstance.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/kernel/audit.stderr",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/kernel/audit.stdout",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/kernel/kernel.stderr",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/kernel/kernel.stdout",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/kernel/report.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/kernel/statements.stderr",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/kernel/statements.stdout",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/middle.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/projection/after.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/projection/before.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/projection/middle.mlir",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/projection/producer-execution.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/projection/projection.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/projection.stderr",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/projection.stdout",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/report.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/000-GraphStateAudit.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/001-GraphStateScalar.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/002-GraphStateScalarContract.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/003-GraphStateScalarInitialized.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/004-GraphStateScalarNormalize.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/005-GraphStateScalarSound.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/006-GraphStateScalarSteps.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/007-GraphStateScalarTyping.lean",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/008-lean_graph_state.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/009-lean_graph_state_scalar.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/010-lean_graph_state_scalar_capture.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/011-lean_graph_state_scalar_chain.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/012-lean_graph_state_scalar_execution.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/013-lean_graph_state_scalar_kernel.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/014-lean_graph_state_scalar_models.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/015-lean_graph_state_scalar_receipt.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/016-__init__.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/017-__init__.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/018-dense_float_ir.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/019-__init__.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/020-certificates.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/021-loops.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/022-normalization.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/023-pipeline.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/024-pipeline_state.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/025-planning.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/026-pure_scalar.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/027-scalar_witness.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/fresh/source-closure/028-validation.py",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/report.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/reproduce.json",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/reproduce.stderr",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    },
+    {
+      "path": "replay/reproduce.stdout",
+      "exists": true,
+      "hash_matches": true,
+      "size_matches": true
+    }
+  ],
+  "all_copy_manifest_entries_match": true,
+  "historical_qualification_replayed": false,
+  "new_qualification_issued": false,
+  "compiled_objects_in_portable_copy": false
+}

@@ -1,0 +1,22 @@
+{
+  "executed": true,
+  "command": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "-j1",
+    "-o",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/proof-successors/tail-loop-append-v1/TailLoopAppendProofSuccessor.olean",
+    "TailLoopAppendProofSuccessor.lean"
+  ],
+  "exit_code": 0,
+  "seconds": 0.36670939694158733,
+  "classification": "ACCEPTED",
+  "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-proof-successor/tail-loop-append-v1",
+  "stdout": {
+    "sha256": "563c5bf6dc346844a835655c1997cee1f52162b4f09b493f2fea70fbd2862cae",
+    "bytes": 579
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  }
+}

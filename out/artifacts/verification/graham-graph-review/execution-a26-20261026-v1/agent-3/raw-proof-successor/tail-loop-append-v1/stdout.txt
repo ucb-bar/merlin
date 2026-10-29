@@ -1,0 +1,7 @@
+@Merlin.GraphState.Pipeline.Tail.loop_append : ∀ {Value World Error : Type} (arity : Nat)
+  (body : Int → List Value → World → Merlin.GraphState.Scalar.Outcome Value World Error) (first rest : List Int)
+  (values : List Value) (world : World),
+  Merlin.GraphState.Scalar.loopEval arity body (first ++ rest) values world =
+    Except.bind (Merlin.GraphState.Scalar.loopEval arity body first values world) fun result =>
+      Merlin.GraphState.Scalar.loopEval arity body rest result.fst result.snd
+'Merlin.GraphState.Pipeline.Tail.loop_append' depends on axioms: [propext]

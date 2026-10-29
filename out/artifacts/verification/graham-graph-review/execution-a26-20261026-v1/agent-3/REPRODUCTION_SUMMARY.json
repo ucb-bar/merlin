@@ -1,0 +1,240 @@
+{
+  "schema": "merlin.a26.independent-proof-reproduction-summary.v1",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "fresh_context": {
+    "lean": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "lean_identity": {
+      "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+      "bytes": 9024
+    },
+    "sdk_root": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux",
+    "admission": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/READY.json",
+    "admission_pin": {
+      "sha256": "8da6ccfe5a06558ab4459228e82e82b04eeb7ec42d94b5ee15f4aa40e014ed5d",
+      "bytes": 6715
+    },
+    "profiles_pin": {
+      "sha256": "3993752e88b3056ae5b3c376b5fd3bc2dff317ad39d39eba432a49980457e576",
+      "bytes": 1007849
+    },
+    "single_worker": true,
+    "module_timeout_seconds": 180,
+    "batch_budget_seconds": 1200
+  },
+  "profiles": [
+    {
+      "id": "Q-schedule-successor-v1",
+      "source_modules": 7,
+      "modules_attempted": 7,
+      "modules_compiled": 7,
+      "case_queries": 3,
+      "queries_compiled_and_audited": 3,
+      "queries_failed": 0,
+      "queries_unexecuted": 0,
+      "witnesses_failed": 0,
+      "first_source_failure": null
+    },
+    {
+      "id": "Q-inline-complete-carry-v1",
+      "source_modules": 23,
+      "modules_attempted": 23,
+      "modules_compiled": 23,
+      "case_queries": 5,
+      "queries_compiled_and_audited": 1,
+      "queries_failed": 4,
+      "queries_unexecuted": 0,
+      "witnesses_failed": 5,
+      "first_source_failure": null
+    },
+    {
+      "id": "Q-unroll-tail-successor-v1",
+      "source_modules": 25,
+      "modules_attempted": 25,
+      "modules_compiled": 24,
+      "case_queries": 4,
+      "queries_compiled_and_audited": 0,
+      "queries_failed": 0,
+      "queries_unexecuted": 4,
+      "witnesses_failed": 0,
+      "first_source_failure": {
+        "module": "Merlin.GraphStatePipelineTail",
+        "source": {
+          "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineTail.lean",
+          "sha256": "602ad3f1802105037fb4a0cd042ced628e71709d66b2bfd3a8e42d6fb7b99996",
+          "bytes": 4857
+        },
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-024-Merlin.GraphStatePipelineTail",
+        "excerpt": "Merlin/GraphStatePipelineTail.lean:33:4: error: unsolved goals\ncase neg\nValue World Error : Type\narity : Nat\nbody : Int \u2192 List Value \u2192 World \u2192 Outcome Value World Error\nrest : List Int\nvalues : List Value\nworld : World\nsize : \u00acvalues.length = arity\n\u22a2 loopEval arity body rest values world = Except.error (Fault.arity, world)\nMerlin/GraphStatePipelineTail.lean:61:15: warning: This simp argument is unused:\n  Nat.mul_assoc\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Nat.mul_comm, Nat.mul_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n"
+      }
+    },
+    {
+      "id": "W-caller-context-successor-v1",
+      "source_modules": 118,
+      "modules_attempted": 41,
+      "modules_compiled": 40,
+      "case_queries": 14,
+      "queries_compiled_and_audited": 0,
+      "queries_failed": 0,
+      "queries_unexecuted": 14,
+      "witnesses_failed": 0,
+      "first_source_failure": {
+        "module": "Merlin.GraphLoopsShapeAfterRename",
+        "source": {
+          "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeAfterRename.lean",
+          "sha256": "32bca20f3f2aa8ed0fbfd6b38142db3b3c140677213f5b676bdde80a564ca775",
+          "bytes": 12242
+        },
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-040-Merlin.GraphLoopsShapeAfterRename",
+        "excerpt": "Merlin/GraphLoopsShapeAfterRename.lean:115:20: error: unsolved goals\ncase returned\nValue World : Type\nleft right : Nat\nmeaning : Interpretation Value World\nvalues : List Binding\naliases other : Aliases\nenv : Env Value\nbefore : World\noutputs : List (Runtime Value)\nafter : World\n\u22a2 outputs = readArguments false aliases env values \u2227 after = before \u2194\n    outputs = readArguments false other (swapEnv left right env) (List.map (swapBinding left right) values) \u2227\n      after = before\nMerlin/GraphLoopsShapeAfterRename.lean:139:4: error: Type mismatch: After simplification, term\n  induction ((result.name, result.name) :: aliases)\n    (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n    (put env result.name (Runtime.index value)) before outputs after\n has type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before\n      outputs after)\n    (Eval meaning false (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n      (swapCode left right rest) (put (swapEnv left right env) (swapName left right result.name) (Runtime.index value))\n      before outputs after)\nbut is expected to have type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before"
+      }
+    },
+    {
+      "id": "W-entries-successor-v1",
+      "source_modules": 111,
+      "modules_attempted": 41,
+      "modules_compiled": 40,
+      "case_queries": 12,
+      "queries_compiled_and_audited": 0,
+      "queries_failed": 0,
+      "queries_unexecuted": 12,
+      "witnesses_failed": 0,
+      "first_source_failure": {
+        "module": "Merlin.GraphLoopsShapeAfterRename",
+        "source": {
+          "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/project/Merlin/GraphLoopsShapeAfterRename.lean",
+          "sha256": "32bca20f3f2aa8ed0fbfd6b38142db3b3c140677213f5b676bdde80a564ca775",
+          "bytes": 12242
+        },
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-entries-successor-v1/module-040-Merlin.GraphLoopsShapeAfterRename",
+        "excerpt": "Merlin/GraphLoopsShapeAfterRename.lean:115:20: error: unsolved goals\ncase returned\nValue World : Type\nleft right : Nat\nmeaning : Interpretation Value World\nvalues : List Binding\naliases other : Aliases\nenv : Env Value\nbefore : World\noutputs : List (Runtime Value)\nafter : World\n\u22a2 outputs = readArguments false aliases env values \u2227 after = before \u2194\n    outputs = readArguments false other (swapEnv left right env) (List.map (swapBinding left right) values) \u2227\n      after = before\nMerlin/GraphLoopsShapeAfterRename.lean:139:4: error: Type mismatch: After simplification, term\n  induction ((result.name, result.name) :: aliases)\n    (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n    (put env result.name (Runtime.index value)) before outputs after\n has type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before\n      outputs after)\n    (Eval meaning false (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n      (swapCode left right rest) (put (swapEnv left right env) (swapName left right result.name) (Runtime.index value))\n      before outputs after)\nbut is expected to have type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before"
+      }
+    }
+  ],
+  "totals": {
+    "profile_source_module_attempts": 137,
+    "profile_source_module_acceptances": 134,
+    "case_queries_selected": 38,
+    "case_queries_compiled_and_exactly_audited": 4,
+    "case_queries_failed": 4,
+    "case_queries_unexecuted": 30,
+    "witness_queries_selected": 5,
+    "witness_queries_failed": 5,
+    "original_query_root_audit_occurrences": 76,
+    "native_commands": 157,
+    "command_statuses": {
+      "LEAN_SOURCE_OR_AUDIT_FAILURE": 14,
+      "ACCEPTED": 143
+    }
+  },
+  "accepted_queries": [
+    {
+      "profile": "Q-schedule-successor-v1",
+      "case": "cross_observer_keep_effect_order",
+      "final_root": "merlin_schedule_transform",
+      "kernel_checked_final_type": "@merlin_schedule_transform : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries\n    Merlin.GraphPipelineGateInstance.afterEntries",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-schedule-successor-v1/queries/cross_observer_keep_effect_order/Query.lean",
+        "bytes": 4659,
+        "sha256": "31781ae345d4acf4fcbf7b98f6f56ae5ad5828adeb5f64645fbf9e679f98e31e"
+      }
+    },
+    {
+      "profile": "Q-schedule-successor-v1",
+      "case": "pure_reorder",
+      "final_root": "merlin_schedule_transform",
+      "kernel_checked_final_type": "@merlin_schedule_transform : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries\n    Merlin.GraphPipelineGateInstance.afterEntries",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-schedule-successor-v1/queries/pure_reorder/Query.lean",
+        "bytes": 4659,
+        "sha256": "8b3036ce9e5b23d5e1bc095d5eb15963b7e257cb7a6af6c3813c689fe83de6d4"
+      }
+    },
+    {
+      "profile": "Q-schedule-successor-v1",
+      "case": "unchanged_order",
+      "final_root": "merlin_schedule_transform",
+      "kernel_checked_final_type": "@merlin_schedule_transform : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries\n    Merlin.GraphPipelineGateInstance.afterEntries",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-schedule-successor-v1/queries/unchanged_order/Query.lean",
+        "bytes": 4659,
+        "sha256": "1a4600d2fbd1571a811cb5655b529df1dc879a72ad2e806b100409058e180b3c"
+      }
+    },
+    {
+      "profile": "Q-inline-complete-carry-v1",
+      "case": "empty",
+      "final_root": "merlin_unroll_inline_transform",
+      "kernel_checked_final_type": "@merlin_unroll_inline_transform : \u2200 {World Error : Type}\n  (primitive : Merlin.GraphState.Scalar.Prim \u2192 List.{0} Int \u2192 Int)\n  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry),\n  Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n    Merlin.GraphStatePipelineInlineInstance.originalEntries Merlin.GraphStatePipelineInlineInstance.finalEntries",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/empty/Query.lean",
+        "bytes": 8347,
+        "sha256": "4344cbeae90444ee6bf46a7719a383e8e37f6d29775842588f9ea79b05884862"
+      }
+    }
+  ],
+  "same_statement_tail_proof_successor": {
+    "executed": true,
+    "command": [
+      "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+      "-j1",
+      "-o",
+      "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/proof-successors/tail-loop-append-v1/TailLoopAppendProofSuccessor.olean",
+      "TailLoopAppendProofSuccessor.lean"
+    ],
+    "exit_code": 0,
+    "seconds": 0.36670939694158733,
+    "classification": "ACCEPTED",
+    "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-proof-successor/tail-loop-append-v1",
+    "stdout": {
+      "sha256": "563c5bf6dc346844a835655c1997cee1f52162b4f09b493f2fea70fbd2862cae",
+      "bytes": 579
+    },
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "original_module": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineTail.lean",
+    "original_source_pin": {
+      "sha256": "602ad3f1802105037fb4a0cd042ced628e71709d66b2bfd3a8e42d6fb7b99996",
+      "bytes": 4857
+    },
+    "successor_source": "out/build/verification-a26-20261026-v1/profiles/proof-successors/tail-loop-append-v1/TailLoopAppendProofSuccessor.lean",
+    "successor_source_pin": {
+      "sha256": "ece6b75a4fdfd3c6561ba256e712773d126e8bf02257f400626bb7eeab04a041",
+      "bytes": 1279
+    },
+    "statement_bytes_unchanged": true,
+    "statement_sha256": "4fd7176f33b33c2dee36618eb83f94070afdca793a473e01e3a14e71d4b319d4",
+    "change": "Explicitly split the remaining iteration list in the nil-prefix negative-arity branch; preserve every binder and goal.",
+    "original_candidate_requalified": false,
+    "public_gate_activation": false,
+    "axiom_audit": {
+      "roots_requested": 1,
+      "roots_observed": 1,
+      "missing": [],
+      "forbidden": {},
+      "axioms": {
+        "Merlin.GraphState.Pipeline.Tail.loop_append": [
+          "propext"
+        ]
+      },
+      "passed": true
+    }
+  },
+  "frozen_inputs_postcheck": {
+    "units": 327,
+    "matches": 327
+  },
+  "qualification": false,
+  "human_approval": false,
+  "public_gate_activation": false,
+  "limits": [
+    "Schedule outcomes cover two actual changed cases and one identity case; these are not three verified passes.",
+    "The exact conditional query roots and their requested supports were kernel checked. Projection, primitive/native fidelity and full qualification remain separate.",
+    "The empty-inline theorem compiled, while all five independent non-vacuity witness files failed; no new non-vacuity approval is inferred.",
+    "Both W profiles and tail remain blocked at original support source; all30 dependent case queries are explicitly unexecuted.",
+    "The first audit-wrapper pp.width error and staging bootstrap/scanner issues were reviewer-tool failures, preserved separately from proof-candidate failures.",
+    "Only the standalone same-statement tail lemma successor passed; the original tail module/profile was not repaired or requalified.",
+    "Source/module/root counts are operational evidence counts and must not be converted to verified pass counts."
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "kind": "scalar_redundancy_elimination",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %first = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %duplicate = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %r = \"func.call\"(%duplicate) <{callee = @helper}> : (i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"helper\", function_type = (i8) -> i8}> ({\n  ^bb0(%v: i8):\n    \"func.return\"(%v) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %duplicate = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %r = \"func.call\"(%duplicate) <{callee = @helper}> : (i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"helper\", function_type = (i8) -> i8}> ({\n  ^bb0(%v: i8):\n    \"func.return\"(%v) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {},
+  "certificate": {
+    "kind": "scalar_redundancy_elimination",
+    "before_ir_sha256": "833c186691f003db4c01d9278078e56ed938d32add58c8aaa7d4ff5994c01acb",
+    "after_ir_sha256": "88a756ecf44ad4ec95538c152763b65bbdacfe151f80f554d9bc264acfc58f1e",
+    "witnesses": [
+      {
+        "kind": "scalar_rewrite",
+        "operation_index": 2,
+        "operation": "arith.addi",
+        "rule": "dce",
+        "width": 8,
+        "operation_sha256": "59d4207ea017079a52188dc729f53946a587d11877f8ec97db59964aa4ec5fd5",
+        "representative_index": null,
+        "loop_index": null
+      }
+    ],
+    "scope": [
+      "total_scalar_integer_operations",
+      "preserved_unknown_effects",
+      "ssa_use_def_and_dominance"
+    ],
+    "schema": "merlin.shared_transform.v2"
+  }
+}

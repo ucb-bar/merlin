@@ -1,0 +1,110 @@
+{
+  "schema": "graham.registry-eight.producer-examples.v1",
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "verification_revision": "c399e441e86042752c407a4ba917d4510b16585b",
+  "new_lean_qualification": false,
+  "new_lean_tests_run": false,
+  "method": "Pinned actual common pipeline in explicit plan_only mode; private module clones; original sources and evidence unchanged",
+  "case_results": [
+    {
+      "case": "shape-cast-generic",
+      "kind": "shape_view_normalization",
+      "options": {
+        "normalize_shapes": true
+      },
+      "lean_run": false,
+      "qualified": false,
+      "review_approved": false,
+      "status": "actual_changed_producer_output",
+      "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+      "witness_rules": [
+        "identity_memref_cast"
+      ],
+      "witness_count": 1,
+      "source_unmodified": true,
+      "files": [
+        {
+          "path": "after.mlir",
+          "bytes": 213,
+          "sha256": "abfe941ebc8549a87c187ae332ebe85229d9566187127776195a7ab4bb5da565"
+        },
+        {
+          "path": "before.mlir",
+          "bytes": 273,
+          "sha256": "9c65ded51d692dd8aaf08a5cf64b7ceb45214152ce8b9acf1a46478c5008beeb"
+        },
+        {
+          "path": "change.json",
+          "bytes": 1182,
+          "sha256": "1243c8e22fd5dcf597b809d70545d9b7649b121fb1111a3a460fdcb45e0cb4fe"
+        },
+        {
+          "path": "source.mlir",
+          "bytes": 163,
+          "sha256": "cbe6bfa710172602ef837c446af8a52505538d7657d061ce106974403028b81e"
+        }
+      ]
+    }
+  ],
+  "loaded_producer_sources": [
+    {
+      "module": "merlin",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086"
+    },
+    {
+      "module": "merlin.common",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e"
+    },
+    {
+      "module": "merlin.common.dense_float_ir",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505"
+    },
+    {
+      "module": "merlin.transforms.certificates",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b"
+    },
+    {
+      "module": "merlin.transforms.normalization",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84"
+    },
+    {
+      "module": "merlin.transforms.loops",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e"
+    },
+    {
+      "module": "merlin.transforms.pipeline_state",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652"
+    },
+    {
+      "module": "merlin.transforms.planning",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39"
+    },
+    {
+      "module": "merlin.transforms.validation",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159"
+    },
+    {
+      "module": "merlin.transforms.pipeline",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0"
+    },
+    {
+      "module": "merlin.transforms",
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39"
+    }
+  ],
+  "fixture_sources": [
+    "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_loops_reuse_cases.py",
+    "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_loops_unroll_cases.py"
+  ]
+}

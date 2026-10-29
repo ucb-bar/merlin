@@ -1,0 +1,118 @@
+{
+  "checks": [
+    {
+      "after": {
+        "context": {
+          "execution": "serial_native_llvm;value_semantics;standard_roundeven_intrinsic",
+          "hardware": null,
+          "library": "ef8c2b5f2a5ff217b2ef10858ff1024671991c200dbacd42e684f2ef37cb2f88",
+          "numerical_policy": "typed_source:f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+          "resources": "index_bits=64;added_ops=4096;scalar_ops=512"
+        },
+        "ir_level": "host_tensor",
+        "source_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b"
+      },
+      "before": {
+        "context": {
+          "execution": "serial_native_llvm;value_semantics;standard_roundeven_intrinsic",
+          "hardware": null,
+          "library": "ef8c2b5f2a5ff217b2ef10858ff1024671991c200dbacd42e684f2ef37cb2f88",
+          "numerical_policy": "typed_source:f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+          "resources": "index_bits=64;added_ops=4096;scalar_ops=512"
+        },
+        "ir_level": "host_tensor",
+        "source_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b"
+      },
+      "invalidated": [],
+      "name": "rounding_source",
+      "produced": [
+        "source"
+      ],
+      "repair_round": 0
+    },
+    {
+      "after": {
+        "context": {
+          "execution": "serial_native_llvm;value_semantics;standard_roundeven_intrinsic",
+          "hardware": null,
+          "library": "ef8c2b5f2a5ff217b2ef10858ff1024671991c200dbacd42e684f2ef37cb2f88",
+          "numerical_policy": "typed_source:f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+          "resources": "index_bits=64;added_ops=4096;scalar_ops=512"
+        },
+        "ir_level": "host_tensor",
+        "source_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b"
+      },
+      "before": {
+        "context": {
+          "execution": "serial_native_llvm;value_semantics;standard_roundeven_intrinsic",
+          "hardware": null,
+          "library": "ef8c2b5f2a5ff217b2ef10858ff1024671991c200dbacd42e684f2ef37cb2f88",
+          "numerical_policy": "typed_source:f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+          "resources": "index_bits=64;added_ops=4096;scalar_ops=512"
+        },
+        "ir_level": "host_tensor",
+        "source_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b"
+      },
+      "invalidated": [
+        "source"
+      ],
+      "name": "rounding_representation",
+      "produced": [
+        "emission"
+      ],
+      "repair_round": 0
+    },
+    {
+      "after": {
+        "context": {
+          "execution": "serial_native_llvm;value_semantics;standard_roundeven_intrinsic",
+          "hardware": null,
+          "library": "ef8c2b5f2a5ff217b2ef10858ff1024671991c200dbacd42e684f2ef37cb2f88",
+          "numerical_policy": "typed_source:f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+          "resources": "index_bits=64;added_ops=4096;scalar_ops=512"
+        },
+        "ir_level": "host_tensor",
+        "source_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b"
+      },
+      "before": {
+        "context": {
+          "execution": "serial_native_llvm;value_semantics;standard_roundeven_intrinsic",
+          "hardware": null,
+          "library": "ef8c2b5f2a5ff217b2ef10858ff1024671991c200dbacd42e684f2ef37cb2f88",
+          "numerical_policy": "typed_source:f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+          "resources": "index_bits=64;added_ops=4096;scalar_ops=512"
+        },
+        "ir_level": "host_tensor",
+        "source_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b"
+      },
+      "invalidated": [],
+      "name": "rounding_conformance",
+      "produced": [],
+      "repair_round": 0
+    }
+  ],
+  "context": {
+    "execution": "serial_native_llvm;value_semantics;standard_roundeven_intrinsic",
+    "hardware": null,
+    "library": "ef8c2b5f2a5ff217b2ef10858ff1024671991c200dbacd42e684f2ef37cb2f88",
+    "numerical_policy": "typed_source:f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+    "resources": "index_bits=64;added_ops=4096;scalar_ops=512"
+  },
+  "cost_policy": "compact a closed residual-round DAG to a standard exact intrinsic; no cycle estimate",
+  "diagnostic": "no closed bounded residual-round DAG; original source retained",
+  "library_sources_sha256": {
+    "automatic_host.py": "292dd617ae2a40771437ab977d1208c694ef9b6055eff6cc382460c3717c1d24",
+    "automatic_rounding.py": "81e9c5258601acc3fe91c9ac8cbdb10756a906049fa1c3d3a743f42db78a0f2d",
+    "certificates.py": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+    "lower.py": "9a5193e8895d01f41494422db2a9491935a77b85bdc3bc3a1d902b63cacb6c89",
+    "optional_passes.py": "d5b3c249000c7c26df315013c90dd512561b89f56664084c873de7b1536df508",
+    "pipeline_state.py": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+    "quant_round.py": "89fc3cb9e30a22bbf316a92e91fc0a894b39e4a8e4a8bad1e97649ff6bd97bc1",
+    "quant_round_check.py": "99c3e6d7556f8be9aadbc78c2e8e74caffb1d02f6cd6a630ad8231c3713d0fa2"
+  },
+  "machine_conformance": "not_established",
+  "output_file_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+  "rewrites": 0,
+  "schema": "merlin.automatic_host_rounding.v1",
+  "source_file_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b"
+}

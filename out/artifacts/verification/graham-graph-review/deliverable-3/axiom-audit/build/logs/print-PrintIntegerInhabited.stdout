@@ -1,0 +1,58 @@
+@Merlin.GraphStateIntegerInstance.complete : ∀ {World Error : Type}
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStateIntegerInstance.registry),
+  (∀ (identity : Nat) (arguments : List Int) (world : World) (values : List Int) (final : World),
+      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical
+          (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity).inputs arguments →
+        external.run identity arguments world = Except.ok (values, final) →
+          Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical
+            (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity).outputs values) →
+    Merlin.GraphState.Integer.PreservesEntriesCanonical
+      (Merlin.GraphStateIntegerInstance.Suffix.M Merlin.GraphState.Integer.primitive external)
+      Merlin.GraphStateIntegerInstance.originalEntries Merlin.GraphStateIntegerInstance.Suffix.finalEntries
+'Merlin.GraphStateIntegerInstance.complete' depends on axioms: [propext, Classical.choice, Quot.sound]
+Merlin.GraphStateIntegerInstance.IntegerProvider.laws : ∀ (fail : Bool),
+  Merlin.GraphState.Integer.LocalTyping (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen fail)
+    Merlin.GraphState.Integer.Canonical
+'Merlin.GraphStateIntegerInstance.IntegerProvider.laws' depends on axioms: [propext, Quot.sound]
+Merlin.GraphStateIntegerInstance.IntegerProvider.entriesCanonical : Merlin.GraphState.Integer.Values
+  Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.inputs
+  Merlin.GraphStateIntegerInstance.IntegerProvider.arguments
+'Merlin.GraphStateIntegerInstance.IntegerProvider.entriesCanonical' depends on axioms: [propext]
+Merlin.GraphStateIntegerInstance.IntegerProvider.nonzero : (Merlin.GraphStateIntegerInstance.IntegerProvider.arguments.all
+    fun value => decide (value ≠ 0)) =
+  true
+'Merlin.GraphStateIntegerInstance.IntegerProvider.nonzero' does not depend on any axioms
+Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_success : Merlin.GraphState.Scalar.evalProgram
+    (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen false) Merlin.GraphStateIntegerInstance.F3.before
+    Merlin.GraphStateIntegerInstance.IntegerProvider.arguments 7 =
+  Except.ok ([17], 32)
+'Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_success' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_success : Merlin.GraphState.Scalar.evalProgram
+    (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen false) Merlin.GraphStateIntegerInstance.Suffix.F3.S4
+    Merlin.GraphStateIntegerInstance.IntegerProvider.arguments 7 =
+  Except.ok ([17], 32)
+'Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_success' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_failure : Merlin.GraphState.Scalar.evalProgram
+    (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen true) Merlin.GraphStateIntegerInstance.F3.before
+    Merlin.GraphStateIntegerInstance.IntegerProvider.arguments 7 =
+  Except.error (Merlin.GraphState.Scalar.Fault.external 17, 8)
+'Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_failure' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_failure : Merlin.GraphState.Scalar.evalProgram
+    (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen true) Merlin.GraphStateIntegerInstance.Suffix.F3.S4
+    Merlin.GraphStateIntegerInstance.IntegerProvider.arguments 7 =
+  Except.error (Merlin.GraphState.Scalar.Fault.external 17, 8)
+'Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_failure' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Merlin.GraphStateIntegerInstance.IntegerProvider.source_values_reached : Merlin.GraphState.Integer.Reached
+  (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen false) Merlin.GraphState.Integer.Canonical
+  Merlin.GraphStateIntegerInstance.F3.before Merlin.GraphStateIntegerInstance.IntegerProvider.arguments 7
+'Merlin.GraphStateIntegerInstance.IntegerProvider.source_values_reached' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]

@@ -1,0 +1,8 @@
+roots: [GraphStatePipelineInstance]
+modules_in_environment: 1097
+theorems_in_scope: 891
+definitions_in_scope: 640
+axiom_use_counts: [Quot.sound=263, Classical.choice=148, propext=475]
+non_std3_axioms: []
+compiler_unsafe_rec_aux_of_safe_defs: 23
+findings: []

@@ -1,0 +1,27 @@
+{
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "mode": "cse",
+  "diagnostic_witnesses": [
+    {
+      "producer": "merlin.transforms.pure_scalar.eliminate_scalar_redundancy",
+      "witnesses": [
+        {
+          "operation_index": 4,
+          "operation": "arith.addi",
+          "rule": "cse",
+          "width": 8,
+          "operation_sha256": "4a5cb14a8cdf3770af558eacab40d93d6d894ac26ca6b3bbc227aafd665c7b6b",
+          "representative_index": 3,
+          "loop_index": null
+        }
+      ]
+    }
+  ],
+  "owned_generator": {
+    "path": "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py",
+    "sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+    "bytes": 20214
+  },
+  "complete_raw_outputs_retained_before_projection": true,
+  "public_acceptance_issued": false
+}

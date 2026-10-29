@@ -1,0 +1,167 @@
+{
+  "schema": "merlin.graham.a26-review-plan.v1",
+  "status": "STEP_1_COMPLETE_REMAINDER_PROPOSED_FOR_USER_REVIEW",
+  "objective": "Produce an independently reproducible, precisely scoped claim about Merlin-owned graph transformations, its actual IR mapping and compiler acceptance boundary, and the two paper FIXME deliverables.",
+  "workspace": "/scratch/grammy/blast/merlin-pass-verification",
+  "primary_branch": "feat/pass-verification",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "review_evidence": {
+    "branch": "feat/pass-verification-verf",
+    "requested_commit": "14d772491a52891d948ef761a2dd90f9150c4499",
+    "fetched_tip": "5a7f872db33d378d6b0c4a294e4099e80efd4956",
+    "reviewed_source_base": "58dbc7c00acdb6770d440b773cc2954328c78472",
+    "producer_base": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+    "relationship": "The review branch has three documentation/evidence commits after the common ancestor 58dbc7c00; primary has sixteen later commits. They were not merged.",
+    "existing_deliverables": [
+      "deliverable-1: graph-pass coverage and gaps",
+      "deliverable-2: IR correspondence and omissions",
+      "deliverable-3: assumptions, theorem strength, historical source rebuild and axiom audit"
+    ],
+    "reuse_policy": "Retain these as attributed agent reviews of their exact source cut. Reconcile changed sources and new candidates; do not repeat completed bookkeeping or claim fresh runtime qualification or human approval."
+  },
+  "completed_step_1": {
+    "status": "COMPLETE_WITH_EXPLICIT_EXTERNAL_EVIDENCE_GAPS",
+    "checkout_update": "Clean fast-forward from 229f42c62 to c62f81a8a after checking that none of 4831 added paths collided with existing files.",
+    "audit": "BASELINE_AUDIT.json",
+    "reconciliation": "REVIEW_RECONCILIATION.json",
+    "inline_audit": "INLINE_INTAKE.json",
+    "results": {
+      "Q_fixed_source_snapshots_matching": 36,
+      "Q_canonical_primary_sources_matching": 33,
+      "W_owned_sources_matching": 61,
+      "W_Lean_closure_sources_matching": 118,
+      "W_Python_closure_sources_matching": 51,
+      "staging_capsule_payloads_matching": 202,
+      "staging_profiles_with_valid_declared_dependency_order": 4,
+      "staging_profile_query_cases": 33,
+      "inline_source_snapshots_matching": 112,
+      "inline_authoritative_query_cases_matching": 5,
+      "inline_actual_buffer_and_query_checks_matching": 15,
+      "previously_reviewed_Lean_sources_unchanged": 76,
+      "previously_reviewed_generated_queries_unchanged": 7,
+      "previously_reviewed_Python_sources_unchanged": 45,
+      "previously_reviewed_Python_sources_changed": 10
+    },
+    "interpretation": "These counts measure source/data availability and identities, not verified passes, kernel acceptances or qualification cases.",
+    "remaining_transfer_gaps": [
+      "independent-reproduction/service-integration-v2/HANDOFF.md is absent from both selected Git trees.",
+      "independent-reproduction/host-consumer-bridge-v1/PREREQUISITES_AND_PLACEMENT.md is absent from both selected Git trees; its smaller HANDOFF.md and source proposal are available.",
+      "Missing historical qualification bundles and external tool/parser identities remain missing historical evidence. Source reproduction creates new evidence rather than repairing that history."
+    ]
+  },
+  "priorities_from_review": [
+    {
+      "ids": ["D1-G09", "D3-G10"],
+      "priority": "P0_FOR_COMPILER_ENFORCEMENT_CLAIMS",
+      "state": "Corrective producer sources exist as held snapshots; their three canonical destinations are absent in primary. Integration and ordinary compiler enforcement are not established.",
+      "action": "Trace the supported consumer route and either establish complete-boundary fail-closed authority or retain an explicitly standalone-validator claim."
+    },
+    {
+      "ids": ["D2-G01", "D2-G02"],
+      "priority": "P0_FOR_AFFECTED_INPUT_DOMAINS",
+      "state": "Later admission source fix is present in 9d7fe0846; no fresh execution or qualification was performed in step 1.",
+      "action": "Re-review the ten changed Python sources and their source-closure bindings; run only the relevant guarded admission regressions in a deliberately selected environment."
+    },
+    {
+      "ids": ["D1-G02", "D2-G03", "D3-G08"],
+      "priority": "P0_FOR_ACTUAL_IR_CLAIMS",
+      "action": "Keep shape/memory blueprint-to-final correspondence explicitly trusted unless a separate actual-final-program theorem is established. Review new after/context candidates separately."
+    },
+    {
+      "ids": ["D1-G04", "D1-G08", "D3-G02", "D3-G03", "D3-G04"],
+      "priority": "P0_OR_P1_DEPENDING_ON_CLAIM",
+      "action": "Keep error/world equality, possible-success public outcomes and observer-only relations separate. Preserve total/private/unobservable allocation and the finite-capacity counterexample."
+    }
+  ],
+  "proposed_steps": [
+    {
+      "id": "2A",
+      "title": "Freeze the next source and claim selections",
+      "actions": [
+        "Reuse deliverables 1-3 as attributed evidence and reconcile the ten changed projections; retain an exact supported-variant table for the eight registered kinds.",
+        "Select the small Q schedule profile first, then the authoritative empty/inline profile and tail profile. Create an explicit inline source/query/root dependency plan without changing its frozen inputs.",
+        "Select W caller-context as a separate profile; retain W entries as a distinct predecessor/regression domain, not an additional composed claim.",
+        "Inventory the missing service documents and existing prerequisite patches before attempting integration. Missing integration prose does not prevent isolated source/query builds."
+      ],
+      "acceptance": "Every selected profile has exact sources, query bytes, final/support roots, declared domain, relation, premises and a dependency order. Historical and new evidence are labeled separately."
+    },
+    {
+      "id": "2B",
+      "title": "Admit a fresh independent Lean 4.35.0 environment",
+      "actions": [
+        "Check nproc, host load, memory and disk before significant work, then choose explicit per-command and total initial-batch budgets for review.",
+        "Independently verify the official Lean archive identity and record OS, architecture, origin, digest and archive layout before execution.",
+        "Use user-space installation and new source/object/output directories; retain the old runtime hold and do not open or reuse old SDKs, objects, receipts or approval files as authority.",
+        "Review exact source/import/object association and runtime/loader closure, then perform only the approved finite diagnostic batch. Preserve and stop on the first infrastructure failure."
+      ],
+      "acceptance": "A separately identified fresh context with reviewed provenance, complete selected dependencies and raw diagnostic results; no historical pin refresh."
+    },
+    {
+      "id": "3",
+      "title": "Compile exact candidates and audit theorem roots",
+      "profile_order": [
+        "Q-schedule-successor-v1: 7 modules, 3 queries; unchanged_order is identity evidence",
+        "Q authoritative empty/inline: 5 exact queries plus retained witness queries; source plan to be frozen in 2A",
+        "Q-unroll-tail-successor-v1: 25 modules, 4 queries",
+        "W-caller-context-successor-v1: 118 modules, 14 queries",
+        "W-entries-successor-v1: separate 111-module, 12-query predecessor/regression profile if needed for the selected claim"
+      ],
+      "actions": [
+        "Build each project closure topologically with profile-isolated objects, then compile every complete selected query.",
+        "Inspect exact final and supporting theorem types and transitive axioms; allow only propext, Classical.choice and Quot.sound.",
+        "Preserve the first source failure per profile, exact source/tool manifests and raw command/stdout/stderr/exit data. Propose any repair in a separate successor; do not weaken hypotheses or edit frozen semantics.",
+        "Classify semantic refusal, parser refusal, infrastructure failure, timeout and unexecuted cases separately. A support-module build is not query acceptance."
+      ],
+      "outputs": ["deliverable-4/REPRODUCTION.md", "machine-readable result roster", "raw evidence and exact source/tool/object manifests"],
+      "checkpoint": "Review the smallest Q profile result before committing substantial VM resources to the larger profiles."
+    },
+    {
+      "id": "4",
+      "title": "Qualify successful profiles and review semantic correspondence",
+      "actions": [
+        "Run actual changed positives, valid adversarial mutations, replay and source/query freshness checks for each successfully compiled selected profile.",
+        "Review every actual operation, type/property, declaration, SSA value, region/carry/yield, untouched entry and public observer against its projection and theorem.",
+        "Check constructive nonzero witnesses, assumptions and relation compatibility, including caller-context restrictions and allocation behavior.",
+        "Update the historical review with changed-source findings and explicit verdicts; leave human sign-off pending for the human reviewer."
+      ],
+      "outputs": ["deliverable-5/ASSUMPTIONS.md", "deliverable-5/IR_MAPPING.md", "fresh qualification and replay roster"],
+      "acceptance": "Every claim row states its exact relation, domain, TCB, observed evidence and remaining approval. No old counts qualify new candidates."
+    },
+    {
+      "id": "5",
+      "title": "Audit the real acceptance route",
+      "actions": [
+        "Trace CommonTransformService, pipeline, selected consumer, launcher and callback boundaries using the available exact source proposals.",
+        "Check same-live typed completed proof authority over actual buffers, complete changed-boundary accounting, shared registries and exact intermediate joins.",
+        "Identify all ordinary-route bypasses and source/import prerequisites. Saved JSON, local lemmas, mocks and plan-only records grant no live authority.",
+        "Prepare narrowly selected integration changes only after their exact source prerequisites are reviewable; keep public activation held until the necessary fresh proofs and consumer controls exist."
+      ],
+      "outputs": ["deliverable-6/ENFORCEMENT.md"],
+      "acceptance": "Exact route/file/line map and the strongest supported enforcement sentence, with missing integration obligations explicit."
+    },
+    {
+      "id": "6",
+      "title": "Finish the two paper FIXME deliverables",
+      "actions": [
+        "Draft the supported claim from the per-row audited scope and trusted components.",
+        "Use the actual five-stage scalar/SCF example for CSE/DCE, LICM, ordered unrolling and segmentation, with partial calls, final observer and exact checker/refusal evidence.",
+        "Label historical originals and fresh reproductions separately, and separate kernel results, candidates, SDK-free controls, qualification, human approval, enforcement and model coverage.",
+        "Record exclusions and unresolved findings; do not transfer this example's proof status to panel pipelining or the gSIM figure."
+      ],
+      "outputs": ["PAPER_READY.md"],
+      "acceptance": "A precise supported-claim paragraph, annotated actual IR example, evidence/status table and explicit remaining obligations ready for human review."
+    }
+  ],
+  "execution_constraints": {
+    "current_authorization": "Step 1 intake and plan preparation only; later execution awaits user review.",
+    "agents_started": 0,
+    "default_compilation_parallelism": 1,
+    "temporary_files": "Project-local out/build scratch only; no /tmp.",
+    "large_work": "Review concrete disk/RAM/time budgets before toolchain intake or sustained compilation on the shared VM.",
+    "frozen_evidence": "No edits to frozen Core/Sem/Spec/locks/capsules, historical receipts, failure records or source cuts.",
+    "proof_discipline": "No sorry/admit/new axioms/native_decide/bv_decide/substituted evaluator or dropped obligations.",
+    "scope": "Numerical proof work, LLVM-owned passes, hardware qualification and whole-model correctness remain outside this plan's supported claim.",
+    "publication": "No push, PR, experimental-branch merge or public gate activation in step 1."
+  },
+  "recommended_next_tranche": "Review this baseline and plan, then approve source/claim selection and a separately budgeted fresh SDK plus smallest-Q reproduction before larger builds."
+}

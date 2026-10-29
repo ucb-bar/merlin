@@ -1,0 +1,41 @@
+{
+  "case": "unroll-inline_many",
+  "kind": "ordered_loop_unrolling",
+  "options": {
+    "unroll_factors": [
+      7
+    ]
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "structural"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 2880,
+      "sha256": "d73b3c71619d811a9f2adad7d0b2e5483e58a299ebf30657f1df4abdaabed003"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 1658,
+      "sha256": "dc0991b1ab1ce956d24527f66783c81e9b5242db7647d24e3362992e33348ab6"
+    },
+    {
+      "path": "change.json",
+      "bytes": 5821,
+      "sha256": "da4f3ccaa08c8e257f588ccf1e1ed66246f8e1dcf43f78d3f7eb1b41816ae920"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 903,
+      "sha256": "560e8c324fda0116e0aee602a25c4f55575a6bd36f4606d9a82388001f192952"
+    }
+  ]
+}

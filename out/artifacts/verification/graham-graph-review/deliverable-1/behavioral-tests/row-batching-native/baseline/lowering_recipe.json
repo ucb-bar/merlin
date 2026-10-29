@@ -1,0 +1,90 @@
+{
+  "commands": [
+    {
+      "argv": [
+        "/home/grammy/blast/merlin-pass-verification/out/build/lean/mlir-venv/bin/python",
+        "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/run_lowering.py",
+        "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model.mlir",
+        "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model.ll",
+        "canonicalize,cse,func.func(linalg-fuse-elementwise-ops),func.func(linalg-generalize-named-ops),__merlin_automatic_scalar_host__,one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map allow-return-allocs-from-loops},canonicalize,buffer-results-to-out-params{modify-public-functions hoist-static-allocs},func.func(buffer-hoisting,buffer-loop-hoisting),canonicalize,cse,ownership-based-buffer-deallocation,__merlin_split_fresh_deallocs__,buffer-deallocation-simplification,bufferization-lower-deallocations,canonicalize,func.func(optimize-allocation-liveness),__merlin_slice_unused_elementwise_output__,func.func(convert-linalg-to-loops),convert-scf-to-cf,expand-strided-metadata,lower-affine,convert-math-to-libm,convert-math-to-llvm,convert-index-to-llvm,convert-arith-to-llvm,finalize-memref-to-llvm,convert-func-to-llvm,convert-cf-to-llvm,reconcile-unrealized-casts,canonicalize,cse,symbol-dce",
+        "1",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "",
+        "1",
+        "1",
+        "0"
+      ],
+      "environment": {
+        "MERLIN_BOARD_CATALOG": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/examples/board-catalog.yaml",
+        "MERLIN_CLANG": "/home/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+        "MERLIN_COMPILER_DRIVER": "python",
+        "MERLIN_COMPILER_PYTHON": "/home/grammy/blast/merlin-pass-verification/out/build/lean/mlir-venv/bin/python",
+        "MERLIN_MLIR_INSTALL": "/home/grammy/blast/merlin/third_party/llvm-build",
+        "MERLIN_MLIR_TRANSLATE": "/home/grammy/blast/merlin/third_party/llvm-build/bin/mlir-translate",
+        "MERLIN_TARGET_PATH": ""
+      },
+      "environment_digest": "3f6ba717b2afd9c5",
+      "executable": {
+        "bytes": 8020928,
+        "path": "/usr/bin/python3.12",
+        "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f"
+      }
+    }
+  ],
+  "features": [
+    "automatic_scalar_host",
+    "erase_self_copy",
+    "fold_uniform_fill_copy",
+    "specialize_contiguous_copy"
+  ],
+  "returned_llvm_ir": {
+    "bytes": 24118,
+    "sha256": "e6e08dfcca0cfd09faa6345f1787434495cd0d2457c292ad079eb6b28b5a554b"
+  },
+  "schema": "merlin.lowering_recipe.v1",
+  "scope": "upstream lowering through returned LLVM IR; not final codegen or link",
+  "sources": {
+    "automatic_host_optimizations": {
+      "bytes": 644,
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/automatic-host-optimizations.json",
+      "sha256": "31aa5e6a172d0b403914dd353cfc227a515d242bdcc9d91cafda407cf372daf0"
+    },
+    "loop_ownership_checker": {
+      "bytes": 29649,
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/llvmlower/dealloc_lifetime.py",
+      "sha256": "f8f98cd486352fced6f78972f14a3fb3b317ab9b519564da70f17e1bf36f16d0"
+    },
+    "pipeline_driver": {
+      "bytes": 111921,
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/llvmlower/pipeline.py",
+      "sha256": "4d4dde99be6aded6305e1d6c3e911756a4261c685cb113edfbf8fe0f152e6309"
+    },
+    "prepared_mlir": {
+      "bytes": 7990,
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model.mlir",
+      "sha256": "c4554d131e2b4527ccbbd87f690fd5842e6f5d8c1125d51084555b17e0720b36"
+    },
+    "runner": {
+      "bytes": 413114,
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/run_lowering.py",
+      "sha256": "7c934958a91ff8079954ffc036eefd51e74232f540283b2bee749755e81b676a"
+    },
+    "translation_transport": {
+      "bytes": 11286,
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/llvmlower/llvm_dialect_product.py",
+      "sha256": "2b9773af922b7e1dd44347670c45d18d07dcfe1611d3a9ffbba948565bfbe090"
+    }
+  },
+  "status": "returned"
+}

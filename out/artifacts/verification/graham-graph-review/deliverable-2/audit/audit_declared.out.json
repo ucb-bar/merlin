@@ -1,0 +1,385 @@
+{
+  "reviewer": "Graham independent review (agent)",
+  "date": "2026-10-26",
+  "script_sha256": "0f646d573b133a124f4bc5709911bd3d9758933d5ffd0a71d158ff7476d814a0",
+  "reader_sha256": "6a393a5b133ae5700dc6ef0c65792ab13fe9d837018b1cd78a905690ccf9f5c3",
+  "imports_implementation": false,
+  "cases": [
+    {
+      "case": "0",
+      "source_sha256": "1a6d48ae471f28253035e84370379e909466c3c2941393cb8d6027879926c389",
+      "retained_source_identical": true,
+      "check_lean_sha256": "a4abc04170b9ecdc1041dd7d427b4ce517258fbb7d855db82f99a48b63c2835f",
+      "actualBefore_vs_reader": {
+        "events": 31,
+        "structural_mismatches": [],
+        "attribute_key_differences": [
+          {
+            "op": "linalg.generic",
+            "results": [
+              9
+            ],
+            "reader_keys": [
+              "indexing_maps",
+              "iterator_types"
+            ],
+            "lean_keys": [
+              "indexing_maps",
+              "iterator_types",
+              "operandSegmentSizes"
+            ]
+          },
+          {
+            "op": "linalg.generic",
+            "results": [
+              16
+            ],
+            "reader_keys": [
+              "indexing_maps",
+              "iterator_types"
+            ],
+            "lean_keys": [
+              "indexing_maps",
+              "iterator_types",
+              "operandSegmentSizes"
+            ]
+          },
+          {
+            "op": "linalg.generic",
+            "results": [
+              21
+            ],
+            "reader_keys": [
+              "indexing_maps",
+              "iterator_types"
+            ],
+            "lean_keys": [
+              "indexing_maps",
+              "iterator_types",
+              "operandSegmentSizes"
+            ]
+          },
+          {
+            "op": "linalg.generic",
+            "results": [
+              27
+            ],
+            "reader_keys": [
+              "indexing_maps",
+              "iterator_types"
+            ],
+            "lean_keys": [
+              "indexing_maps",
+              "iterator_types",
+              "operandSegmentSizes"
+            ]
+          },
+          {
+            "op": "arith.trunci",
+            "results": [
+              33
+            ],
+            "reader_keys": [],
+            "lean_keys": [
+              "overflowFlags"
+            ]
+          }
+        ]
+      },
+      "actualRetained_equals_actualBefore_literal": true,
+      "kernel_dataflow": [
+        {
+          "instr": "produce",
+          "reads": [
+            "%input",
+            "%w0",
+            "%state"
+          ],
+          "writes": "%p",
+          "write_window": {
+            "resource": "private0",
+            "backing": "private0",
+            "start": 0,
+            "bytes": 141,
+            "within_capacity": true
+          },
+          "body": [
+            [
+              "arith.muli",
+              [
+                "%x",
+                "%w"
+              ]
+            ],
+            [
+              "arith.addi",
+              [
+                "%product",
+                "%s"
+              ]
+            ],
+            [
+              "linalg.yield",
+              [
+                "%r"
+              ]
+            ]
+          ]
+        },
+        {
+          "instr": "add",
+          "reads": [
+            "%p",
+            "%w1"
+          ],
+          "writes": "%c0",
+          "write_window": {
+            "resource": "output0",
+            "backing": "output0",
+            "start": 0,
+            "bytes": 141,
+            "within_capacity": true
+          },
+          "body": [
+            [
+              "arith.addi",
+              [
+                "%v",
+                "%w_1"
+              ]
+            ],
+            [
+              "linalg.yield",
+              [
+                "%r_1"
+              ]
+            ]
+          ]
+        },
+        {
+          "instr": "multiply",
+          "reads": [
+            "%p",
+            "%w1"
+          ],
+          "writes": "%c1",
+          "write_window": {
+            "resource": "output1",
+            "backing": "output1",
+            "start": 0,
+            "bytes": 141,
+            "within_capacity": true
+          },
+          "body": [
+            [
+              "arith.muli",
+              [
+                "%v_1",
+                "%w_2"
+              ]
+            ],
+            [
+              "linalg.yield",
+              [
+                "%r_2"
+              ]
+            ]
+          ]
+        }
+      ],
+      "kernel_vs_source_problems": [],
+      "abi_association_used": "kernel read args in order <- original-connected-plan inputs; write args <- plan outputs (positional; host-supplied, not derived from MLIR)",
+      "lean_addresses_literal": "fun slot => if slot = 2 then \u27e80,0,141\u27e9 else if slot = 0 then \u27e81,0,141\u27e9 else if slot = 3 then \u27e82,0,141\u27e9 else if slot = 9 then \u27e86,0,141\u27e9 else if slot = 1 then \u27e83,0,141\u27e9 else if slot = 16 then \u27e84,0,141\u27e9 else if slot = 21 then \u27e85,0,141\u27e9 else \u27e80,0,0\u27e9",
+      "lean_initialKnown": "[2,0,3,1]",
+      "verdict": "match"
+    },
+    {
+      "case": "1",
+      "source_sha256": "101f81fa3d8b473ac0f5894693e1b429f27a27f80590f883f9a28e5a21d70eee",
+      "retained_source_identical": true,
+      "check_lean_sha256": "ad924392a0dff9860bb799f138ed390bdd0578dc1a70bb4c5e2fce0f006d7ab9",
+      "actualBefore_vs_reader": {
+        "events": 31,
+        "structural_mismatches": [],
+        "attribute_key_differences": [
+          {
+            "op": "linalg.generic",
+            "results": [
+              9
+            ],
+            "reader_keys": [
+              "indexing_maps",
+              "iterator_types"
+            ],
+            "lean_keys": [
+              "indexing_maps",
+              "iterator_types",
+              "operandSegmentSizes"
+            ]
+          },
+          {
+            "op": "linalg.generic",
+            "results": [
+              16
+            ],
+            "reader_keys": [
+              "indexing_maps",
+              "iterator_types"
+            ],
+            "lean_keys": [
+              "indexing_maps",
+              "iterator_types",
+              "operandSegmentSizes"
+            ]
+          },
+          {
+            "op": "linalg.generic",
+            "results": [
+              21
+            ],
+            "reader_keys": [
+              "indexing_maps",
+              "iterator_types"
+            ],
+            "lean_keys": [
+              "indexing_maps",
+              "iterator_types",
+              "operandSegmentSizes"
+            ]
+          },
+          {
+            "op": "linalg.generic",
+            "results": [
+              27
+            ],
+            "reader_keys": [
+              "indexing_maps",
+              "iterator_types"
+            ],
+            "lean_keys": [
+              "indexing_maps",
+              "iterator_types",
+              "operandSegmentSizes"
+            ]
+          },
+          {
+            "op": "arith.trunci",
+            "results": [
+              33
+            ],
+            "reader_keys": [],
+            "lean_keys": [
+              "overflowFlags"
+            ]
+          }
+        ]
+      },
+      "actualRetained_equals_actualBefore_literal": true,
+      "kernel_dataflow": [
+        {
+          "instr": "produce",
+          "reads": [
+            "%input",
+            "%w0",
+            "%state"
+          ],
+          "writes": "%p",
+          "write_window": {
+            "resource": "private0",
+            "backing": "common",
+            "start": 0,
+            "bytes": 92,
+            "within_capacity": true
+          },
+          "body": [
+            [
+              "arith.muli",
+              [
+                "%x",
+                "%w"
+              ]
+            ],
+            [
+              "arith.addi",
+              [
+                "%product",
+                "%s"
+              ]
+            ],
+            [
+              "linalg.yield",
+              [
+                "%r"
+              ]
+            ]
+          ]
+        },
+        {
+          "instr": "add",
+          "reads": [
+            "%p",
+            "%w1"
+          ],
+          "writes": "%c0",
+          "write_window": {
+            "resource": "output0",
+            "backing": "output0",
+            "start": 0,
+            "bytes": 92,
+            "within_capacity": true
+          },
+          "body": [
+            [
+              "arith.addi",
+              [
+                "%v",
+                "%w_1"
+              ]
+            ],
+            [
+              "linalg.yield",
+              [
+                "%r_1"
+              ]
+            ]
+          ]
+        },
+        {
+          "instr": "multiply",
+          "reads": [
+            "%p",
+            "%w1"
+          ],
+          "writes": "%c1",
+          "write_window": {
+            "resource": "output1",
+            "backing": "output1",
+            "start": 0,
+            "bytes": 92,
+            "within_capacity": true
+          },
+          "body": [
+            [
+              "arith.muli",
+              [
+                "%v_1",
+                "%w_2"
+              ]
+            ],
+            [
+              "linalg.yield",
+              [
+                "%r_2"
+              ]
+            ]
+          ]
+        }
+      ],
+      "kernel_vs_source_problems": [],
+      "abi_association_used": "kernel read args in order <- original-connected-plan inputs; write args <- plan outputs (positional; host-supplied, not derived from MLIR)",
+      "lean_addresses_literal": "fun slot => if slot = 2 then \u27e81,0,92\u27e9 else if slot = 0 then \u27e82,0,92\u27e9 else if slot = 3 then \u27e83,0,92\u27e9 else if slot = 9 then \u27e80,0,92\u27e9 else if slot = 1 then \u27e84,0,92\u27e9 else if slot = 16 then \u27e85,0,92\u27e9 else if slot = 21 then \u27e86,0,92\u27e9 else \u27e80,0,0\u27e9",
+      "lean_initialKnown": "[2,0,3,1]",
+      "verdict": "match"
+    }
+  ]
+}

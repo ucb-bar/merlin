@@ -1,0 +1,73 @@
+{
+  "bounds": {
+    "bits": 64,
+    "lower": 7,
+    "upper": 7,
+    "step": 2,
+    "factor": 5,
+    "count": 0,
+    "groups": 0,
+    "remainder": 0
+  },
+  "sourceBody": "{\"arguments\":[[9,\"index\"],[10,\"i32\"],[11,\"i32\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[10,2],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[12,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[11,12],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[13,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.store\",\"operands\":[12,3,9],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[12,13],\"properties\":[],\"regions\":[],\"results\":[]}]}",
+  "clones": [],
+  "sourceInitial": [
+    0,
+    1
+  ],
+  "targetInitial": [
+    0,
+    1
+  ],
+  "chainInitial": [
+    0,
+    1
+  ],
+  "expectedExit": [
+    0,
+    1
+  ],
+  "actualExit": [
+    0,
+    1
+  ],
+  "sourceResults": [
+    "i32",
+    "i32"
+  ],
+  "targetResults": [
+    "i32",
+    "i32"
+  ],
+  "tailBody": "",
+  "bulkBody": "",
+  "targetStride": 10,
+  "targetBound": 7,
+  "actualBindings": {
+    "source_results": [
+      [
+        7,
+        "i32"
+      ],
+      [
+        8,
+        "i32"
+      ]
+    ],
+    "replacements": [
+      0,
+      1
+    ],
+    "source_initial": [
+      0,
+      1
+    ],
+    "mapped_initial": [
+      0,
+      1
+    ]
+  },
+  "sourceContext": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.module\",\"operands\":[],\"properties\":[],\"regions\":[[{\"arguments\":[],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i32, i32, i32, memref<?xi32>) -> (i32, i32)\"],[\"sym_name\",\"\\\"kernel\\\"\"]],\"regions\":[[{\"arguments\":[[0,\"i32\"],[1,\"i32\"],[2,\"i32\"],[3,\"memref<?xi32>\"]],\"operations\":[{\"attributes\":[],\"index_constant\":7,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"7 : index\"]],\"regions\":[],\"results\":[[4,\"index\"]]},{\"attributes\":[],\"index_constant\":7,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"7 : index\"]],\"regions\":[],\"results\":[[5,\"index\"]]},{\"attributes\":[],\"index_constant\":2,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"2 : index\"]],\"regions\":[],\"results\":[[6,\"index\"]]},{\"boundary\":0,\"initial\":[0,1],\"results\":[[7,\"i32\"],[8,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[7,2],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[14,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[14,8],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i32) -> i32\"],[\"sym_name\",\"\\\"untouched\\\"\"]],\"regions\":[[{\"arguments\":[[15,\"i32\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"1 : i32\"]],\"regions\":[],\"results\":[[16,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[15,16],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[17,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[17],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}]}]],\"results\":[]}",
+  "targetContext": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.module\",\"operands\":[],\"properties\":[],\"regions\":[[{\"arguments\":[],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i32, i32, i32, memref<?xi32>) -> (i32, i32)\"],[\"sym_name\",\"\\\"kernel\\\"\"]],\"regions\":[[{\"arguments\":[[0,\"i32\"],[1,\"i32\"],[2,\"i32\"],[3,\"memref<?xi32>\"]],\"operations\":[{\"attributes\":[],\"index_constant\":7,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"7 : index\"]],\"regions\":[],\"results\":[[4,\"index\"]]},{\"attributes\":[],\"index_constant\":7,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"7 : index\"]],\"regions\":[],\"results\":[[5,\"index\"]]},{\"attributes\":[],\"index_constant\":2,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"2 : index\"]],\"regions\":[],\"results\":[[6,\"index\"]]},{\"boundary\":0,\"initial\":[0,1],\"results\":[[7,\"i32\"],[8,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[7,2],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[14,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[14,8],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i32) -> i32\"],[\"sym_name\",\"\\\"untouched\\\"\"]],\"regions\":[[{\"arguments\":[[15,\"i32\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"1 : i32\"]],\"regions\":[],\"results\":[[16,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[15,16],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[17,\"i32\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[17],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}]}]],\"results\":[]}",
+  "structural_nodes": 27
+}

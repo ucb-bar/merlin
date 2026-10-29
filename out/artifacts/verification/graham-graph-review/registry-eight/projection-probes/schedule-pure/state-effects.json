@@ -1,0 +1,10 @@
+{
+  "case": "schedule-pure",
+  "route": "state-effects",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/schedule-pure/state-effects.model.json",
+  "sha256": "94014b13e87949cb97d0ce1f5cdbae0cc91b54bd3708341b57565df394f91fda"
+}

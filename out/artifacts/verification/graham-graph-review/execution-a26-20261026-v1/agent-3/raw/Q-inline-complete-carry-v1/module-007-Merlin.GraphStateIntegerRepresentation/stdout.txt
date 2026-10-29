@@ -1,0 +1,2 @@
+'Merlin.GraphState.Integer.typed_result' depends on axioms: [propext]
+'Merlin.GraphState.Integer.loop_result_typed' depends on axioms: [propext]

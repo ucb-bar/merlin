@@ -1,0 +1,10 @@
+DeclaredJointWitness.lean:141:0: warning: Definition `instantiated` is a proposition; use `theorem` instead of `def`
+
+Note: This linter can be disabled with `set_option linter.defProp false`
+'GrahamD3.DeclaredJoint.contracts' depends on axioms: [propext, Quot.sound]
+'GrahamD3.DeclaredJoint.initialized' depends on axioms: [propext]
+'GrahamD3.DeclaredJoint.publication' depends on axioms: [propext, Quot.sound]
+'GrahamD3.DeclaredJoint.jointly_satisfiable' depends on axioms: [propext, Quot.sound]
+'GrahamD3.DeclaredJoint.instantiated' depends on axioms: [propext, Classical.choice, Quot.sound]
+'GrahamD3.DeclaredJoint.machine_publishes_nonzero' depends on axioms: [propext, Classical.choice, Quot.sound]
+'GrahamD3.DeclaredJoint.publication_derivable' depends on axioms: [propext, Quot.sound]

@@ -1,0 +1,55 @@
+Traceback (most recent call last):
+  File "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py", line 449, in <module>
+    main()
+  File "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py", line 433, in main
+    result = capture(args.reference, args.source, args.target, args.destination, args.mode, args.middle)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py", line 313, in capture
+    before = parse_ir(Path(source).read_text())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/transforms/certificates.py", line 35, in parse_ir
+    module.verify()
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py", line 1293, in verify
+    region.verify()
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py", line 2598, in verify
+    block.verify()
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py", line 1997, in verify
+    operation.verify()
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py", line 1293, in verify
+    region.verify()
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py", line 2598, in verify
+    block.verify()
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py", line 1997, in verify
+    operation.verify()
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py", line 1299, in verify
+    self.emit_error(
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py", line 1512, in emit_error
+    diagnostic.raise_exception(self, underlying_error)
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/utils/diagnostic.py", line 54, in raise_exception
+    raise underlying_error
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/ir/core.py", line 1297, in verify
+    self.verify_()
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/irdl/operations.py", line 2210, in verify_
+    op_def.verify(self)
+  File "/home/grammy/blast/merlin-pass-verification/.venv/lib/python3.12/site-packages/xdsl/irdl/operations.py", line 1196, in verify
+    raise VerifyException(
+xdsl.utils.exceptions.VerifyException: property 'unsignedCmp' is not defined by the operation 'scf.for'. Use the dictionary attribute to add arbitrary information to the operation.
+"builtin.module"() ({
+  "func.func"() <{sym_name = "k", function_type = (i8, i8) -> i8}> ({
+  ^bb0(%a: i8, %b: i8):
+    %l0 = "arith.constant"() <{value = 0 : index}> : () -> index
+    %s = "arith.constant"() <{value = 1 : index}> : () -> index
+    "scf.for"(%l0, %l0, %s) <{unsignedCmp}> ({
+    ^^^^^^^^^-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+    | Operation does not verify: property 'unsignedCmp' is not defined by the operation 'scf.for'. Use the dictionary attribute to add arbitrary information to the operation.
+    --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+    ^bb1(%i: index):
+      "scf.yield"() : () -> ()
+    }) : (index, index, index) -> ()
+    %x = "arith.addi"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8
+    %y = "arith.addi"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8
+    %z = "arith.muli"(%x, %y) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8
+    "func.return"(%z) : (i8) -> ()
+  }) : () -> ()
+}) : () -> ()
+

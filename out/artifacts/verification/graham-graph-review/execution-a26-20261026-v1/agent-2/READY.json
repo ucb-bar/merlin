@@ -1,0 +1,94 @@
+{
+  "status": "READY_FRESH_INDEPENDENT_CLI",
+  "sdk": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux",
+  "lean": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+  "lib_lean": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean",
+  "source_lean": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/src/lean",
+  "bundled_shared_library_paths": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean"
+  ],
+  "command_prefix": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "-j1"
+  ],
+  "thread_option_verified": "-j1 was used for all eight successful commands; separated -j 1 is equivalent CLI form but not separately executed here.",
+  "version": "Lean (version 4.35.0, x86_64-unknown-linux-gnu, commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc, Release)",
+  "archive_sha256": "c8531faaa4a93d5a4dae0c742cbc1bd42a2993594d02f93a9d629ebf299fb2c8",
+  "runtime_sha256": "efef27df56f2197139afe12f1a2b63913a05f1aba81ce88824c44100431ed8c4",
+  "lean_sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+  "diagnostic_cases": [
+    "InitNat",
+    "InitListNat",
+    "OmegaListNat"
+  ],
+  "diagnostic_commands": 8,
+  "loaded_initializers": [
+    "/lib64/ld-linux-x86-64.so.2",
+    "/lib/x86_64-linux-gnu/libc.so.6",
+    "/lib/x86_64-linux-gnu/librt.so.1",
+    "/lib/x86_64-linux-gnu/libm.so.6",
+    "/lib/x86_64-linux-gnu/libdl.so.2",
+    "/lib/x86_64-linux-gnu/libpthread.so.0",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared.so",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_1.so",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_2.so",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libInit_shared.so"
+  ],
+  "static_review_note": "The first readelf enumerator selected libc++.so by suffix. That member is the official 34-byte text linker script INPUT(libc++.so.1 -lc++abi -lunwind), so readelf rejected its file format before any SDK execution. The original failure and stdout/stderr are preserved. The second static pass explicitly classified by ELF magic and retained the script as data; no archive layout/member/hash policy was relaxed, and no native diagnostic failed.",
+  "fresh_CLI_scope": "Independent source compilation only; not a common Context approval, public compiler gate activation, model or semantic qualification.",
+  "old_runtime_hold": "UNCHANGED",
+  "recommended_environment": "Remove inherited LEAN/LAKE/ELAN/LD variables, set LEAN_PATH to new isolated profile object root (and optionally fresh SDK lib/lean only), LD_LIBRARY_PATH to this fresh SDK lib and lib/lean only; set LEAN_NUM_THREADS=1 and OMP_NUM_THREADS=1. Never import old project objects.",
+  "evidence": {
+    "OFFICIAL_IDENTITY.json": {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/OFFICIAL_IDENTITY.json",
+      "bytes": 2661,
+      "sha256": "651cbc9428a6b217c013a97b0d5e39d8b7b87cd9bf18f0d44e79b56cacd3ac38"
+    },
+    "ARCHIVE_IDENTITY.json": {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/ARCHIVE_IDENTITY.json",
+      "bytes": 331,
+      "sha256": "0b4987f9624af407147cc45ed00fc72beedbe9a8fd6db9110b262c1b02860579"
+    },
+    "SDK_MEMBER_MANIFEST.json": {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/SDK_MEMBER_MANIFEST.json",
+      "bytes": 3994984,
+      "sha256": "a37d9034baa4f2359abaac87fd3fa0ad866c715e0adc02545b9c867abc2bec01"
+    },
+    "ELF_DYNAMIC_REVIEW.json": {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/ELF_DYNAMIC_REVIEW.json",
+      "bytes": 19388,
+      "sha256": "e5c770c415abe0d9ec2be20804497f879ae6d78b650863cfe6c50e7017b17d0a"
+    },
+    "RUNTIME_REVIEW.json": {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/RUNTIME_REVIEW.json",
+      "bytes": 1627,
+      "sha256": "7b78c35b53ded09a176961533b0dde4810061343f27f4e30f0f794309cf2a52c"
+    },
+    "DIAGNOSTICS_RESULT.json": {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/DIAGNOSTICS_RESULT.json",
+      "bytes": 4825,
+      "sha256": "6db3c3ce8e3decc405e45892195638b95f11799fc2706943e057cd5fca16c734"
+    },
+    "SDK_LIBRARY_FORMATS.json": {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/SDK_LIBRARY_FORMATS.json",
+      "bytes": 6720,
+      "sha256": "e133598461bf5a77476f98bc8b526b67909e528e42fdd222905da1191ba1be56"
+    },
+    "STATIC_REVIEW_FIRST_FAILURE.json": {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/STATIC_REVIEW_FIRST_FAILURE.json",
+      "bytes": 561,
+      "sha256": "52a31550be7d12e8616eb9bf7b7fc6d4b51ac85c7eb19939dc0cbff2d8975a60"
+    },
+    "intake_fresh.py": {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/intake_fresh.py",
+      "bytes": 7923,
+      "sha256": "2efdfa4dd3d3c3c74f2f043111255219349a36cb49a4801be7c7685d40d752d2"
+    },
+    "diagnose_fresh.py": {
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/diagnose_fresh.py",
+      "bytes": 5406,
+      "sha256": "8db67e809fa9bdf5ca8e8d995fc4af5772f7c836c39892db421e06fef7cb3166"
+    }
+  }
+}

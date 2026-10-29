@@ -1,0 +1,8 @@
+"builtin.module"() ({
+  "func.func"() <{sym_name = "kernel", function_type = (i8, i8) -> i8}> ({
+  ^bb0(%a: i8, %b: i8):
+    %first = "arith.addi"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8
+    %r = "arith.muli"(%first, %first) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8
+    "func.return"(%r) : (i8) -> ()
+  }) : () -> ()
+}) : () -> ()

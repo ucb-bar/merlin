@@ -1,0 +1,15 @@
+Fresh independent Lean 4.35.0 reproduction findings (baseline c62f81a8a)
+
+Q schedule: 7/7 modules compile; 3/3 exact queries compile and all51 requested root-audit occurrences pass. Two changed schedules and one identity case are distinct. Axioms are only propext, Classical.choice and Quot.sound.
+Q inline: 23/23 modules compile. The empty Query compiles and all25 requested roots audit. Four nonempty Query files fail at line51: counted-continuation rewrite does not match the concrete Int-index goal. All five retained Witness files fail; the empty witness has concrete evalProgram/rfl mismatches at119,131,143. No non-vacuity qualification is inferred.
+Q tail: 24 dependencies compile, then GraphStatePipelineTail.lean:33 fails the nil-prefix/negative-arity loop_append proof. All four dependent queries remain unexecuted.
+W caller-context: 40 dependencies compile, then GraphLoopsShapeAfterRename.lean fails at115 and later readArguments/swapBinding elaboration obligations. All14 dependent queries remain unexecuted.
+W entries: independently reproduces the same rename-module failure after40 dependencies. All12 dependent queries remain unexecuted.
+
+Consolidated: 38 selected case queries =4 compiled/audited,4 source failures,30 unexecuted;5/5 separate witness source failures. 327 selected source units are byte-identical after execution. No runtime/loader failure or timeout occurred. All Lean jobs ran one at a time with -j1 and explicit fresh-only import/library paths.
+
+Separate optional repair witness: the exact loop_append statement compiles with one added cases-rest proof split, with propext only. This does not repair or qualify the original tail module/profile. No frozen source/query was changed.
+
+Reviewer-tool history: initial isolated-Python helper import path, conservative token/comment scan false positives, and unsupported pp.width audit-wrapper option are retained. Only corrected successor audit wrappers with exit0 and parsed exact roots/types/axioms contribute to PASS counts.
+
+These are conditional source/query kernel results. Fresh semantic qualification, native/MLIR fidelity, human approval and ordinary compiler gate activation remain incomplete. No background jobs remain owned by this agent.

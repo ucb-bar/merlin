@@ -1,0 +1,98 @@
+{
+  "schema": "merlin.graham.a26-intake-output-manifest.v1",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "review_tip": "5a7f872db33d378d6b0c4a294e4099e80efd4956",
+  "scope": "New step-1 source/data audit and proposed plan; no fresh proof, runtime admission, qualification or human approval.",
+  "files": [
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/BASELINE_AUDIT.json",
+      "bytes": 341228,
+      "sha256": "b842ecbe03800cb20d81f7493ebf48884af9f1ff443a8bce400fe9f2b162a3a5"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/INLINE_INTAKE.json",
+      "bytes": 57861,
+      "sha256": "27bf5cf9f5fb6e4e788e77bab57d286fb772dbe1854ef6a06e21a27c19a4cbc5"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/PLAN.json",
+      "bytes": 12565,
+      "sha256": "93a18e87a041be836590f31f41427a4df259d4af8d4096629745bfacba8c8afe"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/REVIEW_RECONCILIATION.json",
+      "bytes": 47899,
+      "sha256": "25f0984470b1b6b77ba9796eb08f6218a569f233230b2fa23485d6c7a4f4cf69"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/audit_baseline.py",
+      "bytes": 9448,
+      "sha256": "c5d718b311f94a25cd41e832138cd44c16d5591ed89796e69c8a89f34476b924"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-1/correctness-audit.md",
+      "bytes": 9276,
+      "sha256": "147e369c5b4fd7ceff51b902225b007c227bfe2019e007fa91726c19a76a0aaa"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-1/coverage-review.md",
+      "bytes": 24119,
+      "sha256": "496d9ca4a3e1d81e137d93ef052f56560c83602b50f75ac3b3564e33f67bcd4f"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-1/coverage.csv",
+      "bytes": 288590,
+      "sha256": "e782a16e1ab39e3a321f50c58d09d23ad6fba513cf1c398d84d153639b9c7e73"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-1/final-review.json",
+      "bytes": 388,
+      "sha256": "f62b719f2154ca981b1464663580374991ce5f020a98ed1dc5b0092c87685016"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-1/gaps.md",
+      "bytes": 8671,
+      "sha256": "60ba85249666302ab85b6ef74a1ec94505809fa7cd87eb7c45524017cbbfb7b3"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-1/requirements-audit.md",
+      "bytes": 6513,
+      "sha256": "d894b5aa9e2f47f6a1a9fbbb17ba4770c16dd2356eb37e72c464bbdc9e97f5e6"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-1/source-inventory.csv",
+      "bytes": 47016,
+      "sha256": "46f33463bb891bd3d4fdecdb39b8c49e6f8d98f902e0e7a0e7f4e8e80c8f0ca0"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-2/ir-map.md",
+      "bytes": 22359,
+      "sha256": "2fc44dbff55e006dfb08289977c0837eb59c8f2f400fae7e5888398fc0459ec8"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-2/omissions-bugs.md",
+      "bytes": 9917,
+      "sha256": "d07108b682a38ceabec085c8fbe3d6f20199d2aec6161a7643244e333db2e59b"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-2/review-identities.json",
+      "bytes": 11131,
+      "sha256": "b89a0c0eb8367ebce542f9dff5069705bc53e64f9ea9681eed23008178648619"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-3/assumption-review.md",
+      "bytes": 37192,
+      "sha256": "00107d0822c30fd9ca9098d9437f8f134dd04cd2ada3f0df2c1afc5a84cda50b"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-3/manifest.json",
+      "bytes": 43558,
+      "sha256": "c5c13472f28904c3b2881fd43049402f8177c8cfee52de23699e03fddc27b76f"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-3/source-identities.json",
+      "bytes": 34485,
+      "sha256": "8d7f2f5a0b0fdee436d656fd04d71aa515a1b0b3de9bd67e6fabb8946073ef94"
+    }
+  ]
+}

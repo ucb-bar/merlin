@@ -1,0 +1,33 @@
+
+Dynamic section at offset 0x660 contains 30 entries:
+  Tag        Type                         Name/Value
+ 0x000000000000001d (RUNPATH)            Library runpath: [$ORIGIN/..:$ORIGIN]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libpthread.so.0]
+ 0x0000000000000001 (NEEDED)             Shared library: [libdl.so.2]
+ 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]
+ 0x000000000000000e (SONAME)             Library soname: [libInit_shared.so]
+ 0x000000000000001e (FLAGS)              SYMBOLIC
+ 0x0000000000000007 (RELA)               0x3f0
+ 0x0000000000000008 (RELASZ)             168 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x000000006ffffff9 (RELACOUNT)          3
+ 0x0000000000000017 (JMPREL)             0x498
+ 0x0000000000000002 (PLTRELSZ)           72 (bytes)
+ 0x0000000000000003 (PLTGOT)             0x3868
+ 0x0000000000000014 (PLTREL)             RELA
+ 0x0000000000000006 (SYMTAB)             0x238
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000005 (STRTAB)             0x334
+ 0x000000000000000a (STRSZ)              185 (bytes)
+ 0x000000006ffffef5 (GNU_HASH)           0x310
+ 0x0000000000000019 (INIT_ARRAY)         0x2650
+ 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)
+ 0x000000000000001a (FINI_ARRAY)         0x2658
+ 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)
+ 0x000000000000000c (INIT)               0x155c
+ 0x000000000000000d (FINI)               0x1574
+ 0x000000006ffffff0 (VERSYM)             0x2e0
+ 0x000000006ffffffe (VERNEED)            0x2f0
+ 0x000000006fffffff (VERNEEDNUM)         1
+ 0x0000000000000000 (NULL)               0x0

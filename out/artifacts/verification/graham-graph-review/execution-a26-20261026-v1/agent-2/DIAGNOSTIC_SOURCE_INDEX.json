@@ -1,0 +1,90 @@
+{
+  "schema": "merlin.a26.portable-diagnostic-sources.v1",
+  "source": "Exact plain Lean source bytes from the successful fresh diagnostic commands; no compiled objects.",
+  "rows": [
+    {
+      "case": "InitNat",
+      "role": "source",
+      "original": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/InitNat.lean",
+        "bytes": 211,
+        "sha256": "a8e251852c73cf90d43deb653f0be806e75bd365fedda1ccdbea41b681cdcb57"
+      },
+      "published": {
+        "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/diagnostic-sources/InitNat.lean",
+        "bytes": 211,
+        "sha256": "a8e251852c73cf90d43deb653f0be806e75bd365fedda1ccdbea41b681cdcb57"
+      }
+    },
+    {
+      "case": "InitNat",
+      "role": "audit",
+      "original": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/AuditInitNat.lean",
+        "bytes": 201,
+        "sha256": "507358b30f71b26c8e4348eee6b6b38ea8b5448ec426c9712f7c686f55d3e21b"
+      },
+      "published": {
+        "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/diagnostic-sources/AuditInitNat.lean",
+        "bytes": 201,
+        "sha256": "507358b30f71b26c8e4348eee6b6b38ea8b5448ec426c9712f7c686f55d3e21b"
+      }
+    },
+    {
+      "case": "InitListNat",
+      "role": "source",
+      "original": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/InitListNat.lean",
+        "bytes": 236,
+        "sha256": "3af6ce7abe9d170b263b1248cb6338c10486a952882f310729e85790c2c7a960"
+      },
+      "published": {
+        "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/diagnostic-sources/InitListNat.lean",
+        "bytes": 236,
+        "sha256": "3af6ce7abe9d170b263b1248cb6338c10486a952882f310729e85790c2c7a960"
+      }
+    },
+    {
+      "case": "InitListNat",
+      "role": "audit",
+      "original": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/AuditInitListNat.lean",
+        "bytes": 221,
+        "sha256": "0fc2e7123a1481b30a4999692e592a173542086865b65ac838643a527bfddc0a"
+      },
+      "published": {
+        "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/diagnostic-sources/AuditInitListNat.lean",
+        "bytes": 221,
+        "sha256": "0fc2e7123a1481b30a4999692e592a173542086865b65ac838643a527bfddc0a"
+      }
+    },
+    {
+      "case": "OmegaListNat",
+      "role": "source",
+      "original": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/OmegaListNat.lean",
+        "bytes": 256,
+        "sha256": "416dfcbe6de483e63d4e94501d72269ab612e6a16c354bd1fb0c82ef9ac2d918"
+      },
+      "published": {
+        "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/diagnostic-sources/OmegaListNat.lean",
+        "bytes": 256,
+        "sha256": "416dfcbe6de483e63d4e94501d72269ab612e6a16c354bd1fb0c82ef9ac2d918"
+      }
+    },
+    {
+      "case": "OmegaListNat",
+      "role": "audit",
+      "original": {
+        "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/AuditOmegaListNat.lean",
+        "bytes": 226,
+        "sha256": "39615ba3b632e91b2e8020418ac053444f7bd5e80a2728c13fbe3fd60bdf5054"
+      },
+      "published": {
+        "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/diagnostic-sources/AuditOmegaListNat.lean",
+        "bytes": 226,
+        "sha256": "39615ba3b632e91b2e8020418ac053444f7bd5e80a2728c13fbe3fd60bdf5054"
+      }
+    }
+  ]
+}

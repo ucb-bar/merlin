@@ -1,0 +1,333 @@
+{
+  "reviewer": "Graham independent review (agent)",
+  "date": "2026-10-26",
+  "producer_head": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "capture_source_sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+  "test_generator_sha256": "3496470747c0f7819197188859cd1517d77b6adf7c590c118802f36f3f782426",
+  "lean_sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+  "lean_library": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/20261025/graph-smoke-MJ63mO/lib/lean",
+  "note": "local re-execution under local xDSL 0.68.0/Python 3.12; not the original qualification",
+  "cases": {
+    "chain": {
+      "captures": [
+        {
+          "command": [
+            "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py",
+            "--reference",
+            "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+            "--source",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/source.mlir",
+            "--destination",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/actual",
+            "--mode",
+            "chain"
+          ],
+          "returncode": 0,
+          "stdout": "{\"projection_checked\": true}\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py",
+            "--reference",
+            "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+            "--source",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/source.mlir",
+            "--destination",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/checked-projection",
+            "--mode",
+            "chain",
+            "--target",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/actual/after.mlir",
+            "--middle",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/actual/middle.mlir"
+          ],
+          "returncode": 0,
+          "stdout": "{\"projection_checked\": true}\n",
+          "stderr": ""
+        }
+      ],
+      "lean_returncode_no_output_object": 0,
+      "roots": [
+        "Merlin.GraphState.Scalar.check_sound",
+        "Merlin.GraphState.Scalar.check_typed",
+        "Merlin.GraphState.Scalar.normalize_sound",
+        "Merlin.GraphStateScalarInstance.F0.accepted",
+        "Merlin.GraphStateScalarInstance.F0.actual",
+        "Merlin.GraphStateScalarInstance.F0.typed",
+        "Merlin.GraphStateScalarInstance.F0.initialized",
+        "Merlin.GraphStateScalarInstance.F0.operands_initialized",
+        "Merlin.GraphStateScalarInstance.F0.source_join",
+        "Merlin.GraphStateScalarInstance.F0.middle_join",
+        "Merlin.GraphStateScalarInstance.F0.final_join",
+        "Merlin.GraphStateScalarInstance.F0.first_accepted",
+        "Merlin.GraphStateScalarInstance.F0.second_accepted",
+        "Merlin.GraphStateScalarInstance.F0.first_actual",
+        "Merlin.GraphStateScalarInstance.F0.second_actual",
+        "Merlin.GraphStateScalarInstance.F0.middle_typed",
+        "Merlin.GraphStateScalarInstance.F0.independently_composed"
+      ],
+      "comparisons": {
+        "source.mlir": {
+          "sealed_sha256": "6640d030463e20516948e512f0bd26736067c88ef11a7a332f669a8db4b86d4f",
+          "local_sha256": "6640d030463e20516948e512f0bd26736067c88ef11a7a332f669a8db4b86d4f",
+          "match": true
+        },
+        "actual/before.mlir": {
+          "sealed_sha256": "6640d030463e20516948e512f0bd26736067c88ef11a7a332f669a8db4b86d4f",
+          "local_sha256": "6640d030463e20516948e512f0bd26736067c88ef11a7a332f669a8db4b86d4f",
+          "match": true
+        },
+        "actual/middle.mlir": {
+          "sealed_sha256": "e9e448db30daf78e97ebecc3c660ffd27589a7d404f2d4069f3c7779cbb0a12e",
+          "local_sha256": "755f46007c0aa5f8f9264805ca37ac05c512f6be75f413ae6e8ed299ffaee60a",
+          "match": false
+        },
+        "actual/after.mlir": {
+          "sealed_sha256": "acc07b3151ca0a6a7df07015edd8fc73dbc5ce02e10775e0239d4db3aa906137",
+          "local_sha256": "03b96c0f6f31e162c8da34f2d22986742c81b7c152cadea3f1d94eec3363d859",
+          "match": false
+        },
+        "actual/stage-000.mlir": {
+          "sealed_sha256": "e9e448db30daf78e97ebecc3c660ffd27589a7d404f2d4069f3c7779cbb0a12e",
+          "local_sha256": "755f46007c0aa5f8f9264805ca37ac05c512f6be75f413ae6e8ed299ffaee60a",
+          "match": false
+        },
+        "actual/stage-001.mlir": {
+          "sealed_sha256": "acc07b3151ca0a6a7df07015edd8fc73dbc5ce02e10775e0239d4db3aa906137",
+          "local_sha256": "03b96c0f6f31e162c8da34f2d22986742c81b7c152cadea3f1d94eec3363d859",
+          "match": false
+        },
+        "actual/projection.json": {
+          "sealed_sha256": "ef1cf32b944ee75690f4ca707177d2dd113a23d89b3b78fffee794334f342e1e",
+          "local_sha256": "5bc6c25f621906352dbe43ffb8512fd773a52502298e7d0f662e1072fd1412f4",
+          "match": false
+        },
+        "checked-projection/projection.json": {
+          "sealed_sha256": "8f5e83638203e5d621495c614253b547892505f878fdddc9c095f5532260acc5",
+          "local_sha256": "dbd9b805319264eaf8966b2b221e3a310f8fc17bf0bac442d9b7ad94e4129236",
+          "match": false
+        },
+        "GraphStateScalarInstance.lean": {
+          "sealed_sha256": "544b1dfd1230805af931d3a32f0b7923acd78a404cd0918fcb162b1ae0ddbabc",
+          "local_sha256": "544b1dfd1230805af931d3a32f0b7923acd78a404cd0918fcb162b1ae0ddbabc",
+          "match": true
+        }
+      }
+    },
+    "zero-chain": {
+      "captures": [
+        {
+          "command": [
+            "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py",
+            "--reference",
+            "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+            "--source",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/source.mlir",
+            "--destination",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/actual",
+            "--mode",
+            "chain"
+          ],
+          "returncode": 0,
+          "stdout": "{\"projection_checked\": true}\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py",
+            "--reference",
+            "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+            "--source",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/source.mlir",
+            "--destination",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/checked-projection",
+            "--mode",
+            "chain",
+            "--target",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/actual/after.mlir",
+            "--middle",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/actual/middle.mlir"
+          ],
+          "returncode": 0,
+          "stdout": "{\"projection_checked\": true}\n",
+          "stderr": ""
+        }
+      ],
+      "lean_returncode_no_output_object": 0,
+      "roots": [
+        "Merlin.GraphState.Scalar.check_sound",
+        "Merlin.GraphState.Scalar.check_typed",
+        "Merlin.GraphState.Scalar.normalize_sound",
+        "Merlin.GraphStateScalarInstance.F0.accepted",
+        "Merlin.GraphStateScalarInstance.F0.actual",
+        "Merlin.GraphStateScalarInstance.F0.typed",
+        "Merlin.GraphStateScalarInstance.F0.initialized",
+        "Merlin.GraphStateScalarInstance.F0.operands_initialized",
+        "Merlin.GraphStateScalarInstance.F0.source_join",
+        "Merlin.GraphStateScalarInstance.F0.middle_join",
+        "Merlin.GraphStateScalarInstance.F0.final_join",
+        "Merlin.GraphStateScalarInstance.F0.first_accepted",
+        "Merlin.GraphStateScalarInstance.F0.second_accepted",
+        "Merlin.GraphStateScalarInstance.F0.first_actual",
+        "Merlin.GraphStateScalarInstance.F0.second_actual",
+        "Merlin.GraphStateScalarInstance.F0.middle_typed",
+        "Merlin.GraphStateScalarInstance.F0.independently_composed"
+      ],
+      "comparisons": {
+        "source.mlir": {
+          "sealed_sha256": "e53ef429a1637bd3c0fe6817adbc68a1ca40bcc7888724e70cab2c5968910f46",
+          "local_sha256": "e53ef429a1637bd3c0fe6817adbc68a1ca40bcc7888724e70cab2c5968910f46",
+          "match": true
+        },
+        "actual/before.mlir": {
+          "sealed_sha256": "e53ef429a1637bd3c0fe6817adbc68a1ca40bcc7888724e70cab2c5968910f46",
+          "local_sha256": "e53ef429a1637bd3c0fe6817adbc68a1ca40bcc7888724e70cab2c5968910f46",
+          "match": true
+        },
+        "actual/middle.mlir": {
+          "sealed_sha256": "272d5182da9244577ffa5725290808cc6d14c88fb1f7fc15979acaac0d9dea35",
+          "local_sha256": "af67a777e0a68a5b07856367f2da1c4f916d89e594bf3e30c75c1523ae10a376",
+          "match": false
+        },
+        "actual/after.mlir": {
+          "sealed_sha256": "7bfad66bcb7fa3c0ffabfab888ddddd7e102a937d669563cc8433ab14fd79b63",
+          "local_sha256": "6cfdf63c4588b712c6b2ee5ab5036d060bd15b50e04c032faf691b2dc25db05e",
+          "match": false
+        },
+        "actual/stage-000.mlir": {
+          "sealed_sha256": "272d5182da9244577ffa5725290808cc6d14c88fb1f7fc15979acaac0d9dea35",
+          "local_sha256": "af67a777e0a68a5b07856367f2da1c4f916d89e594bf3e30c75c1523ae10a376",
+          "match": false
+        },
+        "actual/stage-001.mlir": {
+          "sealed_sha256": "7bfad66bcb7fa3c0ffabfab888ddddd7e102a937d669563cc8433ab14fd79b63",
+          "local_sha256": "6cfdf63c4588b712c6b2ee5ab5036d060bd15b50e04c032faf691b2dc25db05e",
+          "match": false
+        },
+        "actual/projection.json": {
+          "sealed_sha256": "909bac9c7cec4ee4a443bd4f08f1c74092c8c10dc03777272770df9dd1f0422a",
+          "local_sha256": "09fd3159e479d12fe224e0655cabd753fe0f9a19ca2aa1872eb0a47c701ee5d3",
+          "match": false
+        },
+        "checked-projection/projection.json": {
+          "sealed_sha256": "c64865dfd054d134b6c3c5884e520b2f9a614bb7b17a46952325e12e3fb1ca72",
+          "local_sha256": "2190971c2d59ba798bb697577ec3d29b4a412fab08d5f345be9557b64a59d12e",
+          "match": false
+        },
+        "GraphStateScalarInstance.lean": {
+          "sealed_sha256": "cf774e0d4177ca9aced2faf91c2d7153f0516934269d0504bc4ca663715feef5",
+          "local_sha256": "cf774e0d4177ca9aced2faf91c2d7153f0516934269d0504bc4ca663715feef5",
+          "match": true
+        }
+      }
+    },
+    "nested-chain": {
+      "captures": [
+        {
+          "command": [
+            "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py",
+            "--reference",
+            "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+            "--source",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/source.mlir",
+            "--destination",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/actual",
+            "--mode",
+            "chain"
+          ],
+          "returncode": 0,
+          "stdout": "{\"projection_checked\": true}\n",
+          "stderr": ""
+        },
+        {
+          "command": [
+            "/home/grammy/blast/merlin-pass-verification/src/merlin/verify/lean_graph_state_scalar_capture.py",
+            "--reference",
+            "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+            "--source",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/source.mlir",
+            "--destination",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/checked-projection",
+            "--mode",
+            "chain",
+            "--target",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/actual/after.mlir",
+            "--middle",
+            "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/actual/middle.mlir"
+          ],
+          "returncode": 0,
+          "stdout": "{\"projection_checked\": true}\n",
+          "stderr": ""
+        }
+      ],
+      "lean_returncode_no_output_object": 0,
+      "roots": [
+        "Merlin.GraphState.Scalar.check_sound",
+        "Merlin.GraphState.Scalar.check_typed",
+        "Merlin.GraphState.Scalar.normalize_sound",
+        "Merlin.GraphStateScalarInstance.F0.accepted",
+        "Merlin.GraphStateScalarInstance.F0.actual",
+        "Merlin.GraphStateScalarInstance.F0.typed",
+        "Merlin.GraphStateScalarInstance.F0.initialized",
+        "Merlin.GraphStateScalarInstance.F0.operands_initialized",
+        "Merlin.GraphStateScalarInstance.F0.source_join",
+        "Merlin.GraphStateScalarInstance.F0.middle_join",
+        "Merlin.GraphStateScalarInstance.F0.final_join",
+        "Merlin.GraphStateScalarInstance.F0.first_accepted",
+        "Merlin.GraphStateScalarInstance.F0.second_accepted",
+        "Merlin.GraphStateScalarInstance.F0.first_actual",
+        "Merlin.GraphStateScalarInstance.F0.second_actual",
+        "Merlin.GraphStateScalarInstance.F0.middle_typed",
+        "Merlin.GraphStateScalarInstance.F0.independently_composed"
+      ],
+      "comparisons": {
+        "source.mlir": {
+          "sealed_sha256": "ba7db6ce06414a65450b45ba44163f9e6f2e282e6694485e52adcc703a47329b",
+          "local_sha256": "ba7db6ce06414a65450b45ba44163f9e6f2e282e6694485e52adcc703a47329b",
+          "match": true
+        },
+        "actual/before.mlir": {
+          "sealed_sha256": "ba7db6ce06414a65450b45ba44163f9e6f2e282e6694485e52adcc703a47329b",
+          "local_sha256": "ba7db6ce06414a65450b45ba44163f9e6f2e282e6694485e52adcc703a47329b",
+          "match": true
+        },
+        "actual/middle.mlir": {
+          "sealed_sha256": "1a15b62f9908b3b2c2e8b60db9156da55cec73bd5e2e685f6b5e8520618ff15c",
+          "local_sha256": "04a12c526a988bd940c546369311840b74235cf21b4dddca223e37a028a09b21",
+          "match": false
+        },
+        "actual/after.mlir": {
+          "sealed_sha256": "bac435c661b024a30778e6e83ffd29a7c7f64932bd042b81bfb7c1e7ff27362f",
+          "local_sha256": "5a4ae892bca4ea223b2a24249ed001f479178b854c73cdb919d1588260700c02",
+          "match": false
+        },
+        "actual/stage-000.mlir": {
+          "sealed_sha256": "1a15b62f9908b3b2c2e8b60db9156da55cec73bd5e2e685f6b5e8520618ff15c",
+          "local_sha256": "04a12c526a988bd940c546369311840b74235cf21b4dddca223e37a028a09b21",
+          "match": false
+        },
+        "actual/stage-001.mlir": {
+          "sealed_sha256": "bac435c661b024a30778e6e83ffd29a7c7f64932bd042b81bfb7c1e7ff27362f",
+          "local_sha256": "5a4ae892bca4ea223b2a24249ed001f479178b854c73cdb919d1588260700c02",
+          "match": false
+        },
+        "actual/projection.json": {
+          "sealed_sha256": "f82232e7d77c5133be27d23898ef6730ea512ac1c9c4f143f26ee1c8ac60e6bf",
+          "local_sha256": "3cd1239143724a4d7328102fbe8167201a5c14bd3c607313da66a6922730266a",
+          "match": false
+        },
+        "checked-projection/projection.json": {
+          "sealed_sha256": "3914db75c1a013ded3005e1268c25e9083c727a73c0390df76d60c2e860637d8",
+          "local_sha256": "c751b57fb03a947622835a1610ec969a36c280bfebdfd5501d16f8abfd17a20f",
+          "match": false
+        },
+        "GraphStateScalarInstance.lean": {
+          "sealed_sha256": "97470a5c036e5bd369bfda4b4cf0f8d9e426926d58a12fa163d849788dded274",
+          "local_sha256": "97470a5c036e5bd369bfda4b4cf0f8d9e426926d58a12fa163d849788dded274",
+          "match": true
+        }
+      }
+    }
+  }
+}

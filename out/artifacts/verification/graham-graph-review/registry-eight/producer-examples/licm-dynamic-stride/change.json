@@ -1,0 +1,30 @@
+{
+  "kind": "scalar_loop_invariant_motion",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (index, i8, i8) -> i8}> ({\n  ^bb0(%step: index, %a: i8, %b: i8):\n    %lower = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %upper = \"arith.constant\"() <{value = 7 : index}> : () -> index\n    %r = \"scf.for\"(%lower, %upper, %step, %a) ({\n    ^bb1(%i: index, %acc: i8):\n      %invariant = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n      \"opaque.observe\"(%invariant, %i) : (i8, index) -> ()\n      %next = \"arith.subi\"(%acc, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n      \"scf.yield\"(%next) : (i8) -> ()\n    }) : (index, index, index, i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (index, i8, i8) -> i8}> ({\n  ^bb0(%step: index, %a: i8, %b: i8):\n    %lower = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %upper = \"arith.constant\"() <{value = 7 : index}> : () -> index\n    %invariant = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %r = \"scf.for\"(%lower, %upper, %step, %a) ({\n    ^bb1(%i: index, %acc: i8):\n      \"opaque.observe\"(%invariant, %i) : (i8, index) -> ()\n      %next = \"arith.subi\"(%acc, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n      \"scf.yield\"(%next) : (i8) -> ()\n    }) : (index, index, index, i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {},
+  "certificate": {
+    "kind": "scalar_loop_invariant_motion",
+    "before_ir_sha256": "6f23f99e174e8c4389026ae7506f702a89a413002786a48d09b408460af2f748",
+    "after_ir_sha256": "a777884120063c096b66df01f8a0c1b192155acef75d0d1f4390e5639a04b46b",
+    "witnesses": [
+      {
+        "kind": "scalar_rewrite",
+        "operation_index": 5,
+        "operation": "arith.addi",
+        "rule": "licm",
+        "width": 8,
+        "operation_sha256": "483500129d2462e00f2899eac36fdb749b508b1920fa2f233e6c314c94b1e1e8",
+        "representative_index": null,
+        "loop_index": 4
+      }
+    ],
+    "scope": [
+      "total_scalar_integer_operations",
+      "total_speculation",
+      "loop_external_operands",
+      "unchanged_effect_order"
+    ],
+    "schema": "merlin.shared_transform.v2"
+  }
+}

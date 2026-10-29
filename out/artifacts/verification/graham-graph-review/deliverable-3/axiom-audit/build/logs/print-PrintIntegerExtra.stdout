@@ -1,0 +1,68 @@
+Merlin.GraphState.Integer.Countermodels.noncanonical_entry_refutes_neutral_deletion : Merlin.GraphState.Scalar.evalProgram
+    Merlin.GraphState.Integer.Countermodels.base Merlin.GraphState.Integer.Countermodels.addZero [256] 7 ≠
+  Merlin.GraphState.Scalar.evalProgram Merlin.GraphState.Integer.Countermodels.base
+    Merlin.GraphState.Integer.Countermodels.unchanged [256] 7
+'Merlin.GraphState.Integer.Countermodels.noncanonical_entry_refutes_neutral_deletion' depends on axioms: [propext,
+ Quot.sound]
+Merlin.GraphState.Integer.Countermodels.entry_really_noncanonical : ¬Merlin.GraphState.Integer.Canonical
+    (Merlin.GraphState.Scalar.Ty.bits 8) 256
+'Merlin.GraphState.Integer.Countermodels.entry_really_noncanonical' depends on axioms: [propext]
+Merlin.GraphState.Integer.Countermodels.missing_primitive_contract_refutes_deletion : Merlin.GraphState.Scalar.evalProgram
+    Merlin.GraphState.Integer.Countermodels.wrongPrimitive Merlin.GraphState.Integer.Countermodels.addZero [5] 7 ≠
+  Merlin.GraphState.Scalar.evalProgram Merlin.GraphState.Integer.Countermodels.wrongPrimitive
+    Merlin.GraphState.Integer.Countermodels.unchanged [5] 7
+'Merlin.GraphState.Integer.Countermodels.missing_primitive_contract_refutes_deletion' depends on axioms: [propext,
+ Quot.sound]
+Merlin.GraphState.Integer.Countermodels.provider_programs_statically_typed : Merlin.GraphState.Scalar.checkTypes
+      Merlin.GraphState.Integer.Countermodels.registry [] [Merlin.GraphState.Scalar.Ty.bits 8]
+      Merlin.GraphState.Integer.Countermodels.withProvider =
+    true ∧
+  Merlin.GraphState.Scalar.checkTypes Merlin.GraphState.Integer.Countermodels.registry []
+      [Merlin.GraphState.Scalar.Ty.bits 8] Merlin.GraphState.Integer.Countermodels.liftedProvider =
+    true
+'Merlin.GraphState.Integer.Countermodels.provider_programs_statically_typed' depends on axioms: [propext]
+Merlin.GraphState.Integer.Countermodels.missing_local_result_contract_refutes_deletion : Merlin.GraphState.Scalar.evalProgram
+    Merlin.GraphState.Integer.Countermodels.noncanonicalProvider Merlin.GraphState.Integer.Countermodels.withProvider []
+    7 ≠
+  Merlin.GraphState.Scalar.evalProgram Merlin.GraphState.Integer.Countermodels.noncanonicalProvider
+    Merlin.GraphState.Integer.Countermodels.liftedProvider [] 7
+'Merlin.GraphState.Integer.Countermodels.missing_local_result_contract_refutes_deletion' depends on axioms: [propext,
+ Quot.sound]
+Merlin.GraphState.Integer.Countermodels.hidden_effect_countermodel : Except.ok ([5], 8) ≠ Except.ok ([5], 7)
+'Merlin.GraphState.Integer.Countermodels.hidden_effect_countermodel' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphState.Integer.typed_success : ∀ {World Error : Type} {registry : List Merlin.GraphState.Scalar.Signature}
+  {rep : Merlin.GraphState.Scalar.Ty → Int → Prop} (model : Merlin.GraphState.Scalar.Model Int World Error registry),
+  Merlin.GraphState.Integer.LocalTyping model rep →
+    Merlin.GraphState.Integer.TotalOnTyped model rep →
+      ∀ {types results : List Merlin.GraphState.Scalar.Ty} {program : Merlin.GraphState.Scalar.Program},
+        Merlin.GraphState.Scalar.Typed registry types results program →
+          ∀ (values : List Int) (world : World),
+            Merlin.GraphState.Integer.Values rep types values →
+              ∃ outputs final,
+                Merlin.GraphState.Scalar.evalProgram model program values world = Except.ok (outputs, final) ∧
+                  Merlin.GraphState.Integer.Values rep results outputs
+'Merlin.GraphState.Integer.typed_success' depends on axioms: [propext]
+Merlin.GraphState.Integer.provider_typed : ∀ (registry : List Merlin.GraphState.Scalar.Signature) (failure : Option Nat)
+  (identity : Nat) (arguments : List Int) (world : Nat) (values : List Int) (final : Nat),
+  Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical
+      (Merlin.GraphState.Scalar.signature registry identity).inputs arguments →
+    (Merlin.GraphState.Integer.provider registry failure).run identity arguments world = Except.ok (values, final) →
+      Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical
+        (Merlin.GraphState.Scalar.signature registry identity).outputs values
+'Merlin.GraphState.Integer.provider_typed' depends on axioms: [propext]
+@Merlin.GraphState.Integer.provider_total : ∀ {registry : List Merlin.GraphState.Scalar.Signature}
+  {controls : Merlin.GraphState.Pipeline.Controls} (valid : Merlin.GraphState.Pipeline.ControlValid registry controls),
+  Merlin.GraphState.Integer.TotalOnTyped
+    (Merlin.GraphState.Pipeline.indexModel valid Merlin.GraphState.Integer.primitive
+      (Merlin.GraphState.Integer.provider registry none))
+    Merlin.GraphState.Integer.Canonical
+'Merlin.GraphState.Integer.provider_total' depends on axioms: [propext, Quot.sound]
+Merlin.GraphState.Integer.loop_constant : ∀ (value : Int) (increment : Nat)
+  (body : Int → List Int → Nat → Merlin.GraphState.Scalar.Outcome Int Nat Int),
+  (∀ (index : Int) (carry : List Int) (world : Nat),
+      carry.length = 1 → body index carry world = Except.ok ([value], world + increment)) →
+    ∀ (first : Int) (later carry : List Int) (world : Nat),
+      carry.length = 1 →
+        Merlin.GraphState.Scalar.loopEval 1 body (first :: later) carry world =
+          Except.ok ([value], world + increment * (later.length + 1))
+'Merlin.GraphState.Integer.loop_constant' depends on axioms: [propext, Quot.sound]

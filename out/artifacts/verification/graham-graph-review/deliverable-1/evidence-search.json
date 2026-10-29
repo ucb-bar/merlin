@@ -1,0 +1,19 @@
+{
+  "method": "read-only workspace merlin*/out/artifacts/verification/graph-* and shared-passes search; no external host or personal-directory search",
+  "searched": [
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-state-scalar",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-state-pipeline",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-loops-unroll",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-buffer-reuse",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-regions-declared",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-regions-source",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-memory-scf",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-state",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-state-chain",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/shared-passes",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-state-elision",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-regions",
+    "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-loops"
+  ],
+  "hits": []
+}

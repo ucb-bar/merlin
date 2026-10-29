@@ -1,0 +1,70 @@
+{
+  "bounds": {
+    "bits": 64,
+    "lower": 0,
+    "upper": 7,
+    "step": 2,
+    "tile": 3
+  },
+  "targetLower": 0,
+  "targetUpper": 7,
+  "targetStride": 6,
+  "targetInnerStep": 2,
+  "sourceBody": "{\"arguments\":[[6,\"index\"],[7,\"i8\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[0,1],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[8,\"i8\"]]},{\"attributes\":[[\"op_name__\",\"\\\"opaque.observe\\\"\"]],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.unregistered\",\"operands\":[8,6],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.subi\",\"operands\":[7,8],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[9,\"i8\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[9],\"properties\":[],\"regions\":[],\"results\":[]}]}",
+  "targetBody": "{\"arguments\":[[6,\"index\"],[7,\"i8\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.addi\",\"operands\":[0,1],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[8,\"i8\"]]},{\"attributes\":[[\"op_name__\",\"\\\"opaque.observe\\\"\"]],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.unregistered\",\"operands\":[8,6],\"properties\":[],\"regions\":[],\"results\":[]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"arith.subi\",\"operands\":[7,8],\"properties\":[[\"overflowFlags\",\"#arith.overflow<none>\"]],\"regions\":[],\"results\":[[9,\"i8\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"scf.yield\",\"operands\":[9],\"properties\":[],\"regions\":[],\"results\":[]}]}",
+  "carryTypes": [
+    "i8"
+  ],
+  "sourceInitial": [
+    0
+  ],
+  "outerInitial": [
+    0
+  ],
+  "sourceResults": [
+    "i8"
+  ],
+  "outerResults": [
+    "i8"
+  ],
+  "innerResults": [
+    "i8"
+  ],
+  "outerArgumentTypes": [
+    "index",
+    "i8"
+  ],
+  "outerIV": 7,
+  "outerCarryArguments": [
+    8
+  ],
+  "strideValue": 5,
+  "upperValue": 3,
+  "originalStepValue": 4,
+  "addOperands": [
+    7,
+    5
+  ],
+  "addResult": 9,
+  "minOperands": [
+    9,
+    3
+  ],
+  "minResult": 10,
+  "innerOperands": [
+    7,
+    10,
+    4,
+    8
+  ],
+  "innerResultValues": [
+    11
+  ],
+  "outerYield": [
+    11
+  ],
+  "sourceYieldArity": 1,
+  "sourceContext": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.module\",\"operands\":[],\"properties\":[],\"regions\":[[{\"arguments\":[],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i8, i8) -> i8\"],[\"sym_name\",\"\\\"kernel\\\"\"]],\"regions\":[[{\"arguments\":[[0,\"i8\"],[1,\"i8\"]],\"operations\":[{\"attributes\":[],\"index_constant\":0,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"0 : index\"]],\"regions\":[],\"results\":[[2,\"index\"]]},{\"attributes\":[],\"index_constant\":7,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"7 : index\"]],\"regions\":[],\"results\":[[3,\"index\"]]},{\"attributes\":[],\"index_constant\":2,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"2 : index\"]],\"regions\":[],\"results\":[[4,\"index\"]]},{\"boundary\":0,\"initial\":[0],\"results\":[[5,\"i8\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[5],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}]}]],\"results\":[]}",
+  "targetContext": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.module\",\"operands\":[],\"properties\":[],\"regions\":[[{\"arguments\":[],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(i8, i8) -> i8\"],[\"sym_name\",\"\\\"kernel\\\"\"]],\"regions\":[[{\"arguments\":[[0,\"i8\"],[1,\"i8\"]],\"operations\":[{\"attributes\":[],\"index_constant\":0,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"0 : index\"]],\"regions\":[],\"results\":[[2,\"index\"]]},{\"attributes\":[],\"index_constant\":7,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"7 : index\"]],\"regions\":[],\"results\":[[3,\"index\"]]},{\"attributes\":[],\"index_constant\":2,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"2 : index\"]],\"regions\":[],\"results\":[[4,\"index\"]]},{\"boundary\":0,\"initial\":[0],\"results\":[[5,\"i8\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[5],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}]}]],\"results\":[]}",
+  "structural_nodes": 27
+}

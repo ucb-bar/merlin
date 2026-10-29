@@ -1,0 +1,898 @@
+{
+  "id": "Q-unroll-tail-successor-v1",
+  "modules": [
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarContract.olean",
+        "Merlin/GraphStateScalarContract.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 3.121723049785942,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-000-Merlin.GraphStateScalarContract",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStateScalarContract",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStateScalarContract.lean",
+        "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+        "bytes": 8229
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarContract.olean",
+        "sha256": "60f6ee2a7e1ece4aeabfd31aa779fa072bb742da5d3d3fbf33a14fdee24ba52a",
+        "bytes": 3804224
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineFailure.olean",
+        "Merlin/GraphStatePipelineFailure.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.3167997971177101,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-001-Merlin.GraphStatePipelineFailure",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStatePipelineFailure",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineFailure.lean",
+        "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+        "bytes": 4641
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineFailure.olean",
+        "sha256": "950c774cb6213491cfacada7fc4b90916496f1d1a6e997928a6875153b43648a",
+        "bytes": 179488
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarNormalize.olean",
+        "Merlin/GraphStateScalarNormalize.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.46772111882455647,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-002-Merlin.GraphStateScalarNormalize",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStateScalarNormalize",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStateScalarNormalize.lean",
+        "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+        "bytes": 6170
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarNormalize.olean",
+        "sha256": "34956527d66e15b3044cb2a32e8621c69ecaf39da22810af7e63f42ee4664f26",
+        "bytes": 456336
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarSound.olean",
+        "Merlin/GraphStateScalarSound.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.7196680658962578,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-003-Merlin.GraphStateScalarSound",
+      "stdout": {
+        "sha256": "c72c81ee54250a89ce688d2c822886b5767477c262445a383bb7a85ead649668",
+        "bytes": 156
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStateScalarSound",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStateScalarSound.lean",
+        "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+        "bytes": 9963
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarSound.olean",
+        "sha256": "8454cb32ad505d989d85dfd1516132ec233903fdac19d64495c2c84f42a7263e",
+        "bytes": 787432
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineScope.olean",
+        "Merlin/GraphStatePipelineScope.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.2672390032093972,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-004-Merlin.GraphStatePipelineScope",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStatePipelineScope",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineScope.lean",
+        "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+        "bytes": 2509
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineScope.olean",
+        "sha256": "c904ca7658ec83d882ebce19e73cd71d69facb0bfd8a8d67363dc17a08c2af38",
+        "bytes": 61864
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarTyping.olean",
+        "Merlin/GraphStateScalarTyping.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5174807121511549,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-005-Merlin.GraphStateScalarTyping",
+      "stdout": {
+        "sha256": "8dfda2f349a8254f991d11d0c7fb81ba2600fc260272f438273ae427760d09a6",
+        "bytes": 103
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStateScalarTyping",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStateScalarTyping.lean",
+        "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+        "bytes": 6614
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarTyping.olean",
+        "sha256": "7ab00e5ac9743424cf94917a2901067ac8cccabf86028184b0d42c46b3051b76",
+        "bytes": 376824
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarInitialized.olean",
+        "Merlin/GraphStateScalarInitialized.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5682494919747114,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-006-Merlin.GraphStateScalarInitialized",
+      "stdout": {
+        "sha256": "979225906af878de921e11e4687fd674470bdcc005ccb508cea7b95c37699303",
+        "bytes": 263
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStateScalarInitialized",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStateScalarInitialized.lean",
+        "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+        "bytes": 11782
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalarInitialized.olean",
+        "sha256": "2005bda4566e3b35ce7fcf64c2873e38a7ff57f0d5fce1456251b1ad183b2152",
+        "bytes": 342128
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalar.olean",
+        "Merlin/GraphStateScalar.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.41752299200743437,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-007-Merlin.GraphStateScalar",
+      "stdout": {
+        "sha256": "2180adb1c003eca58b6a084343277b5adf39afa69aae49b31632b5cd674b169e",
+        "bytes": 514
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStateScalar",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStateScalar.lean",
+        "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+        "bytes": 4654
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStateScalar.olean",
+        "sha256": "81539e7122a4954c7a6729e2a39b6f21c4622fdc089e7581c9fcf2df01b10cd1",
+        "bytes": 125048
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/ResourceGeometry.olean",
+        "Merlin/ResourceGeometry.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6183882879558951,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-008-Merlin.ResourceGeometry",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.ResourceGeometry",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/ResourceGeometry.lean",
+        "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+        "bytes": 3246
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/ResourceGeometry.olean",
+        "sha256": "7030a7aa34afb948336f8945679ed324f464e8b979de40ac481b7220a09194c6",
+        "bytes": 110160
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/StateEffects.olean",
+        "Merlin/StateEffects.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.3164330651052296,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-009-Merlin.StateEffects",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.StateEffects",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/StateEffects.lean",
+        "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+        "bytes": 4537
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/StateEffects.olean",
+        "sha256": "c02d08ef7e456d37c26c32c6cf4735826a1060134951cc246d07c336c604c829",
+        "bytes": 202320
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsSegment.olean",
+        "Merlin/GraphLoopsSegment.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5174440420232713,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-010-Merlin.GraphLoopsSegment",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsSegment",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphLoopsSegment.lean",
+        "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+        "bytes": 9653
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsSegment.olean",
+        "sha256": "5ded89b8558ee996ce3de4ca4188330439e4ad8222021f76c834d144394514dd",
+        "bytes": 388048
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsSegmentBounds.olean",
+        "Merlin/GraphLoopsSegmentBounds.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5676816999912262,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-011-Merlin.GraphLoopsSegmentBounds",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsSegmentBounds",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphLoopsSegmentBounds.lean",
+        "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+        "bytes": 3962
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsSegmentBounds.olean",
+        "sha256": "d456bb1c1dae929d204d695aabe9d7ec0f2d7a9f1096fe8dadffa1406740380c",
+        "bytes": 329176
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsSegmentModel.olean",
+        "Merlin/GraphLoopsSegmentModel.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.7183768800459802,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-012-Merlin.GraphLoopsSegmentModel",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsSegmentModel",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphLoopsSegmentModel.lean",
+        "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+        "bytes": 7091
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsSegmentModel.olean",
+        "sha256": "b83c91856a65e8e43370cd3861547d0e0e25984e962966f180e43a243b9a8752",
+        "bytes": 1165184
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsSegmentState.olean",
+        "Merlin/GraphLoopsSegmentState.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.36758010601624846,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-013-Merlin.GraphLoopsSegmentState",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsSegmentState",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphLoopsSegmentState.lean",
+        "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+        "bytes": 2118
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsSegmentState.olean",
+        "sha256": "8b94a51eabf36b9484a1ee61e1cec94b068d311f5ad835bcb0d96fbb5ecce900",
+        "bytes": 60552
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsUnroll.olean",
+        "Merlin/GraphLoopsUnroll.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5179469948634505,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-014-Merlin.GraphLoopsUnroll",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsUnroll",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphLoopsUnroll.lean",
+        "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+        "bytes": 5730
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsUnroll.olean",
+        "sha256": "1acc45054af6e1b1313c8f6032497874a5b2163936575713a811e3a5cb78185f",
+        "bytes": 292912
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsUnrollGrouping.olean",
+        "Merlin/GraphLoopsUnrollGrouping.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.46772627788595855,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-015-Merlin.GraphLoopsUnrollGrouping",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsUnrollGrouping",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphLoopsUnrollGrouping.lean",
+        "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+        "bytes": 9854
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsUnrollGrouping.olean",
+        "sha256": "005708f12de191f6241c2fc558bff1d3a29f3a6bdef14aa4e4d8504e39deef94",
+        "bytes": 294216
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsUnrollBounds.olean",
+        "Merlin/GraphLoopsUnrollBounds.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6670208880677819,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-016-Merlin.GraphLoopsUnrollBounds",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphLoopsUnrollBounds",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphLoopsUnrollBounds.lean",
+        "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+        "bytes": 5106
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphLoopsUnrollBounds.olean",
+        "sha256": "b2ee0c3c534c29218e6f337061a98e429aa4249059b5db3f768d94c42a1252a3",
+        "bytes": 553808
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineControl.olean",
+        "Merlin/GraphStatePipelineControl.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.41659138700924814,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-017-Merlin.GraphStatePipelineControl",
+      "stdout": {
+        "sha256": "d26e646b82a94bc5defdc9d648acb65e0c8267f7a5bc76b4f6aacd5bfd5a23cb",
+        "bytes": 325
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStatePipelineControl",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineControl.lean",
+        "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+        "bytes": 5747
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineControl.olean",
+        "sha256": "b4c8da852ee77c3a3862d203c0704289d6d387d24587d755aad4f89be96f400f",
+        "bytes": 249464
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineFold.olean",
+        "Merlin/GraphStatePipelineFold.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.46697307494468987,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-018-Merlin.GraphStatePipelineFold",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStatePipelineFold",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineFold.lean",
+        "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+        "bytes": 7412
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineFold.olean",
+        "sha256": "5e25761f7ba9849d4e77f44e561bbe8e6e84f638be0b122883342254802355bc",
+        "bytes": 237544
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineIndex.olean",
+        "Merlin/GraphStatePipelineIndex.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.7692823400720954,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-019-Merlin.GraphStatePipelineIndex",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStatePipelineIndex",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineIndex.lean",
+        "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+        "bytes": 7569
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineIndex.olean",
+        "sha256": "3f4e3812cfa490819f285c451a735d8d45dfbd54df478831f12a07e291a7d2c4",
+        "bytes": 546800
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineLiterals.olean",
+        "Merlin/GraphStatePipelineLiterals.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5186777280177921,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-020-Merlin.GraphStatePipelineLiterals",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStatePipelineLiterals",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineLiterals.lean",
+        "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+        "bytes": 1400
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineLiterals.olean",
+        "sha256": "8f5f2a35dac3d36fd11ebc2facb1e66986aa96786b05d43daacca2b013b28bbc",
+        "bytes": 61560
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineProgram.olean",
+        "Merlin/GraphStatePipelineProgram.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6687293860595673,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-021-Merlin.GraphStatePipelineProgram",
+      "stdout": {
+        "sha256": "571c70e737a1dc43ba21e890a3378a0b5c38612e9a7d25826bfbec6c3201e47d",
+        "bytes": 355
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStatePipelineProgram",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineProgram.lean",
+        "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+        "bytes": 3197
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineProgram.olean",
+        "sha256": "61a895f706f85dab05beeea2f9cb4611c46efff6a00e31c08e00557f5baa847b",
+        "bytes": 243096
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineSegments.olean",
+        "Merlin/GraphStatePipelineSegments.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5189345099497586,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-022-Merlin.GraphStatePipelineSegments",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStatePipelineSegments",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineSegments.lean",
+        "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+        "bytes": 4541
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineSegments.olean",
+        "sha256": "56bc680bd38b40854a7226d780ef91d3ce025d53f333f37da4193061231c0fc1",
+        "bytes": 97360
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineLoops.olean",
+        "Merlin/GraphStatePipelineLoops.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.6185822789557278,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-023-Merlin.GraphStatePipelineLoops",
+      "stdout": {
+        "sha256": "742cba6927d5116ba5af68031710ca27ed61d89bc30ebc7cfabd09935111c0df",
+        "bytes": 256
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "module": "Merlin.GraphStatePipelineLoops",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineLoops.lean",
+        "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+        "bytes": 8734
+      },
+      "output": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineLoops.olean",
+        "sha256": "eb11d98d51e8f28271bae0e9782ce82b9df64fb9bc4478cfe379e47ba77b4327",
+        "bytes": 164744
+      }
+    },
+    {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineTail.olean",
+        "Merlin/GraphStatePipelineTail.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 0.46843251097016037,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-024-Merlin.GraphStatePipelineTail",
+      "stdout": {
+        "sha256": "57c519d17a19f7287492d6d90ed8bc4fe705c44d815717fd369764597f8199f6",
+        "bytes": 610
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Merlin/GraphStatePipelineTail.lean:33:4: error: unsolved goals\ncase neg\nValue World Error : Type\narity : Nat\nbody : Int \u2192 List Value \u2192 World \u2192 Outcome Value World Error\nrest : List Int\nvalues : List Value\nworld : World\nsize : \u00acvalues.length = arity\n\u22a2 loopEval arity body rest values world = Except.error (Fault.arity, world)\nMerlin/GraphStatePipelineTail.lean:61:15: warning: This simp argument is unused:\n  Nat.mul_assoc\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Nat.mul_comm, Nat.mul_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n\n",
+      "module": "Merlin.GraphStatePipelineTail",
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineTail.lean",
+        "sha256": "602ad3f1802105037fb4a0cd042ced628e71709d66b2bfd3a8e42d6fb7b99996",
+        "bytes": 4857
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "nonzero_nonunit_two",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/queries/nonzero_nonunit_two/Query.lean",
+      "domain": "static_nonnegative_signed32or64_bulk_and_nonempty_tail_complete_outcome",
+      "relation": null,
+      "exact_final_declaration": "theorem merlin_unroll_tail_transform {World Error : Type}\n    (primitive : Merlin.GraphState.Scalar.Prim \u2192 List Int \u2192 Int)\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineTailInstance.registry) :\n    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineTailInstance.M primitive external)\n      Merlin.GraphStatePipelineTailInstance.originalEntries Merlin.GraphStatePipelineTailInstance.finalEntries",
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "remainder_two",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/queries/remainder_two/Query.lean",
+      "domain": "static_nonnegative_signed32or64_bulk_and_nonempty_tail_complete_outcome",
+      "relation": null,
+      "exact_final_declaration": "theorem merlin_unroll_tail_transform {World Error : Type}\n    (primitive : Merlin.GraphState.Scalar.Prim \u2192 List Int \u2192 Int)\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineTailInstance.registry) :\n    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineTailInstance.M primitive external)\n      Merlin.GraphStatePipelineTailInstance.originalEntries Merlin.GraphStatePipelineTailInstance.finalEntries",
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "trip5_factor2",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/queries/trip5_factor2/Query.lean",
+      "domain": "static_nonnegative_signed32or64_bulk_and_nonempty_tail_complete_outcome",
+      "relation": null,
+      "exact_final_declaration": "theorem merlin_unroll_tail_transform {World Error : Type}\n    (primitive : Merlin.GraphState.Scalar.Prim \u2192 List Int \u2192 Int)\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineTailInstance.registry) :\n    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineTailInstance.M primitive external)\n      Merlin.GraphStatePipelineTailInstance.originalEntries Merlin.GraphStatePipelineTailInstance.finalEntries",
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    },
+    {
+      "id": "wide_index",
+      "query": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/queries/wide_index/Query.lean",
+      "domain": "static_nonnegative_signed32or64_bulk_and_nonempty_tail_complete_outcome",
+      "relation": null,
+      "exact_final_declaration": "theorem merlin_unroll_tail_transform {World Error : Type}\n    (primitive : Merlin.GraphState.Scalar.Prim \u2192 List Int \u2192 Int)\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineTailInstance.registry) :\n    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineTailInstance.M primitive external)\n      Merlin.GraphStatePipelineTailInstance.originalEntries Merlin.GraphStatePipelineTailInstance.finalEntries",
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "status": "UNEXECUTED",
+      "reason": "Profile's first support-source failure"
+    }
+  ],
+  "status": "SUPPORT_BUILD_FAILED",
+  "first_failure": {
+    "executed": true,
+    "command": [
+      "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+      "-j1",
+      "-o",
+      "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineTail.olean",
+      "Merlin/GraphStatePipelineTail.lean"
+    ],
+    "exit_code": 1,
+    "seconds": 0.46843251097016037,
+    "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+    "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-024-Merlin.GraphStatePipelineTail",
+    "stdout": {
+      "sha256": "57c519d17a19f7287492d6d90ed8bc4fe705c44d815717fd369764597f8199f6",
+      "bytes": 610
+    },
+    "stderr": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "first_error_excerpt": "Merlin/GraphStatePipelineTail.lean:33:4: error: unsolved goals\ncase neg\nValue World Error : Type\narity : Nat\nbody : Int \u2192 List Value \u2192 World \u2192 Outcome Value World Error\nrest : List Int\nvalues : List Value\nworld : World\nsize : \u00acvalues.length = arity\n\u22a2 loopEval arity body rest values world = Except.error (Fault.arity, world)\nMerlin/GraphStatePipelineTail.lean:61:15: warning: This simp argument is unused:\n  Nat.mul_assoc\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Nat.mul_comm, Nat.mul_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n\n",
+    "module": "Merlin.GraphStatePipelineTail",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineTail.lean",
+      "sha256": "602ad3f1802105037fb4a0cd042ced628e71709d66b2bfd3a8e42d6fb7b99996",
+      "bytes": 4857
+    }
+  }
+}

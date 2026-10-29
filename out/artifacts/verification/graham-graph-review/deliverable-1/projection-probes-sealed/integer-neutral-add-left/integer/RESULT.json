@@ -1,0 +1,11 @@
+{
+  "case": "integer-neutral-add-left",
+  "route": "integer",
+  "returncode": 0,
+  "status": "projection_emitted_not_kernel_checked",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "model": "projection-probes-sealed/integer-neutral-add-left/integer/actual/CAPTURE.json",
+  "sha256": "29588bc86e8e373b8348f2c7dbf5f9124e67e0a5a9be7da1b2118e44680a1527"
+}

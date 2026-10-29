@@ -1,0 +1,10 @@
+{
+  "case": "licm-dynamic",
+  "route": "scalar",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/licm-dynamic/scalar.model.json",
+  "sha256": "c9a8104d0a1a6cf837c4393cfd3c06784454a83e0c0bbf565c0b0f187119acb7"
+}

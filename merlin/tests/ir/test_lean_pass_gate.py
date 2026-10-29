@@ -598,4 +598,3 @@ def test_a_textual_dequantization_bug_stops_lowering(tmp_path, quant_validation,
             capture("small_consistent"), tmp_path / "lower", targets=(), textual=True, pass_validation=quant_validation
         )
     assert raised.value.report["label"] == "preprocess_text_textual"
-

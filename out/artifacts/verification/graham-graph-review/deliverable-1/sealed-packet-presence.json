@@ -1,0 +1,37 @@
+{
+  "shape": {
+    "manifest": "verification:out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/EVIDENCE_SEAL.json",
+    "entries": 1001,
+    "matched": 28,
+    "missing": 973,
+    "mismatched": 0
+  },
+  "integer": {
+    "manifest": "verification:out/artifacts/verification/graph-state-integer/review/sealed-v2/MANIFEST.json",
+    "entries": 2250,
+    "matched": 173,
+    "missing": 2077,
+    "mismatched": 0
+  },
+  "pipeline": {
+    "manifest": "verification:out/artifacts/verification/graph-state-pipeline/review/sealed-v1/MANIFEST.json",
+    "entries": 4001,
+    "matched": 63,
+    "missing": 3938,
+    "mismatched": 0
+  },
+  "memory_scf": {
+    "manifest": "verification:out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/EVIDENCE_INDEX.json",
+    "entries": 1061,
+    "matched": 20,
+    "missing": 1041,
+    "mismatched": 0
+  },
+  "declared": {
+    "manifest": "verification:out/artifacts/verification/graph-regions-declared/qualification-v1/SEAL.json",
+    "entries": 209,
+    "matched": 209,
+    "missing": 0,
+    "mismatched": 0
+  }
+}

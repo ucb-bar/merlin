@@ -1,0 +1,278 @@
+{
+ "external_imports": [
+  "Init"
+ ],
+ "merlin_modules": 6,
+ "violation_total": 0,
+ "queries": [
+  {
+   "path": "out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/kernel/GraphStateScalarInstance.lean",
+   "sha256": "544b1dfd1230805af931d3a32f0b7923acd78a404cd0918fcb162b1ae0ddbabc",
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 10,
+     "token": "opaque",
+     "text": "def before : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.add 8) "
+    },
+    {
+     "line": 10,
+     "token": "opaque",
+     "text": "def before : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.add 8) "
+    },
+    {
+     "line": 10,
+     "token": "opaque",
+     "text": "def before : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.add 8) "
+    },
+    {
+     "line": 10,
+     "token": "opaque",
+     "text": "def before : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.add 8) "
+    },
+    {
+     "line": 11,
+     "token": "opaque",
+     "text": "def after : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 8) [3,4] (.pure (.mul 8) [0,5] (.loop 4 3 2 [5] [(.bits"
+    },
+    {
+     "line": 11,
+     "token": "opaque",
+     "text": "def after : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 8) [3,4] (.pure (.mul 8) [0,5] (.loop 4 3 2 [5] [(.bits"
+    },
+    {
+     "line": 11,
+     "token": "opaque",
+     "text": "def after : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 8) [3,4] (.pure (.mul 8) [0,5] (.loop 4 3 2 [5] [(.bits"
+    },
+    {
+     "line": 11,
+     "token": "opaque",
+     "text": "def after : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 8) [3,4] (.pure (.mul 8) [0,5] (.loop 4 3 2 [5] [(.bits"
+    },
+    {
+     "line": 27,
+     "token": "opaque",
+     "text": "def componentBefore : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure "
+    },
+    {
+     "line": 27,
+     "token": "opaque",
+     "text": "def componentBefore : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure "
+    },
+    {
+     "line": 27,
+     "token": "opaque",
+     "text": "def componentBefore : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure "
+    },
+    {
+     "line": 27,
+     "token": "opaque",
+     "text": "def componentBefore : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure "
+    },
+    {
+     "line": 28,
+     "token": "opaque",
+     "text": "def middleLeft : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.mul"
+    },
+    {
+     "line": 28,
+     "token": "opaque",
+     "text": "def middleLeft : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.mul"
+    },
+    {
+     "line": 28,
+     "token": "opaque",
+     "text": "def middleLeft : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.mul"
+    },
+    {
+     "line": 28,
+     "token": "opaque",
+     "text": "def middleLeft : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.mul"
+    },
+    {
+     "line": 29,
+     "token": "opaque",
+     "text": "def middleRight : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.mu"
+    },
+    {
+     "line": 29,
+     "token": "opaque",
+     "text": "def middleRight : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.mu"
+    },
+    {
+     "line": 29,
+     "token": "opaque",
+     "text": "def middleRight : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.mu"
+    },
+    {
+     "line": 29,
+     "token": "opaque",
+     "text": "def middleRight : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 8)] (.pure (.add 8) [5,6] (.pure (.mu"
+    },
+    {
+     "line": 30,
+     "token": "opaque",
+     "text": "def componentAfter : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 8) [3,4] (.pure (.mul 8) [0,5] (.loop 4 3 2 [5"
+    },
+    {
+     "line": 30,
+     "token": "opaque",
+     "text": "def componentAfter : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 8) [3,4] (.pure (.mul 8) [0,5] (.loop 4 3 2 [5"
+    },
+    {
+     "line": 30,
+     "token": "opaque",
+     "text": "def componentAfter : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 8) [3,4] (.pure (.mul 8) [0,5] (.loop 4 3 2 [5"
+    },
+    {
+     "line": 30,
+     "token": "opaque",
+     "text": "def componentAfter : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 8) [3,4] (.pure (.mul 8) [0,5] (.loop 4 3 2 [5"
+    }
+   ],
+   "set_option": [
+    "set_option maxHeartbeats 2000000",
+    "set_option maxRecDepth 4096"
+   ]
+  }
+ ],
+ "files": [
+  {
+   "module": "Merlin.GraphStateScalar",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+   "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+   "lines": 80,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalarContract",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+   "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+   "lines": 163,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 13,
+     "token": "opaque",
+     "text": "| opaque (identity : Nat)"
+    },
+    {
+     "line": 71,
+     "token": "opaque",
+     "text": "| opaque (identity : Nat) (arguments : List Nat) (results : List Ty) (next : Program)"
+    },
+    {
+     "line": 77,
+     "token": "opaque",
+     "text": "| opaque (identity : Nat) (arguments : List Expr) (results : List Ty) (next : Code)"
+    },
+    {
+     "line": 131,
+     "token": "opaque",
+     "text": "| .opaque identity arguments _ next,environment,world =>"
+    },
+    {
+     "line": 145,
+     "token": "opaque",
+     "text": "| .opaque identity arguments _ next,environment,world =>"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalarInitialized",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+   "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+   "lines": 217,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 137,
+     "token": "opaque",
+     "text": "| .opaque identity arguments _ next,environment,world => Present environment arguments \u2227"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalarNormalize",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+   "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+   "lines": 120,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 35,
+     "token": "opaque",
+     "text": "| symbols,.opaque identity arguments results next => do"
+    },
+    {
+     "line": 39,
+     "token": "opaque",
+     "text": "return .opaque identity operands results rest"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalarSound",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+   "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+   "lines": 169,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 85,
+     "token": "opaque",
+     "text": "| \u00abopaque\u00bb identity arguments results next ih =>"
+    },
+    {
+     "line": 94,
+     "token": "opaque",
+     "text": "have equal : Code.opaque identity expressions results continuation = code := by"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalarTyping",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+   "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+   "lines": 116,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 37,
+     "token": "opaque",
+     "text": "Typed registry environment results (.opaque identity arguments outputs next)"
+    },
+    {
+     "line": 49,
+     "token": "opaque",
+     "text": "| environment,results,.opaque identity arguments outputs next =>"
+    },
+    {
+     "line": 90,
+     "token": "opaque",
+     "text": "| \u00abopaque\u00bb identity arguments outputs next ih =>"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  }
+ ]
+}

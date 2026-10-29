@@ -1,0 +1,75 @@
+{
+  "float_keys": [
+    {
+      "literal": "0x7FC00001",
+      "str_key": [
+        [
+          "value",
+          "0x7fc00001 : f32"
+        ]
+      ]
+    },
+    {
+      "literal": "0x7FC00002",
+      "str_key": [
+        [
+          "value",
+          "0x7fc00002 : f32"
+        ]
+      ]
+    },
+    {
+      "literal": "-0.0",
+      "str_key": [
+        [
+          "value",
+          "-0.000000e+00 : f32"
+        ]
+      ]
+    },
+    {
+      "literal": "0.0",
+      "str_key": [
+        [
+          "value",
+          "0.000000e+00 : f32"
+        ]
+      ]
+    },
+    {
+      "literal": "0x7FC00001",
+      "str_key": [
+        [
+          "value",
+          "dense<0x7fc00001> : tensor<1xf32>"
+        ]
+      ]
+    },
+    {
+      "literal": "0x7FC00002",
+      "str_key": [
+        [
+          "value",
+          "dense<0x7fc00002> : tensor<1xf32>"
+        ]
+      ]
+    }
+  ],
+  "resource_handles": [
+    {
+      "parse": 0,
+      "handle": "blob1",
+      "printed_has_payload": false
+    },
+    {
+      "parse": 1,
+      "handle": "blob1_0",
+      "printed_has_payload": false
+    },
+    {
+      "parse": 2,
+      "handle": "blob1_2",
+      "printed_has_payload": false
+    }
+  ]
+}

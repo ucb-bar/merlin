@@ -1,0 +1,27 @@
+[
+  {
+    "name": "venv-0.68",
+    "argv": [
+      "/home/eecs/gram117anderson/.local/bin/uv",
+      "venv",
+      "--python",
+      "/usr/bin/python3",
+      "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/agent-1-python/xdsl-0.68"
+    ],
+    "returncode": 0,
+    "seconds": 0.045944486977532506
+  },
+  {
+    "name": "install-0.68",
+    "argv": [
+      "/home/eecs/gram117anderson/.local/bin/uv",
+      "pip",
+      "install",
+      "--python",
+      "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/agent-1-python/xdsl-0.68/bin/python",
+      "xdsl==0.68.0"
+    ],
+    "returncode": 0,
+    "seconds": 0.8624809538014233
+  }
+]

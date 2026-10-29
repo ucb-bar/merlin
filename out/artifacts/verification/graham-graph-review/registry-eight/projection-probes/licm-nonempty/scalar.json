@@ -1,0 +1,10 @@
+{
+  "case": "licm-nonempty",
+  "route": "scalar",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/licm-nonempty/scalar.model.json",
+  "sha256": "512463c69b09bca148caf1733bed598640828fdde3f2ffce287dcd8f838301cf"
+}

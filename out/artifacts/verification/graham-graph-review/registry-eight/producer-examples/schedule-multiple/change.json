@@ -1,0 +1,65 @@
+{
+  "kind": "sequential_dependency_schedule",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %x = \"arith.addi\"(%a, %a) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %y = \"arith.muli\"(%b, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %r = \"arith.subi\"(%x, %y) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"untouched\", function_type = (i8) -> i8}> ({\n  ^bb0(%a: i8):\n    \"func.return\"(%a) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %y = \"arith.muli\"(%b, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %x = \"arith.addi\"(%a, %a) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %r = \"arith.subi\"(%x, %y) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"untouched\", function_type = (i8) -> i8}> ({\n  ^bb0(%a: i8):\n    \"func.return\"(%a) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {
+    "block_index": 1,
+    "order": [
+      1,
+      0,
+      2,
+      3
+    ]
+  },
+  "certificate": {
+    "kind": "sequential_dependency_schedule",
+    "before_ir_sha256": "20dc637e3ae6c6d16ba149314007fc0a8e324af128fecd53882ada3100674b3a",
+    "after_ir_sha256": "b94811d88e8eeb4c8f2e6efb1e19eeaf8929ebd363d269f6bdd3ea9b49857391",
+    "witnesses": [
+      {
+        "kind": "dependency",
+        "block_index": 1,
+        "operation_sha256": [
+          "df55fae7654aa2b434227197b3bc0f16a56dc68ea7e8ee0c3e3e0eeb5517c5a1",
+          "c0af44eee256d8ec57935e8ab7745721ae86dea248c776769601a55999aafa31",
+          "8162828d36b03a0632242925f74de51f68a616095ac394e0224e9c917291db95",
+          "d3bb00645553ff5ad1de36f171cc401b294e238925b8d613229f5103d9eb41f4"
+        ],
+        "edges": [
+          [
+            0,
+            2
+          ],
+          [
+            0,
+            3
+          ],
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            3
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "order": [
+          1,
+          0,
+          2,
+          3
+        ],
+        "unknown_effect_indices": []
+      }
+    ],
+    "scope": [
+      "ssa_dependencies",
+      "sequential_effect_order"
+    ],
+    "schema": "merlin.shared_transform.v1"
+  }
+}

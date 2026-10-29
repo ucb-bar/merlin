@@ -1,0 +1,50 @@
+{
+  "case": "schedule-opaque",
+  "kind": "sequential_dependency_schedule",
+  "options": {
+    "dependency_orders": [
+      [
+        1,
+        [
+          1,
+          0,
+          2,
+          3,
+          4
+        ]
+      ]
+    ]
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "structural"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 490,
+      "sha256": "0dbb6f96f3b076a2987ce36a558f866f0874e240e9f25ac6fee56e1a783122f8"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 490,
+      "sha256": "229c528e1990e4e7450c4148237f489ed1bc7de1354ab60d009e0d3072d7ed03"
+    },
+    {
+      "path": "change.json",
+      "bytes": 2633,
+      "sha256": "e1fc925979ce8d482286ec8a863fd5fcbe887263e45f1745db0f13ded1adc880"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 199,
+      "sha256": "b010c82470ba5e83ad162ff6a926875facba9e2c052b5b74c8afe540324017c9"
+    }
+  ]
+}

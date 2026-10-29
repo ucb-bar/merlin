@@ -1,0 +1,401 @@
+@Merlin.GraphLoopsMemorySCF.EvalPure.frame : ∀ {Value : Type} {meaning : Merlin.GraphLoopsMemorySCF.PureMeaning Value}
+  {ops : List Merlin.GraphLoopsMemorySCF.PureOp} {before after : Merlin.GraphLoopsMemorySCF.Env Value},
+  Merlin.GraphLoopsMemorySCF.EvalPure meaning ops before after →
+    ∀ {name : Nat}, ¬name ∈ Merlin.GraphLoopsMemorySCF.definitions ops → after name = before name
+'Merlin.GraphLoopsMemorySCF.EvalPure.frame' depends on axioms: [propext]
+@Merlin.GraphLoopsMemorySCF.Run.covers : ∀ {Value : Type} {meaning : Merlin.GraphLoopsMemorySCF.PureMeaning Value}
+  {program : Merlin.GraphLoopsMemorySCF.Initializer} {tile : Nat},
+  program.WellFormed →
+    ∀ {captures : Merlin.GraphLoopsMemorySCF.Env Value} {writes : Merlin.GraphLoopsMemorySCF.Log Value},
+      Merlin.GraphLoopsMemorySCF.Run meaning program tile false captures writes →
+        ∀ (index : Nat), index < Merlin.GraphLoopsReuse.Geometry.volume program.shape → ∃ value, (index, value) ∈ writes
+'Merlin.GraphLoopsMemorySCF.Run.covers' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Run.materializes : ∀ {Value : Type} {meaning : Merlin.GraphLoopsMemorySCF.PureMeaning Value}
+  {program : Merlin.GraphLoopsMemorySCF.Initializer} {tile : Nat},
+  program.WellFormed →
+    ∀ {captures : Merlin.GraphLoopsMemorySCF.Env Value} {writes : Merlin.GraphLoopsMemorySCF.Log Value},
+      Merlin.GraphLoopsMemorySCF.Run meaning program tile false captures writes →
+        ∃ values,
+          ∀ (cells : Merlin.GraphLoopsMemorySCF.Cells Value) (index : Nat),
+            index < Merlin.GraphLoopsReuse.Geometry.volume program.shape →
+              Merlin.GraphLoopsMemorySCF.applyWrites writes cells index = some (values index)
+'Merlin.GraphLoopsMemorySCF.Run.materializes' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.heap_run_iff_log : ∀ {Value : Type} (meaning : Merlin.GraphLoopsMemorySCF.PureMeaning Value)
+  (program : Merlin.GraphLoopsMemorySCF.Initializer) (tile object : Nat)
+  (captures : Merlin.GraphLoopsMemorySCF.Env Value) (before after : Merlin.GraphLoopsMemorySCF.Heap Value),
+  program.WellFormed →
+    (Merlin.GraphLoopsMemorySCF.HeapRun meaning program tile object false captures before after ↔
+      ∃ writes,
+        Merlin.GraphLoopsMemorySCF.Run meaning program tile false captures writes ∧
+          after = Merlin.GraphLoopsMemorySCF.applyHeapWrites object writes before)
+'Merlin.GraphLoopsMemorySCF.heap_run_iff_log' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.segmentation_exact_heaps : ∀ {Value : Type}
+  (meaning : Merlin.GraphLoopsMemorySCF.PureMeaning Value) (program : Merlin.GraphLoopsMemorySCF.Initializer)
+  (tile object : Nat),
+  0 < tile →
+    ∀ (captures : Merlin.GraphLoopsMemorySCF.Env Value) (before after : Merlin.GraphLoopsMemorySCF.Heap Value),
+      Merlin.GraphLoopsMemorySCF.HeapRun meaning program tile object false captures before after ↔
+        Merlin.GraphLoopsMemorySCF.HeapRun meaning program tile object true captures before after
+'Merlin.GraphLoopsMemorySCF.segmentation_exact_heaps' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.materializes_in_bounds : ∀ {Value : Type}
+  {meaning : Merlin.GraphLoopsMemorySCF.PureMeaning Value} {program : Merlin.GraphLoopsMemorySCF.Initializer}
+  {tile : Nat},
+  program.WellFormed →
+    ∀ {captures : Merlin.GraphLoopsMemorySCF.Env Value} {writes : Merlin.GraphLoopsMemorySCF.Log Value},
+      Merlin.GraphLoopsMemorySCF.Run meaning program tile false captures writes →
+        ∀ (object : Nat) (heap : Merlin.GraphLoopsMemorySCF.Heap Value),
+          ∃ values,
+            (∀ (index : Nat),
+                index < Merlin.GraphLoopsReuse.Geometry.volume program.shape →
+                  Merlin.GraphLoopsMemorySCF.applyHeapWrites object writes heap object index =
+                    Merlin.GraphLoopsReuse.initializedCells (Merlin.GraphLoopsReuse.Geometry.volume program.shape)
+                      values index) ∧
+              ∀ (other : Nat),
+                other ≠ object → Merlin.GraphLoopsMemorySCF.applyHeapWrites object writes heap other = heap other
+'Merlin.GraphLoopsMemorySCF.materializes_in_bounds' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.related_initialize_logs : ∀ {Value Public : Type} {objects : Merlin.GraphLoopsReuse.Objects}
+  {ready : List Nat} {source target : Merlin.GraphLoopsReuse.Memory Value Public},
+  Merlin.GraphLoopsReuse.Related (Merlin.GraphLoopsReuse.slotOf objects) (Merlin.GraphLoopsReuse.extentOf objects) ready
+      source target →
+    ∀ {object : Nat},
+      (∀ (other : Nat),
+          other ∈ ready →
+            other ≠ object →
+              Merlin.GraphLoopsReuse.slotOf objects other ≠ Merlin.GraphLoopsReuse.slotOf objects object) →
+        ∀ {meaning : Merlin.GraphLoopsMemorySCF.PureMeaning Value} {program : Merlin.GraphLoopsMemorySCF.Initializer}
+          {tile : Nat},
+          program.WellFormed →
+            program.shape = (Merlin.GraphLoopsReuse.objectAt objects object).shape →
+              ∀ {captures : Merlin.GraphLoopsMemorySCF.Env Value} {writes : Merlin.GraphLoopsMemorySCF.Log Value},
+                Merlin.GraphLoopsMemorySCF.Run meaning program tile false captures writes →
+                  Merlin.GraphLoopsReuse.Related (Merlin.GraphLoopsReuse.slotOf objects)
+                    (Merlin.GraphLoopsReuse.extentOf objects) (object :: ready)
+                    { observed := source.observed,
+                      heap := Merlin.GraphLoopsMemorySCF.applyHeapWrites object writes source.heap }
+                    { observed := target.observed,
+                      heap :=
+                        Merlin.GraphLoopsMemorySCF.applyHeapWrites (Merlin.GraphLoopsReuse.slotOf objects object) writes
+                          target.heap }
+'Merlin.GraphLoopsMemorySCF.related_initialize_logs' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.initialization_induced : ∀ {Value Public : Type}
+  (meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public)
+  (configs : List Merlin.GraphLoopsMemorySCF.Configuration) {config : Merlin.GraphLoopsMemorySCF.Configuration},
+  config ∈ configs →
+    config.program.WellFormed →
+      ∀ {observed : Public} {writes : Merlin.GraphLoopsMemorySCF.Log Value},
+        Merlin.GraphLoopsMemorySCF.Run meaning.pure config.program config.tile false (meaning.captures observed)
+            writes →
+          ∃ values,
+            (Merlin.GraphLoopsMemorySCF.inducedPrimitives meaning configs).initialization config.key observed values
+'Merlin.GraphLoopsMemorySCF.initialization_induced' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.step_forward : ∀ {Value Public : Type} {objects : Merlin.GraphLoopsReuse.Objects}
+  {configs : List Merlin.GraphLoopsMemorySCF.Configuration}
+  {meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public} {sourceMode targetMode : Bool}
+  {status : Merlin.GraphLoopsReuse.Status} {instruction : Merlin.GraphLoopsReuse.Instruction}
+  {source target after : Merlin.GraphLoopsReuse.Memory Value Public},
+  (∀ (config : Merlin.GraphLoopsMemorySCF.Configuration),
+      config ∈ configs → Merlin.GraphLoopsMemorySCF.Configuration.Valid objects config) →
+    Merlin.GraphLoopsReuse.Admitted objects status instruction →
+      Merlin.GraphLoopsReuse.Related (Merlin.GraphLoopsReuse.slotOf objects) (Merlin.GraphLoopsReuse.extentOf objects)
+          status.ready source target →
+        Merlin.GraphLoopsMemorySCF.Step objects configs meaning false sourceMode instruction source after →
+          ∃ next,
+            Merlin.GraphLoopsMemorySCF.Step objects configs meaning true targetMode instruction target next ∧
+              Merlin.GraphLoopsReuse.Related (Merlin.GraphLoopsReuse.slotOf objects)
+                (Merlin.GraphLoopsReuse.extentOf objects) (Merlin.GraphLoopsReuse.next objects status instruction).ready
+                after next
+'Merlin.GraphLoopsMemorySCF.step_forward' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.step_backward : ∀ {Value Public : Type} {objects : Merlin.GraphLoopsReuse.Objects}
+  {configs : List Merlin.GraphLoopsMemorySCF.Configuration}
+  {meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public} {sourceMode targetMode : Bool}
+  {status : Merlin.GraphLoopsReuse.Status} {instruction : Merlin.GraphLoopsReuse.Instruction}
+  {source target after : Merlin.GraphLoopsReuse.Memory Value Public},
+  (∀ (config : Merlin.GraphLoopsMemorySCF.Configuration),
+      config ∈ configs → Merlin.GraphLoopsMemorySCF.Configuration.Valid objects config) →
+    Merlin.GraphLoopsReuse.Admitted objects status instruction →
+      Merlin.GraphLoopsReuse.Related (Merlin.GraphLoopsReuse.slotOf objects) (Merlin.GraphLoopsReuse.extentOf objects)
+          status.ready source target →
+        Merlin.GraphLoopsMemorySCF.Step objects configs meaning true targetMode instruction target after →
+          ∃ next,
+            Merlin.GraphLoopsMemorySCF.Step objects configs meaning false sourceMode instruction source next ∧
+              Merlin.GraphLoopsReuse.Related (Merlin.GraphLoopsReuse.slotOf objects)
+                (Merlin.GraphLoopsReuse.extentOf objects) (Merlin.GraphLoopsReuse.next objects status instruction).ready
+                next after
+'Merlin.GraphLoopsMemorySCF.step_backward' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.execution_forward : ∀ {Value Public : Type} {objects : Merlin.GraphLoopsReuse.Objects}
+  {configs : List Merlin.GraphLoopsMemorySCF.Configuration}
+  {meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public} {sourceMode targetMode : Bool}
+  {status : Merlin.GraphLoopsReuse.Status} {instructions : List Merlin.GraphLoopsReuse.Instruction},
+  (∀ (config : Merlin.GraphLoopsMemorySCF.Configuration),
+      config ∈ configs → Merlin.GraphLoopsMemorySCF.Configuration.Valid objects config) →
+    Merlin.GraphLoopsReuse.Safe objects status instructions →
+      ∀ (source target after : Merlin.GraphLoopsReuse.Memory Value Public),
+        Merlin.GraphLoopsReuse.Related (Merlin.GraphLoopsReuse.slotOf objects) (Merlin.GraphLoopsReuse.extentOf objects)
+            status.ready source target →
+          Merlin.GraphLoopsMemorySCF.Execution objects configs meaning false sourceMode instructions source after →
+            ∃ next,
+              Merlin.GraphLoopsMemorySCF.Execution objects configs meaning true targetMode instructions target next ∧
+                after.observed = next.observed
+'Merlin.GraphLoopsMemorySCF.execution_forward' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.execution_backward : ∀ {Value Public : Type} {objects : Merlin.GraphLoopsReuse.Objects}
+  {configs : List Merlin.GraphLoopsMemorySCF.Configuration}
+  {meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public} {sourceMode targetMode : Bool}
+  {status : Merlin.GraphLoopsReuse.Status} {instructions : List Merlin.GraphLoopsReuse.Instruction},
+  (∀ (config : Merlin.GraphLoopsMemorySCF.Configuration),
+      config ∈ configs → Merlin.GraphLoopsMemorySCF.Configuration.Valid objects config) →
+    Merlin.GraphLoopsReuse.Safe objects status instructions →
+      ∀ (source target after : Merlin.GraphLoopsReuse.Memory Value Public),
+        Merlin.GraphLoopsReuse.Related (Merlin.GraphLoopsReuse.slotOf objects) (Merlin.GraphLoopsReuse.extentOf objects)
+            status.ready source target →
+          Merlin.GraphLoopsMemorySCF.Execution objects configs meaning true targetMode instructions target after →
+            ∃ next,
+              Merlin.GraphLoopsMemorySCF.Execution objects configs meaning false sourceMode instructions source next ∧
+                next.observed = after.observed
+'Merlin.GraphLoopsMemorySCF.execution_backward' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.checked_complete_observations : ∀ {Value Public : Type}
+  (objects : Merlin.GraphLoopsReuse.Objects) (configs : List Merlin.GraphLoopsMemorySCF.Configuration)
+  (instructions : List Merlin.GraphLoopsReuse.Instruction),
+  (∀ (config : Merlin.GraphLoopsMemorySCF.Configuration),
+      config ∈ configs → Merlin.GraphLoopsMemorySCF.Configuration.Valid objects config) →
+    Merlin.GraphLoopsReuse.checkProgram objects Merlin.GraphLoopsReuse.emptyStatus instructions = true →
+      ∀ (meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public) (sourceMode targetMode : Bool)
+        (source target : Merlin.GraphLoopsReuse.Memory Value Public),
+        source.observed = target.observed →
+          ∀ (outcome : Public),
+            Merlin.GraphLoopsMemorySCF.outcomes objects configs meaning false sourceMode instructions source outcome ↔
+              Merlin.GraphLoopsMemorySCF.outcomes objects configs meaning true targetMode instructions target outcome
+'Merlin.GraphLoopsMemorySCF.checked_complete_observations' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.execution_modes : ∀ {Value Public : Type} {objects : Merlin.GraphLoopsReuse.Objects}
+  {configs : List Merlin.GraphLoopsMemorySCF.Configuration}
+  {meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public} {candidate sourceMode targetMode : Bool}
+  {instructions : List Merlin.GraphLoopsReuse.Instruction} {before after : Merlin.GraphLoopsReuse.Memory Value Public},
+  (∀ (config : Merlin.GraphLoopsMemorySCF.Configuration),
+      config ∈ configs → Merlin.GraphLoopsMemorySCF.Configuration.Valid objects config) →
+    Merlin.GraphLoopsMemorySCF.Execution objects configs meaning candidate sourceMode instructions before after →
+      Merlin.GraphLoopsMemorySCF.Execution objects configs meaning candidate targetMode instructions before after
+'Merlin.GraphLoopsMemorySCF.execution_modes' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.checked_reuse_then_segment : ∀ {Value Public : Type}
+  (objects : Merlin.GraphLoopsReuse.Objects) (configs : List Merlin.GraphLoopsMemorySCF.Configuration)
+  (instructions : List Merlin.GraphLoopsReuse.Instruction),
+  (∀ (config : Merlin.GraphLoopsMemorySCF.Configuration),
+      config ∈ configs → Merlin.GraphLoopsMemorySCF.Configuration.Valid objects config) →
+    Merlin.GraphLoopsReuse.checkProgram objects Merlin.GraphLoopsReuse.emptyStatus instructions = true →
+      ∀ (meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public)
+        (source middle : Merlin.GraphLoopsReuse.Memory Value Public),
+        source.observed = middle.observed →
+          ∀ (outcome : Public),
+            (Merlin.GraphLoopsMemorySCF.outcomes objects configs meaning false false instructions source outcome ↔
+                Merlin.GraphLoopsMemorySCF.outcomes objects configs meaning true false instructions middle outcome) ∧
+              (Merlin.GraphLoopsMemorySCF.outcomes objects configs meaning true false instructions middle outcome ↔
+                  Merlin.GraphLoopsMemorySCF.outcomes objects configs meaning true true instructions middle outcome) ∧
+                (Merlin.GraphLoopsMemorySCF.outcomes objects configs meaning false false instructions source outcome ↔
+                  Merlin.GraphLoopsMemorySCF.outcomes objects configs meaning true true instructions middle outcome)
+'Merlin.GraphLoopsMemorySCF.checked_reuse_then_segment' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.checked_induced_atomic : ∀ {Value Public : Type} (objects : Merlin.GraphLoopsReuse.Objects)
+  (configs : List Merlin.GraphLoopsMemorySCF.Configuration) (instructions : List Merlin.GraphLoopsReuse.Instruction),
+  Merlin.GraphLoopsReuse.checkProgram objects Merlin.GraphLoopsReuse.emptyStatus instructions = true →
+    ∀ (meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public)
+      (source target : Merlin.GraphLoopsReuse.Memory Value Public),
+      source.observed = target.observed →
+        ∀ (outcome : Public),
+          (∃ after,
+              Merlin.GraphLoopsReuse.Execution objects (Merlin.GraphLoopsMemorySCF.inducedPrimitives meaning configs)
+                  false instructions source after ∧
+                after.observed = outcome) ↔
+            ∃ after,
+              Merlin.GraphLoopsReuse.Execution objects (Merlin.GraphLoopsMemorySCF.inducedPrimitives meaning configs)
+                  true instructions target after ∧
+                after.observed = outcome
+'Merlin.GraphLoopsMemorySCF.checked_induced_atomic' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Model.check_sound : ∀ {p : Merlin.GraphLoopsMemorySCF.Model.Projection},
+  Merlin.GraphLoopsMemorySCF.Model.check p = true →
+    Merlin.GraphLoopsMemorySCF.Model.Valid p ∧
+      Merlin.GraphLoopsReuse.Model.Valid p.reuse ∧
+        Merlin.GraphLoopsReuse.Safe p.reuse.objects Merlin.GraphLoopsReuse.emptyStatus p.reuse.instructions
+'Merlin.GraphLoopsMemorySCF.Model.check_sound' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Model.checked_chain : ∀ {p : Merlin.GraphLoopsMemorySCF.Model.Projection},
+  Merlin.GraphLoopsMemorySCF.Model.check p = true →
+    ∀ {Value Public : Type} (meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public)
+      (source middle : Merlin.GraphLoopsReuse.Memory Value Public),
+      source.observed = middle.observed →
+        ∀ (outcome : Public),
+          (Merlin.GraphLoopsMemorySCF.outcomes p.reuse.objects (Merlin.GraphLoopsMemorySCF.Model.configs p) meaning
+                false false p.reuse.instructions source outcome ↔
+              Merlin.GraphLoopsMemorySCF.outcomes p.reuse.objects (Merlin.GraphLoopsMemorySCF.Model.configs p) meaning
+                true false p.reuse.instructions middle outcome) ∧
+            (Merlin.GraphLoopsMemorySCF.outcomes p.reuse.objects (Merlin.GraphLoopsMemorySCF.Model.configs p) meaning
+                  true false p.reuse.instructions middle outcome ↔
+                Merlin.GraphLoopsMemorySCF.outcomes p.reuse.objects (Merlin.GraphLoopsMemorySCF.Model.configs p) meaning
+                  true true p.reuse.instructions middle outcome) ∧
+              (Merlin.GraphLoopsMemorySCF.outcomes p.reuse.objects (Merlin.GraphLoopsMemorySCF.Model.configs p) meaning
+                  false false p.reuse.instructions source outcome ↔
+                Merlin.GraphLoopsMemorySCF.outcomes p.reuse.objects (Merlin.GraphLoopsMemorySCF.Model.configs p) meaning
+                  true true p.reuse.instructions middle outcome)
+'Merlin.GraphLoopsMemorySCF.Model.checked_chain' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Model.checked_complete : ∀ {p : Merlin.GraphLoopsMemorySCF.Model.Projection},
+  Merlin.GraphLoopsMemorySCF.Model.check p = true →
+    ∀ {Value Public : Type} (meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public)
+      (source middle : Merlin.GraphLoopsReuse.Memory Value Public),
+      source.observed = middle.observed →
+        ∀ (outcome : Public),
+          Merlin.GraphLoopsMemorySCF.outcomes p.reuse.objects (Merlin.GraphLoopsMemorySCF.Model.configs p) meaning false
+              false p.reuse.instructions source outcome ↔
+            Merlin.GraphLoopsMemorySCF.outcomes p.reuse.objects (Merlin.GraphLoopsMemorySCF.Model.configs p) meaning
+              true true p.reuse.instructions middle outcome
+'Merlin.GraphLoopsMemorySCF.Model.checked_complete' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Model.checked_context : ∀ {p : Merlin.GraphLoopsMemorySCF.Model.Projection},
+  Merlin.GraphLoopsMemorySCF.Model.check p = true →
+    ∀ {Value Public Outcome : Type} (meaning : Merlin.GraphLoopsMemorySCF.Interpretation Value Public)
+      (source middle : Merlin.GraphLoopsReuse.Memory Value Public),
+      source.observed = middle.observed →
+        ∀ (context : (Public → Prop) → Outcome),
+          context
+              (Merlin.GraphLoopsMemorySCF.outcomes p.reuse.objects (Merlin.GraphLoopsMemorySCF.Model.configs p) meaning
+                false false p.reuse.instructions source) =
+            context
+              (Merlin.GraphLoopsMemorySCF.outcomes p.reuse.objects (Merlin.GraphLoopsMemorySCF.Model.configs p) meaning
+                true true p.reuse.instructions middle)
+'Merlin.GraphLoopsMemorySCF.Model.checked_context' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Witness.uniform_heap : ∀ {Value : Type}
+  (meaning : Merlin.GraphLoopsMemorySCF.PureMeaning Value) (rows columns outerIV innerIV seed tile object : Nat),
+  0 < rows →
+    0 < columns →
+      outerIV ≠ innerIV →
+        seed ≠ outerIV →
+          seed ≠ innerIV →
+            ∀ (captures : Merlin.GraphLoopsMemorySCF.Env Value) (value : Value),
+              captures seed = some (Merlin.GraphLoopsMemorySCF.Datum.scalar value) →
+                ∀ (before : Merlin.GraphLoopsMemorySCF.Heap Value),
+                  ∃ after,
+                    Merlin.GraphLoopsMemorySCF.HeapRun meaning
+                        (Merlin.GraphLoopsMemorySCF.Witness.uniform rows columns outerIV innerIV seed) tile object false
+                        captures before after ∧
+                      ∀ (index : Nat), index < rows * columns → after object index = some value
+'Merlin.GraphLoopsMemorySCF.Witness.uniform_heap' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Witness.uniform_run_exists : ∀ {Value : Type}
+  (meaning : Merlin.GraphLoopsMemorySCF.PureMeaning Value) (rows columns outerIV innerIV seed tile : Nat),
+  outerIV ≠ innerIV →
+    seed ≠ outerIV →
+      seed ≠ innerIV →
+        ∀ (captures : Merlin.GraphLoopsMemorySCF.Env Value) (value : Value),
+          captures seed = some (Merlin.GraphLoopsMemorySCF.Datum.scalar value) →
+            ∃ writes,
+              Merlin.GraphLoopsMemorySCF.Run meaning
+                (Merlin.GraphLoopsMemorySCF.Witness.uniform rows columns outerIV innerIV seed) tile false captures
+                writes
+'Merlin.GraphLoopsMemorySCF.Witness.uniform_run_exists' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Witness.uniform_run_values : ∀ {Value : Type}
+  {meaning : Merlin.GraphLoopsMemorySCF.PureMeaning Value} {rows columns outerIV innerIV seed tile : Nat},
+  seed ≠ outerIV →
+    seed ≠ innerIV →
+      ∀ {captures : Merlin.GraphLoopsMemorySCF.Env Value} {value : Value},
+        captures seed = some (Merlin.GraphLoopsMemorySCF.Datum.scalar value) →
+          ∀ {writes : Merlin.GraphLoopsMemorySCF.Log Value},
+            Merlin.GraphLoopsMemorySCF.Run meaning
+                (Merlin.GraphLoopsMemorySCF.Witness.uniform rows columns outerIV innerIV seed) tile false captures
+                writes →
+              Merlin.GraphLoopsMemorySCF.Witness.AllValues value writes
+'Merlin.GraphLoopsMemorySCF.Witness.uniform_run_values' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Witness.writes_uniform : ∀ {Value : Type} {value : Value}
+  {writes : Merlin.GraphLoopsMemorySCF.Log Value},
+  Merlin.GraphLoopsMemorySCF.Witness.AllValues value writes →
+    ∀ (cells : Merlin.GraphLoopsMemorySCF.Cells Value) {index : Nat},
+      (∃ stored, (index, stored) ∈ writes) → Merlin.GraphLoopsMemorySCF.applyWrites writes cells index = some value
+'Merlin.GraphLoopsMemorySCF.Witness.writes_uniform' depends on axioms: [propext]
+@Merlin.GraphLoopsMemorySCF.Model.checked_outer_control : ∀ {p : Merlin.GraphLoopsMemorySCF.Model.Projection},
+  Merlin.GraphLoopsMemorySCF.Model.check p = true →
+    ∀ {boundary : Merlin.GraphLoopsMemorySCF.Model.Boundary},
+      boundary ∈ p.boundaries →
+        ∀ {outer : Nat},
+          outer < boundary.segment.bounds.upper →
+            Merlin.GraphLoopsSegment.FitsSigned p.reuse.bits outer ∧
+              Merlin.GraphLoopsSegment.FitsSigned p.reuse.bits
+                  (outer + boundary.segment.bounds.step * boundary.segment.bounds.tile) ∧
+                Merlin.GraphLoopsSegment.FitsSigned p.reuse.bits
+                  (min (outer + boundary.segment.bounds.step * boundary.segment.bounds.tile)
+                    boundary.segment.bounds.upper)
+'Merlin.GraphLoopsMemorySCF.Model.checked_outer_control' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Model.checked_inner_control : ∀ {p : Merlin.GraphLoopsMemorySCF.Model.Projection},
+  Merlin.GraphLoopsMemorySCF.Model.check p = true →
+    ∀ {boundary : Merlin.GraphLoopsMemorySCF.Model.Boundary},
+      boundary ∈ p.boundaries →
+        ∀ {outer inner : Nat},
+          inner <
+              min (outer + boundary.segment.bounds.step * boundary.segment.bounds.tile) boundary.segment.bounds.upper →
+            Merlin.GraphLoopsSegment.FitsSigned p.reuse.bits inner ∧
+              Merlin.GraphLoopsSegment.FitsSigned p.reuse.bits (inner + boundary.segment.bounds.step)
+'Merlin.GraphLoopsMemorySCF.Model.checked_inner_control' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsMemorySCF.Model.checked_initializer_byte_offset : ∀ {p : Merlin.GraphLoopsMemorySCF.Model.Projection},
+  Merlin.GraphLoopsMemorySCF.Model.check p = true →
+    ∀ {boundary : Merlin.GraphLoopsMemorySCF.Model.Boundary},
+      boundary ∈ p.boundaries →
+        ∀ {coordinates : List Nat},
+          Merlin.GraphLoopsReuse.Geometry.Coordinate boundary.config.program.shape coordinates →
+            Merlin.GraphLoopsReuse.Geometry.flatten boundary.config.program.shape coordinates *
+                ((Merlin.GraphLoopsReuse.objectAt p.reuse.objects boundary.config.object).elementBits / 8) <
+              2 ^ (p.reuse.bits - 1)
+'Merlin.GraphLoopsMemorySCF.Model.checked_initializer_byte_offset' depends on axioms: [propext, Quot.sound]
+Merlin.GraphLoopsReuse.Witness.protocol : Merlin.GraphLoopsReuse.checkProgram Merlin.GraphLoopsReuse.Witness.objects
+    Merlin.GraphLoopsReuse.emptyStatus Merlin.GraphLoopsReuse.Witness.instructions =
+  true
+'Merlin.GraphLoopsReuse.Witness.protocol' depends on axioms: [propext, Quot.sound]
+Merlin.GraphLoopsReuse.Witness.source_inhabited : ∃ final,
+  Merlin.GraphLoopsReuse.Execution Merlin.GraphLoopsReuse.Witness.objects Merlin.GraphLoopsReuse.Witness.primitives
+      false Merlin.GraphLoopsReuse.Witness.instructions Merlin.GraphLoopsReuse.Witness.source final ∧
+    final.observed = [17, 29]
+'Merlin.GraphLoopsReuse.Witness.source_inhabited' depends on axioms: [propext]
+Merlin.GraphLoopsReuse.Witness.target_inhabited : ∃ final,
+  Merlin.GraphLoopsReuse.Execution Merlin.GraphLoopsReuse.Witness.objects Merlin.GraphLoopsReuse.Witness.primitives true
+      Merlin.GraphLoopsReuse.Witness.instructions Merlin.GraphLoopsReuse.Witness.target final ∧
+    final.observed = [17, 29]
+'Merlin.GraphLoopsReuse.Witness.target_inhabited' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsReuse.checked_observations : ∀ {Value Public : Type} (objects : Merlin.GraphLoopsReuse.Objects)
+  (instructions : List Merlin.GraphLoopsReuse.Instruction),
+  Merlin.GraphLoopsReuse.checkProgram objects Merlin.GraphLoopsReuse.emptyStatus instructions = true →
+    ∀ (primitives : Merlin.GraphLoopsReuse.Primitives Value Public)
+      (source target : Merlin.GraphLoopsReuse.Memory Value Public),
+      source.observed = target.observed →
+        ∀ (outcome : Public),
+          (∃ final,
+              Merlin.GraphLoopsReuse.Execution objects primitives false instructions source final ∧
+                final.observed = outcome) ↔
+            ∃ final,
+              Merlin.GraphLoopsReuse.Execution objects primitives true instructions target final ∧
+                final.observed = outcome
+'Merlin.GraphLoopsReuse.checked_observations' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsReuse.Model.checked_complete_observations : ∀ {p : Merlin.GraphLoopsReuse.Model.Projection},
+  Merlin.GraphLoopsReuse.Model.check p = true →
+    ∀ {Value Public : Type} (primitives : Merlin.GraphLoopsReuse.Primitives Value Public)
+      (source target : Merlin.GraphLoopsReuse.Memory Value Public),
+      source.observed = target.observed →
+        ∀ (outcome : Public),
+          (∃ final,
+              Merlin.GraphLoopsReuse.Execution p.objects primitives false p.instructions source final ∧
+                final.observed = outcome) ↔
+            ∃ final,
+              Merlin.GraphLoopsReuse.Execution p.objects primitives true p.instructions target final ∧
+                final.observed = outcome
+'Merlin.GraphLoopsReuse.Model.checked_complete_observations' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsReuse.Model.checked_context : ∀ {p : Merlin.GraphLoopsReuse.Model.Projection},
+  Merlin.GraphLoopsReuse.Model.check p = true →
+    ∀ {Value Public Outcome : Type} (primitives : Merlin.GraphLoopsReuse.Primitives Value Public)
+      (source target : Merlin.GraphLoopsReuse.Memory Value Public),
+      source.observed = target.observed →
+        ∀ (context : String → (Public → Prop) → Outcome),
+          context p.sourceContext (Merlin.GraphLoopsReuse.Model.outcomes p primitives false source) =
+            context p.targetContext (Merlin.GraphLoopsReuse.Model.outcomes p primitives true target)
+'Merlin.GraphLoopsReuse.Model.checked_context' depends on axioms: [propext, Quot.sound]
+Merlin.GraphLoopsReuse.Countermodels.resource_exhaustion : Merlin.GraphLoopsReuse.Countermodels.attemptAllocate 8 0 8 =
+    some 8 ∧
+  Merlin.GraphLoopsReuse.Countermodels.attemptAllocate 8 8 8 = none
+'Merlin.GraphLoopsReuse.Countermodels.resource_exhaustion' depends on axioms: [propext]
+Merlin.GraphLoopsReuse.Countermodels.pointer_identity : [0, 1] ≠ [0, 0]
+'Merlin.GraphLoopsReuse.Countermodels.pointer_identity' does not depend on any axioms
+Merlin.GraphLoopsReuse.Countermodels.allocation_call_budget : (2 ≤ 1 ↔ 1 ≤ 1) = False
+'Merlin.GraphLoopsReuse.Countermodels.allocation_call_budget' depends on axioms: [propext]
+Merlin.GraphLoopsReuse.Countermodels.stale_cell : none ≠ some 37
+'Merlin.GraphLoopsReuse.Countermodels.stale_cell' does not depend on any axioms
+Merlin.GraphLoopsReuse.Countermodels.overlapping_live_values : ¬Merlin.GraphLoopsReuse.Related (fun x => 0) (fun x => 1)
+    [0, 1] { observed := (), heap := fun object x => some (if object = 0 then 17 else 29) }
+    { observed := (), heap := fun x x_1 => some 29 }
+'Merlin.GraphLoopsReuse.Countermodels.overlapping_live_values' depends on axioms: [propext]

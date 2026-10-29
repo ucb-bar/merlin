@@ -1,0 +1,12 @@
+{
+  "phase": "static-dynamic-inspection",
+  "SDK_executed": false,
+  "findings": [
+    {
+      "index": 5,
+      "path": "data/lean-4.35.0-linux/lib/libc++.so",
+      "stderr": "readelf: Error: /scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++.so: Failed to read file header\n"
+    }
+  ],
+  "cause": "Suffix-selected .so input can be a linker script. No runtime failure occurred; preserved original static-tool failure. Next static review will classify ELF magic before readelf."
+}

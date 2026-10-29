@@ -1,0 +1,246 @@
+{
+  "registry": [],
+  "types": [
+    [
+      "attribute",
+      "xdsl.dialects.builtin.IntegerType",
+      "integer_type",
+      [
+        [
+          "data-attribute",
+          "xdsl.dialects.builtin.IntAttr",
+          "builtin.int",
+          [
+            "int",
+            8
+          ]
+        ],
+        [
+          "data-attribute",
+          "xdsl.dialects.builtin.SignednessAttr",
+          "builtin.signedness",
+          [
+            "xdsl.dialects.builtin.Signedness",
+            "SIGNLESS",
+            [
+              "int",
+              0
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "functions": [
+    {
+      "name": "kernel",
+      "header": {
+        "class": "xdsl.dialects.func.FuncOp",
+        "name": "func.func",
+        "attributes": [
+          "dictionary",
+          []
+        ],
+        "properties": [
+          "dictionary",
+          [
+            [
+              "function_type",
+              [
+                "attribute",
+                "xdsl.dialects.builtin.FunctionType",
+                "fun",
+                [
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.ArrayAttr",
+                    "array",
+                    [
+                      "tuple",
+                      [
+                        [
+                          "attribute",
+                          "xdsl.dialects.builtin.IntegerType",
+                          "integer_type",
+                          [
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.IntAttr",
+                              "builtin.int",
+                              [
+                                "int",
+                                8
+                              ]
+                            ],
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.SignednessAttr",
+                              "builtin.signedness",
+                              [
+                                "xdsl.dialects.builtin.Signedness",
+                                "SIGNLESS",
+                                [
+                                  "int",
+                                  0
+                                ]
+                              ]
+                            ]
+                          ]
+                        ],
+                        [
+                          "attribute",
+                          "xdsl.dialects.builtin.IntegerType",
+                          "integer_type",
+                          [
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.IntAttr",
+                              "builtin.int",
+                              [
+                                "int",
+                                8
+                              ]
+                            ],
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.SignednessAttr",
+                              "builtin.signedness",
+                              [
+                                "xdsl.dialects.builtin.Signedness",
+                                "SIGNLESS",
+                                [
+                                  "int",
+                                  0
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ],
+                  [
+                    "data-attribute",
+                    "xdsl.dialects.builtin.ArrayAttr",
+                    "array",
+                    [
+                      "tuple",
+                      [
+                        [
+                          "attribute",
+                          "xdsl.dialects.builtin.IntegerType",
+                          "integer_type",
+                          [
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.IntAttr",
+                              "builtin.int",
+                              [
+                                "int",
+                                8
+                              ]
+                            ],
+                            [
+                              "data-attribute",
+                              "xdsl.dialects.builtin.SignednessAttr",
+                              "builtin.signedness",
+                              [
+                                "xdsl.dialects.builtin.Signedness",
+                                "SIGNLESS",
+                                [
+                                  "int",
+                                  0
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ],
+            [
+              "sym_name",
+              [
+                "data-attribute",
+                "xdsl.dialects.builtin.StringAttr",
+                "string",
+                [
+                  "str",
+                  "kernel"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "operand_types": [],
+        "result_types": []
+      },
+      "inputs": [
+        {
+          "bits": 8
+        },
+        {
+          "bits": 8
+        }
+      ],
+      "outputs": [
+        {
+          "bits": 8
+        }
+      ],
+      "before": [
+        {
+          "pure": {
+            "kind": "add",
+            "width": 8
+          },
+          "arguments": [
+            0,
+            1
+          ]
+        },
+        {
+          "pure": {
+            "kind": "mul",
+            "width": 8
+          },
+          "arguments": [
+            0,
+            2
+          ]
+        },
+        {
+          "ret": [
+            2
+          ]
+        }
+      ],
+      "after": [
+        {
+          "ret": [
+            0
+          ]
+        }
+      ],
+      "declaration": false
+    }
+  ],
+  "module_header": {
+    "class": "xdsl.dialects.builtin.ModuleOp",
+    "name": "builtin.module",
+    "attributes": [
+      "dictionary",
+      []
+    ],
+    "properties": [
+      "dictionary",
+      []
+    ],
+    "operand_types": [],
+    "result_types": []
+  },
+  "operation_budget_used": 4
+}

@@ -1,0 +1,11 @@
+{
+  "case": "integer-fold-add",
+  "route": "integer",
+  "returncode": 0,
+  "status": "projection_emitted_not_kernel_checked",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "model": "projection-probes-sealed/integer-fold-add/integer/actual/CAPTURE.json",
+  "sha256": "7c5940a36a4cf11542395fbe6b353083930ee8626538b8f8df93a02b3eb73281"
+}

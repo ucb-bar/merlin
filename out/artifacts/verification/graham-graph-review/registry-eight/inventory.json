@@ -1,0 +1,140 @@
+{
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "verification_revision": "c399e441e86042752c407a4ba917d4510b16585b",
+  "producer_root": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+  "verification_root": "/home/grammy/blast/merlin-pass-verification",
+  "registry": {
+    "shape_view_normalization": [
+      "identical_memref_cast",
+      "static_dimensions"
+    ],
+    "exact_integer_simplification": [
+      "scalar_signless_wrapping_integers"
+    ],
+    "buffer_reuse": [
+      "static_contiguous_initialized_integer_buffers",
+      "sequential_nonoverlapping_lifetimes"
+    ],
+    "ordered_loop_segmentation": [
+      "static_nonnegative_index_bounds",
+      "positive_step",
+      "exact_iteration_order",
+      "forwarded_loop_carried_state"
+    ],
+    "sequential_dependency_schedule": [
+      "ssa_dependencies",
+      "sequential_effect_order"
+    ],
+    "scalar_redundancy_elimination": [
+      "total_scalar_integer_operations",
+      "preserved_unknown_effects",
+      "ssa_use_def_and_dominance"
+    ],
+    "scalar_loop_invariant_motion": [
+      "total_scalar_integer_operations",
+      "total_speculation",
+      "loop_external_operands",
+      "unchanged_effect_order"
+    ],
+    "ordered_loop_unrolling": [
+      "static_nonnegative_index_bounds",
+      "positive_step",
+      "exact_iteration_order",
+      "forwarded_loop_carried_state",
+      "bounded_operation_growth"
+    ]
+  },
+  "pipeline_calls": [
+    {
+      "kind": "shape_view_normalization",
+      "callee": "transform",
+      "line": 107
+    },
+    {
+      "kind": "exact_integer_simplification",
+      "callee": "transform",
+      "line": 109
+    },
+    {
+      "kind": "scalar_redundancy_elimination",
+      "callee": "transform",
+      "line": 113
+    },
+    {
+      "kind": "scalar_loop_invariant_motion",
+      "callee": "transform",
+      "line": 117
+    },
+    {
+      "kind": "ordered_loop_segmentation",
+      "callee": "transform",
+      "line": 119
+    },
+    {
+      "kind": "ordered_loop_unrolling",
+      "callee": "transform",
+      "line": 128
+    },
+    {
+      "kind": "storage_analysis",
+      "callee": "register",
+      "line": 148
+    },
+    {
+      "kind": "buffer_reuse",
+      "callee": "transform",
+      "line": 151
+    },
+    {
+      "kind": "dependency_analysis",
+      "callee": "register",
+      "line": 153
+    },
+    {
+      "kind": "sequential_dependency_schedule",
+      "callee": "run",
+      "line": 166
+    },
+    {
+      "kind": "sequential_dependency_schedule",
+      "callee": "register",
+      "line": 174
+    },
+    {
+      "kind": "final_analyses",
+      "callee": "register",
+      "line": 187
+    },
+    {
+      "kind": "final_verification",
+      "callee": "register",
+      "line": 188
+    }
+  ],
+  "registry_matches_transform_call_sites": true,
+  "common_transform_kind_count": 8,
+  "analysis_stages_excluded": [
+    {
+      "kind": "final_analyses",
+      "callee": "register",
+      "line": 187
+    },
+    {
+      "kind": "final_verification",
+      "callee": "register",
+      "line": 188
+    },
+    {
+      "kind": "storage_analysis",
+      "callee": "register",
+      "line": 148
+    },
+    {
+      "kind": "dependency_analysis",
+      "callee": "register",
+      "line": 153
+    }
+  ],
+  "broader_inventory_status": "deferred_by_user_until_eight_kind_reassessment",
+  "method": "Python AST literal registry and call-site extraction; no regex or proof/test count inferred"
+}

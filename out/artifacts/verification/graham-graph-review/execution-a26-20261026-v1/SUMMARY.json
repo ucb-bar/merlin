@@ -1,0 +1,239 @@
+{
+  "schema": "merlin.graham.a26.three-agent-findings.v1",
+  "utc": "2026-10-27T00:45:59.312463+00:00",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "user_scope": "Three agents executing source reconciliation, fresh SDK setup and proof reproduction; summarize findings.",
+  "agents_completed": 3,
+  "source_review": {
+    "changed_files_reviewed": 10,
+    "independent_admission_controls_passed": 32,
+    "failed": 0,
+    "skipped": 0,
+    "parser": "xdsl0.68.0",
+    "historical_81_case_replay": "UNAVAILABLE",
+    "new_implementation_bug_demonstrated": false
+  },
+  "fresh_sdk": {
+    "version": "Lean (version 4.35.0, x86_64-unknown-linux-gnu, commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc, Release)",
+    "archive_sha256": "c8531faaa4a93d5a4dae0c742cbc1bd42a2993594d02f93a9d629ebf299fb2c8",
+    "diagnostic_commands_passed": 8,
+    "runtime_failures": 0,
+    "old_runtime_hold": "UNCHANGED"
+  },
+  "proof_profiles": [
+    {
+      "id": "Q-schedule-successor-v1",
+      "source_modules": 7,
+      "modules_attempted": 7,
+      "modules_compiled": 7,
+      "case_queries": 3,
+      "queries_compiled_and_audited": 3,
+      "queries_failed": 0,
+      "queries_unexecuted": 0,
+      "witnesses_failed": 0,
+      "first_source_failure": null
+    },
+    {
+      "id": "Q-inline-complete-carry-v1",
+      "source_modules": 23,
+      "modules_attempted": 23,
+      "modules_compiled": 23,
+      "case_queries": 5,
+      "queries_compiled_and_audited": 1,
+      "queries_failed": 4,
+      "queries_unexecuted": 0,
+      "witnesses_failed": 5,
+      "first_source_failure": null
+    },
+    {
+      "id": "Q-unroll-tail-successor-v1",
+      "source_modules": 25,
+      "modules_attempted": 25,
+      "modules_compiled": 24,
+      "case_queries": 4,
+      "queries_compiled_and_audited": 0,
+      "queries_failed": 0,
+      "queries_unexecuted": 4,
+      "witnesses_failed": 0,
+      "first_source_failure": {
+        "module": "Merlin.GraphStatePipelineTail",
+        "source": {
+          "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/project/Merlin/GraphStatePipelineTail.lean",
+          "sha256": "602ad3f1802105037fb4a0cd042ced628e71709d66b2bfd3a8e42d6fb7b99996",
+          "bytes": 4857
+        },
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-024-Merlin.GraphStatePipelineTail",
+        "excerpt": "Merlin/GraphStatePipelineTail.lean:33:4: error: unsolved goals\ncase neg\nValue World Error : Type\narity : Nat\nbody : Int \u2192 List Value \u2192 World \u2192 Outcome Value World Error\nrest : List Int\nvalues : List Value\nworld : World\nsize : \u00acvalues.length = arity\n\u22a2 loopEval arity body rest values world = Except.error (Fault.arity, world)\nMerlin/GraphStatePipelineTail.lean:61:15: warning: This simp argument is unused:\n  Nat.mul_assoc\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Nat.mul_comm, Nat.mul_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n"
+      }
+    },
+    {
+      "id": "W-caller-context-successor-v1",
+      "source_modules": 118,
+      "modules_attempted": 41,
+      "modules_compiled": 40,
+      "case_queries": 14,
+      "queries_compiled_and_audited": 0,
+      "queries_failed": 0,
+      "queries_unexecuted": 14,
+      "witnesses_failed": 0,
+      "first_source_failure": {
+        "module": "Merlin.GraphLoopsShapeAfterRename",
+        "source": {
+          "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project/Merlin/GraphLoopsShapeAfterRename.lean",
+          "sha256": "32bca20f3f2aa8ed0fbfd6b38142db3b3c140677213f5b676bdde80a564ca775",
+          "bytes": 12242
+        },
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-caller-context-successor-v1/module-040-Merlin.GraphLoopsShapeAfterRename",
+        "excerpt": "Merlin/GraphLoopsShapeAfterRename.lean:115:20: error: unsolved goals\ncase returned\nValue World : Type\nleft right : Nat\nmeaning : Interpretation Value World\nvalues : List Binding\naliases other : Aliases\nenv : Env Value\nbefore : World\noutputs : List (Runtime Value)\nafter : World\n\u22a2 outputs = readArguments false aliases env values \u2227 after = before \u2194\n    outputs = readArguments false other (swapEnv left right env) (List.map (swapBinding left right) values) \u2227\n      after = before\nMerlin/GraphLoopsShapeAfterRename.lean:139:4: error: Type mismatch: After simplification, term\n  induction ((result.name, result.name) :: aliases)\n    (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n    (put env result.name (Runtime.index value)) before outputs after\n has type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before\n      outputs after)\n    (Eval meaning false (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n      (swapCode left right rest) (put (swapEnv left right env) (swapName left right result.name) (Runtime.index value))\n      before outputs after)\nbut is expected to have type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before"
+      }
+    },
+    {
+      "id": "W-entries-successor-v1",
+      "source_modules": 111,
+      "modules_attempted": 41,
+      "modules_compiled": 40,
+      "case_queries": 12,
+      "queries_compiled_and_audited": 0,
+      "queries_failed": 0,
+      "queries_unexecuted": 12,
+      "witnesses_failed": 0,
+      "first_source_failure": {
+        "module": "Merlin.GraphLoopsShapeAfterRename",
+        "source": {
+          "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/project/Merlin/GraphLoopsShapeAfterRename.lean",
+          "sha256": "32bca20f3f2aa8ed0fbfd6b38142db3b3c140677213f5b676bdde80a564ca775",
+          "bytes": 12242
+        },
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/W-entries-successor-v1/module-040-Merlin.GraphLoopsShapeAfterRename",
+        "excerpt": "Merlin/GraphLoopsShapeAfterRename.lean:115:20: error: unsolved goals\ncase returned\nValue World : Type\nleft right : Nat\nmeaning : Interpretation Value World\nvalues : List Binding\naliases other : Aliases\nenv : Env Value\nbefore : World\noutputs : List (Runtime Value)\nafter : World\n\u22a2 outputs = readArguments false aliases env values \u2227 after = before \u2194\n    outputs = readArguments false other (swapEnv left right env) (List.map (swapBinding left right) values) \u2227\n      after = before\nMerlin/GraphLoopsShapeAfterRename.lean:139:4: error: Type mismatch: After simplification, term\n  induction ((result.name, result.name) :: aliases)\n    (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n    (put env result.name (Runtime.index value)) before outputs after\n has type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before\n      outputs after)\n    (Eval meaning false (((swapBinding left right result).name, (swapBinding left right result).name) :: other)\n      (swapCode left right rest) (put (swapEnv left right env) (swapName left right result.name) (Runtime.index value))\n      before outputs after)\nbut is expected to have type\n  Iff\n    (Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (Runtime.index value)) before"
+      }
+    }
+  ],
+  "proof_totals": {
+    "profile_source_module_attempts": 137,
+    "profile_source_module_acceptances": 134,
+    "case_queries_selected": 38,
+    "case_queries_compiled_and_exactly_audited": 4,
+    "case_queries_failed": 4,
+    "case_queries_unexecuted": 30,
+    "witness_queries_selected": 5,
+    "witness_queries_failed": 5,
+    "original_query_root_audit_occurrences": 76,
+    "native_commands": 157,
+    "command_statuses": {
+      "LEAN_SOURCE_OR_AUDIT_FAILURE": 14,
+      "ACCEPTED": 143
+    }
+  },
+  "passing_query_scope": "Three schedule cases (two changed, one identity) and the empty-inline query, under their exact modeled domains/interpretations.",
+  "axioms": "All76 original-query requested final/support root-audit occurrences are confined to propext, Classical.choice and Quot.sound.",
+  "proof_repair": {
+    "scope": "Separate unchanged-statement tail loop_append lemma only",
+    "passed": true,
+    "axioms": {
+      "Merlin.GraphState.Pipeline.Tail.loop_append": [
+        "propext"
+      ]
+    },
+    "portable_source": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/proposed-repairs/TailLoopAppendProofSuccessor.lean",
+    "statement_sha256": "4fd7176f33b33c2dee36618eb83f94070afdca793a473e01e3a14e71d4b319d4",
+    "original_tail_profile_repaired": false
+  },
+  "transfer_and_integration": {
+    "prerequisite_source_files_reconstructible_from_retained_patch": 29,
+    "reconstructed_hashes_matching": 29,
+    "ordinary_compiler_enforcement_established": false,
+    "missing_integration_documents": 2,
+    "missing_generator": "prepare_prerequisites.py",
+    "details": "Selected copied prerequisites were omitted but exact bytes recover from PREREQUISITES.patch. The missing integration documents and live producer/consumer wiring remain distinct obligations."
+  },
+  "integrity": {
+    "prior_baseline_source_data_pins_unchanged": 469,
+    "frozen_profile_source_units_unchanged": 327,
+    "compiler_implementation_changes": 0,
+    "SDK_and_compiled_outputs": "Excluded locally under out/build/verification-a26-20261026-v1/.gitignore; no Git index/commit/push performed.",
+    "live_jobs": 0
+  },
+  "remaining_obligations": [
+    "Repair inline counted-continuation cast rewriting in a separate successor and recheck all exact query roots.",
+    "Repair the shared W renaming proof with explicit alias/binding substitutions, then continue both dependency DAGs; later blockers are unknown until reached.",
+    "Integrate the validated tail proof change in a separately identified source successor, compile the entire tail module and run its four exact queries.",
+    "Establish concrete inline non-vacuity witness results; all five current witness files fail compilation.",
+    "Perform fresh semantic mutation/replay qualification, independent human review, native/MLIR correspondence and actual compiler-gate integration before broader claims."
+  ],
+  "qualification": false,
+  "human_approval": false,
+  "public_gate_activation": false,
+  "evidence": [
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/EXECUTION_SCOPE.json",
+      "bytes": 1741,
+      "sha256": "c7b9d43645813f1ac8d3ef9988a913bdd5ee24f9f9c7e3b837ee3904b1f0641f"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/PARENT_INTEGRITY_CHECKS.json",
+      "bytes": 705,
+      "sha256": "7101668e5d4230da412afdea550f1e2c06ec294d8a2aee872a180cb617e55e84"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/INTEGRATION_SOURCE_READINESS.json",
+      "bytes": 30441,
+      "sha256": "8deea239a243c381d81b00cd3632c723984f32449798427f5ab5dc3023b2e923"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/PATCH_RECOVERY.json",
+      "bytes": 11007,
+      "sha256": "62875e9805560dc3d8d08886ff44cb74e4a26bf21e0dbaa54232953e36eecf22"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/CHANGED_SOURCE_REVIEW.json",
+      "bytes": 16234,
+      "sha256": "c34d8f3b3d6292f5f32aa6ee5e883d566d504bf145a783f3662144d74c08ca5b"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/SUPPORTED_SCOPE.csv",
+      "bytes": 70456,
+      "sha256": "230d268166b647649da4f962c3b616d92a3af6069b150be43fa1989616fbe11e"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/ADMISSION_SUBSET_XDSL_0.68.0.json",
+      "bytes": 22677,
+      "sha256": "a8aa4491de92d30c7359b17f19798dd02e0d227f5ae88c21167cf1aab7b41692"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/READY.json",
+      "bytes": 6715,
+      "sha256": "8da6ccfe5a06558ab4459228e82e82b04eeb7ec42d94b5ee15f4aa40e014ed5d"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/FINDINGS.json",
+      "bytes": 3526,
+      "sha256": "1fc70434610b2e6208dfed86774c97b69c4e4a6633f3aea7fd4e30f0b6441011"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/REPRODUCTION_SUMMARY.json",
+      "bytes": 15086,
+      "sha256": "4db05ee36c9531dfb6b7b6facedb86904d6e8165e5923238e10e674ed3991d5b"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/CASE_ROSTER.csv",
+      "bytes": 12247,
+      "sha256": "460726c66c9dd73521c457385486b537bc74f08e2a4a9a675dc81d122c6b0c39"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/FINDINGS.txt",
+      "bytes": 2231,
+      "sha256": "cf0766f9f4aacee418488597ec84fd6c2861e69c7e322bc57f33d073bd961f88"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/TAIL_PROOF_SUCCESSOR_RESULT.json",
+      "bytes": 2029,
+      "sha256": "c02fff645a082ad3d059344bb12e1cff57931a9db12ebd21ed8f169e109393d2"
+    },
+    {
+      "path": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/proposed-repairs/TailLoopAppendProofSuccessor.lean",
+      "bytes": 1279,
+      "sha256": "ece6b75a4fdfd3c6561ba256e712773d126e8bf02257f400626bb7eeab04a041"
+    }
+  ]
+}

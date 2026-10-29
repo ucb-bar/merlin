@@ -1,0 +1,4 @@
+DiagnosticReprOmegaListNat.witness_value : DiagnosticReprOmegaListNat.witness.value = [7, 11]
+'DiagnosticReprOmegaListNat.witness_value' does not depend on any axioms
+'DiagnosticReprOmegaListNat.instReprPayload' depends on axioms: [propext]
+{ value := [7, 11] }

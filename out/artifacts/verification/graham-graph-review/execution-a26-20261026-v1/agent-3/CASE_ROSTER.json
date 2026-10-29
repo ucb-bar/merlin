@@ -1,0 +1,1654 @@
+[
+  {
+    "profile": "Q-schedule-successor-v1",
+    "case": "cross_observer_keep_effect_order",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-schedule-successor-v1/queries/cross_observer_keep_effect_order/Query.lean",
+      "bytes": 4659,
+      "sha256": "31781ae345d4acf4fcbf7b98f6f56ae5ad5828adeb5f64645fbf9e679f98e31e"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "complete_regionfree_scalar_order_equal_outcome_v1",
+    "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+    "final_root": "merlin_schedule_transform",
+    "status": "COMPILED_AND_EXACT_ROOTS_AUDITED",
+    "audit": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "AuditSuccessor.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.3676781749818474,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/cross_observer_keep_effect_order-Query-audit",
+      "stdout": {
+        "sha256": "452dad663d3ca68c127b0c99649a64df2cf565de90dd01ad346f4fcfe83546e6",
+        "bytes": 9888
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    "axiom_audit": {
+      "roots_requested": 17,
+      "roots_observed": 17,
+      "missing": [],
+      "forbidden": {},
+      "axioms": {
+        "Merlin.GraphState.Scalar.check_sound": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.Scalar.check_typed": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.Scalar.normalize_sound": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.accepted": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.actual": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.typed": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.operands_initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.accepted": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.actual": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.typed": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.operands_initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.GateEntries.entries_cons": [
+          "propext"
+        ],
+        "Merlin.GraphState.GateEntries.entries_nil": [
+          "propext"
+        ],
+        "Merlin.GraphPipelineGateInstance.complete": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "merlin_schedule_transform": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ]
+      },
+      "passed": true
+    },
+    "compile": {
+      "classification": "REUSED_EXACT_SAME_BATCH_COMPILED_QUERY",
+      "original_command_result": {
+        "executed": true,
+        "command": [
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+          "-j1",
+          "-o",
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-schedule-successor-v1/queries/cross_observer_keep_effect_order/Query/Query.olean",
+          "Query.lean"
+        ],
+        "exit_code": 0,
+        "seconds": 0.2667714620474726,
+        "classification": "ACCEPTED",
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-schedule-successor-v1/query-cross_observer_keep_effect_order-Query",
+        "stdout": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "role": "Query",
+        "output": {
+          "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-schedule-successor-v1/queries/cross_observer_keep_effect_order/Query/Query.olean",
+          "sha256": "8c9c5fde2fe5d2d378c0d0220e025ecbc45a046779c2c32bb02b6cf35c6e6185",
+          "bytes": 106872
+        },
+        "audit": {
+          "executed": true,
+          "command": [
+            "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+            "-j1",
+            "Audit.lean"
+          ],
+          "exit_code": 1,
+          "seconds": 0.2162055231165141,
+          "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+          "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-schedule-successor-v1/query-cross_observer_keep_effect_order-Query-audit",
+          "stdout": {
+            "sha256": "c3810e855e521270e7759b46d9e5918aa004f2e3a72d22701d3342c4b589206c",
+            "bytes": 9937
+          },
+          "stderr": {
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bytes": 0
+          },
+          "first_error_excerpt": "Audit.lean:2:0: error: Unknown option `pp.width`\n@Merlin.GraphState.Scalar.check_sound : \u2200 {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  {inputs outputs : List.{0} Merlin.GraphState.Scalar.Ty} {before after : Merlin.GraphState.Scalar.Program},\n  Eq.{1} (Merlin.GraphState.Scalar.check registry inputs outputs before after) true \u2192\n    Merlin.GraphState.Scalar.Preserves registry (List.length.{0} inputs) before after\n'Merlin.GraphState.Scalar.check_sound' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphState.Scalar.check_typed : \u2200 {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  {inputs outputs : List.{0} Merlin.GraphState.Scalar.Ty} {before after : Merlin.GraphState.Scalar.Program},\n  Eq.{1} (Merlin.GraphState.Scalar.check registry inputs outputs before after) true \u2192\n    Merlin.GraphState.Scalar.Typed registry inputs outputs before \u2227\n      Merlin.GraphState.Scalar.Typed registry inputs outputs after\n'Merlin.GraphState.Scalar.check_typed' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphState.Scalar.normalize_sound : \u2200 {Value World Error : Type}\n  {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  (model : Merlin.GraphState.Scalar.Model Value World Error registry) (program : Merlin.GraphState.Scalar.Program)\n  (symbols : List.{0} Merlin.GraphState.Scalar.Expr) (code : Merlin.GraphState.Scalar.Code),\n  Eq.{1} (Merlin.GraphState.Scalar.normalize registry symbols program) (some.{0} code) \u2192\n    \u2200 (environment : List.{0} Value) (world : World),\n      Eq.{1}\n        (Merlin.GraphState.Scalar.evalProgram model program\n          (List.map.{0, 0} (Merlin.GraphState.Scalar.evalExpr model.default model.primitive environment) symbols) world)\n        (Merlin.GraphState.Scalar.evalCode model code environment world)\n'Merlin.GraphState.Scalar.normalize_sound' depends on axioms: [propext, Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F2.accepted : Eq.{1}\n  (Merlin.GraphState.Scalar.check Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F2.inputs\n    Merlin.GraphStateScalarInstance.F2.outputs Merlin.GraphStateScalarInstance.F2.before\n    Merlin.GraphStateScalarInstance.F2.after)\n  true\n'Merlin.GraphStateScalarInstance.F2.accepted' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F2.actual : Merlin.GraphState.Scalar.Preserves Merlin.GraphStateScalarInstance.registry\n  (List.length.{0} Merlin.GraphStateScalarInstance.F2.inputs) Merlin.GraphStateScalarInstance.F2.before\n  Merlin.GraphStateScalarInstance.F2.after\n'Merlin.GraphStateScalarInstance.F2.actual' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F2.typed : Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry\n    Merlin.GraphStateScalarInstance.F2.inputs Merlin.GraphStateScalarInstance.F2.outputs\n    Merlin.GraphStateScalarInstance.F2.before \u2227\n  Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F2.inputs\n    Merlin.GraphStateScalarInstance.F2.outputs Merlin.GraphStateScalarInstance.F2.after\n'Merlin.GraphStateScalarInstance.F2.typed' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphStateScalarInstance.F2.initialized : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)\n  (values : List.{0} Value) (world : World),\n  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F2.inputs) \u2192\n    Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F2.outputs)\n        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F2.before values world) \u2227\n      Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F2.outputs)\n        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F2.after values world)\n'Merlin.GraphStateScalarInstance.F2.initialized' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphStateScalarInstance.F2.operands_initialized : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)\n  (values : List.{0} Value) (world : World),\n  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F2.inputs) \u2192\n    Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F2.before values world \u2227\n      Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F2.after values world\n'Merlin.GraphStateScalarInstance.F2.operands_initialized' depends on axioms: [propext,\n Classical.choice.{u},\n Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F3.accepted : Eq.{1}\n  (Merlin.GraphState.Scalar.check Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F3.inputs\n    Merlin.GraphStateScalarInstance.F3.outputs Merlin.GraphStateScalarInstance.F3.before\n    Merlin.GraphStateScalarInstance.F3.after)\n  true\n'Merlin.GraphStateScalarInstance.F3.accepted' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F3.actual : Merlin.GraphState.Scalar.Preserves Merlin.GraphStateScalarInstance.registry\n  (List.length.{0} Merlin.GraphStateScalarInstance.F3.inputs) Merlin.GraphStateScalarInstance.F3.before\n  Merlin.GraphStateScalarInstance.F3.after\n'Merlin.GraphStateScalarInstance.F3.actual' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\nMerlin.GraphStateScalarInstance.F3.typed : Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry\n    Merlin.GraphStateScalarInstance.F3.inputs Merlin.GraphStateScalarInstance.F3.outputs\n    Merlin.GraphStateScalarInstance.F3.before \u2227\n  Merlin.GraphState.Scalar.Typed Merlin.GraphStateScalarInstance.registry Merlin.GraphStateScalarInstance.F3.inputs\n    Merlin.GraphStateScalarInstance.F3.outputs Merlin.GraphStateScalarInstance.F3.after\n'Merlin.GraphStateScalarInstance.F3.typed' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphStateScalarInstance.F3.initialized : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)\n  (values : List.{0} Value) (world : World),\n  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F3.inputs) \u2192\n    Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F3.outputs)\n        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F3.before values world) \u2227\n      Merlin.GraphState.Scalar.Shaped (List.length.{0} Merlin.GraphStateScalarInstance.F3.outputs)\n        (Merlin.GraphState.Scalar.evalProgram model Merlin.GraphStateScalarInstance.F3.after values world)\n'Merlin.GraphStateScalarInstance.F3.initialized' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@Merlin.GraphStateScalarInstance.F3.operands_initialized : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphStateScalarInstance.registry)\n  (values : List.{0} Value) (world : World),\n  Eq.{1} (List.length.{0} values) (List.length.{0} Merlin.GraphStateScalarInstance.F3.inputs) \u2192\n    Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F3.before values world \u2227\n      Merlin.GraphState.Scalar.Initialized model Merlin.GraphStateScalarInstance.F3.after values world\n'Merlin.GraphStateScalarInstance.F3.operands_initialized' depends on axioms: [propext,\n Classical.choice.{u},\n Quot.sound.{u}]\n@Merlin.GraphState.GateEntries.entries_cons : \u2200 {Value World Error : Type}\n  {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  (model : Merlin.GraphState.Scalar.Model Value World Error registry)\n  {first second : Merlin.GraphState.GateEntries.Entry} {before after : List.{0} Merlin.GraphState.GateEntries.Entry},\n  Eq.{1} first.inputs second.inputs \u2192\n    Eq.{1} first.outputs second.outputs \u2192\n      (\u2200 (arguments : List.{0} Value) (world : World),\n          Eq.{1} (List.length.{0} arguments) (List.length.{0} first.inputs) \u2192\n            Eq.{1} (Merlin.GraphState.Scalar.evalProgram model first.body arguments world)\n              (Merlin.GraphState.Scalar.evalProgram model second.body arguments world)) \u2192\n        Merlin.GraphState.GateEntries.PreservesEntries model before after \u2192\n          Merlin.GraphState.GateEntries.PreservesEntries model (List.cons.{0} first before) (List.cons.{0} second after)\n'Merlin.GraphState.GateEntries.entries_cons' depends on axioms: [propext]\n@Merlin.GraphState.GateEntries.entries_nil : \u2200 {Value World Error : Type}\n  {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  (model : Merlin.GraphState.Scalar.Model Value World Error registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model List.nil.{0} List.nil.{0}\n'Merlin.GraphState.GateEntries.entries_nil' depends on axioms: [propext]\n@Merlin.GraphPipelineGateInstance.complete : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries\n    Merlin.GraphPipelineGateInstance.afterEntries\n'Merlin.GraphPipelineGateInstance.complete' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n@merlin_schedule_transform : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries\n    Merlin.GraphPipelineGateInstance.afterEntries\n'merlin_schedule_transform' depends on axioms: [propext, Classical.choice.{u}, Quot.sound.{u}]\n\n"
+        }
+      },
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-schedule-successor-v1/queries/cross_observer_keep_effect_order/Query.lean",
+        "sha256": "31781ae345d4acf4fcbf7b98f6f56ae5ad5828adeb5f64645fbf9e679f98e31e",
+        "bytes": 4659
+      }
+    },
+    "kernel_checked_final_type": "@merlin_schedule_transform : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries\n    Merlin.GraphPipelineGateInstance.afterEntries"
+  },
+  {
+    "profile": "Q-schedule-successor-v1",
+    "case": "pure_reorder",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-schedule-successor-v1/queries/pure_reorder/Query.lean",
+      "bytes": 4659,
+      "sha256": "8b3036ce9e5b23d5e1bc095d5eb15963b7e257cb7a6af6c3813c689fe83de6d4"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "complete_regionfree_scalar_order_equal_outcome_v1",
+    "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+    "final_root": "merlin_schedule_transform",
+    "status": "COMPILED_AND_EXACT_ROOTS_AUDITED",
+    "audit": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "AuditSuccessor.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.21608951105736196,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/pure_reorder-Query-audit",
+      "stdout": {
+        "sha256": "452dad663d3ca68c127b0c99649a64df2cf565de90dd01ad346f4fcfe83546e6",
+        "bytes": 9888
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    "axiom_audit": {
+      "roots_requested": 17,
+      "roots_observed": 17,
+      "missing": [],
+      "forbidden": {},
+      "axioms": {
+        "Merlin.GraphState.Scalar.check_sound": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.Scalar.check_typed": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.Scalar.normalize_sound": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.accepted": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.actual": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.typed": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.operands_initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.accepted": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.actual": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.typed": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.operands_initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.GateEntries.entries_cons": [
+          "propext"
+        ],
+        "Merlin.GraphState.GateEntries.entries_nil": [
+          "propext"
+        ],
+        "Merlin.GraphPipelineGateInstance.complete": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "merlin_schedule_transform": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ]
+      },
+      "passed": true
+    },
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-schedule-successor-v1/audit-successor-v1/pure_reorder/Query/Query.olean",
+        "Query.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.4170845670159906,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/pure_reorder-Query-compile",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    "kernel_checked_final_type": "@merlin_schedule_transform : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries\n    Merlin.GraphPipelineGateInstance.afterEntries"
+  },
+  {
+    "profile": "Q-schedule-successor-v1",
+    "case": "unchanged_order",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-schedule-successor-v1/queries/unchanged_order/Query.lean",
+      "bytes": 4659,
+      "sha256": "1a4600d2fbd1571a811cb5655b529df1dc879a72ad2e806b100409058e180b3c"
+    },
+    "expected_protocol": "IDENTITY_SOURCE_CANDIDATE_NOT_CHANGED_OPTIMIZATION",
+    "domain": "complete_regionfree_scalar_order_equal_outcome_v1",
+    "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+    "final_root": "merlin_schedule_transform",
+    "status": "COMPILED_AND_EXACT_ROOTS_AUDITED",
+    "audit": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "AuditSuccessor.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.2668168400414288,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/unchanged_order-Query-audit",
+      "stdout": {
+        "sha256": "452dad663d3ca68c127b0c99649a64df2cf565de90dd01ad346f4fcfe83546e6",
+        "bytes": 9888
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    "axiom_audit": {
+      "roots_requested": 17,
+      "roots_observed": 17,
+      "missing": [],
+      "forbidden": {},
+      "axioms": {
+        "Merlin.GraphState.Scalar.check_sound": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.Scalar.check_typed": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.Scalar.normalize_sound": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.accepted": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.actual": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.typed": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F2.operands_initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.accepted": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.actual": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.typed": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStateScalarInstance.F3.operands_initialized": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.GateEntries.entries_cons": [
+          "propext"
+        ],
+        "Merlin.GraphState.GateEntries.entries_nil": [
+          "propext"
+        ],
+        "Merlin.GraphPipelineGateInstance.complete": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "merlin_schedule_transform": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ]
+      },
+      "passed": true
+    },
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-schedule-successor-v1/audit-successor-v1/unchanged_order/Query/Query.olean",
+        "Query.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.31685415492393076,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-schedule-successor-v1/unchanged_order-Query-compile",
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    "kernel_checked_final_type": "@merlin_schedule_transform : \u2200 {Value World Error : Type}\n  (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry),\n  Merlin.GraphState.GateEntries.PreservesEntries model Merlin.GraphPipelineGateInstance.beforeEntries\n    Merlin.GraphPipelineGateInstance.afterEntries"
+  },
+  {
+    "profile": "Q-inline-complete-carry-v1",
+    "case": "empty",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/empty/Query.lean",
+      "bytes": 8347,
+      "sha256": "4344cbeae90444ee6bf46a7719a383e8e37f6d29775842588f9ea79b05884862"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "static_nonnegative_signed32or64_count_le_factor_complete_outcome",
+    "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+    "final_root": "merlin_unroll_inline_transform",
+    "status": "COMPILED_AND_EXACT_ROOTS_AUDITED",
+    "audit": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "AuditSuccessor.lean"
+      ],
+      "exit_code": 0,
+      "seconds": 0.5179434618912637,
+      "classification": "ACCEPTED",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-inline-complete-carry-v1/empty-Query-audit",
+      "stdout": {
+        "sha256": "f6adc62a1fdf9a4eb12eb13a230e34c9fa97b1a547a32508b1293bd4fb164c9a",
+        "bytes": 15161
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    "axiom_audit": {
+      "roots_requested": 25,
+      "roots_observed": 25,
+      "missing": [],
+      "forbidden": {},
+      "axioms": {
+        "Merlin.GraphState.Pipeline.Inline.empty_no_body": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.Pipeline.Inline.counted_continuation": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.Pipeline.Inline.failed_continuation": [],
+        "Merlin.GraphState.Pipeline.indexIterations_count": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphState.Pipeline.entries_cons": [
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.controlAccepted": [
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.literalsAccepted": [
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.literalsFit": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.naturalRange": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed0": [
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.F3.typed1": [
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked": [],
+        "Merlin.GraphStatePipelineInlineInstance.F3.isInline": [],
+        "Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit": [
+          "Classical.choice",
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.F3.source_form": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual_inputs": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.F3.actual": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed0": [
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.F4.typed1": [
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.F4.actual": [
+          "Quot.sound",
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.originalEntriesChecked": [
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.finalEntriesChecked": [
+          "propext"
+        ],
+        "Merlin.GraphStatePipelineInlineInstance.complete": [
+          "Quot.sound",
+          "propext"
+        ],
+        "merlin_unroll_inline_transform": [
+          "Quot.sound",
+          "propext"
+        ]
+      },
+      "passed": true
+    },
+    "compile": {
+      "classification": "REUSED_EXACT_SAME_BATCH_COMPILED_QUERY",
+      "original_command_result": {
+        "executed": true,
+        "command": [
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+          "-j1",
+          "-o",
+          "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/queries/empty/Query/Query.olean",
+          "Query.lean"
+        ],
+        "exit_code": 0,
+        "seconds": 0.8678549651522189,
+        "classification": "ACCEPTED",
+        "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-inline-complete-carry-v1/query-empty-Query",
+        "stdout": {
+          "sha256": "4ce0692326ee27020b2ac01b1a2cad8c62208a8e3eafc322ca4651ef095abfb4",
+          "bytes": 28144
+        },
+        "stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "role": "Query",
+        "output": {
+          "path": "out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/queries/empty/Query/Query.olean",
+          "sha256": "7e642afcba421fe464a6aee36ad363250a3789979301d2d86c81785a1b62ceb3",
+          "bytes": 329552
+        },
+        "audit": {
+          "executed": true,
+          "command": [
+            "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+            "-j1",
+            "Audit.lean"
+          ],
+          "exit_code": 1,
+          "seconds": 0.5172333419322968,
+          "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+          "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-inline-complete-carry-v1/query-empty-Query-audit",
+          "stdout": {
+            "sha256": "fcbde018d608168616c3ce966a959f496448dda623ae2d298d7170729f90482c",
+            "bytes": 15210
+          },
+          "stderr": {
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bytes": 0
+          },
+          "first_error_excerpt": "Audit.lean:2:0: error: Unknown option `pp.width`\n@Merlin.GraphState.Pipeline.Inline.empty_no_body : \u2200 {Value World Error : Type} (arity : Nat)\n  (body : Int \u2192 List.{0} Value \u2192 World \u2192 Merlin.GraphState.Scalar.Outcome Value World Error) (lower upper step : Nat),\n  LT.lt.{0} 0 step \u2192\n    Merlin.GraphLoopsUnroll.CountCorrect lower upper step 0 \u2192\n      \u2200 (values : List.{0} Value) (world : World),\n        Eq.{1} (List.length.{0} values) arity \u2192\n          Eq.{1}\n            (Merlin.GraphState.Scalar.loopEval arity body\n              (Merlin.GraphState.Pipeline.indexIterations \u2191lower \u2191upper \u2191step) values world)\n            (Except.ok.{0, 0} (Prod.mk.{0, 0} values world))\n'Merlin.GraphState.Pipeline.Inline.empty_no_body' depends on axioms: [propext, Quot.sound.{u}]\n@Merlin.GraphState.Pipeline.Inline.counted_continuation : \u2200 {Value World Error : Type} (arity : Nat)\n  (body : Int \u2192 List.{0} Value \u2192 World \u2192 Merlin.GraphState.Scalar.Outcome Value World Error)\n  (next : List.{0} Value \u2192 World \u2192 Merlin.GraphState.Scalar.Outcome Value World Error) (lower upper step count : Nat),\n  LT.lt.{0} 0 step \u2192\n    Merlin.GraphLoopsUnroll.CountCorrect lower upper step count \u2192\n      \u2200 (values : List.{0} Value) (world : World),\n        Eq.{1}\n          (Except.bind.{0, 0, 0}\n            (Merlin.GraphState.Scalar.loopEval arity body\n              (Merlin.GraphState.Pipeline.indexIterations \u2191lower \u2191upper \u2191step) values world)\n            fun result => next (Prod.fst.{0, 0} result) (Prod.snd.{0, 0} result))\n          (Except.bind.{0, 0, 0}\n            (Merlin.GraphState.Scalar.loopEval arity body\n              (List.map.{0, 0} Int.ofNat (Merlin.GraphState.Pipeline.progression lower step count)) values world)\n            fun result => next (Prod.fst.{0, 0} result) (Prod.snd.{0, 0} result))\n'Merlin.GraphState.Pipeline.Inline.counted_continuation' depends on axioms: [propext, Quot.sound.{u}]\n@Merlin.GraphState.Pipeline.Inline.failed_continuation : \u2200 {Value World Error : Type}\n  (failure : Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Error) World)\n  (next : List.{0} Value \u2192 World \u2192 Merlin.GraphState.Scalar.Outcome Value World Error),\n  Eq.{1}\n    (Except.bind.{0, 0, 0} (Except.error.{0, 0} failure) fun result =>\n      next (Prod.fst.{0, 0} result) (Prod.snd.{0, 0} result))\n    (Except.error.{0, 0} failure)\n'Merlin.GraphState.Pipeline.Inline.failed_continuation' does not depend on any axioms\n@Merlin.GraphState.Pipeline.indexIterations_count : \u2200 {lower upper step count : Nat},\n  LT.lt.{0} 0 step \u2192\n    Merlin.GraphLoopsUnroll.CountCorrect lower upper step count \u2192\n      Eq.{1} (Merlin.GraphState.Pipeline.indexIterations \u2191lower \u2191upper \u2191step)\n        (List.map.{0, 0} Int.ofNat (Merlin.GraphState.Pipeline.progression lower step count))\n'Merlin.GraphState.Pipeline.indexIterations_count' depends on axioms: [propext, Quot.sound.{u}]\n@Merlin.GraphState.Pipeline.entries_cons : \u2200 {Value World Error : Type}\n  {registry : List.{0} Merlin.GraphState.Scalar.Signature}\n  (model : Merlin.GraphState.Scalar.Model Value World Error registry) {first second : Merlin.GraphState.Pipeline.Entry}\n  {before after : List.{0} Merlin.GraphState.Pipeline.Entry},\n  Eq.{1} first.inputs second.inputs \u2192\n    Eq.{1} first.outputs second.outputs \u2192\n      (\u2200 (arguments : List.{0} Value) (world : World),\n          Eq.{1} (List.length.{0} arguments) (List.length.{0} first.inputs) \u2192\n            Eq.{1} (Merlin.GraphState.Scalar.evalProgram model first.body arguments world)\n              (Merlin.GraphState.Scalar.evalProgram model second.body arguments world)) \u2192\n        Merlin.GraphState.Pipeline.PreservesEntries model before after \u2192\n          Merlin.GraphState.Pipeline.PreservesEntries model (List.cons.{0} first before) (List.cons.{0} second after)\n'Merlin.GraphState.Pipeline.entries_cons' depends on axioms: [propext]\nMerlin.GraphStatePipelineInlineInstance.controlAccepted : Eq.{1}\n  (Merlin.GraphState.Pipeline.checkControl Merlin.GraphStatePipelineInlineInstance.registry\n    Merlin.GraphStatePipelineInlineInstance.controls)\n  true\n'Merlin.GraphStatePipelineInlineInstance.controlAccepted' depends on axioms: [propext]\nMerlin.GraphStatePipelineInlineInstance.literalsAccepted : Eq.{1}\n  (Merlin.GraphState.Pipeline.checkLiterals Merlin.GraphStatePipelineInlineInstance.profileBits\n    Merlin.GraphStatePipelineInlineInstance.controls)\n  true\n'Merlin.GraphStatePipelineInlineInstance.literalsAccepted' depends on axioms: [propext]\nMerlin.GraphStatePipelineInlineInstance.literalsFit : \u2200 (identity : Nat) (value : Int),\n  Eq.{1} (Merlin.GraphState.Pipeline.controlAt Merlin.GraphStatePipelineInlineInstance.controls identity)\n      (some.{0} (Merlin.GraphState.Pipeline.IndexOp.constant value)) \u2192\n    Merlin.GraphState.Pipeline.signedRepresentative Merlin.GraphStatePipelineInlineInstance.profileBits value\n'Merlin.GraphStatePipelineInlineInstance.literalsFit' depends on axioms: [propext, Quot.sound.{u}]\nMerlin.GraphStatePipelineInlineInstance.naturalRange : \u2200 (lower upper step : Nat),\n  LT.lt.{0} 0 step \u2192\n    Eq.{1} (Merlin.GraphState.Pipeline.indexIterations (Int.ofNat lower) (Int.ofNat upper) (Int.ofNat step))\n      (List.map.{0, 0} Int.ofNat (Merlin.GraphState.Pipeline.scfRange lower upper step))\n'Merlin.GraphStatePipelineInlineInstance.naturalRange' depends on axioms: [propext, Quot.sound.{u}]\nMerlin.GraphStatePipelineInlineInstance.F3.typed0 : Eq.{1}\n  (Merlin.GraphState.Scalar.checkTypes Merlin.GraphStatePipelineInlineInstance.registry\n    Merlin.GraphStatePipelineInlineInstance.F3.inputs Merlin.GraphStatePipelineInlineInstance.F3.outputs\n    Merlin.GraphStatePipelineInlineInstance.F3.S0)\n  true\n'Merlin.GraphStatePipelineInlineInstance.F3.typed0' depends on axioms: [propext]\nMerlin.GraphStatePipelineInlineInstance.F3.typed1 : Eq.{1}\n  (Merlin.GraphState.Scalar.checkTypes Merlin.GraphStatePipelineInlineInstance.registry\n    Merlin.GraphStatePipelineInlineInstance.F3.inputs Merlin.GraphStatePipelineInlineInstance.F3.outputs\n    Merlin.GraphStatePipelineInlineInstance.F3.S1)\n  true\n'Merlin.GraphStatePipelineInlineInstance.F3.typed1' depends on axioms: [propext]\nMerlin.GraphStatePipelineInlineInstance.F3.boundsChecked : Merlin.GraphStatePipelineInlineInstance.F3.bounds.Valid\n'Merlin.GraphStatePipelineInlineInstance.F3.boundsChecked' does not depend on any axioms\nMerlin.GraphStatePipelineInlineInstance.F3.isInline : LE.le.{0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.count\n  Merlin.GraphStatePipelineInlineInstance.F3.bounds.factor\n'Merlin.GraphStatePipelineInlineInstance.F3.isInline' does not depend on any axioms\nMerlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit : \u2200 (ordinal : Nat),\n  LT.lt.{0} ordinal Merlin.GraphStatePipelineInlineInstance.F3.bounds.count \u2192\n    Merlin.GraphLoopsSegment.FitsSigned Merlin.GraphStatePipelineInlineInstance.F3.bounds.bits\n        (HAdd.hAdd.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.lower\n          (HMul.hMul.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.step ordinal)) \u2227\n      Merlin.GraphLoopsSegment.FitsSigned Merlin.GraphStatePipelineInlineInstance.F3.bounds.bits\n        (HAdd.hAdd.{0, 0, 0}\n          (HAdd.hAdd.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.lower\n            (HMul.hMul.{0, 0, 0} Merlin.GraphStatePipelineInlineInstance.F3.bounds.step ordinal))\n          Merlin.GraphStatePipelineInlineInstance.F3.bounds.step)\n'Merlin.GraphStatePipelineInlineInstance.F3.inlineIndicesFit' depends on axioms: [propext,\n Classical.choice.{u},\n Quot.sound.{u}]\n@Merlin.GraphStatePipelineInlineInstance.F3.source_form : \u2200 {World Error : Type}\n  (primitive : Merlin.GraphState.Scalar.Prim \u2192 List.{0} Int \u2192 Int)\n  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry)\n  (x0 x1 : Int) (world : World),\n  Eq.{1}\n    (Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n      Merlin.GraphStatePipelineInlineInstance.F3.S0 (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)\n    (Except.bind.{0, 0, 0}\n      (Merlin.GraphState.Scalar.loopEval 2\n        (fun i c w =>\n          Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n            Merlin.GraphStatePipelineInlineInstance.F3.B\n            (HAppend.hAppend.{0, 0, 0} (List.cons.{0} i c)\n              (Merlin.GraphStatePipelineInlineInstance.F3.E primitive x0 x1))\n            w)\n        (Merlin.GraphState.Pipeline.indexIterations 3 3 2) (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)\n      fun r =>\n      Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n        Merlin.GraphStatePipelineInlineInstance.F3.N\n        (HAppend.hAppend.{0, 0, 0} (Prod.fst.{0, 0} r) (Merlin.GraphStatePipelineInlineInstance.F3.E primitive x0 x1))\n        (Prod.snd.{0, 0} r))\n'Merlin.GraphStatePipelineInlineInstance.F3.source_form' depends on axioms: [propext, Quot.sound.{u}]\n@Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs : \u2200 {World Error : Type}\n  (primitive : Merlin.GraphState.Scalar.Prim \u2192 List.{0} Int \u2192 Int)\n  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry)\n  (x0 x1 : Int) (world : World),\n  Eq.{1}\n    (Merlin.GraphState.Scalar.loopEval 2\n      (fun i c w =>\n        Merlin.GraphState.Scalar.evalProgram (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n          Merlin.GraphStatePipelineInlineInstance.F3.B\n          (HAppend.hAppend.{0, 0, 0} (List.cons.{0} i c) (Merlin.GraphStatePipelineInlineInstance.F3.E primitive x0 x1))\n          w)\n      (Merlin.GraphState.Pipeline.indexIterations 3 3 2) (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world)\n    (Except.ok.{0, 0} (Prod.mk.{0, 0} (List.cons.{0} x0 (List.cons.{0} x1 List.nil.{0})) world))\n'Merlin.GraphStatePipelineInlineInstance.F3.empty_body_never_runs' depends on axioms: [propext, Quot.sound.{u}]\n@Merlin.GraphStatePipelineInlineInstance.F3.a"
+        }
+      },
+      "source": {
+        "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/empty/Query.lean",
+        "sha256": "4344cbeae90444ee6bf46a7719a383e8e37f6d29775842588f9ea79b05884862",
+        "bytes": 8347
+      }
+    },
+    "kernel_checked_final_type": "@merlin_unroll_inline_transform : \u2200 {World Error : Type}\n  (primitive : Merlin.GraphState.Scalar.Prim \u2192 List.{0} Int \u2192 Int)\n  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInlineInstance.registry),\n  Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInlineInstance.M primitive external)\n    Merlin.GraphStatePipelineInlineInstance.originalEntries Merlin.GraphStatePipelineInlineInstance.finalEntries"
+  },
+  {
+    "profile": "Q-inline-complete-carry-v1",
+    "case": "empty",
+    "role": "WITNESS",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/empty/Witness.lean",
+      "bytes": 13604,
+      "sha256": "a7a221c2f87c482f15d8ea62a0d582decbcfc84b8f049e50090aba1f16be095f"
+    },
+    "status": "WITNESS_SOURCE_FAILED",
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/audit-successor-v1/empty/Witness/Witness.olean",
+        "Witness.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 0.9684473229572177,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-audit-successor/Q-inline-complete-carry-v1/empty-Witness-compile",
+      "stdout": {
+        "sha256": "9351fe0730ec3193286ce30e8acea0b36498ee6cfb457447ae87975d8fe46901",
+        "bytes": 28848
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Witness.lean:56:13: warning: This simp argument is unused:\n  B\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:22: warning: This simp argument is unused:\n  progression\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:299: warning: This simp argument is unused:\n  Option.getD_none\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Except.bind,\n    List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:328: warning: This simp argument is unused:\n  List.length_cons\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:345: warning: This simp argument is unused:\n  List.length_nil\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:361: warning: This simp argument is unused:\n  \u2193reduceIte\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:56:372: warning: This simp argument is unused:\n  loopEval\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,\n    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,\n    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,\n    Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:17: warning: This simp argument is unused:\n  step0\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,\n    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,\n    List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:23: warning: This simp argument is unused:\n  M\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,\n    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,\n    List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:25: warning: This simp argument is unused:\n  indexModel\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:36: warning: This simp argument is unused:\n  indexEffect\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:48: warning: This simp argument is unused:\n  controls\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:57: warning: This simp argument is unused:\n  Merlin.GraphState.Pipeline.controlAt\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, IndexOp.eval, opaqueStep, evalProgram, reads,\n    List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ,\n    Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil, \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:94: warning: This simp argument is unused:\n  IndexOp.eval\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, opaqueStep,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:107: warning: This simp argument is unused:\n  opaqueStep\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:118: warning: This simp argument is unused:\n  evalProgram\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:130: warning: This simp argument is unused:\n  reads\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,\n    opaqueStep, evalProgram, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,\n    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,\n    \u2193reduceIte, loopEval]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nWitness.lean:61:136: "
+    },
+    "first_error": "Witness.lean:119:152: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([3], 8)\nWitness.lean:131:172: error: Type mismatch\n  rfl\nhas type\n  ?m.30 = ?m.30\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)\nWitness.lean:143:168: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false true)) F3.S0 [3, 2] 7 = Except.ok ([3], 8)\n"
+  },
+  {
+    "profile": "Q-inline-complete-carry-v1",
+    "case": "inline1",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/inline1/Query.lean",
+      "bytes": 9714,
+      "sha256": "11f1e95d97507fa69cdf3be2d1445b83fa4568b985aca56e83d4df3fdf4edc2d"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "static_nonnegative_signed32or64_count_le_factor_complete_outcome",
+    "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+    "final_root": "merlin_unroll_inline_transform",
+    "status": "QUERY_FAILED",
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-query-v1/inline1/Query.olean",
+        "Query.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 0.7677969159558415,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-independent/inline1-compile",
+      "stdout": {
+        "sha256": "04b8fd23c49573b00d1e6c70be8f736da25128acca26e63f1ed02e97827ab8b1",
+        "bytes": 1128
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Query.lean:51:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21915 \u21916 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 5 6 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 5 6 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\n"
+    },
+    "first_error": "Query.lean:51:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21915 \u21916 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 5 6 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 5 6 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n"
+  },
+  {
+    "profile": "Q-inline-complete-carry-v1",
+    "case": "inline1",
+    "role": "WITNESS",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/inline1/Witness.lean",
+      "bytes": 16507,
+      "sha256": "2427b602ae04fc642a8dd88aea8b3e39cbeab012af0b0e63ac51fd88f14e9618"
+    },
+    "status": "WITNESS_SOURCE_FAILED",
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-witness-v1/inline1/Witness.olean",
+        "Witness.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 1.2185666151344776,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-witnesses/inline1-compile",
+      "stdout": {
+        "sha256": "8db0c79e44657b15fc357cd1c93562d2f03a3b73c876cd90157edee60c99a5ad",
+        "bytes": 1976
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21915 \u21916 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 5 6 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 5 6 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:128:152: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([5], 9)\nWitness.lean:140:172: error: Type mismatch\n  rfl\nhas type\n  ?m.30 = ?m.30\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 9)\nWitness.lean:152:179: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 5) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)\nWitness.lean:164:178: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 5) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)\n\n"
+    },
+    "first_error": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21915 \u21916 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 5 6 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 5 6 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:128:152: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([5], 9)"
+  },
+  {
+    "profile": "Q-inline-complete-carry-v1",
+    "case": "inline2",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/inline2/Query.lean",
+      "bytes": 11248,
+      "sha256": "00acd4837b64927418ddf1335e4a47663a68c754c0448fef071e0d4a92b56249"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "static_nonnegative_signed32or64_count_le_factor_complete_outcome",
+    "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+    "final_root": "merlin_unroll_inline_transform",
+    "status": "QUERY_FAILED",
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-query-v1/inline2/Query.olean",
+        "Query.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 0.8176565009634942,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-independent/inline2-compile",
+      "stdout": {
+        "sha256": "6dd18e3b75c25d3646e428454dcc4f993ad2cc48b6c6909bbc1328586535ba01",
+        "bytes": 1136
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Query.lean:51:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912 \u21918 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\n"
+    },
+    "first_error": "Query.lean:51:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912 \u21918 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n"
+  },
+  {
+    "profile": "Q-inline-complete-carry-v1",
+    "case": "inline2",
+    "role": "WITNESS",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/inline2/Witness.lean",
+      "bytes": 18045,
+      "sha256": "d3a12043920435693499c88c9c2136c8090302236b7d6984cd84fc0d6e3620db"
+    },
+    "status": "WITNESS_SOURCE_FAILED",
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-witness-v1/inline2/Witness.olean",
+        "Witness.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 1.0687414000276476,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-witnesses/inline2-compile",
+      "stdout": {
+        "sha256": "3ffbbf04ffdc70cd1f8aca3266a6efb21abb80a2f59aadf6b30990aed73af380",
+        "bytes": 1986
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912 \u21918 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:140:153: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([7], 10)\nWitness.lean:152:173: error: Type mismatch\n  rfl\nhas type\n  ?m.30 = ?m.30\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 10)\nWitness.lean:164:179: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 2) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)\nWitness.lean:176:178: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 5) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 9)\n\n"
+    },
+    "first_error": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912 \u21918 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2 8 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:140:153: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([7], 10)"
+  },
+  {
+    "profile": "Q-inline-complete-carry-v1",
+    "case": "inline3",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/inline3/Query.lean",
+      "bytes": 12822,
+      "sha256": "bb6fe7247d7ee3a8eb9008fb397007a6aebfda86a50c9dc3155a78fc2cbc6c65"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "static_nonnegative_signed32or64_count_le_factor_complete_outcome",
+    "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+    "final_root": "merlin_unroll_inline_transform",
+    "status": "QUERY_FAILED",
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-query-v1/inline3/Query.olean",
+        "Query.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 0.817824630998075,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-independent/inline3-compile",
+      "stdout": {
+        "sha256": "d39abea800f783648f882c487026cff8ff73c6d6f5e94438059692b8d8007ca0",
+        "bytes": 1139
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Query.lean:51:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21917 \u219116 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 7 16 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 7 16 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\n"
+    },
+    "first_error": "Query.lean:51:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21917 \u219116 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 7 16 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 7 16 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n"
+  },
+  {
+    "profile": "Q-inline-complete-carry-v1",
+    "case": "inline3",
+    "role": "WITNESS",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/inline3/Witness.lean",
+      "bytes": 19628,
+      "sha256": "6aaa677ead4d9cf217b05592c5031123660198c7fbd65f813c29eebc0a7a6080"
+    },
+    "status": "WITNESS_SOURCE_FAILED",
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-witness-v1/inline3/Witness.olean",
+        "Witness.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 1.3689034909475595,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-witnesses/inline3-compile",
+      "stdout": {
+        "sha256": "746710a8222a2fe0355a888d401ca500661e5d8d5ea0a7aa943da989c4ffd8cc",
+        "bytes": 1991
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21917 \u219116 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 7 16 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 7 16 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:152:153: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([9], 11)\nWitness.lean:164:173: error: Type mismatch\n  rfl\nhas type\n  ?m.30 = ?m.30\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 11)\nWitness.lean:176:179: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 7) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)\nWitness.lean:188:180: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 13) false false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 10)\n\n"
+    },
+    "first_error": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21917 \u219116 \u21913) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 7 16 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 2 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 7 16 3) [x0, x1] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:152:153: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([9], 11)"
+  },
+  {
+    "profile": "Q-inline-complete-carry-v1",
+    "case": "wide_inline1",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/wide_inline1/Query.lean",
+      "bytes": 9822,
+      "sha256": "d5d15ffe2618f82b59fc631aa157b591d2907148925b39fc10a72664a2256ac6"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "static_nonnegative_signed32or64_count_le_factor_complete_outcome",
+    "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+    "final_root": "merlin_unroll_inline_transform",
+    "status": "QUERY_FAILED",
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-query-v1/wide_inline1/Query.olean",
+        "Query.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 0.7679450269788504,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-independent/wide_inline1-compile",
+      "stdout": {
+        "sha256": "b560201663daa3b9a1cac9389260e005a5c73285a5a6252d78d7f4ec5c7637be",
+        "bytes": 1182
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Query.lean:51:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912147483650 \u21912147483651 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\n"
+    },
+    "first_error": "Query.lean:51:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912147483650 \u21912147483651 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n"
+  },
+  {
+    "profile": "Q-inline-complete-carry-v1",
+    "case": "wide_inline1",
+    "role": "WITNESS",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/inline-staged-v1/queries/wide_inline1/Witness.lean",
+      "bytes": 16741,
+      "sha256": "7a6a681b3ef19e8c78ac32ee3cd1545f503b0192e5aeae919b8455a81b3bd6d1"
+    },
+    "status": "WITNESS_SOURCE_FAILED",
+    "compile": {
+      "executed": true,
+      "command": [
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+        "-j1",
+        "-o",
+        "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-witness-v1/wide_inline1/Witness.olean",
+        "Witness.lean"
+      ],
+      "exit_code": 1,
+      "seconds": 1.3187945648096502,
+      "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+      "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-witnesses/wide_inline1-compile",
+      "stdout": {
+        "sha256": "b2053e6677b4091e6b26691d50a199f58db18787bcb257923ae2bfd426d887f1",
+        "bytes": 2056
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "first_error_excerpt": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912147483650 \u21912147483651 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:128:152: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([5], 9)\nWitness.lean:140:172: error: Type mismatch\n  rfl\nhas type\n  ?m.30 = ?m.30\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 9)\nWitness.lean:152:188: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 2147483650) false false)) F3.S0 [3, 2] 7 =\n    Except.error (Fault.external 17, 8)\nWitness.lean:164:187: error: Type mismatch\n  rfl\nhas type\n  ?m.32 = ?m.32\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen (some 2147483650) false false)) F3.S0 [3, 2] 7 =\n    Except.error (Fault.external 17, 8)\n\n"
+    },
+    "first_error": "Witness.lean:52:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912147483650 \u21912147483651 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\nWitness.lean:128:152: error: Type mismatch\n  rfl\nhas type\n  ?m.31 = ?m.31\nbut is expected to have type\n  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([5], 9)"
+  },
+  {
+    "profile": "Q-unroll-tail-successor-v1",
+    "case": "nonzero_nonunit_two",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/queries/nonzero_nonunit_two/Query.lean",
+      "bytes": 17616,
+      "sha256": "4a238e76c052593f6d83fbf37145251099e6151989b079103a4f2b6309df9c46"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "static_nonnegative_signed32or64_bulk_and_nonempty_tail_complete_outcome",
+    "relation": null,
+    "final_root": "merlin_unroll_tail_transform",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "Q-unroll-tail-successor-v1",
+    "case": "remainder_two",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/queries/remainder_two/Query.lean",
+      "bytes": 17961,
+      "sha256": "7cfacba2da5adcffcf89523d189915767ad3fd37c18b816b28568a43f9d6a35b"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "static_nonnegative_signed32or64_bulk_and_nonempty_tail_complete_outcome",
+    "relation": null,
+    "final_root": "merlin_unroll_tail_transform",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "Q-unroll-tail-successor-v1",
+    "case": "trip5_factor2",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/queries/trip5_factor2/Query.lean",
+      "bytes": 16473,
+      "sha256": "77db4895989d25e2e5f88a5df7ac7bb9f865c9093a9aae358d40cf35ad54b60c"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "static_nonnegative_signed32or64_bulk_and_nonempty_tail_complete_outcome",
+    "relation": null,
+    "final_root": "merlin_unroll_tail_transform",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "Q-unroll-tail-successor-v1",
+    "case": "wide_index",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/Q-unroll-tail-successor-v1/queries/wide_index/Query.lean",
+      "bytes": 17924,
+      "sha256": "8daa2c837f1e3817401a99bf1e53b13cdfcbece3d4e11da868696b73c9c28779"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": "static_nonnegative_signed32or64_bulk_and_nonempty_tail_complete_outcome",
+    "relation": null,
+    "final_root": "merlin_unroll_tail_transform",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "argument",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/argument/Context.lean",
+      "bytes": 281058,
+      "sha256": "3a45048598c9e78234b9c980963a3b4028f16d4345169751c56691638bd4c48d"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "argument_alias",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/argument_alias/Context.lean",
+      "bytes": 245217,
+      "sha256": "2981aa230ef48e692391c18a45f1c3fa87cf25f0144363c70ef711db0ca3bcae"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "caller_buffer",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/caller_buffer/Context.lean",
+      "bytes": 281348,
+      "sha256": "8c4228b39c28f656978bb23d119200241200ed5532486ab67e8901aec8d509f8"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "changed_callee",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/changed_callee/Context.lean",
+      "bytes": 281057,
+      "sha256": "02281e23971ce52172a21517d90121ef83851f61c1cd7102ac8bb5596600afdf"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "descriptor_alias",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/descriptor_alias/Context.lean",
+      "bytes": 245553,
+      "sha256": "45a30ffcadd61b34d5561fdc32dd8d845d17c28e33fc3c2dae3196914201487f"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "observer",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/observer/Context.lean",
+      "bytes": 281058,
+      "sha256": "64fb4af9fcad0881f2f32a665639a716950831c678544505da3c67b19cad2596"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "order",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/order/Context.lean",
+      "bytes": 281346,
+      "sha256": "de093293da5303db0075043049c12dc35a31dca9f14a1378a45020dca90b4d5d"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "positive",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/positive/Context.lean",
+      "bytes": 281058,
+      "sha256": "cf9f9a424db4bcfb177c4c5d81358892cd5980a0ce0a4fe6c21ec64f730a30a1"
+    },
+    "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "prefix_allocation",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/prefix_allocation/Context.lean",
+      "bytes": 241605,
+      "sha256": "608001d025e7f170f8d076f2af4ea2a77546941a955a4798b266d445b985c8da"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "private_escape",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/private_escape/Context.lean",
+      "bytes": 247781,
+      "sha256": "fcc000c134ebe747b2b9f7cf7e788e6c5c214f0ca1b12ea12f76fd6b19134ee8"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "repeated",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/repeated/Context.lean",
+      "bytes": 248994,
+      "sha256": "c02b9292eb67bc00d8e76d6c88eaa6254755beb1e89261b15c1ed8e2f3843bbc"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "return",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/return/Context.lean",
+      "bytes": 281058,
+      "sha256": "d098a9bac14dfea5ad184c12478bb09073da5478ea699c8a2f6b8b2e1c1835a4"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "transitive",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/transitive/Context.lean",
+      "bytes": 252469,
+      "sha256": "616825c0637628108fdcb6b71684c810eb4837a4926d946eb2387e1e7f17dc87"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-caller-context-successor-v1",
+    "case": "unknown_caller",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/queries/unknown_caller/Context.lean",
+      "bytes": 242753,
+      "sha256": "f21d37389fb6e27e8b5dd45659b17eb620c1e93f40ab9076e0aef20d48bc4d90"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_UNOBSERVED",
+    "domain": {
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), row.Domain boundary inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (boundary.meaning scalar literal) boundary.actualFinal row.name inputs heap user observed)",
+      "status": "SOURCE_BINDERS_UNCHECKED"
+    },
+    "relation": {
+      "source_form": "caller-context EntryDomain graphOutcomes iff",
+      "status": "SOURCE_DESCRIPTION_NOT_KERNEL_TYPE"
+    },
+    "final_root": "GraphMemoryAfterContext.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "arity",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/arity/Entries.lean",
+      "bytes": 265485,
+      "sha256": "59a0db8c2ed3ed8493a2fe6fd3e3ea2ee896c2f182a6557a690b33929b475463"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "callee",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/callee/Entries.lean",
+      "bytes": 265293,
+      "sha256": "ce94be54784122cdd010233f94ce3d8c61a9103980887c4215ed1d03c87ac988"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "caller_buffer",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/caller_buffer/Entries.lean",
+      "bytes": 265677,
+      "sha256": "d243f6e1a9f2ea0162f7dccc55181996b27cd81d444eb2c9e67dac3d1940c3ae"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "declaration",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/declaration/Entries.lean",
+      "bytes": 264713,
+      "sha256": "25260efd62c7cd0e0711b869df261f4e32fee7a86f6bd7dfc97366145eed5925"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "interface",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/interface/Entries.lean",
+      "bytes": 265423,
+      "sha256": "fe4c9e737a50584b12f6aeb1dec4f3e7f12fad1225b3436a7b383a7f28ae9acc"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "kernel_return",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/kernel_return/Entries.lean",
+      "bytes": 265386,
+      "sha256": "b8209d749b6fea0c7750be602fcebe95adfd11443a752cbe6bb5e8c0d0769c88"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "literal",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/literal/Entries.lean",
+      "bytes": 265589,
+      "sha256": "9804b797521f068f4a88d054f7a64c7ff9f0ae551ac34878f0865d6b61bc1e1c"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "missing_entry",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/missing_entry/Entries.lean",
+      "bytes": 264210,
+      "sha256": "60227b5b5438d675361cd0dd4dfe09a70278efb6b8eb4d15f5105970eb732a4e"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "observer",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/observer/Entries.lean",
+      "bytes": 265387,
+      "sha256": "c213fc7895007398e4fbcf8cef2e021f84663ca0b8e55d3886623e7bafd299ef"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "positive",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/positive/Entries.lean",
+      "bytes": 265387,
+      "sha256": "e7da67fce8324e21090a9fd8321e382a1b9ae7f755a5fbc2a3b6523802cd7947"
+    },
+    "expected_protocol": "POSITIVE_CANDIDATE_NOT_ACCEPTED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "untouched_return",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/untouched_return/Entries.lean",
+      "bytes": 265387,
+      "sha256": "d0cb1b778fd1c34ef8e46075beb37e2286846eade2020c0ca72c0bf7efaf2b1a"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  },
+  {
+    "profile": "W-entries-successor-v1",
+    "case": "wrapper",
+    "role": "QUERY",
+    "source": {
+      "path": "out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-entries-successor-v1/queries/wrapper/Entries.lean",
+      "bytes": 270803,
+      "sha256": "e9f21d1176d1d1b510bd9d2a92cb5d36bfc80658056bd354159e69894af95495"
+    },
+    "expected_protocol": "EXPECTED_BINDING_REFUSAL_NOT_OBSERVED",
+    "domain": {
+      "status": "SOURCE_BINDERS_NOT_KERNEL_CHECKED",
+      "exact_statement": "theorem every_definition {Value User : Type} (scalar : Epoch.BinaryMeaning Value) (literal : LiteralMeaning Value)\n    (function : Function) (defined : function \u2208 independentSource.functions) :\n    \u2203 row \u2208 rows, row.name = function.name \u2227\n      \u2200 inputs : List (Runtime Value), EntryDomain independentSource plan kernel row inputs \u2192\n      \u2200 (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User),\n      (Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        independentSource row.name inputs heap user observed \u2194\n       Epoch.graphOutcomes plan.objects.length (entryMeaning 64 indices plan.opcodes scalar literals literal)\n        GraphMemoryAfterMaterialization.actualFinal row.name inputs heap user observed)",
+      "scope_description": "every defined function conditioned on its exact EntryDomain; not unconditional all-entry acceptance"
+    },
+    "relation": {
+      "source_form": "Epoch.graphOutcomes iff under same chosen partial interpretation",
+      "status": "SOURCE_DESCRIPTION_ONLY",
+      "error_resource_native_divergence_equivalence_claimed": false
+    },
+    "final_root": "GraphMemoryAfterEntries.every_definition",
+    "status": "UNEXECUTED",
+    "reason": "First support-source compilation failure prevents this query from importing its required module closure."
+  }
+]

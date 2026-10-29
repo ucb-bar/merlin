@@ -1,0 +1,17 @@
+{
+  "contiguous_suffix_copy": {
+    "copies_specialized": 0,
+    "schema": "merlin.contiguous_suffix_copy.v1"
+  },
+  "enabled": true,
+  "schema": "merlin.automatic_host_copies.v1",
+  "scope": "private uniform-fill forwarding and disjoint contiguous copy suffixes; no numerical change",
+  "selected_features": [
+    "fold_uniform_fill_copy",
+    "specialize_contiguous_copy"
+  ],
+  "uniform_fill_copy": {
+    "copies_folded": 0,
+    "schema": "merlin.uniform_fill_copy.v1"
+  }
+}

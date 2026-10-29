@@ -1,0 +1,381 @@
+{
+  "scope": "ordinary native CPU source algebra; no device retention/timing qualification",
+  "original_pair": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/pair.json",
+  "copy_pair": "row-batching-native/pair.json",
+  "owner_and_product_hashes_checked": 80,
+  "all_hashes_match": true,
+  "baseline_and_candidate_differ": true,
+  "calls_per_arm": {
+    "baseline": 3,
+    "candidate": 3
+  },
+  "files": [
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/automatic-host-copies.json",
+      "copy": "row-batching-native/baseline/automatic-host-copies.json",
+      "bytes": 478,
+      "sha256": "86aad7f7985243dd6a78e05c20368089e0ae8845ef589e07a2bf5ced510b441d"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/automatic-host-destinations.json",
+      "copy": "row-batching-native/baseline/automatic-host-destinations.json",
+      "bytes": 2277,
+      "sha256": "4aece7790cec6ff9ae694bf3354a3f76ace3a11beadcd68a32ee0ebf30aa2090"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/automatic-host-gathers.json",
+      "copy": "row-batching-native/baseline/automatic-host-gathers.json",
+      "bytes": 2228,
+      "sha256": "2bb1023720759bd57e2d65b4307df2ca80375a4e093925c3ed45f9bf79fc66fa"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/automatic-host-optimizations.json",
+      "copy": "row-batching-native/baseline/automatic-host-optimizations.json",
+      "bytes": 644,
+      "sha256": "31aa5e6a172d0b403914dd353cfc227a515d242bdcc9d91cafda407cf372daf0"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/automatic-host-permutations.json",
+      "copy": "row-batching-native/baseline/automatic-host-permutations.json",
+      "bytes": 6357,
+      "sha256": "e9db0a9b7fa73a937011647b7c3a8825752a7fcf7ea77651d3c20d731d04ab3d"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/automatic-host-rounding.json",
+      "copy": "row-batching-native/baseline/automatic-host-rounding.json",
+      "bytes": 5524,
+      "sha256": "d8d6d33ac32649b73eb3854f04eaa36f815f375fdefd842bb8bf4fc00841c0a4"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/automatic-host-rows.json",
+      "copy": "row-batching-native/baseline/automatic-host-rows.json",
+      "bytes": 1462,
+      "sha256": "c015eb8c6f24d18b69781c2fd87d29d4ace03d0803e561b64080f8098ee989cf"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/contiguous_suffix_copy.json",
+      "copy": "row-batching-native/baseline/contiguous_suffix_copy.json",
+      "bytes": 78,
+      "sha256": "dee4a45e6788330d972d61092016b4fab7cc156235a3c31d927701d75a5dac1c"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/27056dca846447b8bb7a6373b6248e24/invocation.json",
+      "copy": "row-batching-native/baseline/invocations/27056dca846447b8bb7a6373b6248e24/invocation.json",
+      "bytes": 4664,
+      "sha256": "049d9ca340344f0f162a1b2c5e4019c53b8941a03b0024f1aab72bc56d64b6b5"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/27056dca846447b8bb7a6373b6248e24/stderr.bin",
+      "copy": "row-batching-native/baseline/invocations/27056dca846447b8bb7a6373b6248e24/stderr.bin",
+      "bytes": 116,
+      "sha256": "4740d978c5d2df55639512ec4c0794db92d8afa0cf8d410458a12f2d458b3171"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/27056dca846447b8bb7a6373b6248e24/stdout.bin",
+      "copy": "row-batching-native/baseline/invocations/27056dca846447b8bb7a6373b6248e24/stdout.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/4b3d780de2844ac48cb3fad0e8e603eb/invocation.json",
+      "copy": "row-batching-native/baseline/invocations/4b3d780de2844ac48cb3fad0e8e603eb/invocation.json",
+      "bytes": 4622,
+      "sha256": "e9de2fd3e512e8435bf6802a84f7a3c50b15e56aa70d68c9dc11527f4ca7437f"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/4b3d780de2844ac48cb3fad0e8e603eb/stderr.bin",
+      "copy": "row-batching-native/baseline/invocations/4b3d780de2844ac48cb3fad0e8e603eb/stderr.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/4b3d780de2844ac48cb3fad0e8e603eb/stdout.bin",
+      "copy": "row-batching-native/baseline/invocations/4b3d780de2844ac48cb3fad0e8e603eb/stdout.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/9e899a72226a4fdcb14f61240fdee4d7/invocation.json",
+      "copy": "row-batching-native/baseline/invocations/9e899a72226a4fdcb14f61240fdee4d7/invocation.json",
+      "bytes": 5118,
+      "sha256": "d48d101b2ebdd2397935e43d8aa4b8512369535052ee7ea64ccbfce40934ef04"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/9e899a72226a4fdcb14f61240fdee4d7/stderr.bin",
+      "copy": "row-batching-native/baseline/invocations/9e899a72226a4fdcb14f61240fdee4d7/stderr.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/9e899a72226a4fdcb14f61240fdee4d7/stdout.bin",
+      "copy": "row-batching-native/baseline/invocations/9e899a72226a4fdcb14f61240fdee4d7/stdout.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/lowering_recipe.json",
+      "copy": "row-batching-native/baseline/lowering_recipe.json",
+      "bytes": 4981,
+      "sha256": "869478c2454f1bd89656572de65527b1746747f7adcb53059996b8c0a5216596"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/mlir_runtime_host.o",
+      "copy": "row-batching-native/baseline/mlir_runtime_host.o",
+      "bytes": 5048,
+      "sha256": "11c47d5df59ee24883929043e6194cc9ea9ac9019cb3047a2629acf7f52dfe88"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model.ll",
+      "copy": "row-batching-native/baseline/model.ll",
+      "bytes": 24118,
+      "sha256": "e6e08dfcca0cfd09faa6345f1787434495cd0d2457c292ad079eb6b28b5a554b"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model.mlir",
+      "copy": "row-batching-native/baseline/model.mlir",
+      "bytes": 7990,
+      "sha256": "c4554d131e2b4527ccbbd87f690fd5842e6f5d8c1125d51084555b17e0720b36"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model.upstream.mlir",
+      "copy": "row-batching-native/baseline/model.upstream.mlir",
+      "bytes": 7990,
+      "sha256": "c4554d131e2b4527ccbbd87f690fd5842e6f5d8c1125d51084555b17e0720b36"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model_host.o",
+      "copy": "row-batching-native/baseline/model_host.o",
+      "bytes": 3072,
+      "sha256": "895b674457f0ddfeda3d6b4487207f8d10ef489c4c2e70b6a312f8927692212b"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model_host.so",
+      "copy": "row-batching-native/baseline/model_host.so",
+      "bytes": 20448,
+      "sha256": "0c088945add3aa408f0c498ca8ab6c588eb34e4753036666c42e616ce7a41752"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/run_lowering.py",
+      "copy": "row-batching-native/baseline/run_lowering.py",
+      "bytes": 413114,
+      "sha256": "7c934958a91ff8079954ffc036eefd51e74232f540283b2bee749755e81b676a"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/uniform_fill_copy.json",
+      "copy": "row-batching-native/baseline/uniform_fill_copy.json",
+      "bytes": 68,
+      "sha256": "ab8d945826d223d8b81474e4b35a2ba71e929d22bb3d5a5f08de9d7b6be74cbf"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline-0.npz",
+      "copy": "row-batching-native/baseline-0.npz",
+      "bytes": 8066,
+      "sha256": "401020c9c050da381261381b3f31d4ec976e187483c0d2b554bf24e3c70eedeb"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline-1.npz",
+      "copy": "row-batching-native/baseline-1.npz",
+      "bytes": 8066,
+      "sha256": "c30d13e6e2cb7e7f463513ddef9db72a567f38892cb825ebf6e702153e7b76b5"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline-2.npz",
+      "copy": "row-batching-native/baseline-2.npz",
+      "bytes": 8066,
+      "sha256": "0e783cdef3a4f79b31a6bebe9af2165002bfd687f2fd60312ac6bedd032d58e0"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline.mlir",
+      "copy": "row-batching-native/baseline.mlir",
+      "bytes": 7966,
+      "sha256": "c22f4eacaa417596af294cf40a4ad407de9c3b7cf0662f65e3460ebd14cab80c"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/automatic-host-copies.json",
+      "copy": "row-batching-native/candidate/automatic-host-copies.json",
+      "bytes": 478,
+      "sha256": "86aad7f7985243dd6a78e05c20368089e0ae8845ef589e07a2bf5ced510b441d"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/automatic-host-destinations.json",
+      "copy": "row-batching-native/candidate/automatic-host-destinations.json",
+      "bytes": 2277,
+      "sha256": "90a9a49832e09817ff5ec863731c0a4f164d2b21458dd5df8905ab603a7e5efd"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/automatic-host-gathers.json",
+      "copy": "row-batching-native/candidate/automatic-host-gathers.json",
+      "bytes": 2228,
+      "sha256": "088708c420cab7b4e5ca268f61e7b9e2473c60980a8edf61722857b9740f150d"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/automatic-host-optimizations.json",
+      "copy": "row-batching-native/candidate/automatic-host-optimizations.json",
+      "bytes": 644,
+      "sha256": "c57f81ba7dc10efc2e9b961ccad5477e4fcc2a14af4482eab51f4e04a040e68c"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/automatic-host-permutations.json",
+      "copy": "row-batching-native/candidate/automatic-host-permutations.json",
+      "bytes": 6357,
+      "sha256": "b7dccd2ecd29622fa0d195f2f8035a05deff907df48dfbff1749b528e5b6877f"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/automatic-host-rounding.json",
+      "copy": "row-batching-native/candidate/automatic-host-rounding.json",
+      "bytes": 5524,
+      "sha256": "bdbbf3f0cbad6392c87224a1b9649b1a852bc9e5b2422f8e8901bc54bfba39ed"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/automatic-host-rows.json",
+      "copy": "row-batching-native/candidate/automatic-host-rows.json",
+      "bytes": 1462,
+      "sha256": "7c0a9bc1e15a6c59efbd6dc94b2bc96aab1387b65d4523e967789fdc11cd5429"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/contiguous_suffix_copy.json",
+      "copy": "row-batching-native/candidate/contiguous_suffix_copy.json",
+      "bytes": 78,
+      "sha256": "dee4a45e6788330d972d61092016b4fab7cc156235a3c31d927701d75a5dac1c"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/invocations/54238dd6224449e3839a4ea75902a87e/invocation.json",
+      "copy": "row-batching-native/candidate/invocations/54238dd6224449e3839a4ea75902a87e/invocation.json",
+      "bytes": 4670,
+      "sha256": "3d9b4e648abfac43587c3446b81222e73926af0a0668ac9f56239f34f2e4ddd3"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/invocations/54238dd6224449e3839a4ea75902a87e/stderr.bin",
+      "copy": "row-batching-native/candidate/invocations/54238dd6224449e3839a4ea75902a87e/stderr.bin",
+      "bytes": 116,
+      "sha256": "4740d978c5d2df55639512ec4c0794db92d8afa0cf8d410458a12f2d458b3171"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/invocations/54238dd6224449e3839a4ea75902a87e/stdout.bin",
+      "copy": "row-batching-native/candidate/invocations/54238dd6224449e3839a4ea75902a87e/stdout.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/invocations/7b71af8e9c3743219e21566fdaf65ce0/invocation.json",
+      "copy": "row-batching-native/candidate/invocations/7b71af8e9c3743219e21566fdaf65ce0/invocation.json",
+      "bytes": 5126,
+      "sha256": "a447ebe51a34c3591b1390081119a7f8c945b7ccf8065ea2f212b8656be42fb2"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/invocations/7b71af8e9c3743219e21566fdaf65ce0/stderr.bin",
+      "copy": "row-batching-native/candidate/invocations/7b71af8e9c3743219e21566fdaf65ce0/stderr.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/invocations/7b71af8e9c3743219e21566fdaf65ce0/stdout.bin",
+      "copy": "row-batching-native/candidate/invocations/7b71af8e9c3743219e21566fdaf65ce0/stdout.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/invocations/e3e6bfba134e45a1ae401fefd9889d71/invocation.json",
+      "copy": "row-batching-native/candidate/invocations/e3e6bfba134e45a1ae401fefd9889d71/invocation.json",
+      "bytes": 4626,
+      "sha256": "15c3453a1fedfeb80af00d93d137b7781c2de0c5e58ec6d70228f688a1b42742"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/invocations/e3e6bfba134e45a1ae401fefd9889d71/stderr.bin",
+      "copy": "row-batching-native/candidate/invocations/e3e6bfba134e45a1ae401fefd9889d71/stderr.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/invocations/e3e6bfba134e45a1ae401fefd9889d71/stdout.bin",
+      "copy": "row-batching-native/candidate/invocations/e3e6bfba134e45a1ae401fefd9889d71/stdout.bin",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/lowering_recipe.json",
+      "copy": "row-batching-native/candidate/lowering_recipe.json",
+      "bytes": 4987,
+      "sha256": "25b29efa981e5c38296b00c6fc4db2e25ad88ee77a0f28c3253097735135b7fa"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/mlir_runtime_host.o",
+      "copy": "row-batching-native/candidate/mlir_runtime_host.o",
+      "bytes": 5048,
+      "sha256": "11c47d5df59ee24883929043e6194cc9ea9ac9019cb3047a2629acf7f52dfe88"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/model.ll",
+      "copy": "row-batching-native/candidate/model.ll",
+      "bytes": 18515,
+      "sha256": "7b607cacb3b8248db6995216b08f0ded44ac7e6d4f1f1310a8e1b6661e638bcb"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/model.mlir",
+      "copy": "row-batching-native/candidate/model.mlir",
+      "bytes": 4223,
+      "sha256": "7bd9b6bf4efcbe9762934f6046477c2d626fc03bd21761ca92238e6dccfca799"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/model.upstream.mlir",
+      "copy": "row-batching-native/candidate/model.upstream.mlir",
+      "bytes": 4223,
+      "sha256": "7bd9b6bf4efcbe9762934f6046477c2d626fc03bd21761ca92238e6dccfca799"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/model_host.o",
+      "copy": "row-batching-native/candidate/model_host.o",
+      "bytes": 2896,
+      "sha256": "b5cfd8cc9cb596c9d7c9eb3ac43350b6374205bacaf9ba1dd88100a15d3c32bf"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/model_host.so",
+      "copy": "row-batching-native/candidate/model_host.so",
+      "bytes": 20448,
+      "sha256": "33b957ee1351ff6e49a4db869b71432cf83acd74efdb4dc47f77534e0c1a3e72"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/run_lowering.py",
+      "copy": "row-batching-native/candidate/run_lowering.py",
+      "bytes": 413114,
+      "sha256": "7c934958a91ff8079954ffc036eefd51e74232f540283b2bee749755e81b676a"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate/uniform_fill_copy.json",
+      "copy": "row-batching-native/candidate/uniform_fill_copy.json",
+      "bytes": 68,
+      "sha256": "ab8d945826d223d8b81474e4b35a2ba71e929d22bb3d5a5f08de9d7b6be74cbf"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate-0.npz",
+      "copy": "row-batching-native/candidate-0.npz",
+      "bytes": 8066,
+      "sha256": "401020c9c050da381261381b3f31d4ec976e187483c0d2b554bf24e3c70eedeb"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate-1.npz",
+      "copy": "row-batching-native/candidate-1.npz",
+      "bytes": 8066,
+      "sha256": "c30d13e6e2cb7e7f463513ddef9db72a567f38892cb825ebf6e702153e7b76b5"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate-2.npz",
+      "copy": "row-batching-native/candidate-2.npz",
+      "bytes": 8066,
+      "sha256": "0e783cdef3a4f79b31a6bebe9af2165002bfd687f2fd60312ac6bedd032d58e0"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/candidate.mlir",
+      "copy": "row-batching-native/candidate.mlir",
+      "bytes": 7379,
+      "sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b"
+    },
+    {
+      "original": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/pair.json",
+      "copy": "row-batching-native/pair.json",
+      "bytes": 25448,
+      "sha256": "e3393723194f38d732890e415dce65474230cbc72afcfbe792297158e967e904"
+    }
+  ],
+  "new_lean_qualification": false
+}

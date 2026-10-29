@@ -1,0 +1,34 @@
+document,section,coverage_or_support,assessment
+producer:docs/reference/shared_compiler_passes.md:76,Shared compiler pass contracts,registry eight; schedule-orchestrator,"Contracts/checking infrastructure, not one theorem per PassSpec"
+producer:docs/reference/shared_compiler_passes.md:94,Compiler interfaces,target-adapters; llvm-emission,"Typed input, facts, analysis and realization are distinct interfaces"
+producer:docs/reference/shared_compiler_passes.md:141,Inputs and ownership,target-adapters; pointwise-realize,Ownership/effect truth remains target obligation
+producer:docs/reference/shared_compiler_passes.md:168,Ordering and analysis freshness,schedule-orchestrator,Freshness/order guards do not prove semantics
+producer:docs/reference/shared_compiler_passes.md:313,Host compilation timing,"source-inventory: invocation_record, compilation_recipe, cpu_pool",Timing/provenance support; not graph rewrite
+producer:docs/reference/shared_compiler_passes.md:355,Generated weight storage,weight-project; weight-blob,Host storage and argument ABI; not Lean graph acceptance
+producer:docs/reference/shared_compiler_passes.md:440,Reviewable shared scheduling library,"source-inventory: export, library_sources","V6 default, separate V7/V8 memberships; source membership is not pass count or import authority"
+producer:docs/reference/shared_compiler_passes.md:502,Automatic bounded host arithmetic,host-quant; host-round,Current original numeric policy; no assumed W8A8 bridge
+producer:docs/reference/shared_compiler_passes.md:538,Direct permuted pointwise destinations,destination-slice; destination-permute,Actual destination changes checked independently
+producer:docs/reference/shared_compiler_passes.md:661,Compact dense loops and operand retention,dense-compact; dense-resident; dense-stationary; dense-output; dense-joint; dense-rhs,Capacity proposals separated from realized schedules
+producer:docs/reference/shared_compiler_passes.md:729,Deriving a dense schedule from current typed source,dense-source; row-batch,Source recognition separated from schedule generation
+producer:docs/reference/shared_compiler_passes.md:804,Bounded convolution packing,im2col; im2col-table; conv-normalize; conv-block; conv-tiled; conv-gather; panel-pack,Packing/source/transfer routes distinct; no implicit target execution proof
+producer:docs/reference/shared_compiler_passes.md:936,Selected RTL and software inputs for dense scheduling,dense-source; target-adapters,"Selected software/RTL facts constrain route, do not prove interpretation"
+producer:docs/reference/shared_compiler_passes.md:1059,Executable schedule pipeline,schedule-orchestrator; post-storage-slot,Candidate stages may be nonmutating until storage commits; final byte segmentation separate
+producer:docs/reference/shared_compiler_passes.md:1145,Redundant configuration writes,config-elide; config-ir; config-hoist; effect-setter; effect-barrier,"Hoisting, deletion and helper barrier cleanup use distinct relations/domains; elision qualification failed"
+producer:docs/reference/shared_compiler_passes.md:1269,Private temporary storage,storage-place; ssa-allocation,Physical allocation and resource annotation distinct from registry buffer reuse
+producer:docs/reference/shared_compiler_passes.md:1313,Selected resource windows and actual storage effects,storage-place; target-adapters; prefetch; copy-pipeline; periodic-admit,"Resource/effect facts, async motion and trace admission separated"
+producer:docs/reference/shared_compiler_passes.md:1505,Private copy elimination,private-copy; copy-coalesce; dead-write,"Forwarding, merging and write deletion have different original laws"
+producer:docs/reference/shared_compiler_passes.md:1545,Typed source to physical pointwise fusion,pointwise-realize; region-plan; region-realize; multioutput-fuse,Logical region theorem is narrower than all physical realization
+producer:docs/reference/shared_compiler_passes.md:1649,New pointwise transformation implementations,pointwise-slot; post-storage-slot; recompute,Callback slots are not an exhaustive set of algorithms
+producer:docs/reference/shared_compiler_passes.md:1792,Physical elementwise fusion,physical-fusion; multioutput-fuse,General adjacent fusion does not inherit scoped fan-out theorem
+producer:docs/reference/shared_compiler_passes.md:1870,Fusion selected from RTL and software documents,physical-fusion; target-adapters,Native contract remains independently justified
+producer:docs/reference/shared_compiler_passes.md:2014,Exact device register spills,device-spill,Exact spill/reload and complete dataflow checker
+producer:docs/reference/shared_compiler_passes.md:2052,Device spills selected from RTL and software documents,device-spill; target-adapters,Original spill primitive/geometry truth remains a premise
+producer:docs/reference/shared_compiler_passes.md:2164,Final encoded programs,final-segment,Actual decoded-byte checks and safe segmentation; not MLIR loop segmentation
+producer:docs/reference/shared_compiler_passes.md:2203,Checking a declared program in the final linked image,"source-inventory: model_check/program_admission, targetgen/contract/elf_admission","Linked-image checking, not a new graph rewrite"
+producer:docs/reference/shared_compiler_passes.md:2296,Final limits selected from RTL and software documents,final-segment; target-adapters,"Limits, continuation and decoder are selected original contracts"
+producer:docs/reference/shared_compiler_passes.md:2429,Complete-domain counted row softmax,row-softmax,Complete row schedule and explicit numerical policy
+producer:docs/reference/shared_compiler_passes.md:2515,Complete rows selected from RTL and software documents,row-softmax; target-adapters,No independently approved physical/numerical theorem inferred
+producer:docs/reference/shared_compiler_passes.md:2635,Automatic source-row selection in model builds,"source-inventory: source_rows, automatic_rows, source_model","Discovery/selection wrappers, distinct from selected actual rewrite"
+producer:docs/reference/shared_compiler_passes.md:2771,Automatic source row normalization,row-normalize,Row-island scheduling is distinct from shape normalization and numeric redesign
+producer:docs/reference/shared_compiler_passes.md:2853,Existing mechanisms and remaining integration requirements,all broader rows; scope limits in coverage-review.md,Whole-model/global placement and backend implementations remain outside a universal graph claim
+producer:docs/reference/shared_compiler_passes.md:2875,Explicit finite staged dense effects,staged-load; staged-order; staged-stripe; shared-input,Finite staged effects; descriptor issue is not completion

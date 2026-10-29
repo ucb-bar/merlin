@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/agent-1-python/xdsl-0.68/bin/python",
+    "-I",
+    "-S",
+    "-B",
+    "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/run_admission_subset.py"
+  ],
+  "returncode": 0,
+  "seconds": 0.3714618331287056
+}

@@ -1,0 +1,8 @@
+{
+  "projection_checked": false,
+  "reason": {
+    "type": "ValueError",
+    "detail": "internal-call/fuel composition bridge unavailable; external contracts only"
+  },
+  "public_acceptance_issued": false
+}

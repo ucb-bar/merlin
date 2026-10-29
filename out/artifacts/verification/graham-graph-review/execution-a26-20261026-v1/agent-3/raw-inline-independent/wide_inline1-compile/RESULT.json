@@ -1,0 +1,23 @@
+{
+  "executed": true,
+  "command": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "-j1",
+    "-o",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-inline-complete-carry-v1/independent-query-v1/wide_inline1/Query.olean",
+    "Query.lean"
+  ],
+  "exit_code": 1,
+  "seconds": 0.7679450269788504,
+  "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+  "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw-inline-independent/wide_inline1-compile",
+  "stdout": {
+    "sha256": "b560201663daa3b9a1cac9389260e005a5c73285a5a6252d78d7f4ec5c7637be",
+    "bytes": 1182
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "first_error_excerpt": "Query.lean:51:6: error: Tactic `rewrite` failed: Did not find an occurrence of the pattern\n  Except.bind\n    (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n      (indexIterations \u21912147483650 \u21912147483651 \u21912) ?values ?world)\n    fun result => evalProgram (M primitive external) N (result.fst ++ E primitive x0 x1) result.snd\nin the target expression\n  (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\nWorld Error : Type\nprimitive : Prim \u2192 List Int \u2192 Int\nexternal : External World Error registry\nx0 x1 : Int\nworld : World\n\u22a2 (Except.bind\n      (loopEval 1 (fun i c w => evalProgram (M primitive external) B (i :: c ++ E primitive x0 x1) w)\n        (indexIterations 2147483650 2147483651 2) [x0] world)\n      fun r => evalProgram (M primitive external) N (r.fst ++ E primitive x0 x1) r.snd) =\n    evalProgram (M primitive external) S1 [x0, x1] world\n\n"
+}

@@ -1,0 +1,474 @@
+{
+ "external_imports": [
+  "Init",
+  "Init.Data.List.Lemmas",
+  "Lean.Elab.Tactic.Omega"
+ ],
+ "merlin_modules": 27,
+ "violation_total": 0,
+ "queries": [
+  {
+   "path": "out/artifacts/verification/graham-graph-review/deliverable-3/axiom-audit/roots/IntegerExtraRoots.lean",
+   "sha256": "e5221ebce3d72baa1f017386863725438203bd77cab17d7e779e73313c9181d0",
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  }
+ ],
+ "files": [
+  {
+   "module": "Merlin.GraphLoopsSegment",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+   "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+   "lines": 169,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 42,
+     "token": "private",
+     "text": "private theorem block_end (lower step tile : Nat) :"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsSegmentBounds",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+   "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+   "lines": 81,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 23,
+     "token": "instance",
+     "text": "instance (bounds : Bounds) : Decidable bounds.Valid :="
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsSegmentModel",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+   "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+   "lines": 134,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 63,
+     "token": "instance",
+     "text": "instance (projection : Projection) : Decidable (Numeric projection) :="
+    },
+    {
+     "line": 66,
+     "token": "instance",
+     "text": "instance (projection : Projection) : Decidable (Structural projection) :="
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsSegmentState",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+   "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+   "lines": 39,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsUnroll",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+   "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+   "lines": 112,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 24,
+     "token": "instance",
+     "text": "instance (lower upper step count : Nat) : Decidable (CountCorrect lower upper step count) := by"
+    },
+    {
+     "line": 27,
+     "token": "private",
+     "text": "private theorem next_end (lower step count : Nat) :"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsUnrollBounds",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+   "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+   "lines": 105,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 27,
+     "token": "instance",
+     "text": "instance (b : Bounds) : Decidable b.Valid :="
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphLoopsUnrollGrouping",
+   "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+   "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+   "lines": 167,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateIntegerCode",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean",
+   "sha256": "9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697",
+   "lines": 143,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 21,
+     "token": "opaque",
+     "text": "Relation registry environment results (.opaque identity first outputs next) (.opaque identity second outputs later)"
+    },
+    {
+     "line": 21,
+     "token": "opaque",
+     "text": "Relation registry environment results (.opaque identity first outputs next) (.opaque identity second outputs later)"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateIntegerCountermodels",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerCountermodels.lean",
+   "sha256": "83249dfd93f8e4e472ba9b4d450a55aa60d6f4a5a730e83349e912e37f494dd2",
+   "lines": 77,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 50,
+     "token": "opaque",
+     "text": "def withProvider : Program := .opaque 0 [] [.bits 8] addZero"
+    },
+    {
+     "line": 51,
+     "token": "opaque",
+     "text": "def liftedProvider : Program := .opaque 0 [] [.bits 8] unchanged"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateIntegerExpressions",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean",
+   "sha256": "a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26",
+   "lines": 158,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateIntegerModels",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerModels.lean",
+   "sha256": "8232ab65cb3e8b4c903b9aba8d2f161070917e7831ea42881841c9a379b8440c",
+   "lines": 118,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 61,
+     "token": "opaque",
+     "text": "| .index | .opaque _ => 17"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateIntegerOperations",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+   "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+   "lines": 111,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateIntegerProgram",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean",
+   "sha256": "43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b",
+   "lines": 79,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateIntegerRepresentation",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+   "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+   "lines": 139,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 15,
+     "token": "opaque",
+     "text": "| .index,_ | .opaque _,_ => True"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateIntegerTrace",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean",
+   "sha256": "927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25",
+   "lines": 111,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 27,
+     "token": "opaque",
+     "text": "| .opaque identity arguments _ next,environment,world =>"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStatePipelineControl",
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+   "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+   "lines": 111,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStatePipelineFailure",
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+   "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+   "lines": 89,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStatePipelineIndex",
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+   "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+   "lines": 147,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStatePipelineProgram",
+   "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+   "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+   "lines": 66,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalar",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+   "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+   "lines": 80,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalarContract",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+   "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+   "lines": 163,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 13,
+     "token": "opaque",
+     "text": "| opaque (identity : Nat)"
+    },
+    {
+     "line": 71,
+     "token": "opaque",
+     "text": "| opaque (identity : Nat) (arguments : List Nat) (results : List Ty) (next : Program)"
+    },
+    {
+     "line": 77,
+     "token": "opaque",
+     "text": "| opaque (identity : Nat) (arguments : List Expr) (results : List Ty) (next : Code)"
+    },
+    {
+     "line": 131,
+     "token": "opaque",
+     "text": "| .opaque identity arguments _ next,environment,world =>"
+    },
+    {
+     "line": 145,
+     "token": "opaque",
+     "text": "| .opaque identity arguments _ next,environment,world =>"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalarInitialized",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+   "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+   "lines": 217,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 137,
+     "token": "opaque",
+     "text": "| .opaque identity arguments _ next,environment,world => Present environment arguments \u2227"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalarNormalize",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+   "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+   "lines": 120,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 35,
+     "token": "opaque",
+     "text": "| symbols,.opaque identity arguments results next => do"
+    },
+    {
+     "line": 39,
+     "token": "opaque",
+     "text": "return .opaque identity operands results rest"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalarSound",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+   "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+   "lines": 169,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 85,
+     "token": "opaque",
+     "text": "| \u00abopaque\u00bb identity arguments results next ih =>"
+    },
+    {
+     "line": 94,
+     "token": "opaque",
+     "text": "have equal : Code.opaque identity expressions results continuation = code := by"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.GraphStateScalarTyping",
+   "path": "src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+   "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+   "lines": 116,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 37,
+     "token": "opaque",
+     "text": "Typed registry environment results (.opaque identity arguments outputs next)"
+    },
+    {
+     "line": 49,
+     "token": "opaque",
+     "text": "| environment,results,.opaque identity arguments outputs next =>"
+    },
+    {
+     "line": 90,
+     "token": "opaque",
+     "text": "| \u00abopaque\u00bb identity arguments outputs next ih =>"
+    }
+   ],
+   "set_option": [
+    "set_option autoImplicit false"
+   ]
+  },
+  {
+   "module": "Merlin.ResourceGeometry",
+   "path": "src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+   "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+   "lines": 69,
+   "violation_hits": [],
+   "context_hits": [],
+   "set_option": []
+  },
+  {
+   "module": "Merlin.StateEffects",
+   "path": "src/merlin/verify/lean/Merlin/StateEffects.lean",
+   "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+   "lines": 90,
+   "violation_hits": [],
+   "context_hits": [
+    {
+     "line": 27,
+     "token": "instance",
+     "text": "instance (first second : List Nat) : Decidable (Disjoint first second) :="
+    },
+    {
+     "line": 35,
+     "token": "instance",
+     "text": "instance (first second : Footprint) : Decidable (Independent first second) :="
+    }
+   ],
+   "set_option": []
+  }
+ ]
+}

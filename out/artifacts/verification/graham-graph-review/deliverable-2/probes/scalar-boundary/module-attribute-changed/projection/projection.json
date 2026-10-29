@@ -1,0 +1,8 @@
+{
+  "projection_checked": false,
+  "reason": {
+    "type": "ValueError",
+    "detail": "complete surrounding module metadata changed"
+  },
+  "public_acceptance_issued": false
+}

@@ -1,0 +1,10 @@
+{
+  "case": "unroll-inline_empty",
+  "route": "unroll",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/unroll-inline_empty/unroll.model.json",
+  "sha256": "37ba59fba56515fdece8244cc9c3d8eeae1d9af00608429bba9140c283b48dd1"
+}

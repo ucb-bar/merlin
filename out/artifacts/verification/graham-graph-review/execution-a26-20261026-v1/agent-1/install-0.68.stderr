@@ -1,0 +1,10 @@
+Using Python 3.12.3 environment at: out/build/verification-a26-20261026-v1/agent-1-python/xdsl-0.68
+Resolved 4 packages in 332ms
+Downloading xdsl (4.3MiB)
+ Downloaded xdsl
+Prepared 4 packages in 454ms
+Installed 4 packages in 16ms
+ + immutabledict==4.3.1
+ + ordered-set==4.1.0
+ + typing-extensions==4.16.0
+ + xdsl==0.68.0

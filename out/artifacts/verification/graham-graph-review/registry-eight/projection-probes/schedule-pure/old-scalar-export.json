@@ -1,0 +1,10 @@
+{
+  "case": "schedule-pure",
+  "route": "old-scalar-export",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/schedule-pure/old-scalar-export.model.json",
+  "sha256": "426c033b235b5b7b5f321441c95814c1af0ede8b7c5f52fd8ff10488e464a70c"
+}

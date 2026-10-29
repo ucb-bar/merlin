@@ -1,0 +1,108 @@
+{
+  "reviewer": "Graham independent review (agent)",
+  "date": "2026-10-26",
+  "positive_query_sha256": "afd557e3947928aa4ee187750ec647ffe22daba059704a59d5610deda623dfd6",
+  "rows": [
+    {
+      "mutation": "untouched-function-constant",
+      "replaced": "<{value = 1 : i32}> : () -> i32\n    %result = \"arith.addi\"(%input",
+      "with": "<{value = 2 : i32}> : () -> i32\n    %result = \"arith.addi\"(%input",
+      "after_sha256": "6001f84bdb04074cd648608ce6d123a70e029b3cae7a5a432ecbe5d610acb144",
+      "capture_returncode": 0,
+      "python_matcher": "refused: retained operation/observer/capture/metadata changed",
+      "layer": "trusted Python matcher",
+      "counterfactual_query_identical_to_positive": true,
+      "reviewer_spec_vs_mutant": "root[2][5][0][0][1][0][1][0][1]: '1:i32' != '2:i32'",
+      "reviewer_semantics_differs_from_original": false,
+      "reviewer_semantics_sample": {
+        "original": "(('ok', (142, 2)), 105, (('touch', (34, 'buffer')), ('touch', (68, 'buffer'))))",
+        "mutant": "(('ok', (142, 2)), 105, (('touch', (34, 'buffer')), ('touch', (68, 'buffer'))))"
+      }
+    },
+    {
+      "mutation": "callee-body-addi-to-subi",
+      "replaced": "%new = \"arith.addi\"(%old, %value)",
+      "with": "%new = \"arith.subi\"(%old, %value)",
+      "after_sha256": "8525bd76d458470d66466e41832db9363e04aee389e5e79b77ff5170f63eb70e",
+      "capture_returncode": 0,
+      "python_matcher": "refused: retained operation/observer/capture/metadata changed",
+      "layer": "trusted Python matcher",
+      "counterfactual_query_identical_to_positive": true,
+      "reviewer_spec_vs_mutant": "root[1][5][0][0][1][2][0]: 'arith.addi' != 'arith.subi'",
+      "reviewer_semantics_differs_from_original": true,
+      "reviewer_semantics_sample": {
+        "original": "(('ok', (142, 2)), 105, (('touch', (34, 'buffer')), ('touch', (68, 'buffer'))))",
+        "mutant": "(('ok', (4294967166, 2)), 4294967197, (('touch', (34, 'buffer')), ('touch', (68, 'buffer'))))"
+      }
+    },
+    {
+      "mutation": "second-initializer-stores-seed0",
+      "replaced": "\"memref.store\"(%seed1, %buffer0, %9, %iv1)",
+      "with": "\"memref.store\"(%seed0, %buffer0, %9, %iv1)",
+      "after_sha256": "a3a11876b44a973716e810cc7a84832556f266f0894426501e07e0d950a42171",
+      "capture_returncode": 0,
+      "python_matcher": "refused: retained operation/observer/capture/metadata changed",
+      "layer": "trusted Python matcher",
+      "counterfactual_query_identical_to_positive": true,
+      "reviewer_spec_vs_mutant": "root[0][5][0][0][1][14][5][0][0][1][2][5][0][0][1][0][5][0][0][1][0][2][0]: 'v1' != 'v0'",
+      "reviewer_semantics_differs_from_original": true,
+      "reviewer_semantics_sample": {
+        "original": "(('ok', (142, 2)), 105, (('touch', (34, 'buffer')), ('touch', (68, 'buffer'))))",
+        "mutant": "(('ok', (125, 2)), 88, (('touch', (34, 'buffer')), ('touch', (51, 'buffer'))))"
+      }
+    },
+    {
+      "mutation": "second-observer-reads-value0",
+      "replaced": "\"func.call\"(%value1, %caller)",
+      "with": "\"func.call\"(%value0, %caller)",
+      "after_sha256": "e4154c4c179492a57d40248cb36e4ec24beaf84db7477ab1ec02ff3a2cabe9f1",
+      "capture_returncode": 0,
+      "python_matcher": "refused: retained operation/observer/capture/metadata changed",
+      "layer": "trusted Python matcher",
+      "counterfactual_query_identical_to_positive": true,
+      "reviewer_spec_vs_mutant": "root[0][5][0][0][1][20][2][0]: 'v27' != 'v16'",
+      "reviewer_semantics_differs_from_original": true,
+      "reviewer_semantics_sample": {
+        "original": "(('ok', (142, 2)), 105, (('touch', (34, 'buffer')), ('touch', (68, 'buffer'))))",
+        "mutant": "(('ok', (108, 2)), 71, (('touch', (34, 'buffer')), ('touch', (34, 'buffer'))))"
+      }
+    },
+    {
+      "mutation": "first-min-upper-operand-one",
+      "replaced": "%3 = \"arith.minui\"(%2, %bound0)",
+      "with": "%3 = \"arith.minui\"(%2, %one)",
+      "after_sha256": "4832abc1f23ae834a76d4cf8692b5f7991ffab8dbcbbd9936abcf35b744a8ee2",
+      "capture_returncode": 0,
+      "python_matcher": "accepted",
+      "query_identical_to_positive": false,
+      "reviewer_eval_of_Lean_Structural_min_operands": [
+        false,
+        true
+      ],
+      "layer": "Lean Structural predicate (python emits model)",
+      "counterfactual_query_identical_to_positive": false,
+      "reviewer_spec_vs_mutant": "root[0][5][0][0][1][6][5][0][0][1][1][2][1]: 'v5' != 'v4'",
+      "reviewer_semantics_differs_from_original": false,
+      "reviewer_semantics_sample": {
+        "original": "(('ok', (142, 2)), 105, (('touch', (34, 'buffer')), ('touch', (68, 'buffer'))))",
+        "mutant": "(('ok', (142, 2)), 105, (('touch', (34, 'buffer')), ('touch', (68, 'buffer'))))"
+      }
+    },
+    {
+      "mutation": "final-free-removed",
+      "replaced": "    \"memref.dealloc\"(%buffer0) : (memref<2x3xi32>) -> ()\n    %result",
+      "with": "    %result",
+      "after_sha256": "bf446746e3748fdc7613393bc017f1257a37e6433015e77d417efa9859846a81",
+      "capture_returncode": 0,
+      "python_matcher": "refused: retained operation/observer/capture/metadata changed",
+      "layer": "trusted Python matcher",
+      "counterfactual": "refused elsewhere: SSA result/argument arity/type changed",
+      "reviewer_spec_vs_mutant": "root[0][5][0][0][1]: length 24 != 23: (('arith.constant', (('value', '0:index'),), (), (), ('index',), ()), ('arith.constant', (('value', '1:index'),), (), (), ('index',), ()), ('arith.constant', (('value', '2:index'),), (), (), ('index', / (('arith.constant', (('value', '0:index'),), (), (), ('index',), ()), ('arith.constant', (('value', '1:index'),), (), (), ('index',), ()), ('arith.constant', (('value', '2:index'),), (), (), ('index',",
+      "reviewer_semantics_differs_from_original": false,
+      "reviewer_semantics_sample": {
+        "original": "(('ok', (142, 2)), 105, (('touch', (34, 'buffer')), ('touch', (68, 'buffer'))))",
+        "mutant": "(('ok', (142, 2)), 105, (('touch', (34, 'buffer')), ('touch', (68, 'buffer'))))"
+      }
+    }
+  ]
+}

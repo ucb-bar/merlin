@@ -1,0 +1,10 @@
+{
+  "case": "reuse-dynamic-access",
+  "route": "reuse",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_refused",
+  "reason_type": "ValueError",
+  "reason": "this mode requires static nonnegative access/control indices"
+}

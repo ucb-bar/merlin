@@ -1,0 +1,136 @@
+{
+  "argv": [
+    "/home/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+    "-shared",
+    "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model_host.o",
+    "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/mlir_runtime_host.o",
+    "-lm",
+    "-o",
+    "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model_host.so"
+  ],
+  "cwd": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake",
+  "dependencies": [
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/upstreams/merlin-graph-proof-intake/src/merlin/llvmlower/codegen.py",
+      "sha256": "8ce0fdc33b97ff44301469cc521480f0a7162e6161c5fa2b1e9ab1ab5b40f1ba"
+    }
+  ],
+  "dependencies_unchanged": true,
+  "environment": {
+    "keys": [
+      "AI_AGENT",
+      "CBORG_API_KEY",
+      "CLAUDECODE",
+      "CLAUDE_AGENT_SDK_VERSION",
+      "CLAUDE_CODE_CHILD_SESSION",
+      "CLAUDE_CODE_EMIT_STARTUP_TIMING",
+      "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING",
+      "CLAUDE_CODE_ENABLE_TASKS",
+      "CLAUDE_CODE_ENTRYPOINT",
+      "CLAUDE_CODE_EXECPATH",
+      "CLAUDE_CODE_MESSAGING_SOCKET",
+      "CLAUDE_CODE_MESSAGING_TOKEN",
+      "CLAUDE_CODE_QUESTION_PREVIEW_FORMAT",
+      "CLAUDE_CODE_SESSION_ATTENDED",
+      "CLAUDE_CODE_SESSION_ID",
+      "CLAUDE_EFFORT",
+      "CLAUDE_PID",
+      "COREPACK_ENABLE_AUTO_PIN",
+      "DBUS_SESSION_BUS_ADDRESS",
+      "DEBUGINFOD_URLS",
+      "DISPLAY",
+      "ELECTRON_RUN_AS_NODE",
+      "GIT_EDITOR",
+      "HOME",
+      "HOSTTYPE",
+      "LANG",
+      "LD_LIBRARY_PATH",
+      "LESSCLOSE",
+      "LESSOPEN",
+      "LOGNAME",
+      "LS_COLORS",
+      "MCP_CONNECTION_NONBLOCKING",
+      "MERLIN_BOARD_CATALOG",
+      "MERLIN_CLANG",
+      "MERLIN_COMPILER_DRIVER",
+      "MERLIN_COMPILER_PYTHON",
+      "MERLIN_MLIR_INSTALL",
+      "MERLIN_MLIR_TRANSLATE",
+      "MERLIN_TARGET_PATH",
+      "MOTD_SHOWN",
+      "NAME",
+      "NoDefaultCurrentDirectoryInExePath",
+      "OLDPWD",
+      "PATH",
+      "PULSE_SERVER",
+      "PWD",
+      "PYTEST_CURRENT_TEST",
+      "PYTEST_VERSION",
+      "PYTHONPATH",
+      "SHELL",
+      "SHLVL",
+      "TEMP",
+      "TERM",
+      "TMP",
+      "TMPDIR",
+      "USER",
+      "VSCODE_CWD",
+      "VSCODE_ESM_ENTRYPOINT",
+      "VSCODE_HANDLES_SIGPIPE",
+      "VSCODE_HANDLES_UNCAUGHT_ERRORS",
+      "VSCODE_IPC_HOOK_CLI",
+      "VSCODE_L10N_BUNDLE_LOCATION",
+      "VSCODE_NLS_CONFIG",
+      "VSCODE_RECONNECTION_GRACE_TIME",
+      "VSCODE_WSL_EXT_LOCATION",
+      "WAYLAND_DISPLAY",
+      "WSL2_GUI_APPS_ENABLED",
+      "WSLENV",
+      "WSL_DISTRO_NAME",
+      "WSL_INTEROP",
+      "XDG_DATA_DIRS",
+      "XDG_RUNTIME_DIR",
+      "_"
+    ],
+    "schema": "merlin.process_environment.v1",
+    "scope": "complete effective mapping; values withheld; transitive dependencies unproved",
+    "sha256": "410248841ee0be07bb6c449c0f84d6daec9375080e582256b608e3637faf0069"
+  },
+  "executable": {
+    "path": "/home/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+    "sha256": "a0bb31daf5e73b46d423aba142fe9d5d32b05a321cc2b274ed431a26b2377568"
+  },
+  "executable_unchanged": true,
+  "finished_ns": 1792996379089573526,
+  "inputs": [
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/mlir_runtime_host.o",
+      "sha256": "11c47d5df59ee24883929043e6194cc9ea9ac9019cb3047a2629acf7f52dfe88"
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model_host.o",
+      "sha256": "895b674457f0ddfeda3d6b4487207f8d10ef489c4c2e70b6a312f8927692212b"
+    }
+  ],
+  "inputs_unchanged": true,
+  "kind": "subprocess",
+  "outputs": [
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/model_host.so",
+      "sha256": "0c088945add3aa408f0c498ca8ab6c588eb34e4753036666c42e616ce7a41752"
+    }
+  ],
+  "returncode": 0,
+  "schema": "merlin.invocation_record.v1",
+  "stage": "link",
+  "started_ns": 1792996379038378878,
+  "status": "completed",
+  "stderr": {
+    "path": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/9e899a72226a4fdcb14f61240fdee4d7/stderr.bin",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "path": "/home/grammy/blast/merlin-pass-verification/out/build/verification-setup/graham-d1-suite/20261026T063236Z/test_ordinary_native_row_batch0/baseline/invocations/9e899a72226a4fdcb14f61240fdee4d7/stdout.bin",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

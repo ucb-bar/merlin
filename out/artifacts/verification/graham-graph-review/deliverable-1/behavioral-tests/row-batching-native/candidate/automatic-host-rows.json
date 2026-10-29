@@ -1,0 +1,22 @@
+{
+  "diagnostic": "no closed normalization passes the conservative graph cost checks; original lowering retained",
+  "hardware_identity": null,
+  "index_bits": 64,
+  "library_sources_sha256": {
+    "merlin.llvmlower.automatic_rows": "8c185e436929a2c057ab5a903eb4a3c89c8da29ffcb637f17c64b53dd758aa71",
+    "merlin.llvmlower.lower": "9a5193e8895d01f41494422db2a9491935a77b85bdc3bc3a1d902b63cacb6c89",
+    "merlin.llvmlower.optional_passes": "d5b3c249000c7c26df315013c90dd512561b89f56664084c873de7b1536df508",
+    "merlin.llvmlower.pipeline": "4d4dde99be6aded6305e1d6c3e911756a4261c685cb113edfbf8fe0f152e6309",
+    "merlin.transforms.pipeline": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0",
+    "merlin.transforms.pipeline_state": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+    "merlin.transforms.row_normalization": "73e9307bac8e5773a8e0282a480f62df7504501dd22947ef005665aff391387b",
+    "merlin.transforms.row_normalization_check": "951f2169e873870b83413ecd219c4dfaf01baf8613b9b798693189a902460415"
+  },
+  "machine_conformance": "not_established",
+  "output_file_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+  "rewrites": 0,
+  "schema": "merlin.automatic_host_rows.v1",
+  "source_candidates": {},
+  "source_file_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+  "upstream_file_sha256": "7bd9b6bf4efcbe9762934f6046477c2d626fc03bd21761ca92238e6dccfca799"
+}

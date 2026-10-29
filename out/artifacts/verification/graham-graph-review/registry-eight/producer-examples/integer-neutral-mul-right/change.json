@@ -1,0 +1,28 @@
+{
+  "kind": "exact_integer_simplification",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %c = \"arith.constant\"() <{value = 1 : i8}> : () -> i8\n    %r = \"arith.muli\"(%a, %c) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %c = \"arith.constant\"() <{value = 1 : i8}> : () -> i8\n    \"func.return\"(%a) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {},
+  "certificate": {
+    "kind": "exact_integer_simplification",
+    "before_ir_sha256": "3e83714d3a1ffd26cb4ee04032a3eb6d343c1c80af88f0b91fde42ad5e48dd2b",
+    "after_ir_sha256": "86074e2373cb2a40e3ca12cc19584a397dabb8cb7ec47390efb705d01b9614ca",
+    "witnesses": [
+      {
+        "kind": "integer",
+        "operation_index": 3,
+        "operation": "arith.muli",
+        "rule": "neutral_operand",
+        "width": 8,
+        "lhs": null,
+        "rhs": 1,
+        "result": null,
+        "retained_operand": 0
+      }
+    ],
+    "scope": [
+      "scalar_signless_wrapping_integers"
+    ],
+    "schema": "merlin.shared_transform.v1"
+  }
+}

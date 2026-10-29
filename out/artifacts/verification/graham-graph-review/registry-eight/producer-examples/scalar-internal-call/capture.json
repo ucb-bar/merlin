@@ -1,0 +1,39 @@
+{
+  "case": "scalar-internal-call",
+  "kind": "scalar_redundancy_elimination",
+  "options": {
+    "eliminate_redundancy": true
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "dce"
+  ],
+  "witness_count": 1,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 487,
+      "sha256": "88a756ecf44ad4ec95538c152763b65bbdacfe151f80f554d9bc264acfc58f1e"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 580,
+      "sha256": "833c186691f003db4c01d9278078e56ed938d32add58c8aaa7d4ff5994c01acb"
+    },
+    {
+      "path": "change.json",
+      "bytes": 2003,
+      "sha256": "9e6302813394cdfa7f06cda3539b0e5ee7baec5eb45f6be84f59ad3f2b35aa1b"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 250,
+      "sha256": "08234f16f78011b7839de7382fd909e0566c7dae57e783622fc619e476fc54d0"
+    }
+  ]
+}

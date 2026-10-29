@@ -1,0 +1,28 @@
+{
+  "kind": "exact_integer_simplification",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %x = \"arith.constant\"() <{value = 127 : i8}> : () -> i8\n    %y = \"arith.constant\"() <{value = 3 : i8}> : () -> i8\n    %r = \"arith.subi\"(%x, %y) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %x = \"arith.constant\"() <{value = 127 : i8}> : () -> i8\n    %y = \"arith.constant\"() <{value = 3 : i8}> : () -> i8\n    %r = \"arith.constant\"() <{value = 124 : i8}> : () -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {},
+  "certificate": {
+    "kind": "exact_integer_simplification",
+    "before_ir_sha256": "19575b652769be6c2a03dcab379cbe63220f61fd4aadc2988c87715d425c581b",
+    "after_ir_sha256": "f7513096268450ea4fb0cdcea677d8f0ae15ef9ca2e9b6c95061f8c15c61aef5",
+    "witnesses": [
+      {
+        "kind": "integer",
+        "operation_index": 4,
+        "operation": "arith.subi",
+        "rule": "constant_ring",
+        "width": 8,
+        "lhs": 127,
+        "rhs": 3,
+        "result": 124,
+        "retained_operand": null
+      }
+    ],
+    "scope": [
+      "scalar_signless_wrapping_integers"
+    ],
+    "schema": "merlin.shared_transform.v1"
+  }
+}

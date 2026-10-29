@@ -1,0 +1,7 @@
+{
+  "classification": "STATIC_SOURCE_PREFLIGHT",
+  "units": 327,
+  "problems": [],
+  "native_execution": false,
+  "scanner_note": "Comments and strings are excluded. Opaque and initialize IR constructors are allowed; actual declaration-command starts remain refused. Earlier naive token/comment classification false positives were an own-audit issue, not candidate failures."
+}

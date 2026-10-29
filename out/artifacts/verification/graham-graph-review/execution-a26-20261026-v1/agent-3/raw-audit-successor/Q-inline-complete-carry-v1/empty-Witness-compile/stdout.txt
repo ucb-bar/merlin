@@ -1,0 +1,506 @@
+Witness.lean:56:13: warning: This simp argument is unused:
+  B
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,
+    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
+    Option.getD_none, Except.bind, List.length_cons, List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:56:22: warning: This simp argument is unused:
+  progression
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [B, N, E, S1, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,
+    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
+    Option.getD_none, Except.bind, List.length_cons, List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:56:299: warning: This simp argument is unused:
+  Option.getD_none
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,
+    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Except.bind,
+    List.length_cons, List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:56:328: warning: This simp argument is unused:
+  List.length_cons
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,
+    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
+    Option.getD_none, Except.bind, List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:56:345: warning: This simp argument is unused:
+  List.length_nil
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,
+    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
+    Option.getD_none, Except.bind, List.length_cons, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:56:361: warning: This simp argument is unused:
+  ↓reduceIte
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,
+    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
+    Option.getD_none, Except.bind, List.length_cons, List.length_nil, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:56:372: warning: This simp argument is unused:
+  loopEval
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [B, N, E, S1, progression, List.map_cons, List.map_nil, M, indexModel, indexEffect, controls,
+    Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep, evalProgram, reads, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
+    Option.getD_none, Except.bind, List.length_cons, List.length_nil, ↓reduceIte]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:17: warning: This simp argument is unused:
+  step0
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,
+    List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:23: warning: This simp argument is unused:
+  M
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,
+    List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:25: warning: This simp argument is unused:
+  indexModel
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,
+    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:36: warning: This simp argument is unused:
+  indexEffect
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,
+    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:48: warning: This simp argument is unused:
+  controls
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,
+    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:57: warning: This simp argument is unused:
+  Merlin.GraphState.Pipeline.controlAt
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, IndexOp.eval, opaqueStep, evalProgram, reads,
+    List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ,
+    Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:94: warning: This simp argument is unused:
+  IndexOp.eval
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, opaqueStep,
+    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:107: warning: This simp argument is unused:
+  opaqueStep
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:118: warning: This simp argument is unused:
+  evalProgram
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:130: warning: This simp argument is unused:
+  reads
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:136: warning: This simp argument is unused:
+  List.map_cons
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:150: warning: This simp argument is unused:
+  List.map_nil
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:163: warning: This simp argument is unused:
+  List.cons_append
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:180: warning: This simp argument is unused:
+  List.nil_append
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:196: warning: This simp argument is unused:
+  List.getElem?_cons_zero
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:220: warning: This simp argument is unused:
+  List.getElem?_cons_succ
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:244: warning: This simp argument is unused:
+  Option.getD_some
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:261: warning: This simp argument is unused:
+  Option.getD_none
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:278: warning: This simp argument is unused:
+  Except.bind
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, List.length_cons,
+    List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:290: warning: This simp argument is unused:
+  List.length_cons
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:307: warning: This simp argument is unused:
+  List.length_nil
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:323: warning: This simp argument is unused:
+  ↓reduceIte
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,
+    List.length_nil, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:61:334: warning: This simp argument is unused:
+  loopEval
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,
+    List.length_nil, ↓reduceIte]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:17: warning: This simp argument is unused:
+  step0
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,
+    List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:23: warning: This simp argument is unused:
+  M
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,
+    List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:25: warning: This simp argument is unused:
+  indexModel
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,
+    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:36: warning: This simp argument is unused:
+  indexEffect
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,
+    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:48: warning: This simp argument is unused:
+  controls
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval, opaqueStep,
+    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:57: warning: This simp argument is unused:
+  Merlin.GraphState.Pipeline.controlAt
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, IndexOp.eval, opaqueStep, evalProgram, reads,
+    List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero, List.getElem?_cons_succ,
+    Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:94: warning: This simp argument is unused:
+  IndexOp.eval
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, opaqueStep,
+    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:107: warning: This simp argument is unused:
+  opaqueStep
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:118: warning: This simp argument is unused:
+  evalProgram
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:130: warning: This simp argument is unused:
+  reads
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, List.map_cons, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:136: warning: This simp argument is unused:
+  List.map_cons
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_nil, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:150: warning: This simp argument is unused:
+  List.map_nil
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.cons_append, List.nil_append, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:220: warning: This simp argument is unused:
+  List.getElem?_cons_succ
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, Option.getD_some, Option.getD_none, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:261: warning: This simp argument is unused:
+  Option.getD_none
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Except.bind, List.length_cons, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:278: warning: This simp argument is unused:
+  Except.bind
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, List.length_cons,
+    List.length_nil, ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:290: warning: This simp argument is unused:
+  List.length_cons
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_nil,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:307: warning: This simp argument is unused:
+  List.length_nil
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,
+    ↓reduceIte, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:323: warning: This simp argument is unused:
+  ↓reduceIte
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,
+    List.length_nil, loopEval]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:68:334: warning: This simp argument is unused:
+  loopEval
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [step0, M, indexModel, indexEffect, controls, Merlin.GraphState.Pipeline.controlAt, IndexOp.eval,
+    opaqueStep, evalProgram, reads, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Option.getD_none, Except.bind, List.length_cons,
+    List.length_nil, ↓reduceIte]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+Witness.lean:119:152: error: Type mismatch
+  rfl
+has type
+  ?m.31 = ?m.31
+but is expected to have type
+  evalProgram (M wordPrimitive (chosen none false false)) F3.S0 [3, 2] 7 = Except.ok ([3], 8)
+Witness.lean:131:172: error: Type mismatch
+  rfl
+has type
+  ?m.30 = ?m.30
+but is expected to have type
+  evalProgram (M wordPrimitive (chosen none true false)) F3.S0 [3, 2] 7 = Except.error (Fault.external 17, 8)
+Witness.lean:143:168: error: Type mismatch
+  rfl
+has type
+  ?m.31 = ?m.31
+but is expected to have type
+  evalProgram (M wordPrimitive (chosen none false true)) F3.S0 [3, 2] 7 = Except.ok ([3], 8)

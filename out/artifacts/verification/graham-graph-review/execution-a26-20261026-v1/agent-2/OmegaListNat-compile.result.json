@@ -1,0 +1,17 @@
+{
+  "command": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "-j1",
+    "-o",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/OmegaListNat.olean",
+    "-i",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/OmegaListNat.ilean",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics/OmegaListNat.lean"
+  ],
+  "cwd": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics",
+  "started_utc": "2026-10-27T00:38:22.950673+00:00",
+  "timeout_seconds": 90,
+  "returncode": 0,
+  "elapsed_seconds": 0.464591097086668,
+  "child_reaped": true
+}

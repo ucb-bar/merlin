@@ -1,0 +1,13 @@
+{
+  "probe": "indirect-local-call as five stages",
+  "outcome": "projection admitted",
+  "registry_size": 2,
+  "registry_op_names": [
+    "[\"dictionary\", [[\"op_name__\", [\"data-attribute\", \"xdsl.dialects.builtin.StringAttr\", \"string\", [\"str\", \"func.call_indirect\"]]]]]",
+    "[\"dictionary\", [[\"op_name__\", [\"data-attribute\", \"xdsl.dialects.builtin.StringAttr\", \"string\", [\"str\", \"func.constant\"]]]]]"
+  ],
+  "defined_functions": [
+    "callee",
+    "k"
+  ]
+}

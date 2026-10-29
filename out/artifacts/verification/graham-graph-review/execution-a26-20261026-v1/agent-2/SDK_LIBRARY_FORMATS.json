@@ -1,0 +1,172 @@
+{
+  "rows": [
+    {
+      "index": 0,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 1,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libunwind.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 2,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libatomic.so.1",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 3,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libgcc_s.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 4,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libunwind.so.1.0",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 5,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++.so",
+      "ELF": false,
+      "prefix_if_not_ELF": "INPUT(libc++.so.1 -lc++abi -lunwind)\n"
+    },
+    {
+      "index": 6,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++abi.so.1.0",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 7,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++abi.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 8,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++.so.1.0",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 9,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libunwind.so.1",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 10,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libLLVM.so.23.1",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 11,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libInit_shared.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 12,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_2.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 13,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared_1.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 14,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libLake_shared.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 15,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 16,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libz.so.1.2.11",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 17,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libLLVM-23.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 18,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libgcc_s.so.1",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 19,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++.so.1",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 20,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libz.so.1",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 21,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libLLVM.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 22,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libatomic.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 23,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libz.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 24,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libclang-cpp.so.23.1",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 25,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libc++abi.so.1",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 26,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libatomic.so.1.2.0",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    },
+    {
+      "index": 27,
+      "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/libclang-cpp.so",
+      "ELF": true,
+      "prefix_if_not_ELF": null
+    }
+  ]
+}

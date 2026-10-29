@@ -1,0 +1,130 @@
+GraphShapeObligation.valid : Merlin.GraphLoopsShape.Model.Valid GraphShapeObligation.actual
+'GraphShapeObligation.valid' depends on axioms: [propext, Classical.choice, Quot.sound]
+GraphShapeObligation.accepted : Merlin.GraphLoopsShape.Model.check GraphShapeObligation.actual = true
+'GraphShapeObligation.accepted' depends on axioms: [propext, Classical.choice, Quot.sound]
+@GraphShapeObligation.complete : ∀ {Value World : Type} (meaning : Merlin.GraphLoopsShape.Interpretation Value World)
+  (name : String) (inputs : List (Merlin.GraphLoopsShape.Runtime Value)) (before : World)
+  (outputs : List (Merlin.GraphLoopsShape.Runtime Value)) (after : World),
+  Merlin.GraphLoopsShape.complete meaning GraphShapeObligation.actual.module false name inputs before outputs after ↔
+    Merlin.GraphLoopsShape.complete meaning GraphShapeObligation.actual.module true name inputs before outputs after
+'GraphShapeObligation.complete' depends on axioms: [propext, Classical.choice, Quot.sound]
+@GraphShapeObligation.memory : ∀ {Value Public : Type}
+  (meaning : Merlin.GraphLoopsShape.Interpretation Value (Merlin.GraphLoopsShape.MemoryWorld Value Public))
+  (classify : String → Merlin.GraphLoopsShape.MemoryOpcode) (name : String)
+  (inputs : List (Merlin.GraphLoopsShape.Runtime Value)) (before : Merlin.GraphLoopsShape.MemoryWorld Value Public)
+  (outputs : List (Merlin.GraphLoopsShape.Runtime Value)) (after : Merlin.GraphLoopsShape.MemoryWorld Value Public),
+  Merlin.GraphLoopsShape.complete (Merlin.GraphLoopsShape.withMemory meaning classify)
+      GraphShapeObligation.actual.module false name inputs before outputs after ↔
+    Merlin.GraphLoopsShape.complete (Merlin.GraphLoopsShape.withMemory meaning classify)
+      GraphShapeObligation.actual.module true name inputs before outputs after
+'GraphShapeObligation.memory' depends on axioms: [propext, Classical.choice, Quot.sound]
+@GraphShapeObligation.contextual : ∀ {Value World Outcome : Type}
+  (meaning : Merlin.GraphLoopsShape.Interpretation Value World)
+  (context : (String → Merlin.GraphLoopsShape.RegionMeaning Value World) → Outcome),
+  context (Merlin.GraphLoopsShape.complete meaning GraphShapeObligation.actual.module false) =
+    context (Merlin.GraphLoopsShape.complete meaning GraphShapeObligation.actual.module true)
+'GraphShapeObligation.contextual' depends on axioms: [propext, Classical.choice, Quot.sound]
+@GraphShapeObligation.call_depth : ∀ {Value World : Type} (meaning : Merlin.GraphLoopsShape.Interpretation Value World)
+  (depth : Nat),
+  Merlin.GraphLoopsShape.invoke meaning GraphShapeObligation.actual.module false depth =
+    Merlin.GraphLoopsShape.invoke meaning GraphShapeObligation.actual.module true depth
+'GraphShapeObligation.call_depth' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsShape.Model.checked_complete : ∀ {Value World : Type} {p : Merlin.GraphLoopsShape.Model.Projection},
+  Merlin.GraphLoopsShape.Model.check p = true →
+    ∀ (meaning : Merlin.GraphLoopsShape.Interpretation Value World) (name : String)
+      (inputs : List (Merlin.GraphLoopsShape.Runtime Value)) (before : World)
+      (outputs : List (Merlin.GraphLoopsShape.Runtime Value)) (after : World),
+      Merlin.GraphLoopsShape.complete meaning p.module false name inputs before outputs after ↔
+        Merlin.GraphLoopsShape.complete meaning p.module true name inputs before outputs after
+'Merlin.GraphLoopsShape.Model.checked_complete' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsShape.Model.checked_memory : ∀ {Value Public : Type} {p : Merlin.GraphLoopsShape.Model.Projection},
+  Merlin.GraphLoopsShape.Model.check p = true →
+    ∀ (base : Merlin.GraphLoopsShape.Interpretation Value (Merlin.GraphLoopsShape.MemoryWorld Value Public))
+      (classify : String → Merlin.GraphLoopsShape.MemoryOpcode) (name : String)
+      (inputs : List (Merlin.GraphLoopsShape.Runtime Value)) (before : Merlin.GraphLoopsShape.MemoryWorld Value Public)
+      (outputs : List (Merlin.GraphLoopsShape.Runtime Value)) (after : Merlin.GraphLoopsShape.MemoryWorld Value Public),
+      Merlin.GraphLoopsShape.complete (Merlin.GraphLoopsShape.withMemory base classify) p.module false name inputs
+          before outputs after ↔
+        Merlin.GraphLoopsShape.complete (Merlin.GraphLoopsShape.withMemory base classify) p.module true name inputs
+          before outputs after
+'Merlin.GraphLoopsShape.Model.checked_memory' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsShape.Model.checked_context : ∀ {Value World Outcome : Type}
+  {p : Merlin.GraphLoopsShape.Model.Projection},
+  Merlin.GraphLoopsShape.Model.check p = true →
+    ∀ (meaning : Merlin.GraphLoopsShape.Interpretation Value World)
+      (context : (String → Merlin.GraphLoopsShape.RegionMeaning Value World) → Outcome),
+      context (Merlin.GraphLoopsShape.complete meaning p.module false) =
+        context (Merlin.GraphLoopsShape.complete meaning p.module true)
+'Merlin.GraphLoopsShape.Model.checked_context' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsShape.Module.checked_calls : ∀ {Value World : Type} (module : Merlin.GraphLoopsShape.Module)
+  (bits : Nat),
+  Merlin.GraphLoopsShape.Module.Valid bits module →
+    ∀ (base : Merlin.GraphLoopsShape.Interpretation Value World) (depth : Nat),
+      Merlin.GraphLoopsShape.invoke base module false depth = Merlin.GraphLoopsShape.invoke base module true depth
+'Merlin.GraphLoopsShape.Module.checked_calls' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsShape.Module.checked_complete : ∀ {Value World : Type} (module : Merlin.GraphLoopsShape.Module)
+  (bits : Nat),
+  Merlin.GraphLoopsShape.Module.Valid bits module →
+    ∀ (base : Merlin.GraphLoopsShape.Interpretation Value World) (name : String)
+      (inputs : List (Merlin.GraphLoopsShape.Runtime Value)) (before : World)
+      (outputs : List (Merlin.GraphLoopsShape.Runtime Value)) (after : World),
+      Merlin.GraphLoopsShape.complete base module false name inputs before outputs after ↔
+        Merlin.GraphLoopsShape.complete base module true name inputs before outputs after
+'Merlin.GraphLoopsShape.Module.checked_complete' depends on axioms: [propext, Quot.sound]
+@Merlin.GraphLoopsShape.preservation : ∀ {Value World : Type}
+  (meaning : Merlin.GraphLoopsShape.Interpretation Value World) (bits : Nat) (code : Merlin.GraphLoopsShape.Code)
+  (expected : List Merlin.GraphLoopsShape.Kind) (context : Merlin.GraphLoopsShape.Context)
+  (aliases : Merlin.GraphLoopsShape.Aliases),
+  Merlin.GraphLoopsShape.Valid bits expected context aliases code →
+    ∀ (source target : Merlin.GraphLoopsShape.Env Value),
+      Merlin.GraphLoopsShape.Agreement context aliases source target →
+        ∀ (before : World) (outputs : List (Merlin.GraphLoopsShape.Runtime Value)) (after : World),
+          Merlin.GraphLoopsShape.Eval meaning false aliases code source before outputs after ↔
+            Merlin.GraphLoopsShape.Eval meaning true aliases code target before outputs after
+'Merlin.GraphLoopsShape.preservation' depends on axioms: [propext, Quot.sound]
+Merlin.GraphLoopsShape.identical_cast : ∀ (type : Merlin.GraphLoopsShape.ViewType)
+  (descriptor : Merlin.GraphLoopsShape.Descriptor),
+  Merlin.GraphLoopsShape.Conforms type descriptor → Merlin.GraphLoopsShape.Cast type type descriptor descriptor
+'Merlin.GraphLoopsShape.identical_cast' does not depend on any axioms
+@Merlin.GraphLoopsShape.static_dimension : ∀ {bits : Nat} {type : Merlin.GraphLoopsShape.ViewType}
+  {descriptor : Merlin.GraphLoopsShape.Descriptor} {axis result : Nat},
+  Merlin.GraphLoopsShape.Conforms type descriptor →
+    Merlin.GraphLoopsShape.ValidDimension bits type axis result →
+      Merlin.GraphLoopsShape.Dimension type descriptor axis result ∧ Merlin.GraphLoopsSegment.FitsSigned bits result
+'Merlin.GraphLoopsShape.static_dimension' depends on axioms: [propext, Classical.choice, Quot.sound]
+@Merlin.GraphLoopsShape.cast_address : ∀ {source target : Merlin.GraphLoopsShape.ViewType}
+  {before after : Merlin.GraphLoopsShape.Descriptor},
+  Merlin.GraphLoopsShape.Cast source target before after →
+    ∀ (indices : List Nat), Merlin.GraphLoopsShape.address after indices = Merlin.GraphLoopsShape.address before indices
+'Merlin.GraphLoopsShape.cast_address' depends on axioms: [propext]
+Merlin.GraphLoopsShape.Countermodels.same_type_different_allocation : Merlin.GraphLoopsShape.Conforms
+    Merlin.GraphLoopsShape.Countermodels.type Merlin.GraphLoopsShape.Countermodels.first ∧
+  Merlin.GraphLoopsShape.Conforms Merlin.GraphLoopsShape.Countermodels.type
+      Merlin.GraphLoopsShape.Countermodels.second ∧
+    Merlin.GraphLoopsShape.address Merlin.GraphLoopsShape.Countermodels.first [0, 0] ≠
+      Merlin.GraphLoopsShape.address Merlin.GraphLoopsShape.Countermodels.second [0, 0]
+'Merlin.GraphLoopsShape.Countermodels.same_type_different_allocation' depends on axioms: [propext]
+Merlin.GraphLoopsShape.Countermodels.same_type_cannot_change_buffer : ¬Merlin.GraphLoopsShape.Cast
+    Merlin.GraphLoopsShape.Countermodels.type Merlin.GraphLoopsShape.Countermodels.type
+    Merlin.GraphLoopsShape.Countermodels.first Merlin.GraphLoopsShape.Countermodels.second
+'Merlin.GraphLoopsShape.Countermodels.same_type_cannot_change_buffer' does not depend on any axioms
+Merlin.GraphLoopsShape.Countermodels.logging_deletion : Merlin.GraphLoopsShape.Countermodels.LoggedCast 0 1 ∧
+  ¬Merlin.GraphLoopsShape.Countermodels.ErasedCast 0 1
+'Merlin.GraphLoopsShape.Countermodels.logging_deletion' does not depend on any axioms
+Merlin.GraphLoopsShape.Countermodels.trapping_deletion : (¬∃ after,
+      Merlin.GraphLoopsShape.Countermodels.TrappingCast 0 after) ∧
+  Merlin.GraphLoopsShape.Countermodels.ErasedCast 0 0
+'Merlin.GraphLoopsShape.Countermodels.trapping_deletion' does not depend on any axioms
+Merlin.GraphLoopsShape.Countermodels.inconsistent_metadata : ¬Merlin.GraphLoopsShape.Conforms
+      Merlin.GraphLoopsShape.Countermodels.type Merlin.GraphLoopsShape.Countermodels.badShape ∧
+  Merlin.GraphLoopsShape.Countermodels.badShape.shape[0]? = some 4 ∧
+    Merlin.GraphLoopsShape.Countermodels.type.shape[0]? = some 2
+'Merlin.GraphLoopsShape.Countermodels.inconsistent_metadata' depends on axioms: [propext]
+Merlin.GraphLoopsShape.Countermodels.same_type_different_base : Merlin.GraphLoopsShape.Conforms
+    Merlin.GraphLoopsShape.Countermodels.type Merlin.GraphLoopsShape.Countermodels.shiftedBase ∧
+  Merlin.GraphLoopsShape.address Merlin.GraphLoopsShape.Countermodels.shiftedBase [0, 0] ≠
+    Merlin.GraphLoopsShape.address Merlin.GraphLoopsShape.Countermodels.first [0, 0]
+'Merlin.GraphLoopsShape.Countermodels.same_type_different_base' depends on axioms: [propext]
+Merlin.GraphLoopsShape.inconsistent_dimension : Merlin.GraphLoopsShape.inconsistent.shape[0]? ≠
+  Merlin.GraphLoopsShape.declared.shape[0]?
+'Merlin.GraphLoopsShape.inconsistent_dimension' depends on axioms: [propext]

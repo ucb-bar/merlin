@@ -1,0 +1,5 @@
+'Merlin.GraphState.Integer.canonical_iff' depends on axioms: [propext]
+'Merlin.GraphState.Integer.word_add' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.Integer.word_sub' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.Integer.word_mul' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.Integer.mul_one' depends on axioms: [propext, Quot.sound]

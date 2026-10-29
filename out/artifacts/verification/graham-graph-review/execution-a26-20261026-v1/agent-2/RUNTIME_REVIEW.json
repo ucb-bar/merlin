@@ -1,0 +1,22 @@
+{
+  "sdk": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux",
+  "lean": {
+    "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "bytes": 9024,
+    "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38"
+  },
+  "runtime": {
+    "path": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean/libleanshared.so",
+    "bytes": 231113560,
+    "sha256": "efef27df56f2197139afe12f1a2b63913a05f1aba81ce88824c44100431ed8c4"
+  },
+  "environment": {
+    "LEAN_PATH": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/diagnostics",
+    "LD_LIBRARY_PATH": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean",
+    "LEAN_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1"
+  },
+  "host_loader": "ELF interpreter /lib64/ld-linux-x86-64.so.2 and host libc/pthread/dl/m platform dependencies remain host TCB. No old SDK path is admitted.",
+  "archive_member_manifest": "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-2/SDK_MEMBER_MANIFEST.json",
+  "permission": "New user-authorized independent CLI diagnostic context; no common Context or public gate authority."
+}

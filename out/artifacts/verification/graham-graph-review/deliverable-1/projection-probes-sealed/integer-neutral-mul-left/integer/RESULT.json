@@ -1,0 +1,11 @@
+{
+  "case": "integer-neutral-mul-left",
+  "route": "integer",
+  "returncode": 0,
+  "status": "projection_emitted_not_kernel_checked",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "model": "projection-probes-sealed/integer-neutral-mul-left/integer/actual/CAPTURE.json",
+  "sha256": "7c3f8a6df9023f3f9fa050f9ddddf5dd334d3566e6141b728028980eb0b7ca26"
+}

@@ -1,0 +1,5 @@
+'Merlin.GraphState.Integer.Same.fold_add' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.Integer.Same.fold_sub' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.Integer.Same.fold_mul' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.Integer.Same.add_zero' depends on axioms: [propext]
+'Merlin.GraphState.Integer.ExprTyped.canonical' depends on axioms: [propext]

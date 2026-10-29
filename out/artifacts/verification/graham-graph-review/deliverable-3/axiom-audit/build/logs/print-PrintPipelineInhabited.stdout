@@ -1,0 +1,56 @@
+@Merlin.GraphStatePipelineInstance.complete : ∀ {World Error : Type}
+  (primitive : Merlin.GraphState.Scalar.Prim → List Int → Int)
+  (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry),
+  Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external)
+    Merlin.GraphStatePipelineInstance.originalEntries Merlin.GraphStatePipelineInstance.finalEntries
+'Merlin.GraphStatePipelineInstance.complete' depends on axioms: [propext, Classical.choice, Quot.sound]
+Merlin.GraphStatePipelineInstance.SymbolicWitness.input_nonzero : (Merlin.GraphStatePipelineInstance.SymbolicWitness.arguments.all
+    fun value => decide (value ≠ 0)) =
+  true
+'Merlin.GraphStatePipelineInstance.SymbolicWitness.input_nonzero' does not depend on any axioms
+Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_source_success : Merlin.GraphState.Scalar.evalProgram
+    (Merlin.GraphStatePipelineInstance.SymbolicWitness.chosen
+      Merlin.GraphStatePipelineInstance.SymbolicWitness.primitive false)
+    Merlin.GraphStatePipelineInstance.F3.S0 Merlin.GraphStatePipelineInstance.SymbolicWitness.arguments 7 =
+  Except.ok ([17], 14)
+'Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_source_success' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_final_success : Merlin.GraphState.Scalar.evalProgram
+    (Merlin.GraphStatePipelineInstance.SymbolicWitness.chosen
+      Merlin.GraphStatePipelineInstance.SymbolicWitness.primitive false)
+    Merlin.GraphStatePipelineInstance.F3.S4 Merlin.GraphStatePipelineInstance.SymbolicWitness.arguments 7 =
+  Except.ok ([17], 14)
+'Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_final_success' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_source_failure : Merlin.GraphState.Scalar.evalProgram
+    (Merlin.GraphStatePipelineInstance.SymbolicWitness.chosen
+      Merlin.GraphStatePipelineInstance.SymbolicWitness.primitive true)
+    Merlin.GraphStatePipelineInstance.F3.S0 Merlin.GraphStatePipelineInstance.SymbolicWitness.arguments 7 =
+  Except.error (Merlin.GraphState.Scalar.Fault.external 17, 16)
+'Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_source_failure' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_final_failure : Merlin.GraphState.Scalar.evalProgram
+    (Merlin.GraphStatePipelineInstance.SymbolicWitness.chosen
+      Merlin.GraphStatePipelineInstance.SymbolicWitness.primitive true)
+    Merlin.GraphStatePipelineInstance.F3.S4 Merlin.GraphStatePipelineInstance.SymbolicWitness.arguments 7 =
+  Except.error (Merlin.GraphState.Scalar.Fault.external 17, 16)
+'Merlin.GraphStatePipelineInstance.SymbolicWitness.actual_final_failure' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Merlin.GraphStatePipelineInstance.SymbolicWitness.source_initialized : Merlin.GraphState.Scalar.Initialized
+  (Merlin.GraphStatePipelineInstance.SymbolicWitness.chosen Merlin.GraphStatePipelineInstance.SymbolicWitness.primitive
+    false)
+  Merlin.GraphStatePipelineInstance.F3.S0 Merlin.GraphStatePipelineInstance.SymbolicWitness.arguments 7
+'Merlin.GraphStatePipelineInstance.SymbolicWitness.source_initialized' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+Merlin.GraphStatePipelineInstance.SymbolicWitness.final_initialized : Merlin.GraphState.Scalar.Initialized
+  (Merlin.GraphStatePipelineInstance.SymbolicWitness.chosen Merlin.GraphStatePipelineInstance.SymbolicWitness.primitive
+    false)
+  Merlin.GraphStatePipelineInstance.F3.S4 Merlin.GraphStatePipelineInstance.SymbolicWitness.arguments 7
+'Merlin.GraphStatePipelineInstance.SymbolicWitness.final_initialized' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]

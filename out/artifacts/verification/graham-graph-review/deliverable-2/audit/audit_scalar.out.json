@@ -1,0 +1,787 @@
+{
+  "reviewer": "Graham independent review (agent)",
+  "date": "2026-10-26",
+  "script": {
+    "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/audit/audit_scalar.py",
+    "sha256": "1b101fc04f9c9b3305b5008c441da424fdf810d792be970baa935315da7a12e9"
+  },
+  "reader": {
+    "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/audit/mlir_subset.py",
+    "sha256": "6a393a5b133ae5700dc6ef0c65792ab13fe9d837018b1cd78a905690ccf9f5c3"
+  },
+  "imports_implementation": false,
+  "cases": [
+    {
+      "case": "worked-example(sealed copy)",
+      "inputs": {
+        "before": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/before.mlir",
+          "sha256": "6640d030463e20516948e512f0bd26736067c88ef11a7a332f669a8db4b86d4f"
+        },
+        "middle": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/middle.mlir",
+          "sha256": "e9e448db30daf78e97ebecc3c660ffd27589a7d404f2d4069f3c7779cbb0a12e"
+        },
+        "after": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/after.mlir",
+          "sha256": "acc07b3151ca0a6a7df07015edd8fc73dbc5ce02e10775e0239d4db3aa906137"
+        },
+        "lean": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/kernel/GraphStateScalarInstance.lean",
+          "sha256": "544b1dfd1230805af931d3a32f0b7923acd78a404cd0918fcb162b1ae0ddbabc"
+        },
+        "projection": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/merlin-passes/progress/planner/graph-first-20261025/worked-example/original/checked/projection/projection.json",
+          "sha256": "8f5e83638203e5d621495c614253b547892505f878fdddc9c095f5532260acc5"
+        }
+      },
+      "reader": {
+        "before": {
+          "generic_syntax": false,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 13
+        },
+        "middle": {
+          "generic_syntax": true,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 11
+        },
+        "after": {
+          "generic_syntax": true,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 11
+        }
+      },
+      "descriptor_map": [
+        {
+          "lean_id": 0,
+          "operation": "opaque.observe",
+          "metadata": {},
+          "operand_types": [
+            "i8",
+            "index"
+          ],
+          "result_types": [],
+          "lean_signature": [
+            [
+              [
+                "bits",
+                8
+              ],
+              [
+                "index"
+              ]
+            ],
+            []
+          ]
+        },
+        {
+          "lean_id": 1,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "0:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        },
+        {
+          "lean_id": 2,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "2:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        },
+        {
+          "lean_id": 3,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "7:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        }
+      ],
+      "registry_entries_unused_by_any_term": [],
+      "reader_keys_without_term": [],
+      "lean_terms_matched": [
+        "F0.before",
+        "F0.after",
+        "F0.componentBefore",
+        "F0.middleLeft",
+        "F0.middleRight",
+        "F0.componentAfter"
+      ],
+      "constructor_counts": {
+        "opaque": 24,
+        "loop": 6,
+        "pure": 22,
+        "ret": 12
+      },
+      "serializer_problems": [],
+      "problems": [],
+      "sample": {
+        "args": [
+          2,
+          3
+        ],
+        "returned": [
+          198
+        ],
+        "effect_log": [
+          [
+            "opaque.observe",
+            [
+              5,
+              0
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              5,
+              2
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              5,
+              4
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              5,
+              6
+            ]
+          ]
+        ]
+      },
+      "differential": {
+        "input_vectors": 81,
+        "mismatches": [],
+        "mismatch_count": 0,
+        "model": "wrapping iN add/sub/mul; signed index scf.for; index constants by value; other opaque ops logged with deterministic hashed results"
+      },
+      "verdict": "match"
+    },
+    {
+      "case": "chain(local regeneration)",
+      "inputs": {
+        "before": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/source.mlir",
+          "sha256": "6640d030463e20516948e512f0bd26736067c88ef11a7a332f669a8db4b86d4f"
+        },
+        "middle": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/actual/middle.mlir",
+          "sha256": "755f46007c0aa5f8f9264805ca37ac05c512f6be75f413ae6e8ed299ffaee60a"
+        },
+        "after": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/actual/after.mlir",
+          "sha256": "03b96c0f6f31e162c8da34f2d22986742c81b7c152cadea3f1d94eec3363d859"
+        },
+        "lean": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/GraphStateScalarInstance.lean",
+          "sha256": "544b1dfd1230805af931d3a32f0b7923acd78a404cd0918fcb162b1ae0ddbabc"
+        },
+        "projection": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/chain/checked-projection/projection.json",
+          "sha256": "dbd9b805319264eaf8966b2b221e3a310f8fc17bf0bac442d9b7ad94e4129236"
+        }
+      },
+      "reader": {
+        "before": {
+          "generic_syntax": false,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 13
+        },
+        "middle": {
+          "generic_syntax": true,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 11
+        },
+        "after": {
+          "generic_syntax": true,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 11
+        }
+      },
+      "descriptor_map": [
+        {
+          "lean_id": 0,
+          "operation": "opaque.observe",
+          "metadata": {},
+          "operand_types": [
+            "i8",
+            "index"
+          ],
+          "result_types": [],
+          "lean_signature": [
+            [
+              [
+                "bits",
+                8
+              ],
+              [
+                "index"
+              ]
+            ],
+            []
+          ]
+        },
+        {
+          "lean_id": 1,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "0:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        },
+        {
+          "lean_id": 2,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "2:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        },
+        {
+          "lean_id": 3,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "7:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        }
+      ],
+      "registry_entries_unused_by_any_term": [],
+      "reader_keys_without_term": [],
+      "lean_terms_matched": [
+        "F0.before",
+        "F0.after",
+        "F0.componentBefore",
+        "F0.middleLeft",
+        "F0.middleRight",
+        "F0.componentAfter"
+      ],
+      "constructor_counts": {
+        "opaque": 24,
+        "loop": 6,
+        "pure": 22,
+        "ret": 12
+      },
+      "serializer_problems": [],
+      "problems": [],
+      "sample": {
+        "args": [
+          2,
+          3
+        ],
+        "returned": [
+          198
+        ],
+        "effect_log": [
+          [
+            "opaque.observe",
+            [
+              5,
+              0
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              5,
+              2
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              5,
+              4
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              5,
+              6
+            ]
+          ]
+        ]
+      },
+      "differential": {
+        "input_vectors": 81,
+        "mismatches": [],
+        "mismatch_count": 0,
+        "model": "wrapping iN add/sub/mul; signed index scf.for; index constants by value; other opaque ops logged with deterministic hashed results"
+      },
+      "verdict": "match"
+    },
+    {
+      "case": "zero-chain(local regeneration)",
+      "inputs": {
+        "before": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/source.mlir",
+          "sha256": "e53ef429a1637bd3c0fe6817adbc68a1ca40bcc7888724e70cab2c5968910f46"
+        },
+        "middle": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/actual/middle.mlir",
+          "sha256": "af67a777e0a68a5b07856367f2da1c4f916d89e594bf3e30c75c1523ae10a376"
+        },
+        "after": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/actual/after.mlir",
+          "sha256": "6cfdf63c4588b712c6b2ee5ab5036d060bd15b50e04c032faf691b2dc25db05e"
+        },
+        "lean": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/GraphStateScalarInstance.lean",
+          "sha256": "cf774e0d4177ca9aced2faf91c2d7153f0516934269d0504bc4ca663715feef5"
+        },
+        "projection": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/zero-chain/checked-projection/projection.json",
+          "sha256": "2190971c2d59ba798bb697577ec3d29b4a412fab08d5f345be9557b64a59d12e"
+        }
+      },
+      "reader": {
+        "before": {
+          "generic_syntax": false,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 13
+        },
+        "middle": {
+          "generic_syntax": true,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 11
+        },
+        "after": {
+          "generic_syntax": true,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 11
+        }
+      },
+      "descriptor_map": [
+        {
+          "lean_id": 0,
+          "operation": "opaque.observe",
+          "metadata": {},
+          "operand_types": [
+            "i8",
+            "index"
+          ],
+          "result_types": [],
+          "lean_signature": [
+            [
+              [
+                "bits",
+                8
+              ],
+              [
+                "index"
+              ]
+            ],
+            []
+          ]
+        },
+        {
+          "lean_id": 1,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "0:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        },
+        {
+          "lean_id": 2,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "2:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        }
+      ],
+      "registry_entries_unused_by_any_term": [],
+      "reader_keys_without_term": [],
+      "lean_terms_matched": [
+        "F0.before",
+        "F0.after",
+        "F0.componentBefore",
+        "F0.middleLeft",
+        "F0.middleRight",
+        "F0.componentAfter"
+      ],
+      "constructor_counts": {
+        "opaque": 24,
+        "loop": 6,
+        "pure": 22,
+        "ret": 12
+      },
+      "serializer_problems": [],
+      "problems": [],
+      "sample": {
+        "args": [
+          2,
+          3
+        ],
+        "returned": [
+          2
+        ],
+        "effect_log": []
+      },
+      "differential": {
+        "input_vectors": 81,
+        "mismatches": [],
+        "mismatch_count": 0,
+        "model": "wrapping iN add/sub/mul; signed index scf.for; index constants by value; other opaque ops logged with deterministic hashed results"
+      },
+      "verdict": "match"
+    },
+    {
+      "case": "nested-chain(local regeneration)",
+      "inputs": {
+        "before": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/source.mlir",
+          "sha256": "ba7db6ce06414a65450b45ba44163f9e6f2e282e6694485e52adcc703a47329b"
+        },
+        "middle": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/actual/middle.mlir",
+          "sha256": "04a12c526a988bd940c546369311840b74235cf21b4dddca223e37a028a09b21"
+        },
+        "after": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/actual/after.mlir",
+          "sha256": "5a4ae892bca4ea223b2a24249ed001f479178b854c73cdb919d1588260700c02"
+        },
+        "lean": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/GraphStateScalarInstance.lean",
+          "sha256": "97470a5c036e5bd369bfda4b4cf0f8d9e426926d58a12fa163d849788dded274"
+        },
+        "projection": {
+          "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/deliverable-2/probes/scalar-variants/nested-chain/checked-projection/projection.json",
+          "sha256": "c751b57fb03a947622835a1610ec969a36c280bfebdfd5501d16f8abfd17a20f"
+        }
+      },
+      "reader": {
+        "before": {
+          "generic_syntax": false,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 13
+        },
+        "middle": {
+          "generic_syntax": true,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 12
+        },
+        "after": {
+          "generic_syntax": true,
+          "file_metadata": null,
+          "locations": 0,
+          "module_attributes": {},
+          "operations": 12
+        }
+      },
+      "descriptor_map": [
+        {
+          "lean_id": 0,
+          "operation": "opaque.observe",
+          "metadata": {},
+          "operand_types": [
+            "index",
+            "index",
+            "i8"
+          ],
+          "result_types": [],
+          "lean_signature": [
+            [
+              [
+                "index"
+              ],
+              [
+                "index"
+              ],
+              [
+                "bits",
+                8
+              ]
+            ],
+            []
+          ]
+        },
+        {
+          "lean_id": 1,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "0:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        },
+        {
+          "lean_id": 2,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "1:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        },
+        {
+          "lean_id": 3,
+          "operation": "arith.constant",
+          "metadata": {
+            "value": "3:index"
+          },
+          "operand_types": [],
+          "result_types": [
+            "index"
+          ],
+          "lean_signature": [
+            [],
+            [
+              [
+                "index"
+              ]
+            ]
+          ]
+        }
+      ],
+      "registry_entries_unused_by_any_term": [],
+      "reader_keys_without_term": [],
+      "lean_terms_matched": [
+        "F0.before",
+        "F0.after",
+        "F0.componentBefore",
+        "F0.middleLeft",
+        "F0.middleRight",
+        "F0.componentAfter"
+      ],
+      "constructor_counts": {
+        "opaque": 24,
+        "loop": 12,
+        "pure": 14,
+        "ret": 18
+      },
+      "serializer_problems": [],
+      "problems": [],
+      "sample": {
+        "args": [
+          2,
+          3
+        ],
+        "returned": [
+          56
+        ],
+        "effect_log": [
+          [
+            "opaque.observe",
+            [
+              0,
+              0,
+              6
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              0,
+              1,
+              6
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              0,
+              2,
+              6
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              1,
+              0,
+              6
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              1,
+              1,
+              6
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              1,
+              2,
+              6
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              2,
+              0,
+              6
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              2,
+              1,
+              6
+            ]
+          ],
+          [
+            "opaque.observe",
+            [
+              2,
+              2,
+              6
+            ]
+          ]
+        ]
+      },
+      "differential": {
+        "input_vectors": 81,
+        "mismatches": [],
+        "mismatch_count": 0,
+        "model": "wrapping iN add/sub/mul; signed index scf.for; index constants by value; other opaque ops logged with deterministic hashed results"
+      },
+      "verdict": "match"
+    }
+  ]
+}

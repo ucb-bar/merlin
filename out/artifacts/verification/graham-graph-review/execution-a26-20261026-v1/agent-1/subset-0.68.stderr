@@ -1,0 +1,23 @@
+Traceback (most recent call last):
+  File "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/run_admission_subset.py", line 58, in <module>
+    dense = load("a26_dense_parser", PARSER)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/run_admission_subset.py", line 53, in load
+    spec.loader.exec_module(module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-pipeline-gate/development/unroll-inline-v1/source-snapshot/dependencies-final/pinned4499/src/merlin/common/dense_float_ir.py", line 11, in <module>
+    from xdsl.printer import Printer
+  File "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/agent-1-python/xdsl-0.68/lib/python3.12/site-packages/xdsl/printer.py", line 43, in <module>
+    from xdsl.utils.bitwise_casts import (
+  File "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/agent-1-python/xdsl-0.68/lib/python3.12/site-packages/xdsl/utils/bitwise_casts.py", line 6, in <module>
+    import ctypes
+  File "/usr/lib/python3.12/ctypes/__init__.py", line 472, in <module>
+    pythonapi = PyDLL(None)
+                ^^^^^^^^^^^
+  File "/usr/lib/python3.12/ctypes/__init__.py", line 379, in __init__
+    self._handle = _dlopen(self._name, mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/run_admission_subset.py", line 35, in audit
+    raise RuntimeError("SDK-free test forbids process launch or explicit library loading")
+RuntimeError: SDK-free test forbids process launch or explicit library loading

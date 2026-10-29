@@ -1,0 +1,11 @@
+{
+  "case": "integer-fold-sub",
+  "route": "integer",
+  "returncode": 0,
+  "status": "projection_emitted_not_kernel_checked",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "model": "projection-probes-sealed/integer-fold-sub/integer/actual/CAPTURE.json",
+  "sha256": "6b0dedb6d4f1126c895883daffc06388296dc9252f2a2d5f257e9728a2744419"
+}

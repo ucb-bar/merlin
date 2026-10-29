@@ -1,0 +1,10 @@
+{
+  "case": "licm-nested",
+  "route": "scalar",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/licm-nested/scalar.model.json",
+  "sha256": "8b4d2e18ff61a9741447a38ad72c47f06366621407021b5803790d91317b4452"
+}

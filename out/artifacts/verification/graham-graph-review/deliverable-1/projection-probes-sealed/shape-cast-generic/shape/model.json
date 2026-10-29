@@ -1,0 +1,144 @@
+{
+  "bits": 64,
+  "changed_sites": [
+    {
+      "candidate_value": 0,
+      "elided_result": 1,
+      "kind": "cast",
+      "source_operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.cast\",\"operands\":[0],\"properties\":[],\"regions\":[],\"results\":[[1,\"memref<4xi8>\"]]}"
+    }
+  ],
+  "module": {
+    "calls": [],
+    "functions": [
+      {
+        "code": {
+          "origin": {
+            "kind": {
+              "tag": "view",
+              "type": {
+                "element": "i8",
+                "offset": 0,
+                "shape": [
+                  4
+                ],
+                "space": 0,
+                "strides": [
+                  1
+                ]
+              }
+            },
+            "known": null,
+            "name": 0
+          },
+          "rest": {
+            "tag": "returned",
+            "values": [
+              {
+                "kind": {
+                  "tag": "view",
+                  "type": {
+                    "element": "i8",
+                    "offset": 0,
+                    "shape": [
+                      4
+                    ],
+                    "space": 0,
+                    "strides": [
+                      1
+                    ]
+                  }
+                },
+                "known": null,
+                "name": 1
+              }
+            ]
+          },
+          "result": {
+            "kind": {
+              "tag": "view",
+              "type": {
+                "element": "i8",
+                "offset": 0,
+                "shape": [
+                  4
+                ],
+                "space": 0,
+                "strides": [
+                  1
+                ]
+              }
+            },
+            "known": null,
+            "name": 1
+          },
+          "source": {
+            "element": "i8",
+            "offset": 0,
+            "shape": [
+              4
+            ],
+            "space": 0,
+            "strides": [
+              1
+            ]
+          },
+          "tag": "cast",
+          "target": {
+            "element": "i8",
+            "offset": 0,
+            "shape": [
+              4
+            ],
+            "space": 0,
+            "strides": [
+              1
+            ]
+          }
+        },
+        "name": "kernel",
+        "parameters": [
+          {
+            "kind": {
+              "tag": "view",
+              "type": {
+                "element": "i8",
+                "offset": 0,
+                "shape": [
+                  4
+                ],
+                "space": 0,
+                "strides": [
+                  1
+                ]
+              }
+            },
+            "known": null,
+            "name": 0
+          }
+        ],
+        "returned": [
+          {
+            "tag": "view",
+            "type": {
+              "element": "i8",
+              "offset": 0,
+              "shape": [
+                4
+              ],
+              "space": 0,
+              "strides": [
+                1
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "python_projection_trusted": true,
+  "source_binding": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.module\",\"operands\":[],\"properties\":[],\"regions\":[[{\"arguments\":[],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(memref<4xi8>) -> memref<4xi8>\"],[\"sym_name\",\"\\\"kernel\\\"\"]],\"regions\":[[{\"arguments\":[[0,\"memref<4xi8>\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.cast\",\"operands\":[0],\"properties\":[],\"regions\":[],\"results\":[[1,\"memref<4xi8>\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[1],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}]}]],\"results\":[]}",
+  "structural_nodes": 7,
+  "target_binding": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.module\",\"operands\":[],\"properties\":[],\"regions\":[[{\"arguments\":[],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(memref<4xi8>) -> memref<4xi8>\"],[\"sym_name\",\"\\\"kernel\\\"\"]],\"regions\":[[{\"arguments\":[[0,\"memref<4xi8>\"]],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[0],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}]}]],\"results\":[]}",
+  "typed_descriptor_conformance_is_premise": true
+}

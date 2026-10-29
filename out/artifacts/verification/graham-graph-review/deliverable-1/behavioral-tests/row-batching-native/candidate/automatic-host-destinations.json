@@ -1,0 +1,33 @@
+{
+  "checks": [],
+  "context": {
+    "execution": "serial_host_tensor;upstream_bufferization_ownership",
+    "hardware": null,
+    "library": "62fbc5d843d94574a6c4b62d91976357d79dde2e93e540bf3cfa0ef9370bca1c",
+    "numerical_policy": "typed_source:f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+    "resources": "index_bits=64;added_ops=4096;metadata_items=65536"
+  },
+  "cost_policy": "reduce logical interior initialization/copy work under explicit IR growth budgets; no cycle estimate",
+  "diagnostic": "no canonical insertion token or insufficient growth budget; original lowering retained",
+  "library_sources_sha256": {
+    "automatic_destinations.py": "6e00c01f0381ed4ae1505690978c51962698e62b7d97451b0b570b239e3096f5",
+    "certificates.py": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+    "destination_check.py": "d52f642045502a2ed8ecfc158899ed48ab03f595f6d3b974e87d7f61c05c5c09",
+    "impr_features.py": "b9cc85049eaa48390ba54d90f701eb4bc4feb0e72b310cd7f8e402299116901c",
+    "insert_slice_destination.py": "ede369b1d9714b3a5b5d6fad424dc6d8c93db1569f8cf8f6fc4e9fd801fde6b7",
+    "lower.py": "9a5193e8895d01f41494422db2a9491935a77b85bdc3bc3a1d902b63cacb6c89",
+    "mlir_query.py": "614db4d0d4c4deff199919f43d045cbc95768f1c2a16e12cd490add292ed3909",
+    "optional_passes.py": "d5b3c249000c7c26df315013c90dd512561b89f56664084c873de7b1536df508",
+    "pipeline_state.py": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+    "quant_round_check.py": "99c3e6d7556f8be9aadbc78c2e8e74caffb1d02f6cd6a630ad8231c3713d0fa2",
+    "selfcopy.py": "c07206655d40a4871d6aed185b488a6f26cd39fd53b4452390383effeafeef0b",
+    "source_optimization_request.py": "ac80d7429016b44a748a5ce26b4a2b3ca25c6a9094409c9c9249cc3db8fb2fb9",
+    "source_optimization_selection.py": "4cd7ce48ccd11549fabc3484fb8640c7283d5e51b27e9a4a1b025a95568442e6",
+    "toolchain.py": "dfa6d51f6fd52966ebb566ac98606b708d3838b1e74373a68c6f4dd455edc132"
+  },
+  "machine_conformance": "not_established",
+  "output_file_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b",
+  "rewrites": 0,
+  "schema": "merlin.automatic_host_destinations.v1",
+  "source_file_sha256": "f8d5811a5e478e8a861b52bf8fa8106ad3bb87364b6f488f1e20b65d40cf4b3b"
+}

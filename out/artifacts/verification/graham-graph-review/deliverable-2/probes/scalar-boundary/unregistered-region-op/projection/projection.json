@@ -1,0 +1,8 @@
+{
+  "projection_checked": false,
+  "reason": {
+    "type": "ValueError",
+    "detail": "unsupported region semantics; entire boundary refused"
+  },
+  "public_acceptance_issued": false
+}

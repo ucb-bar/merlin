@@ -1,0 +1,3 @@
+GraphStateScalarInstance.lean:12:75: error: Tactic `decide` proved that the proposition
+  check registry inputs outputs before after = true
+is false

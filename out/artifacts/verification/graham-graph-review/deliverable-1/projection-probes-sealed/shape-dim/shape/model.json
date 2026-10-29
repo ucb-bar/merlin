@@ -1,0 +1,121 @@
+{
+  "bits": 64,
+  "changed_sites": [
+    {
+      "candidate_operation": "{\"attributes\":[],\"index_constant\":4,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"4 : index\"]],\"regions\":[],\"results\":[[2,\"index\"]]}",
+      "candidate_value": 4,
+      "expected_value": 4,
+      "kind": "dimension",
+      "source_operation": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[0,1],\"properties\":[],\"regions\":[],\"results\":[[2,\"index\"]]}"
+    }
+  ],
+  "module": {
+    "calls": [],
+    "functions": [
+      {
+        "code": {
+          "rest": {
+            "axis": {
+              "kind": {
+                "tag": "index"
+              },
+              "known": 0,
+              "name": 1
+            },
+            "axisIndex": 0,
+            "rest": {
+              "tag": "returned",
+              "values": [
+                {
+                  "kind": {
+                    "tag": "index"
+                  },
+                  "known": 4,
+                  "name": 2
+                }
+              ]
+            },
+            "result": {
+              "kind": {
+                "tag": "index"
+              },
+              "known": 4,
+              "name": 2
+            },
+            "tag": "dimension",
+            "type": {
+              "element": "i8",
+              "offset": 0,
+              "shape": [
+                4
+              ],
+              "space": 0,
+              "strides": [
+                1
+              ]
+            },
+            "value": 4,
+            "view": {
+              "kind": {
+                "tag": "view",
+                "type": {
+                  "element": "i8",
+                  "offset": 0,
+                  "shape": [
+                    4
+                  ],
+                  "space": 0,
+                  "strides": [
+                    1
+                  ]
+                }
+              },
+              "known": null,
+              "name": 0
+            }
+          },
+          "result": {
+            "kind": {
+              "tag": "index"
+            },
+            "known": 0,
+            "name": 1
+          },
+          "tag": "constant",
+          "value": 0
+        },
+        "name": "kernel",
+        "parameters": [
+          {
+            "kind": {
+              "tag": "view",
+              "type": {
+                "element": "i8",
+                "offset": 0,
+                "shape": [
+                  4
+                ],
+                "space": 0,
+                "strides": [
+                  1
+                ]
+              }
+            },
+            "known": null,
+            "name": 0
+          }
+        ],
+        "returned": [
+          {
+            "tag": "index"
+          }
+        ]
+      }
+    ]
+  },
+  "python_projection_trusted": true,
+  "source_binding": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.module\",\"operands\":[],\"properties\":[],\"regions\":[[{\"arguments\":[],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(memref<4xi8>) -> index\"],[\"sym_name\",\"\\\"kernel\\\"\"]],\"regions\":[[{\"arguments\":[[0,\"memref<4xi8>\"]],\"operations\":[{\"attributes\":[],\"index_constant\":0,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"0 : index\"]],\"regions\":[],\"results\":[[1,\"index\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"memref.dim\",\"operands\":[0,1],\"properties\":[],\"regions\":[],\"results\":[[2,\"index\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[2],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}]}]],\"results\":[]}",
+  "structural_nodes": 10,
+  "target_binding": "{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"builtin.module\",\"operands\":[],\"properties\":[],\"regions\":[[{\"arguments\":[],\"operations\":[{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.func\",\"operands\":[],\"properties\":[[\"function_type\",\"(memref<4xi8>) -> index\"],[\"sym_name\",\"\\\"kernel\\\"\"]],\"regions\":[[{\"arguments\":[[0,\"memref<4xi8>\"]],\"operations\":[{\"attributes\":[],\"index_constant\":0,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"0 : index\"]],\"regions\":[],\"results\":[[1,\"index\"]]},{\"attributes\":[],\"index_constant\":4,\"location\":\"loc(unknown)\",\"name\":\"arith.constant\",\"operands\":[],\"properties\":[[\"value\",\"4 : index\"]],\"regions\":[],\"results\":[[2,\"index\"]]},{\"attributes\":[],\"index_constant\":null,\"location\":\"loc(unknown)\",\"name\":\"func.return\",\"operands\":[2],\"properties\":[],\"regions\":[],\"results\":[]}]}]],\"results\":[]}]}]],\"results\":[]}",
+  "typed_descriptor_conformance_is_premise": true
+}

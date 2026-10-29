@@ -1,0 +1,35 @@
+'GraphShapeObligation.valid' depends on axioms: [propext, Classical.choice, Quot.sound]
+'GraphShapeObligation.accepted' depends on axioms: [propext, Classical.choice, Quot.sound]
+'GraphShapeObligation.complete' depends on axioms: [propext, Classical.choice, Quot.sound]
+'GraphShapeObligation.memory' depends on axioms: [propext, Classical.choice, Quot.sound]
+'GraphShapeObligation.contextual' depends on axioms: [propext, Classical.choice, Quot.sound]
+'GraphShapeObligation.call_depth' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Merlin.GraphLoopsShape.identical_cast' does not depend on any axioms
+'Merlin.GraphLoopsShape.cast_descriptor' does not depend on any axioms
+'Merlin.GraphLoopsShape.cast_address' depends on axioms: [propext]
+'Merlin.GraphLoopsShape.static_dimension' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Merlin.GraphLoopsShape.Scope.extend' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Agreement.define' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Agreement.alias' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Agreement.define_many' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.cast_result' depends on axioms: [propext]
+'Merlin.GraphLoopsShape.dimension_result' depends on axioms: [propext]
+'Merlin.GraphLoopsShape.preservation' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.entry_equivalence' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Function.preservation' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Module.checked_calls' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Module.checked_complete' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Module.checked_memory' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Model.check_sound' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Model.checked_complete' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Model.checked_memory' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.Model.checked_context' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphLoopsShape.zero_has_no_coordinate' depends on axioms: [propext]
+'Merlin.GraphLoopsShape.inconsistent_dimension' depends on axioms: [propext]
+'Merlin.GraphLoopsShape.observable_cast_countermodel' does not depend on any axioms
+'Merlin.GraphLoopsShape.Countermodels.same_type_different_allocation' depends on axioms: [propext]
+'Merlin.GraphLoopsShape.Countermodels.same_type_cannot_change_buffer' does not depend on any axioms
+'Merlin.GraphLoopsShape.Countermodels.logging_deletion' does not depend on any axioms
+'Merlin.GraphLoopsShape.Countermodels.trapping_deletion' does not depend on any axioms
+'Merlin.GraphLoopsShape.Countermodels.inconsistent_metadata' depends on axioms: [propext]
+'Merlin.GraphLoopsShape.Countermodels.same_type_different_base' depends on axioms: [propext]

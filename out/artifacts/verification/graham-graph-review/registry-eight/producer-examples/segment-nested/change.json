@@ -1,0 +1,52 @@
+{
+  "kind": "ordered_loop_segmentation",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %lower = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %upper = \"arith.constant\"() <{value = 7 : index}> : () -> index\n    %step = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %r = \"scf.for\"(%lower, %upper, %step, %a) ({\n    ^bb1(%i: index, %acc: i8):\n      %inner = \"scf.for\"(%lower, %upper, %step, %acc) ({\n      ^bb2(%j: index, %state: i8):\n        %invariant = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        \"opaque.observe\"(%invariant, %i, %j) : (i8, index, index) -> ()\n        %next = \"arith.subi\"(%state, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n        \"scf.yield\"(%next) : (i8) -> ()\n      }) : (index, index, index, i8) -> i8\n      \"scf.yield\"(%inner) : (i8) -> ()\n    }) : (index, index, index, i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %lower = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %upper = \"arith.constant\"() <{value = 7 : index}> : () -> index\n    %step = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %r = \"arith.constant\"() <{value = 6 : index}> : () -> index\n    %r_1 = \"scf.for\"(%lower, %upper, %r, %a) ({\n    ^bb1(%0: index, %1: i8):\n      %2 = \"arith.addi\"(%0, %r) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index\n      %3 = \"arith.minui\"(%2, %upper) : (index, index) -> index\n      %4 = \"scf.for\"(%0, %3, %step, %1) ({\n      ^bb2(%5: index, %6: i8):\n        %inner = \"arith.constant\"() <{value = 4 : index}> : () -> index\n        %inner_1 = \"scf.for\"(%lower, %upper, %inner, %6) ({\n        ^bb3(%7: index, %8: i8):\n          %9 = \"arith.addi\"(%7, %inner) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index\n          %10 = \"arith.minui\"(%9, %upper) : (index, index) -> index\n          %11 = \"scf.for\"(%7, %10, %step, %8) ({\n          ^bb4(%12: index, %13: i8):\n            %invariant = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n            \"opaque.observe\"(%invariant, %5, %12) : (i8, index, index) -> ()\n            %next = \"arith.subi\"(%13, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n            \"scf.yield\"(%next) : (i8) -> ()\n          }) : (index, index, index, i8) -> i8\n          \"scf.yield\"(%11) : (i8) -> ()\n        }) : (index, index, index, i8) -> i8\n        \"scf.yield\"(%inner_1) : (i8) -> ()\n      }) : (index, index, index, i8) -> i8\n      \"scf.yield\"(%4) : (i8) -> ()\n    }) : (index, index, index, i8) -> i8\n    \"func.return\"(%r_1) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {
+    "tile_iterations": [
+      3,
+      2
+    ],
+    "index_bits": 64
+  },
+  "certificate": {
+    "kind": "ordered_loop_segmentation",
+    "before_ir_sha256": "89ca177b6d73cd740a273df54a43e9a11b3a586c54e0f4e2d468a4914e0b8c00",
+    "after_ir_sha256": "c7cff7cf9f287211bcd6a542a11e1d08cafe60817e7ab3b18660814c057be1d3",
+    "witnesses": [
+      {
+        "kind": "loop",
+        "operation_index": 5,
+        "lower": 0,
+        "upper": 7,
+        "step": 2,
+        "tile_iterations": 3,
+        "index_bits": 64,
+        "carried_types": [
+          "i8"
+        ],
+        "body_sha256": "fd4f8c03f2275d99a906666cdd8384583ee5ae5420b4424d8d677ad595ab9e27"
+      },
+      {
+        "kind": "loop",
+        "operation_index": 6,
+        "lower": 0,
+        "upper": 7,
+        "step": 2,
+        "tile_iterations": 2,
+        "index_bits": 64,
+        "carried_types": [
+          "i8"
+        ],
+        "body_sha256": "9e168d7253ae9e709f2498f06eebca9e5cf845f1e203783873655f766b6e1728"
+      }
+    ],
+    "scope": [
+      "static_nonnegative_index_bounds",
+      "positive_step",
+      "exact_iteration_order",
+      "forwarded_loop_carried_state"
+    ],
+    "schema": "merlin.shared_transform.v1"
+  }
+}

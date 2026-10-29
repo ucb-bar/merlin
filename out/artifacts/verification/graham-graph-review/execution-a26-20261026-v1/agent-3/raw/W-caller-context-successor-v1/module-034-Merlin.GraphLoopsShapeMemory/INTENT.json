@@ -1,0 +1,24 @@
+{
+  "command": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "-j1",
+    "-o",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library/Merlin/GraphLoopsShapeMemory.olean",
+    "Merlin/GraphLoopsShapeMemory.lean"
+  ],
+  "cwd": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project",
+  "environment": {
+    "PATH": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin:/usr/bin:/bin",
+    "HOME": "/home/eecs/gram117anderson",
+    "LEAN_PATH": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/W-caller-context-successor-v1/library:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean",
+    "LEAN_SRC_PATH": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/capsule-staged-v1/profiles/W-caller-context-successor-v1/project:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/src/lean",
+    "LD_LIBRARY_PATH": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib:/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/lib/lean",
+    "TMPDIR": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/scratch",
+    "LC_ALL": "C.UTF-8",
+    "LEAN_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "timeout_seconds": 180.0,
+  "utc": "2026-10-27T00:40:44.856442+00:00"
+}

@@ -1,0 +1,29 @@
+{
+  "kind": "scalar_redundancy_elimination",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %first = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %duplicate = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %r = \"arith.muli\"(%first, %duplicate) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %first = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %r = \"arith.muli\"(%first, %first) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {},
+  "certificate": {
+    "kind": "scalar_redundancy_elimination",
+    "before_ir_sha256": "f1d6ec5d809faf68d7fd6959720ede30bcbfd4a347c433eac82b6111a65b2600",
+    "after_ir_sha256": "c62200490470fa8917fb5c9fe57995f2ee38f4a21d148ecbae7d21f6afe4d9d2",
+    "witnesses": [
+      {
+        "kind": "scalar_rewrite",
+        "operation_index": 3,
+        "operation": "arith.addi",
+        "rule": "cse",
+        "width": 8,
+        "operation_sha256": "14a0271d23df96816a2fdd236d55fc9c241097be41a5a74ad537b80c2868448e",
+        "representative_index": 2,
+        "loop_index": null
+      }
+    ],
+    "scope": [
+      "total_scalar_integer_operations",
+      "preserved_unknown_effects",
+      "ssa_use_def_and_dominance"
+    ],
+    "schema": "merlin.shared_transform.v2"
+  }
+}

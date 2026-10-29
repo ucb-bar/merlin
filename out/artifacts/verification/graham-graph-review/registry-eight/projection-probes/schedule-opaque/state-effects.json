@@ -1,0 +1,10 @@
+{
+  "case": "schedule-opaque",
+  "route": "state-effects",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_refused",
+  "reason_type": "UnsupportedStateEffects",
+  "reason": "unknown operation effects or opaque region semantics"
+}

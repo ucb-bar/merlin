@@ -1,0 +1,10 @@
+{
+  "case": "segment-empty",
+  "route": "segment",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_emitted_not_kernel_checked",
+  "model": "projection-probes/segment-empty/segment.model.json",
+  "sha256": "f8ce4a21dc54a7c41023931205aa48f5daef3a72df273907656ec8cee8befc0b"
+}

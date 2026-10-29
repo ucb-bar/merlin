@@ -1,0 +1,38 @@
+{
+  "llvm_revision": "a47bddccec30255619bb8c37fa59700e661d4e66",
+  "settings": {
+    "MERLIN_COMPILER_DRIVER": "python",
+    "MERLIN_COMPILER_PYTHON": "/home/grammy/blast/merlin-pass-verification/out/build/lean/mlir-venv/bin/python",
+    "MERLIN_MLIR_INSTALL": "/home/grammy/blast/merlin/third_party/llvm-build",
+    "MERLIN_MLIR_TRANSLATE": "/home/grammy/blast/merlin/third_party/llvm-build/bin/mlir-translate",
+    "MERLIN_CLANG": "/home/grammy/blast/merlin/third_party/llvm-build/bin/clang-23"
+  },
+  "versions": {
+    "clang-23": "clang version 23.0.0git (https://github.com/llvm/llvm-project.git a47bddccec30255619bb8c37fa59700e661d4e66)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/grammy/blast/merlin/third_party/llvm-build/bin\nBuild config: +assertions\n",
+    "mlir-opt": "LLVM (http://llvm.org/):\n  LLVM version 23.0.0git\n  Optimized build with assertions.\n",
+    "mlir-translate": "LLVM (http://llvm.org/):\n  LLVM version 23.0.0git\n  Optimized build with assertions.\n"
+  },
+  "files": [
+    {
+      "path": "/home/grammy/blast/merlin/third_party/llvm-build/bin/clang-23",
+      "sha256": "a0bb31daf5e73b46d423aba142fe9d5d32b05a321cc2b274ed431a26b2377568",
+      "bytes": 195966648
+    },
+    {
+      "path": "/home/grammy/blast/merlin/third_party/llvm-build/bin/mlir-opt",
+      "sha256": "b88a35874c616e9e970e7afbed4f2372267dd5834b4d81513f9fd75820653871",
+      "bytes": 307532040
+    },
+    {
+      "path": "/home/grammy/blast/merlin/third_party/llvm-build/bin/mlir-translate",
+      "sha256": "dfdf9c4ae26d8439a1b992c1a43fc8a4642e8880f105fdf83208619870ddc8ff",
+      "bytes": 74262008
+    },
+    {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/build/lean/mlir-venv/bin/python",
+      "sha256": "e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f",
+      "bytes": 8020928
+    }
+  ],
+  "downloads": false
+}

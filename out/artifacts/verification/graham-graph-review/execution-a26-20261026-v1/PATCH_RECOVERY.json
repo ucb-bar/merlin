@@ -1,0 +1,276 @@
+{
+  "schema": "merlin.graham.a26-prerequisite-patch-recovery.v1",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "method": "Strict unified-diff interpretation against exact current preimages in memory; no source files applied or code imported.",
+  "patch": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/PREREQUISITES.patch",
+  "rows": [
+    {
+      "path": "src/merlin/common/bundle_snapshot.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 34386,
+      "sha256": "75ccb58526671f2ee474ce6f3290db2ea0709069d65926be927da9635cb9cc39",
+      "expected_sha256": "75ccb58526671f2ee474ce6f3290db2ea0709069d65926be927da9635cb9cc39",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/common/cpu_pool.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 39630,
+      "sha256": "980011c6f2a154c1830c2ed7b9ca53509c658cef957ddcf4f4a0ffaa8bf09138",
+      "expected_sha256": "980011c6f2a154c1830c2ed7b9ca53509c658cef957ddcf4f4a0ffaa8bf09138",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/common/dense_float_ir.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 4227,
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "expected_sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/common/path_relations.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 2539,
+      "sha256": "8e15c5f6b71785414fca77f9ce2ea84fe71dde328abda9d103faf94156b99f87",
+      "expected_sha256": "8e15c5f6b71785414fca77f9ce2ea84fe71dde328abda9d103faf94156b99f87",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/common/read_lease_digest.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 18925,
+      "sha256": "0adb034a66058287259108de8717323eb38c9a83a3e6f810c93b0872d5c0cf4c",
+      "expected_sha256": "0adb034a66058287259108de8717323eb38c9a83a3e6f810c93b0872d5c0cf4c",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/export.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 12547,
+      "sha256": "0652a77b3da5d2b8e3ec1e5cf6b5cfc1f504169c4f3170dcd46d4328d5fda3cc",
+      "expected_sha256": "0652a77b3da5d2b8e3ec1e5cf6b5cfc1f504169c4f3170dcd46d4328d5fda3cc",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/library_sources.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 7056,
+      "sha256": "1e6108dc34a998e54ecad85b519cda474f1a673ba884845276e0e8ba10dbd404",
+      "expected_sha256": "1e6108dc34a998e54ecad85b519cda474f1a673ba884845276e0e8ba10dbd404",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/llvmlower/device_ir_scalability.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 12313,
+      "sha256": "8f54758a7e90a9bc31c600b17b3a0227ba1bc1cf1d9cfaa8465584b9e6fc82f5",
+      "expected_sha256": "8f54758a7e90a9bc31c600b17b3a0227ba1bc1cf1d9cfaa8465584b9e6fc82f5",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/perf/pass_observation.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 5307,
+      "sha256": "3a58c25461a41e466e30b46a79cb377f8d9387d94a7e7ab948ca82cbf345249c",
+      "expected_sha256": "3a58c25461a41e466e30b46a79cb377f8d9387d94a7e7ab948ca82cbf345249c",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/targetgen/public_codegen_budget.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 9490,
+      "sha256": "fef713c3042576d5bdd12aa9a28ca940c8ae0bae66c127529cd60717f58aa8c7",
+      "expected_sha256": "fef713c3042576d5bdd12aa9a28ca940c8ae0bae66c127529cd60717f58aa8c7",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/targetgen/tool_profile.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 35005,
+      "sha256": "c78f181120e193c3d7a87e2d5456c14cf0c468bef9c8216a7284717dd6fb2996",
+      "expected_sha256": "c78f181120e193c3d7a87e2d5456c14cf0c468bef9c8216a7284717dd6fb2996",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/targetgen/tool_profile_shared.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 31607,
+      "sha256": "c2f97ac5d624376c77f619e482c6c05c4882597fd026fdb040a8c436be546b9a",
+      "expected_sha256": "c2f97ac5d624376c77f619e482c6c05c4882597fd026fdb040a8c436be546b9a",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/__init__.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 1017,
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "expected_sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/analyses.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 1372,
+      "sha256": "f644bb56349d680a3228b75308f2ebf51f7491baa628e704e1617f472ad8e754",
+      "expected_sha256": "f644bb56349d680a3228b75308f2ebf51f7491baa628e704e1617f472ad8e754",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_liveness.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 7014,
+      "sha256": "ee3e4b9ed35d5f888f1706eb2d540016e28eacfc8454c96d769ee76b4b7b4b5f",
+      "expected_sha256": "ee3e4b9ed35d5f888f1706eb2d540016e28eacfc8454c96d769ee76b4b7b4b5f",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_memory.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 6597,
+      "sha256": "042cb7a7e72db59c574a6ecb1bfe9bc0c70de88898553f5a129d469071e38fbd",
+      "expected_sha256": "042cb7a7e72db59c574a6ecb1bfe9bc0c70de88898553f5a129d469071e38fbd",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_types.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 3166,
+      "sha256": "63eb8ab800b446c3f50b61dd54f228db5d3c9a66457939eb16a678ff78a68b0c",
+      "expected_sha256": "63eb8ab800b446c3f50b61dd54f228db5d3c9a66457939eb16a678ff78a68b0c",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/certificates.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 9448,
+      "sha256": "4b3348bd83b347b262dc6457a1827e5f0b0c2e94251e570d642afe19a18cc639",
+      "expected_sha256": "4b3348bd83b347b262dc6457a1827e5f0b0c2e94251e570d642afe19a18cc639",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/loops.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 4572,
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "expected_sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/normalization.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 4097,
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "expected_sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/pipeline_state.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 12317,
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "expected_sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/planning.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 12381,
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "expected_sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/pure_scalar.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 6617,
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+      "expected_sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/scalar_witness.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 2083,
+      "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31",
+      "expected_sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/transforms/validation.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 10145,
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "expected_sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/verify/lean_contract.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 9284,
+      "sha256": "fcb0b8a2812d41d20fa95724c8a54b50dd5763260f63f672bfeb17a8de346ab8",
+      "expected_sha256": "fcb0b8a2812d41d20fa95724c8a54b50dd5763260f63f672bfeb17a8de346ab8",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/verify/lean_export.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 9605,
+      "sha256": "73a0764df9f026c3b9e1b2643f5562119b585ffa7ea7b7d364feeb6db1c9c1e3",
+      "expected_sha256": "73a0764df9f026c3b9e1b2643f5562119b585ffa7ea7b7d364feeb6db1c9c1e3",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/verify/lean_sat_runtime.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 5966,
+      "sha256": "26a2104f7baef33ac46720c7f14c13bd1ff4163b5c5f4f385b1343ea7575f6ac",
+      "expected_sha256": "26a2104f7baef33ac46720c7f14c13bd1ff4163b5c5f4f385b1343ea7575f6ac",
+      "status": "MATCH"
+    },
+    {
+      "path": "src/merlin/common/invocation_record.py",
+      "reconstructed_in_memory_only": true,
+      "hunks": 1,
+      "bytes": 13107,
+      "sha256": "e0cc8a707e38920baf362a57d4eea1bd0b2f4c47e7283f9d55cf4a9c1c8ba8bb",
+      "expected_sha256": "e0cc8a707e38920baf362a57d4eea1bd0b2f4c47e7283f9d55cf4a9c1c8ba8bb",
+      "status": "MATCH"
+    }
+  ],
+  "recovered_sources": 29,
+  "matching": 29,
+  "limits": [
+    "29 omitted copied source payloads can be reconstructed exactly from the retained patch.",
+    "The missing prepare_prerequisites.py generator and external integration documents are not reconstructed.",
+    "Reconstruction proves byte availability, not behavioral correctness, integration or qualification."
+  ]
+}

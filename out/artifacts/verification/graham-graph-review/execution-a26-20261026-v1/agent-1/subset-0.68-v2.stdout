@@ -1,0 +1,7 @@
+{
+  "result": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-1/ADMISSION_SUBSET_XDSL_0.68.0.json",
+  "passed": 32,
+  "failed": 0,
+  "skipped": 0,
+  "guard_denials": []
+}

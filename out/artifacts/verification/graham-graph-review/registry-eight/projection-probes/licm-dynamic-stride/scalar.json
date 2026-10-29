@@ -1,0 +1,10 @@
+{
+  "case": "licm-dynamic-stride",
+  "route": "scalar",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_refused",
+  "reason_type": "ValueError",
+  "reason": "supported actual SCF control needs a checked positive constant stride"
+}

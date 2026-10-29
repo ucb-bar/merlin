@@ -1,0 +1,42 @@
+{
+  "case": "unroll-nested",
+  "kind": "ordered_loop_unrolling",
+  "options": {
+    "unroll_factors": [
+      2,
+      2
+    ]
+  },
+  "lean_run": false,
+  "qualified": false,
+  "review_approved": false,
+  "status": "actual_changed_producer_output",
+  "structural_validator": "passed; same-producer reconstruction/recognition, not independent semantic proof",
+  "witness_rules": [
+    "structural"
+  ],
+  "witness_count": 2,
+  "source_unmodified": true,
+  "files": [
+    {
+      "path": "after.mlir",
+      "bytes": 2973,
+      "sha256": "a1d0a9cd22570674d014c8241d4be7f5e9285fa00e70dbf86da39ef5a5ff1267"
+    },
+    {
+      "path": "before.mlir",
+      "bytes": 1004,
+      "sha256": "89ca177b6d73cd740a273df54a43e9a11b3a586c54e0f4e2d468a4914e0b8c00"
+    },
+    {
+      "path": "change.json",
+      "bytes": 5636,
+      "sha256": "4af101353d58ed22a2db952290f531b0bf07ad3c5cd01ac134823b414000fc24"
+    },
+    {
+      "path": "source.mlir",
+      "bytes": 606,
+      "sha256": "7dc55933da7550ef9ef3885d4ef7040cfc214ae9c498181f9965819ad9b7db18"
+    }
+  ]
+}

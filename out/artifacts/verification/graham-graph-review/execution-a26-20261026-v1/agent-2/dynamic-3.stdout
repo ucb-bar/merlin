@@ -1,0 +1,30 @@
+
+Dynamic section at offset 0x15c78 contains 27 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x000000000000000e (SONAME)             Library soname: [libgcc_s.so.1]
+ 0x000000000000001d (RUNPATH)            Library runpath: [/nix/store/hwwqshlmazzjzj7yhrkyjydxamvvkfd3-glibc-2.26-131/lib]
+ 0x000000000000000c (INIT)               0x2808
+ 0x000000000000000d (FINI)               0x12cb8
+ 0x0000000000000019 (INIT_ARRAY)         0x215c60
+ 0x000000000000001b (INIT_ARRAYSZ)       16 (bytes)
+ 0x000000000000001a (FINI_ARRAY)         0x215c70
+ 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)
+ 0x0000000000000004 (HASH)               0x1c8
+ 0x0000000000000005 (STRTAB)             0x16b0
+ 0x0000000000000006 (SYMTAB)             0x690
+ 0x000000000000000a (STRSZ)              2341 (bytes)
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000003 (PLTGOT)             0x215e68
+ 0x0000000000000007 (RELA)               0x2328
+ 0x0000000000000008 (RELASZ)             1248 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x000000006ffffffc (VERDEF)             0x2130
+ 0x000000006ffffffd (VERDEFNUM)          13
+ 0x000000000000001e (FLAGS)              BIND_NOW
+ 0x000000006ffffffb (FLAGS_1)            Flags: NOW
+ 0x000000006ffffffe (VERNEED)            0x22f8
+ 0x000000006fffffff (VERNEEDNUM)         1
+ 0x000000006ffffff0 (VERSYM)             0x1fd6
+ 0x000000006ffffff9 (RELACOUNT)          3
+ 0x0000000000000000 (NULL)               0x0

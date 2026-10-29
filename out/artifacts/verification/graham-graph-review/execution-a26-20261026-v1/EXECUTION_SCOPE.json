@@ -1,0 +1,54 @@
+{
+  "schema": "merlin.graham.a26-execution-scope.v1",
+  "utc": "2026-10-27T00:35:09.719850+00:00",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "user_direction": [
+    "get 3 agents, get working on 1 - 3 summarize findings",
+    "go"
+  ],
+  "scope_interpretation": [
+    "reconcile sources and supported claims",
+    "fresh independent Lean4.35.0 setup",
+    "exact profile preparation and candidate reproduction"
+  ],
+  "agents": [
+    {
+      "name": "source_claim_review",
+      "owns": "agent-1",
+      "task": "source/claim review and bounded SDK-free admission controls"
+    },
+    {
+      "name": "fresh_lean_setup",
+      "owns": "agent-2",
+      "task": "fresh official SDK and finite runtime diagnostics"
+    },
+    {
+      "name": "proof_reproduction",
+      "owns": "agent-3",
+      "task": "profile source staging, exact compilation/type/axiom audit"
+    }
+  ],
+  "host_preflight": {
+    "cpus": 128,
+    "load_1m": 94.95,
+    "available_memory": "878GiB",
+    "scratch_available": "2.8TiB"
+  },
+  "budgets": {
+    "compile_parallelism": 1,
+    "SDK_compressed_bytes_max": 1073741824,
+    "SDK_extraction_and_object_bytes_max": 12884901888,
+    "SDK_initial_wall_s": 900,
+    "compile_command_timeout_s": 180,
+    "compile_initial_batch_wall_s": 1200,
+    "agent_1_python_download_bytes_max": 31457280
+  },
+  "preserved_holds": [
+    "old SDK/runtime/context holds",
+    "frozen Core/Sem/Spec/locks/capsules",
+    "historical source, query and receipt identities",
+    "public native compiler gate activation"
+  ],
+  "publication": "No branch switch, Git index/commit/push or external publication requested.",
+  "source_plan": "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/PLAN.json"
+}

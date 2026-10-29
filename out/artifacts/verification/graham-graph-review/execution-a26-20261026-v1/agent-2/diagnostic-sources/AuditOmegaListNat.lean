@@ -1,0 +1,5 @@
+import OmegaListNat
+#check DiagnosticReprOmegaListNat.witness_value
+#print axioms DiagnosticReprOmegaListNat.witness_value
+#print axioms DiagnosticReprOmegaListNat.instReprPayload
+#eval repr DiagnosticReprOmegaListNat.witness

@@ -1,0 +1,44 @@
+{
+  "reviewer": "Graham independent review (agent)",
+  "date": "2026-10-26",
+  "note": "local re-execution of the implementation under local xDSL; not the original qualification",
+  "buffers": {
+    "before": {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/before.mlir",
+      "sha256": "bb5d985ac001a8c9e3b04ff889003965c798796f2b3bc351f0eabf5610190110",
+      "matches_EXAMPLE.json": true
+    },
+    "middle": {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/after.mlir",
+      "sha256": "9e2a5e8315002c1ad00e57508729112d4a5e01871e41ced4ecca1a10bf259ff5",
+      "matches_EXAMPLE.json": true
+    },
+    "after": {
+      "path": "/home/grammy/blast/merlin-pass-verification/out/artifacts/verification/graph-buffer-reuse/actual-neighbor-segment-v1/after.mlir",
+      "sha256": "a98bd7576316e4ad9b4ba873beb9dfe5440e9db1f37460cf52628833f3134773",
+      "matches_EXAMPLE.json": true
+    }
+  },
+  "supplied_capture_returncode": 0,
+  "model.json": {
+    "sealed_sha256": "0f1f9ff5d06e84d8dfb132abcbc40610e5dc8c7ac35a3821810f68f68620f885",
+    "local_sha256": "0f1f9ff5d06e84d8dfb132abcbc40610e5dc8c7ac35a3821810f68f68620f885",
+    "match": true
+  },
+  "Obligation.lean": {
+    "sealed_sha256": "afd557e3947928aa4ee187750ec647ffe22daba059704a59d5610deda623dfd6",
+    "local_sha256": "afd557e3947928aa4ee187750ec647ffe22daba059704a59d5610deda623dfd6",
+    "match": true
+  },
+  "producer_capture_returncode": 0,
+  "producer_middle": {
+    "local_sha256": "5f8b5f2b9515003df093f22c04903c257d610240ee80b1dc4fa81a76dbdbd16a",
+    "retained_sha256": "9e2a5e8315002c1ad00e57508729112d4a5e01871e41ced4ecca1a10bf259ff5",
+    "byte_identical": false
+  },
+  "producer_after": {
+    "local_sha256": "69187ed691fc032211d93cf49fca3f30888f5a43a6cc2a982446290aa8de9be6",
+    "retained_sha256": "a98bd7576316e4ad9b4ba873beb9dfe5440e9db1f37460cf52628833f3134773",
+    "byte_identical": false
+  }
+}

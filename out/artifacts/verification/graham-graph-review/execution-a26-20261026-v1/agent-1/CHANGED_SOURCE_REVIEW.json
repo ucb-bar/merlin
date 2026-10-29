@@ -1,0 +1,421 @@
+{
+  "schema": "merlin.a26.agent1.source-claim-review.v1",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "review_base": "58dbc7c00acdb6770d440b773cc2954328c78472",
+  "review_evidence_tip": "5a7f872db33d378d6b0c4a294e4099e80efd4956",
+  "source_files_changed": [
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_capture.py",
+      "review_sha256": "c14ceb21489b6ffaf862ceb21554de43f3de5da92e3c155764f2b518f16bbe83",
+      "baseline_sha256": "eb72e6fe8c33808e0f34b88b112ba9c2ad097c7737ff594bd2c7a203563963ba",
+      "status": "CHANGED",
+      "bytes": 5352,
+      "actual_sha256": "eb72e6fe8c33808e0f34b88b112ba9c2ad097c7737ff594bd2c7a203563963ba",
+      "static_review": "ADMISSION_WIRING_OR_SOURCE_CLOSURE_ADDITION",
+      "semantic_core_changed": false,
+      "admission_and_binding_lines": [
+        {
+          "line": 42,
+          "text": "return admission.parse_admitted(raw, producer_parse_ir, calls=calls)"
+        },
+        {
+          "line": 94,
+          "text": "input_admission_source=admission.source_reference(),"
+        }
+      ],
+      "top_level_definitions": [
+        "buffer_reference",
+        "run",
+        "main"
+      ]
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_reuse.py",
+      "review_sha256": "0b9287801df6436335843b9d28ad09f181ff5c9e144818a14bc35c749ee9c577",
+      "baseline_sha256": "86a62d587150a629978cad1774cff46e61df04419575af498f0f10bb8e97e832",
+      "status": "CHANGED",
+      "bytes": 18132,
+      "actual_sha256": "86a62d587150a629978cad1774cff46e61df04419575af498f0f10bb8e97e832",
+      "static_review": "ADMISSION_WIRING_OR_SOURCE_CLOSURE_ADDITION",
+      "semantic_core_changed": false,
+      "admission_and_binding_lines": [
+        {
+          "line": 327,
+          "text": "Path(__file__).with_name(\"lean_graph_input_admission.py\").resolve(),"
+        }
+      ],
+      "top_level_definitions": [
+        "_audit",
+        "ReuseSelection",
+        "obligation",
+        "verify_reuse_files",
+        "_verify"
+      ]
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+      "review_sha256": "2479ffd848dfac16aa3946f4fdb74d7ff3717c584f95e8692355743caf21d258",
+      "baseline_sha256": "7f25c31910f3da789cc72e1bacdb95a3d305290fceb64ced963a4377e2e5b821",
+      "status": "CHANGED",
+      "bytes": 7225,
+      "actual_sha256": "7f25c31910f3da789cc72e1bacdb95a3d305290fceb64ced963a4377e2e5b821",
+      "static_review": "ADMISSION_WIRING_OR_SOURCE_CLOSURE_ADDITION",
+      "semantic_core_changed": false,
+      "admission_and_binding_lines": [
+        {
+          "line": 69,
+          "text": "return admission.parse_admitted(raw, producer_parse_ir, calls=calls)"
+        },
+        {
+          "line": 111,
+          "text": "input_admission_source=admission.source_reference(),"
+        },
+        {
+          "line": 134,
+          "text": "input_admission_source=admission.source_reference(),"
+        }
+      ],
+      "top_level_definitions": [
+        "export",
+        "run",
+        "main"
+      ]
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+      "review_sha256": "8a92666910b573f37941594d04de202d48628fc3e5246ed8359b15fe864cd97a",
+      "baseline_sha256": "94262c34876e169c17ab9b639941cd3423b44b110adf09aa763fc60cdae0a24f",
+      "status": "CHANGED",
+      "bytes": 6594,
+      "actual_sha256": "94262c34876e169c17ab9b639941cd3423b44b110adf09aa763fc60cdae0a24f",
+      "static_review": "ADMISSION_WIRING_OR_SOURCE_CLOSURE_ADDITION",
+      "semantic_core_changed": false,
+      "admission_and_binding_lines": [
+        {
+          "line": 110,
+          "text": "return admission.parse_admitted(raw, producer_parse_ir, calls=\"shape-direct\")"
+        },
+        {
+          "line": 147,
+          "text": "input_admission_source=admission.source_reference(),"
+        }
+      ],
+      "top_level_definitions": [
+        "reference",
+        "type_record",
+        "export",
+        "run",
+        "main"
+      ]
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_integer_capture.py",
+      "review_sha256": "f8437a1c545904b47df8400359f87a38e402e4a9728e68267d48d3e8b3f22cd5",
+      "baseline_sha256": "eb2a43185067b669666c53ae38a2360ef9749b40b8ddee2f9cd0811dcb3e13cf",
+      "status": "CHANGED",
+      "bytes": 8629,
+      "actual_sha256": "eb2a43185067b669666c53ae38a2360ef9749b40b8ddee2f9cd0811dcb3e13cf",
+      "static_review": "ADMISSION_WIRING_OR_SOURCE_CLOSURE_ADDITION",
+      "semantic_core_changed": false,
+      "admission_and_binding_lines": [
+        {
+          "line": 32,
+          "text": "admission.admit_module(module)"
+        },
+        {
+          "line": 53,
+          "text": "return admission.parse_admitted(raw, producer_parse_ir)"
+        },
+        {
+          "line": 86,
+          "text": "\"input_admission_source\": admission.source_reference(),"
+        },
+        {
+          "line": 107,
+          "text": "return admission.parse_admitted(raw, producer_parse_ir)"
+        }
+      ],
+      "top_level_definitions": [
+        "validate_calls",
+        "projection",
+        "capture",
+        "reopen",
+        "main"
+      ]
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_integer_proof.py",
+      "review_sha256": "adf3091b68dd916413d614ed177f2ad9e96979ad3bdbc13e933fb1edbcac4263",
+      "baseline_sha256": "524f5bc7af1096375ba8a1af2e4c48c3b92cc5ab27801e50c92b5ba91ad74149",
+      "status": "CHANGED",
+      "bytes": 8732,
+      "actual_sha256": "524f5bc7af1096375ba8a1af2e4c48c3b92cc5ab27801e50c92b5ba91ad74149",
+      "static_review": "ADMISSION_WIRING_OR_SOURCE_CLOSURE_ADDITION",
+      "semantic_core_changed": false,
+      "admission_and_binding_lines": [
+        {
+          "line": 56,
+          "text": "paths.append(root / \"src/merlin/verify/lean_graph_input_admission.py\")"
+        }
+      ],
+      "top_level_definitions": [
+        "own_objects",
+        "sources",
+        "prepare",
+        "execute",
+        "imported_bindings",
+        "check_query"
+      ]
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_pipeline_capture.py",
+      "review_sha256": "3960c5ffdb65e70f104a16fb4328eeffde22906afe199719403f0053850ff9be",
+      "baseline_sha256": "94af83c9de73aa64ac534ae2d5371e3acbfad3377002bd0a3ee2405795226970",
+      "status": "CHANGED",
+      "bytes": 12106,
+      "actual_sha256": "94af83c9de73aa64ac534ae2d5371e3acbfad3377002bd0a3ee2405795226970",
+      "static_review": "ADMISSION_WIRING_OR_SOURCE_CLOSURE_ADDITION",
+      "semantic_core_changed": false,
+      "admission_and_binding_lines": [
+        {
+          "line": 56,
+          "text": "admission.admit_module(module)"
+        },
+        {
+          "line": 142,
+          "text": "return admission.parse_admitted(raw, producer_parse_ir)"
+        },
+        {
+          "line": 163,
+          "text": "\"input_admission_source\": admission.source_reference(),"
+        },
+        {
+          "line": 187,
+          "text": "return admission.parse_admitted(raw, producer_parse_ir)"
+        }
+      ],
+      "top_level_definitions": [
+        "index_operation",
+        "project_modules",
+        "selected_source",
+        "expected_producer",
+        "loaded_sources",
+        "write_projection",
+        "capture",
+        "reopen",
+        "main"
+      ]
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_pipeline_receipt.py",
+      "review_sha256": "c5056b7cc9f042f03818f49b0e9897f6b6b49d1b0f8b5d940d834685f6d8febf",
+      "baseline_sha256": "6b0e83ef29805b95701b6b0e12ef707861d6477b17342ab2561a956be72f9132",
+      "status": "CHANGED",
+      "bytes": 19178,
+      "actual_sha256": "6b0e83ef29805b95701b6b0e12ef707861d6477b17342ab2561a956be72f9132",
+      "static_review": "ADMISSION_WIRING_OR_SOURCE_CLOSURE_ADDITION",
+      "semantic_core_changed": false,
+      "admission_and_binding_lines": [
+        {
+          "line": 107,
+          "text": "\"lean_graph_input_admission.py\","
+        }
+      ],
+      "top_level_definitions": [
+        "closed",
+        "valid_claims",
+        "reference_row",
+        "config",
+        "sources",
+        "projection",
+        "author",
+        "check_boundary",
+        "collect_refs",
+        "issue",
+        "validate",
+        "replay"
+      ]
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_scalar.py",
+      "review_sha256": "d1cb71af342dd09008bade5b8d56a4c039781a0bbf37bf7813d508acacb50e43",
+      "baseline_sha256": "61d351b2b6d31fc172a20931142e5a5096416ac3264901efc322086a410e5fc5",
+      "status": "CHANGED",
+      "bytes": 15252,
+      "actual_sha256": "61d351b2b6d31fc172a20931142e5a5096416ac3264901efc322086a410e5fc5",
+      "static_review": "ADMISSION_WIRING_OR_SOURCE_CLOSURE_ADDITION",
+      "semantic_core_changed": false,
+      "admission_and_binding_lines": [
+        {
+          "line": 214,
+          "text": "root / \"src/merlin/verify/lean_graph_input_admission.py\","
+        }
+      ],
+      "top_level_definitions": [
+        "integer",
+        "closed",
+        "type_code",
+        "types",
+        "indices",
+        "primitive",
+        "program",
+        "budget",
+        "emit_query",
+        "sources",
+        "check_boundary",
+        "check_chain"
+      ]
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "review_sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+      "baseline_sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "status": "CHANGED",
+      "bytes": 20723,
+      "actual_sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "static_review": "ADMISSION_WIRING_OR_SOURCE_CLOSURE_ADDITION",
+      "semantic_core_changed": false,
+      "admission_and_binding_lines": [
+        {
+          "line": 126,
+          "text": "admission.admit_module(module)"
+        },
+        {
+          "line": 322,
+          "text": "return admission.parse_admitted(raw, producer_parse_ir)"
+        },
+        {
+          "line": 371,
+          "text": "\"input_admission_source\": admission.source_reference(),"
+        },
+        {
+          "line": 418,
+          "text": "\"input_admission_source\": admission.source_reference(),"
+        }
+      ],
+      "top_level_definitions": [
+        "file_ref",
+        "canonical",
+        "exact",
+        "metadata",
+        "selected_primitive",
+        "project",
+        "capture",
+        "main"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "A1-01",
+      "review_ids": [
+        "D2-G01",
+        "D2-G02"
+      ],
+      "status": "SOURCE_REPAIR_REVIEWED_WITH_FRESH_BOUNDED_ADMISSION_CONTROLS",
+      "priority": "P0_FOR_AFFECTED_DOMAINS",
+      "result": "admit_text runs the xDSL lexer before the parser; admit_module recursively rejects resources, function values, unknown/opaque attribute representations and unmodeled symbol references. Capture/export routes now use this helper.",
+      "evidence": [
+        "src/merlin/verify/lean_graph_input_admission.py:26",
+        "src/merlin/verify/lean_graph_input_admission.py:89",
+        "src/merlin/verify/lean_graph_input_admission.py:150",
+        "ADMISSION_SUBSET_XDSL_0.68.0.json"
+      ],
+      "limits": "32 independent parser/helper controls; original 81-case producer/CLI replay and new Lean qualification remain unavailable/unexecuted respectively."
+    },
+    {
+      "id": "A1-02",
+      "review_ids": [
+        "D2-G01"
+      ],
+      "status": "EXPLICIT_INTERNAL_CALL_MODE_REMAINS_CONDITIONAL",
+      "priority": "P1_FOR_CALLER_CONTEXT",
+      "result": "Default admission permits only exact signature-matched declared external direct calls. Shape explicitly uses shape-direct; reuse/memory expose explicit opt-in. The admission helper does not prove call-body correspondence or finite-depth caller congruence.",
+      "evidence": [
+        "src/merlin/verify/lean_graph_input_admission.py:97",
+        "src/merlin/verify/lean_graph_loops_shape_capture.py:66",
+        "src/merlin/verify/lean_graph_loops_reuse_capture.py:29",
+        "src/merlin/verify/lean_graph_loops_memory_scf_capture.py:35"
+      ]
+    },
+    {
+      "id": "A1-03",
+      "review_ids": [
+        "D1-G03",
+        "D2-G05",
+        "D3-G06"
+      ],
+      "status": "HISTORICAL_SOURCE_IDENTITY_NOT_REFRESHED",
+      "priority": "P0_FOR_FRESH_QUALIFICATION_CLAIMS",
+      "result": "New scalar/integer/pipeline/reuse source closures explicitly include the admission helper. Capture records identify it. Old shape/memory selection contracts continue comparing exact original host/source/object identities and must refuse changed sources; no historical pins were refreshed.",
+      "evidence": [
+        "src/merlin/verify/lean_graph_state_scalar.py:214",
+        "src/merlin/verify/lean_graph_state_integer_proof.py:56",
+        "src/merlin/verify/lean_graph_state_pipeline_receipt.py:107",
+        "src/merlin/verify/lean_graph_loops_reuse.py:327",
+        "src/merlin/verify/lean_graph_loops_shape_selection.py:112",
+        "src/merlin/verify/lean_graph_loops_memory_scf_selection.py:90"
+      ],
+      "limits": "Original selection replays were not run; the rejection conclusion is static source analysis."
+    },
+    {
+      "id": "A1-04",
+      "review_ids": [
+        "D1-G02",
+        "D2-G03",
+        "D3-G08"
+      ],
+      "status": "TRUSTED_CORRESPONDENCE_PREMISE_REMAINS",
+      "priority": "P0_FOR_ACTUAL_FINAL_BUFFER_CLAIMS",
+      "result": "The admission patch does not change the historical shape/memory-SCF one-blueprint theorem or replace host full-tree correspondence. Original raw text is required at raw intake; a parsed-module API cannot recover unused metadata already lost by another parser.",
+      "evidence": [
+        "out/artifacts/verification/graham-graph-review/baseline-a26-20261026-v1/inputs/reviewer/deliverable-2/omissions-bugs.md:D2-G03",
+        "src/merlin/verify/lean_graph_input_admission.py:1"
+      ],
+      "claim": "Keep the raw parser, host matcher, primitive/control/effect and allocator/alias correspondence explicit in the claim."
+    },
+    {
+      "id": "A1-05",
+      "review_ids": [
+        "D1-G09",
+        "D3-G10"
+      ],
+      "status": "ORDINARY_COMPILER_AUTHORITY_NOT_ESTABLISHED",
+      "priority": "P0_FOR_COMPILER_ENFORCEMENT_CLAIMS",
+      "result": "Source corrections for legacy identity/local receipt authority are held in the corrective producer packet; those three canonical producer destinations remain absent from primary. New admission controls supply no ordinary compiler authority.",
+      "evidence": [
+        "out/artifacts/verification/graph-pipeline-gate/development/publication-cut-v1/SOURCES.json"
+      ],
+      "claim": "Only a separately established same-live whole-boundary gate can support the compiler-enforcement sentence."
+    },
+    {
+      "id": "A1-06",
+      "review_ids": [
+        "D1-G04",
+        "D1-G08",
+        "D3-G02",
+        "D3-G03",
+        "D3-G04"
+      ],
+      "status": "RELATION_AND_RESOURCE_LIMITS_REMAIN",
+      "priority": "P0_OR_P1_DEPENDING_ON_CLAIM",
+      "result": "Scalar/integer/pipeline error/world equality, shape/memory possible-success outcomes and declared observer-only equality remain separate. Total/private/unobservable allocation and the retained 8-to-16-byte counterexample are necessary boundaries."
+    }
+  ],
+  "test_result": {
+    "passed": 32,
+    "failed": 0,
+    "skipped": 0,
+    "xdsl": "0.68.0",
+    "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+    "result": "ADMISSION_SUBSET_XDSL_0.68.0.json",
+    "source_file_count": 64,
+    "original_81_suite": "UNAVAILABLE",
+    "new_Lean_compilation": false,
+    "new_graph_qualification": false,
+    "human_approval": false
+  },
+  "test_harness_first_failure": "HARNESS_V1_FAILURE.json records the initial overly broad refusal of Python ctypes.PyDLL(None); original script and raw failure retained. Final harness allows only current-interpreter handle bootstrap and still refuses all named loads and process launches.",
+  "implementation_changes": [],
+  "limits": "Agent source review and bounded admission tests do not prove raw MLIR semantics, full producer/CLI behavior, semantic mutation rejection, native fidelity or ordinary compiler integration."
+}

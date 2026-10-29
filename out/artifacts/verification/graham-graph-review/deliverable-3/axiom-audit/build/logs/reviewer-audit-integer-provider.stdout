@@ -1,0 +1,8 @@
+roots: [GraphStateIntegerInstance]
+modules_in_environment: 1105
+theorems_in_scope: 1056
+definitions_in_scope: 715
+axiom_use_counts: [Quot.sound=307, Classical.choice=158, propext=596]
+non_std3_axioms: []
+compiler_unsafe_rec_aux_of_safe_defs: 25
+findings: []

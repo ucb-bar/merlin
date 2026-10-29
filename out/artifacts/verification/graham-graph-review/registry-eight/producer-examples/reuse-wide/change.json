@@ -1,0 +1,48 @@
+{
+  "kind": "buffer_reuse",
+  "before_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i128, i128, memref<?xi128>) -> (i128, index)}> ({\n  ^bb0(%seed0: i128, %seed1: i128, %caller: memref<?xi128>):\n    %zero = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %one = \"arith.constant\"() <{value = 1 : index}> : () -> index\n    %bound0 = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %buffer0 = \"memref.alloc\"() <{alignment = 16 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2xi128>\n    \"scf.for\"(%zero, %bound0, %one) ({\n    ^bb1(%iv0: index):\n      \"memref.store\"(%seed0, %buffer0, %iv0) : (i128, memref<2xi128>, index) -> ()\n      \"scf.yield\"() : () -> ()\n    }) : (index, index, index) -> ()\n    %first0 = \"memref.load\"(%buffer0, %zero) : (memref<2xi128>, index) -> i128\n    %updated0 = \"arith.addi\"(%first0, %seed0) <{overflowFlags = #arith.overflow<none>}> : (i128, i128) -> i128\n    \"memref.store\"(%updated0, %buffer0, %zero) : (i128, memref<2xi128>, index) -> ()\n    %value0 = \"memref.load\"(%buffer0, %zero) : (memref<2xi128>, index) -> i128\n    %dim0 = \"memref.dim\"(%buffer0, %zero) : (memref<2xi128>, index) -> index\n    %observed0 = \"func.call\"(%value0, %caller) <{callee = @touch}> : (i128, memref<?xi128>) -> i128\n    \"memref.dealloc\"(%buffer0) : (memref<2xi128>) -> ()\n    %buffer1 = \"memref.alloc\"() <{alignment = 16 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2xi128>\n    \"scf.for\"(%zero, %bound0, %one) ({\n    ^bb2(%iv1: index):\n      \"memref.store\"(%seed1, %buffer1, %iv1) : (i128, memref<2xi128>, index) -> ()\n      \"scf.yield\"() : () -> ()\n    }) : (index, index, index) -> ()\n    %first1 = \"memref.load\"(%buffer1, %zero) : (memref<2xi128>, index) -> i128\n    %updated1 = \"arith.addi\"(%first1, %seed1) <{overflowFlags = #arith.overflow<none>}> : (i128, i128) -> i128\n    \"memref.store\"(%updated1, %buffer1, %zero) : (i128, memref<2xi128>, index) -> ()\n    %value1 = \"memref.load\"(%buffer1, %zero) : (memref<2xi128>, index) -> i128\n    %dim1 = \"memref.dim\"(%buffer1, %zero) : (memref<2xi128>, index) -> index\n    %observed1 = \"func.call\"(%value1, %caller) <{callee = @touch}> : (i128, memref<?xi128>) -> i128\n    \"memref.dealloc\"(%buffer1) : (memref<2xi128>) -> ()\n    %result = \"arith.addi\"(%observed0, %observed1) <{overflowFlags = #arith.overflow<none>}> : (i128, i128) -> i128\n    \"func.return\"(%result, %dim1) : (i128, index) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"touch\", function_type = (i128, memref<?xi128>) -> i128}> ({\n  ^bb0(%value: i128, %caller: memref<?xi128>):\n    %zero = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %old = \"memref.load\"(%caller, %zero) : (memref<?xi128>, index) -> i128\n    %new = \"arith.addi\"(%old, %value) <{overflowFlags = #arith.overflow<none>}> : (i128, i128) -> i128\n    \"memref.store\"(%new, %caller, %zero) : (i128, memref<?xi128>, index) -> ()\n    \"func.return\"(%new) : (i128) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"untouched\", function_type = (i32) -> i32}> ({\n  ^bb0(%input: i32):\n    %one = \"arith.constant\"() <{value = 1 : i32}> : () -> i32\n    %result = \"arith.addi\"(%input, %one) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    \"func.return\"(%result) : (i32) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "after_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"kernel\", function_type = (i128, i128, memref<?xi128>) -> (i128, index)}> ({\n  ^bb0(%seed0: i128, %seed1: i128, %caller: memref<?xi128>):\n    %zero = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %one = \"arith.constant\"() <{value = 1 : index}> : () -> index\n    %bound0 = \"arith.constant\"() <{value = 2 : index}> : () -> index\n    %buffer0 = \"memref.alloc\"() <{alignment = 16 : i64, operandSegmentSizes = array<i32: 0, 0>}> : () -> memref<2xi128>\n    \"scf.for\"(%zero, %bound0, %one) ({\n    ^bb1(%iv0: index):\n      \"memref.store\"(%seed0, %buffer0, %iv0) : (i128, memref<2xi128>, index) -> ()\n      \"scf.yield\"() : () -> ()\n    }) : (index, index, index) -> ()\n    %first0 = \"memref.load\"(%buffer0, %zero) : (memref<2xi128>, index) -> i128\n    %updated0 = \"arith.addi\"(%first0, %seed0) <{overflowFlags = #arith.overflow<none>}> : (i128, i128) -> i128\n    \"memref.store\"(%updated0, %buffer0, %zero) : (i128, memref<2xi128>, index) -> ()\n    %value0 = \"memref.load\"(%buffer0, %zero) : (memref<2xi128>, index) -> i128\n    %dim0 = \"memref.dim\"(%buffer0, %zero) : (memref<2xi128>, index) -> index\n    %observed0 = \"func.call\"(%value0, %caller) <{callee = @touch}> : (i128, memref<?xi128>) -> i128\n    \"scf.for\"(%zero, %bound0, %one) ({\n    ^bb2(%iv1: index):\n      \"memref.store\"(%seed1, %buffer0, %iv1) : (i128, memref<2xi128>, index) -> ()\n      \"scf.yield\"() : () -> ()\n    }) : (index, index, index) -> ()\n    %first1 = \"memref.load\"(%buffer0, %zero) : (memref<2xi128>, index) -> i128\n    %updated1 = \"arith.addi\"(%first1, %seed1) <{overflowFlags = #arith.overflow<none>}> : (i128, i128) -> i128\n    \"memref.store\"(%updated1, %buffer0, %zero) : (i128, memref<2xi128>, index) -> ()\n    %value1 = \"memref.load\"(%buffer0, %zero) : (memref<2xi128>, index) -> i128\n    %dim1 = \"memref.dim\"(%buffer0, %zero) : (memref<2xi128>, index) -> index\n    %observed1 = \"func.call\"(%value1, %caller) <{callee = @touch}> : (i128, memref<?xi128>) -> i128\n    \"memref.dealloc\"(%buffer0) : (memref<2xi128>) -> ()\n    %result = \"arith.addi\"(%observed0, %observed1) <{overflowFlags = #arith.overflow<none>}> : (i128, i128) -> i128\n    \"func.return\"(%result, %dim1) : (i128, index) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"touch\", function_type = (i128, memref<?xi128>) -> i128}> ({\n  ^bb0(%value: i128, %caller: memref<?xi128>):\n    %zero = \"arith.constant\"() <{value = 0 : index}> : () -> index\n    %old = \"memref.load\"(%caller, %zero) : (memref<?xi128>, index) -> i128\n    %new = \"arith.addi\"(%old, %value) <{overflowFlags = #arith.overflow<none>}> : (i128, i128) -> i128\n    \"memref.store\"(%new, %caller, %zero) : (i128, memref<?xi128>, index) -> ()\n    \"func.return\"(%new) : (i128) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"untouched\", function_type = (i32) -> i32}> ({\n  ^bb0(%input: i32):\n    %one = \"arith.constant\"() <{value = 1 : i32}> : () -> i32\n    %result = \"arith.addi\"(%input, %one) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    \"func.return\"(%result) : (i32) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "parameters": {},
+  "certificate": {
+    "kind": "buffer_reuse",
+    "before_ir_sha256": "8e32d351fa10392463a81a3cfdd0f6f21ba2244b7f05da7a8fe1458ad7970b87",
+    "after_ir_sha256": "08cdd9cb3347941df7282581b5057c51dda14a2086983c1c86e598046c7ae421",
+    "witnesses": [
+      {
+        "kind": "buffer_reuse",
+        "block_index": 1,
+        "intervals": [
+          {
+            "allocation_index": 3,
+            "initialized_index": 4,
+            "deallocation_index": 11,
+            "shape": [
+              2
+            ],
+            "element_bits": 128,
+            "alignment": 16,
+            "size_bytes": 32,
+            "slot": 0
+          },
+          {
+            "allocation_index": 12,
+            "initialized_index": 13,
+            "deallocation_index": 20,
+            "shape": [
+              2
+            ],
+            "element_bits": 128,
+            "alignment": 16,
+            "size_bytes": 32,
+            "slot": 0
+          }
+        ]
+      }
+    ],
+    "scope": [
+      "static_contiguous_initialized_integer_buffers",
+      "sequential_nonoverlapping_lifetimes"
+    ],
+    "schema": "merlin.shared_transform.v1"
+  }
+}

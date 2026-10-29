@@ -1,0 +1,10 @@
+{
+  "case": "schedule-opaque",
+  "route": "old-scalar-export",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "status": "projection_refused",
+  "reason_type": "UnsupportedLeanIR",
+  "reason": "formal scalar operations require one result and no regions or successors"
+}

@@ -1,0 +1,11 @@
+{
+  "case": "shape-cast-generic",
+  "route": "shape",
+  "returncode": 0,
+  "status": "projection_emitted_not_kernel_checked",
+  "lean_run": false,
+  "qualification_issued": false,
+  "independent_correspondence_review": false,
+  "model": "projection-probes-sealed/shape-cast-generic/shape/model.json",
+  "sha256": "afc3dd58a694c83580c8111dd3ece571ef32ab32a081451d80c621dbdc1e8a75"
+}

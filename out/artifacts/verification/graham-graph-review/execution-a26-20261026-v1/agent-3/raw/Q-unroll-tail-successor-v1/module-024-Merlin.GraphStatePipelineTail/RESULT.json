@@ -1,0 +1,23 @@
+{
+  "executed": true,
+  "command": [
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk/data/lean-4.35.0-linux/bin/lean",
+    "-j1",
+    "-o",
+    "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/profiles/compiled/Q-unroll-tail-successor-v1/library/Merlin/GraphStatePipelineTail.olean",
+    "Merlin/GraphStatePipelineTail.lean"
+  ],
+  "exit_code": 1,
+  "seconds": 0.46843251097016037,
+  "classification": "LEAN_SOURCE_OR_AUDIT_FAILURE",
+  "log_directory": "out/artifacts/verification/graham-graph-review/execution-a26-20261026-v1/agent-3/raw/Q-unroll-tail-successor-v1/module-024-Merlin.GraphStatePipelineTail",
+  "stdout": {
+    "sha256": "57c519d17a19f7287492d6d90ed8bc4fe705c44d815717fd369764597f8199f6",
+    "bytes": 610
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  "first_error_excerpt": "Merlin/GraphStatePipelineTail.lean:33:4: error: unsolved goals\ncase neg\nValue World Error : Type\narity : Nat\nbody : Int \u2192 List Value \u2192 World \u2192 Outcome Value World Error\nrest : List Int\nvalues : List Value\nworld : World\nsize : \u00acvalues.length = arity\n\u22a2 loopEval arity body rest values world = Except.error (Fault.arity, world)\nMerlin/GraphStatePipelineTail.lean:61:15: warning: This simp argument is unused:\n  Nat.mul_assoc\n\nHint: Omit it from the simp argument list.\n  [apply] simp only [Nat.mul_comm, Nat.mul_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n\n"
+}

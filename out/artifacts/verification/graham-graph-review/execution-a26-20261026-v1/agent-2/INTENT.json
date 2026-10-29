@@ -1,0 +1,15 @@
+{
+  "utc": "2026-10-27T00:34:39.788303+00:00",
+  "platform": "Linux-6.8.0-147-generic-x86_64-with-glibc2.39",
+  "machine": "x86_64",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "authorization": "User explicitly requested three agents working on plan items1-3 then go; root assigned fresh bounded Lean4.35.0 admission.",
+  "old_runtime_hold": "UNCHANGED",
+  "new_build_root": "/scratch/grammy/blast/merlin-pass-verification/out/build/verification-a26-20261026-v1/fresh-sdk",
+  "limits": {
+    "wall_seconds": 900,
+    "compressed_bytes_max": 1073741824,
+    "expanded_bytes_max": 12884901888,
+    "parallelism": 1
+  }
+}

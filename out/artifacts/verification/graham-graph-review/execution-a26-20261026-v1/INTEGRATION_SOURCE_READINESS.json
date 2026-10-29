@@ -1,0 +1,607 @@
+{
+  "schema": "merlin.graham.a26-integration-source-readiness.v1",
+  "baseline": "c62f81a8a11347ff53b60101fa75280e69d002a6",
+  "scope": "Static metadata/source identities only, no implementation imports or native tools.",
+  "applicability_count": 66,
+  "primary_status": {
+    "DIFFERENT_FROM_SELECTED": 2,
+    "MATCH_SELECTED": 33,
+    "ABSENT_FROM_PRIMARY": 31
+  },
+  "rows": [
+    {
+      "path": "merlin/tests/ir/test_lean_graph_pipeline_gate.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "393647756260b9a8eb58d31158b9eb78a77605c9a96a0770ccefa3cf9c14d3de",
+      "current_sha256": "33976e630cf9051114a04a1bcdfd1bc34dbd0078c275c8575e0e700d1dfffa00",
+      "status": "DIFFERENT_FROM_SELECTED"
+    },
+    {
+      "path": "src/merlin/__init__.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086",
+      "current_sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/common/__init__.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+      "current_sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/common/bundle_snapshot.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "75ccb58526671f2ee474ce6f3290db2ea0709069d65926be927da9635cb9cc39",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/common/cpu_pool.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "980011c6f2a154c1830c2ed7b9ca53509c658cef957ddcf4f4a0ffaa8bf09138",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/common/dense_float_ir.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/common/digest.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "fe67884c895729e539d3ca638758af39b555ff40b91b4f6828dc31d404c165a9",
+      "current_sha256": "fe67884c895729e539d3ca638758af39b555ff40b91b4f6828dc31d404c165a9",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/common/invocation_record.py",
+      "proposed_action": "narrow additive original timing API; preserve all existing invocation behavior",
+      "selected_sha256": "b46fb7f0243326e1b93edb3ae02dc575b6160f78749b5df52977a3beb9fe0be5",
+      "current_sha256": "c8cb7099d6d722d6ec626795b5b27969629d1d9c1565822c3a1d648c2ce98811",
+      "status": "DIFFERENT_FROM_SELECTED"
+    },
+    {
+      "path": "src/merlin/common/path_relations.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "8e15c5f6b71785414fca77f9ce2ea84fe71dde328abda9d103faf94156b99f87",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/common/paths.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "current_sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/common/read_lease_digest.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "0adb034a66058287259108de8717323eb38c9a83a3e6f810c93b0872d5c0cf4c",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/compile/__init__.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "92721d5b005b1f6bdb33fb81918f2b1001c9368056bca02172b507fe69eeccce",
+      "current_sha256": "92721d5b005b1f6bdb33fb81918f2b1001c9368056bca02172b507fe69eeccce",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/__init__.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "57bdfb64b2e81fdf842fbafae7b237a93f4c26bbefb973af40ce1ac7a107b86f",
+      "current_sha256": "57bdfb64b2e81fdf842fbafae7b237a93f4c26bbefb973af40ce1ac7a107b86f",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/block_schedule.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "e8bdcabb8068120b77faddb3c738f62b5998012c392e6953031d0149d6517965",
+      "current_sha256": "e8bdcabb8068120b77faddb3c738f62b5998012c392e6953031d0149d6517965",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/derive.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "10810c48ea0056b235ae0f3a161363578650edd64e402b3505bb6c288d0ee653",
+      "current_sha256": "10810c48ea0056b235ae0f3a161363578650edd64e402b3505bb6c288d0ee653",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/export.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "0652a77b3da5d2b8e3ec1e5cf6b5cfc1f504169c4f3170dcd46d4328d5fda3cc",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/library_sources.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "1e6108dc34a998e54ecad85b519cda474f1a673ba884845276e0e8ba10dbd404",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/llvmlower/__init__.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "8a2a6206e74b555f98b42b04c78f8ad19b96807442e9a54e98a0baaf72bcbf6d",
+      "current_sha256": "8a2a6206e74b555f98b42b04c78f8ad19b96807442e9a54e98a0baaf72bcbf6d",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/llvmlower/device_ir_scalability.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "8f54758a7e90a9bc31c600b17b3a0227ba1bc1cf1d9cfaa8465584b9e6fc82f5",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/perf/__init__.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "9f8e5f6b298aec3ee46e87d50887f8ff11c9aff1f4d05d9cf1b715778f3d0a8e",
+      "current_sha256": "9f8e5f6b298aec3ee46e87d50887f8ff11c9aff1f4d05d9cf1b715778f3d0a8e",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/perf/pass_observation.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "3a58c25461a41e466e30b46a79cb377f8d9387d94a7e7ab948ca82cbf345249c",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/targetgen/__init__.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "7dae9fca1d8a5a860c76b424adfe208304bf12642774611599e78f7148210c70",
+      "current_sha256": "7dae9fca1d8a5a860c76b424adfe208304bf12642774611599e78f7148210c70",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/targetgen/address_space.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "e32e6bca97b4bc95e0a1c16320c570a2666d98173cf9a85e38c59413ad24e205",
+      "current_sha256": "e32e6bca97b4bc95e0a1c16320c570a2666d98173cf9a85e38c59413ad24e205",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/targetgen/common_transforms.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "4093df99cfb2ec1a343aa7a641f3430725364b95206c264530b271b4811466ab",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/targetgen/public_codegen_budget.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "fef713c3042576d5bdd12aa9a28ca940c8ae0bae66c127529cd60717f58aa8c7",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/targetgen/tool_profile.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "c78f181120e193c3d7a87e2d5456c14cf0c468bef9c8216a7284717dd6fb2996",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/targetgen/tool_profile_shared.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "c2f97ac5d624376c77f619e482c6c05c4882597fd026fdb040a8c436be546b9a",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/targetgen/tool_registry.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "de8e4deb4ad0962732b4aa3cb319e6d575f9f315abfc42c31efba28d74fe87c0",
+      "current_sha256": "de8e4deb4ad0962732b4aa3cb319e6d575f9f315abfc42c31efba28d74fe87c0",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/transforms/__init__.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/analyses.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "f644bb56349d680a3228b75308f2ebf51f7491baa628e704e1617f472ad8e754",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_liveness.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "ee3e4b9ed35d5f888f1706eb2d540016e28eacfc8454c96d769ee76b4b7b4b5f",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_memory.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "042cb7a7e72db59c574a6ecb1bfe9bc0c70de88898553f5a129d469071e38fbd",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_types.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "63eb8ab800b446c3f50b61dd54f228db5d3c9a66457939eb16a678ff78a68b0c",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/certificates.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "4b3348bd83b347b262dc6457a1827e5f0b0c2e94251e570d642afe19a18cc639",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/loops.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/normalization.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/pipeline.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "e665f6370c27a6d82509d42679c778b79b7983a56ebb6697bbbe96c2c183b73f",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/pipeline_state.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/planning.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/pure_scalar.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/scalar_witness.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/transforms/validation.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/verify/__init__.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "ed2b23769b23d2a34b47f38b316aca76277193efbcbce589670188a5cceeffe4",
+      "current_sha256": "ed2b23769b23d2a34b47f38b316aca76277193efbcbce589670188a5cceeffe4",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8",
+      "current_sha256": "9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "current_sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "current_sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "current_sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "current_sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "current_sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "current_sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_checker.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "abbe47809b5fab74c65c79bd4acb4b7d311303f7fecebbf6a26c62382197dce1",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/verify/lean_contract.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "fcb0b8a2812d41d20fa95724c8a54b50dd5763260f63f672bfeb17a8de346ab8",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/verify/lean_export.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "73a0764df9f026c3b9e1b2643f5562119b585ffa7ea7b7d364feeb6db1c9c1e3",
+      "status": "ABSENT_FROM_PRIMARY"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_input_admission.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "current_sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_original_image_context.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "bfdb1a71019dfccc335f35f560dd6e51b7b1bc2671cf033c529ad52f6473bcc6",
+      "current_sha256": "bfdb1a71019dfccc335f35f560dd6e51b7b1bc2671cf033c529ad52f6473bcc6",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_original_image_context_data.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1",
+      "current_sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_original_image_context_io.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "9ed416a334277acd890c95a75d45ca0366c0eb0797b71574bc467720ad1bdb09",
+      "current_sha256": "9ed416a334277acd890c95a75d45ca0366c0eb0797b71574bc467720ad1bdb09",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "43107d4178316f361b2a5a71fce6417b68bf8212ae7d9c4abbca12ff4bb2aba6",
+      "current_sha256": "43107d4178316f361b2a5a71fce6417b68bf8212ae7d9c4abbca12ff4bb2aba6",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_emit.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "8a45093f252cfcbcca0294f6c07897abab8a8004e10c1919d3b83a95d3404816",
+      "current_sha256": "8a45093f252cfcbcca0294f6c07897abab8a8004e10c1919d3b83a95d3404816",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_models.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "1c35ab853f13779bb1ae9e2adb833664fb00b7c7b75b6b46e6557b489d9fee98",
+      "current_sha256": "1c35ab853f13779bb1ae9e2adb833664fb00b7c7b75b6b46e6557b489d9fee98",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_native.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "352af415cea2a7b7f538abac0af79b15123fe0ff079c5d6a8afae44e8f5eb7da",
+      "current_sha256": "352af415cea2a7b7f538abac0af79b15123fe0ff079c5d6a8afae44e8f5eb7da",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "current_sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_provider.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "3308c8ae184ee8a46d5ad25172ea4c49b2b9b2623ad83698265c59110f9b0290",
+      "current_sha256": "3308c8ae184ee8a46d5ad25172ea4c49b2b9b2623ad83698265c59110f9b0290",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_service.py",
+      "proposed_action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "selected_sha256": "1db5340598add5cb9ec19995c8d44a458059b43b50718fa82bfecb2980940ff6",
+      "current_sha256": "1db5340598add5cb9ec19995c8d44a458059b43b50718fa82bfecb2980940ff6",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "proposed_action": "already present exact; retain primary, no patch",
+      "selected_sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "current_sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "status": "MATCH_SELECTED"
+    },
+    {
+      "path": "src/merlin/verify/lean_sat_runtime.py",
+      "proposed_action": "add exact missing generic source from Assign proposal",
+      "selected_sha256": "26a2104f7baef33ac46720c7f14c13bd1ff4163b5c5f4f385b1343ea7575f6ac",
+      "status": "ABSENT_FROM_PRIMARY"
+    }
+  ],
+  "findings": [
+    {
+      "id": "current-service-domain",
+      "source": "src/merlin/verify/lean_graph_pipeline_gate_service.py:98",
+      "finding": "The current service options admit only explicit scalar CSE/DCE and LICM; normalization, integer simplification, buffer reuse, loop tiling/unrolling and dependency schedules are refused by this service selection."
+    },
+    {
+      "id": "legacy-authority-proposal",
+      "source": "out/artifacts/verification/graph-pipeline-gate/development/source-checkpoint-v10/sources/corrective-producer/src/merlin/verify/lean_checker.py:77",
+      "finding": "The held corrective source denies LeanTransformReceipt whole-program authority and has no fallback from missing whole-boundary adapter to legacy identity/local lemmas."
+    },
+    {
+      "id": "no-integration-inference",
+      "finding": "These source proposals and independent candidate compilations cannot establish ordinary compiler enforcement. Primary source prerequisites and live consumer binding remain separate obligations."
+    }
+  ],
+  "public_native_gate_activation": false,
+  "fixed_prerequisite_packet_checks": [
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/common/bundle_snapshot.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/common/cpu_pool.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/common/dense_float_ir.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/common/invocation_record.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/common/path_relations.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/common/read_lease_digest.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/compile/scheduling/export.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/compile/scheduling/library_sources.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/llvmlower/device_ir_scalability.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/perf/pass_observation.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/targetgen/public_codegen_budget.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/targetgen/tool_profile.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/targetgen/tool_profile_shared.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/__init__.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/analyses.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/analysis_liveness.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/analysis_memory.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/analysis_types.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/certificates.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/loops.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/normalization.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/pipeline_state.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/planning.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/pure_scalar.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/scalar_witness.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/transforms/validation.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/verify/lean_contract.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/verify/lean_export.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/sources/src/merlin/verify/lean_sat_runtime.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/prepare_prerequisites.py",
+      "status": "MISSING"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/01-missing-prerequisites.patch",
+      "sha256": "ee9973a06de699127c550a5a67c6c2e9d1e587bed649b179a58a600740cef7aa",
+      "bytes": 328174,
+      "status": "MATCH"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/02-additive-timing-api.patch",
+      "sha256": "aac3d4fbc4d3059438b11acb89956b49a69e4aba857cb538591f96f2307a6ce1",
+      "bytes": 3335,
+      "status": "MATCH"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/PREREQUISITES.patch",
+      "sha256": "8d41d7e6e00bdde6324843eccf102f08f68653712bdb81158f6be7bced130814",
+      "bytes": 331509,
+      "status": "MATCH"
+    },
+    {
+      "path": "out/artifacts/verification/graph-pipeline-gate/development/primary-integration-prerequisites-v1/APPLICABILITY.json",
+      "sha256": "d27b2049bcc6be270368694aecd1dec31a9cfaa9d9eccc386f0420fca7f059ed",
+      "bytes": 47276,
+      "status": "MATCH"
+    }
+  ]
+}
