@@ -13,15 +13,21 @@ from .lean_graph_state_scalar import budget, integer, primitive, program, types
 
 
 def unpack(name, size, count, prefix, pad="  ", offset=0):
+    # Iterative construction keeps Python's call-stack depth out of the entry
+    # and carry domain. Lean still checks each actual list-length elimination.
     if count == 0:
         return f"{pad}have {prefix}empty : {name} = [] := List.length_eq_zero_iff.mp {size}\n{pad}subst {name}\n"
-    if count == 1:
-        return f"{pad}obtain ⟨{prefix}{offset},rfl⟩ := List.length_eq_one_iff.mp {size}\n"
-    tail = f"{prefix}tail{offset}"
-    later_size = f"{prefix}size{offset}"
-    result = f"{pad}obtain ⟨{prefix}{offset},{tail},rfl⟩ := List.exists_cons_of_length_eq_add_one {size}\n"
-    result += f"{pad}have {later_size} : {tail}.length = {count - 1} := by\n{pad}  simp only [List.length_cons] at {size}\n{pad}  omega\n"
-    return result + unpack(tail, later_size, count - 1, prefix, pad, offset + 1)
+    pieces = []
+    for remaining in range(count, 1, -1):
+        tail = f"{prefix}tail{offset}"
+        later_size = f"{prefix}size{offset}"
+        pieces.append(f"{pad}obtain ⟨{prefix}{offset},{tail},rfl⟩ := List.exists_cons_of_length_eq_add_one {size}\n")
+        pieces.append(
+            f"{pad}have {later_size} : {tail}.length = {remaining - 1} := by\n{pad}  simp only [List.length_cons] at {size}\n{pad}  omega\n"
+        )
+        name, size, offset = tail, later_size, offset + 1
+    pieces.append(f"{pad}obtain ⟨{prefix}{offset},rfl⟩ := List.length_eq_one_iff.mp {size}\n")
+    return "".join(pieces)
 
 
 def entry_arguments(input_count, lemma, inputs="inputs"):
@@ -376,7 +382,7 @@ theorem actual (arguments : List Int) (world : World) (arity : arguments.length 
     return text
 
 
-def emit(capture, *, identity_unroll=False):
+def emit(capture, *, identity_unroll=False, flexible_parameters=False):
     stages = capture["stages"]
     if len(stages) != 4 or any(
         s["registry"] != stages[0]["registry"] or s["types"] != stages[0]["types"] for s in stages
@@ -386,8 +392,11 @@ def emit(capture, *, identity_unroll=False):
     factor, tile, bits = capture["factor"], capture["tile"], capture["index_bits"]
     for value in (factor, tile, bits):
         integer(value, natural=True)
-    if not (factor == 1 if identity_unroll else 2 <= factor <= 4) or not 2 <= tile <= 16 or bits not in (32, 64):
-        raise ValueError("supported factor2..4/tile2..16/signed32-or64 profile required")
+    valid_factor = factor == 1 if identity_unroll else factor >= 2
+    if not valid_factor or tile < 2 or bits not in (32, 64):
+        raise ValueError("integer factor/tile at least two and signed32-or64 profile required")
+    if not flexible_parameters and (factor > 4 or tile > 16):
+        raise ValueError("historical factor2..4/tile2..16 profile required")
     for index, function in enumerate(stages[0]["functions"]):
         if function["declaration"]:
             continue
@@ -429,8 +438,6 @@ def emit(capture, *, identity_unroll=False):
             text += f"end F{index}\n"
             continue
         input_count = len(function["inputs"])
-        if input_count > 16:
-            raise ValueError("at most sixteen scalar entry arguments supported")
         input_names = [f"x{i}" for i in range(input_count)]
         args, vector = " ".join(input_names), lean_list(input_names)
         binders = f"({args} : Int)" if args else ""
@@ -476,8 +483,6 @@ def emit(capture, *, identity_unroll=False):
         if any(loops[stage]["carries"] != loops[2]["carries"] for stage in (3, 4)):
             raise ValueError("declared carried result type/order differs across complete stages")
         count = len(loops[2]["carries"])
-        if not 1 <= count <= 16:
-            raise ValueError("one to sixteen carries supported")
         text += f"variable {{World Error : Type}} (primitive : Prim → List Int → Int)\n    (external : External World Error registry) {binders}\n"
         for stage in (2, 3, 4):
             loop, env = loops[stage], envs[stage]

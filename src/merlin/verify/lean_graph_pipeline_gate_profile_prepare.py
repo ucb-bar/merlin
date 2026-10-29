@@ -176,18 +176,14 @@ def _domain(capture, *, flexible_entries=False):
             continue
         if any(len(x) != 1 for x in loops):
             raise ValueError("one top-level static changed loop required")
-        valid_inputs = len(function["inputs"]) <= 16 if flexible_entries else len(function["inputs"]) == 2
-        if not valid_inputs:
-            raise ValueError(
-                "at most sixteen entry arguments required" if flexible_entries else "two entry arguments required"
-            )
+        if not flexible_entries and len(function["inputs"]) != 2:
+            raise ValueError("two entry arguments required")
         if records[2] == records[4]:
             raise ValueError("unchanged loop entry lacks the selected explicit bridge")
         if any("loop" in row for row in loops[0][0]["body"]):
             raise ValueError("region-free original loop body required")
         carries = loops[0][0]["carries"]
-        carry_limit = 16 if flexible_entries else 4
-        if not 1 <= len(carries) <= carry_limit or any(set(t) != {"bits"} for t in carries):
+        if (not flexible_entries and not 1 <= len(carries) <= 4) or any(set(t) != {"bits"} for t in carries):
             raise ValueError("ordered word carry count outside selected scalar/SCF profile")
         lower, upper, step = static_controls(records[2], suffix, input_count=len(function["inputs"]))
         if not 0 <= lower <= upper or step <= 0:

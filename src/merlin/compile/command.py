@@ -15,6 +15,13 @@ from collections.abc import Sequence
 from pathlib import Path
 
 
+def _loop_parameter(raw: str) -> int:
+    value = int(raw)
+    if value < 2:
+        raise argparse.ArgumentTypeError("loop factors and sizes must be at least two")
+    return value
+
+
 def parser(
     rvv_dtypes: Sequence[str], runs: Sequence[str], rvv_run: str, sustained: Sequence[str]
 ) -> argparse.ArgumentParser:
@@ -138,15 +145,13 @@ def parser(
     )
     ap.add_argument(
         "--loop-unroll-factor",
-        type=int,
-        choices=range(2, 5),
-        help="opt in to ordered source SCF unrolling (factor 2..4)",
+        type=_loop_parameter,
+        help="opt in to ordered source SCF unrolling (integer factor at least 2)",
     )
     ap.add_argument(
         "--loop-tile-size",
-        type=int,
-        choices=range(2, 17),
-        help="opt in to ordered one-dimensional source SCF tiling (size 2..16)",
+        type=_loop_parameter,
+        help="opt in to ordered one-dimensional source SCF tiling (integer size at least 2; buffer proof at most 16)",
     )
     ap.add_argument(
         "--buffer-reuse-allocator",

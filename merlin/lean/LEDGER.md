@@ -42,8 +42,13 @@ objects are frozen before audit and revalidated with tree membership at live
 delivery. Formal compiler selections cannot use custom handler aliases or
 additional worker import roots. These controls add no semantic assumption.
 
-Current scalar compiler intake supports multiple changed definitions, zero to
-sixteen entry arguments and one to sixteen word carries. Existing narrower
+Current scalar compiler intake supports multiple changed definitions and
+argument/carry lists without a separate fixed arity cap, including zero carries.
+Scalar compiler unroll factors and tile sizes are integers at least two, without
+the historical factor-four/tile-sixteen cap. Private-buffer and standalone
+profiles retain their separate declared parameter domains.
+Complete syntax, symbolic-expression, query-size and runtime resource budgets
+still apply; they do not supply semantic premises. Existing narrower
 standalone source-profile declarations retain their original limits. The new
 `GraphLoopsShape.Identity` checker bridges unchanged normalization with exact
 complete syntax equality and zero rewrite sites, preserving the original
@@ -60,8 +65,10 @@ mode. Qualification results and retained source cuts are in the handoffs.
 
 Read the [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
 and [current integration checkpoint](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
-before resuming numerical work. Historical evidence retains its original source
-cut; the latest merged compiler/replay cut still needs its final qualification.
+before resuming numerical work. Completed compiler tests and fresh replay retain
+their recorded source cuts. Native SourceCapture qualification and broader
+campaigns remain outstanding; the handoff distinguishes them from completed
+targeted qualification.
 
 ## Modelling choices in the op semantics
 
@@ -75,7 +82,7 @@ cut; the latest merged compiler/replay cut still needs its final qualification.
 | A6 | Named linalg ops mean their structured generic form. Map bodies receive inputs followed by the destination element. | `Sem/Ops/LinalgNamed.lean` | Reviewed correction from the legacy inputs-only convention to LLVM [f5e175f](https://github.com/llvm/llvm-project/commit/f5e175f06dacf6751f27f7a4bd9e9a3489e95a5e); executable compiler probes and host comparisons qualify explicit cases. Map progress/definedness and map-to-generic rewriting on typed inputs are now proved. Runtime ranks are established through checked SSA execution; typed receipts/chains preserve that domain. Adjacent closed-expression motion has a separate universal proof, including captured-constant hoisting across static tensor.empty. Adjacent region-free independent operand-taking motion now has a separate source-success proof, with symmetric SSA dependency checks. General non-adjacent and nested motion remain outside this rule. These transformation proofs do not prove general fidelity to MLIR; see `docs/guides/lean_differential_tests.md`. |
 | A7 | `tensor.empty` is a tensor of poison. | `Sem/Ops/Tensor.lean` | MLIR leaves its contents unspecified. As a source, poison is the reading every value refines, so a target may read anything there; as a target, a read of it refines only a source that is also poison there. Treating it as poison is therefore never more permissive than "unspecified" towards the target. |
 | A8 | Integer division overflow (`INT_MIN / -1`) is UB at every width, i1 included. | `Sem/Ops/Arith.lean` | The Arith spec makes signed division overflow UB; for i1, `(-1) / (-1) = 1` is not representable. |
-| A9 | `quant_ext.dequantize_per_tensor`, `quant_ext.dequantize_per_channel` and `quant_ext.quantize_per_tensor` (region-free, value results) only compute their results, so DCE may erase them and CSE may reuse their executed values. | `Rules/Dce.lean` (`dequantOp`, `quantizeOp`), `Check/ExactCse.lean` | They are model2MLIR's Q/DQ extension ops with no side effects; Merlin's `prune_dead_pure_tensor_ops` already erases every `quant_ext.*` op. Only these three, whose meanings `Sem/Ops/{Dequant,Quantize}.lean` model, are admitted; other `quant_ext` ops stay ineligible. |
+| A9 | `quant_ext.dequantize_per_tensor`, `quant_ext.dequantize_per_channel` and `quant_ext.quantize_per_tensor` (region-free, value results) only compute their results, so DCE may erase them and CSE may reuse their executed values. | `Rules/Dce.lean` (`dequantOp`, `quantizeOp`), `Check/ExactCse.lean` | Purity is a premise of the three modeled Q/DQ operations; it is not inferred from the dialect name. Current production pruning conservatively retains unregistered Q/DQ until typed lowering. Only these three, whose meanings `Sem/Ops/{Dequant,Quantize}.lean` model, are admitted by the formal rules; other `quant_ext` operations stay ineligible. This wording correction does not change A9. |
 
 ## Trusted components (design §10, D11)
 

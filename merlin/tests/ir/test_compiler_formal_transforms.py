@@ -111,11 +111,12 @@ def test_project_proof_root_ignores_caller_repository_override(tmp_path, monkeyp
     "options",
     [
         {"unroll_factor": True},
-        {"unroll_factor": 5},
+        {"unroll_factor": 1},
         {"tile_size": 1},
-        {"tile_size": 17},
+        {"tile_size": True},
         {"buffer_allocator": transforms.ALLOCATOR},
         {"buffer_allocator": "finite", "tile_size": 3},
+        {"buffer_allocator": transforms.ALLOCATOR, "tile_size": 17},
         {"buffer_allocator": transforms.ALLOCATOR, "tile_size": 3, "unroll_factor": 2},
     ],
 )
@@ -303,7 +304,8 @@ def test_actual_loop_corpus_compiler_gate(tmp_path, pass_gate_tools, clean_selec
     assert set(detail["axioms"]) <= loop_transform_gate.STD3
 
 
-def test_new_cli_choices_select_transforms_separately_from_validation(monkeypatch):
+@pytest.mark.parametrize("factor,tile", [(2, 3), (7, 17)])
+def test_new_cli_choices_select_transforms_separately_from_validation(monkeypatch, factor, tile):
     from merlin.compile.command import apply_pass_validation, parser
 
     with monkeypatch.context() as environment:
@@ -316,13 +318,23 @@ def test_new_cli_choices_select_transforms_separately_from_validation(monkeypatc
                 "--validate-passes",
                 intake.TILE,
                 "--loop-unroll-factor",
-                "2",
+                str(factor),
                 "--loop-tile-size",
-                "3",
+                str(tile),
             ]
         )
         apply_pass_validation(args)
-        assert transforms.from_environment() == transforms.Options(unroll_factor=2, tile_size=3)
+        assert transforms.from_environment() == transforms.Options(unroll_factor=factor, tile_size=tile)
+
+
+@pytest.mark.parametrize("option", ["--loop-unroll-factor", "--loop-tile-size"])
+@pytest.mark.parametrize("value", ["-1", "0", "1", "2.5"])
+def test_cli_rejects_invalid_loop_parameters_before_compilation(option, value):
+    from merlin.compile.command import parser
+
+    with pytest.raises(SystemExit) as result:
+        parser(("int8",), ("none",), "none", ("k1",)).parse_args([option, value])
+    assert result.value.code == 2
 
 
 def test_source_binding_includes_compiler_adapter():

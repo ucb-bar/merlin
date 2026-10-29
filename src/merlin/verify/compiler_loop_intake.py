@@ -65,22 +65,32 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
         raise Unsupported("explicit ordered compiler loop boundary roster required")
     if type(index_bits) is not int or index_bits != 64:
         raise Unsupported("compiler loop proof requires index64")
-    if type(factor) is not int or not 2 <= factor <= 4 or type(tile) is not int or not 2 <= tile <= 16:
-        raise Unsupported("compiler loop proof requires factor2..4 and tile2..16")
+    if type(factor) is not int or factor < 2 or type(tile) is not int or tile < 2:
+        raise Unsupported("compiler loop proof requires integer factor and tile at least two")
     expected = 3 if len(kinds) == 2 else 2
-    if (
-        type(buffers) is not tuple
-        or len(buffers) != expected
-        or any(type(x) is not str or len(x.encode()) > 4 * 1024 * 1024 for x in buffers)
-    ):
+    if type(buffers) is not tuple or len(buffers) != expected or any(type(x) is not str for x in buffers):
         raise Unsupported("complete bounded actual compiler buffers required")
+    if any(len(x.encode()) > 4 * 1024 * 1024 for x in buffers):
+        raise Unavailable("actual compiler buffer byte resource budget exceeded")
     if any(a == b for a, b in zip(buffers, buffers[1:])):
         raise Unsupported("unchanged compiler boundaries require no proof job")
     try:
         modules = [parse_admitted(x, parse_ir, calls="external-only") for x in buffers]
+        # Charge actual SSA references, results and block arguments as well as
+        # operations. This is a resource budget, not a semantic arity/carry cap.
+        if any(
+            sum(
+                1
+                + len(op.operands)
+                + len(op.results)
+                + sum(len(block.args) for region in op.regions for block in region.blocks)
+                for op in module.walk()
+            )
+            > 2048
+            for module in modules
+        ):
+            raise Unavailable("complete scalar/SCF syntax resource budget exceeded")
         _admit(modules)
-        if any(sum(1 for _ in m.walk()) > 2048 for m in modules):
-            raise ValueError("bounded complete scalar/SCF module required")
         if kinds == (UNROLL,):
             # Only the unroll adjacent theorem authorizes this boundary. This
             # auxiliary segmentation supplies the existing compositional proof
@@ -112,8 +122,8 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
                 loops = [row["loop"] for row in records if "loop" in row]
                 if not loops:
                     continue
-                if len(loops) != 1 or len(function["inputs"]) > 16 or not 1 <= len(loops[0]["carries"]) <= 16:
-                    raise ValueError("one loop/at most sixteen inputs/one to sixteen word carries required")
+                if len(loops) != 1:
+                    raise ValueError("one changed top-level loop required")
                 if any(set(t) != {"bits"} for t in loops[0]["carries"]) or any("loop" in r for r in loops[0]["body"]):
                     raise ValueError("region-free scalar word body required")
                 lower, upper, step = static_controls(records, capture, input_count=len(function["inputs"]))
@@ -126,7 +136,7 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
             changed = _domain({"pipeline": capture}, flexible_entries=True)
             if not changed:
                 raise ValueError("at least one changed top-level loop required")
-        query = emit(capture, identity_unroll=kinds == (TILE,))
+        query = emit(capture, identity_unroll=kinds == (TILE,), flexible_parameters=True)
         adjacent, _, _ = _adjacent_rosters({"pipeline": capture}, "Merlin.GraphStatePipelineInstance.", changed)
         query += adjacent
     except (ValueError, KeyError, TypeError, IndexError) as exc:
@@ -142,8 +152,10 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
             namespaces.pop()
         elif words[0] == "theorem":
             roots.append(".".join([*namespaces, words[1]]))
-    if ROOT not in roots or len(query.encode()) > 4 * 1024 * 1024:
+    if ROOT not in roots:
         raise Unsupported("complete bounded operational proof required")
+    if len(query.encode()) > 4 * 1024 * 1024:
+        raise Unavailable("operational proof query byte resource budget exceeded")
     imports = [w for line in query.splitlines() if line.startswith("import ") for w in line.split()[1:]]
     sources = [asdict(row) for row in project_lean_sources(imports)]
     parent = Path(__file__).parent

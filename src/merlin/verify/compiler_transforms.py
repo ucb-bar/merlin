@@ -35,16 +35,18 @@ class Options:
             raise ValueError("memory source selection requires an explicit boolean")
         if type(self.macc_f32acc) is not bool:
             raise ValueError("MACC transform selection requires an explicit boolean")
-        if self.unroll_factor is not None and (type(self.unroll_factor) is not int or not 2 <= self.unroll_factor <= 4):
-            raise ValueError("formal unrolling requires factor2..4")
-        if self.tile_size is not None and (type(self.tile_size) is not int or not 2 <= self.tile_size <= 16):
-            raise ValueError("formal ordered tiling requires size2..16")
+        if self.unroll_factor is not None and (type(self.unroll_factor) is not int or self.unroll_factor < 2):
+            raise ValueError("formal unrolling requires an integer factor at least two")
+        if self.tile_size is not None and (type(self.tile_size) is not int or self.tile_size < 2):
+            raise ValueError("formal ordered tiling requires an integer size at least two")
         if self.buffer_allocator is not None and (
             self.buffer_allocator != ALLOCATOR or self.tile_size is None or self.unroll_factor is not None
         ):
             raise ValueError(
                 "buffer reuse requires explicit total_private_unobservable allocator and tiling; no unroll"
             )
+        if self.buffer_allocator is not None and self.tile_size > 16:
+            raise ValueError("private buffer proof currently requires tile size at most sixteen")
 
     @property
     def enabled(self):
