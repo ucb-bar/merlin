@@ -63,11 +63,13 @@ def admit_source(raw, *, pass_name, validation):
     directory.mkdir(parents=True)
     source, exported = directory / "source.mlir", directory / "source.json"
     source.write_bytes(raw.encode())
+    source_exporter = export.MLIR_EXPORT.with_name("source_profile_export.py")
     from merlin.common.paths import module_source_path, repo_root
 
     tracked = [
         check.lean_exe(),
         export.MLIR_EXPORT,
+        source_exporter,
         Path(validation.tools.compiler_python),
         repo_root() / "merlin/lean/Main.lean",
         repo_root() / "merlin/lean/MerlinVerify/Driver/SourceProfile.lean",
@@ -76,7 +78,7 @@ def admit_source(raw, *, pass_name, validation):
     try:
         refs = [file_ref(path) for path in tracked]
         result = run_owned(
-            [str(validation.tools.compiler_python), str(export.MLIR_EXPORT), str(source), str(exported)],
+            [str(validation.tools.compiler_python), str(source_exporter), str(source), str(exported)],
             capture_output=True,
             text=True,
             timeout=60,
@@ -91,6 +93,23 @@ def admit_source(raw, *, pass_name, validation):
         document = json.loads(exported_bytes)
         if document.get("source") != {"sha256": digest(raw), "bytes": len(raw.encode())}:
             raise GateUnavailable("source-only authoritative export does not bind the original bytes")
+        if document.get("schema") == "merlin.compiler-source-export.v1":
+            if (
+                set(document) != {"schema", "source", "supported", "reason"}
+                or document["supported"] is not False
+                or type(document["reason"]) is not str
+                or not document["reason"]
+            ):
+                raise GateUnavailable("source grammar admission returned a malformed exclusion")
+            if (
+                source.read_bytes() != raw.encode()
+                or file_ref(exported) != exported_ref
+                or [file_ref(path) for path in tracked] != refs
+            ):
+                raise GateUnavailable("source grammar exclusion has changed sources, tools or input bytes")
+            raise _outside(profile, "native-source-assembly", document["reason"])
+        if document.get("schema") != "merlin.lean.ir.v1":
+            raise GateUnavailable("source-only exporter returned an unknown representation")
         kind = "macc" if profile == MACC else "tensor"
         result = run_owned(
             [str(check.lean_exe()), "source-profile", kind, str(exported), "64"],
@@ -142,9 +161,24 @@ def admit_memory_dce(raw):
         raise _outside(profile, "source-byte-bound", "memory source model permits at most 256KiB of original IR")
     try:
         projected = decode_pair(raw, raw)  # Source-only identity; never a producer or a proof.
-        decode(projected["source_export"], index_bits=64, max_nodes=5000)
+        decoded = decode(projected["source_export"], index_bits=64, max_nodes=5000)
     except (ValueError, InputAdmissionError) as error:
         raise _outside(profile, "source-model", str(error)) from error
+    # These are exactly the intrinsic ConstantFacts/ValidDimension width facts
+    # in the original ordinary Code model. A view's type alone has no such cap.
+    pending = [function["code"] for function in decoded["module"]["functions"]]
+    while pending:
+        node = pending.pop()
+        if node["tag"] == "constant" and node["value"] >= 1 << 63:
+            raise _outside(profile, "index-constant-width", "original index constant exceeds the signed index64 model")
+        if node["tag"] == "dimension" and node["value"] >= 1 << 63:
+            raise _outside(
+                profile, "dimension-result-width", "original known dimension exceeds the signed index64 model"
+            )
+        if node["tag"] == "region":
+            pending.append(node["body"])
+        if "rest" in node:
+            pending.append(node["rest"])
     return profile
 
 
