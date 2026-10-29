@@ -152,3 +152,9 @@ def compiler_buffer_refinement(job: dict[str, Any]) -> dict[str, Any]:
     from .compiler_transforms import buffer_check
 
     return buffer_check(job)
+
+
+def compiler_macc_contract(job: dict[str, Any]) -> dict[str, Any]:
+    from .compiler_macc import check
+
+    return check(job)

@@ -120,9 +120,15 @@ def parser(
         "--validate-passes",
         metavar="PASSES",
         help="check selected DCE, CSE, ordered loop and private-buffer boundaries with Lean "
-        "('all' selects every registered check, or supply a comma list); failed checks stop the compile",
+        "('all' selects DCE/CSE/loop/buffer checks; bf16_f32acc_draft_contract requires explicit selection); "
+        "failed checks stop the compile",
     )
     ap.add_argument("--lean-sdk-bin", metavar="DIR", help="Lean SDK bin directory for --validate-passes")
+    ap.add_argument(
+        "--macc-f32acc",
+        action="store_true",
+        help="opt in to bf16/f16 MACC with f32 accumulation under the draft contract",
+    )
     ap.add_argument(
         "--loop-unroll-factor",
         type=int,
@@ -254,6 +260,8 @@ def apply_pass_validation(a: argparse.Namespace) -> None:
         os.environ[pass_validation.ENV_SDK_BIN] = a.lean_sdk_bin
     from merlin.verify import compiler_transforms
 
+    if getattr(a, "macc_f32acc", False):
+        os.environ[compiler_transforms.ENV_MACC] = "1"
     for field, key in (
         ("loop_unroll_factor", compiler_transforms.ENV_UNROLL),
         ("loop_tile_size", compiler_transforms.ENV_TILE),

@@ -17,7 +17,9 @@ BUFFER = "buffer_reuse"
 ENV_UNROLL = "MERLIN_LOOP_UNROLL_FACTOR"
 ENV_TILE = "MERLIN_LOOP_TILE_SIZE"
 ENV_ALLOCATOR = "MERLIN_BUFFER_REUSE_ALLOCATOR"
+ENV_MACC = "MERLIN_BF16_F32ACC"
 ALLOCATOR = "total_private_unobservable"
+MACC = "bf16_f32acc_draft_contract"
 
 
 @dataclass(frozen=True)
@@ -26,10 +28,13 @@ class Options:
     tile_size: int | None = None
     buffer_allocator: str | None = None
     memory_source: bool = False
+    macc_f32acc: bool = False
 
     def __post_init__(self):
         if type(self.memory_source) is not bool:
             raise ValueError("memory source selection requires an explicit boolean")
+        if type(self.macc_f32acc) is not bool:
+            raise ValueError("MACC transform selection requires an explicit boolean")
         if self.unroll_factor is not None and (type(self.unroll_factor) is not int or not 2 <= self.unroll_factor <= 4):
             raise ValueError("formal unrolling requires factor2..4")
         if self.tile_size is not None and (type(self.tile_size) is not int or not 2 <= self.tile_size <= 16):
@@ -48,6 +53,7 @@ class Options:
             or self.tile_size is not None
             or self.buffer_allocator is not None
             or self.memory_source
+            or self.macc_f32acc
         )
 
 
@@ -60,7 +66,12 @@ def from_environment():
             raise ValueError(f"{name} requires a positive integer")
         return int(raw)
 
-    return Options(integer(ENV_UNROLL), integer(ENV_TILE), os.environ.get(ENV_ALLOCATOR) or None)
+    macc = os.environ.get(ENV_MACC, "")
+    if macc not in ("", "0", "1"):
+        raise ValueError(f"{ENV_MACC} requires 0 or 1")
+    return Options(
+        integer(ENV_UNROLL), integer(ENV_TILE), os.environ.get(ENV_ALLOCATOR) or None, macc_f32acc=macc == "1"
+    )
 
 
 def apply(source, directory, *, options=None, index_bits=64):
@@ -76,7 +87,25 @@ def apply(source, directory, *, options=None, index_bits=64):
         return source, None
     if index_bits != 64:
         raise ValueError("formal source transformations require explicit index64")
-    module = parse_ir(source)
+    if options.macc_f32acc:
+        from merlin.frontends.linalg_mlir import parse_mlir_text
+
+        module = parse_mlir_text(source)
+    else:
+        module = parse_ir(source)
+    macc_changed, macc_unchanged = [], []
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    if options.macc_f32acc:
+        from merlin.llvmlower.passes_xdsl import lower_bf16_matmul_f32acc
+
+        before_macc = ir_text(module)
+        pass_validation.observe(MACC, module, lower_bf16_matmul_f32acc)
+        module.verify()
+        after_macc = ir_text(module)
+        (directory / "macc-before.mlir").write_text(before_macc)
+        (directory / "macc-after.mlir").write_text(after_macc)
+        (macc_changed if before_macc != after_macc else macc_unchanged).append(MACC)
     buffers, names, identities = [ir_text(module)], [], []
     changing_buffers = [buffers[0]]
 
@@ -105,17 +134,17 @@ def apply(source, directory, *, options=None, index_bits=64):
             run(TILE, lambda: loops.segment_loops(module, (options.tile_size,), index_bits=64))
         check_name = "compiler_loop_refinement"
         required = tuple(names)
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
     for i, text in enumerate(buffers):
         (directory / f"stage{i}.mlir").write_text(text)
     validation = pass_validation.current()
     selected = [name for name in required if pass_validation.selected(name)]
     if selected and names:
-        # The memory proof covers the whole actual4 chain. Scalar loop proofs
-        # additionally retain all-entry adjacent theorems for each actual pass.
-        # Exact identity stages preserve the complete scalar boundary bytes.
+        # The memory proof covers the whole actual4 chain, including explicit
+        # identity normalization/reuse. Scalar proofs retain adjacent roots.
+        # Exact identity stages preserve the boundary bytes. Prove the changing
+        # adjacent scalar stages and deliver the actual final compiler output.
         proof_buffers = buffers if options.buffer_allocator is not None else changing_buffers
+        pass_validation.require_canonical_handler(validation, check_name)
         validation.gate.submit(
             check_name,
             before=proof_buffers[0],
@@ -134,9 +163,9 @@ def apply(source, directory, *, options=None, index_bits=64):
         )
     report = {
         "schema": "merlin.compiler-transforms.v1",
-        "changed": names,
-        "unchanged": identities,
-        "selected_checks": selected,
+        "changed": macc_changed + names,
+        "unchanged": macc_unchanged + identities,
+        "selected_checks": [name for name in macc_changed if pass_validation.selected(name)] + selected,
         "directory": str(directory),
         "buffer_allocator": options.buffer_allocator,
         "memory_source": options.memory_source or options.buffer_allocator is not None,

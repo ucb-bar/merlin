@@ -16,7 +16,12 @@ import sys
 import traceback
 from pathlib import Path
 
-BUILTIN_CHECKS = ("tensor_refinement", "compiler_loop_refinement", "compiler_buffer_refinement")
+BUILTIN_CHECKS = (
+    "tensor_refinement",
+    "compiler_loop_refinement",
+    "compiler_buffer_refinement",
+    "compiler_macc_contract",
+)
 
 
 def resolve(name: str):

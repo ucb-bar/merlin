@@ -3,11 +3,14 @@
 Everything a verified claim depends on without proving it (design §10). Each entry says what is
 assumed, why, and what evidence stands behind it. A claim that relies on an entry must cite it.
 
-## Integration status — 2026-10-28
+## Integration status — 2026-10-29
 
 The current collaboration branch is `feat/pass-verif-integration`. Its five
-registered compiler checks concern tensor DCE/CSE, ordered unrolling/segmentation
-and scoped private-buffer reuse. Configuration-write elision and partial loop
+default compiler checks concern tensor DCE/CSE, ordered unrolling/segmentation
+and scoped private-buffer reuse. An additional explicitly selected
+`bf16_f32acc_draft_contract` gate checks candidate numerical-reference
+conformance and remains outside `all`. The user has retained draft status until
+independent review. Configuration-write elision and partial loop
 hoisting use separate explicit instruction/effect APIs. Their state relations
 must not be substituted for a numerical-policy proof or for one another.
 
@@ -15,16 +18,34 @@ Source quantize/dequantize expansion proofs and compiler corrections are
 inherited. W8A8 source-domain/calibration/bounds work and the bf16/f16
 f32-accumulation contract remain candidates with the independent-review and
 coverage limits recorded below. This integration adds no numerical admission,
-float law, approved source contract or changed A9 assumption. Numerical gates
-remain outside `--validate-passes all`.
+float law, approved source contract or changed A9 assumption. Approved numerical
+policy gates remain unavailable; `all` does not request draft MACC conformance.
 
 The additive `Check/Bf16F32AccBoundary.lean` packages the existing candidate
 reference equality and strict local-site qualification behind a nonempty-site
 check. Its theorem compiled with only the standard three axioms. It is not
-independent numerical approval, a new float law or a registered compiler gate.
-The handoffs record pending canonical admission-root hardening and loop
-artifact-inventory hardening from the latest read-only review; neither was
-tested as an exploit. Work is paused for colleague review without a full rerun.
+independent numerical approval or a new float law. The explicit compiler check
+captures the actual pass output and retains its distinct draft claim.
+Canonical governance ownership now rejects caller-selected review trees. Loop
+objects are frozen before audit and revalidated with tree membership at live
+delivery. Formal compiler selections cannot use custom handler aliases or
+additional worker import roots. These controls add no semantic assumption.
+
+Current scalar compiler intake supports multiple changed definitions, zero to
+sixteen entry arguments and one to sixteen word carries. Existing narrower
+standalone source-profile declarations retain their original limits. The new
+`GraphLoopsShape.Identity` checker bridges unchanged normalization with exact
+complete syntax equality and zero rewrite sites, preserving the original
+changed-normalization checker. One-to-one private reuse plans retain every
+allocation/free binding; actual initializer tiling is still required.
+
+The draft MACC worker audits exact consumed roots transitively against the
+standard three axioms and scans all imported project declarations for banned
+constructs. Its report explicitly identifies this narrower audit scope. It
+revalidates canonical project objects and process evidence through delivery;
+it does not claim a private object snapshot or a proven runtime import map.
+The original full-project auditor remains available and unchanged in default
+mode. Qualification results and retained source cuts are in the handoffs.
 
 Read the [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
 and [current integration checkpoint](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)

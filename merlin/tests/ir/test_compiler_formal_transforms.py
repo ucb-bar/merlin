@@ -34,7 +34,13 @@ func.func @forward(%x:i32, %y:i32) -> i32 {
 
 @pytest.fixture
 def clean_selection(monkeypatch):
-    for name in (transforms.ENV_UNROLL, transforms.ENV_TILE, transforms.ENV_ALLOCATOR, pass_validation.ENV_PASSES):
+    for name in (
+        transforms.ENV_UNROLL,
+        transforms.ENV_TILE,
+        transforms.ENV_ALLOCATOR,
+        transforms.ENV_MACC,
+        pass_validation.ENV_PASSES,
+    ):
         monkeypatch.delenv(name, raising=False)
 
 

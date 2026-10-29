@@ -21,6 +21,7 @@ from hashlib import sha256
 from typing import Any
 
 from ..frontends.linalg_mlir import make_context, parse_mlir_text  # noqa: F401
+from ..verify.pass_validation import observed
 
 
 def carry_provenance(new_op, src_op, applied: str) -> None:
@@ -382,7 +383,8 @@ def _dead_tensor_operation_is_pure(op) -> bool:
         return False
     if any(
         isinstance(value.type, MemRefType | UnrankedMemRefType)
-        or isinstance(value.type, TensorType) and value.type.encoding != NoneAttr()
+        or isinstance(value.type, TensorType)
+        and value.type.encoding != NoneAttr()
         for value in (*op.operands, *op.results)
     ):
         return False
@@ -397,11 +399,7 @@ def _dead_tensor_operation_is_pure(op) -> bool:
             return False
         # The structured tensor operation is value-only only when its actual
         # scalar body is known pure. Its generic container has no such trait.
-        return all(
-            _dead_tensor_operation_is_pure(child)
-            for region in op.regions
-            for child in region.block.ops
-        )
+        return all(_dead_tensor_operation_is_pure(child) for region in op.regions for child in region.block.ops)
     if op.regions:
         return False
     if isinstance(op, YieldOp):
@@ -444,6 +442,7 @@ def prune_dead_pure_tensor_ops(module) -> int:
     return erased
 
 
+@observed("bf16_f32acc_draft_contract")
 def lower_bf16_matmul_f32acc(module) -> int:
     """Rewrite every 16-bit-float (bf16 OR fp16) ``linalg.matmul`` to accumulate in f32; returns count.
 
@@ -675,9 +674,12 @@ def add_c_interface(module) -> int:
     for op in module.walk():
         if isinstance(op, FuncOp):
             private_scalar = (
-                op.sym_visibility is not None and op.sym_visibility.data == "private"
-                and all(isinstance(t, IntegerType | IndexType | AnyFloat)
-                    for t in (*op.function_type.inputs, *op.function_type.outputs))
+                op.sym_visibility is not None
+                and op.sym_visibility.data == "private"
+                and all(
+                    isinstance(t, IntegerType | IndexType | AnyFloat)
+                    for t in (*op.function_type.inputs, *op.function_type.outputs)
+                )
             )
             if private_scalar:
                 continue

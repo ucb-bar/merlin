@@ -7,7 +7,7 @@ does not accept stops the compile with its evidence. A pass that changes nothing
 ``lower_model`` takes a :class:`PassValidation`, or builds one from the environment so every entry
 point that lowers (``merlin-compile --validate-passes``, the whole-model backends) can turn it on:
 
-* ``MERLIN_VALIDATE_PASSES`` -- ``all`` or a comma-separated subset of :data:`CHECKS`.
+* ``MERLIN_VALIDATE_PASSES`` -- ``all`` (:data:`DEFAULT_CHECKS`) or an explicit subset of :data:`CHECKS`.
 * ``MERLIN_LEAN_SDK_BIN`` -- the Lean SDK ``bin`` directory (``lean``, ``lake``) the checker was built with.
 * ``MERLIN_COMPILER_PYTHON`` -- the interpreter of the authoritative MLIR exporter (``torch_mlir``).
 * ``MERLIN_VALIDATE_WORKERS`` -- how many checks run at once (default 1; each is one niced process).
@@ -35,7 +35,11 @@ CHECKS = {
     "ordered_loop_unrolling": "compiler_loop_refinement",
     "ordered_loop_segmentation": "compiler_loop_refinement",
     "buffer_reuse": "compiler_buffer_refinement",
+    "bf16_f32acc_draft_contract": "compiler_macc_contract",
 }
+# Numerical draft conformance requires explicit selection. It is neither an
+# admitted numerical policy nor an original-source refinement check.
+DEFAULT_CHECKS = frozenset(CHECKS) - {"bf16_f32acc_draft_contract"}
 ENV_PASSES = "MERLIN_VALIDATE_PASSES"
 ENV_SDK_BIN = "MERLIN_LEAN_SDK_BIN"
 ENV_COMPILER_PYTHON = "MERLIN_COMPILER_PYTHON"
@@ -92,7 +96,7 @@ class CheckerTools:
 class PassValidation:
     gate: Any
     tools: CheckerTools
-    passes: frozenset[str] = frozenset(CHECKS)
+    passes: frozenset[str] = DEFAULT_CHECKS
     index_bits: int = 64
 
     def __post_init__(self) -> None:
@@ -104,6 +108,8 @@ class PassValidation:
             raise ValueError("pass validation requires explicit CheckerTools")
         if type(self.passes) is not frozenset or not self.passes or not self.passes <= set(CHECKS):
             raise ValueError(f"validated passes must be a nonempty subset of {sorted(CHECKS)}")
+        for name in self.passes:
+            require_canonical_handler(self, CHECKS[name])
         if self.index_bits != 64:
             # merlin/lean/LEDGER.md S6: at index32 the Lean model and the pinned native pipeline
             # disagree on a retained overflow example; a refinement claim there is not established.
@@ -111,6 +117,16 @@ class PassValidation:
 
 
 _ACTIVE: ContextVar[PassValidation | None] = ContextVar("merlin_pass_validation", default=None)
+_OBSERVING: ContextVar[tuple] = ContextVar("merlin_pass_observation", default=())
+
+
+def require_canonical_handler(validation, check_name):
+    """Formal compiler selections cannot be rerouted through custom callbacks."""
+    from .gate_worker import BUILTIN_CHECKS
+
+    gate = validation.gate
+    if check_name not in BUILTIN_CHECKS or gate._worker_path or gate._aliases.get(check_name, check_name) != check_name:
+        raise ValueError("formal pass validation requires its canonical handler and worker import roots")
 
 
 def from_environment(workdir: Path, *, index_bits: int | None = None) -> PassValidation | None:
@@ -118,7 +134,7 @@ def from_environment(workdir: Path, *, index_bits: int | None = None) -> PassVal
     requested = os.environ.get(ENV_PASSES, "").strip()
     if not requested:
         return None
-    passes = frozenset(CHECKS) if requested == "all" else frozenset(p.strip() for p in requested.split(","))
+    passes = DEFAULT_CHECKS if requested == "all" else frozenset(p.strip() for p in requested.split(","))
     if not passes or not passes <= set(CHECKS):
         raise ValueError(f"validated passes must be a nonempty subset of {sorted(CHECKS)}")
     sdk_bin = os.environ.get(ENV_SDK_BIN)
@@ -199,14 +215,31 @@ def validated(workdir_argument: str, *, index_bits_argument: str | None = None, 
 
 def observe(pass_name: str, module, transform: Callable):
     """Run ``transform(module)`` and, when ``pass_name`` is validated, submit its exact before/after IR."""
-    if not selected(pass_name):
+    if not selected(pass_name) or any(name == pass_name and actual is module for name, actual in _OBSERVING.get()):
         return transform(module)
     from merlin.xdsl_dialects._common import text
 
     before = text(module, generic=True)
-    result = transform(module)
+    token = _OBSERVING.set((*_OBSERVING.get(), (pass_name, module)))
+    try:
+        result = transform(module)
+    finally:
+        _OBSERVING.reset(token)
     submit(pass_name, before, text(module, generic=True))
     return result
+
+
+def observed(pass_name: str):
+    """Capture an existing pass wherever it runs inside a validation scope."""
+
+    def decorate(transform):
+        @functools.wraps(transform)
+        def invoke(module, *args, **kwargs):
+            return observe(pass_name, module, lambda actual: transform(actual, *args, **kwargs))
+
+        return invoke
+
+    return decorate
 
 
 def selected(pass_name: str) -> bool:
@@ -220,6 +253,7 @@ def submit(pass_name: str, before: str, after: str, *, label: str | None = None)
     validation = _ACTIVE.get()
     if validation is None or pass_name not in validation.passes or before == after:
         return False
+    require_canonical_handler(validation, CHECKS[pass_name])
     validation.gate.submit(
         CHECKS[pass_name],
         before=before,
