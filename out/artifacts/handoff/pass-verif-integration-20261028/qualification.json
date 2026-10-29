@@ -790,5 +790,15 @@
       "outcome": "fresh child completed;local parent driver used wrong cleanup-result API;both cases passed with owned_process.run in v3"
     }
   ],
-  "final_qualification_complete_scope": "The historical full legacy/regression campaign; requested targeted compiler integration is separately complete."
+  "final_qualification_complete_scope": "The historical full legacy/regression campaign; requested targeted compiler integration is separately complete.",
+  "merged_qdq_upstream": {
+    "commit": "85b354f0d9d64f2f56eb6bc17cd460934de3a7d8",
+    "handoff": "out/artifacts/handoff/quantization-lean-qualification-20261029/README.md",
+    "source_consistency": "out/build/pass-verif-integration-20261028/resume-merge-source-consistency.json",
+    "bound_loop_buffer_macc_source_overlap": [],
+    "all_five_retained_proof_replay_source_inventories_still_current": true,
+    "upstream_qualification_rerun_here": false,
+    "legacy_counts_predate_qdq_regression_updates": true,
+    "scope": "Separate opt-in Q/DQ source correspondence and qualification tooling; no source-spec approval or new automatic Q/DQ compiler selector"
+  }
 }

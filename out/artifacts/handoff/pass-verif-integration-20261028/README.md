@@ -14,6 +14,15 @@ general loop entries (`d3cb979ed`) and buffer identity prefixes (`0a66d5cef`).
 No full legacy suite is required for this targeted integration; earlier runs
 and failed attempts retain their original evidence and source cuts.
 
+The final remote refresh merged the colleague's three Q/DQ commits through
+`85b354f0d`, including explicit fresh-capture source binding, pinned producer
+and Torch payload checks, and reproducible qualification/replay tools. Read
+the [Q/DQ qualification handoff](../quantization-lean-qualification-20261029/README.md)
+for its source domains, numerical assumptions and separate results. No incoming
+file overlaps the bound loop, buffer or MACC proof sources: all five retained
+proof/replay inventories still match. The historical legacy counts below predate
+these Q/DQ regression updates and were not rerun after the merge.
+
 ## Current compiler changes
 
 - Scalar loop proofs accept multiple changed definitions, zero to sixteen

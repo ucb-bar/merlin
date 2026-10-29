@@ -10,6 +10,15 @@ The current code cut `c553814aa` adds a composed draft MACC theorem and an
 explicit compiler conformance gate. It does not enable an approved numerical
 policy gate.
 
+The final remote refresh also merged Q/DQ work through `85b354f0d`. Its
+[qualification handoff](../quantization-lean-qualification-20261029/README.md)
+describes opt-in fresh source correspondence, exact producer/Torch payload
+binding and reproducible capture/lowering replay. Those results have their own
+source cut and were not added to the 204 compiler-integration cases below.
+They neither approve the Q/DQ source specification nor register `lower_quant_ext`
+as an automatic compiler gate. The historical Q/DQ sections below remain scoped
+to their original checkpoints.
+
 The default compiler selection has five checks: tensor DCE, CSE, ordered
 unrolling, ordered segmentation and private buffer reuse. `all` selects those
 five; it does not select Q/DQ expansion, W8A8 or bf16/f16 policy proofs.

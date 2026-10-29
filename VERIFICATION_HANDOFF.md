@@ -10,6 +10,13 @@ for the generalized loop and both MACC formats, and the full Lean guard passed.
 The guard covers 567 source modules with 15,304 shared theorems and zero violations;
 specification pins/locks are unchanged. No full legacy-suite claim is made.
 
+The final remote refresh also merged the colleague's Q/DQ capture and
+qualification tooling through `85b354f0d`. See its
+[source-binding handoff](out/artifacts/handoff/quantization-lean-qualification-20261029/README.md).
+Those changes do not overlap the bound loop/buffer/MACC proof sources; all
+five retained proof/replay source inventories still match. Its qualification
+results retain their separate source cut.
+
 Start with [the current integration handoff](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
 [the compiler stack and examples](docs/guides/lean_compiler_stack.md), and
 [quantization/MACC progress](out/artifacts/handoff/quantization-lean-20261028/README.md).
