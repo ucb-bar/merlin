@@ -16,6 +16,7 @@ from merlin.targetgen import corpus_form_table as ft
 from merlin.targetgen import corpus_spec as SPEC
 from merlin.targetgen.capsule_inputs import materialize_capsule_leaves
 from merlin.targetgen.corpus_cell_forms import cell_forms
+from merlin.targetgen.corpus_synth import available_ops
 
 pytestmark = pytest.mark.target("gemmini")
 _FORMS = {"scalar_add": (1, 3, "arith.addi"), "scalar_sub": (1, -3, "arith.subi"), "scalar_mul": (3, 0, "arith.muli")}
@@ -84,5 +85,5 @@ def test_declared_forms_come_from_the_reviewed_spec_row():
     doc = validate_software_spec(spec, "gemmini")
     kept, refused = ft.declared_forms(doc, {})
     assert kept.get("elementwise_map") == ["scalar_add", "scalar_sub", "scalar_mul"], (kept, refused)
-    forms = cell_forms("elementwise_map", "i8", None, SPEC.available_ops(), tuple(kept["elementwise_map"]))
+    forms = cell_forms("elementwise_map", "i8", None, available_ops(), tuple(kept["elementwise_map"]))
     assert {f.form: f.op for f in forms if f.form} == dict.fromkeys(_FORMS, "scalar_affine")
