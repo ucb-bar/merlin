@@ -231,8 +231,8 @@ reads them as empty programs.
 
 Optional `form` attribute: `identity` (the default above), `permute` {`perm`}, `slice`
 {`offsets`, `sizes`, `strides`}, `pad` {`low`, `high`, `mode` = constant|reflect|replicate, `value_code`
-for a constant pad}, `broadcast` (to the declared result shape, LEADING dims only) or `repeat`
-{`repeats`}. Each form's attributes are required; an attribute that belongs to another form is
+for a constant pad}, `broadcast` (to the declared result shape, LEADING dims only) `repeat`
+{`repeats`} or `reshape` (the declared result shape holds the same elements in row-major order). Each form's attributes are required; an attribute that belongs to another form is
 rejected. A `slice` stride is any nonzero integer; a negative stride walks the dimension backwards from its
 offset (`flip` is offset `d-1`, stride `-1`). An optional `scale` (f32) requantizes every moved element once. Exact semantics:
 `command_buffer_abi.yaml` → `MOVEMENT`.

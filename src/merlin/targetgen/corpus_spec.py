@@ -1256,6 +1256,7 @@ _MOVE_FORM_KEYS: dict[str, tuple[str, ...]] = {
     "pad": ("low", "high", "mode", "value_code"),
     "broadcast": (),
     "repeat": ("repeats",),
+    "reshape": (),
 }
 
 
@@ -1324,7 +1325,7 @@ def _build_movement_form(entry: dict, binding: CorpusBinding) -> tuple[dict, str
         raise ValueError(f"{entry.get('name')}: movement form must be one of {sorted(_MOVE_FORM_KEYS)}, got {form!r}")
     src = entry.get("src", "X")
     fa = {k: entry[k] for k in _MOVE_FORM_KEYS[form] if k in entry}
-    if form == "broadcast":
+    if form in ("broadcast", "reshape"):
         out_shape = list(entry["out_shape"])
         probe = integer_ops.move(Tensor(tuple(shape), [0] * math.prod(shape), "i8"), {"form": form}, out_shape)
     else:

@@ -696,14 +696,14 @@ operations:
     # Not declared here (no interface form / builder, covered by the capture route or host): rank-reducing
     # diagonal/as_strided (a one-element-per-row view of a flat buffer overlaps its own storage: no
     # representation-preserving slice), upsample_nearest2d (replicates INNER axes; broadcast is leading dims
-    # only), the rank-dropping reshape of select/squeeze/unsqueeze/view (reshape form, agent V),
+    # only), select/squeeze/unsqueeze/view are covered by select and by the `reshape` forms view, unsqueeze and squeeze,
     # multi-output split (one capsule per chunk form: split_chunk).
-    forms: [slice, flip, pad_constant, pad_reflect, pad_replicate, broadcast, repeat, permute, concat, insert_slice, select, split_chunk, fill, fill_zero]
+    forms: [slice, flip, pad_constant, pad_reflect, pad_replicate, broadcast, repeat, permute, concat, insert_slice, view, unsqueeze, squeeze, select, split_chunk, fill, fill_zero]
     evidence:
       review_status: reviewed
       reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-29); the stated evidence and qualification scope remain mandatory."
       scope: "Declares which movement capsule forms the derived corpus must contain; not RTL qualification of any compiler lowering. Exact integer semantics: merlin.runtime.integer_ops.move/concat/insert_slice."
-      basis: "LoadController.scala:76,102,105 (row stride, stride-0 replay of outer dims); StoreController/DMA row-contiguous mvout; zero_fill as a load from DRAM address 0; single 16x16 transposer (ExecuteController.scala:129-133); contract movement forms [copy, permutation, broadcast, zero_fill]. flip/reflect compose permutation because the DMA has no negative stride and no column stride."
+      basis: "LoadController.scala:76,102,105 (row stride, stride-0 replay of outer dims); StoreController/DMA row-contiguous mvout; zero_fill as a load from DRAM address 0; single 16x16 transposer (ExecuteController.scala:129-133); contract movement forms [copy, permutation, broadcast, zero_fill]. flip/reflect compose permutation because the DMA has no negative stride and no column stride. View-like forms (view = flatten to one axis, unsqueeze, squeeze; interface form `reshape`): Gemmini has no reshape unit and none is claimed. On a row_major_contiguous tensor a reshape holds the same bytes in the same order, so the device work is the identity copy (mvin/mvout of contiguous rows, LoadController.scala:76,102,105; StoreController/DMA row-contiguous mvout) with a different row geometry: primitive `copy` only, address arithmetic by the compiler, no arithmetic and no scale. permute requires the `permutation` primitive (the 16x16 transposer, ExecuteController.scala:129-133), as declared above."
     broadcasting: [none, outer]
     ranks: [0, 1, 2, 3, 4, 5]
     layouts: [row_major_contiguous]
