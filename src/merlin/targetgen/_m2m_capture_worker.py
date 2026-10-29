@@ -9,13 +9,6 @@ Scoped quantization recipes use the selected package's Merlin admission screen.
 
 from __future__ import annotations
 
-from merlin.targetgen._m2m_capture_support import (
-    _capture_api_report as _capture_api_report,
-    _diagnostic_model_copy as _diagnostic_model_copy,
-    _seed_capture as _seed_capture,
-    _RecordedForwards as _RecordedForwards,
-)
-
 import argparse
 import hashlib
 import importlib.util
@@ -27,22 +20,35 @@ import random
 import sys
 from pathlib import Path
 
+from merlin.targetgen._m2m_capture_support import (
+    _capture_api_report,
+    _diagnostic_model_copy,
+    _RecordedForwards,
+    _seed_capture,
+)
+
 if __package__:
     from ._m2m_capture_artifacts import (
         _framework_catalog,
-        _framework_cpu_dispatch as _framework_cpu_dispatch,
         finalize_session_artifacts,
         frontend_trace_bytes,
+        write_conversion_status,
         write_frontend_trace,
+    )
+    from ._m2m_capture_artifacts import (
+        _framework_cpu_dispatch as _framework_cpu_dispatch,
     )
     from ._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 else:
     from merlin.targetgen._m2m_capture_artifacts import (
         _framework_catalog,
-        _framework_cpu_dispatch as _framework_cpu_dispatch,
         finalize_session_artifacts,
         frontend_trace_bytes,
+        write_conversion_status,
         write_frontend_trace,
+    )
+    from merlin.targetgen._m2m_capture_artifacts import (
+        _framework_cpu_dispatch as _framework_cpu_dispatch,
     )
     from merlin.targetgen._m2m_capture_deployment import _mlir_dtype, _numeric_deployment
 
@@ -639,6 +645,12 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     )
     ap.add_argument("--func-name", default="forward")
     ap.add_argument(
+        "--qualify-qdq",
+        action="store_true",
+        help="require supported Q/DQ source correspondence from this exact conversion (no spec approval)",
+    )
+    ap.add_argument("--qdq-torch-wheel", help="pinned PyTorch source-oracle wheel used to verify installed bytes")
+    ap.add_argument(
         "--scheme",
         default="",
         help="torchAO scheme name, overriding the dtype default (e.g. "
@@ -700,6 +712,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         help="copy raw converted MLIR for inventory with byte hashes, without a capture receipt or Phase 0 admission",
     )
     a = argv if isinstance(argv, argparse.Namespace) else ap.parse_args(argv)
+    qualify_qdq = getattr(a, "qualify_qdq", False)
+    if qualify_qdq and (not a.m2m_dir or not getattr(a, "qdq_torch_wheel", None)):
+        ap.error("--qualify-qdq requires --m2m-dir and --qdq-torch-wheel")
     native_integer_source = getattr(a, "native_integer_source", False)
     if native_integer_source and (
         not a.already_quantized
@@ -842,9 +857,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     if a.recipe and not a.stage_fp32 and session is not None:
         from merlin.targetgen._capture_session_reference import pre_quantization_session_reference
 
-        session = pre_quantization_session_reference(
-            mdl, tuple(inputs), session, include_diagnostic=True
-        )
+        session = pre_quantization_session_reference(mdl, tuple(inputs), session, include_diagnostic=True)
     # Capture loader-owned calibration at original precision before export.
     calibration = None
     if a.stage_fp32 and a.recipe:
@@ -865,7 +878,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         "reason": "selected model2MLIR does not expose frontend capture tracing",
     }
     trace_supported = "capture_trace" in inspect.signature(m2m.convert).parameters
-    if trace_supported and (not a.already_quantized or native_integer_source):
+    # Explicit Q/DQ qualification observes the supplied Q/DQ graph itself. This
+    # supplies no lineage to a floating model before external quantization.
+    if trace_supported and (not a.already_quantized or native_integer_source or qualify_qdq):
         try:
             from m2m.capture.trace import capture_frontend_snapshot
 
@@ -1182,8 +1197,13 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             integerization_receipt["golden_agreement"] = golden_agreement
         else:
             integerization_receipt["golden_agreement"] = portable_agreement
-    if (q is not None and q.scheme == "int8_static_act_int8_weight" and not a.already_quantized
-            and not pt2e_selected and (recipe or {}).get("software_numerical_engine") == "integer_reference"):
+    if (
+        q is not None
+        and q.scheme == "int8_static_act_int8_weight"
+        and not a.already_quantized
+        and not pt2e_selected
+        and (recipe or {}).get("software_numerical_engine") == "integer_reference"
+    ):
         from merlin.targetgen import _dynamic_integer_reference as dynamic_reference
 
         integerization_receipt = dynamic_reference.capture_reference(
@@ -1218,6 +1238,13 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
 
         nl_census = NL.install(mdl)
     trace_options = {"capture_trace": True, "original_frontend_snapshot": original_snapshot} if trace_supported else {}
+    qdq_identity = None
+    if qualify_qdq:
+        from merlin.targetgen.qdq_capture import begin_worker
+
+        qdq_identity = begin_worker(a, out)
+        if qdq_identity is None:
+            return 3
     res = m2m.convert(
         mdl,
         inputs,
@@ -1232,16 +1259,16 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     # Preserve this boundary before later eager evaluation or bundle writing can
     # fail. A conversion refusal must remain visible even if a subsequent error
     # prevents final metadata from being written; this is not an execution grade.
-    (out / "conversion-status.json").write_text(json.dumps({
-        "schema": "merlin.capture.conversion_status.v1",
-        "conversion_ok": bool(res.ok),
-        "mlir_bytes": len(res.mlir_text.encode("utf-8")),
-        "path_taken": getattr(res, "path_taken", None),
-        "diagnostics": [str(item)[:2000] for item in (getattr(res, "diagnostics", None) or [])[:100]],
-        "numerical_execution_qualified": False,
-    }, indent=2) + "\n", encoding="utf-8")
+    write_conversion_status(out / "conversion-status.json", res)
     opaque = opaque_report(res.mlir_text)
     n_opaque = sum(opaque.values())
+    qdq_source = None
+    if qualify_qdq:
+        from merlin.targetgen.qdq_capture import check_worker
+
+        qdq_source = check_worker(res, qdq_identity, out, opaque)
+        if qdq_source["status"] != "matched":
+            return 3
     if integerization_receipt is not None:
         integerization_receipt["exported_integer_mm_count"] = _exported_integer_mm_count(res.module)
     dynamic_only_reference = (integerization_receipt or {}).get("schema") == "merlin.dynamic_integer_reference.v1"
@@ -1253,10 +1280,12 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         and integerization_receipt["golden_agreement"]["status"] == "passed"
     )
     if dynamic_only_reference:
-        dynamic_reference.validate_receipt(integerization_receipt,
+        dynamic_reference.validate_receipt(
+            integerization_receipt,
             annotated=quant_stats.get("annotated_contractions"),
             dynamic_calls=(quant_stats.get("dynamic_contractions") or {}).get("device_calls"),
-            exported=integerization_receipt["exported_integer_mm_count"])
+            exported=integerization_receipt["exported_integer_mm_count"],
+        )
     # A recipe requests a format; only the applied transform and its emitted
     # arithmetic establish the captured scheme. In particular, an already-
     # integer graph that skipped observers must not inherit the request's label.
@@ -1328,6 +1357,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
     precision_exact = precision.get("status") != "projected" and not precision.get("projections")
     meta = {
         "ok": bool(res.ok) and precision_exact,
+        **({"qdq_source": qdq_source} if qdq_source is not None else {}),
         "precision_realization": precision if precision else {"status": "unknown"},
         "precision_conversion": precision_conversion,
         **({"fp32_staging": fp32_staging} if fp32_staging is not None else {}),
@@ -1447,10 +1477,12 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         )
     # a machine-readable tail line the parent greps for, even if warnings precede it
     if not integerization_ok:
-        print("__M2M_INTEGERIZATION_FAILURE__ " + json.dumps({
-            key: integerization_receipt.get(key)
-            for key in ("partition_error", "refusals", "golden_agreement")
-        }))
+        print(
+            "__M2M_INTEGERIZATION_FAILURE__ "
+            + json.dumps(
+                {key: integerization_receipt.get(key) for key in ("partition_error", "refusals", "golden_agreement")}
+            )
+        )
     print("__M2M_CAPTURE__ " + json.dumps({"ok": meta["ok"], "opaque": meta["opaque"]}))
     return 0 if (res.ok and n_opaque == 0 and integerization_ok and precision_exact) else 3
 

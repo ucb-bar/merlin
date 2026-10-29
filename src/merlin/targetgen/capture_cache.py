@@ -29,6 +29,8 @@ def implementation_identity() -> dict:
         "merlin.targetgen.capture_cache",
         "merlin.targetgen._m2m_capture_worker",
         "merlin.targetgen._m2m_capture_artifacts",
+        "merlin.targetgen.qdq_capture",
+        "merlin.targetgen.qdq_capture_identity",
         "merlin.targetgen._m2m_capture_deployment",
         "merlin.targetgen._capture_session_reference",
         "merlin.targetgen._aten_opset_worker",
