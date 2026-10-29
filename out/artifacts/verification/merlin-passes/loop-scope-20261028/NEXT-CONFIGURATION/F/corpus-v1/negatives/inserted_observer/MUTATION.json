@@ -1,0 +1,351 @@
+{
+  "mutation": "inserted_observer",
+  "xdsl_valid": true,
+  "original_conformance": {
+    "status": "PRODUCTION_CONFORMANCE_REFUSED",
+    "reason": "configuration conformance: omitted instruction has unknown or nonconfiguration effects"
+  },
+  "producer_sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086",
+      "bytes": 742
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+      "bytes": 144
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "bytes": 4227
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/__init__.py",
+      "sha256": "92721d5b005b1f6bdb33fb81918f2b1001c9368056bca02172b507fe69eeccce",
+      "bytes": 633
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/__init__.py",
+      "sha256": "0811ba56924f50f4ef550de4dce72c481bccd30a932f0963e82a1151b8783669",
+      "bytes": 1895
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/block_schedule.py",
+      "sha256": "69b05df24007d8b9023c1e986e0c5a93cf8485ddce97d64e58c5e79ba659dd62",
+      "bytes": 57909
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/compact_dense.py",
+      "sha256": "bfe8e45bc18bf7613ad54c766ed9c1eaad0db90b11c552a4b8d274de8667b304",
+      "bytes": 30683
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/compact_verification.py",
+      "sha256": "a69f00b3638035b5bad2911fa79dbc90eda7150770c5bb7a02a678145acf278a",
+      "bytes": 23928
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/configuration.py",
+      "sha256": "3dd17bdbc6a08de8ccf2913e4687ca352d5a118017e41dd9e1b1a9edeb8527b8",
+      "bytes": 9736
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/configuration_ir.py",
+      "sha256": "64eca6d38dd7c557c7a340f8faa77790fe692b6bdc3db895d756ff4b9cb3782d",
+      "bytes": 19833
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/copy_elimination.py",
+      "sha256": "31d66c0ec4872cc06561fada87f0bcc210babb4629eabd9235d968bff3c48566",
+      "bytes": 5258
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/dense_contracts.py",
+      "sha256": "7490583811a774699148938a2b2a1a2719f922d4aecbd102146e1d325b5d6da3",
+      "bytes": 26305
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/dense_source.py",
+      "sha256": "90b37ddf93199eefa6d36c53bbbfaa37646c1da3b99c66e6713078f04c003727",
+      "bytes": 22791
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/derive.py",
+      "sha256": "10810c48ea0056b235ae0f3a161363578650edd64e402b3505bb6c288d0ee653",
+      "bytes": 6930
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/device_spills.py",
+      "sha256": "668bdc114224b68db6e26128238501954d37bda756d9806cb9d819a063a5103d",
+      "bytes": 9430
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/fusion.py",
+      "sha256": "144298845e4fff2134dc3506466c210fb60ed8aba03208e73a49f53392b3e9e3",
+      "bytes": 15465
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/fusion_contracts.py",
+      "sha256": "0a54500cd8e92df596e0732ba9ab2b21e2277fbddbc710a141cc71bff6478d3b",
+      "bytes": 11419
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/fusion_semantics.py",
+      "sha256": "923287772d9c2716e3d3e7f18b2956227a9dccc29e4289908cf6d96302b0dada",
+      "bytes": 7727
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/library_sources.py",
+      "sha256": "1e6108dc34a998e54ecad85b519cda474f1a673ba884845276e0e8ba10dbd404",
+      "bytes": 7056
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/pointwise_source.py",
+      "sha256": "b5078dbd3519a5b54147fa11325d819fdda4badd78c4ee8e7d5b59d31605698d",
+      "bytes": 33744
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/program_contracts.py",
+      "sha256": "1b386d67b46b2211b44171620227ee9f2360ddc52f9b3c177a2483f28b2108c0",
+      "bytes": 20338
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/program_limits.py",
+      "sha256": "0eaa03348cf16bebcef2ec5dd2658059dbc4a0399f789af741b615f57d0f16e0",
+      "bytes": 22728
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/row_contracts.py",
+      "sha256": "fdac6f442489cfa1a7577279716124230ec99b742154d2335bf8c38f865b87be",
+      "bytes": 16603
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/row_softmax.py",
+      "sha256": "57d53dbad821ed37c0000f585043dcf1310b91bb6153f46f8fc5c5155f347bf9",
+      "bytes": 40962
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/row_softmax_verification.py",
+      "sha256": "c520304653a3b788b32b59707f978620428eef519e5af8d8141f03c8ad4731ce",
+      "bytes": 9995
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/schedule_pipeline.py",
+      "sha256": "3bbb7a5be0ef5e5485e298ea8f3e75ae3897923f9fd16e6f33b82642937126a5",
+      "bytes": 68429
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/selected_contracts.py",
+      "sha256": "463bd1db9c33bbbff0139819b426ec6f68aaf60b335246fc9bad0dd2d624003d",
+      "bytes": 20957
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/spill_conformance.py",
+      "sha256": "62c4d210966f7846b047ec4ec3338f84d0285e1cf148676779e73db0b0425f5b",
+      "bytes": 16403
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/spill_contracts.py",
+      "sha256": "7aeff5b6e27de83a15a4f40fde0246d2b027a9fac9202ba9430ab192d5d96b84",
+      "bytes": 8119
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/storage_contracts.py",
+      "sha256": "9d3f5a0df073a0a2325fa392da6d28fa3bc3cb5ae00290c4b8d99dac46962814",
+      "bytes": 27303
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/temporary_storage.py",
+      "sha256": "6041a26d852d8468192648355b05f508ac0a7b5aea6ead36401d8e72f9ba628c",
+      "bytes": 33929
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/llvmlower/__init__.py",
+      "sha256": "8a2a6206e74b555f98b42b04c78f8ad19b96807442e9a54e98a0baaf72bcbf6d",
+      "bytes": 773
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/llvmlower/cpu_softmax.py",
+      "sha256": "3370f42d1f8563530af38ddb1ee91d6f44c197bae351d191e4959aa7b9ab7527",
+      "bytes": 9201
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/__init__.py",
+      "sha256": "b84e4c42421f5277d338c12ae9726ba256befa5c1491d4928c2da994fc1ee7a0",
+      "bytes": 668
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/codegen/__init__.py",
+      "sha256": "79f3b954801d5a06209fbdf3b7385dee43e8c77c9774231f264989af2892bb63",
+      "bytes": 8657
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/ir/__init__.py",
+      "sha256": "7783c6bfc27bde3f32164ca70803d6d4d21dde9e812363da2c05693a46fedfd9",
+      "bytes": 935
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/ir/expr.py",
+      "sha256": "45e311e72c194a679349334e2baa16078c623a39b83ac50c3759116ad5225e76",
+      "bytes": 5739
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/ir/integer_domain.py",
+      "sha256": "975f54c1607fe7db57425834bf71e2cd3b47cdac7956bbf9223f6c5c18dcbd65",
+      "bytes": 3645
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/ir/kernel.py",
+      "sha256": "513697a4a32a8e7302f86de194a2e3af1f374bbc3a1b939f779ea3e273b41e4e",
+      "bytes": 16088
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/ir/parse.py",
+      "sha256": "ae66843c9dcbde727eb113f541f9c9c3214ef01c4dc1f0ed8035e32bfae758a3",
+      "bytes": 14514
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/isa/__init__.py",
+      "sha256": "b6cd8226548aaa1edfd17bc464b75578ebdbb55d4e12613ed661ecd897bb2310",
+      "bytes": 775
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/isa/types.py",
+      "sha256": "d36576f047352f0b1230e17e26fcc675f08feb4770ea509dbac919db709cb91b",
+      "bytes": 2683
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/__init__.py",
+      "sha256": "f2103ce7e4638a4f655c80f62c61acda55ef8135a293503d0e036bc53724d18b",
+      "bytes": 224
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/allocate.py",
+      "sha256": "d680d5bcd3b8d63de40a5be7e0571ad9909e17b23fbb9bc5491ab093b5011673",
+      "bytes": 21653
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/allocation_types.py",
+      "sha256": "08ca15534bc4e1704613712270d356b40f86bd6e2155c3d3c781acdb37cc7c4a",
+      "bytes": 3561
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/egg_bridge.py",
+      "sha256": "4a017658944366a2b4a2f31e35095ecda126c5694798b80f8b67d8b20f362afc",
+      "bytes": 3079
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/extract.py",
+      "sha256": "315a4a545020fe910c151618f6826cc1c8ee628afc345ef5eaa29efe51b390cf",
+      "bytes": 6223
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/model.py",
+      "sha256": "5f784c7b26e458236004bd7e11e058dcf87dd7d5ab66afc969aa1bd4fda8f6b6",
+      "bytes": 14252
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/rules.py",
+      "sha256": "378c156c6c79a89254f67a62e7b1021ab5f78e99ffc213389d90da5cad91bfc5",
+      "bytes": 24500
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/targetgen/__init__.py",
+      "sha256": "7dae9fca1d8a5a860c76b424adfe208304bf12642774611599e78f7148210c70",
+      "bytes": 340
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/targetgen/address_space.py",
+      "sha256": "339c01f53e0203a850a01588d77fc213c950d1ff1339ee6b1aff9fd4fa4d2c64",
+      "bytes": 56857
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/targetgen/isa_dialect_gen.py",
+      "sha256": "a87f11dcbb7d6a4caf942514d6b677839149ebe56e0d9aae4bd45fe69de7c497",
+      "bytes": 16632
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/targetgen/isa_spec.py",
+      "sha256": "c7504461b20154ad2678d7a0b4e534c6705f76792ee4c49641b05b3ec2c4a5e2",
+      "bytes": 18990
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "bytes": 1017
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+      "bytes": 9294
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/dense_ir.py",
+      "sha256": "b51235a85906b14c48c32a50fe158bc72f5f6726b2ecbdcebf647365e8809e27",
+      "bytes": 20596
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/dense_planning.py",
+      "sha256": "da2816b33ae94e1b57cd1126c6d19c5db42cab9322121aab0c0a379720dcb283",
+      "bytes": 13852
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "bytes": 4572
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "bytes": 4097
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0",
+      "bytes": 8634
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "bytes": 12317
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "bytes": 12381
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pure_scalar.py",
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+      "bytes": 6617
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/scalar_witness.py",
+      "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31",
+      "bytes": 2083
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/unrolling.py",
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f",
+      "bytes": 7588
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "bytes": 10145
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/verify/__init__.py",
+      "sha256": "efa25d1ea886cb3005f0239a7e8570c13724c9b1d852b31254058c2f0f5b1298",
+      "bytes": 1018
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/verify/epilogue_applicability.py",
+      "sha256": "98bdd5789a9ffef705a74ecf621be41fbc15f8e80a83a976c3261e5422e9e65f",
+      "bytes": 15851
+    }
+  ],
+  "authority": false
+}

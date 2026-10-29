@@ -1,0 +1,24 @@
+{
+  "status": "CONFIGURATION_ENGINEERING_QUALIFICATION_PASSED",
+  "core_changed_positive_denominator": 10,
+  "additional_boundary_denominator": 4,
+  "expected_checked_pairs": 13,
+  "actual_checked_pairs": 13,
+  "expected_unsupported_boundaries": 1,
+  "actual_unsupported_boundaries": 1,
+  "valid_mutant_pairs": 22,
+  "attempted_mutant_pairs": 22,
+  "actual_native_refusals": 21,
+  "host_refusals": 1,
+  "failures": [],
+  "native_stopped_on_first_unavailable": false,
+  "controls": {
+    "forged_requests": 15,
+    "artifact_attacks": 11,
+    "fresh_process_replay": true
+  },
+  "human_approved": false,
+  "hardware_model_fidelity": false,
+  "relation": "complete conditional entry error and terminal state equality",
+  "production_enforcement": false
+}

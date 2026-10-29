@@ -1,0 +1,51 @@
+{
+  "schema": "merlin.configuration-elision.candidate.v1",
+  "identity": "9bb6e0b441e348d1707363903b47be9d2a274b9f083d685d9bf4f8866349c5a7",
+  "domain": "straightline-constant-integer-configuration-entries-v1",
+  "relation": "equal_modeled_complete_entry_error_and_terminal_state",
+  "source_sha256": "a4df27453ae387665c73dc97c954ff8da0855f2d3bcf14feeb9ef87364481c34",
+  "final_sha256": "ccdcd49d926127bd1b3f47860561ca224b33b0086886e15caed47bfab2b1187c",
+  "query_sha256": "9cfb2201cf203d371c8beb6f1507ef3bd977ef2e7acbd658e9180f14c6230e36",
+  "final_root": "ActualConfigurationElision.complete_entries",
+  "roots": [
+    "Merlin.GraphState.Configuration.put_idempotent",
+    "Merlin.GraphState.Elision.initial_unknown",
+    "Merlin.GraphState.Elision.redundant_assign_identity",
+    "Merlin.GraphState.Elision.advance_knowledge",
+    "Merlin.GraphState.Elision.omitted_identity",
+    "Merlin.GraphState.Elision.replay_sound",
+    "Merlin.GraphState.Elision.check_sound",
+    "Merlin.GraphState.Elision.context_preserved",
+    "Merlin.GraphState.Configuration.Entries.checkEntries_sound",
+    "Merlin.GraphState.Configuration.Entries.related_invoke",
+    "Merlin.GraphState.Configuration.Entries.check_sound",
+    "Merlin.GraphState.Configuration.Entries.checked_frame",
+    "Merlin.GraphState.Configuration.Entries.checked_observation",
+    "ActualConfigurationElision.accepted",
+    "ActualConfigurationElision.complete_frame",
+    "ActualConfigurationElision.complete_observation",
+    "ActualConfigurationElision.complete_entries"
+  ],
+  "module": "ConfigurationElisionQuery",
+  "entries": [
+    "run"
+  ],
+  "fields": [
+    "configuration:0",
+    "configuration:1"
+  ],
+  "premises": [
+    "trusted complete xDSL module/typed-SSA projection and source-owned ISA resolver/bit interpretation",
+    "exact nonaliasing configuration field-to-state-cell mapping distinct from SSA/caller/observation cells",
+    "one common local operational interpretation of every retained instruction and external call",
+    "ordered declared writes/frame/reads agree with successful instruction steps",
+    "each erasable setter is a total exact overwrite with no failure/pulse/token/memory/observer effect",
+    "State Value includes all relevant caller, return, memory, error-terminal and observer state",
+    "no cross-invocation initial configuration assumption; each defined entry starts with unknown knowledge"
+  ],
+  "authority": false,
+  "native_outcome": "UNOBSERVED",
+  "qualification": "UNQUALIFIED",
+  "hardware_model_approved": false,
+  "production_enforcement": false
+}

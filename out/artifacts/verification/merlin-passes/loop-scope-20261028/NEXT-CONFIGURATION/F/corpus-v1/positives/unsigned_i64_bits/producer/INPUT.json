@@ -1,0 +1,8 @@
+{
+  "reference": "/home/jeremy/Projects/merlin-graph-proof-intake",
+  "facts": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/corpus-v1/schema-i64/facts.json",
+  "software": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/corpus-v1/schema-i64/software.yaml",
+  "target": "configuration_fixture",
+  "qualification": "synthetic-unapproved-effect-premise-v1",
+  "source": "module {\nfunc.func @run(%input: i64) {\n  %slot0 = arith.constant 0 : i8\n  %slot1 = arith.constant 1 : i8\n  %slot2 = arith.constant 2 : i8\n  %slot3 = arith.constant 3 : i8\n  %value0 = arith.constant 0 : i64\n  %value3 = arith.constant 3 : i64\n  %value5 = arith.constant 5 : i64\n  %value7 = arith.constant 7 : i64\n  %value18446744073709551615 = arith.constant 18446744073709551615 : i64\n  %equal3 = arith.constant 3 : i64\n  \"configuration_fixture_isa.pair\"(%slot0, %value3, %value5) : (i8, i64, i64) -> ()\n  \"configuration_fixture_isa.set\"(%slot2, %value18446744073709551615, %value0) : (i8, i64, i64) -> ()\n  \"configuration_fixture_isa.set\"(%slot2, %value18446744073709551615, %value0) : (i8, i64, i64) -> ()\n  \"configuration_fixture_isa.work\"(%slot0, %value0, %value0) : (i8, i64, i64) -> ()\n  func.return\n}\n}\n"
+}

@@ -1,3 +1,28 @@
+# Current — configuration elision integrated; loop-hoist graph work active
+
+Latest continuous-work instruction remains active until a NEW user stop. Root
+merged/pushed the loop/buffer checkpoint into Graham/Agustin branch
+feat/pass-verification-dce-cse at e0484f488, including a new process-helper
+source-binding fix and fresh combined-tree checks/replays. Primary source remains
+feat/pass-verification. Its scoped Q3/F3 configuration-elision result is now
+integrated at f6ab5cdc3 (source bc2ba713f); publication records follow in this
+checkpoint. Read [the exact result, assumptions, evidence and next tasks](../loop-scope-20261028/NEXT-CONFIGURATION/README.md).
+
+Primary postmerge:211focused tests and structure passed; fresh actual baseline
+check/exactconsumer plus separate-process replay. Full worker campaign:13supported
+pairs,21Lean+1host validrefusals, controls/replay and independent actualwitness.
+Q1unavailable/Q2UNQUALIFIED remain distinct; no oldcontext promotion. Human/ISA/
+native/model/pipeline-composition obligations and frozen semantics/locks remain.
+
+Q/W/F continue separate NEXT-HOIST phase1 tasks: actual new-producer Kernel/loop
+bridge; partial/error-state loop-hoist proof; independent fixtures after finalseal.
+Read worker NEXT-HOIST/{role}/TASK.md and RELEASE.json after compaction. No new
+agents, numerical work, SDKforensics, completion-token/pipeline/hardware claim,
+or optional old-buffer/context expansion. Root owns Git; primary final delivery.
+Historical stopped/pending/oldnumerical headers below are superseded.
+
+---
+
 # Current continuation — 2026-10-28 buffer merged; configuration active
 
 The current user request is to keep the three existing workers active until a

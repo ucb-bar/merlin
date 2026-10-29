@@ -1,0 +1,59 @@
+{
+  "status": "current_elision_proofs_source_and_readonly_reviews_immutable_checkpoint",
+  "files": [
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/FINAL-DELIVERY-v1.json",
+      "bytes": 980,
+      "sha256": "3e61503dcf72a3815cff52ba568e3080030a1e5b028f768715ff5ef0b1728a85"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/RESULT-v4.json",
+      "bytes": 827,
+      "sha256": "2b7bfd9bfdeb6ddb85b4f8a539deacce796ab7853915d059460e24e4f7574cde"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/README.md",
+      "bytes": 1455,
+      "sha256": "61dc1a53acfa3746773b24724a2071f81e150b35c09680bfab8eb63e88c6e0cb"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/paper-evidence/README.md",
+      "bytes": 7524,
+      "sha256": "194ab4fd453becb321d77df30f08e0d18b196eb23af6a386e0a3b87f652e3155"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/F3-TERMINAL-OBSERVATION-v1.json",
+      "bytes": 15501,
+      "sha256": "bd91aa004ded86dc43a5969a5954607d468ed4e9ee0f2c7fb370e56b79997bde"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/F3-WITNESS-OBSERVATION-v1.json",
+      "bytes": 782,
+      "sha256": "898d47fdec0801992e7aa17b2c6a784778aba9b9b1294c30b529995a66eaff9d"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/F3-WITNESS-TYPE-DIFF.json",
+      "bytes": 1554,
+      "sha256": "c65b6a554f7e7339bbe959aa7ccb07c2c03e72b1b971f23bf2e1b6dc2627eb14"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/OWNED-SOURCES-v3.json",
+      "bytes": 3043,
+      "sha256": "04a5eb6ccc74e64fae5c0f9876af0b8694309823670b21bf9db228291478af4e"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/SOURCE-CLOSURE.json",
+      "bytes": 3052,
+      "sha256": "b2d5d25679d35bd3b68bc8452cb57b3e2fa66c271c6f3bd3a35071e76013a1f7"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/owned-source-review-v3.patch",
+      "bytes": 67633,
+      "sha256": "76f79c74fa9f65681ac7493f254446c4d9eaa97a121c0fca587019a40db62d68"
+    }
+  ],
+  "old_cut2_UNQUALIFIED": true,
+  "current_cut": "Q3/F3",
+  "native_hardware_human_approval": false,
+  "publication_owner": "root"
+}
