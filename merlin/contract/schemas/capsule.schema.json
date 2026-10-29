@@ -217,6 +217,8 @@
             "column_sum",
             "scalar_affine",
             "tensor_sub",
+            "prefix_sum",
+            "conv_backward",
             "concat",
             "insert_slice",
             "fill",

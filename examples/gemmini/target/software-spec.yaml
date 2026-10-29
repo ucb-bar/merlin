@@ -201,6 +201,7 @@ operations:
     # numerical_semantics.accumulator_seed_tensor (reviewed, sign-off addendum); its RTL evidence is cited
     # there and in `evidence.basis`.
     families: [contraction, window_mean]
+    forms: [convolution_backward]
     placement: accelerator
     arithmetic: integer_multiply_accumulate
     operand_dtypes:
@@ -221,7 +222,9 @@ operations:
     - disjoint_inputs_outputs
     evidence:
       review_status: reviewed
-      reviewed_by: Loren Hung, conditional packet 2 approval
+      reviewed_by: >-
+        Loren Hung, conditional packet 2 approval. Addendum (form convolution_backward): Reviewed by Loren Hung
+        (approved in operator chat 2026-10-29); the stated evidence and qualification scope remain mandatory.
       packet: packet2.md R12; seal3-base 118-145
       basis: Configs.scala:23-38; PE.scala:23,108-129; AccumulatorMem.scala:63-70; LoadController.scala:108; Configs.scala:114;
         BeatMerger.scala:71-75. Full-tensor seed (comp-more c5, reviewed, see accumulator_seed_tensor) - LocalAddr.scala:21-23 (acc and
@@ -230,6 +233,17 @@ operations:
         mvin_scale_acc_args None (no scale on a 32-bit acc mvin); ExecuteController.scala:951-952 and
         AccumulatorMem.scala:70,84,127-129,183 (accumulating write = wrapping SInt(32) add, Arithmetic.scala:94);
         LoopMatmul.scala:282-299,427 and gemmini.h:762,822 (non-repeating D = per-row mvin of the full bias).
+        Addendum, form convolution_backward. The three gradients of a 1x1, stride-1, unpadded convolution (M positions,
+        K input and N output channels) are grad_input = dY @ W^T and grad_weight = X^T @ dY (two int8 x int8 -> int32
+        rank-2 contractions of this row, each operand an ordinary activation or weight tensor, the transposes plain
+        permutation movement) and grad_bias = the standalone integer sum of dY down the outer axis
+        (reduction_standalone); the comment above already states that convolution and its backward are lowered to rank-2
+        matmuls. All three are read out at accumulator width (raw i32 exit), so the comparison is exact. A spatial
+        kernel additionally needs the fold of the per-tap grad_input onto the image (a scatter-add, the col2im form of
+        reduction_standalone); that is NOT claimed by this form. Evidence for the class is the canonical Merlin corpus_193
+        row for aten.convolution_backward.default runs on the device (placement device, spec_int8 plan admitted, pass;
+        3637 device instructions) in /scratch2/loren/backend-verify/results-all.csv. Primitives required are the int8 mesh
+        (PE.scala:23) with the int32 accumulator, DMA permutation of a 16x16 tile (transposer), and accumulate-on-load.
     emission_obligations:
       execution_program:
         status: compiler_obligation
@@ -762,6 +776,40 @@ operations:
     layouts: [row_major_contiguous]
     tails: [zero_pad_valid_window]
     aliasing: [disjoint_inputs_outputs]
+  # Inclusive prefix sum (aten.cumsum) down the OUTER axis as a form of the standalone integer sum: the sum of the
+  # elements k <= i, i.e. the integer sum reduction with a constant 0/1 (lower-triangular ones) mask. Declares no scan
+  # primitive: the realization is the compiler's (a contraction against the triangular ones matrix, or one accumulating
+  # load per row with the accumulator read out after each).
+  reduction_prefix_sum:
+    status: reviewed
+    families: [reduction]
+    forms: [cumsum]
+    hardware: standalone
+    arithmetic: integer_sum
+    kinds: [sum]
+    ranks: [0, 1, 2, 3, 4, 5]
+    layouts: [row_major_contiguous]
+    tails: [zero_pad_valid_window]
+    aliasing: [disjoint_inputs_outputs]
+    evidence:
+      review_status: reviewed
+      reviewed_by: >-
+        Loren Hung (approved in operator chat 2026-10-29). Reviewed by Loren Hung (approved in operator chat
+        2026-10-29); the stated evidence and qualification scope remain mandatory.
+      basis: >-
+        Same evidence as reduction_standalone (operator decision D3a; accumulate_on_load standalone evidence in the
+        target contract: LocalAddr accumulate bit, AccumulatorMem.scala:183 wrapping SInt(32) add). Addendum, form
+        cumsum: an inclusive prefix sum is the integer sum of the elements k <= i over the outer axis, exact in the int32
+        accumulator, read out at accumulator width (raw i32 exit), so the comparison is exact. The contract declares NO
+        scan primitive and this row assumes none: it is the declared integer sum with the triangular 0/1 mask, whose
+        realizations are (a) a contraction of the lower-triangular ones matrix (0/1 int8 weights, PE.scala:23, exact in
+        int32 with every partial sum bounded by the outer extent times 128) or (b) one accumulate-on-load per row with the
+        accumulator read out after each load (ordering: load_completion_ordering, ReservationStation tracker). Evidence
+        for the class: the canonical Merlin corpus_193 row for aten.cumsum.default runs on the device (placement device,
+        spec_int8 plan admitted, pass; 81 device instructions) in /scratch2/loren/backend-verify/results-all.csv. The
+        written region (a sum reduction gated by linalg.index compare and a select against the literal zero) is observed
+        zero_pad_valid_window only when the select's other arm is the literal zero (access_observations). Primitives
+        required: accumulate-on-load of int8 rows into the int32 accumulator, or the int8 mesh with a 0/1 weight.
   movement:
     # Operator reviewed standalone copies/broadcasts; no fact-derived placement claim.
     status: reviewed

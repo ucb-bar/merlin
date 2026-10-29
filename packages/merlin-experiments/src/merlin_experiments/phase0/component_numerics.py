@@ -63,6 +63,14 @@ def evaluate(capsule):
                 else [sum(int(args[0].data[row * cols + col]) for col in range(cols)) for row in range(rows)]
             )
             output = Tensor(tuple(node["shape"]), values, node["dtype"])
+        elif op == "cumsum":
+            rows, cols = args[0].shape
+            running = [0] * cols
+            values = []
+            for row in range(rows):
+                running = [running[col] + int(args[0].data[row * cols + col]) for col in range(cols)]
+                values.extend(running)
+            output = Tensor(tuple(node["shape"]), values, node["dtype"])
         elif op == "sub":
             output = Tensor(
                 tuple(node["shape"]),

@@ -115,6 +115,14 @@ def derive(source, semantics):
                 prefix = min(0, interval[0]), max(0, interval[1])
                 _require(prefix, bits, owner=node["name"], stage="partial sum")
                 proof.update(partial_sum_interval=list(prefix), reduction_axis=node["axis"], reduction_extent=reduction)
+            elif op == "cumsum":
+                lhs = types[node["actual_inputs"][0]]
+                reduction = lhs["shape"][0]
+                interval = args[0][0] * reduction, args[0][1] * reduction
+                prefix = min(0, interval[0]), max(0, interval[1])
+                _require(prefix, bits, owner=node["name"], stage="partial sum")
+                proof.update(partial_sum_interval=list(prefix), reduction_axis=0, reduction_extent=reduction)
+                interval = prefix
             elif op == "sub":
                 interval = args[0][0] - args[1][1], args[0][1] - args[1][0]
             elif op == "affine":

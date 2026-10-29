@@ -73,13 +73,13 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             else {"dtype"}
             if op == "sub"
             else {"axis", "dtype"}
-            if op == "reduce_sum"
+            if op in {"reduce_sum", "cumsum"}
             else {"shape"}
             if op == "reshape"
             else set()
         )
         supported = {"matmul", "add", "copy", "transpose", "alias", "update"} | (
-            {"cast", "reduce_sum", "reshape", "affine", "sub"} if v2 else set()
+            {"cast", "reduce_sum", "reshape", "affine", "sub", "cumsum"} if v2 else set()
         )
         if set(node) != {"name", "op", "inputs"} | extra or op not in supported:
             raise ValueError("unsupported component node; use explicit supported generic tensor operations")
@@ -113,6 +113,15 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             if shape[0] * shape[1] != lhs.shape[0] * lhs.shape[1]:
                 raise ValueError("component reshape must preserve the element count")
             result = ValueType(tuple(shape), lhs.dtype)
+        elif op == "cumsum":
+            # An inclusive prefix sum down the OUTER (row) axis: out[i] = sum_{k <= i} in[k]. The shape is
+            # preserved and the sum is exact in the node's own (wide) dtype.
+            dtype = _integer_dtype(node["dtype"], operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
+            if node["axis"] != 0 or type(node["axis"]) is not int:
+                raise ValueError("component cumsum scans the outer axis 0 only")
+            if int(lhs.dtype[1:]) > int(dtype[1:]):
+                raise ValueError("component cumsum requires a result at least as wide as its input")
+            result = ValueType(tuple(lhs.shape), dtype)
         elif op == "sub":
             # Two tensor operands, lhs - rhs, in the node's own (wide) dtype: the affine map with weights
             # (1, -1). Both operands are widened first, so no operand is ever negated at int8 width.
@@ -333,6 +342,39 @@ def render(program, *, operand_dtype, accumulator_dtype):
                     f"    %{name} = tensor.expand_shape {output_name} [[0, 1]] "
                     f"output_shape [{result.shape[0]}, {result.shape[1]}] : {inner.mlir} into {result.mlir}"
                 )
+            continue
+        if op == "cumsum":
+            source = types[actual[0]]
+            lines.append(f"    {temporary('zero')} = arith.constant 0 : {result.dtype}")
+            lines.append(
+                f"    {temporary('init')} = linalg.fill ins({temporary('zero')} : {result.dtype}) "
+                f"outs({temporary('empty')} : {result.mlir}) -> {result.mlir}"
+            )
+            lines.append(
+                f"    %{name} = linalg.generic {{indexing_maps = [affine_map<(d0, d1, d2) -> (d2, d1)>, "
+                f"affine_map<(d0, d1, d2) -> (d0, d1)>], "
+                f'iterator_types = ["parallel", "parallel", "reduction"]}} '
+                f"ins({values[actual[0]]} : {source.mlir}) outs({temporary('init')} : {result.mlir}) "
+                f'attrs = {{prov.region_id = "component_{node["ordinal"]}", prov.op = "cumsum", '
+                f'prov.aten = "aten.cumsum.default", prov.family = "reduction"}} {{'
+            )
+            lines.append(
+                f"      ^bb{node['ordinal']}({scalar('element')}: {source.dtype}, {scalar('old')}: {result.dtype}):"
+            )
+            lines.append(f"        {scalar('row')} = linalg.index 0 : index")
+            lines.append(f"        {scalar('scan')} = linalg.index 2 : index")
+            lines.append(f"        {scalar('keep')} = arith.cmpi ule, {scalar('scan')}, {scalar('row')} : index")
+            element = scalar("element")
+            if source.dtype != result.dtype:
+                lines.append(
+                    f"        {scalar('wide')} = arith.extsi {element} : {source.dtype} to {result.dtype}"
+                )
+                element = scalar("wide")
+            lines.append(
+                f"        {scalar('masked')} = arith.select {scalar('keep')}, {element}, {temporary('zero')} : {result.dtype}"
+            )
+            lines.append(f"        {scalar('sum')} = arith.addi {scalar('old')}, {scalar('masked')} : {result.dtype}")
+            lines.extend([f"        linalg.yield {scalar('sum')} : {result.dtype}", f"    }} -> {result.mlir}"])
             continue
         if op == "sub":
             lhs, rhs = (types[arg] for arg in actual)
