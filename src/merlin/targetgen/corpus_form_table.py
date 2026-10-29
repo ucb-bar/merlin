@@ -239,6 +239,8 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     ("movement", "split_chunk"): FormEntry("movement", _split_chunk, ("copy",)),
     ("movement", "fill"): FormEntry("fill", _fill(5), ("broadcast",)),
     ("movement", "fill_zero"): FormEntry("fill", _fill(0), ("zero_fill",)),
+    # torch scalar_tensor: ONE element (a 0-dim tensor has no other shape), written once as a one-element fill.
+    ("movement", "fill_scalar"): FormEntry("fill", lambda m, n: {"shape": [1], "value_code": 5}, ("broadcast",), once=True),
     ("movement", "insert_slice"): FormEntry("insert_slice", _insert_slice, ("copy",)),
 }
 
