@@ -101,6 +101,27 @@ def _scalar_affine(weight: int, bias: int) -> Callable[[int, int], dict[str, Any
     return make
 
 
+def _scalar_div(divisor: int) -> Callable[[int, int], dict[str, Any]]:
+    """``aten.div.Scalar`` by an integer ``divisor``: the identity sum of a 1x1 window read out at scale 1/divisor.
+
+    The written region is the standalone exact window sum (``merlin_iface.window_sum``, mode ``window``) over a
+    window of ONE element with ``divisor_override``: ``out = clamp(round_half_even(x / divisor))``, one rounding of
+    an exact rational. Integer division is not an affine map; the division is the readout scale, the same
+    construction the average pools and means use. ``divisor`` must be a power of two: only then is the f32 readout
+    scale 1/divisor exact (``runtime.exact_readout.prove_fp32_products``), so the f32 product path equals the exact
+    rational golden. Any other divisor is NOT declared (see the ``reduction_scalar_div`` spec row)."""
+    if divisor < 1 or divisor & (divisor - 1):
+        raise ValueError(f"scalar_div divisor must be a power of two, got {divisor}")
+
+    def make(m: int, n: int) -> dict[str, Any]:
+        return {
+            "mode": "window", "shape": [1, 1, m, n], "out_shape": [1, 1, m, n], "kernel": [1, 1], "stride": [1, 1],
+            "padding": [0, 0], "count_include_pad": True, "divisor_override": divisor,
+        }  # fmt: skip
+
+    return make
+
+
 def _select(m: int, n: int) -> dict[str, Any]:
     # select.int on dim 0 at an interior index: ONE row, the selected dim kept at size 1 (rank-reducing
     # reshape of the result is a representation change, a separate reshape form).
@@ -126,6 +147,8 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     ("elementwise_map", "scalar_neg"): FormEntry("scalar_affine", _scalar_affine(-1, 0)),
     # aten._to_copy int8 -> int32: the identity map read out at accumulator width (sign extension).
     ("elementwise_map", "cast_widen"): FormEntry("scalar_affine", lambda m, n: {"cast": True}),
+    # reduction standalone: div.Scalar by a power-of-two divisor, the readout scale of a one-element window sum.
+    ("reduction", "scalar_div"): FormEntry("window_sum", _scalar_div(2)),
     ("movement", "slice"): FormEntry("movement", _slice, ("copy",)),
     ("movement", "flip"): FormEntry("movement", _flip, ("copy", "permutation")),
     ("movement", "pad_constant"): FormEntry("movement", _pad("constant"), ("copy", "zero_fill")),
