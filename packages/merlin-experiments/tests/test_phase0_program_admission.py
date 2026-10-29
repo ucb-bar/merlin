@@ -760,3 +760,32 @@ def test_written_per_operand_screen_selects_its_own_contract():
     bad_text = text.replace("bound_lsb = 0", "bound_lsb = 1")
     [bad] = program_admission._operand_sum_numeric_screens_text(bad_text, evidence)
     assert bad["status"] == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("attributes", "src", "out", "expected"),
+    [
+        ({"form": "slice"}, [3, 4], [2, 2], "none"),
+        ({"form": "pad"}, [1, 2, 3], [1, 4, 5], "none"),
+        ({"form": "broadcast"}, [1, 3], [2, 3], "outer"),
+        ({"form": "broadcast"}, [3, 1], [3, 4], "inner"),
+        ({"form": "repeat", "repeats": [2, 1]}, [2, 3], [4, 3], "outer"),
+        ({"form": "repeat", "repeats": [1, 2]}, [2, 3], [2, 6], "inner"),
+        ({"form": "repeat", "repeats": [2, 1]}, [2, 3], [5, 3], None),
+        ({"form": "permute"}, [2, 3], [3, 2], None),
+    ],
+)
+def test_shape_changing_movement_broadcast_class_is_read_from_the_form(attributes, src, out, expected):
+    from merlin.targetgen.interface_observations import command_rows
+
+    cb = {
+        "abi_version": "0.1",
+        "target": "fixture",
+        "tensors": {
+            "X": {"shape": src, "dtype": "i8", "role": "input"},
+            "Y": {"shape": out, "dtype": "i8", "role": "output"},
+        },
+        "commands": [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"}, "attributes": attributes}],
+    }
+    rows = [row for row in command_rows(cb) if row["semantic_family"] == "movement"]
+    assert len(rows) == 1 and rows[0].get("broadcasting") == expected
