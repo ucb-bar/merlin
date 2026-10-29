@@ -45,6 +45,16 @@ code_refs:
 
 # Lean verification of the Merlin compilation path outside the OOT
 
+The current implementation checkpoint is on `feat/pass-verif-integration`;
+see [status and next-owner tasks](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
+and [the compiler stack](../guides/lean_compiler_stack.md). Five scoped compiler
+checks are integrated; configuration elision and hoisting use separate explicit
+instruction/effect APIs. Latest merged-cut replay/qualification remains pending.
+The [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
+records inherited source Q/DQ proofs and the independent numerical review still
+required. The design and historical proof counts below do not imply that
+quantization or numerical-policy compiler gates are enabled.
+
 ## 0. Summary
 
 Merlin compiles a captured PyTorch model into a bare-metal ELF. One stage of that pipeline, the

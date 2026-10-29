@@ -1,3 +1,42 @@
+# Current integration checkpoint — paused for handoff, 2026-10-28
+
+Start from **`feat/pass-verif-integration`**. Compiler-gate work is committed at
+`1ac44938b`; merge `ba4fb6b34` imports the colleague's configuration update
+`018c3795d3`, including primary `89ac040ae` and the elision cleanup-helper fix.
+The user requested a documentation checkpoint and push so a colleague can
+continue. The headers below retain their historical branch/source scopes.
+`MERLIN_WORKER_ROOT` denotes the original operator-selected worktree parent;
+set local checkout locations explicitly instead of copying another host’s paths.
+
+Read [the integration checkpoint and exact next tasks](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
+[the end-to-end stack](docs/guides/lean_compiler_stack.md), and especially
+[the quantization handoff](out/artifacts/handoff/quantization-lean-20261028/README.md).
+
+Five compiler selectors are present: tensor DCE, CSE, ordered unrolling,
+ordered segmentation and private buffer reuse. Configuration elision and
+partial loop hoisting retain explicit instruction/effect APIs. Their modeled
+success/error/terminal-state relations and the buffer possible-success relation
+are distinct. No native/hardware or human effect approval is inferred.
+
+The original compiler cut passed 35 distinct compiler tests; the replay update
+passed three host binding controls. Latest merged-cut native replay and full
+compiler qualification are pending. Both configuration families passed fresh
+baseline checks, exact delivery and separate-process replay in an isolated
+`018c3795d3` checkout on this host. Historical full campaigns keep their own cuts.
+
+The interrupted legacy regression recorded **661 passed, 3 failed**. All three
+failures reproduce in pre-integration `1f1b04a64` with byte-identical captured
+IR and identical refusals. 116 tests were not completed. Do not label that run
+as a passing full regression or relax checker expectations to conceal it.
+
+**Quantization is parked.** Source Q/DQ proofs/corrections are inherited;
+W8A8 and bf16/f16 policy work still needs the independent review/admission and
+coverage work in the quantization handoff and `merlin/lean/LEDGER.md`.
+No new quantization proof, numerical gate, float law or SPEC_LOCK change was
+made by this integration. `all` does not request numerical policy checks.
+
+---
+
 # Latest combined integration — agents remain stopped
 
 This branch integrates primary feat/pass-verification at89ac040ae with Graham's
@@ -97,7 +136,7 @@ remain open. The separate one-call Context candidate is not integrated.
 
 Q now owns actual IR/gate integration for redundant persistent-configuration
 writes; W owns Lean checker/module soundness; F owns independent qualification.
-They continue in /home/jeremy/Projects/merlin-loop-verification, on the existing
+They continue in $MERLIN_WORKER_ROOT/merlin-loop-verification, on the existing
 feat/loop-transform-verification branch. Root owns Git and final primary merge.
 The task scope is constant-field straight-line elimination, with explicit command
 and effect agreement; no barrier/loop/pipeline/numerical/hardware extension.
@@ -127,7 +166,7 @@ also passed a fresh check/replay of the same example and56 focused tests.
 Q integrates bounded-buffer source/gate interfaces; W owns source-bound buffer
 proofs/nonvacuity; F independently qualifies the buffer path. Q/W next extend only
 the existing one-kernel-call wrapper context in isolated candidates. Their current
-worktree is /home/jeremy/Projects/merlin-loop-verification on
+worktree is $MERLIN_WORKER_ROOT/merlin-loop-verification on
 feat/loop-transform-verification; read its current QUEUE.md and role task first.
 Its applied33 memory proof repairs and buffer Python cut remain separate pending
 primary integration. Current source cuts/evidence are not interchangeable.
@@ -143,11 +182,11 @@ of reviewed work is authorized; no numerical/specification approval is inferred.
 
 ---
 
-> **CURRENT2026-10-28:** MACC gate/publisher code and candidate qualification reviewed for integration; human policy approval remains absent. See [review](out/artifacts/verification/merlin-passes/bf16-integration-20261028/COORDINATOR-REVIEW/README.md). Active agents are on scoped loops, then bounded buffer reuse, in `/home/jeremy/Projects/merlin-loop-verification` (`feat/loop-transform-verification`).
+> **CURRENT2026-10-28:** MACC gate/publisher code and candidate qualification reviewed for integration; human policy approval remains absent. See [review](out/artifacts/verification/merlin-passes/bf16-integration-20261028/COORDINATOR-REVIEW/README.md). Active agents are on scoped loops, then bounded buffer reuse, in `$MERLIN_WORKER_ROOT/merlin-loop-verification` (`feat/loop-transform-verification`).
 
 > **LATEST2026-10-28:** User directed all three agents to work strictly on MACC and stop version/toolchain investigation. Read [MACC_ONLY](out/artifacts/verification/merlin-passes/bf16-integration-20261028/MACC_ONLY.md).
 
-> **CURRENT2026-10-28 USER RESUME: bf16/f16 f32 accumulation only.** Three original workers are resumed on `feat/bf16-f32acc-verification` in `/home/jeremy/Projects/merlin-bf16-verification`. Read [current task/ownership](out/artifacts/verification/merlin-passes/bf16-integration-20261028/README.md) and your role TASK.md. The main checkout and other workers remain untouched. This supersedes the historical stop below for this bounded assignment only; old runtime holds and human-review requirements remain.
+> **CURRENT2026-10-28 USER RESUME: bf16/f16 f32 accumulation only.** Three original workers are resumed on `feat/bf16-f32acc-verification` in `$MERLIN_WORKER_ROOT/merlin-bf16-verification`. Read [current task/ownership](out/artifacts/verification/merlin-passes/bf16-integration-20261028/README.md) and your role TASK.md. The main checkout and other workers remain untouched. This supersedes the historical stop below for this bounded assignment only; old runtime holds and human-review requirements remain.
 
 # Merlin verification: START HERE
 

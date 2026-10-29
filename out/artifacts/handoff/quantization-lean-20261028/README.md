@@ -1,5 +1,35 @@
 # Quantization Lean proof handoff — 2026-10-28
 
+## Current integration checkpoint
+
+Continue from `feat/pass-verif-integration`, which includes the inherited
+quantization histories and the configuration updates from
+`feat/pass-verification-dce-cse` at `018c3795d3`. See the
+[current integration handoff](../pass-verif-integration-20261028/README.md).
+This session added graph/compiler-gate integration, not new quantization proofs.
+
+The current compiler selector has five checks: tensor DCE, CSE, ordered
+unrolling, ordered segmentation and private buffer reuse. `all` selects those
+five; it does not select Q/DQ expansion, W8A8 or bf16/f16 policy proofs.
+Configuration elision and hoisting retain their separate explicit APIs.
+
+Source Q/DQ contracts and lowering proofs are inherited, with their original
+profile exclusions and historical evidence below. The W8A8 source-domain,
+calibration and accumulation side proofs remain review candidates; they do not
+approve the numerical policy or establish whole-model numerical execution.
+The bf16/f16 f32-accumulation contract also remains a review candidate with
+independent admission outstanding. No numerical admission or frozen semantic
+assumption was changed by this checkpoint.
+
+For the next quantization owner: start with
+[the assumption ledger](../../../../merlin/lean/LEDGER.md),
+[the design's quantization and policy sections](../../../../docs/design/merlin_lean_verification.md),
+and the remaining review tasks below. Requalify the intended numerical path on
+this exact branch before enabling a new compiler gate. Graph proof success and
+a clean theorem audit are not human source-contract approval.
+
+The branch/source descriptions below retain their original checkpoint scope.
+
 Prepared while completing `integrate/lean-dce-cse-gate`. Quantization work is
 parked for a separate agent. No quantization contract, arithmetic, admitted
 datatype, source semantics or theorem statement is changed by this deliverable.
@@ -66,9 +96,10 @@ mutation cases. The prior combined publication qualification records 118 gate,
 lowering, fuzz and supervision tests plus 3 Spike tests. Those counts belong to
 that source version; they are not fresh qualification of the ancestry repair.
 
-Full prior qualification is retained at:
+Full prior qualification is retained relative to the original pass-verification
+checkout (local evidence, not guaranteed to exist in a new clone):
 
-`/scratch/grammy/blast/merlin-pass-verification/out/artifacts/verification/v1/verification_v1_20261028T135131Z_65e44af/qualification/summary.json`
+`out/artifacts/verification/v1/verification_v1_20261028T135131Z_65e44af/qualification/summary.json`
 
 It indexes 12 model/route exports and 25 accepted checks, with identical gated
 and ungated LLVM output. Six exports concern source-quantizer capsules:
@@ -95,7 +126,8 @@ rebuild/replay for a new checkout rather than treating saved JSON as authority.
    labels can overstate this; use the actual typed chain theorem/domain.
 4. Regenerate receipts from that exact final compiler/checker. Preserve existing
    failed evidence, exclusions and negative controls. The compiler corrections
-   and Q/DQ gate tests live in the published reference, not all in this branch.
+   and Q/DQ gate tests are inherited from the published reference; their old
+   qualification counts do not qualify this newer integration cut.
 
 This is a tensor-stage refinement result under the ledger assumptions. It does
 not prove complete IEEE fidelity, whole-model poison-free execution, W8A8 policy

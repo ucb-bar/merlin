@@ -1,0 +1,479 @@
+{
+  "schema": "merlin.pass-verification.checkpoint.v1",
+  "status": "paused_for_colleague_handoff",
+  "final_qualification_complete": false,
+  "branch": "feat/pass-verif-integration",
+  "compiler_commit": "1ac44938b2",
+  "configuration_merge": "ba4fb6b348",
+  "configuration_upstream": "018c3795d3",
+  "primary_upstream": "89ac040aef",
+  "registered_checks": [
+    "prune_dead_pure_tensor_ops",
+    "cse",
+    "ordered_loop_unrolling",
+    "ordered_loop_segmentation",
+    "buffer_reuse"
+  ],
+  "separate_explicit_apis": [
+    "configuration_elision",
+    "configuration_hoist"
+  ],
+  "current_focused_controls": {
+    "tests": 258,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "current_compiler_host_controls": {
+    "tests": 19,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "earlier_compiler_qualification": {
+    "source_cut": "before latest replay/helper inventory updates; exact25-file cut retained locally",
+    "unique_tests": 35,
+    "accepted_compiler_cases": 13,
+    "llvm_pairs_byte_identical": true,
+    "is_latest_cut_qualification": false
+  },
+  "configuration_baselines_reviewed_checkout": [
+    {
+      "status": "checked",
+      "family": "elision",
+      "mode": "check",
+      "source_identity": "910f8ab3c0c374634191bf3a67725189ae1ad0bd274fde4f10d751d9a3b0df6a",
+      "report": "out/build/pass-verif-integration-20261028/configuration-live/reviewed-upstream-v2/elision-check/REPORT.json",
+      "roots": 17,
+      "theorems": 247,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "incoming_authority": false,
+      "exact_live_delivery": true,
+      "helper_bound": true,
+      "human_model_approved": false,
+      "new_full_campaign": false
+    },
+    {
+      "status": "checked",
+      "family": "elision",
+      "mode": "replay",
+      "source_identity": "910f8ab3c0c374634191bf3a67725189ae1ad0bd274fde4f10d751d9a3b0df6a",
+      "report": "out/build/pass-verif-integration-20261028/configuration-live/reviewed-upstream-v2/elision-replay/REPORT.json",
+      "roots": 17,
+      "theorems": 247,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "incoming_authority": false,
+      "exact_live_delivery": false,
+      "helper_bound": true,
+      "human_model_approved": false,
+      "new_full_campaign": false
+    },
+    {
+      "status": "checked",
+      "family": "hoist",
+      "mode": "check",
+      "source_identity": "45d18710560da060482c9a9647a7dc28f656b39b4676faf1f2082bf7ac73f173",
+      "report": "out/build/pass-verif-integration-20261028/configuration-live/reviewed-upstream-v2/hoist-check/REPORT.json",
+      "roots": 15,
+      "theorems": 315,
+      "axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+      ],
+      "incoming_authority": false,
+      "exact_live_delivery": true,
+      "helper_bound": true,
+      "human_model_approved": false,
+      "new_full_campaign": false
+    },
+    {
+      "status": "checked",
+      "family": "hoist",
+      "mode": "replay",
+      "source_identity": "45d18710560da060482c9a9647a7dc28f656b39b4676faf1f2082bf7ac73f173",
+      "report": "out/build/pass-verif-integration-20261028/configuration-live/reviewed-upstream-v2/hoist-replay/REPORT.json",
+      "roots": 15,
+      "theorems": 315,
+      "axioms": [
+        "propext",
+        "Quot.sound",
+        "Classical.choice"
+      ],
+      "incoming_authority": false,
+      "exact_live_delivery": false,
+      "helper_bound": true,
+      "human_model_approved": false,
+      "new_full_campaign": false
+    }
+  ],
+  "legacy_regression": {
+    "passed": 661,
+    "failed": 3,
+    "complete": false,
+    "collected": 780,
+    "remaining_count": 116,
+    "interrupted_node": "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_resnet50:reduce@2024-text]",
+    "failed_nodes": [
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[M0_small_llama_gemmini:layout@114-pruned]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[M0_small_llama_gemmini:compare@281-text]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[M0_small_llama_gemmini:compare@281-pruned]"
+    ],
+    "remaining_nodes": [
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_resnet50:reduce@2024-text]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_resnet50:reduce@2024-pruned]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_tiny_llama:quantize@0-text]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_tiny_llama:quantize@0-pruned]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_tiny_llama:gather_scatter@768-text]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_tiny_llama:gather_scatter@768-pruned]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_tiny_llama:reduce@871-text]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_tiny_llama:reduce@871-pruned]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_tiny_llama:normalization@1015-text]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_representative_kernels_lower_identically_under_the_gate[SY_model_tiny_llama:normalization@1015-pruned]",
+      "merlin/tests/ir/test_lean_pass_gate.py::test_the_chunks_cover_every_family_the_capsules_use",
+      "merlin/tests/ir/test_lean_pass_gate_fuzz.py::test_fuzzed_programs[0]",
+      "merlin/tests/ir/test_lean_pass_gate_fuzz.py::test_fuzzed_programs[1]",
+      "merlin/tests/ir/test_lean_pass_gate_fuzz.py::test_fuzzed_programs[2]",
+      "merlin/tests/ir/test_lean_pass_gate_fuzz.py::test_deleting_a_dead_dequantization_is_proved",
+      "merlin/tests/ir/test_lean_pass_gate_fuzz.py::test_a_dead_cone_before_live_code_is_proved",
+      "merlin/tests/ir/test_lean_pass_gate_fuzz.py::test_a_live_op_deleted_as_dead_is_still_rejected",
+      "merlin/tests/ir/test_lean_receipt_session.py::test_live_job_does_not_repeat_proof_execution",
+      "merlin/tests/ir/test_lean_receipt_session.py::test_results_from_an_earlier_job_are_replayed",
+      "merlin/tests/ir/test_lean_receipt_session.py::test_a_forged_verdict_cannot_authorize_a_wrong_transform",
+      "merlin/tests/ir/test_lean_receipt_session.py::test_an_edited_live_receipt_loses_reuse_authority",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_actual_reshape_composition[shape0-i13-False]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_actual_reshape_composition[shape0-i13-True]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_actual_reshape_composition[shape1-i8-False]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_actual_reshape_composition[shape1-i8-True]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_actual_reshape_composition[shape2-f32-False]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_actual_reshape_composition[shape2-f32-True]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_actual_reshape_composition[shape3-bf16-False]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_actual_reshape_composition[shape3-bf16-True]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_reshape_rejects_verified_mlir_mutations[False-operand]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_reshape_rejects_verified_mlir_mutations[False-escaping_input]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_reshape_rejects_verified_mlir_mutations[False-attribute]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_reshape_rejects_verified_mlir_mutations[True-operand]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_reshape_rejects_verified_mlir_mutations[True-escaping_input]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_reshape_rejects_verified_mlir_mutations[True-attribute]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_escaping_intermediate_requires_a_separate_rule[False]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_escaping_intermediate_requires_a_separate_rule[True]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_bare_input_cancellation_is_not_claimed",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_legal_alternative_reassociation_is_explicitly_unproved",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_reshape_rejects_changed_expanded_shape_metadata",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_rank_zero_unit_transition_is_explicitly_unsupported[False]",
+      "merlin/tests/ir/test_lean_reshape_compose.py::test_rank_zero_unit_transition_is_explicitly_unsupported[True]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_index_width_before_running_tools[-1]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_index_width_before_running_tools[0]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_index_width_before_running_tools[True]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_index_width_before_running_tools[False]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_index_width_before_running_tools[32.0]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_index_width_before_running_tools[32]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_index_width_before_running_tools[None]",
+      "merlin/tests/ir/test_lean_support.py::test_support_cli_refuses_invalid_domains[args0]",
+      "merlin/tests/ir/test_lean_support.py::test_support_cli_refuses_invalid_domains[args1]",
+      "merlin/tests/ir/test_lean_support.py::test_support_cli_refuses_invalid_domains[args2]",
+      "merlin/tests/ir/test_lean_support.py::test_support_cli_refuses_invalid_domains[args3]",
+      "merlin/tests/ir/test_lean_support.py::test_support_receipt_for_fragment_program",
+      "merlin/tests/ir/test_lean_support.py::test_support_refuses_out_of_bounds_access",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_width_before_running[-1]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_width_before_running[0]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_width_before_running[True]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_width_before_running[64]",
+      "merlin/tests/ir/test_lean_support.py::test_support_rejects_invalid_width_before_running[1.5]",
+      "merlin/tests/ir/test_lean_support.py::test_support_cli_rejects_invalid_width[args0]",
+      "merlin/tests/ir/test_lean_support.py::test_support_cli_rejects_invalid_width[args1]",
+      "merlin/tests/ir/test_lean_support.py::test_support_cli_rejects_invalid_width[args2]",
+      "merlin/tests/ir/test_lean_support.py::test_support_cli_rejects_invalid_width[args3]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_nested_alias_exposes_dead_empty[32-1]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_nested_alias_exposes_dead_empty[32-2]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_nested_alias_exposes_dead_empty[64-1]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_nested_alias_exposes_dead_empty[64-2]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_dead_empty_does_not_need_initialized_contents[32-shape0]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_dead_empty_does_not_need_initialized_contents[32-shape1]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_dead_empty_does_not_need_initialized_contents[32-shape2]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_dead_empty_does_not_need_initialized_contents[32-shape3]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_dead_empty_does_not_need_initialized_contents[64-shape0]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_dead_empty_does_not_need_initialized_contents[64-shape1]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_dead_empty_does_not_need_initialized_contents[64-shape2]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_dead_empty_does_not_need_initialized_contents[64-shape3]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_captured_empty_destination_remains_live[32]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_actual_captured_empty_destination_remains_live[64]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_escaping_poison_tensor_is_retained_and_never_strictly_claimed",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_mlir_verified_wrong_target_or_unknown_producer_refuses[payload]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_mlir_verified_wrong_target_or_unknown_producer_refuses[return]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_mlir_verified_wrong_target_or_unknown_producer_refuses[attribute]",
+      "merlin/tests/ir/test_lean_tensor_empty_dead.py::test_observed_source_has_real_support_and_definedness",
+      "merlin/tests/ir/test_speculative_gate.py::test_accepted_check_lets_join_return",
+      "merlin/tests/ir/test_speculative_gate.py::test_rejected_check_raises_with_the_inputs_and_the_reason",
+      "merlin/tests/ir/test_speculative_gate.py::test_failure_is_printed_for_the_person_running_the_compile",
+      "merlin/tests/ir/test_speculative_gate.py::test_unsupported_input_is_a_failure_not_a_pass",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_crashing_worker_is_unavailable_never_accepted",
+      "merlin/tests/ir/test_speculative_gate.py::test_an_unknown_check_is_unavailable",
+      "merlin/tests/ir/test_speculative_gate.py::test_poll_reports_a_failure_that_finished_while_the_compile_ran",
+      "merlin/tests/ir/test_speculative_gate.py::test_jobs_run_one_at_a_time",
+      "merlin/tests/ir/test_speculative_gate.py::test_workers_run_checks_at_once",
+      "merlin/tests/ir/test_speculative_gate.py::test_close_kills_every_running_worker",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_gate_needs_a_worker",
+      "merlin/tests/ir/test_speculative_gate.py::test_close_kills_the_running_worker_promptly",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_cancelled_check_reports_nothing[0.0]",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_cancelled_check_reports_nothing[0.05]",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_cancelled_check_reports_nothing[0.2]",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_cancelled_check_reports_nothing[0.5]",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_job_over_its_budget_is_unavailable",
+      "merlin/tests/ir/test_speculative_gate.py::test_no_new_work_is_accepted_after_a_failure",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_failure_stops_work_that_is_still_running_in_the_main_thread",
+      "merlin/tests/ir/test_speculative_gate.py::test_guard_leaves_an_unrelated_interrupt_alone",
+      "merlin/tests/ir/test_speculative_gate.py::test_guard_joins_pending_checks_before_returning",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_worker_that_cannot_start_is_a_failure_not_a_silent_pass",
+      "merlin/tests/ir/test_speculative_gate.py::test_join_never_succeeds_without_a_verdict_for_every_submission",
+      "merlin/tests/ir/test_speculative_gate.py::test_an_interrupt_never_outlives_the_guard_it_was_meant_for",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_guard_in_a_worker_thread_never_interrupts_the_main_thread",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_killed_compile_leaves_no_check_running[15]",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_killed_compile_leaves_no_check_running[9]",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_killed_worker_leaves_no_checker_running",
+      "merlin/tests/ir/test_speculative_gate.py::test_missing_parent_death_tool_is_unavailable",
+      "merlin/tests/ir/test_speculative_gate.py::test_a_worker_with_a_vanished_parent_never_starts_a_check",
+      "merlin/tests/rvv/test_lean_pass_gate_spike.py::test_a_gated_build_runs_correctly_on_spike",
+      "merlin/tests/rvv/test_lean_pass_gate_spike.py::test_the_gate_stops_a_wrong_cse_before_an_elf_exists",
+      "merlin/tests/rvv/test_lean_pass_gate_spike.py::test_the_int8_compute_route_is_gated_and_runs_correctly"
+    ],
+    "baseline_reproduction": "Same three failures,identical input/output SHA256 pairs at1f1b04a64;baseline-regression-audit.json"
+  },
+  "baseline_failure_audit": {
+    "baseline_revision": "1f1b04a64",
+    "baseline_head": "1f1b04a64ebfd6538d3dcb5c3b46f59c3aab9ce7",
+    "same_failures": [
+      {
+        "integration_case": 7,
+        "baseline_case": 0,
+        "verdict": "not_established",
+        "reason": "MerlinVerify.Check.TypedModule.check_sound did not verify the pass: a function body did not verify",
+        "buffers": {
+          "before.mlir": {
+            "integration_sha256": "706cde364adf2b1e2c70646e3a4bc7f98ddf924b54cb2e692ffad10379ccd9de",
+            "baseline_sha256": "706cde364adf2b1e2c70646e3a4bc7f98ddf924b54cb2e692ffad10379ccd9de",
+            "bytes_equal": true
+          },
+          "after.mlir": {
+            "integration_sha256": "a1e43a0902315287fc20732f4068be22bdbb473a9cedc0ae5d5873bc88aaf055",
+            "baseline_sha256": "a1e43a0902315287fc20732f4068be22bdbb473a9cedc0ae5d5873bc88aaf055",
+            "bytes_equal": true
+          }
+        }
+      },
+      {
+        "integration_case": 8,
+        "baseline_case": 1,
+        "verdict": "not_established",
+        "reason": "MerlinVerify.Check.TypedModule.check_sound did not verify the pass: a function body did not verify",
+        "buffers": {
+          "before.mlir": {
+            "integration_sha256": "13931dda0f178882db5427f2bd44bb41d035174def0d3589587c9ae1c0127e3e",
+            "baseline_sha256": "13931dda0f178882db5427f2bd44bb41d035174def0d3589587c9ae1c0127e3e",
+            "bytes_equal": true
+          },
+          "after.mlir": {
+            "integration_sha256": "ec068539db7b6045aac9a3133eda994e51d4a34aaa69c4ae767a34ccb898697e",
+            "baseline_sha256": "ec068539db7b6045aac9a3133eda994e51d4a34aaa69c4ae767a34ccb898697e",
+            "bytes_equal": true
+          }
+        }
+      },
+      {
+        "integration_case": 9,
+        "baseline_case": 2,
+        "verdict": "unsupported",
+        "reason": "source support of @forward is not established: outside the proved fragment: scf.for: no rule accepts this typing",
+        "buffers": {
+          "before.mlir": {
+            "integration_sha256": "ebae6f0df3721308a5384b34364e586573ef3252d67bdce410a05e6523b696ee",
+            "baseline_sha256": "ebae6f0df3721308a5384b34364e586573ef3252d67bdce410a05e6523b696ee",
+            "bytes_equal": true
+          },
+          "after.mlir": {
+            "integration_sha256": "0d4b3c6b23c8ca69c2794eec88a0aa1554471af8362bd7009b108eed56434b47",
+            "baseline_sha256": "0d4b3c6b23c8ca69c2794eec88a0aa1554471af8362bd7009b108eed56434b47",
+            "bytes_equal": true
+          }
+        }
+      }
+    ],
+    "checker_weakened": false
+  },
+  "numerical_status": {
+    "new_numerical_proofs_added": false,
+    "source_qdq_proofs": "inherited; historical scope/review limits retained",
+    "w8a8_policy": "review/admission pending;not registered",
+    "bf16_f16_f32acc": "review/admission pending;not registered",
+    "frozen_semantics_or_spec_lock_changed": false
+  },
+  "source_files": [
+    {
+      "path": ".gitignore",
+      "bytes": 24204,
+      "sha256": "51058f7d690e42c5a16837f8f8fcde6b102857a872e6ab3fac54bd5ef69f645d"
+    },
+    {
+      "path": "VERIFICATION_HANDOFF.md",
+      "bytes": 16225,
+      "sha256": "088886a82e5ba33685c011a285e32f94963c1fec5dfa71fb6f64633213395321"
+    },
+    {
+      "path": "docs/README.md",
+      "bytes": 94229,
+      "sha256": "5acb4b20268bf41c5ee71bf5de301c7593308a2ff43bfaa2669cd7a672752fa4"
+    },
+    {
+      "path": "docs/design/merlin_lean_verification.md",
+      "bytes": 101744,
+      "sha256": "ddc1f33cb6cda7cb0c1694345999d911d345753e13036b856ea98f3ec3f6dfa3"
+    },
+    {
+      "path": "docs/guides/lean_buffer_reuse_gate.md",
+      "bytes": 5036,
+      "sha256": "e8dce3435efc1c67e5597195f54a6c915a78c816089b4a03c4e1c4798a6b8e75"
+    },
+    {
+      "path": "docs/guides/lean_compiler_stack.md",
+      "bytes": 15608,
+      "sha256": "2e6c6cd2d8321e0cc7b7edb18b1ded6bc9b724fbaa54a78d73e2941ba4411ac2"
+    },
+    {
+      "path": "docs/guides/lean_loop_transform_gate.md",
+      "bytes": 4659,
+      "sha256": "0de032a5086b2f099de1cee05015615822219e1846b8d8b152ce529d5e989f7a"
+    },
+    {
+      "path": "docs/guides/lean_pass_gate.md",
+      "bytes": 13710,
+      "sha256": "13fbb9b2e35c589ad88332f234560fdf85b31c2ef39abdeee124658b757bc223"
+    },
+    {
+      "path": "docs/guides/verified_compiler_tooling.md",
+      "bytes": 67724,
+      "sha256": "77acdfb0ef2ed43c961b992a9120823d5759d6b07b329f7fc3c277de01c538cd"
+    },
+    {
+      "path": "merlin/lean/LEDGER.md",
+      "bytes": 49541,
+      "sha256": "3668491a92fb7c6d562e5956556f2825a3d706f96e069198bfb631e322a47a56"
+    },
+    {
+      "path": "merlin/tests/ir/buffer_test_inputs.py",
+      "bytes": 1518,
+      "sha256": "025e804cbf6cecb90dcb3cd860103aa35fe1a1e8f7cad494a9f1a7d7b057262a"
+    },
+    {
+      "path": "merlin/tests/ir/test_buffer_reuse_emission_unit.py",
+      "bytes": 5720,
+      "sha256": "182dd83fd5d212a0d0b9087691ed97c4b88e2a4136dc4ee37f1ed469e9662189"
+    },
+    {
+      "path": "merlin/tests/ir/test_buffer_reuse_intake_unit.py",
+      "bytes": 6183,
+      "sha256": "8fc91357002b748f430bad079d7a273859ae5106a623832fd04dd1e22cba4fc5"
+    },
+    {
+      "path": "merlin/tests/ir/test_compiler_buffer_mutations.py",
+      "bytes": 2650,
+      "sha256": "cacc85bd8eee6051bfdd7b92a79a260e9e0c73b13a0c369b11631536ef7aaa9d"
+    },
+    {
+      "path": "merlin/tests/ir/test_compiler_formal_transforms.py",
+      "bytes": 17275,
+      "sha256": "7994fbc59f36dc14d1df521b8ab5e9114a439c756c4520d8cb361b9c63aeb8d7"
+    },
+    {
+      "path": "merlin/tests/ir/test_configuration_hoist_gate.py",
+      "bytes": 4180,
+      "sha256": "a1a5d8b8903fdc39b9917ce0fdc1c01430308004e3a4f3ee6a09de6bb9f41627"
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_compiler_gate_scope.py",
+      "bytes": 2672,
+      "sha256": "950cef76bbc8d4b99b4fbf74deeb93d53c29ceb2dc0f7bd23b1128b6905b2bdf"
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_pass_gate.py",
+      "bytes": 23120,
+      "sha256": "2ef3f32a91e07b73a492a14ac196a641af387b8ad1f1763bc996e93a858725d6"
+    },
+    {
+      "path": "src/merlin/compile/command.py",
+      "bytes": 12058,
+      "sha256": "8b7868c7da63a12feed505bbe782750eb6e5d0c761765aecc3291465f345ca1f"
+    },
+    {
+      "path": "src/merlin/llvmlower/AGENT.md",
+      "bytes": 101267,
+      "sha256": "f9ec5c516f68fa9b785afba2ea504552163c5233291321207c0bbacb89b9f649"
+    },
+    {
+      "path": "src/merlin/llvmlower/lower.py",
+      "bytes": 48626,
+      "sha256": "edb6194dea164603a35d3a45bb5b248d8a6fc1db96b1588980f364f4c49a7525"
+    },
+    {
+      "path": "src/merlin/verify/AGENT.md",
+      "bytes": 14332,
+      "sha256": "5dcec3ad33d248d9949223971b02f074b9729c072f1aea2cb07a475678fc4a22"
+    },
+    {
+      "path": "src/merlin/verify/compiler_loop_intake.py",
+      "bytes": 8408,
+      "sha256": "7b5c1873908ac73e79eb866287e0bcdbc05d6ef777315c0e0173fad56afd0b82"
+    },
+    {
+      "path": "src/merlin/verify/compiler_transforms.py",
+      "bytes": 9533,
+      "sha256": "0b9c607e31440c70fd8ab18ee1b94e6eb12a8c180c2879d5402a3e25930c68c9"
+    },
+    {
+      "path": "src/merlin/verify/gate_checks.py",
+      "bytes": 6684,
+      "sha256": "e01db214e8261787de3169f5752a4f96ed7554db2f804bf279ab89074c6f595c"
+    },
+    {
+      "path": "src/merlin/verify/gate_worker.py",
+      "bytes": 3229,
+      "sha256": "97e05f26d08e3bfc460e4b440e6627e655688c01bb59be57a25032f172e86189"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "bytes": 29388,
+      "sha256": "a0e82852a1823a53c1293cfa8d53c6ce48596a34052241085a6484c49e262ea7"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_gate.py",
+      "bytes": 13657,
+      "sha256": "5a8fcef9143a1a22a147c8a00195d7685b010f99efc81ce41c813d40df7cf132"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_intake.py",
+      "bytes": 7905,
+      "sha256": "ff9eb94b14afc7caa8a44be094adff719f15a0d2d6fc39af10f0d4f0940e69fa"
+    },
+    {
+      "path": "src/merlin/verify/pass_validation.py",
+      "bytes": 9810,
+      "sha256": "cf1e5a0ffc6f9676128af4e255a7b4fb05850b74500f7c167a01d438a3ed5895"
+    }
+  ],
+  "pending": [
+    "Complete current38-test compiler suite including new separate-process replay checks",
+    "Recheck source-binding changes on final merged source cut",
+    "Complete116 legacy nodes and retain3 proven pre-existing failures",
+    "Repeat config baseline check/replay on final installed source path if final-cut qualification is required"
+  ],
+  "authority": false,
+  "human_model_approved": false,
+  "raw_evidence": "Local out/build/pass-verif-integration-20261028;rawSDK/proof/test trees are notpublished"
+}

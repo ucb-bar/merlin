@@ -10,6 +10,16 @@ code_refs: [src/merlin/transforms, src/merlin/verify, src/merlin/targetgen, src/
 
 # Shared transformations, ISA generation and Lean verification
 
+For the current `feat/pass-verif-integration` checkpoint, start with the
+[compiler stack and interfaces](lean_compiler_stack.md) and
+[integration handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md).
+Five opt-in compiler checks cover DCE/CSE and scoped loop/private-buffer paths;
+configuration elision/hoisting retain explicit ISA/effect APIs. The
+[quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
+records inherited Q/DQ proofs and outstanding numerical review. W8A8 and
+bf16/f16 policy candidates are not enabled by the compiler's `all` selector.
+Latest-cut replay/qualification remains pending as recorded in the checkpoint.
+
 The common substrate supplies executed xDSL transformations, an optional
 instruction dialect generator and an independent host Lean checking route.
 It provides a small, explicitly modeled foundation. It does not establish a

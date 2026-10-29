@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: verification
 last_verified: 2026-10-28
-related: [lean_pass_gate, lean_loop_transform_gate, lean_buffer_reuse_gate, verified_compiler_tooling, merlin_lean_verification]
+related: [lean_pass_gate, lean_loop_transform_gate, lean_buffer_reuse_gate, lean_configuration_elision_gate, lean_configuration_hoist_gate, verified_compiler_tooling, merlin_lean_verification]
 code_refs:
   - src/merlin/verify/pass_validation.py
   - src/merlin/verify/compiler_transforms.py
@@ -16,6 +16,11 @@ code_refs:
 ---
 
 # Lean verification through the compiler stack
+
+Checkpoint status and the remaining merged-cut replay/qualification work are in
+the [integration handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md).
+The current replay implementation has host binding controls; its new separate-
+process native replay tests still need to run against the final merged cut.
 
 Select transformations to change the compiler's output. Select validation to
 require a proof of their actual input/output boundaries. Both are opt-in.
@@ -136,6 +141,14 @@ An individual unroll job uses an auxiliary segmented program only to construct
 the existing proof scaffold; its adjacent theorem covers the actual unrolled
 compiler output, and the auxiliary output is never delivered.
 
+`loop_transform_gate.replay(report, lean=..., destination=..., consumer=...)`
+reconstructs these compiler profiles, builds a new private proof closure and
+delivers the exact target through the new live completion. It does not require
+the historical producer checkout for current compiler captures. A separate
+process can replay with no incoming completion authority; saved JSON is input
+to a new check. The standalone pinned-producer workflow still takes its explicit
+`reference` argument.
+
 The supported source domain has one changed top-level loop, two scalar entry
 arguments, one to four word carries, a region-free body, static nonnegative
 bounds, positive stride and index64. Unrolling supports factors 2..4 with a
@@ -220,8 +233,51 @@ These interfaces have separate selections and are not extra names in
 | `loop_transform_gate.transform` | Standalone producer→proof→consumer | Run the pinned unroll/segment producer and deliver only after its complete proof; see [direct loop checking](lean_loop_transform_gate.md) |
 | `buffer_reuse_intake.prepare_chain` + `buffer_reuse_gate.check/deliver` | Standalone four-buffer memory boundary | Check initialized disjoint private lifetimes and guard a direct consumer; see [direct buffer checking](lean_buffer_reuse_gate.md) |
 | `configuration_elision_intake.prepare` + `configuration_elision_gate.check/deliver` | Selected instruction/configuration IR | Delete a repeated constant setter only under its exact total-overwrite effect contract; preserve modeled errors and terminal state; see [configuration elision](lean_configuration_elision_gate.md) |
+| `configuration_hoist_intake.prepare` + `configuration_hoist_gate.check/deliver` | Counted Kernel IR, after instruction/effect selection and before command emission | Move one invariant pure setter before a positive counted loop; preserve modeled success, failure and terminal state; see [scoped configuration hoisting](lean_configuration_hoist_gate.md) |
 
-The configuration-elision proof is included from the upstream verification
-branch. Its original ISA/effect facts and explicit producer selection remain
-required; this integration does not infer hardware effects or silently enable
-that developer API as a compiler gate.
+## Configuration writes and loop hoisting
+
+The configuration APIs use explicit selected ISA/effect facts. They are separate
+from the five generic compiler selectors above: elision checks complete
+instruction-MLIR modules, while hoisting checks complete counted Kernel text.
+Their owner calls `prepare`, `check`, then `deliver` at that boundary before
+passing the checked bytes to its consumer. Both APIs also support fresh replay.
+
+For example, under an effect contract where `work` preserves the configuration
+fields, redundant-write elimination can turn:
+
+```text
+set configuration = (3, 5)
+work
+set configuration = (3, 5)
+work
+```
+
+into one setter followed by both work calls. The first setter remains because
+the initial configuration is unknown. A clobber or unknown/unordered effect
+invalidates knowledge; a pulse or enqueue is not a pure setter.
+
+Hoisting moves the setter in each iteration of a positive loop immediately
+before that loop. Its new partial-execution theorem includes failing work and
+surrounding calls. After any modeled failure, both versions retain the same
+error and terminal state. It requires one leading constant pure setter, an
+ordered body that preserves its fields, and empty completion/asynchronous
+annotations. Zero-trip loops, nesting and overlapping body writes are outside
+this initial checker, including identical overlapping writes. A zero-trip loop
+cannot be hoisted this way: the original executes no setter.
+
+The bridges bind complete input/output IR, parser/producer origins and the
+selected facts. Proof files come from the installed verification package's
+canonical source tree. Root names/types, imports, process evidence and fresh
+objects are audited before live delivery. Source inventories include the
+`owned_children.py` helper used by process cleanup; changing it invalidates a
+prepared request. Saved or copied completions grant no authority.
+
+Use an interpreter with the producer's normal dependencies installed; isolated
+producer capture intentionally ignores `PYTHONPATH`. The elision producer stays
+pinned to `4499eebb959c0f92cefd92cc6d80646ba66474ed`; hoisting pins
+`e0484f4886ae0780d0325cdfa998842b61bb647c` and its published source manifest.
+Neither qualification labels nor a software file's review status establish
+native effects. Both relations remain conditional on the documented common
+instruction/state interpretation and nonaliasing field mapping. Human contract
+approval, hardware fidelity and composition with adjacent passes are separate.

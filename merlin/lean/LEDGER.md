@@ -3,6 +3,26 @@
 Everything a verified claim depends on without proving it (design §10). Each entry says what is
 assumed, why, and what evidence stands behind it. A claim that relies on an entry must cite it.
 
+## Integration status — 2026-10-28
+
+The current collaboration branch is `feat/pass-verif-integration`. Its five
+registered compiler checks concern tensor DCE/CSE, ordered unrolling/segmentation
+and scoped private-buffer reuse. Configuration-write elision and partial loop
+hoisting use separate explicit instruction/effect APIs. Their state relations
+must not be substituted for a numerical-policy proof or for one another.
+
+Source quantize/dequantize expansion proofs and compiler corrections are
+inherited. W8A8 source-domain/calibration/bounds work and the bf16/f16
+f32-accumulation contract remain candidates with the independent-review and
+coverage limits recorded below. This integration adds no numerical admission,
+float law, approved source contract or changed A9 assumption. Numerical gates
+remain outside `--validate-passes all`.
+
+Read the [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
+and [current integration checkpoint](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
+before resuming numerical work. Historical evidence retains its original source
+cut; the latest merged compiler/replay cut still needs its final qualification.
+
 ## Modelling choices in the op semantics
 
 | Id | Assumption | Where | Evidence / justification |
