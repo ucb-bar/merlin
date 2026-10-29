@@ -65,6 +65,7 @@ def _host_sources():
         parent.parent / "common/__init__.py",
         parent.parent / "common/paths.py",
         parent.parent / "common/owned_process.py",
+        parent.parent / "common/owned_children.py",
     ]
     return [file_ref(path) for path in paths]
 
