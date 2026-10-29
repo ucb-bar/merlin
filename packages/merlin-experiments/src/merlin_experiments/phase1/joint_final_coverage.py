@@ -15,6 +15,7 @@ from pathlib import Path
 from merlin.common.tree_hash import hash_tree
 
 from . import joint_control
+from . import joint_grade_shards as JGS
 
 
 def _write(path, document):
@@ -185,12 +186,41 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
             raise ValueError("final cheap coverage requires the exact Spike-only adapter")
         suites = (("core", core, core_caps), ("scalability", scale_cases, scale_caps))
 
+        def _sharded_score(name, root, caps, *, tag, share):
+            """Opt-in (MERLIN_JOINT_GRADE_PROCESSES) process-sharded grade of the whole group, else None."""
+            processes = JGS.configured_processes()
+            if processes < 2:
+                return None
+            left = budget(share)
+            return JGS.grade_sharded(
+                caps=caps,
+                root=root,
+                tag=tag,
+                output=output,
+                frozen=frozen,
+                run_dir=prepared.run_dir,
+                context=context,
+                inputs=inputs,
+                contract=contract,
+                descriptor_sha256=te.descriptor_sha256,
+                end_epoch=time.time() + left,
+                timeout_s=max(1, min(900, left)),
+                processes=processes,
+                floor_exempt=name == "scalability",
+                verify=prepared.verify_inputs,
+            )
+
         def grade_group(name, root, caps, *, tag, share):
             """One native grade of a whole group; ``share`` names its cumulative budget (None: the window)."""
             runs = output / tag
             # The Spike-only scalability suite owns no L3 adapter: keep it on its declared L0-L2 ladder
             # under any operator tier floor. Core capsules keep the floor.
             exempt = floor_exempt([root / cap["name"] for cap in caps]) if name == "scalability" else ExitStack()
+            sharded = _sharded_score(name, root, caps, tag=tag, share=share)
+            if sharded is not None:
+                score_path = output / f"{tag}-score.json"
+                _write(score_path, sharded)
+                return sharded, {"path": str(score_path), "sha256": sha256_file(score_path)}
             with exempt, compiler_execution(inputs, candidate=frozen, run_dir=prepared.run_dir):
                 with (output / f"{tag}.log").open("w") as log, redirect_stdout(log), redirect_stderr(log):
                     score = CG.grade(
