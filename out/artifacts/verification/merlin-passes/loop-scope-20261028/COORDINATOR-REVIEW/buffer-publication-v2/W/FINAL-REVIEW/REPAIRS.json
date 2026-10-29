@@ -1,0 +1,223 @@
+{
+  "files": [
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+      "current_sha256": "5ae28e5a48be8c91d8843e669ba37b41741a7deb11f557fb2c4f0c4a74114d7d",
+      "original_sha256": "ac5f18053282e6e12d816146a7cb1e71c663fb3e8580eea786896dcbc5574247",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+      "current_sha256": "55c0a6e1378b5bce3c84f293cb9457194925b299b3ee463a099a622faeb2def1",
+      "original_sha256": "db2ff24827279ded18bcfd9659bd99983aa195b62d1512a16244e8fbde30bf1a",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+      "current_sha256": "145d3f6572f326ad5c79c43acabb9ceee341b6932cbc3348d3b926503497011e",
+      "original_sha256": "115ecb5e1386e28c8ccec29bef745cecdf7b31a9bf537c50182b28a5673c42b7",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+      "current_sha256": "f727397a27d9857c2753dd0210b10a7dd2e3ee98c93e51a473db8ffcb6a7122b",
+      "original_sha256": "0e4f2e2b60ca02cf50845235299ead547edc55ae9eb384d90a18b9abe0f78c6c",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+      "current_sha256": "2e3897623722010d45cc5dfb69726eba16433ecb9d0e59aeb5c65dda1c8b9286",
+      "original_sha256": "6d13e391848a453a0a52a3bc20c217c311fa846048a645001a5cccd4590adf4e",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+      "current_sha256": "b7daf1561d9ff944385a10b30dd83b32b6f7e05a10d3998df60a824a6a8bd884",
+      "original_sha256": "246ab2b3b63c771aeb41b73ca8b5cb934f16a9b6e700caad7438505e7fa50c3c",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+      "current_sha256": "533ea4922a1d3862c5ef5312c8d7351028d81ef74b8196a62c8cf419c7dd32a7",
+      "original_sha256": "b00e037024e9cb0cef6fc087abaf2f03e631c2137d3a8acd80ddf2773e0335f3",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+      "current_sha256": "b16a3c65a288d1c79280f25f1e6ff19585ac7594c1ff384da66d9df15caf46ef",
+      "original_sha256": "ec4e7bddea5bd4e1b13359dca6bea0f36dbf1f05939b1b51a12cfdfbcadeb7fe",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+      "current_sha256": "aaab49c958853175d62c0c02de6d3764b9b507d2cbfc444c7c5ad03c1fb35739",
+      "original_sha256": "44478ab6e3b2bbe636943fe369209fa96c58ea679c8bd22d435eb252dbf89366",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+      "current_sha256": "e14ab2c0ed8ce153580617047d3d937def7502453635648a7493a875158a2dcf",
+      "original_sha256": "478311e1d64352a42cd8e71012a001f0276820f9b5f3ba268d30a018fbc18469",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+      "current_sha256": "923f9215fb28c725e5a407598d023f2f735f9f07181ef8b225b0861c1aaf71d2",
+      "original_sha256": "b1a40d49a7d095429e82bf0e053e53707b557996c01c308c4a5bdc0524e86e07",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+      "current_sha256": "93fbf46d0e921ea99dd40f41b1470632dfe84d9bb0f97e3e8a63aaa72705539a",
+      "original_sha256": "a8a8ead22ebbf08b26cea5e9ff901463d97d8a31403032baf2e07fa1f7dd9744",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+      "current_sha256": "2864687091ab69889485fa491eee07d671ac3d362eeede9bb9a59a78f6c84651",
+      "original_sha256": "b8e4442e6d2a90ea9ae7b0d6204ff96c39a4aeef8e3a6babe102ff5f95342c62",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+      "current_sha256": "a6d91ad7f1b9daac83ff54481e05689296da5280810c3d1e70021f2871a74970",
+      "original_sha256": "8c3244e49b74bdd4592941bc1bdfd06e3dc5ad30a8dfbef04fc739f25a9f3b45",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+      "current_sha256": "323972c1f6fd811cd3f98fa53a74199a46a04bd2fd6078a994f80871824789af",
+      "original_sha256": "a0d4e5ef523b2cf64542589047047423038f09ffd225b8f16fe381d05039cc3f",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+      "current_sha256": "98a489fa9370724b13a5e5c169d7a823751ce4e53e5fda5996abccc37c56b96e",
+      "original_sha256": "323a82673fd07e86e8d68fb071302a8372f5ef3f751c7cfc68c7e6acaa7bb7e2",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+      "current_sha256": "de8a83c3e4aee65b0c77d5e5c7d85d843f1960ca6f0a1cb1839bf61332779002",
+      "original_sha256": "fa5f46ef94f79a50a2aa850a0bec0f484276eebb0e883921f8edbfccfbdfa5db",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+      "current_sha256": "21d67fdc1bd04ff3eafa684c9a4a23663a9792d5b556d446abb1fbb5e89638d0",
+      "original_sha256": "ee7c3aaed050d0101d76bc2c585542a8a7ed0747a65b613b2ff9f1c6e8eb8e4b",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+      "current_sha256": "161214250a30dc39254b52cac338586fc2eb0aaa6f6c683c2c435a31cc76c863",
+      "original_sha256": "12284514b35a27200d94f52d6f602b7bbb9d7ae7624a8aa88d229ca378c9c33f",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+      "current_sha256": "678c49926f5bab9d3a86e13363c2a2aabc0e9be593e167ebb5913dd97bea888a",
+      "original_sha256": "d587cbe0e1265b052cc607c08325bc6134adf776d06d54b576a2e17e1c345795",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+      "current_sha256": "8226b4042bfb9180be4749848838ed9731d339e55985b82a3312578f964f7ef3",
+      "original_sha256": "64dc0c518b2b7ef3d489c1b4aa0df349e2a2dc4f8df0c378be7e72602cb3ea1e",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+      "current_sha256": "1cd3c1fd266856edfd2cc2643e3bc7c28b25c74c45b51b98dbe1b29c4d715603",
+      "original_sha256": "a32e89ad3b494224ab0b92f8423b765b30ad53be22b43c794893d1ee21ddbbed",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+      "current_sha256": "05aa9d172b9f0376de1503c9796d08595565ba13d0d4390d792ed5334023cfb1",
+      "original_sha256": "60d318a0983eb04623023eb70f8f944fda0020db50c10a49c2a86363710438d5",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+      "current_sha256": "71cbe9b82c9ccc0f441946c317f21c46b09817b0db923abfdaa097b6090102b8",
+      "original_sha256": "743fd49545efc94ecfc609fb6a131355931e91e8dedb736868345905372d9231",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+      "current_sha256": "1506ce36832471f28bc33fc336d8418873fbb544bdc76443a7b946a0ad3373d6",
+      "original_sha256": "bb52da64c94041f36aae5a5455ee50b66a287b170c4a4c8f8fbca6c121eafbc9",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+      "current_sha256": "2fe1366da6a5e9c30d6accddcc1457a24893d174d532759a33ba1fe452e631db",
+      "original_sha256": "4dab99a0824e89346226ad04e774369fee6fde5cf6ed420cf8e55a213c62f87c",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+      "current_sha256": "31efbe25ef09d06b344ca57ad456331254870bcbdd4e506eb8291fb1414d600d",
+      "original_sha256": "a480ba07dcf62de7829680f93178f85535ef9f19b39f37eac30a8cd51ca09098",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+      "current_sha256": "2719d58b9c38cbc22d83da2bb6209551e0856f8399efc6dc3f0c35a33790201b",
+      "original_sha256": "60d6a9aca373bd9c4b61fa31726961f30468a582831aab7f3a49611b7b01e7a1",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+      "current_sha256": "e01db92a6e04e0c42e6af711ec42681e3e2ab8684fb47c058f4788855b94484e",
+      "original_sha256": "5cff2c32042ca2ccfa8db8c1157b576cba7fb4390837d193cdf64373d7e7a89b",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+      "current_sha256": "cf68afb7771484e60a3c71f23dbe98510d48c70bc4f5701102aa83b8985bf678",
+      "original_sha256": "cee17c1e1cc166bd4951664ecf2fb8588e07cbe0dbbec9be9bca37b3b58f07cb",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+      "current_sha256": "9b9f6912aa807006042fbb600a28756c32238c782e8ece5bc25bb51d2123b129",
+      "original_sha256": "2437a5f3be741e6912f3568dcff5b08f0c15187547b7d02f5bb28bc928c8e82c",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+      "current_sha256": "7ae1dfdb7f642ca6b5b950c683a1141e2fc14cb2147c2406761bad089b463ec0",
+      "original_sha256": "2dc0625cca4f37c016ab96389f18075f86a2cea4d74d51a70f1c625770bbbc1a",
+      "exact_reviewed_candidate": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean",
+      "current_sha256": "0fe635ec3bdd1bbf645c8b948683dbe87b71b30a57db0454322b4db7106adde4",
+      "original_sha256": "32bca20f3f2aa8ed0fbfd6b38142db3b3c140677213f5b676bdde80a564ca775",
+      "exact_reviewed_candidate": true
+    }
+  ],
+  "disclosed_declarations": 243,
+  "change_groups": {
+    "explicit_types": 106,
+    "proof_or_binder_elaboration": 59,
+    "imports": 1
+  },
+  "prior_failed_elaboration_not_equated_to_new_checked_semantics": true,
+  "patches": [
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/candidate-review-v2/01-imports.patch",
+      "sha256": "2f35d7b2668a19dd1f224774168c597457de74f8ee85b07f8a3d1c1bed661f46"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/candidate-review-v2/02-explicit-types.patch",
+      "sha256": "e1708b35fb8f62a2b11dd973407f15771bd81aece45129263a2e3cf17fa59d02"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/candidate-review-v2/03-proof-elaboration.patch",
+      "sha256": "ccce57f461ce7b6a0e85d3c03f74d7fdd23adccc33e65b5dcdf7b9261e745080"
+    }
+  ]
+}

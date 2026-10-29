@@ -11,7 +11,7 @@ namespace Merlin.GraphLoopsMemorySCF.After
 
 open GraphLoopsShape
 
-theorem tiled_fragments_eval {Value World : Type} (meaning : Interpretation Value World)
+theorem tiled_fragments_eval {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World)
     (link : Epoch.InitializerLink) (program : TiledInitializer)
     (actual next : GraphLoopsShape.Env Value) (before after : World) :
     FragmentsRun meaning (Expansion.tiled link program).fragments actual before next after ↔
@@ -28,7 +28,7 @@ theorem tiled_fragments_eval {Value World : Type} (meaning : Interpretation Valu
         cases tail
         exact (Epoch.region_empty_step meaning program.uniform.loopKey
           [program.uniform.zero, program.uniform.rows, program.tile] [program.tileIV] program.body
-          before _ next after).mp region
+          _ _ next after).mp region
   · rintro ⟨rfl, run⟩
     refine .more ⟨rfl, rfl⟩ (.more ?_ (.done _ _))
     exact (Epoch.region_empty_step meaning program.uniform.loopKey
@@ -44,7 +44,7 @@ theorem scoped_initializer_iff {Value User : Type} (objects : GraphLoopsReuse.Ob
     (controlFacts : program.ControlFacts) (bits clock : Nat)
     (validBounds : (GraphLoopsSegment.Bounds.mk bits 0 link.rows 1 link.config.tile).Valid)
     (slotInside : GraphLoopsReuse.slotOf objects link.config.object < objects.length)
-    (base : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User))) (classify : String → MemoryOpcode)
+    (base : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User))) (classify : String → MemoryOpcode)
     (store : classify program.uniform.storeKey = .store) (loop : classify program.uniform.loopKey = .loop)
     (add : (withMemory base classify).action program.addKey = IndexAction bits .add)
     (minimum : (withMemory base classify).action program.minKey = IndexAction bits .minimum)

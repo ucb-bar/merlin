@@ -1,0 +1,20 @@
+{
+  "status": "RELEASED",
+  "thread": "01a15b82-8d58-75f1-9281-f529977e0bad",
+  "prompt": "RELEASE NEXT PASS NOW under latest USER instruction. Scoped loop/orderedtiling alreadypushedc3ad; buffer now reviewed/merged into primary09fea17e6,84postmergetests+structure+all5actualquery/root/191source matches pass. Read /home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/TASK.md and /home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/RELEASE.json; olderHELD/bufferqueue no longer current. Work on redundant pure configuration-write elimination with your role: QactualIRbridge/gate, WLeanchecker/soundness, Findependent actualqualification. Preserve finished buffer/context packets; finish tiny documentation handoff only, no furtheroptional bufferjobs. Current worker checkout can stay /home/jeremy/Projects/merlin-loop-verification on existingbranch; root owns futuremerge. IMPORTANT actualconfiguration.py/configuration_ir.py are NOT in primary yet: reference exact existing implementation in read-only merlin-graph-proof-intake4499, validate chosen revision, use minimal source-bound bridge; NO wholesale experimentalmerge/target-specificcopy. Existing primary GraphStateConfiguration.lean offers put_idempotent/frames but doesnot prove this entirepass. Agree structured command/field/clobber/observation API once, publish ROLE ACTIVE. Constant fields/straightline first; no barriers/loops/pipelines/hardware/numerics scope creep, no frozenCore/Spec/locks/axioms/SDKwork. Large quiet batches, no milestone stop; current rootuser keep-working request persists. Model/cwd remain explicitly current.",
+  "time": "2026-10-29T02:23:51.525438+00:00",
+  "method": "turn/start",
+  "result": {
+    "turn": {
+      "id": "01a18578-88f4-74e3-8bda-5a1e8191cdad",
+      "rootTurnId": "01a18578-88f4-74e3-8bda-5a1e8191cdad",
+      "items": [],
+      "itemsView": "notLoaded",
+      "status": "inProgress",
+      "error": null,
+      "startedAt": null,
+      "completedAt": null,
+      "durationMs": null
+    }
+  }
+}

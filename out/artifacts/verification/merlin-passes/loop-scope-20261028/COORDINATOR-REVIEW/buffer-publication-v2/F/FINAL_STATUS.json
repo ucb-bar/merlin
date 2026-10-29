@@ -1,0 +1,94 @@
+{
+  "schema": "merlin.buffer.F-final.v2",
+  "status": "SCOPED_BUFFER_MAIN_QUALIFICATION_PASSED_SUPPLEMENTARY_CORPUS_WITNESS_BUILD_PARTIAL",
+  "branch": "feat/loop-transform-verification",
+  "HEAD_at_seal": "f3a6c7b132d7e69491347b8a1526e41d46b241fd",
+  "Q_source_cut": "v5 historical186",
+  "F_source_cut": "v2",
+  "campaign": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/RESULT.json",
+    "sha256": "b92e6cdd9b93b38dc8a81a942aae76aaa7cbace46bdc5a2faa1a3126787e69a6",
+    "bytes": 828
+  },
+  "positive_reports": [
+    {
+      "case": "three_disjoint_epochs",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/REPORT.json",
+        "sha256": "4e1d017fe2a4d64cb2e7de6bb3f7d7f0882b22d70fc3c1d7f1a7e3d8888623bb",
+        "bytes": 940136
+      },
+      "roots": 255,
+      "audit_theorems": 2343
+    },
+    {
+      "case": "retained_two_epochs",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/retained_two_epochs/REPORT.json",
+        "sha256": "3498e8345150ff4193441e0cc3a980df589b6d77331ad56e065fe14c117d0547",
+        "bytes": 936072
+      },
+      "roots": 250,
+      "audit_theorems": 2338
+    },
+    {
+      "case": "rows3_columns2_tile2_short",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/rows3_columns2_tile2_short/REPORT.json",
+        "sha256": "cdc33d0c3fa1efd370ee9c97118ef5a78660ba0152285eb96e651bcf14950ac1",
+        "bytes": 941497
+      },
+      "roots": 250,
+      "audit_theorems": 2338
+    },
+    {
+      "case": "rows1_columns1_tile3",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/rows1_columns1_tile3/REPORT.json",
+        "sha256": "34f6c3e38a06075713ad7613fc280ca047764ee57259323cef92aa58a7611ed7",
+        "bytes": 936847
+      },
+      "roots": 250,
+      "audit_theorems": 2338
+    },
+    {
+      "case": "alignment32_tile3",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/alignment32_tile3/REPORT.json",
+        "sha256": "195f277f3b337d01ee2bb30d5f7bb7cd08bece84c1a13066d43de0212d050637",
+        "bytes": 934522
+      },
+      "roots": 250,
+      "audit_theorems": 2338
+    }
+  ],
+  "separate_fresh_process_replay": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/fresh-process-replay/RESULT.json",
+    "sha256": "18243d84e5f4bf6997f1b19bacba224baf85b91386be62974393a917d2be2883",
+    "bytes": 475
+  },
+  "baseline_independent_witness": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/RESULT.json",
+    "sha256": "92a984761ebd410755558d35f6dcdbbddc62f8ee2fc9cf7e212783c0f419aa51",
+    "bytes": 608740
+  },
+  "four_additional_independent_witnesses": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/FINAL.json",
+    "sha256": "34c1c3040a9f90b686823cc3851228b6fb0f23f5f52261d7d5c3e2cde74e061f",
+    "bytes": 1280
+  },
+  "source_manifest": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/SOURCE-DELIVERY.json",
+    "sha256": "3ef78175d31d05e1b5032c01fd4bb92b9baab7ec7f6ca63e0364342c1195992a",
+    "bytes": 95824
+  },
+  "owned_source_patch": "source-cut-v2/owned.patch",
+  "relation": "equal_possible_successful_returned_public_caller_heap_user_observation_sets",
+  "full_error_world_equivalence": false,
+  "allocator_mode": "total_private_unobservable",
+  "human_approved": false,
+  "native_word_allocator_descriptor_alias_hardware_fidelity": false,
+  "production_wide_enforcement": false,
+  "new191_qualification": false,
+  "next_task": "NEXT-CONFIGURATION/F/TASK.md HELD until root review+primary merge release"
+}

@@ -36,7 +36,7 @@ theorem candidate_release_iff {Value Public : Type} (objects : GraphLoopsReuse.O
 theorem alias_allocation_fragment {Value User : Type}
     (objects : GraphLoopsReuse.Objects) (configs : List Configuration)
     (old : GraphLoopsMemorySCF.Interpretation Value (Epoch.PublicState Value User))
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (bound clock owner object : Nat) (ownerInside : owner < objects.length) (objectInside : object < objects.length)
     (sameSlot : GraphLoopsReuse.slotOf objects owner = GraphLoopsReuse.slotOf objects object)
     (origin result : Binding) (shape : List Nat) (element : String)
@@ -56,7 +56,7 @@ theorem alias_allocation_fragment {Value User : Type}
 theorem skipped_release_fragment {Value User : Type}
     (objects : GraphLoopsReuse.Objects) (configs : List Configuration)
     (old : GraphLoopsMemorySCF.Interpretation Value (Epoch.PublicState Value User))
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (bound clock object : Nat) (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
     (env : GraphLoopsShape.Env Value) (world : MemoryWorld Value (Epoch.AllocationPublic User)) :
     Fragment.empty.step meaning (slotEnv objects before.observed.registers)
@@ -73,7 +73,7 @@ theorem retained_allocation_fragment {Value User : Type}
     (ordinal : clock = GraphLoopsReuse.slotOf objects object)
     (key : String) (result : Binding) (shape : List Nat) (element : String)
     (kind : result.kind = .view (Epoch.type shape element)) (plain : result.known = none)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (allocator : meaning.action key = Epoch.Allocate shape element)
     (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
     (pinned : before.observed.registers result.name = Epoch.view object shape element)
@@ -84,7 +84,7 @@ theorem retained_allocation_fragment {Value User : Type}
         env = slotEnv objects after.observed.registers ∧ world = Epoch.clockWorld bound (clock + 1) after := by
   simp only [candidate_allocate_iff, exists_eq_left]
   change (∃ values, meaning.action key [] (Epoch.clockWorld bound clock before) values world ∧
-    ValuesHold [result] values ∧ env = assign (slotEnv objects before.observed.registers) [result] values) ↔ _
+    ValuesHold [result] values ∧ env = GraphLoopsShape.assign (slotEnv objects before.observed.registers) [result] values) ↔ _
   rw [allocator]
   simp only [allocate_retained objects bound object clock inside slotInside ordinal shape element before]
   have existing : GraphLoopsShape.put (slotEnv objects before.observed.registers) result.name
@@ -92,11 +92,11 @@ theorem retained_allocation_fragment {Value User : Type}
     rw [← slot_put, Epoch.put_existing _ _ _ pinned]
   constructor
   · rintro ⟨values, ⟨rfl, world⟩, _, assigned⟩
-    exact ⟨by simpa only [assign, existing, GraphLoopsReuse.clearMemory] using assigned, world⟩
+    exact ⟨by simpa [GraphLoopsShape.assign, existing, GraphLoopsReuse.clearMemory] using assigned, world⟩
   · rintro ⟨assigned, world⟩
     refine ⟨[slotRuntime objects (Epoch.view object shape element)], ⟨rfl, world⟩,
       .cons (slot_holds objects result _ (Binding.holds_plain result _ kind.symm plain)) .nil, ?_⟩
-    simpa only [assign, existing, GraphLoopsReuse.clearMemory] using assigned
+    simpa [GraphLoopsShape.assign, existing, GraphLoopsReuse.clearMemory] using assigned
 
 theorem retained_release_fragment {Value User : Type}
     (objects : GraphLoopsReuse.Objects) (configs : List Configuration)
@@ -104,7 +104,7 @@ theorem retained_release_fragment {Value User : Type}
     (bound clock object : Nat) (inside : object < objects.length)
     (slotInside : GraphLoopsReuse.slotOf objects object < bound)
     (key : String) (buffer : Binding) (shape : List Nat) (element : String)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (release : meaning.action key = Epoch.Release)
     (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
     (pinned : before.observed.registers buffer.name = Epoch.view object shape element)
@@ -116,7 +116,7 @@ theorem retained_release_fragment {Value User : Type}
   simp only [candidate_release_iff, exists_eq_left]
   change (∃ values, meaning.action key [slotRuntime objects (before.observed.registers buffer.name)]
     (Epoch.clockWorld bound clock before) values world ∧ ValuesHold [] values ∧
-    env = assign (slotEnv objects before.observed.registers) [] values) ↔ _
+    env = GraphLoopsShape.assign (slotEnv objects before.observed.registers) [] values) ↔ _
   rw [release, pinned]
   simp only [release_retained objects bound object clock inside slotInside shape element before]
   constructor

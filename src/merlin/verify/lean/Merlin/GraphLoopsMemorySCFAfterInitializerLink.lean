@@ -32,7 +32,7 @@ theorem target_initializer_link {Value User : Type} (objects : GraphLoopsReuse.O
     (sameUniform : program.uniform = link.canonical) (controlFacts : program.ControlFacts)
     (bits bound clock : Nat) (validBounds : (GraphLoopsSegment.Bounds.mk bits 0 link.rows 1 link.config.tile).Valid)
     (inside : GraphLoopsReuse.slotOf objects link.config.object < bound)
-    (base : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User))) (classify : String → MemoryOpcode)
+    (base : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User))) (classify : String → MemoryOpcode)
     (store : classify program.uniform.storeKey = .store) (loop : classify program.uniform.loopKey = .loop)
     (add : (withMemory base classify).action program.addKey = IndexAction bits .add)
     (minimum : (withMemory base classify).action program.minKey = IndexAction bits .minimum)

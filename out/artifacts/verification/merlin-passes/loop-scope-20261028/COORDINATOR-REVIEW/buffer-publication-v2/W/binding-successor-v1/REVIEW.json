@@ -1,0 +1,8 @@
+{
+  "exact_candidate": "575842becf867163b3aacdadb55d4653c05b8f4aac3e0a77beede2098f060768",
+  "only_change": "Five existing imported source paths added to source fingerprint",
+  "source_count": 191,
+  "no_query_root_semantics_or_environment_change": true,
+  "canonical_edited": false,
+  "old_capsule_preserved": true
+}

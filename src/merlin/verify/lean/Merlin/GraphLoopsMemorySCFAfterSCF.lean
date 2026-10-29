@@ -104,6 +104,6 @@ theorem scf_live_heap_iff {Value Public : Type}
     rcases after with ⟨observer, heap⟩
     change observer = observed at samePublic
     cases samePublic
-    exact same ▸ translated
+    simpa only [same, Epoch.paired] using translated
 
 end Merlin.GraphLoopsMemorySCF.After

@@ -1,0 +1,9 @@
+{
+  "status": "REVIEWED_APPLIED_SINGLE_EMITTER_SUCCESSOR",
+  "path": "src/merlin/verify/buffer_reuse_emit.py",
+  "before": "eb58c99032fec7645964dd8af9ccc3b0e4a05641a572e99558687512c054572b",
+  "after": "89cfc5a1828648e8ed2f93c91afc9a7e2fdc2b8328c3f8ee121ccac2563752d4",
+  "review": "Unique closed declaration groups and exact canonical-body reconstruction; explicit original namespace/options/import/trailing checks; same250 roots, generic premises/terms; all12 emitted parts exactly W compiled/audited; no limit changes",
+  "gate_qualification": false,
+  "original_timeout_preserved": true
+}

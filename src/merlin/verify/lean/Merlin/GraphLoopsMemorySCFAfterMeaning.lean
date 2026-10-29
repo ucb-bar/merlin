@@ -39,8 +39,8 @@ def indexOpcodeAt : IndexOpcodes → String → Option IndexOpcode
   | [], _ => none
   | (key, opcode) :: rest, actual => if actual = key then some opcode else indexOpcodeAt rest actual
 
-def withIndex {Value World : Type} (base : Interpretation Value World) (bits : Nat)
-    (opcodes : IndexOpcodes) : Interpretation Value World where
+def withIndex {Value World : Type} (base : GraphLoopsShape.Interpretation Value World) (bits : Nat)
+    (opcodes : IndexOpcodes) : GraphLoopsShape.Interpretation Value World where
   action := fun key inputs before outputs after => match indexOpcodeAt opcodes key with
     | some opcode => IndexAction bits opcode inputs before outputs after
     | none => base.action key inputs before outputs after
@@ -50,7 +50,7 @@ def withIndex {Value World : Type} (base : Interpretation Value World) (bits : N
 are reused. Only the actual generated index-add/min keys receive new cases. -/
 def finalMeaning {Value User : Type} (bits : Nat) (indices : IndexOpcodes)
     (opcodes : Epoch.Opcodes) (scalar : Epoch.BinaryMeaning Value) :
-    Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
+    GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
   withMemory (withIndex (Epoch.scalarAllocationBase opcodes scalar) bits indices) (Epoch.memoryOpcode opcodes)
 
 theorem generated_action {Value User : Type} (bits : Nat) (indices : IndexOpcodes)

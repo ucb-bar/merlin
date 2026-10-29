@@ -1,0 +1,21 @@
+{
+  "97_selected_tests": {
+    "returncode": 0,
+    "stdout": "Q6-final-tests-v1.stdout",
+    "stderr": "Q6-final-tests-v1.stderr"
+  },
+  "all10_source_lint": {
+    "returncode": 1,
+    "stdout": "Q6-final-lint-v1.stdout",
+    "stderr": "Q6-final-lint-v1.stderr",
+    "finding": "seven preexisting E501 long lines in unchanged entry emitters; preserved without source edits"
+  },
+  "changed_intake_lint": {
+    "returncode": 0,
+    "stdout": "Q6-changed-source-lint-v1.stdout",
+    "stderr": "Q6-changed-source-lint-v1.stderr"
+  },
+  "candidate_source_copy_controls": "binding-SDK-controls/RESULT.json",
+  "native_launched": false,
+  "own_live_jobs": 0
+}

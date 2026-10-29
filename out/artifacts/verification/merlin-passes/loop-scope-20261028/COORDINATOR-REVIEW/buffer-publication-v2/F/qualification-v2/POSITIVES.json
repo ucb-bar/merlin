@@ -1,0 +1,67 @@
+[
+  {
+    "name": "three_disjoint_epochs",
+    "status": "checked",
+    "reason": "complete actual4 possible-success query and audit checked",
+    "roots": 255,
+    "report": {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/REPORT.json",
+      "sha256": "4e1d017fe2a4d64cb2e7de6bb3f7d7f0882b22d70fc3c1d7f1a7e3d8888623bb",
+      "bytes": 940136
+    },
+    "consumer_called": true,
+    "final_bytes_identical": true
+  },
+  {
+    "name": "retained_two_epochs",
+    "status": "checked",
+    "reason": "complete actual4 possible-success query and audit checked",
+    "roots": 250,
+    "report": {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/retained_two_epochs/REPORT.json",
+      "sha256": "3498e8345150ff4193441e0cc3a980df589b6d77331ad56e065fe14c117d0547",
+      "bytes": 936072
+    },
+    "consumer_called": true,
+    "final_bytes_identical": true
+  },
+  {
+    "name": "rows3_columns2_tile2_short",
+    "status": "checked",
+    "reason": "complete actual4 possible-success query and audit checked",
+    "roots": 250,
+    "report": {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/rows3_columns2_tile2_short/REPORT.json",
+      "sha256": "cdc33d0c3fa1efd370ee9c97118ef5a78660ba0152285eb96e651bcf14950ac1",
+      "bytes": 941497
+    },
+    "consumer_called": true,
+    "final_bytes_identical": true
+  },
+  {
+    "name": "rows1_columns1_tile3",
+    "status": "checked",
+    "reason": "complete actual4 possible-success query and audit checked",
+    "roots": 250,
+    "report": {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/rows1_columns1_tile3/REPORT.json",
+      "sha256": "34f6c3e38a06075713ad7613fc280ca047764ee57259323cef92aa58a7611ed7",
+      "bytes": 936847
+    },
+    "consumer_called": true,
+    "final_bytes_identical": true
+  },
+  {
+    "name": "alignment32_tile3",
+    "status": "checked",
+    "reason": "complete actual4 possible-success query and audit checked",
+    "roots": 250,
+    "report": {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/alignment32_tile3/REPORT.json",
+      "sha256": "195f277f3b337d01ee2bb30d5f7bb7cd08bece84c1a13066d43de0212d050637",
+      "bytes": 934522
+    },
+    "consumer_called": true,
+    "final_bytes_identical": true
+  }
+]

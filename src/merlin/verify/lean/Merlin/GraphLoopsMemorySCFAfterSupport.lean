@@ -23,7 +23,7 @@ instance (indices : IndexOpcodes) (module : Module) : Decidable (SourceIndexAbse
   unfold SourceIndexAbsent
   infer_instance
 
-theorem eval_action_agreement {Value World : Type} (first second : Interpretation Value World)
+theorem eval_action_agreement {Value World : Type} (first second : GraphLoopsShape.Interpretation Value World)
     (code : Code) (actions : ∀ key ∈ actionKeys code, first.action key = second.action key)
     (regions : first.region = second.region) (aliases : Aliases) (env : GraphLoopsShape.Env Value)
     (before : World) (outputs : List (Runtime Value)) (after : World) :
@@ -55,9 +55,9 @@ theorem eval_action_agreement {Value World : Type} (first second : Interpretatio
       fun other member => actions other (List.mem_append_right _ member)
     have bodySame :
         (fun inputs initial returned final => ValuesHold parameters inputs ∧
-          Eval first false (extendAliases aliases parameters) body (assign env parameters inputs) initial returned final) =
+          Eval first false (extendAliases aliases parameters) body (GraphLoopsShape.assign env parameters inputs) initial returned final) =
         (fun inputs initial returned final => ValuesHold parameters inputs ∧
-          Eval second false (extendAliases aliases parameters) body (assign env parameters inputs) initial returned final) := by
+          Eval second false (extendAliases aliases parameters) body (GraphLoopsShape.assign env parameters inputs) initial returned final) := by
       funext inputs initial returned final
       apply propext
       exact and_congr_right (fun _ => bodyInduction bodyActions _ _ _ _ _)
@@ -67,7 +67,7 @@ theorem eval_action_agreement {Value World : Type} (first second : Interpretatio
     apply and_congr_right; intro _
     exact and_congr_right (fun _ => restInduction restActions _ _ _ _ _)
 
-theorem invoke_action_agreement {Value World : Type} (first second : Interpretation Value World)
+theorem invoke_action_agreement {Value World : Type} (first second : GraphLoopsShape.Interpretation Value World)
     (module : Module)
     (actions : ∀ function ∈ module.functions, ∀ key ∈ actionKeys function.code,
       first.action key = second.action key)
@@ -79,21 +79,16 @@ theorem invoke_action_agreement {Value World : Type} (first second : Interpretat
     funext name inputs before outputs after
     apply propext
     unfold GraphLoopsShape.invoke
-    split
-    · rfl
-    · rename_i function found
+    cases found : functionAt module name with
+    | none => rfl
+    | some function =>
       have member := List.mem_of_find?_eq_some found
       apply and_congr_right
       intro typed
       apply eval_action_agreement
       · intro key used
         simp only [withCalls, induction]
-        cases target : callTarget module.calls key with
-        | none => exact actions function member key used
-        | some target =>
-          split
-          · rfl
-          · exact actions function member key used
+        rw [actions function member key used]
       · exact regions
 
 theorem source_complete_extension {Value User : Type} (bits : Nat) (indices : IndexOpcodes)

@@ -1,0 +1,1715 @@
+diff --git a/merlin/tests/ir/buffer_reuse_qualification.py b/merlin/tests/ir/buffer_reuse_qualification.py
+new file mode 100644
+index 000000000..75ca5bbbd
+--- /dev/null
++++ b/merlin/tests/ir/buffer_reuse_qualification.py
+@@ -0,0 +1,194 @@
++"""Independent scoped buffer corpus, kernel challenges and live gate controls.
++
++Raw4 production is independently attributed to pinned4499. Q's gate checks a
++distinct possible-success relation; neither source preparation nor this corpus
++claims native allocator fidelity or human approval.
++"""
++
++import argparse
++import dataclasses
++import json
++import os
++import sys
++from pathlib import Path
++
++from loop_transform_qualification import run, save
++
++from merlin.common.paths import repo_root
++from merlin.verify.buffer_reuse_intake import ALLOCATOR, prepare, prepare_chain
++from merlin.verify.loop_transform_intake import file_ref
++
++
++def check_cut(cut):
++    for row in json.loads(cut.read_text())["sources"]:
++        actual = file_ref(repo_root() / row["path"])
++        if actual["sha256"] != row["sha256"] or actual["bytes"] != row["bytes"]:
++            raise ValueError("frozen Q source changed")
++
++
++def compiler_verify(files, compiler, output):
++    worker = repo_root() / "merlin/tests/ir/buffer_reuse_qualification_worker.py"
++    status, stdout = run([compiler, worker, "verify"], output, input=json.dumps({"files": list(map(str, files))}))
++    if status["returncode"] != 0:
++        raise RuntimeError("compiler verifier unavailable; raw first result retained")
++    document = json.loads(stdout)["result"]
++    if not all(row["valid"] for row in document["files"]):
++        raise ValueError("fixture failed authoritative MLIR verification")
++    return document
++
++
++def write_candidate(folder, candidate):
++    save(folder / "PREPARATION.json", candidate.describe())
++    (folder / "CanonicalBufferQuery.lean").write_text(candidate.query)
++    save(folder / "HINT.json", json.loads(candidate.hint_json))
++    save(folder / "ROOTS.json", candidate.roots)
++    save(folder / "PARTS.json", json.loads(candidate.query_parts_json))
++    for part in json.loads(candidate.query_parts_json):
++        (folder / (part["module"] + ".lean")).write_text(part["source"])
++
++
++def make_corpus(args):
++    from buffer_reuse_qualification_cases import VARIANTS, mutations
++
++    output = args.output.resolve()
++    output.mkdir(parents=True, exist_ok=False)
++    cut = args.q_source_cut.resolve()
++    check_cut(cut)
++    worker = repo_root() / "merlin/tests/ir/buffer_reuse_qualification_worker.py"
++    save(
++        output / "SOURCE-CUT.json",
++        {
++            "Q_cut": file_ref(cut),
++            "F_sources": [
++                file_ref(Path(__file__)),
++                file_ref(worker),
++                file_ref(repo_root() / "merlin/tests/ir/buffer_reuse_qualification_cases.py"),
++                file_ref(repo_root() / "merlin/tests/ir/loop_transform_qualification.py"),
++            ],
++            "status": "SOURCE_PREPARATION_ONLY_NO_KERNEL_AUTHORITY",
++        },
++    )
++    first = (cut.parent / "raw/stage0.mlir").read_text()
++    rows = [("retained_two_epochs", first, 2, {"exact_retained": True})]
++    rows.extend((case.name, case.source, case.tile, dataclasses.asdict(case)) for case in VARIANTS)
++    expected = [{"name": name, "tile": tile, "metadata": metadata} for name, _, tile, metadata in rows]
++    save(output / "EXPECTED-POSITIVES.json", expected)
++    corpus, files = [], []
++    for name, source, tile, metadata in rows:
++        folder = output / "positives" / name
++        folder.mkdir(parents=True)
++        (folder / "original-input.mlir").write_text(source)
++        status, stdout = run(
++            [sys.executable, worker, "produce"],
++            folder / "producer",
++            environment={**os.environ, "PYTHONPATH": str(args.reference.resolve() / "src")},
++            input=json.dumps({"source": source, "reference": str(args.reference.resolve()), "tile": tile}),
++        )
++        if status["returncode"] != 0:
++            corpus.append({"name": name, "status": "PRODUCER_UNAVAILABLE", "process": status})
++            save(output / "POSITIVES.json", corpus)
++            continue
++        capture = json.loads(stdout)["result"]
++        buffers = tuple(capture.pop("buffers"))
++        for index, text in enumerate(buffers):
++            path = folder / f"stage{index}.mlir"
++            path.write_text(text)
++            files.append(path)
++        save(folder / "PRODUCER.json", capture)
++        if not all(capture["changes"].values()):
++            corpus.append({"name": name, "status": "NOT_THREE_CHANGED_BOUNDARIES", "changes": capture["changes"]})
++            save(output / "POSITIVES.json", corpus)
++            continue
++        try:
++            candidate = prepare_chain(buffers, allocator=ALLOCATOR)
++        except ValueError as error:
++            corpus.append({"name": name, "status": "HOST_DOMAIN_REFUSAL", "reason": str(error)})
++        else:
++            write_candidate(folder, candidate)
++            corpus.append(
++                {
++                    "name": name,
++                    "status": "PREPARED_UNCOMPILED",
++                    "roots": len(candidate.roots),
++                    "parts": len(json.loads(candidate.query_parts_json)),
++                    "metadata": metadata,
++                }
++            )
++        save(output / "POSITIVES.json", corpus)
++    compiler_verify(files, args.compiler_python, output / "positive-compiler-verifier")
++    base = output / "positives/retained_two_epochs"
++    buffers = tuple((base / f"stage{i}.mlir").read_text() for i in range(4))
++    baseline = prepare_chain(buffers, allocator=ALLOCATOR)
++    hint = json.loads(baseline.hint_json)
++    negative = mutations(buffers)
++    results, files = [], []
++    for label, changed in negative.items():
++        folder = output / "negatives" / label
++        folder.mkdir(parents=True)
++        changed_stages = [i for i in range(4) if changed[i] != buffers[i]]
++        for index, text in enumerate(changed):
++            path = folder / f"stage{index}.mlir"
++            path.write_text(text)
++            files.append(path)
++        row = {"name": label, "changed_stages": changed_stages, "status": "PREPARED_UNCOMPILED"}
++        try:
++            candidate = prepare_chain(changed, allocator=ALLOCATOR)
++        except ValueError as error:
++            row["raw4_host_refusal"] = str(error)
++            if not set(changed_stages) <= {0, 3}:
++                row["status"] = "HOST_INTERMEDIATE_JOIN_REFUSAL"
++                results.append(row)
++                save(output / "NEGATIVES.json", results)
++                continue
++            try:
++                candidate = prepare(changed[0], changed[3], hint, allocator=ALLOCATOR)
++                row["component_route"] = "actual_endpoints_with_baseline_UNTRUSTED_certificate"
++            except ValueError as error:
++                row["status"] = "HOST_ENDPOINT_OR_CERTIFICATE_REFUSAL"
++                row["component_host_refusal"] = str(error)
++                results.append(row)
++                save(output / "NEGATIVES.json", results)
++                continue
++        else:
++            row["component_route"] = "fresh_actual4_reconstruction"
++        write_candidate(folder, candidate)
++        parts, baseline_parts = json.loads(candidate.query_parts_json), json.loads(baseline.query_parts_json)
++        row["changed_parts"] = [
++            a["module"] for a, b in zip(parts, baseline_parts, strict=True) if a["source"] != b["source"]
++        ]
++        if not row["changed_parts"]:
++            row["status"] = "NO_CHANGED_COMPONENT_OBLIGATION"
++        results.append(row)
++        save(output / "NEGATIVES.json", results)
++    compiler_verify(files, args.compiler_python, output / "negative-compiler-verifier")
++    check_cut(cut)
++    save(
++        output / "RESULT.json",
++        {
++            "status": "PREPARED_UNCOMPILED_UNQUALIFIED",
++            "expected_positives": len(expected),
++            "positive_preparations": corpus,
++            "valid_mutant_triples": len(results),
++            "mutation_roster": results,
++            "kernel_executed": False,
++            "human_approved": False,
++            "producer_attribution": "independent F actual pinned capture; not supplied by Q intake",
++        },
++    )
++    print(
++        json.dumps({"status": "PREPARED_UNCOMPILED_UNQUALIFIED", "positives": len(corpus), "mutations": len(results)})
++    )
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--output", required=True, type=Path)
++    parser.add_argument("--reference", required=True, type=Path)
++    parser.add_argument("--compiler-python", required=True, type=Path)
++    parser.add_argument("--q-source-cut", required=True, type=Path)
++    args = parser.parse_args()
++    make_corpus(args)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/merlin/tests/ir/buffer_reuse_qualification_cases.py b/merlin/tests/ir/buffer_reuse_qualification_cases.py
+new file mode 100644
+index 000000000..c5e844fd6
+--- /dev/null
++++ b/merlin/tests/ir/buffer_reuse_qualification_cases.py
+@@ -0,0 +1,236 @@
++"""Independent bounded rank-two epochs and complete-IR adversaries."""
++
++from dataclasses import dataclass
++
++
++@dataclass(frozen=True)
++class BufferCase:
++    name: str
++    rows: int
++    columns: int
++    tile: int
++    epochs: int = 2
++    alignment: int = 16
++
++    @property
++    def source(self):
++        kind = f"memref<{self.rows}x{self.columns}xi32>"
++        body = []
++        for epoch in range(self.epochs):
++            seed = epoch % 2
++            body.append(f"""
++  %buffer{epoch} = memref.alloc() {{alignment = {self.alignment} : i64}} : {kind}
++  %view{epoch} = "memref.cast"(%buffer{epoch}) : ({kind}) -> {kind}
++  %again{epoch} = "memref.cast"(%view{epoch}) : ({kind}) -> {kind}
++  %rows{epoch} = memref.dim %again{epoch}, %zero : {kind}
++  %columns{epoch} = memref.dim %again{epoch}, %one : {kind}
++  scf.for %iv{epoch}_0 = %zero to %bound0 step %one {{
++   scf.for %iv{epoch}_1 = %zero to %bound1 step %one {{
++    memref.store %seed{seed}, %again{epoch}[%iv{epoch}_0, %iv{epoch}_1] : {kind}
++    scf.yield
++   }}
++   scf.yield
++  }}
++  %first{epoch} = memref.load %again{epoch}[%zero, %zero] : {kind}
++  %updated{epoch} = arith.addi %first{epoch}, %seed{seed} : i32
++  memref.store %updated{epoch}, %again{epoch}[%zero, %zero] : {kind}
++  %value{epoch} = memref.load %again{epoch}[%zero, %zero] : {kind}
++  %dim{epoch} = memref.dim %again{epoch}, %zero : {kind}
++  %observed{epoch} = func.call @touch(%value{epoch}, %caller) : (i32, memref<1xi32>) -> i32
++  memref.dealloc %buffer{epoch} : {kind}
++""")
++        result = "%observed0"
++        for epoch in range(1, self.epochs):
++            body.append(f"%result{epoch} = arith.addi {result}, %observed{epoch} : i32")
++            result = f"%result{epoch}"
++        return f"""builtin.module {{
++ func.func @kernel(%seed0: i32, %seed1: i32, %caller: memref<1xi32>) -> (i32, index) {{
++  %zero = arith.constant 0 : index
++  %one = arith.constant 1 : index
++  %bound0 = arith.constant {self.rows} : index
++  %bound1 = arith.constant {self.columns} : index
++  {chr(10).join(body)}
++  func.return {result}, %dim{self.epochs - 1} : i32, index
++ }}
++ func.func @touch(%value: i32, %caller: memref<1xi32>) -> i32 {{
++  %zero = arith.constant 0 : index
++  %old = memref.load %caller[%zero] : memref<1xi32>
++  %new = arith.addi %old, %value : i32
++  memref.store %new, %caller[%zero] : memref<1xi32>
++  func.return %new : i32
++ }}
++ func.func @untouched(%input: i32) -> i32 {{
++  %one = arith.constant 1 : i32
++  %result = arith.addi %input, %one : i32
++  func.return %result : i32
++ }}
++}}"""
++
++
++VARIANTS = (
++    BufferCase("rows3_columns2_tile2_short", 3, 2, 2),
++    BufferCase("rows1_columns1_tile3", 1, 1, 3),
++    BufferCase("three_disjoint_epochs", 2, 3, 2, epochs=3),
++    BufferCase("alignment32_tile3", 2, 3, 3, alignment=32),
++)
++
++
++def mutations(buffers):
++    from xdsl.dialects import arith, builtin, func, memref, scf
++    from xdsl.rewriter import Rewriter
++
++    from merlin.verify.buffer_reuse_bridge import parse
++    from merlin.xdsl_dialects._common import text
++
++    def change(stage, update):
++        module = parse(buffers[stage])
++        entry = next(op for op in module.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "kernel")
++        update(module, entry)
++        module.verify()
++        output = list(buffers)
++        output[stage] = text(module, generic=True)
++        if output[stage] == buffers[stage]:
++            raise ValueError("mutation changed no bytes")
++        return tuple(output)
++
++    def replace_operand(op, index, value):
++        values = list(op.operands)
++        values[index] = value
++        op.operands = values
++
++    def constant(op, value):
++        op.properties["value"] = builtin.IntegerAttr(value, builtin.IndexType())
++
++    def index_constant(entry, value):
++        return next(
++            op
++            for op in entry.body.block.ops
++            if isinstance(op, arith.ConstantOp)
++            and isinstance(op.result.type, builtin.IndexType)
++            and op.value.value.data == value
++        )
++
++    def initializer_store(entry, which=0):
++        return [op for op in entry.walk() if isinstance(op, memref.StoreOp)][which]
++
++    def first_loop(entry):
++        return next(op for op in entry.body.block.ops if isinstance(op, scf.ForOp))
++
++    def touch(entry):
++        return [op for op in entry.body.block.ops if isinstance(op, func.CallOp)]
++
++    output = {}
++    output["source_wrong_seed"] = change(
++        0, lambda module, entry: replace_operand(initializer_store(entry), 0, entry.args[1])
++    )
++    output["normalized_wrong_seed"] = change(
++        1, lambda module, entry: replace_operand(initializer_store(entry), 0, entry.args[1])
++    )
++    output["reused_wrong_seed"] = change(
++        2, lambda module, entry: replace_operand(initializer_store(entry), 0, entry.args[1])
++    )
++    output["final_wrong_seed"] = change(
++        3, lambda module, entry: replace_operand(initializer_store(entry), 0, entry.args[1])
++    )
++    output["final_missing_initializer_store"] = change(
++        3, lambda module, entry: Rewriter.erase_op(initializer_store(entry))
++    )
++    output["final_wrong_tile_stride"] = change(
++        3, lambda module, entry: replace_operand(first_loop(entry), 2, index_constant(entry, 1).result)
++    )
++    output["final_wrong_inner_cutoff"] = change(
++        3,
++        lambda module, entry: replace_operand(
++            next(op for op in first_loop(entry).body.block.ops if isinstance(op, scf.ForOp)), 1, first_loop(entry).ub
++        ),
++    )
++    output["final_wrong_load_address"] = change(
++        3,
++        lambda module, entry: replace_operand(
++            [op for op in entry.body.block.ops if isinstance(op, memref.LoadOp)][1], 1, index_constant(entry, 1).result
++        ),
++    )
++    output["final_wrong_store_address"] = change(
++        3,
++        lambda module, entry: replace_operand(
++            next(op for op in entry.body.block.ops if isinstance(op, memref.StoreOp)),
++            2,
++            index_constant(entry, 1).result,
++        ),
++    )
++    output["final_wrong_scalar_return"] = change(
++        3, lambda module, entry: replace_operand(entry.body.block.last_op, 0, entry.args[0])
++    )
++    output["source_wrong_scalar_return"] = change(
++        0, lambda module, entry: replace_operand(entry.body.block.last_op, 0, entry.args[0])
++    )
++    output["final_wrong_observer_operand"] = change(
++        3, lambda module, entry: replace_operand(touch(entry)[0], 0, entry.args[1])
++    )
++    output["final_early_free"] = change(
++        3,
++        lambda module, entry: entry.body.block.insert_op_before(
++            entry.body.block.detach_op(next(op for op in entry.body.block.ops if isinstance(op, memref.DeallocOp))),
++            first_loop(entry),
++        ),
++    )
++    output["final_missing_free"] = change(
++        3,
++        lambda module, entry: Rewriter.erase_op(
++            next(op for op in entry.body.block.ops if isinstance(op, memref.DeallocOp))
++        ),
++    )
++    output["final_alignment1"] = change(
++        3,
++        lambda module, entry: next(
++            op for op in entry.body.block.ops if isinstance(op, memref.AllocOp)
++        ).properties.__setitem__("alignment", builtin.IntegerAttr(1, builtin.i64)),
++    )
++    output["final_visibility"] = change(
++        3, lambda module, entry: entry.properties.__setitem__("sym_visibility", builtin.StringAttr("private"))
++    )
++    output["final_entry_renamed"] = change(
++        3, lambda module, entry: entry.properties.__setitem__("sym_name", builtin.StringAttr("changed_kernel"))
++    )
++    output["final_missing_unchanged_entry"] = change(
++        3,
++        lambda module, entry: Rewriter.erase_op(
++            next(op for op in module.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "untouched")
++        ),
++    )
++
++    def observer_order(module, entry):
++        first, second = touch(entry)
++        a, b = list(first.operands), list(second.operands)
++        # Both values dominate the second call, while only the first value
++        # dominates the first call. Use initialized common seeds to keep SSA valid.
++        first.operands = [entry.args[0], a[1]]
++        second.operands = [entry.args[1], b[1]]
++
++    output["final_observer_arguments_order"] = change(3, observer_order)
++
++    def reordered(module, entry):
++        first, second = touch(entry)
++        entry.body.block.detach_op(first)
++        entry.body.block.insert_op_after(first, second)
++
++    output["final_observer_reordered"] = change(3, reordered)
++    output["final_missing_observer"] = change(
++        3, lambda module, entry: Rewriter.replace_op(touch(entry)[0], [], [entry.args[0]])
++    )
++
++    def private_type(module, entry, *, strided=False):
++        kind = (
++            builtin.MemRefType(builtin.i32, [2, 3], layout=builtin.StridedLayoutAttr([4, 1]))
++            if strided
++            else builtin.MemRefType(builtin.i32, [2, 2])
++        )
++        for operation in entry.walk():
++            for value in tuple(operation.results):
++                if isinstance(value.type, builtin.MemRefType) and len(value.type.get_shape()) == 2:
++                    Rewriter.replace_value_with_new_type(value, kind)
++
++    output["final_wrong_allocation_shape"] = change(3, private_type)
++    output["reused_wrong_allocation_shape"] = change(2, private_type)
++    output["final_nonidentity_strides"] = change(3, lambda module, entry: private_type(module, entry, strided=True))
++    return output
+diff --git a/merlin/tests/ir/buffer_reuse_qualification_classifier.py b/merlin/tests/ir/buffer_reuse_qualification_classifier.py
+new file mode 100644
+index 000000000..16d2e817d
+--- /dev/null
++++ b/merlin/tests/ir/buffer_reuse_qualification_classifier.py
+@@ -0,0 +1,75 @@
++"""Conservative expected-obligation attribution; never acceptance authority."""
++
++from pathlib import Path
++
++from loop_transform_qualification_classifier import RESOURCE_OR_INFRA
++
++MATERIALIZATION_CASES = (
++    "final_wrong_seed",
++    "final_wrong_tile_stride",
++    "final_wrong_load_address",
++    "final_wrong_store_address",
++    "final_wrong_scalar_return",
++    "final_wrong_observer_operand",
++    "final_early_free",
++    "final_missing_free",
++    "final_alignment1",
++    "final_visibility",
++    "final_entry_renamed",
++    "final_missing_unchanged_entry",
++    "final_observer_arguments_order",
++    "final_observer_reordered",
++    "final_missing_observer",
++)
++EXPECTED = {name: "GraphMemoryAfterMaterialization.accepted" for name in MATERIALIZATION_CASES}
++EXPECTED.update(
++    {
++        "source_wrong_seed": "GraphMemoryAfterWhole.source_term_exact",
++        "source_wrong_scalar_return": "GraphMemoryAfterWhole.source_term_exact",
++        "final_wrong_inner_cutoff": "GraphMemorySCFObligation.valid",
++    }
++)
++
++
++def classify(label, returncode, stdout, stderr, query, path):
++    if returncode != 1:
++        return {"status": "UNAVAILABLE", "reason": "not an ordinary exit1"}
++    combined = (stdout + "\n" + stderr).lower()
++    if any(
++        marker in combined
++        for marker in (*RESOURCE_OR_INFRA, "stack space", "failed to open", "uncaught exception", "error while loading")
++    ):
++        return {"status": "UNAVAILABLE", "reason": "resource/import/internal/unknown execution failure"}
++    if label not in EXPECTED:
++        return {"status": "UNAVAILABLE", "reason": "no reviewed expected obligation"}
++    prefix = str(Path(path)) + ":"
++    errors = [line for line in stdout.splitlines() if line.startswith(prefix) and ": error: " in line]
++    if not errors:
++        return {"status": "UNAVAILABLE", "reason": "missing actual bound source diagnostic"}
++    number, _, rest = errors[0][len(prefix) :].partition(":")
++    column, _, message = rest.partition(":")
++    if not number.isdigit() or not column.isdigit():
++        return {"status": "UNAVAILABLE", "reason": "unrecognized source diagnostic"}
++    line = int(number)
++    lines = query.splitlines()
++    if not 1 <= line <= len(lines):
++        return {"status": "UNAVAILABLE", "reason": "source diagnostic outside bound query"}
++    namespace, root = [], None
++    for source in lines[:line]:
++        words = source.split()
++        if words[:1] == ["namespace"]:
++            namespace.append(words[1])
++        elif words[:1] == ["end"] and namespace and (len(words) == 1 or words[1] == namespace[-1]):
++            namespace.pop()
++        elif words[:1] == ["theorem"]:
++            root = ".".join([*namespace, words[1]])
++    if root != EXPECTED[label]:
++        return {"status": "UNAVAILABLE", "reason": "a different obligation failed", "root": root}
++    message = message.strip().removeprefix("error: ")
++    if not (
++        message.startswith(("unsolved goals", "Tactic `rfl` failed:", "Type mismatch", "type mismatch"))
++        or message.startswith("Tactic `decide` proved that the proposition")
++        and "is false" in stdout
++    ):
++        return {"status": "UNAVAILABLE", "reason": "unrecognized proof diagnostic", "root": root}
++    return {"status": "EXPECTED_COMPONENT_OBLIGATION_REFUSAL", "root": root, "line": line, "diagnostic": message}
+diff --git a/merlin/tests/ir/buffer_reuse_qualification_components.py b/merlin/tests/ir/buffer_reuse_qualification_components.py
+new file mode 100644
+index 000000000..801b58587
+--- /dev/null
++++ b/merlin/tests/ir/buffer_reuse_qualification_components.py
+@@ -0,0 +1,173 @@
++"""Distinct finite obligations, explicitly separate from full buffer acceptance.
++
++WholeEpoch's retained120s timeout prevents a gate completion. These tests use
++only F's successful111project/first-three-query objects. No W objects, failed
++module import, source-success assumption or gate authority is substituted.
++"""
++
++import argparse
++import json
++import os
++from pathlib import Path
++
++from buffer_reuse_qualification import check_cut, run, save
++from buffer_reuse_qualification_classifier import EXPECTED, classify
++
++from merlin.verify.buffer_reuse_gate import _ordered_sources
++from merlin.verify.buffer_reuse_intake import ALLOCATOR, prepare, prepare_chain
++from merlin.verify.loop_transform_intake import file_ref
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    for name in ("output", "corpus", "baseline-objects", "q-source-cut", "lean"):
++        parser.add_argument("--" + name, required=True, type=Path)
++    parser.add_argument("--label", action="append", help="explicit distinct targeted source-fix cases only")
++    args = parser.parse_args()
++    output, corpus, parent = args.output.resolve(), args.corpus.resolve(), args.baseline_objects.resolve()
++    output.mkdir(parents=True, exist_ok=False)
++    check_cut(args.q_source_cut)
++    original = tuple((corpus / "positives/retained_two_epochs" / f"stage{i}.mlir").read_text() for i in range(4))
++    baseline = prepare_chain(original, allocator=ALLOCATOR)
++    hint = json.loads(baseline.hint_json)
++    objects = []
++    for index, (name, source) in enumerate(_ordered_sources(baseline)):
++        process = parent / f"import-{index}.process.json"
++        if json.loads(process.read_text())["returncode"] != 0:
++            raise ValueError("component import was not actually compiled successfully")
++        objects.append(
++            {
++                "source": file_ref(source),
++                "object": file_ref(parent / "lib" / (name.replace(".", "/") + ".olean")),
++                "process": file_ref(process),
++            }
++        )
++    for index, part in enumerate(json.loads(baseline.query_parts_json)[:3]):
++        source = parent / (part["module"] + ".lean")
++        process = parent / f"query-{index}-{part['module']}.process.json"
++        if source.read_text() != part["source"] or json.loads(process.read_text())["returncode"] != 0:
++            raise ValueError("successful baseline component source/command differs")
++        objects.append(
++            {
++                "source": file_ref(source),
++                "object": file_ref(parent / "lib" / (part["module"] + ".olean")),
++                "process": file_ref(process),
++            }
++        )
++    save(
++        output / "INTENT.json",
++        {
++            "status": "FINITE_COMPONENT_ONLY_NO_GATE_AUTHORITY",
++            "parent_full_gate": "WholeEpoch120s timeout/UNAVAILABLE",
++            "objects": objects,
++            "expected_roots": EXPECTED,
++            "runner": file_ref(Path(__file__)),
++        },
++    )
++    results = []
++    for row in json.loads((corpus / "NEGATIVES.json").read_text()):
++        label = row["name"]
++        if args.label and label not in args.label:
++            continue
++        if row["status"].startswith("HOST_"):
++            results.append(
++                {
++                    "name": label,
++                    "status": row["status"],
++                    "reason": row.get("component_host_refusal", row.get("raw4_host_refusal")),
++                }
++            )
++            save(output / "RESULTS.json", results)
++            continue
++        if label not in EXPECTED:
++            raise ValueError("missing expected obligation before native launch: " + label)
++        changed = tuple((corpus / "negatives" / label / f"stage{i}.mlir").read_text() for i in range(4))
++        candidate = (
++            prepare(changed[0], changed[3], hint, allocator=ALLOCATOR)
++            if "baseline_UNTRUSTED" in row["component_route"]
++            else prepare_chain(changed, allocator=ALLOCATOR)
++        )
++        if candidate.query != (corpus / "negatives" / label / "CanonicalBufferQuery.lean").read_text():
++            raise ValueError("fresh component differs from retained corpus")
++        parts = {part["module"]: part for part in json.loads(candidate.query_parts_json)}
++        expected = EXPECTED[label]
++        if expected == "GraphMemoryAfterWhole.source_term_exact":
++            source = parts["WholeFinal"]["source"]
++            definitions = [line for line in source.splitlines(True) if line.startswith("def independentSource :")]
++            theorem = [line for line in source.splitlines(True) if line.startswith("theorem source_term_exact :")]
++            if len(definitions) != 1 or len(theorem) != 1:
++                raise ValueError("closed actual source finite binding required")
++            options = [line for line in source.splitlines(True) if line.startswith("set_option ")]
++            if options != [
++                "set_option autoImplicit false\n",
++                "set_option maxRecDepth 16384\n",
++                "set_option maxHeartbeats 8000000\n",
++            ]:
++                raise ValueError("exact original source-component options required")
++            query = (
++                "import WholeShape\n"
++                + "".join(options)
++                + "open Merlin Merlin.GraphLoopsShape\nnamespace GraphMemoryAfterWhole\n"
++                + definitions[0]
++                + theorem[0]
++                + "end GraphMemoryAfterWhole\n"
++            )
++            delta = (
++                "Exact original closed independentSource definition and source_term_exact theorem only; "
++                "original scope options preserved, no whole-chain assertion."
++            )
++        elif expected == "GraphMemorySCFObligation.valid":
++            source = parts["WholeMemory"]["source"]
++            query = source
++            delta = "Unchanged actual WholeMemory query, using own compiled WholeReuse dependency."
++        else:
++            source = parts["WholeMaterialization"]["source"]
++            if not source.startswith("import WholeEpoch\n"):
++                raise ValueError("unknown materialization header")
++            query = "import Merlin.GraphLoopsMemorySCFAfterEntriesWitness\n" + source[len("import WholeEpoch\n") :]
++            delta = (
++                "Only import WholeEpoch replaced with existing AfterEntriesWitness; "
++                "every closed definition/theorem byte unchanged."
++            )
++        folder = output / label
++        folder.mkdir()
++        path = folder / "Component.lean"
++        path.write_text(query)
++        save(
++            folder / "SOURCE-DELTA.json",
++            {"description": delta, "original_source": source, "component": file_ref(path), "expected_root": expected},
++        )
++        process, stdout = run(
++            [args.lean, "-j1", path], folder / "lean", environment={**os.environ, "LEAN_PATH": str(parent / "lib")}
++        )
++        classified = classify(
++            label, process["returncode"], stdout, (folder / "lean/stderr.txt").read_text(), query, path
++        )
++        results.append({"name": label, **classified, "component_only": True, "gate_completion": False})
++        save(output / "RESULTS.json", results)
++    for row in objects:
++        for ref in row.values():
++            if file_ref(Path(ref["path"])) != ref:
++                raise ValueError("successful baseline dependency changed")
++    check_cut(args.q_source_cut)
++    unavailable = [row["name"] for row in results if row["status"] == "UNAVAILABLE"]
++    save(
++        output / "FINAL.json",
++        {
++            "status": "FINITE_COMPONENT_BATCH_PASSED_FULL_GATE_UNAVAILABLE"
++            if not unavailable
++            else "PARTIAL_UNAVAILABLE",
++            "ordinary_refusals": sum(row["status"] == "EXPECTED_COMPONENT_OBLIGATION_REFUSAL" for row in results),
++            "host_refusals": sum(row["status"].startswith("HOST_") for row in results),
++            "unavailable": unavailable,
++            "full_gate_checked": False,
++            "human_approved": False,
++            "selected_labels": args.label,
++        },
++    )
++    if unavailable:
++        raise SystemExit(1)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/merlin/tests/ir/buffer_reuse_qualification_live.py b/merlin/tests/ir/buffer_reuse_qualification_live.py
+new file mode 100644
+index 000000000..5b4881d9c
+--- /dev/null
++++ b/merlin/tests/ir/buffer_reuse_qualification_live.py
+@@ -0,0 +1,361 @@
++"""Fresh actual raw4 gate qualification, never a numerical/native fidelity claim."""
++
++import argparse
++import json
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++from buffer_reuse_qualification import check_cut, write_candidate
++from buffer_reuse_qualification_classifier import classify
++from buffer_reuse_qualification_protocol import artifact_controls, request_controls
++from buffer_reuse_qualification_review import compare as compare_queries
++from loop_transform_qualification import save
++
++from merlin.common.owned_process import run_owned
++from merlin.common.paths import repo_root
++from merlin.verify import buffer_reuse_gate as gate
++from merlin.verify.buffer_reuse_intake import ALLOCATOR, prepare_chain
++from merlin.verify.loop_transform_intake import file_ref
++
++
++def replay_child(args):
++    output = args.output.resolve()
++    output.mkdir(parents=True, exist_ok=False)
++    check_cut(args.q_source_cut)
++    if len(gate._LIVE):
++        raise ValueError("replay process did not start with an empty live ledger")
++    save(output / "INTENT.json", {"incoming_ledger": 0, "pid": os.getpid(), "report": file_ref(args.report)})
++    result = gate.replay(args.report, lean=args.lean, destination=args.objects, timeout=120)
++    save(
++        output / "RESULT.json",
++        {
++            "status": result.status,
++            "reason": result.reason,
++            "pid": os.getpid(),
++            "incoming_ledger": 0,
++            "issued_live_completions": len(gate._LIVE),
++            "report": file_ref(Path(result.completion.report)) if result.completion else None,
++            "human_approved": False,
++        },
++    )
++    check_cut(args.q_source_cut)
++    if result.status != "checked" or result.completion is None or len(gate._LIVE) != 1:
++        raise SystemExit(1)
++
++
++def full(args):
++    output = args.output.resolve()
++    output.mkdir(parents=True, exist_ok=False)
++    check_cut(args.q_source_cut)
++    if args.objects.exists():
++        raise ValueError("exclusive new private object root required")
++    corpus = args.corpus.resolve()
++    qcut = json.loads(args.q_source_cut.read_text())
++    args.objects = args.objects.resolve()
++    source_paths = sorted((repo_root() / "merlin/tests/ir").glob("buffer_reuse_qualification*.py"))
++    source_paths += sorted((repo_root() / "merlin/tests/ir").glob("test_buffer_reuse_qualification*.py"))
++    source_paths += [
++        repo_root() / "merlin/tests/ir/loop_transform_qualification.py",
++        repo_root() / "merlin/tests/ir/loop_transform_qualification_classifier.py",
++    ]
++    source_refs = [file_ref(path) for path in source_paths]
++    save(
++        output / "SOURCE-CUT.json",
++        {
++            "Q_cut": file_ref(args.q_source_cut),
++            "F_sources": source_refs,
++            "lean": file_ref(args.lean),
++            "corpus_expected": file_ref(corpus / "EXPECTED-POSITIVES.json"),
++            "relation": "equal_possible_successful_public_observations",
++            "old_gate_timeout_preserved": "native-first-v1",
++            "human_approved": False,
++        },
++    )
++    expected = json.loads((corpus / "EXPECTED-POSITIVES.json").read_text())
++    if args.first_case is not None:
++        if args.first_case not in {row["name"] for row in expected}:
++            raise ValueError("requested first case absent from unchanged full roster")
++        expected.sort(key=lambda row: row["name"] != args.first_case)
++    verified_rows = json.loads(args.verification.read_text())["result"]["files"]
++    verified = {str(Path(row["path"]).resolve()): row for row in verified_rows}
++    if len(verified) != len(verified_rows) or any(not row["valid"] for row in verified_rows):
++        raise ValueError("complete distinct authoritative verifier roster required")
++    producer_refs = {}
++    for row in expected:
++        folder = corpus / "positives" / row["name"]
++        capture = json.loads((folder / "producer/stdout.txt").read_text())["result"]
++        if capture["producer_revision"] != "4499eebb959c0f92cefd92cc6d80646ba66474ed":
++            raise ValueError("wrong actual producer capture version")
++        if tuple(capture["buffers"]) != tuple((folder / f"stage{i}.mlir").read_text() for i in range(4)):
++            raise ValueError("raw4 corpus no longer matches actual producer output")
++        for ref in capture["producer_sources"]:
++            if ref["path"] in producer_refs and producer_refs[ref["path"]] != ref:
++                raise ValueError("conflicting producer source pins")
++            producer_refs[ref["path"]] = ref
++    for ref in producer_refs.values():
++        if file_ref(Path(ref["path"])) != ref:
++            raise ValueError("pinned producer source changed after capture")
++    save(
++        output / "EXACT-INPUTS.json",
++        {
++            "authoritative_verifier": file_ref(args.verification),
++            "parsed_bytes": [row["parsed_bytes"] for row in verified_rows],
++            "producer_sources": list(producer_refs.values()),
++        },
++    )
++
++    def buffers_at(folder):
++        values = []
++        for index in range(4):
++            path = (folder / f"stage{index}.mlir").resolve()
++            if str(path) not in verified or file_ref(path) != verified[str(path)]["parsed_bytes"]:
++                raise ValueError("actual raw buffer differs from authoritative parsed bytes")
++            values.append(path.read_text())
++        return tuple(values)
++
++    results, candidates, completions = [], {}, {}
++    for row in expected:
++        name = row["name"]
++        folder = output / "positives" / name
++        folder.mkdir(parents=True)
++        buffers = buffers_at(corpus / "positives" / name)
++        command = [sys.executable, str(repo_root() / "merlin/tests/ir/buffer_reuse_qualification_worker.py"), "produce"]
++        request = {
++            "reference": str(args.reference.resolve()),
++            "source": (corpus / "positives" / name / "original-input.mlir").read_text(),
++            "tile": row["tile"],
++        }
++        save(folder / "PRODUCER-INTENT.json", {"command": command, "request": request, "timeout": 120})
++        try:
++            producer = run_owned(
++                command,
++                cwd=repo_root(),
++                env={**os.environ, "PYTHONPATH": str(args.reference.resolve() / "src")},
++                input=json.dumps(request),
++                capture_output=True,
++                text=True,
++                timeout=120,
++                check=False,
++            )
++        except (OSError, subprocess.SubprocessError) as error:
++            save(folder / "PRODUCER-FAILURE.json", {"reason": str(error), "cleanup": getattr(error, "__notes__", [])})
++            for stream in ("stdout", "stderr"):
++                data = getattr(error, stream, "") or ""
++                (folder / ("producer." + stream)).write_text(
++                    data.decode(errors="replace") if isinstance(data, bytes) else data
++                )
++            results.append({"name": name, "status": "producer_unavailable", "consumer_called": False})
++            save(output / "POSITIVES.json", results)
++            continue
++        (folder / "producer.stdout").write_text(producer.stdout)
++        (folder / "producer.stderr").write_text(producer.stderr)
++        save(folder / "PRODUCER-PROCESS.json", {"returncode": producer.returncode})
++        if producer.returncode or tuple(json.loads(producer.stdout)["result"]["buffers"]) != buffers:
++            results.append({"name": name, "status": "producer_unavailable_or_bytes_differ", "consumer_called": False})
++            save(output / "POSITIVES.json", results)
++            continue
++        candidate = prepare_chain(buffers, allocator=ALLOCATOR)
++        previous = corpus / "positives" / name / "CanonicalBufferQuery.lean"
++        review = compare_queries(previous.read_text(), candidate.query)
++        save(
++            folder / "QUERY-PRESERVATION.json",
++            {
++                "old": file_ref(previous),
++                "fresh_query_sha256": candidate.describe()["query_sha256"],
++                "comparison": review,
++                "scope": (
++                    "all definitions and original theorem headers/context exact; "
++                    "proof bodies may change under frozen Qcut; actual Lean still required"
++                ),
++            },
++        )
++        if tuple(part["module"] for part in json.loads(candidate.query_parts_json)) != tuple(qcut["modules"]):
++            raise ValueError("generated module roster differs from frozen successor")
++        write_candidate(folder, candidate)
++        result = gate.check(candidate, lean=args.lean, destination=args.objects / "positives" / name, timeout=120)
++        item = {"name": name, "status": result.status, "reason": result.reason, "roots": len(candidate.roots)}
++        if result.status == "checked" and result.completion is not None:
++            delivered = []
++            gate.deliver(result.completion, candidate, delivered.append)
++            if delivered != [buffers[-1]]:
++                raise AssertionError("consumer did not receive exact final bytes")
++            (folder / "delivered.mlir").write_text(delivered[0])
++            item.update(
++                {
++                    "report": file_ref(Path(result.completion.report)),
++                    "consumer_called": True,
++                    "final_bytes_identical": True,
++                }
++            )
++            candidates[name], completions[name] = candidate, result.completion
++        else:
++            item["consumer_called"] = False
++        results.append(item)
++        save(output / "POSITIVES.json", results)
++        print(json.dumps({"positive": name, "status": result.status}), flush=True)
++    baseline = prepare_chain(
++        tuple((corpus / "positives/retained_two_epochs" / f"stage{i}.mlir").read_text() for i in range(4)),
++        allocator=ALLOCATOR,
++    )
++    request_controls(baseline, output / "request-controls")
++    negative_results = []
++    for row in json.loads((corpus / "NEGATIVES.json").read_text()):
++        name = row["name"]
++        buffers = buffers_at(corpus / "negatives" / name)
++        try:
++            candidate = prepare_chain(buffers, allocator=ALLOCATOR)
++        except ValueError as error:
++            negative_results.append(
++                {"name": name, "status": "HOST_REFUSAL", "reason": str(error), "consumer_called": False}
++            )
++        else:
++            destination = args.objects / "negatives" / name
++            result = gate.check(candidate, lean=args.lean, destination=destination, timeout=120)
++            if result.status == "checked" or result.completion is not None:
++                raise AssertionError("mutant unexpectedly established a live completion: " + name)
++            item = {
++                "name": name,
++                "gate_status": result.status,
++                "reason": result.reason,
++                "consumer_called": False,
++                "status": "UNAVAILABLE",
++            }
++            for index, part in enumerate(json.loads(candidate.query_parts_json)):
++                stem = destination / f"query-{index}-{part['module']}"
++                process = Path(str(stem) + ".process.json")
++                if process.exists() and json.loads(process.read_text())["returncode"] == 1:
++                    source = (destination / (part["module"] + ".lean")).resolve()
++                    actual_command = json.loads(process.read_text())["command"]
++                    if Path(actual_command[-1]).resolve() != source or file_ref(source)["sha256"] != part["sha256"]:
++                        raise ValueError("native failure not bound to the actual prepared source bytes/command")
++                    classified = classify(
++                        name,
++                        1,
++                        Path(str(stem) + ".stdout").read_text(),
++                        Path(str(stem) + ".stderr").read_text(),
++                        source.read_text(),
++                        source,
++                    )
++                    item["native_classification"] = classified
++                    if (
++                        result.status == "not_established"
++                        and classified["status"] == "EXPECTED_COMPONENT_OBLIGATION_REFUSAL"
++                    ):
++                        item["status"] = "ACTUAL_GATE_EXPECTED_OBLIGATION_REFUSAL"
++                    break
++            negative_results.append(item)
++        save(output / "NEGATIVES.json", negative_results)
++    protocol = {"status": "UNAVAILABLE_NO_LIVE_BASELINE"}
++    if "retained_two_epochs" in candidates:
++        checked = gate.check(
++            baseline, lean=args.lean, destination=args.objects / "dedicated-attack-scratch", timeout=120
++        )
++        if checked.status == "checked" and checked.completion is not None:
++            artifact_controls(checked.completion, baseline, output / "artifact-controls")
++            protocol = {"status": "checked", "dedicated_attack_report": file_ref(Path(checked.completion.report))}
++        else:
++            protocol = {"status": checked.status, "reason": checked.reason}
++        source_report = Path(completions["retained_two_epochs"].report)
++        child = output / "fresh-process-replay"
++        command = [
++            sys.executable,
++            str(Path(__file__)),
++            "--phase",
++            "replay",
++            "--report",
++            str(source_report),
++            "--output",
++            str(child),
++            "--objects",
++            str(args.objects / "fresh-process-replay"),
++            "--q-source-cut",
++            str(args.q_source_cut.resolve()),
++            "--lean",
++            str(args.lean),
++        ]
++        save(output / "REPLAY-INTENT.json", {"command": command, "timeout": 1800, "owned_process_group": True})
++        try:
++            process = run_owned(
++                command,
++                cwd=repo_root(),
++                env=os.environ.copy(),
++                capture_output=True,
++                text=True,
++                timeout=1800,
++                check=False,
++            )
++            (output / "replay.stdout").write_text(process.stdout)
++            (output / "replay.stderr").write_text(process.stderr)
++            save(output / "REPLAY-PROCESS.json", {"returncode": process.returncode, "timeout": False})
++            protocol["fresh_process_replay"] = process.returncode == 0
++        except (OSError, subprocess.SubprocessError) as error:
++            for name in ("stdout", "stderr"):
++                value = getattr(error, name, "") or ""
++                (output / ("replay." + name)).write_text(
++                    value.decode(errors="replace") if isinstance(value, bytes) else value
++                )
++            save(
++                output / "REPLAY-PROCESS.json",
++                {"returncode": None, "reason": str(error), "cleanup": getattr(error, "__notes__", [])},
++            )
++            protocol["fresh_process_replay"] = False
++    save(output / "PROTOCOL.json", protocol)
++    for ref in source_refs:
++        if file_ref(Path(ref["path"])) != ref:
++            raise ValueError("F source changed during live qualification")
++    for ref in [*producer_refs.values(), *[row["parsed_bytes"] for row in verified_rows]]:
++        if file_ref(Path(ref["path"])) != ref:
++            raise ValueError("captured producer/source/actual verified IR bytes changed during qualification")
++    check_cut(args.q_source_cut)
++    failed = [row["name"] for row in results if row["status"] != "checked"]
++    failed += [row["name"] for row in negative_results if row["status"] == "UNAVAILABLE"]
++    if protocol["status"] != "checked" or not protocol.get("fresh_process_replay"):
++        failed.append("live_protocol_or_fresh_replay")
++    final = {
++        "status": "BOUNDED_BUFFER_ENGINEERING_BATCH_PASSED" if not failed else "PARTIAL_UNAVAILABLE",
++        "expected_positives": len(expected),
++        "actual_gate_positives": sum(row["status"] == "checked" for row in results),
++        "valid_mutant_quadruples": len(negative_results),
++        "actual_gate_native_refusals": sum(
++            row["status"] == "ACTUAL_GATE_EXPECTED_OBLIGATION_REFUSAL" for row in negative_results
++        ),
++        "host_refusals": sum(row["status"] == "HOST_REFUSAL" for row in negative_results),
++        "failed_or_unavailable": failed,
++        "protocol": protocol,
++        "relation": "equal_possible_successful_public_observations",
++        "full_error_world_equivalence": False,
++        "human_approved": False,
++        "native_allocator_fidelity": False,
++        "production_enforcement": False,
++    }
++    save(output / "RESULT.json", final)
++    print(json.dumps(final), flush=True)
++    if failed:
++        raise SystemExit(1)
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--phase", choices=("full", "replay"), default="full")
++    for name in ("output", "objects", "q-source-cut", "lean"):
++        parser.add_argument("--" + name, required=True, type=Path)
++    parser.add_argument("--corpus", type=Path)
++    parser.add_argument("--report", type=Path)
++    parser.add_argument("--verification", type=Path)
++    parser.add_argument("--reference", type=Path)
++    parser.add_argument("--first-case", help="execution priority only; never removes cases")
++    args = parser.parse_args()
++    if args.phase == "replay":
++        if args.report is None:
++            parser.error("replay requires --report")
++        replay_child(args)
++    else:
++        if args.corpus is None or args.verification is None or args.reference is None:
++            parser.error("full requires --corpus --verification --reference")
++        full(args)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/merlin/tests/ir/buffer_reuse_qualification_protocol.py b/merlin/tests/ir/buffer_reuse_qualification_protocol.py
+new file mode 100644
+index 000000000..4722a575c
+--- /dev/null
++++ b/merlin/tests/ir/buffer_reuse_qualification_protocol.py
+@@ -0,0 +1,204 @@
++"""Actual buffer request/completion guards; no mocked positive proof path."""
++
++import argparse
++import copy
++import dataclasses
++import json
++import pickle
++from pathlib import Path
++from unittest.mock import patch
++
++from loop_transform_qualification import save
++
++from merlin.verify import buffer_reuse_gate as gate
++from merlin.verify.buffer_reuse_intake import ALLOCATOR, canonical, prepare_chain
++from merlin.verify.loop_transform_intake import file_ref
++
++
++def request_controls(candidate, output):
++    """Use actual reconstruction with a trap forbidding ANY native launch."""
++    output.mkdir(parents=True, exist_ok=False)
++    hint = json.loads(candidate.hint_json)
++    hint["adapter"]["step_binding"]["privateViews"][0]["object"] = 999
++    caller_hint = json.loads(candidate.hint_json)
++    caller_hint["adapter"]["observers"][0]["buffer"]["name"] = 999
++    parts = json.loads(candidate.query_parts_json)
++    parts[1]["imports"] = ["ForgedModule"]
++    source_map = json.loads(candidate.sources_json)
++    source_map[0]["sha256"] = "0" * 64
++    raw = json.loads(candidate.raw_chain_json)
++    raw[1], raw[2] = raw[2], raw[1]
++    variants = {
++        "query": {"query": candidate.query + "\n-- unbound query\n"},
++        "roots": {"roots": candidate.roots[:-1]},
++        "part_import_map": {"query_parts_json": canonical(parts)},
++        "source_map": {"sources_json": canonical(source_map)},
++        "private_id_hint": {"hint_json": canonical(hint)},
++        "caller_binding_hint": {"hint_json": canonical(caller_hint)},
++        "entry_roster": {"entry_roster_json": "{}"},
++        "middle_join": {"raw_chain_json": canonical(raw)},
++        "allocator_finite": {"allocator": "finite_capacity"},
++        "relation_full_error_world": {"relation": "full_error_world_equivalence"},
++        "index32": {"index_bits": 32},
++        "boolean_index": {"index_bits": True},
++        "source_only_substitution": {"source": candidate.source + "\n// substituted original\n"},
++        "final_only_substitution": {"final": candidate.final + "\n// substituted final\n"},
++    }
++    rows = []
++    for label, fields in variants.items():
++        forged = dataclasses.replace(candidate, **fields)
++        destination = output / "forbidden-native" / label
++        with patch.object(gate, "_run", side_effect=AssertionError("native launch for forged request")):
++            result = gate.check(forged, lean=Path("/no-native-tool"), destination=destination)
++        if result.status != "unavailable" or result.completion is not None or destination.exists():
++            raise AssertionError("forged request admitted: " + label)
++        rows.append({"name": label, "outcome": result.status, "reason": result.reason, "native_launched": False})
++    constructed = gate.Completion(candidate.identity, "/no-saved-authority")
++    for value in [None, {"status": "checked"}, constructed, copy.copy(constructed), copy.deepcopy(constructed)]:
++        called = []
++        try:
++            gate.deliver(value, candidate, called.append)
++        except gate.Unavailable:
++            pass
++        else:
++            raise AssertionError("constructed/copied/saved completion delivered")
++        if called:
++            raise AssertionError("consumer called without live proof")
++    try:
++        pickle.dumps(constructed)
++    except TypeError:
++        pass
++    else:
++        raise AssertionError("completion serialized")
++    for allocator in ["finite_capacity", "observable", "", None]:
++        try:
++            prepare_chain(tuple(json.loads(candidate.raw_chain_json)), allocator=allocator)
++        except ValueError:
++            pass
++        else:
++            raise AssertionError("unapproved allocator admitted")
++    save(
++        output / "RESULT.json",
++        {
++            "status": "SDK_FREE_HOST_GUARDS_PASSED_NO_PROOF_AUTHORITY",
++            "forgeries": rows,
++            "constructed_saved_copied_completions": 5,
++            "serialization_refused": True,
++            "allocator_modes_refused": 4,
++            "actual_live_completion_copy_test": "PENDING_REAL_GATE_SUCCESS",
++            "human_approved": False,
++        },
++    )
++
++
++def artifact_controls(completion, candidate, output):
++    """Dedicated real checked scratch only; exact intentional tamper/restoration.
++
++    This is one live proof, not eight new positives. No native job is retried.
++    Every before/changed/restored byte reference is retained. Original qualified
++    outputs must not be supplied: caller owns this explicit attack scratch.
++    """
++    output.mkdir(parents=True, exist_ok=False)
++    report_path = Path(completion.report)
++    directory = report_path.parent.resolve()
++    report = json.loads(report_path.read_text())
++    gate.validate_completion(completion, candidate)
++    targets = {
++        "canonical_query": Path(report["query"]["path"]),
++        "query_part": Path(report["generated_queries"][3]["source"]["path"]),
++        "query_object": Path(report["generated_queries"][-1]["object"]["path"]),
++        "raw_middle": Path(report["actual4"][1]["path"]),
++        "raw_process_log": Path(report["process_evidence"][0]["path"]),
++        "report": report_path,
++        "rehashed_import_map_report": report_path,
++    }
++    rows = []
++    for name, target in targets.items():
++        if not target.resolve().is_relative_to(directory):
++            raise ValueError("attack target escaped dedicated own scratch")
++        original = target.read_bytes()
++        before = file_ref(target)
++        if name == "rehashed_import_map_report":
++            changed = json.loads(original)
++            changed["imports"][0]["sha256"] = "0" * 64
++            data = canonical(changed).encode()
++        else:
++            data = original + b"\nSTALE"
++        called = []
++        try:
++            target.write_bytes(data)
++            changed_ref = file_ref(target)
++            try:
++                gate.deliver(completion, candidate, called.append)
++            except gate.Unavailable as error:
++                reason = str(error)
++            else:
++                raise AssertionError("stale artifact delivered: " + name)
++        finally:
++            target.write_bytes(original)
++        if called or file_ref(target) != before:
++            raise AssertionError("stale consumer/restoration failure")
++        gate.validate_completion(completion, candidate)
++        rows.append(
++            {
++                "kind": name,
++                "before": before,
++                "changed": changed_ref,
++                "restored": file_ref(target),
++                "consumer_called": False,
++                "reason": reason,
++            }
++        )
++        save(output / "ARTIFACTS.json", rows)
++    for name in ["extra_object", "object_symlink"]:
++        extra = Path(report["library_root"]) / ("F_ATTACK_" + name + ".olean")
++        if extra.exists() or extra.is_symlink():
++            raise ValueError("exclusive attack filename already exists")
++        called = []
++        try:
++            if name == "extra_object":
++                with extra.open("xb") as stream:
++                    stream.write(b"not an object, never loaded")
++            else:
++                extra.symlink_to(report["generated_queries"][-1]["object"]["path"])
++            try:
++                gate.deliver(completion, candidate, called.append)
++            except gate.Unavailable as error:
++                reason = str(error)
++            else:
++                raise AssertionError("extra/symlink object delivered")
++        finally:
++            extra.unlink()
++        if called:
++            raise AssertionError("consumer received extra/symlink proof tree")
++        gate.validate_completion(completion, candidate)
++        rows.append({"kind": name, "consumer_called": False, "reason": reason, "temporary_member_removed": True})
++        save(output / "ARTIFACTS.json", rows)
++    for token, request in [(copy.copy(completion), candidate), (completion, dataclasses.replace(candidate))]:
++        try:
++            gate.deliver(token, request, lambda _: (_ for _ in ()).throw(AssertionError("copied authority delivered")))
++        except gate.Unavailable:
++            pass
++        else:
++            raise AssertionError("copy gained live authority")
++    save(
++        output / "RESULT.json",
++        {
++            "status": "DEDICATED_REAL_LIVE_ARTIFACT_GUARDS_PASSED",
++            "attacks": len(rows),
++            "native_proofs": 1,
++            "copied_completion_refused": True,
++            "copied_candidate_refused": True,
++            "exact_bytes_restored_for_independent_controls": True,
++            "human_approved": False,
++        },
++    )
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--corpus", type=Path, required=True)
++    parser.add_argument("--output", type=Path, required=True)
++    args = parser.parse_args()
++    buffers = tuple((args.corpus / "positives/retained_two_epochs" / f"stage{i}.mlir").read_text() for i in range(4))
++    request_controls(prepare_chain(buffers, allocator=ALLOCATOR), args.output)
+diff --git a/merlin/tests/ir/buffer_reuse_qualification_review.py b/merlin/tests/ir/buffer_reuse_qualification_review.py
+new file mode 100644
+index 000000000..841101306
+--- /dev/null
++++ b/merlin/tests/ir/buffer_reuse_qualification_review.py
+@@ -0,0 +1,181 @@
++"""Structural comparison for the controlled generated Lean command format.
++
++This host regression guard does NOT prove Lean syntax/semantics or authorize a
++check. It preserves all encoded definitions, old theorem headers and command
++context while permitting proof-body repairs. Actual new proofs still run Lean.
++Comments nest; strings/quoted identifiers cannot manufacture commands.
++"""
++
++
++def tokens(source):
++    result = []
++    i, column, first_code = 0, 0, True
++
++    def advance(end):
++        nonlocal i, column, first_code
++        text = source[i:end]
++        column = len(text.rsplit("\n", 1)[-1]) if "\n" in text else column + len(text)
++        if "\n" in text:
++            first_code = True
++        i = end
++
++    while i < len(source):
++        if source[i].isspace():
++            advance(i + 1)
++            continue
++        if source.startswith("--", i):
++            end = source.find("\n", i)
++            advance(len(source) if end < 0 else end)
++            continue
++        if source.startswith("/-", i):
++            end, depth = i + 2, 1
++            while end < len(source) and depth:
++                if source.startswith("/-", end):
++                    depth += 1
++                    end += 2
++                elif source.startswith("-/", end):
++                    depth -= 1
++                    end += 2
++                else:
++                    end += 1
++            if depth:
++                raise ValueError("unterminated nested Lean comment")
++            advance(end)
++            continue
++        start, col = i, column
++        if source[i] == '"':
++            end = i + 1
++            while end < len(source):
++                if source[end] == "\\":
++                    end += 2
++                elif source[end] == '"':
++                    end += 1
++                    break
++                else:
++                    end += 1
++            else:
++                raise ValueError("unterminated Lean string")
++        elif source[i] == "«":
++            end = source.find("»", i + 1)
++            if end < 0:
++                raise ValueError("unterminated quoted identifier")
++            end += 1
++        elif source[i].isalnum() or source[i] == "_":
++            end = i + 1
++            while end < len(source) and (source[end].isalnum() or source[end] in "_.'"):
++                end += 1
++        else:
++            end = i + (2 if source.startswith(":=", i) else 1)
++        result.append((source[start:end], col, first_code))
++        advance(end)
++        first_code = False
++    return result
++
++
++def inventory(source):
++    words = tokens(source)
++    commands = {"import", "open", "set_option", "namespace", "section", "end", "def", "theorem"}
++    forbidden = {
++        "axiom",
++        "unsafe",
++        "opaque",
++        "abbrev",
++        "instance",
++        "structure",
++        "inductive",
++        "notation",
++        "macro",
++        "syntax",
++        "attribute",
++        "example",
++        "noncomputable",
++        "private",
++        "protected",
++        "partial",
++        "initialize",
++    }
++    if any(first and column != 0 and word in commands | forbidden for word, column, first in words):
++        raise ValueError("all generated commands must begin at column zero, including after comments")
++    starts, depth = [], 0
++    for index, (word, column, _) in enumerate(words):
++        if column == 0 and depth == 0:
++            starts.append(index)
++        if word in ("(", "[", "{", "⟨"):
++            depth += 1
++        elif word in (")", "]", "}", "⟩"):
++            depth -= 1
++        if depth < 0:
++            raise ValueError("unbalanced generated source delimiters")
++    if depth:
++        raise ValueError("unclosed generated source delimiters")
++    if words and (not starts or starts[0] != 0):
++        raise ValueError("unaccounted source before first controlled command")
++    if any(words[i][0] not in commands for i in starts):
++        raise ValueError("unrecognized column-zero command in controlled format")
++    starts.append(len(words))
++    scopes, definitions, theorems, context, layout = [], {}, {}, [], []
++    for begin, end in zip(starts, starts[1:]):
++        command = [word for word, _, _ in words[begin:end]]
++        tag = command[0]
++        if tag not in ("def", "theorem"):
++            layout.append(("context", command))
++        if tag in ("namespace", "section"):
++            if len(command) != 2:
++                raise ValueError("named exact scope required")
++            scopes.append((tag, command[1]))
++            context.append(command)
++        elif tag == "end":
++            if len(command) != 2 or not scopes or command[1] != scopes[-1][1]:
++                raise ValueError("exact scope closure required")
++            scopes.pop()
++            context.append(command)
++        elif tag in ("def", "theorem"):
++            if len(command) < 4:
++                raise ValueError("incomplete declaration")
++            name = ".".join([name for kind, name in scopes if kind == "namespace"] + [command[1]])
++            layout.append((tag, name))
++            target = definitions if tag == "def" else theorems
++            if name in definitions or name in theorems:
++                raise ValueError("duplicate declaration")
++            if tag == "def":
++                target[name] = command
++            else:
++                depth, assignment = 0, None
++                for index, token in enumerate(command):
++                    if token in ("(", "[", "{", "⟨"):
++                        depth += 1
++                    elif token in (")", "]", "}", "⟩"):
++                        depth -= 1
++                    elif token == ":=" and depth == 0:
++                        assignment = index
++                        break
++                    if depth < 0:
++                        raise ValueError("unbalanced declaration header")
++                if assignment is None:
++                    raise ValueError("closed generated theorem body required")
++                target[name] = command[:assignment]
++        else:
++            context.append(command)
++    if scopes:
++        raise ValueError("unclosed generated scope")
++    return {"definitions": definitions, "theorem_headers": theorems, "command_context": context, "layout": layout}
++
++
++def compare(old, new):
++    before, after = inventory(old), inventory(new)
++    if before["definitions"] != after["definitions"]:
++        raise ValueError("encoded semantic definition changed")
++    if before["command_context"] != after["command_context"]:
++        raise ValueError("import/open/options/scope context changed")
++    if any(after["theorem_headers"].get(name) != header for name, header in before["theorem_headers"].items()):
++        raise ValueError("original theorem statement changed or dropped")
++    added = set(after["theorem_headers"]) - set(before["theorem_headers"])
++    if before["layout"] != [row for row in after["layout"] if not (row[0] == "theorem" and row[1] in added)]:
++        raise ValueError("original declaration/context order changed")
++    return {
++        "definitions": len(before["definitions"]),
++        "original_theorem_headers": len(before["theorem_headers"]),
++        "new_helper_theorems": sorted(added),
++        "proofs_executed": False,
++        "authority": False,
++    }
+diff --git a/merlin/tests/ir/buffer_reuse_qualification_worker.py b/merlin/tests/ir/buffer_reuse_qualification_worker.py
+new file mode 100644
+index 000000000..9406900cf
+--- /dev/null
++++ b/merlin/tests/ir/buffer_reuse_qualification_worker.py
+@@ -0,0 +1,111 @@
++"""Independent actual producer capture / authoritative buffer verification.
++
++The producer runs with pinned-reference merlin imports in an isolated process.
++No receipt, hint, numerical evaluator or gate authority is consumed here.
++"""
++
++import hashlib
++import importlib.metadata
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++REVISION = "4499eebb959c0f92cefd92cc6d80646ba66474ed"
++
++
++def produce(request):
++    from merlin.transforms import loops, normalization, planning
++    from merlin.transforms.certificates import ir_text, parse_ir
++
++    reference = Path(request["reference"]).resolve()
++    observed = subprocess.check_output(["git", "-C", str(reference), "rev-parse", "HEAD"], text=True).strip()
++    if observed != REVISION:
++        raise ValueError("actual producer revision differs from pinned4499")
++    source = request["source"]
++    module = parse_ir(source)
++    module.verify()
++    buffers = [source]
++    normalized = normalization.normalize_shapes(module)
++    module.verify()
++    buffers.append(ir_text(module))
++    plan = planning.plan_storage(module)
++    reused = planning.reuse_storage(module, plan)
++    module.verify()
++    buffers.append(ir_text(module))
++    segmented = loops.segment_loops(module, [request["tile"]], index_bits=64)
++    module.verify()
++    buffers.append(ir_text(module))
++    sources = []
++    for name, loaded in sorted(tuple(sys.modules.items())):
++        if name != "merlin" and not name.startswith("merlin."):
++            continue
++        path = Path(loaded.__file__).resolve()
++        if not path.is_relative_to(reference / "src"):
++            raise ValueError("producer import escaped pinned reference")
++        data = path.read_bytes()
++        relative = str(path.relative_to(reference))
++        original = subprocess.check_output(["git", "-C", str(reference), "show", REVISION + ":" + relative])
++        if data != original:
++            raise ValueError("loaded producer source differs from exact pinned commit")
++        sources.append({"path": str(path), "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)})
++    return {
++        "buffers": buffers,
++        "producer_revision": observed,
++        "producer_sources": sources,
++        "APIs": [
++            "normalization.normalize_shapes",
++            "planning.plan_storage",
++            "planning.reuse_storage",
++            "loops.segment_loops",
++        ],
++        "changes": {"normalization": len(normalized), "reuse": len(reused), "segmentation": len(segmented)},
++        "index_bits": 64,
++        "tile": request["tile"],
++        "authority": False,
++        "projection_trusted": True,
++    }
++
++
++def verify(request):
++    from torch_mlir import ir
++
++    rows = []
++    for path in request["files"]:
++        try:
++            source = Path(path).read_bytes()
++            ref = {
++                "path": str(Path(path).resolve()),
++                "sha256": hashlib.sha256(source).hexdigest(),
++                "bytes": len(source),
++            }
++            with ir.Context() as context:
++                context.allow_unregistered_dialects = True
++                module = ir.Module.parse(source.decode())
++                valid = bool(module.operation.verify())
++            rows.append({"path": path, "valid": valid, "parsed_bytes": ref})
++        except Exception as error:
++            rows.append({"path": path, "valid": False, "error": str(error)})
++    return {
++        "files": rows,
++        "oracle": {
++            "python": sys.version,
++            "executable": sys.executable,
++            "distributions": {
++                name: importlib.metadata.version(name)
++                for name in importlib.metadata.packages_distributions().get("torch_mlir", [])
++            },
++            "allow_unregistered_dialects": True,
++            "verification": "Module.parse then operation.verify on each complete buffer",
++        },
++    }
++
++
++if __name__ == "__main__":
++    request = json.loads(sys.stdin.read())
++    try:
++        result = produce(request) if sys.argv[1] == "produce" else verify(request)
++        print(json.dumps({"status": "ok", "result": result}))
++    except Exception as error:
++        print(json.dumps({"status": "unavailable", "error": type(error).__name__, "reason": str(error)}))
++        raise SystemExit(1)
+diff --git a/merlin/tests/ir/test_buffer_reuse_qualification_classifier.py b/merlin/tests/ir/test_buffer_reuse_qualification_classifier.py
+new file mode 100644
+index 000000000..e2d3e1cd0
+--- /dev/null
++++ b/merlin/tests/ir/test_buffer_reuse_qualification_classifier.py
+@@ -0,0 +1,58 @@
++"""SDK-free classifier controls; these do not mock positive proof authority."""
++
++import pytest
++from buffer_reuse_qualification_classifier import classify
++
++PATH = "/bound/Materialization.lean"
++QUERY = """namespace GraphMemoryAfterMaterialization
++theorem accepted : True := by
++  trivial
++end GraphMemoryAfterMaterialization
++"""
++ERROR = PATH + ":3:2: error: unsolved goals\n"
++
++
++@pytest.mark.parametrize(
++    "marker",
++    [
++        "maximum number of heartbeats",
++        "maximum recursion depth",
++        "out of memory",
++        "stack overflow",
++        "stack space",
++        "panic",
++        "internal error",
++        "failed to import",
++        "unknown constant",
++        "unknown identifier",
++        "object file",
++        "failed to open",
++        "uncaught exception",
++    ],
++)
++def test_resource_or_infrastructure_is_unavailable(marker):
++    assert classify("final_wrong_seed", 1, ERROR + marker, "", QUERY, PATH)["status"] == "UNAVAILABLE"
++
++
++@pytest.mark.parametrize("code", [-11, -9, None, 2, 0])
++def test_signals_unknown_and_success_are_not_refusals(code):
++    assert classify("final_wrong_seed", code, ERROR, "", QUERY, PATH)["status"] == "UNAVAILABLE"
++
++
++def test_exact_root_and_source_required():
++    assert classify("source_wrong_seed", 1, ERROR, "", QUERY, PATH)["status"] == "UNAVAILABLE"
++    assert classify("final_wrong_seed", 1, ERROR, "", QUERY, "/other.lean")["status"] == "UNAVAILABLE"
++    assert classify("unknown", 1, ERROR, "", QUERY, PATH)["status"] == "UNAVAILABLE"
++
++
++def test_known_normal_refusal_is_attributed():
++    result = classify("final_wrong_seed", 1, ERROR, "", QUERY, PATH)
++    assert result["status"] == "EXPECTED_COMPONENT_OBLIGATION_REFUSAL"
++    assert result["root"] == "GraphMemoryAfterMaterialization.accepted"
++
++
++def test_unknown_diagnostic_is_not_semantic_refusal():
++    assert (
++        classify("final_wrong_seed", 1, ERROR.replace("unsolved goals", "mystery failure"), "", QUERY, PATH)["status"]
++        == "UNAVAILABLE"
++    )
+diff --git a/merlin/tests/ir/test_buffer_reuse_qualification_review.py b/merlin/tests/ir/test_buffer_reuse_qualification_review.py
+new file mode 100644
+index 000000000..b75d11214
+--- /dev/null
++++ b/merlin/tests/ir/test_buffer_reuse_qualification_review.py
+@@ -0,0 +1,62 @@
++"""SDK-free full-definition/statement preservation, not a Lean proof parser."""
++
++import pytest
++from buffer_reuse_qualification_review import compare, inventory
++
++SOURCE = """import Init
++namespace N
++def data : String := "theorem fake := 3 -- /-"
++theorem claim : True := by trivial
++end N
++"""
++
++
++def test_proof_only_change_preserves_all_original_data_and_claims():
++    result = compare(SOURCE, SOURCE.replace("by trivial", "by exact True.intro"))
++    assert result == {
++        "definitions": 1,
++        "original_theorem_headers": 1,
++        "new_helper_theorems": [],
++        "proofs_executed": False,
++        "authority": False,
++    }
++
++
++def test_nested_comments_and_strings_never_manufacture_or_hide_commands():
++    changed = "/- outer /- theorem hidden := bad -/ end -/\n" + SOURCE
++    assert compare(SOURCE, changed)["definitions"] == 1
++    assert set(inventory(SOURCE)["theorem_headers"]) == {"N.claim"}
++
++
++def test_multiline_record_closing_at_column_zero_remains_part_of_definition():
++    source = "import Init\ndef pair : Nat × Nat := {\n fst := 1\n snd := 2\n}\n"
++    assert compare(source, source)["definitions"] == 1
++    with pytest.raises(ValueError):
++        compare(source, source.replace("snd := 2", "snd := 3"))
++
++
++def test_declaration_order_is_preserved():
++    first = SOURCE.index("def data")
++    end = SOURCE.index("end N")
++    data, theorem = SOURCE[first:end].split("theorem claim", 1)
++    changed = SOURCE[:first] + "theorem claim" + theorem + data + SOURCE[end:]
++    with pytest.raises(ValueError):
++        compare(SOURCE, changed)
++
++
++@pytest.mark.parametrize(
++    "bad",
++    [
++        SOURCE.replace("True", "False"),
++        SOURCE.replace("fake := 3", "fake := 4"),
++        SOURCE.replace("import Init", "import Lean"),
++        SOURCE.replace("end N", "end Wrong"),
++        "/-x-/axiom hidden : False\n" + SOURCE,
++        SOURCE.replace("end N", "/-x-/def hidden : Nat := 7\nend N"),
++        SOURCE.replace("end N", "  axiom hidden : False\nend N"),
++        SOURCE + "/- unfinished /- nested -/",
++    ],
++)
++def test_unknown_semantics_statements_context_or_hidden_declarations_refuse(bad):
++    with pytest.raises(ValueError):
++        compare(SOURCE, bad)

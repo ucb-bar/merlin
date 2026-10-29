@@ -1,0 +1,2325 @@
+{
+  "schema": "merlin.buffer.F-source-delivery.v2",
+  "status": "HISTORICAL_Q5_F2_186_SOURCE_COHORT_PLUS_OWNED_QUALIFICATION",
+  "sources": [
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086",
+      "bytes": 742,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/__init__.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+      "bytes": 144,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/common/__init__.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "bytes": 4227,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/common/dense_float_ir.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "bytes": 1017,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/transforms/__init__.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+      "bytes": 9294,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/transforms/certificates.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "bytes": 4572,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/transforms/loops.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "bytes": 4097,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/transforms/normalization.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0",
+      "bytes": 8634,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/transforms/pipeline.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "bytes": 12317,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/transforms/pipeline_state.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "bytes": 12381,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/transforms/planning.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "pinned4499",
+      "path": "src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "bytes": 10145,
+      "snapshot": "delivery-v2/sources/pinned4499/src/merlin/transforms/validation.py",
+      "roles": [
+        "actually_loaded_pinned4499_producer_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/buffer_reuse_qualification.py",
+      "sha256": "c999d8c845d6aa209dd2a91fba86573d9fcf13218da2da0d7418bfebf89208ba",
+      "bytes": 8506,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/buffer_reuse_qualification.py",
+      "roles": [
+        "F_owned_qualification_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/buffer_reuse_qualification_cases.py",
+      "sha256": "f724e7b909f326ae70218d1ad2562cc2fd767d72fecf5bad88c2c18e70dfab0f",
+      "bytes": 9323,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/buffer_reuse_qualification_cases.py",
+      "roles": [
+        "F_owned_qualification_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/buffer_reuse_qualification_classifier.py",
+      "sha256": "997b0ab91364d936eea3d794ef58f8054226276d9d9d63ea669a454d12f2980f",
+      "bytes": 3306,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/buffer_reuse_qualification_classifier.py",
+      "roles": [
+        "F_owned_qualification_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/buffer_reuse_qualification_components.py",
+      "sha256": "787261a3d8525469e5cb9f808036fbdbc079ad2fda7604b9c2bf64792757bdcb",
+      "bytes": 8157,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/buffer_reuse_qualification_components.py",
+      "roles": [
+        "F_owned_qualification_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/buffer_reuse_qualification_live.py",
+      "sha256": "9b31492516369a11c4490f0d44365590663d1734375d2474ac9002678c5a408d",
+      "bytes": 17553,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/buffer_reuse_qualification_live.py",
+      "roles": [
+        "F_owned_qualification_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/buffer_reuse_qualification_protocol.py",
+      "sha256": "1b507b60b4f120d5d79ca0f9fa347595ef2852783be30ed7b6af6197de24f8e5",
+      "bytes": 8967,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/buffer_reuse_qualification_protocol.py",
+      "roles": [
+        "F_owned_qualification_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/buffer_reuse_qualification_review.py",
+      "sha256": "d86df7e96eec4ef7f4cac8e14604ec2c4c38848c2975dab93cdb3c615d75e70b",
+      "bytes": 7182,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/buffer_reuse_qualification_review.py",
+      "roles": [
+        "F_owned_qualification_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/buffer_reuse_qualification_worker.py",
+      "sha256": "b70bf0c14c5f574581315a8fd45306942a9fc70f37c9a662d335e479170b5e70",
+      "bytes": 4238,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/buffer_reuse_qualification_worker.py",
+      "roles": [
+        "F_owned_qualification_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/test_buffer_reuse_emission_unit.py",
+      "sha256": "9769616d9ca60e5ece5c03d4b16648b4c7809b3b1c183b726328b950a7fdf697",
+      "bytes": 5765,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/test_buffer_reuse_emission_unit.py",
+      "roles": [
+        "Q_frozen_v5_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/test_buffer_reuse_gate_unit.py",
+      "sha256": "543e60ac0fffaffdb096b50d0fd4060f97cf7f28cd02d9edc738f8902277d678",
+      "bytes": 4548,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/test_buffer_reuse_gate_unit.py",
+      "roles": [
+        "Q_frozen_v5_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/test_buffer_reuse_intake_unit.py",
+      "sha256": "8c363003664910e0db1872c90a91d6ffbdefb51778dba74a65012ab340b6e7d7",
+      "bytes": 5917,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/test_buffer_reuse_intake_unit.py",
+      "roles": [
+        "Q_frozen_v5_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/test_buffer_reuse_qualification_classifier.py",
+      "sha256": "177da80a8c40a507f65cf4c860f1d965518e2f5436f4484a20faba5cd4978e3e",
+      "bytes": 1974,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/test_buffer_reuse_qualification_classifier.py",
+      "roles": [
+        "F_owned_qualification_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/test_buffer_reuse_qualification_review.py",
+      "sha256": "6dc45256d2231b8760c7f96a39856c54a27cdb4f7ef6f3d093fe72c949d361ac",
+      "bytes": 2172,
+      "snapshot": "delivery-v2/sources/submission/merlin/tests/ir/test_buffer_reuse_qualification_review.py",
+      "roles": [
+        "F_owned_qualification_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/compiler-byte-binding-v2/run.py",
+      "sha256": "435054578a4fc8c4c019589d006486aa7a8d3db6ca84446cf009413d2ebd87ec",
+      "bytes": 1479,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/compiler-byte-binding-v2/run.py",
+      "roles": [
+        "owned_artifact_binding_or_data_runner"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/compiler-oracle-controls-v1/run.py",
+      "sha256": "10050b2d682e9ebb512bdb3cb665d2d9d72898f616e274ccdcc837deff53b6bd",
+      "bytes": 2280,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/compiler-oracle-controls-v1/run.py",
+      "roles": [
+        "owned_artifact_binding_or_data_runner"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/run.py",
+      "sha256": "e431adab7ec8f1f39eca4df81024ec4b76606daa1bd6452af2aef65c783d98d3",
+      "bytes": 5379,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/run.py",
+      "roles": [
+        "owned_artifact_binding_or_data_runner"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessBase.lean",
+      "sha256": "1ba5bb45763be9fb02d2259e9e36a0276ebf6f23b9e4434e9695a4fd296ed10c",
+      "bytes": 2460,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessBase.lean",
+      "roles": [
+        "F_corpus_witness_candidate_NOT_qualified_timeout"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessExecution.lean",
+      "sha256": "e282b9888eb92ea09dd18ab1a61def29333562b4cf7204a810eabcf89602ec75",
+      "bytes": 9037,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessExecution.lean",
+      "roles": [
+        "F_corpus_witness_candidate_NOT_qualified_timeout"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessInitializers.lean",
+      "sha256": "f04d36c0f79d49c0ee1fd5a94a6deae21f68aca8f5155d2db99115e25d0a6365",
+      "bytes": 2646,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessInitializers.lean",
+      "roles": [
+        "F_corpus_witness_candidate_NOT_qualified_timeout"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessObservations.lean",
+      "sha256": "f8d78496c280e57b238f7111a0bc1663e0f7b5904431b75b6b91250d2dc99240",
+      "bytes": 1348,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessObservations.lean",
+      "roles": [
+        "F_corpus_witness_candidate_NOT_qualified_timeout"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessStates.lean",
+      "sha256": "2eade6d0c9158f0433393d58c1d5213bc5a6beff07da7784fd609fb912177616",
+      "bytes": 32622,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessStates.lean",
+      "roles": [
+        "F_corpus_witness_candidate_NOT_qualified_timeout"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessSteps.lean",
+      "sha256": "7429ecb47efdcd7db4560b678c187aec68974f931ca5afcf9821aaca02f5d6f5",
+      "bytes": 18356,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/CorpusWitnessSteps.lean",
+      "roles": [
+        "F_corpus_witness_candidate_NOT_qualified_timeout"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v1/collect.py",
+      "sha256": "e00edfe7e2af31776a42e9aa3bacab299b63cfb73f63d63d26bced59b1d2c8ed",
+      "bytes": 5929,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v1/collect.py",
+      "roles": [
+        "owned_artifact_binding_or_data_runner"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v2/collect.py",
+      "sha256": "171deb614fc5c4833bd41178d4b2df29ac1159013cc5de72b786394417fa369e",
+      "bytes": 6978,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v2/collect.py",
+      "roles": [
+        "owned_artifact_binding_or_data_runner"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v2/snapshot.py",
+      "sha256": "b8e59c584a424052c2f7aa074b19dec6254d822a18ad68783d60f5a6cd4f39d5",
+      "bytes": 3785,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v2/snapshot.py",
+      "roles": [
+        "owned_artifact_binding_or_data_runner"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/KernelWitnessBase.lean",
+      "sha256": "e293677a537cff6494bbf0848d4b4141aa0233a4f14046b000d6e270e618af3a",
+      "bytes": 2472,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/KernelWitnessBase.lean",
+      "roles": [
+        "F_independently_compiled_baseline_constructive_witness"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/KernelWitnessExecution.lean",
+      "sha256": "ec30738271304c4ef4f4c8f266c68ae024eb66e693812bb969e7b9a030a5ec60",
+      "bytes": 8679,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/KernelWitnessExecution.lean",
+      "roles": [
+        "F_independently_compiled_baseline_constructive_witness"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/KernelWitnessInitializers.lean",
+      "sha256": "c82798c327186d75a8036660e4815a3c17d71dfe13a6d805df2f818536502350",
+      "bytes": 1833,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/KernelWitnessInitializers.lean",
+      "roles": [
+        "F_independently_compiled_baseline_constructive_witness"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/KernelWitnessStates.lean",
+      "sha256": "450207e35e8d5dee9ddaff022f8a62a50151a1194a90784bb318b6b56adc475c",
+      "bytes": 22587,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/KernelWitnessStates.lean",
+      "roles": [
+        "F_independently_compiled_baseline_constructive_witness"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/KernelWitnessSteps.lean",
+      "sha256": "cc3fe8518f86373aca9fa1b0f7ba8e53c6ebd085f6c51c54796a3f24c7b152a0",
+      "bytes": 12440,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/KernelWitnessSteps.lean",
+      "roles": [
+        "F_independently_compiled_baseline_constructive_witness"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/run.py",
+      "sha256": "bdd3a12e55babfba5916742ede9330e8bd3895831bf18ed72be630a493d298da",
+      "bytes": 4645,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/run.py",
+      "roles": [
+        "owned_artifact_binding_or_data_runner"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/negative-binding-offline-v1/bind.py",
+      "sha256": "3798e35a17909996522ff7496c2f65021ecc0397be1a36eb4956fe1fedef6f89",
+      "bytes": 2274,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/negative-binding-offline-v1/bind.py",
+      "roles": [
+        "owned_artifact_binding_or_data_runner"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/supplementary-mutants-v1/run.py",
+      "sha256": "c772dc15a3428865408dc977a73bb16229826d4cd242a7411dc24f9517b1a0b3",
+      "bytes": 3997,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/supplementary-mutants-v1/run.py",
+      "roles": [
+        "owned_artifact_binding_or_data_runner"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/unsupported-boundaries-v1/run.py",
+      "sha256": "e5eb749d02cb0be9c0a42cba06954beb10a5923aebcd23810f6dedb85d7cc047",
+      "bytes": 3773,
+      "snapshot": "delivery-v2/sources/submission/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/unsupported-boundaries-v1/run.py",
+      "roles": [
+        "owned_artifact_binding_or_data_runner"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086",
+      "bytes": 742,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/__init__.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+      "bytes": 144,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/common/__init__.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/common/owned_process.py",
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910",
+      "bytes": 5515,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/common/owned_process.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/common/paths.py",
+      "sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "bytes": 17204,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/common/paths.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/__init__.py",
+      "sha256": "ed2b23769b23d2a34b47f38b316aca76277193efbcbce589670188a5cceeffe4",
+      "bytes": 1017,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/__init__.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/buffer_reuse_bridge.py",
+      "sha256": "aefc81d846c2a8cc19938a4e86a4794431c979586ebc92f3db786b4ca0f8953e",
+      "bytes": 2766,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/buffer_reuse_bridge.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source",
+        "Q_frozen_v5_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/buffer_reuse_emit.py",
+      "sha256": "6c3a080f93d5e3d5fd06e0cac461dbf4c3c0eff0769ed07c2f24e88211dbcc64",
+      "bytes": 11697,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/buffer_reuse_emit.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source",
+        "Q_frozen_v5_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/buffer_reuse_gate.py",
+      "sha256": "14a14c3527f2f0b9a645b68f3f30a2aebc0631ecc1f045666162ba7249cbfa69",
+      "bytes": 19108,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/buffer_reuse_gate.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source",
+        "Q_frozen_v5_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/buffer_reuse_intake.py",
+      "sha256": "83bcd7562285ade779e6878f7ba9cf552fd7175832794c7e3ebc140f06abdafb",
+      "bytes": 7877,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/buffer_reuse_intake.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source",
+        "Q_frozen_v5_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean",
+      "sha256": "b7c665843732da433c765da7d8045d4a7463fb7b450c70570e3efe1640ad08f0",
+      "bytes": 4861,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+      "sha256": "5ae28e5a48be8c91d8843e669ba37b41741a7deb11f557fb2c4f0c4a74114d7d",
+      "bytes": 6012,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+      "sha256": "05502dbe0083bf14ce2ea1b3a165ebd42cc0cf7e34e6a3340fc41a53bc6c592b",
+      "bytes": 5883,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+      "sha256": "55c0a6e1378b5bce3c84f293cb9457194925b299b3ee463a099a622faeb2def1",
+      "bytes": 8847,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+      "sha256": "145d3f6572f326ad5c79c43acabb9ceee341b6932cbc3348d3b926503497011e",
+      "bytes": 8705,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+      "sha256": "f727397a27d9857c2753dd0210b10a7dd2e3ee98c93e51a473db8ffcb6a7122b",
+      "bytes": 7450,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+      "sha256": "2e3897623722010d45cc5dfb69726eba16433ecb9d0e59aeb5c65dda1c8b9286",
+      "bytes": 5753,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+      "sha256": "b7daf1561d9ff944385a10b30dd83b32b6f7e05a10d3998df60a824a6a8bd884",
+      "bytes": 9108,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+      "sha256": "9c92b1fedea928d04c7fc5fc5941f8f83c915335679a580e3cfb9cfaac7e5b9b",
+      "bytes": 2983,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+      "sha256": "533ea4922a1d3862c5ef5312c8d7351028d81ef74b8196a62c8cf419c7dd32a7",
+      "bytes": 5538,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+      "sha256": "b16a3c65a288d1c79280f25f1e6ff19585ac7594c1ff384da66d9df15caf46ef",
+      "bytes": 7143,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+      "sha256": "aaab49c958853175d62c0c02de6d3764b9b507d2cbfc444c7c5ad03c1fb35739",
+      "bytes": 6281,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+      "sha256": "e14ab2c0ed8ce153580617047d3d937def7502453635648a7493a875158a2dcf",
+      "bytes": 6704,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+      "sha256": "923f9215fb28c725e5a407598d023f2f735f9f07181ef8b225b0861c1aaf71d2",
+      "bytes": 5369,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+      "sha256": "93fbf46d0e921ea99dd40f41b1470632dfe84d9bb0f97e3e8a63aaa72705539a",
+      "bytes": 5602,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+      "sha256": "2864687091ab69889485fa491eee07d671ac3d362eeede9bb9a59a78f6c84651",
+      "bytes": 10129,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+      "sha256": "a6d91ad7f1b9daac83ff54481e05689296da5280810c3d1e70021f2871a74970",
+      "bytes": 7567,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+      "sha256": "323972c1f6fd811cd3f98fa53a74199a46a04bd2fd6078a994f80871824789af",
+      "bytes": 10385,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+      "sha256": "98a489fa9370724b13a5e5c169d7a823751ce4e53e5fda5996abccc37c56b96e",
+      "bytes": 5957,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+      "sha256": "de8a83c3e4aee65b0c77d5e5c7d85d843f1960ca6f0a1cb1839bf61332779002",
+      "bytes": 6815,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+      "sha256": "21d67fdc1bd04ff3eafa684c9a4a23663a9792d5b556d446abb1fbb5e89638d0",
+      "bytes": 6277,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+      "sha256": "d3e392af113e85e115584d3e8533e5f99fa8bb14379cc41c971233cdbb2f7185",
+      "bytes": 8872,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+      "sha256": "161214250a30dc39254b52cac338586fc2eb0aaa6f6c683c2c435a31cc76c863",
+      "bytes": 4926,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+      "sha256": "678c49926f5bab9d3a86e13363c2a2aabc0e9be593e167ebb5913dd97bea888a",
+      "bytes": 9734,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+      "sha256": "8226b4042bfb9180be4749848838ed9731d339e55985b82a3312578f964f7ef3",
+      "bytes": 5610,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+      "sha256": "1cd3c1fd266856edfd2cc2643e3bc7c28b25c74c45b51b98dbe1b29c4d715603",
+      "bytes": 8514,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+      "sha256": "05aa9d172b9f0376de1503c9796d08595565ba13d0d4390d792ed5334023cfb1",
+      "bytes": 11860,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+      "sha256": "71cbe9b82c9ccc0f441946c317f21c46b09817b0db923abfdaa097b6090102b8",
+      "bytes": 7661,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+      "sha256": "1506ce36832471f28bc33fc336d8418873fbb544bdc76443a7b946a0ad3373d6",
+      "bytes": 5985,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+      "sha256": "84cd8ac53d96f90c0255929bc44d4e5e2dce3173baeed4caa604d6d59af0b7c6",
+      "bytes": 8781,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+      "sha256": "2fe1366da6a5e9c30d6accddcc1457a24893d174d532759a33ba1fe452e631db",
+      "bytes": 9243,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+      "sha256": "31efbe25ef09d06b344ca57ad456331254870bcbdd4e506eb8291fb1414d600d",
+      "bytes": 8520,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+      "sha256": "2719d58b9c38cbc22d83da2bb6209551e0856f8399efc6dc3f0c35a33790201b",
+      "bytes": 4958,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+      "sha256": "e01db92a6e04e0c42e6af711ec42681e3e2ab8684fb47c058f4788855b94484e",
+      "bytes": 5584,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+      "sha256": "cf68afb7771484e60a3c71f23dbe98510d48c70bc4f5701102aa83b8985bf678",
+      "bytes": 5870,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+      "sha256": "9b9f6912aa807006042fbb600a28756c32238c782e8ece5bc25bb51d2123b129",
+      "bytes": 12129,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+      "sha256": "7ae1dfdb7f642ca6b5b950c683a1141e2fc14cb2147c2406761bad089b463ec0",
+      "bytes": 8533,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean",
+      "sha256": "39517f78dd2987b0527f50e5aedae00a07d5638d1a444def9baa0dcf62800ab2",
+      "bytes": 2768,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean",
+      "sha256": "26b341f8f6e90187c0dd301c022cdcac5e6037caa26d0a207beaff08441ca7a2",
+      "bytes": 13452,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean",
+      "sha256": "e0dd846bf321516099232b2ba8603cdde9efbb19073058594cb1d9c94eb373bf",
+      "bytes": 5846,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean",
+      "sha256": "17d2fb5c242ad2cbf52859893b6adfdc1e9cf6d97ab3770de53d426ce3e854e1",
+      "bytes": 6157,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean",
+      "sha256": "3d3c97dd9593855f2d9962d407eee4714c229765efaf873074750b50605d9ab4",
+      "bytes": 4269,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+      "sha256": "35c8428218b8ae776fb073fd431182ea979e6e9185e0d867253808caf9921a7a",
+      "bytes": 6316,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean",
+      "sha256": "53d1674540fae8aff754f740e369d29de0bd9a68facacbba0c6154aa981ef37b",
+      "bytes": 5453,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean",
+      "sha256": "ee7ad6757ea921243d03b3458534af11b8e5d6775b10164a70c606ee2dc23670",
+      "bytes": 10841,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean",
+      "sha256": "5f7977123358e7a3de53704f2fa2956d1b89bd7a60c6957a6e8676795c0ce562",
+      "bytes": 6094,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean",
+      "sha256": "86c8d7319914a96934964ed8c9b45fdfc80aeb8fdd37f1a94d3f2b026dd7cbc3",
+      "bytes": 3210,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean",
+      "sha256": "5a9e204faa5375435683b2c15a1344210980979c636862749c9585cf00751e01",
+      "bytes": 4589,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean",
+      "sha256": "414a5c25490fc099815eed9b491cb99e0c7e114435a7ac498f8e35428ed57cd3",
+      "bytes": 9874,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean",
+      "sha256": "51b46ae3c0e1bb64ca47ec1ec1a2bb36fe96f706d229d8ca4f6302f6e38a5c2c",
+      "bytes": 7525,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseCountermodels.lean",
+      "sha256": "ff170131b35e0c972c02573437da450ebfb3595efcd47f07f55d54b657483f98",
+      "bytes": 4299,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsReuseCountermodels.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseGeometry.lean",
+      "sha256": "9c2553f3fa45cbdeb03c9f084aa6f84f247a574f98c7a543010c8ffa65018e1a",
+      "bytes": 6933,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsReuseGeometry.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseLifetime.lean",
+      "sha256": "cb3d7cd2553443fb204209cb369bdad79a31d340619e57efd12106b3f51c6c4a",
+      "bytes": 3194,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsReuseLifetime.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseModel.lean",
+      "sha256": "0011d490dffb9d36ab3d7f1c4b3e944c91ce6a30ae84155367c39b3090b54626",
+      "bytes": 7878,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsReuseModel.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean",
+      "sha256": "538c4066cb1dca7a8911f5bf99d3cae5e449c475871f2ba0e49b60386b8384f0",
+      "bytes": 6086,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsReuseSemantics.lean",
+      "sha256": "8b5f9d5a71a7aab8559286e5bdb36dfc02e2abeb24a76ad5710434a20bf3da6f",
+      "bytes": 13700,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsReuseSemantics.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+      "bytes": 9653,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+      "bytes": 3962,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "bytes": 7091,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+      "bytes": 2118,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShape.lean",
+      "sha256": "7d4314ce5f13378e3f807be57a39da4c064b16e2fe569b685cddd4a22a9beb4e",
+      "bytes": 4332,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShape.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfter.lean",
+      "sha256": "41e9825fad8b832e7d63471d03b0e35a04b891411aab17bced45735b528feab1",
+      "bytes": 3721,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeAfter.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean",
+      "sha256": "0fe635ec3bdd1bbf645c8b948683dbe87b71b30a57db0454322b4db7106adde4",
+      "bytes": 12788,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeBindings.lean",
+      "sha256": "0022f37c8c015cd51d4b571592fb01e4723f55152b80240e47d566508f35ebab",
+      "bytes": 4966,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeBindings.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeCode.lean",
+      "sha256": "57784b3dae571bcc1a9d228605ae1a3fd4b40a2b784afd2d3eb4a0bbc22b1432",
+      "bytes": 8871,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeCode.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeCountermodels.lean",
+      "sha256": "d855ed8506c22cd01a4843afa64a259880ba8c43c8eb8c8b7e5e7c4e868095ea",
+      "bytes": 2131,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeCountermodels.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAccess.lean",
+      "sha256": "f1f410710384eaa7cd4aa0def577262f1f53c05611b19c7b8b5fb213d792f768",
+      "bytes": 5761,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAccess.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean",
+      "sha256": "0edc7b495eb1d144333c46a1dbc1329e959c8b6b11062aef8daa89f15f26b067",
+      "bytes": 5148,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocationSteps.lean",
+      "sha256": "0459c81d8a59512f0bc9e4857ef4a0971368db3595eaffcf6aa90076cd019618",
+      "bytes": 5819,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocationSteps.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAlpha.lean",
+      "sha256": "49dfd218309960377abf0ff2c8dbd6dbbe7fbb3085a9be1023da720cc5eb4bd0",
+      "bytes": 4726,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAlpha.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCallers.lean",
+      "sha256": "6be387cd2aaa0a1f29bc9208d9e6dd52ae2aab3920060fe502627386e4200700",
+      "bytes": 3550,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCallers.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCells.lean",
+      "sha256": "0b8e9cb3720e9b4d14064edead3cbe8227bd1e16c7ebfd9128a2758cc37be9fa",
+      "bytes": 5096,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCells.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochChain.lean",
+      "sha256": "87cb50172d2ae8b89194a8c3b1c11a00eb05bd04c8d21bb7fa28e05b26ceeb62",
+      "bytes": 4579,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochChain.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCommand.lean",
+      "sha256": "b813fb95d6f72a9db64f67b85f28b6da167cca275623301d336bbee6cf32a166",
+      "bytes": 7954,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCommand.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochEntry.lean",
+      "sha256": "fbb11b4a2790a6d4112e478cb48949175561b90be325fd15f63721433c8106a6",
+      "bytes": 7267,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochEntry.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochExecution.lean",
+      "sha256": "a5fc4a526ee2a8d9c1191484b884b9407d1e05753977550de71dbf885a2bcec9",
+      "bytes": 6260,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochExecution.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFrame.lean",
+      "sha256": "3e2ca99074f4bdd0f425667f335f66f68363e8a55ae49e177ec0f1ddf4dba2bb",
+      "bytes": 4019,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFrame.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean",
+      "sha256": "d090ca0de54891e03ce752dfbb8924e3036f3669c6d064380e1949417795acb5",
+      "bytes": 7530,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean",
+      "sha256": "b2290d23f41cb072f6cb87c1848ecd855393b269f6870df70ed88bda69ef5a4e",
+      "bytes": 14216,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean",
+      "sha256": "6ad862c33a3989dcd1381c2204efad70736b89727ab67a4bdb3bf67835196986",
+      "bytes": 5238,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean",
+      "sha256": "d48b28611e26e0d33d7a3b929d26922509a1936016b4309235d9fd8b475b5cea",
+      "bytes": 4743,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLink.lean",
+      "sha256": "313a13396fee90c55a322936f5976e2b64c19494345c182a6d2e52615fb544af",
+      "bytes": 5324,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLink.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMeaning.lean",
+      "sha256": "d66312808776742f3233b97c25acc2202ee9a3f616032cfc80512aca8657265d",
+      "bytes": 5298,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMeaning.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean",
+      "sha256": "7e7b0ddcde788a162559ee5c7e13c8f6845016ec5cab403bed71ea8cc1529414",
+      "bytes": 7069,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean",
+      "sha256": "6cd1969490912288c4393e47a08ac5fdf240c7f8a5a258e44f87965a1f52a9be",
+      "bytes": 4046,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean",
+      "sha256": "0e23fdf6bb90cf53057aa133dee22ff2a8c14db045b13ffc2768a94c91e199d5",
+      "bytes": 7580,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserver.lean",
+      "sha256": "179aee1f802b503c4a2bcd0b813da80c5f5f993d2b00c899b567109c9d726671",
+      "bytes": 13796,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserver.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserverSteps.lean",
+      "sha256": "87039b241d2af2e902d8f9e8b230da637e87c33d83a313076df975ac7068cca7",
+      "bytes": 6478,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserverSteps.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochOutcomes.lean",
+      "sha256": "606d9b366e046b99f83080b341e3655c4821a7a8e28736321a6b9c937f959ddc",
+      "bytes": 4276,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochOutcomes.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+      "sha256": "715ca2a51b85011a28ba54d4aa600696f65d81f13746356a504d9011094c1eb2",
+      "bytes": 9344,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlanMeaning.lean",
+      "sha256": "fcb791b786dd64ad8a0a9e07f612fe31caef262c792fd55d467322d7d57cf7fb",
+      "bytes": 4399,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlanMeaning.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+      "sha256": "05a914ed6fce840db6d6ace89c02022ec546a4f1d1e4bb016b262c898992de58",
+      "bytes": 7623,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrivate.lean",
+      "sha256": "fc839734d4fa92cbfa5c1b94a13a9aa17b32ada6a61cceef8987aaa04f7d0ea9",
+      "bytes": 4619,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrivate.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPublic.lean",
+      "sha256": "021c98a5f64f1698f995df889242baec59bad916e288d67a54b526eb75b26dc9",
+      "bytes": 5231,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPublic.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochReturn.lean",
+      "sha256": "9ee400ce401fc5a569b033bb9bb747c808df007a87ebc4817045646bebfe3ee7",
+      "bytes": 5675,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochReturn.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSCF.lean",
+      "sha256": "2a43ac06b57f69b4ab3dca774c92fa03ed5ba8ced1afaf3fbc8a6245bc492cda",
+      "bytes": 5448,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSCF.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean",
+      "sha256": "7c3cde93cdcc6c74c6ebdbb1a3a7fc7fce0d7b02948c62b01b758a3a4bbe37fb",
+      "bytes": 6136,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScope.lean",
+      "sha256": "925351b9343b271eb9834a47a73d037bc4b3006c91e991bf730dc80181c16f4b",
+      "bytes": 7669,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScope.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean",
+      "sha256": "75bede10e21af0ab799aa97569d0ff348e66663ac5b014a70c18451a7f6f2bd2",
+      "bytes": 8067,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+      "sha256": "864a0e489cd7e6974fe21749556d42f11c9a6456c3b58a522920145bcb88af9a",
+      "bytes": 9338,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochViews.lean",
+      "sha256": "4b1618a73d1cdce364a03dc79a8407a60f8d071355ba82ff2510ab7902bb608d",
+      "bytes": 9696,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochViews.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeMemory.lean",
+      "sha256": "5c53cfb1b3ae15a2aeec82f9acbd3939e32dbd56a0097da8d0aa04c9a8ad3f65",
+      "bytes": 4855,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeMemory.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean",
+      "sha256": "38952ca358eebd28a5a8103a18f002c86ecbcc76b3e82b2642e8f5a4245f6371",
+      "bytes": 3342,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeModule.lean",
+      "sha256": "17ccc635a1718ad775304b5f9daa0715f6a84c249668f8defaa33cb17a98a823",
+      "bytes": 5961,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeModule.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeSSA.lean",
+      "sha256": "daa129e43fc43806eaa54560abfe3541f1ebbd1d93b36a97e28ce0df5c552594",
+      "bytes": 7075,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeSSA.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeSound.lean",
+      "sha256": "93c7be67db0a1eb04ea62bc27adf3ea7b038aa87d01e95ce533a143a30780626",
+      "bytes": 7170,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeSound.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeWitness.lean",
+      "sha256": "766b552e3edec6b89b0111c0cb18e37743f2351827944fd47b487a75aa84eaf8",
+      "bytes": 5646,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsShapeWitness.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+      "bytes": 5730,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+      "bytes": 9854,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+      "sha256": "377eb83eafd6c8d5a625c59f6dbe59d762b4aff003894efcc51df4944580bf99",
+      "bytes": 3451,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+      "bytes": 3246,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+      "bytes": 4537,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_input_admission.py",
+      "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "bytes": 7626,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_input_admission.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops.py",
+      "sha256": "83700aa0044b5abf4166bbeecdbfe8a20ce72e3c563ce66f6558af00f7aed805",
+      "bytes": 13606,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_capacity.py",
+      "sha256": "1b88518675b54bd25b7dcfab7fe84640367d5b1a4f3da9b7f8b527c9272ea98d",
+      "bytes": 13123,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_capacity.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_capacity_capture.py",
+      "sha256": "32b2d091edcd6adc09549d8b60415e1cb39a99bf4a6e2d41f189fec30913ca8e",
+      "bytes": 3797,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_capacity_capture.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_capture.py",
+      "sha256": "d4224363dec549cb6f5d2b6b4b13226ea65fe18c233496d08b1a7035cce2cb18",
+      "bytes": 11686,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_capture.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_effects.py",
+      "sha256": "97794532d22909052fdf5c0faaf8c598f12f9ffd0ad2d8a24067d4764ae2715a",
+      "bytes": 6726,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_effects.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf.py",
+      "sha256": "5a17f1932da0ddd1bbfe9be92a464ba7fd2dac849ad45878433a3c4241eb4da7",
+      "bytes": 7112,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+      "sha256": "d1a8dbab64ee787737647b9d6805bd104e82df401e05ca86b1ee7763beb1dc7e",
+      "bytes": 8597,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_context.py",
+      "sha256": "7283f9534796db00ecbe23db15b2efbc2abb85d03ef9d72bcd8dc73628538474",
+      "bytes": 7365,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after_context.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_context_data.py",
+      "sha256": "85475002b026afadceb1fbf9bacbb69d9a532dbc8e97634fba8471b39561ed55",
+      "bytes": 6006,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after_context_data.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_context_witness.py",
+      "sha256": "0fc83cb22dd3c347e8b79e02e38efd74a5780eff2ffd389b93db8e15a6338647",
+      "bytes": 11203,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after_context_witness.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "sha256": "d6b3d79ce6747842a9eb4e48fe8f2543283b02f543f0afe22124cdab01256620",
+      "bytes": 9307,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source",
+        "Q_frozen_v5_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+      "sha256": "e3bd007e4fe26eec0adb107d2fa84473a606ec211503f92b0e44dcc144d81fc8",
+      "bytes": 4537,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+      "sha256": "444c095ff96d0910204ec572075df371f534e66b93be09f8a7766c14bfff4caf",
+      "bytes": 3665,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source",
+        "Q_frozen_v5_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+      "sha256": "1d75d98ed6c47647a8adbb98f5197c5f75c36c8bf943b551d729ef0f21e3b1da",
+      "bytes": 8640,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+      "sha256": "a6b746a365b9b2cb4da5b5335ddecc9b8e67a8a908dcacbc8723d71571d61ae5",
+      "bytes": 5421,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+      "sha256": "6744c38dd448be15a2e9e9b5d3cd52f8a42063ccf2f690fa1ab0fed395d97144",
+      "bytes": 5836,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+      "sha256": "90ab8e279a71538b8e70fb8f9e0c86f33f08fbed50f83592739a46ac6e842601",
+      "bytes": 4950,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source",
+        "Q_frozen_v5_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_capture.py",
+      "sha256": "eb72e6fe8c33808e0f34b88b112ba9c2ad097c7737ff594bd2c7a203563963ba",
+      "bytes": 5352,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_capture.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_cases.py",
+      "sha256": "4ba135144cb7c856ee2465c541d9f7989d5ae4928aa3dd81bc440634b32c1a95",
+      "bytes": 1717,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_cases.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+      "sha256": "f065b5d82adbaee702bedd60c08d165e0ca81eae030484d18806a971c9f32ae6",
+      "bytes": 8638,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+      "sha256": "3d522ee9d47732e009a9c0e46932e91bba2896b07fcdf4c40dc5d3806054e6b8",
+      "bytes": 13383,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_runtime.py",
+      "sha256": "3617723bd6463db4ad3af39a5529f3ca2477b4b5a0e4c96a47ca134148c2af99",
+      "bytes": 7240,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_runtime.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_selection.py",
+      "sha256": "cf8569b4a7a05b44f32dbf9738cfb9eb5996a416aca4831fccaa23b0a5acf8a8",
+      "bytes": 5336,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_selection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_witness.py",
+      "sha256": "211791bb9d1cb2e1f5e8bf360584a927a12de9b73a23e575c3feee9b4c17dfc5",
+      "bytes": 8413,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_memory_scf_witness.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_reuse.py",
+      "sha256": "86a62d587150a629978cad1774cff46e61df04419575af498f0f10bb8e97e832",
+      "bytes": 18132,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_reuse.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+      "sha256": "7f25c31910f3da789cc72e1bacdb95a3d305290fceb64ced963a4377e2e5b821",
+      "bytes": 7225,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_reuse_capture.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_reuse_cases.py",
+      "sha256": "e0eb58c226d0337d41e2ad92ba458ca0d77b44b5062efd807c7abadf1fa10274",
+      "bytes": 7345,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_reuse_cases.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_reuse_projection.py",
+      "sha256": "fcf75ecc44039a2a5b6a8a69cff1b7a8a9a23ac449100fe21c88464a56266102",
+      "bytes": 18764,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_reuse_projection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_reuse_runtime.py",
+      "sha256": "d0f99cf17bd807c00d398dcd45bcf806da90febbbcbb90fb80703a8a2b0bfa0f",
+      "bytes": 6036,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_reuse_runtime.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_segment.py",
+      "sha256": "79ef70280f0f0d5368adbef728ab1875aa88355d22366f2e6feae56465488b61",
+      "bytes": 14944,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_segment.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+      "sha256": "9f521c43a379ca6cd5dc449fe689b1b86d4fd4a0449a5aa59631485a0f1081e8",
+      "bytes": 6988,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_segment_capture.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_segment_project.py",
+      "sha256": "100eac0428643abed04d831511ee3fe4c6ffee0261a70704c338a708e3b2244e",
+      "bytes": 2891,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_segment_project.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_segment_projection.py",
+      "sha256": "c522dcd9b440f5deb3d9147aeabb3fea36fd69d129bb60fc1533185cd33d1ae8",
+      "bytes": 12966,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_segment_projection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape.py",
+      "sha256": "6b0cfce1f83371ef485c66b430f1769cbfb425760729dff7fcdcb9fcb23e01ed",
+      "bytes": 6668,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_after.py",
+      "sha256": "79048c93d3f036787b09c80bea6ae73067f2bb07632d1e131c46b64adb8603b3",
+      "bytes": 2454,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_after.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+      "sha256": "5c0f5f88fd8c9d0f7214319147e7c732c7431dd6da1d7fc6c6b498fa96a3218c",
+      "bytes": 3100,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+      "sha256": "ac4f1f49156725a7b938a5654f35cd46a555fe490b820292db78144219078ca1",
+      "bytes": 7480,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_model.py",
+      "sha256": "ed6b8187dbc9069386aa45d1d37e9594f41765e82f0b8c84287640f3f9342efd",
+      "bytes": 2882,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_after_model.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+      "sha256": "d3a4fddf2cdb6ec1d2d1a63335eceab6a100aa7559f8fb685f283184b1b8c71f",
+      "bytes": 11710,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+      "sha256": "94262c34876e169c17ab9b639941cd3423b44b110adf09aa763fc60cdae0a24f",
+      "bytes": 6594,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_capture.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_cases.py",
+      "sha256": "1b90874912fbc702869f607ab3708bd957eeabd715de9d62773e504fdbf0bcf3",
+      "bytes": 4364,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_cases.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch.py",
+      "sha256": "4669e2aba418732f1e8d00d159712ba12c2b5fab6dd807951e95c401dc150254",
+      "bytes": 9408,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_epoch.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_cases.py",
+      "sha256": "9f40b6fbe115b2539c8b42b29777155cea3ff597bc5db507810fbd24915743d4",
+      "bytes": 3545,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_epoch_cases.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_fields.py",
+      "sha256": "c0d54940b3b173f6cc1c6b88dbc91cc3ffc01fff39c65f64a7d9b3f3496fc58f",
+      "bytes": 9260,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_epoch_fields.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+      "sha256": "e59eaa5bd18ec5be416255239185600b988c69d323d99f7e7a9320125084fc69",
+      "bytes": 9947,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+      "sha256": "93c61f2589f4551b635917db2ac80208892883803559948ed5836bde4729b21e",
+      "bytes": 5687,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+      "sha256": "50ea898e28ecb0a15d8f16562bda2341bf04b6680143393d8435c1d751edc730",
+      "bytes": 9835,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+      "sha256": "0832d6a9c496b92e064949cd418b7b6746cd447ed3ef7b426c5b16f237a34e44",
+      "bytes": 10425,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_selection.py",
+      "sha256": "2bde23365bf9a278c9b39bd7c7e84fad9b296119945337648a83d3a91c2a55a7",
+      "bytes": 8279,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_epoch_selection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+      "sha256": "240d4e046e6d65fa699a864bc6b7422abec1ed24ad1b93b915b6ef2a8d00641c",
+      "bytes": 10772,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_witness.py",
+      "sha256": "677dff3252f2df86874717aba38d72d2d027a8081b3049dabe0afbf0c209c71b",
+      "bytes": 13023,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_epoch_witness.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_model.py",
+      "sha256": "24650e08cac546b7bd9ffaad2fdbf979d766728675a92f15fa129999087ff320",
+      "bytes": 8067,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_model.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_projection.py",
+      "sha256": "e98a10afc170db23b378488450b874f6178bdaa6ce1f0115cb09a02d12e5414c",
+      "bytes": 13895,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_projection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_runtime.py",
+      "sha256": "2cd2c1dd1ed8eebd6b7acf7a601a637cbaac11eb72d8ae33314ea626898e8c28",
+      "bytes": 7571,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_runtime.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_selection.py",
+      "sha256": "93b303bbaa02345c76bd0c11ba76966ed6fad6323cb5545b1165fa777d693603",
+      "bytes": 6831,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_selection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_types.py",
+      "sha256": "f596e44c9a933c08f99e1057d14f3b1a1b8e03684c1c1db6344aaa3f08bd60dc",
+      "bytes": 1977,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_types.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_shape_witness.py",
+      "sha256": "a2b80da642ac8fcee4e945f5514b19bfe904e930015882b56a3bccf463acb58d",
+      "bytes": 10383,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_shape_witness.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_storage.py",
+      "sha256": "2151f30b88e5d17f5d57a40dc0898ee64f4620b5acdd391366a3c61d67a51241",
+      "bytes": 22023,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_storage.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_unroll.py",
+      "sha256": "9b2c91ae1897b6532339df519198d012c59c02071658a0d68d1038893862b4db",
+      "bytes": 15050,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_unroll.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+      "sha256": "3b648b37618adca977558884c2fc82e69c945ea668514b223bc290592a31390c",
+      "bytes": 6826,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_unroll_capture.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_unroll_cases.py",
+      "sha256": "6a1e33d53e27bc5bfaa49663e2f4e7f0e5f5a85c6195983148b7c91d8243e922",
+      "bytes": 3665,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_unroll_cases.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_unroll_composition.py",
+      "sha256": "de83f271f03ba013f8fddc3e6d54061a560f7a752d259a013f8d159c7c4e47dc",
+      "bytes": 6718,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_unroll_composition.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_loops_unroll_projection.py",
+      "sha256": "63cc9e95e23bcd97447dded8b04d0cf16c9b4ca26d75e9691a6b151a2fd0c994",
+      "bytes": 16405,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_loops_unroll_projection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "bytes": 12573,
+      "snapshot": "delivery-v2/sources/submission/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "roles": [
+        "historical_Q5_F2_gate_bound_source"
+      ]
+    }
+  ],
+  "native_binaries_included": false,
+  "new191_qualification": false
+}

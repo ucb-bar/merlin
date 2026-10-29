@@ -1,0 +1,23 @@
+{
+  "status": "REVIEWED_SCOPED_BUFFER_PRIMARY_INTEGRATION",
+  "primary_merge": "09fea17e6",
+  "source_commits": [
+    "3cb865655",
+    "1fb8df215",
+    "2fcdae7b3"
+  ],
+  "root_prior_postmerge_checks": {
+    "focused_sdkfree_tests": "84 passed",
+    "structure": "passed",
+    "diff_check": "passed"
+  },
+  "current_comparison": "BUFFER-PRIMARY-MATCH.json",
+  "native_evidence": "Historical five-case F2/186 plus corrected isolated191 baseline and separate fresh replay",
+  "whole_pass_verified": false,
+  "independent_human_approved": false,
+  "native_allocator_fidelity": false,
+  "production_wide_enforcement": false,
+  "current_workers": "Q IR bridge/gate; W Lean checker/module proof; F independent qualification; straightline pure persistent configuration elimination",
+  "publication": "buffer-publication-v2/MANIFEST.json",
+  "time": "2026-10-29T02:31:22.645183+00:00"
+}

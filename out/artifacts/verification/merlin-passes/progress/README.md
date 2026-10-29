@@ -1,3 +1,38 @@
+# Current continuation — 2026-10-28 buffer merged; configuration active
+
+The current user request is to keep the three existing workers active until a
+NEW interruption, merge reviewed graph results into feat/pass-verification, and
+then advance to the next graph transformation. Numerical work remains deferred.
+
+Scoped ordered unrolling/1D segmentation is integrated and published at
+c3ad8e10f. Scoped original→normalized→reused→segmented private-buffer validation
+is now reviewed and integrated at **09fea17e6**. Primary integration passed
+84 focused SDK-free tests plus structure; all 191 source files and all five
+actual query/part/root bundles match the reviewed successor.
+
+The buffer relation preserves possible successful public/caller observations
+under typed inputs and total/private/unobservable allocation. Its full five-case
+qualification used the original 186-source fingerprint; the corrected 191-source
+baseline check and separate replay are additional evidence. Do not relabel the
+historical campaign. Finite-capacity/failure equivalence, native fidelity,
+compiler-wide coverage, actual-model coverage and independent human approval
+remain open. The separate one-call Context candidate is not integrated.
+
+Q now owns actual IR/gate integration for redundant persistent-configuration
+writes; W owns Lean checker/module soundness; F owns independent qualification.
+They continue in /home/jeremy/Projects/merlin-loop-verification, on the existing
+feat/loop-transform-verification branch. Root owns Git and final primary merge.
+The task scope is constant-field straight-line elimination, with explicit command
+and effect agreement; no barrier/loop/pipeline/numerical/hardware extension.
+
+The newest headers and released task records supersede historical stop, HELD,
+old numerical and buffer-pending text below. Preserve every failed attempt,
+frozen semantics/specification/lock, and counterexample. No all-graph claim.
+
+Start with [the reviewed buffer result and current task release](../loop-scope-20261028/COORDINATOR-REVIEW/BUFFER-README.md).
+
+---
+
 # Current graph-first progress — 2026-10-28
 
 The user has resumed continuous work until a NEW interruption; historical stop

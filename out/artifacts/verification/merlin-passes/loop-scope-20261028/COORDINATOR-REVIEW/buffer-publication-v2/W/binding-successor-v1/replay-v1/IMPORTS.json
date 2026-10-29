@@ -1,0 +1,590 @@
+{
+  "resolutions": [
+    {
+      "module": "merlin",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086"
+    },
+    {
+      "module": "merlin.verify",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/__init__.py",
+      "sha256": "ed2b23769b23d2a34b47f38b316aca76277193efbcbce589670188a5cceeffe4"
+    },
+    {
+      "module": "merlin.verify.buffer_reuse_intake",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/buffer_reuse_intake.py",
+      "sha256": "575842becf867163b3aacdadb55d4653c05b8f4aac3e0a77beede2098f060768"
+    },
+    {
+      "module": "merlin.verify.buffer_reuse_bridge",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/buffer_reuse_bridge.py",
+      "sha256": "aefc81d846c2a8cc19938a4e86a4794431c979586ebc92f3db786b4ca0f8953e"
+    },
+    {
+      "module": "merlin.verify.lean_graph_input_admission",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_input_admission.py",
+      "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_capture",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_capture.py",
+      "sha256": "94262c34876e169c17ab9b639941cd3423b44b110adf09aa763fc60cdae0a24f"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_capture",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_capture.py",
+      "sha256": "d4224363dec549cb6f5d2b6b4b13226ea65fe18c233496d08b1a7035cce2cb18"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_segment_capture",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_segment_capture.py",
+      "sha256": "9f521c43a379ca6cd5dc449fe689b1b86d4fd4a0449a5aa59631485a0f1081e8"
+    },
+    {
+      "module": "merlin.verify.buffer_reuse_emit",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/buffer_reuse_emit.py",
+      "sha256": "6c3a080f93d5e3d5fd06e0cac461dbf4c3c0eff0769ed07c2f24e88211dbcc64"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_entries",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "sha256": "d6b3d79ce6747842a9eb4e48fe8f2543283b02f543f0afe22124cdab01256620"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_entries_data",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+      "sha256": "e3bd007e4fe26eec0adb107d2fa84473a606ec211503f92b0e44dcc144d81fc8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_segment_projection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_segment_projection.py",
+      "sha256": "c522dcd9b440f5deb3d9147aeabb3fea36fd69d129bb60fc1533185cd33d1ae8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_types",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_types.py",
+      "sha256": "f596e44c9a933c08f99e1057d14f3b1a1b8e03684c1c1db6344aaa3f08bd60dc"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_entries_witness",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+      "sha256": "444c095ff96d0910204ec572075df371f534e66b93be09f8a7766c14bfff4caf"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_model",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_model.py",
+      "sha256": "24650e08cac546b7bd9ffaad2fdbf979d766728675a92f15fa129999087ff320"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_unroll",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_unroll.py",
+      "sha256": "9b2c91ae1897b6532339df519198d012c59c02071658a0d68d1038893862b4db"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops.py",
+      "sha256": "83700aa0044b5abf4166bbeecdbfe8a20ce72e3c563ce66f6558af00f7aed805"
+    },
+    {
+      "module": "merlin.sched",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/sched/__init__.py",
+      "sha256": "b84e4c42421f5277d338c12ae9726ba256befa5c1491d4928c2da994fc1ee7a0"
+    },
+    {
+      "module": "merlin.sched.ir",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/sched/ir/__init__.py",
+      "sha256": "7783c6bfc27bde3f32164ca70803d6d4d21dde9e812363da2c05693a46fedfd9"
+    },
+    {
+      "module": "merlin.sched.ir.expr",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/sched/ir/expr.py",
+      "sha256": "f33b1c6fb0dd389abb50bcaa2072b057f45bcba866ff1c015a9be8d36e212b12"
+    },
+    {
+      "module": "merlin.sched.ir.kernel",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/sched/ir/kernel.py",
+      "sha256": "89a52f2d9303cd0d2ce7d985e25ef765f1452aa82b135e1456acd7a28a28f94f"
+    },
+    {
+      "module": "merlin.sched.ir.parse",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/sched/ir/parse.py",
+      "sha256": "ae66843c9dcbde727eb113f541f9c9c3214ef01c4dc1f0ed8035e32bfae758a3"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_unroll_projection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_unroll_projection.py",
+      "sha256": "63cc9e95e23bcd97447dded8b04d0cf16c9b4ca26d75e9691a6b151a2fd0c994"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_whole",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+      "sha256": "90ab8e279a71538b8e70fb8f9e0c86f33f08fbed50f83592739a46ac6e842601"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_plan",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+      "sha256": "a6b746a365b9b2cb4da5b5335ddecc9b8e67a8a908dcacbc8723d71571d61ae5"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_expansion",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+      "sha256": "1d75d98ed6c47647a8adbb98f5197c5f75c36c8bf943b551d729ef0f21e3b1da"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+      "sha256": "d1a8dbab64ee787737647b9d6805bd104e82df401e05ca86b1ee7763beb1dc7e"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_projection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+      "sha256": "6744c38dd448be15a2e9e9b5d3cd52f8a42063ccf2f690fa1ab0fed395d97144"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_after_projection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+      "sha256": "d3a4fddf2cdb6ec1d2d1a63335eceab6a100aa7559f8fb685f283184b1b8c71f"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_projection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_projection.py",
+      "sha256": "e98a10afc170db23b378488450b874f6178bdaa6ce1f0115cb09a02d12e5414c"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_model",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+      "sha256": "e59eaa5bd18ec5be416255239185600b988c69d323d99f7e7a9320125084fc69"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_after_declarations",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+      "sha256": "5c0f5f88fd8c9d0f7214319147e7c732c7431dd6da1d7fc6c6b498fa96a3218c"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_after",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_after.py",
+      "sha256": "79048c93d3f036787b09c80bea6ae73067f2bb07632d1e131c46b64adb8603b3"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_after_model",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_after_model.py",
+      "sha256": "ed6b8187dbc9069386aa45d1d37e9594f41765e82f0b8c84287640f3f9342efd"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_after_epoch",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+      "sha256": "ac4f1f49156725a7b938a5654f35cd46a555fe490b820292db78144219078ca1"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_reuse_capture",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_reuse_capture.py",
+      "sha256": "7f25c31910f3da789cc72e1bacdb95a3d305290fceb64ced963a4377e2e5b821"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_observer",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+      "sha256": "93c61f2589f4551b635917db2ac80208892883803559948ed5836bde4729b21e"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_projection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+      "sha256": "0832d6a9c496b92e064949cd418b7b6746cd447ed3ef7b426c5b16f237a34e44"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_steps",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+      "sha256": "240d4e046e6d65fa699a864bc6b7422abec1ed24ad1b93b915b6ef2a8d00641c"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_plan",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+      "sha256": "50ea898e28ecb0a15d8f16562bda2341bf04b6680143393d8435c1d751edc730"
+    },
+    {
+      "module": "merlin.verify.lean_graph_pipeline_gate_projection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef"
+    },
+    {
+      "module": "merlin.verify.buffer_reuse_gate",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/buffer_reuse_gate.py",
+      "sha256": "14a14c3527f2f0b9a645b68f3f30a2aebc0631ecc1f045666162ba7249cbfa69"
+    },
+    {
+      "module": "merlin.common",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e"
+    },
+    {
+      "module": "merlin.common.owned_process",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/common/owned_process.py",
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch.py",
+      "sha256": "4669e2aba418732f1e8d00d159712ba12c2b5fab6dd807951e95c401dc150254"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf.py",
+      "sha256": "5a17f1932da0ddd1bbfe9be92a464ba7fd2dac849ad45878433a3c4241eb4da7"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_model",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+      "sha256": "f065b5d82adbaee702bedd60c08d165e0ca81eae030484d18806a971c9f32ae6"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_reuse",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_reuse.py",
+      "sha256": "86a62d587150a629978cad1774cff46e61df04419575af498f0f10bb8e97e832"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_reuse_projection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_reuse_projection.py",
+      "sha256": "fcf75ecc44039a2a5b6a8a69cff1b7a8a9a23ac449100fe21c88464a56266102"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_projection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+      "sha256": "3d522ee9d47732e009a9c0e46932e91bba2896b07fcdf4c40dc5d3806054e6b8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_selection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_selection.py",
+      "sha256": "2bde23365bf9a278c9b39bd7c7e84fad9b296119945337648a83d3a91c2a55a7"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_selection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_selection.py",
+      "sha256": "cf8569b4a7a05b44f32dbf9738cfb9eb5996a416aca4831fccaa23b0a5acf8a8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_selection",
+      "status": "selected",
+      "source": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_selection.py",
+      "sha256": "93b303bbaa02345c76bd0c11ba76966ed6fad6323cb5545b1165fa777d693603"
+    }
+  ],
+  "loaded": [
+    {
+      "module": "merlin",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086"
+    },
+    {
+      "module": "merlin.common",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e"
+    },
+    {
+      "module": "merlin.common.owned_process",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/common/owned_process.py",
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910"
+    },
+    {
+      "module": "merlin.sched",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/sched/__init__.py",
+      "sha256": "b84e4c42421f5277d338c12ae9726ba256befa5c1491d4928c2da994fc1ee7a0"
+    },
+    {
+      "module": "merlin.sched.ir",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/sched/ir/__init__.py",
+      "sha256": "7783c6bfc27bde3f32164ca70803d6d4d21dde9e812363da2c05693a46fedfd9"
+    },
+    {
+      "module": "merlin.sched.ir.expr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/sched/ir/expr.py",
+      "sha256": "f33b1c6fb0dd389abb50bcaa2072b057f45bcba866ff1c015a9be8d36e212b12"
+    },
+    {
+      "module": "merlin.sched.ir.kernel",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/sched/ir/kernel.py",
+      "sha256": "89a52f2d9303cd0d2ce7d985e25ef765f1452aa82b135e1456acd7a28a28f94f"
+    },
+    {
+      "module": "merlin.sched.ir.parse",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/sched/ir/parse.py",
+      "sha256": "ae66843c9dcbde727eb113f541f9c9c3214ef01c4dc1f0ed8035e32bfae758a3"
+    },
+    {
+      "module": "merlin.verify",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/__init__.py",
+      "sha256": "ed2b23769b23d2a34b47f38b316aca76277193efbcbce589670188a5cceeffe4"
+    },
+    {
+      "module": "merlin.verify.buffer_reuse_bridge",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/buffer_reuse_bridge.py",
+      "sha256": "aefc81d846c2a8cc19938a4e86a4794431c979586ebc92f3db786b4ca0f8953e"
+    },
+    {
+      "module": "merlin.verify.buffer_reuse_emit",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/buffer_reuse_emit.py",
+      "sha256": "6c3a080f93d5e3d5fd06e0cac461dbf4c3c0eff0769ed07c2f24e88211dbcc64"
+    },
+    {
+      "module": "merlin.verify.buffer_reuse_gate",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/buffer_reuse_gate.py",
+      "sha256": "14a14c3527f2f0b9a645b68f3f30a2aebc0631ecc1f045666162ba7249cbfa69"
+    },
+    {
+      "module": "merlin.verify.buffer_reuse_intake",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/buffer_reuse_intake.py",
+      "sha256": "575842becf867163b3aacdadb55d4653c05b8f4aac3e0a77beede2098f060768"
+    },
+    {
+      "module": "merlin.verify.lean_graph_input_admission",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_input_admission.py",
+      "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops.py",
+      "sha256": "83700aa0044b5abf4166bbeecdbfe8a20ce72e3c563ce66f6558af00f7aed805"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_capture",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_capture.py",
+      "sha256": "d4224363dec549cb6f5d2b6b4b13226ea65fe18c233496d08b1a7035cce2cb18"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf.py",
+      "sha256": "5a17f1932da0ddd1bbfe9be92a464ba7fd2dac849ad45878433a3c4241eb4da7"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+      "sha256": "d1a8dbab64ee787737647b9d6805bd104e82df401e05ca86b1ee7763beb1dc7e"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_entries",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "sha256": "d6b3d79ce6747842a9eb4e48fe8f2543283b02f543f0afe22124cdab01256620"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_entries_data",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+      "sha256": "e3bd007e4fe26eec0adb107d2fa84473a606ec211503f92b0e44dcc144d81fc8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_entries_witness",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+      "sha256": "444c095ff96d0910204ec572075df371f534e66b93be09f8a7766c14bfff4caf"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_expansion",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+      "sha256": "1d75d98ed6c47647a8adbb98f5197c5f75c36c8bf943b551d729ef0f21e3b1da"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_plan",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+      "sha256": "a6b746a365b9b2cb4da5b5335ddecc9b8e67a8a908dcacbc8723d71571d61ae5"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_projection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+      "sha256": "6744c38dd448be15a2e9e9b5d3cd52f8a42063ccf2f690fa1ab0fed395d97144"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_after_whole",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+      "sha256": "90ab8e279a71538b8e70fb8f9e0c86f33f08fbed50f83592739a46ac6e842601"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_model",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+      "sha256": "f065b5d82adbaee702bedd60c08d165e0ca81eae030484d18806a971c9f32ae6"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_projection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+      "sha256": "3d522ee9d47732e009a9c0e46932e91bba2896b07fcdf4c40dc5d3806054e6b8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_memory_scf_selection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_memory_scf_selection.py",
+      "sha256": "cf8569b4a7a05b44f32dbf9738cfb9eb5996a416aca4831fccaa23b0a5acf8a8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_reuse",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_reuse.py",
+      "sha256": "86a62d587150a629978cad1774cff46e61df04419575af498f0f10bb8e97e832"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_reuse_capture",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_reuse_capture.py",
+      "sha256": "7f25c31910f3da789cc72e1bacdb95a3d305290fceb64ced963a4377e2e5b821"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_reuse_projection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_reuse_projection.py",
+      "sha256": "fcf75ecc44039a2a5b6a8a69cff1b7a8a9a23ac449100fe21c88464a56266102"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_segment_capture",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_segment_capture.py",
+      "sha256": "9f521c43a379ca6cd5dc449fe689b1b86d4fd4a0449a5aa59631485a0f1081e8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_segment_projection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_segment_projection.py",
+      "sha256": "c522dcd9b440f5deb3d9147aeabb3fea36fd69d129bb60fc1533185cd33d1ae8"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_after",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_after.py",
+      "sha256": "79048c93d3f036787b09c80bea6ae73067f2bb07632d1e131c46b64adb8603b3"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_after_declarations",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+      "sha256": "5c0f5f88fd8c9d0f7214319147e7c732c7431dd6da1d7fc6c6b498fa96a3218c"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_after_epoch",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+      "sha256": "ac4f1f49156725a7b938a5654f35cd46a555fe490b820292db78144219078ca1"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_after_model",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_after_model.py",
+      "sha256": "ed6b8187dbc9069386aa45d1d37e9594f41765e82f0b8c84287640f3f9342efd"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_after_projection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+      "sha256": "d3a4fddf2cdb6ec1d2d1a63335eceab6a100aa7559f8fb685f283184b1b8c71f"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_capture",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_capture.py",
+      "sha256": "94262c34876e169c17ab9b639941cd3423b44b110adf09aa763fc60cdae0a24f"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch.py",
+      "sha256": "4669e2aba418732f1e8d00d159712ba12c2b5fab6dd807951e95c401dc150254"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_model",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+      "sha256": "e59eaa5bd18ec5be416255239185600b988c69d323d99f7e7a9320125084fc69"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_observer",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+      "sha256": "93c61f2589f4551b635917db2ac80208892883803559948ed5836bde4729b21e"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_plan",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+      "sha256": "50ea898e28ecb0a15d8f16562bda2341bf04b6680143393d8435c1d751edc730"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_projection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+      "sha256": "0832d6a9c496b92e064949cd418b7b6746cd447ed3ef7b426c5b16f237a34e44"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_selection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_selection.py",
+      "sha256": "2bde23365bf9a278c9b39bd7c7e84fad9b296119945337648a83d3a91c2a55a7"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_epoch_steps",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+      "sha256": "240d4e046e6d65fa699a864bc6b7422abec1ed24ad1b93b915b6ef2a8d00641c"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_model",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_model.py",
+      "sha256": "24650e08cac546b7bd9ffaad2fdbf979d766728675a92f15fa129999087ff320"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_projection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_projection.py",
+      "sha256": "e98a10afc170db23b378488450b874f6178bdaa6ce1f0115cb09a02d12e5414c"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_selection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_selection.py",
+      "sha256": "93b303bbaa02345c76bd0c11ba76966ed6fad6323cb5545b1165fa777d693603"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_shape_types",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_shape_types.py",
+      "sha256": "f596e44c9a933c08f99e1057d14f3b1a1b8e03684c1c1db6344aaa3f08bd60dc"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_unroll",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_unroll.py",
+      "sha256": "9b2c91ae1897b6532339df519198d012c59c02071658a0d68d1038893862b4db"
+    },
+    {
+      "module": "merlin.verify.lean_graph_loops_unroll_projection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_loops_unroll_projection.py",
+      "sha256": "63cc9e95e23bcd97447dded8b04d0cf16c9b4ca26d75e9691a6b151a2fd0c994"
+    },
+    {
+      "module": "merlin.verify.lean_graph_pipeline_gate_projection",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/buffer-binding-successor-v1/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef"
+    }
+  ],
+  "fallback_permitted": false
+}

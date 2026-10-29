@@ -3,6 +3,7 @@ Extra target registers are unrestricted. Both directions preserve partial reads,
 actual coordinates, physical slots and the complete caller/allocator world.
 -/
 import Merlin.GraphLoopsMemorySCFAfterMemorySteps
+import Merlin.GraphLoopsShapeEpochCallers
 
 set_option autoImplicit false
 
@@ -36,7 +37,7 @@ theorem scoped_load_iff {Value User : Type} (objects : GraphLoopsReuse.Objects)
     (bufferBound : access.buffer ∈ context) (indicesBound : AllBound context access.indices)
     (indexKinds : ∀ binding ∈ access.indices, binding.kind = .index)
     (fresh : result.name ∉ names context)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (load : meaning.action operation = Load)
     (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
     (pinned : before.observed.registers access.buffer.name = Epoch.view access.object access.shape access.element)
@@ -90,7 +91,7 @@ theorem scoped_store_iff {Value User : Type} (objects : GraphLoopsReuse.Objects)
     (bufferBound : access.buffer ∈ context) (operandBound : operand ∈ context)
     (indicesBound : AllBound context access.indices)
     (indexKinds : ∀ binding ∈ access.indices, binding.kind = .index)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (store : meaning.action operation = Store)
     (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
     (pinned : before.observed.registers access.buffer.name = Epoch.view access.object access.shape access.element)

@@ -25,7 +25,10 @@ def literal_witnesses(source, bits):
             continue
         element = _string(input_value["kind"]["type"])
         name, literal_key, binary_key = "entry" + str(number), _string(code["key"]), _string(binary["key"])
-        meaning = f"(entryMeaning (User := Unit) {bits} indices plan.opcodes (fun _ _ _ _ => True) literals (fun _ _ => True))"
+        meaning = (
+            f"(entryMeaning (Value := Unit) (User := Unit) {bits} indices plan.opcodes "
+            "(fun _ _ _ _ => True) literals (fun _ _ => True))"
+        )
         texts.append(f"""
 theorem {name}_literal_selection :
     (withCalls {meaning} independentSource

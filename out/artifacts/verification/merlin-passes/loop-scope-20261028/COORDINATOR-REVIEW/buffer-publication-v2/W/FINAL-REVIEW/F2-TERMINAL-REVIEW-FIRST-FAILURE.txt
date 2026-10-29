@@ -1,0 +1,1 @@
+Read-only review script first assertion expected substring 'by decide'; actual valid theorem uses simp followed by line14 'all_goals decide'. No native launch/failure. Raw Lean diagnostic already exactmatched. Corrected source-line assertion only.

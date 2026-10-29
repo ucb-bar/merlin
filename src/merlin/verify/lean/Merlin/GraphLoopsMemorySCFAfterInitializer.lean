@@ -34,18 +34,18 @@ def TiledInitializer.code (program : TiledInitializer) : Code :=
 
 /-- An actual index operation performs one ordinary typed SSA assignment and
 frames the entire world. This is a per-instruction lemma, not whole-loop equality. -/
-theorem eval_index_action {Value World : Type} (meaning : Interpretation Value World)
+theorem eval_index_action {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World)
     (bits : Nat) (opcode : IndexOpcode) (key : String)
     (selected : meaning.action key = IndexAction bits opcode)
     (left right result : Binding) (kind : result.kind = .index) (plain : result.known = none)
-    (aliases : Aliases) (rest : Code) (env : Env Value) (a b : Nat)
+    (aliases : Aliases) (rest : Code) (env : GraphLoopsShape.Env Value) (a b : Nat)
     (leftValue : env left.name = .index a) (rightValue : env right.name = .index b)
     (leftFits : GraphLoopsSegment.FitsSigned bits a) (rightFits : GraphLoopsSegment.FitsSigned bits b)
     (resultFits : GraphLoopsSegment.FitsSigned bits (opcode.apply a b))
     (before : World) (outputs : List (Runtime Value)) (after : World) :
     Eval meaning false aliases (.action key [left, right] [result] rest) env before outputs after ↔
       Eval meaning false (extendAliases aliases [result]) rest
-        (put env result.name (.index (opcode.apply a b))) before outputs after := by
+        (GraphLoopsShape.put env result.name (.index (opcode.apply a b))) before outputs after := by
   have inputs : readArguments false aliases env [left, right] = [.index a, .index b] := by
     simp only [readArguments, List.map_cons, List.map_nil, Bool.false_eq_true, ↓reduceIte, leftValue, rightValue]
   have typed := Epoch.index_parameter (Value := Value) result (opcode.apply a b) kind plain
@@ -53,29 +53,29 @@ theorem eval_index_action {Value World : Type} (meaning : Interpretation Value W
   constructor
   · rintro ⟨values, middle, action, _, suffix⟩
     obtain ⟨_, _, _, rfl, rfl⟩ := action
-    simpa only [assign] using suffix
+    simpa only [GraphLoopsShape.assign] using suffix
   · intro suffix
     refine ⟨[.index (opcode.apply a b)], before, ⟨leftFits, rightFits, resultFits, rfl, rfl⟩, typed, ?_⟩
-    simpa only [assign] using suffix
+    simpa only [GraphLoopsShape.assign] using suffix
 
 /-- The two ordinary instructions compute the actual dynamic inner upper
 bound in the scoped environment. The entire remaining inner loop stays in the
 conclusion; neither its effects nor its heap are replaced by an equality premise. -/
 theorem TiledInitializer.control_prefix {Value World : Type} (program : TiledInitializer)
-    (meaning : Interpretation Value World) (bounds : GraphLoopsSegment.Bounds) (valid : bounds.Valid)
+    (meaning : GraphLoopsShape.Interpretation Value World) (bounds : GraphLoopsSegment.Bounds) (valid : bounds.Valid)
     (add : meaning.action program.addKey = IndexAction bounds.bits .add)
     (minimum : meaning.action program.minKey = IndexAction bounds.bits .minimum)
     (sumKind : program.sum.kind = .index) (sumPlain : program.sum.known = none)
     (boundKind : program.bound.kind = .index) (boundPlain : program.bound.known = none)
     (rowsFresh : program.uniform.rows.name ≠ program.sum.name)
-    (aliases : Aliases) (env : Env Value) (outer : Nat) (live : outer < bounds.upper)
+    (aliases : Aliases) (env : GraphLoopsShape.Env Value) (outer : Nat) (live : outer < bounds.upper)
     (outerValue : env program.tileIV.name = .index outer)
     (tileValue : env program.tile.name = .index (bounds.step * bounds.tile))
     (rowsValue : env program.uniform.rows.name = .index bounds.upper)
     (before : World) (outputs : List (Runtime Value)) (after : World) :
     Eval meaning false aliases program.body env before outputs after ↔
       Eval meaning false (extendAliases (extendAliases aliases [program.sum]) [program.bound]) program.inner
-        (put (put env program.sum.name (.index (outer + bounds.step * bounds.tile))) program.bound.name
+        (GraphLoopsShape.put (GraphLoopsShape.put env program.sum.name (.index (outer + bounds.step * bounds.tile))) program.bound.name
           (.index (min (outer + bounds.step * bounds.tile) bounds.upper))) before outputs after := by
   have constants := GraphLoopsSegment.Bounds.constants valid
   have controls := GraphLoopsSegment.Bounds.outer_control valid live
@@ -83,10 +83,10 @@ theorem TiledInitializer.control_prefix {Value World : Type} (program : TiledIni
   rw [eval_index_action meaning bounds.bits .add program.addKey add program.tileIV program.tile program.sum
     sumKind sumPlain aliases _ env outer (bounds.step * bounds.tile) outerValue tileValue
     controls.1 constants.2.2.2 controls.2.1]
-  have sumValue : put env program.sum.name (.index (outer + bounds.step * bounds.tile)) program.sum.name =
-      .index (outer + bounds.step * bounds.tile) := by simp only [put, ↓reduceIte]
-  have upperValue : put env program.sum.name (.index (outer + bounds.step * bounds.tile)) program.uniform.rows.name =
-      .index bounds.upper := by simp only [put, rowsFresh, ↓reduceIte, rowsValue]
+  have sumValue : GraphLoopsShape.put env program.sum.name (.index (outer + bounds.step * bounds.tile)) program.sum.name =
+      .index (outer + bounds.step * bounds.tile) := by simp only [GraphLoopsShape.put, ↓reduceIte]
+  have upperValue : GraphLoopsShape.put env program.sum.name (.index (outer + bounds.step * bounds.tile)) program.uniform.rows.name =
+      .index bounds.upper := by simp only [GraphLoopsShape.put, rowsFresh, ↓reduceIte, rowsValue]
   exact eval_index_action meaning bounds.bits .minimum program.minKey minimum program.sum program.uniform.rows program.bound
     boundKind boundPlain _ program.inner _ (outer + bounds.step * bounds.tile) bounds.upper sumValue upperValue
     controls.2.1 constants.2.1 controls.2.2 before outputs after
