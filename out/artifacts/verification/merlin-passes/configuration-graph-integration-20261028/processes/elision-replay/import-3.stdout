@@ -1,0 +1,2 @@
+'Merlin.GraphState.Configuration.check_sound' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.Configuration.hoist_nonempty' depends on axioms: [propext, Quot.sound]

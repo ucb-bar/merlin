@@ -1,0 +1,25 @@
+{
+  "status": "F_independent_actual_witness_source_log_type_review_passed",
+  "roots": 124,
+  "theorems": 345,
+  "std3": true,
+  "query_witness_source_bytes_exact": true,
+  "printed_types_exact": 117,
+  "other_7_types": "only consistent compiler-generated local binder path labels; raw differences retained",
+  "type_diff_roots": [
+    "ActualConfigurationHoistWitness.pair_model",
+    "ActualConfigurationHoistWitness.work_model",
+    "Merlin.GraphState.Configuration.PartialHoist.assign_fixed_after",
+    "Merlin.GraphState.Configuration.PartialHoist.hoist_nonempty_partial",
+    "Merlin.GraphState.Configuration.PartialHoist.remove_fixed_setups",
+    "Merlin.GraphState.Configuration.PartialHoist.valid_write_fields",
+    "Merlin.GraphState.Elision.assign_as_put"
+  ],
+  "type_diff": "F-WITNESS-TYPE-DIFF-v1.json",
+  "selected_F_project_import_paths": true,
+  "no_W_objects": true,
+  "source_execution_or_whole_run_equality_assumed": false,
+  "SDK_or_object_contents_read": false,
+  "new_native_launch": false,
+  "hardware_native_human_approval": false
+}

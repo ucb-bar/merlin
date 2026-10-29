@@ -1,0 +1,6 @@
+{
+  "status": "FINISH_CURRENT_HOIST_THEN_HANDOFF_AND_STOP",
+  "user_instruction": "when the agents are done with the loop-invariant configuration hoisting let me know and stop the agents",
+  "new_passes_authorized": false,
+  "time": "2026-10-29T04:13:01.968439+00:00"
+}

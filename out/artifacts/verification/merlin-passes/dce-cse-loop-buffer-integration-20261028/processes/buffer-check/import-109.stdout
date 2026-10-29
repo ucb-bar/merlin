@@ -1,0 +1,12 @@
+/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean:67:5: warning: Variable name `literalSource` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _literalSource
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean:67:58: warning: Variable name `literalFinal` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _literalFinal
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`

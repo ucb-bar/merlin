@@ -1,0 +1,313 @@
+{
+  "schema": "merlin.hoist.F-final.v1",
+  "status": "SCOPED_Q5_F1_HOIST_ENGINEERING_QUALIFICATION_COMPLETE",
+  "workspace": "/home/jeremy/Projects/merlin-loop-verification",
+  "branch_recorded": "feat/loop-transform-verification",
+  "last_observed_HEAD": "2fcdae7b3ab42280716bf6b0e79d7057c748f036",
+  "HEAD_not_requeried_under_no_Git_instruction": true,
+  "Q_cut": "v5",
+  "Q_manifest": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/source-cut-v5/MANIFEST.json",
+    "sha256": "0c5e3ac64e7fbdedff50fa526cf3b6f9fae6e149c6fdcaff3213b72327c82aab",
+    "bytes": 38842
+  },
+  "F_cut": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/qualification-source-cut-v1/SOURCES.json",
+    "sha256": "f135ae7b272f4dc0113ba6b6f61a47a31e2527b98556838879c57a35306a614e",
+    "bytes": 3676
+  },
+  "campaign": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/qualification-v1/RESULT.json",
+    "sha256": "f01658b1361a642ee9613c8ebc241705f89d369d1fd137d505b14a33adee687a",
+    "bytes": 454
+  },
+  "positive_reports": [
+    {
+      "name": "baseline_extent3",
+      "status": "checked",
+      "reason": "complete conditional hoist Kernel obligation and std3/root audit checked",
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/baseline_extent3/source.mk",
+          "sha256": "0266a1d9d2b679920b47f97885c23e8bc5d5993f5ead955221cdf67942d27213",
+          "bytes": 239
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/baseline_extent3/final.mk",
+          "sha256": "fc1a887a63148fa8659223b552e50e0dc588b596f10543fcb343838808f08bf9",
+          "bytes": 237
+        }
+      ],
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/baseline_extent3/REPORT.json",
+        "sha256": "b53bfc8081fecaef611df19bc52fdb672862f30aa112426eb79470d8ce4b9b86",
+        "bytes": 293598
+      },
+      "exact_consumer": true,
+      "roots": 15,
+      "theorems": 315
+    },
+    {
+      "name": "extent1",
+      "status": "checked",
+      "reason": "complete conditional hoist Kernel obligation and std3/root audit checked",
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/extent1/source.mk",
+          "sha256": "3a84d6239abfb24475f55fd0b4a6b7afc25be8d2627b6708389ff7f9b477f9e2",
+          "bytes": 212
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/extent1/final.mk",
+          "sha256": "02cd1d2ff5a738685bdfe63a3b5097c87d6268a4635b2750780d613b8b16feff",
+          "bytes": 210
+        }
+      ],
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/extent1/REPORT.json",
+        "sha256": "42b12746707e23ad895cb3b2b86bbba4d6dc9d38c7c80bd8e4e9721412b2ebab",
+        "bytes": 292823
+      },
+      "exact_consumer": true,
+      "roots": 15,
+      "theorems": 315
+    },
+    {
+      "name": "extent7",
+      "status": "checked",
+      "reason": "complete conditional hoist Kernel obligation and std3/root audit checked",
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/extent7/source.mk",
+          "sha256": "08dbed630dbec7c5feb6420ca5bc7169cf20a2957b595bad0a1bb6ce517eb974",
+          "bytes": 239
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/extent7/final.mk",
+          "sha256": "b1b328308768b0a1e99eb68cbcb00052ca1610d5d6c3982304ba9a2daf6a6e96",
+          "bytes": 237
+        }
+      ],
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/extent7/REPORT.json",
+        "sha256": "bfb5fd04aacfdb429473b7e721320c490a4844e1831e1bf8159e0c3eb771d21b",
+        "bytes": 292824
+      },
+      "exact_consumer": true,
+      "roots": 15,
+      "theorems": 315
+    },
+    {
+      "name": "ordered_surroundings",
+      "status": "checked",
+      "reason": "complete conditional hoist Kernel obligation and std3/root audit checked",
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/ordered_surroundings/source.mk",
+          "sha256": "7d68f989a5ae51f5524c60c8372e56d3bb7e3d618be5b0153667a6af415b9535",
+          "bytes": 236
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/ordered_surroundings/final.mk",
+          "sha256": "2c3787ea04c80f148260b67ce3e5f38654d284aa5ab1a8dbc0db632912313c8f",
+          "bytes": 234
+        }
+      ],
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/ordered_surroundings/REPORT.json",
+        "sha256": "9e6a6fee71e831eab7920727cc671bcf2cf9fd83b7ddd29b44172a60a85a54c0",
+        "bytes": 293942
+      },
+      "exact_consumer": true,
+      "roots": 15,
+      "theorems": 315
+    },
+    {
+      "name": "disjoint_body_write",
+      "status": "checked",
+      "reason": "complete conditional hoist Kernel obligation and std3/root audit checked",
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/disjoint_body_write/source.mk",
+          "sha256": "890e95725e3885c5705ea5c29c31b6d1bd5a27507c20d0358a99c59a3d40ea35",
+          "bytes": 265
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/disjoint_body_write/final.mk",
+          "sha256": "ce3c8243a52d9758c8e73356ed6bb34225d85ab4c187bdc7e847d6bf2cef4445",
+          "bytes": 263
+        }
+      ],
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/disjoint_body_write/REPORT.json",
+        "sha256": "97f3d67ac73b79b38edf0a0c765b0ba8a8fa4e20d1ebe72b5ec3fe4847b18346",
+        "bytes": 293856
+      },
+      "exact_consumer": true,
+      "roots": 15,
+      "theorems": 315
+    },
+    {
+      "name": "disjoint_body_clobber",
+      "status": "checked",
+      "reason": "complete conditional hoist Kernel obligation and std3/root audit checked",
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/disjoint_body_clobber/source.mk",
+          "sha256": "774a168c3197284f1d6105d1c050f2dc9aa3a07137d80f643a994f1e8a125913",
+          "bytes": 267
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/disjoint_body_clobber/final.mk",
+          "sha256": "aed606e80e5238049aaf6f8436ed0b4f5d07257e89913fc6d3cab6de80cede4f",
+          "bytes": 265
+        }
+      ],
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/disjoint_body_clobber/REPORT.json",
+        "sha256": "1b092cc0f601be8310c035a739a4be320f9c495a63343a7d15c6938b358245b1",
+        "bytes": 294028
+      },
+      "exact_consumer": true,
+      "roots": 15,
+      "theorems": 315
+    },
+    {
+      "name": "unsigned64_body_value",
+      "status": "checked",
+      "reason": "complete conditional hoist Kernel obligation and std3/root audit checked",
+      "originals": [
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/unsigned64_body_value/source.mk",
+          "sha256": "4e872a49cdde718c7aca63f5813dfe8f79950ade7743fd8d4f5e3bbcb39efc9a",
+          "bytes": 284
+        },
+        {
+          "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1/unsigned64_body_value/final.mk",
+          "sha256": "b8abf7df202cf8434db81ca95694af150198f204226ec63b2eb6a3cf33192715",
+          "bytes": 282
+        }
+      ],
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/unsigned64_body_value/REPORT.json",
+        "sha256": "0b5b8e760de4a2439020a16427e4423598d9b2bb437ed5db15ff680980238efe",
+        "bytes": 294028
+      },
+      "exact_consumer": true,
+      "roots": 15,
+      "theorems": 315
+    }
+  ],
+  "fresh_process_replay": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/qualification-v1/fresh-replay/RESULT.json",
+    "sha256": "e6b5445b14a2d31b505b06b3c29f820e8afe60d3c401f995bd824d0ac6733e9c",
+    "bytes": 388
+  },
+  "witness": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/witness-binding-v1/RESULT.json",
+    "sha256": "42d35e15f7d71c1ac9ce8b9d71ca38c38abd2fb8da284d96cb77a0354f1e1433",
+    "bytes": 189421
+  },
+  "final_checks": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/final-checks-v1/RESULT.json",
+    "sha256": "5d4bfd026501047b0dcf79bb147457f3b38a9d4fa88b24adfa45264994a11be8",
+    "bytes": 236
+  },
+  "counts": {
+    "supported_changed_pairs": 7,
+    "explicit_unsupported_boundaries": 9,
+    "valid_Lean_refusal_pairs": 15,
+    "valid_token_scope_host_refusal_pairs": 1,
+    "forged_candidate_refusals_before_native": 16,
+    "genuine_live_artifact_controls": 12,
+    "constructed_copied_saved_tokens_refused": 5,
+    "independently_rebuilt_witness_roots": 124,
+    "witness_transitive_theorems_std3": 345
+  },
+  "source_delivery": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/source-delivery-v2/SOURCES.json",
+    "sha256": "6b3128556131c9f8c7e71a366ba3102ddd896beae6f3166020cca5cd783fd1eb",
+    "bytes": 92501
+  },
+  "owned_source_files": 13,
+  "owned_patch": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/source-delivery-v2/owned.patch",
+    "sha256": "4955b2182aaf79838ac45adec2d1227fedc594f02bb64415db4476676d2b31eb",
+    "bytes": 60003
+  },
+  "producer_revision": "e0484f4886ae0780d0325cdfa998842b61bb647c",
+  "producer_manifest": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/PRODUCER-SOURCE-MANIFEST-e0484f488.json",
+    "sha256": "bb35450b5374e4fea125d0f766588830eea7a771131de7d1e961d5a4a4ea2626",
+    "bytes": 528280
+  },
+  "theorem": "ActualConfigurationHoist.complete_kernel",
+  "support_theorems": [
+    "Merlin.GraphState.Configuration.PartialHoist.check_sound",
+    "ActualConfigurationHoist.complete_observation",
+    "ActualConfigurationHoist.surrounding_context"
+  ],
+  "relation": "equal complete modeled success or same first error and complete terminal state, at arbitrary initial state",
+  "premises": [
+    "trusted full Kernel parser/typed dataclass projection and original schema/codec",
+    "exact nonaliasing configuration/world cell interpretation",
+    "total exact pure setter with no other failure/observation/effect",
+    "one common indexed partial retained-call meaning obeying declared ordered effects/frame",
+    "all relevant caller/return/memory/error/observer state represented; no native fidelity claim"
+  ],
+  "source_success_premise": false,
+  "whole_run_equality_premise": false,
+  "trusted_Python_IR_projection": true,
+  "human_effect_policy_approved": false,
+  "native_hardware_numeric_fidelity": false,
+  "production_enforcement": false,
+  "adjacent_pass_composition": "requires an explicit common indexed interpretation and compatible state/field map; not discharged by these receipts",
+  "tools": {
+    "Lean": {
+      "bytes": 9024,
+      "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38"
+    },
+    "selected_Lean_version": "repository-pinned4.35.0",
+    "Python": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]",
+    "Python_executable": "/home/jeremy/Projects/merlin/.venv/bin/python",
+    "source_format": "Merlin Kernel .mk; original pinned parser and check_structure, not MLIR/LLVM"
+  },
+  "preserved_findings": {
+    "valid_loop_token_counterpair": "token-control-v1/RESULT.json",
+    "zero_trip_model_counterexample": "invalid-controls-v1/ZERO-MODEL-COUNTEREXAMPLE.json",
+    "pre_native_stale_cut3_snapshots": "canonical-preflight-v1/FIRST-SOURCE-FAILURE.json",
+    "caller_selected_proof_root": "../Q/source-root-finding-v1",
+    "packaging_v1_schema_error": "source-delivery-v1/FIRST-PACKAGING-FAILURE.json"
+  },
+  "jobs": [
+    {
+      "owned_session": 27704,
+      "kind": "full qualification plus fresh replay",
+      "terminal_rc": 0,
+      "reaped": true
+    },
+    {
+      "owned_session": 90368,
+      "kind": "F-only witness compile and audit",
+      "terminal_rc": 0,
+      "reaped": true
+    },
+    {
+      "owned_session": 81434,
+      "kind": "source tests/lint/structure",
+      "terminal_rc": 0,
+      "reaped": true
+    }
+  ],
+  "live_owned_jobs": false,
+  "next_action": "Root reviews/publishes exact cut; F stops after this scoped task per user direction.",
+  "human_review": "independent effect/primitive/codec review remains open; root source intake reviewed",
+  "handoff": "handoff/README.md",
+  "paper_evidence": "paper-evidence/README.md",
+  "current_state": "DONE_STOPPED_AFTER_CURRENT_TASK_BY_USER",
+  "root_review_record": "../COORDINATOR/FINAL-CUT5-REVIEW.json",
+  "source_manifest_members": 114,
+  "source_code_files": 109,
+  "third_party_interpreter_loader_transport": "explicit host trust, not a formally verified dependency closure"
+}

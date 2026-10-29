@@ -1,0 +1,8 @@
+{
+  "status": "checked",
+  "reason": "complete actual4 possible-success query and audit checked",
+  "sources": 192,
+  "fresh_build": true,
+  "new_host_qualification": false,
+  "report": "/home/jeremy/Projects/merlin-dce-cse-integration/out/build/dce-cse-loop-buffer-integration-20261028/buffer-replay/REPORT.json"
+}

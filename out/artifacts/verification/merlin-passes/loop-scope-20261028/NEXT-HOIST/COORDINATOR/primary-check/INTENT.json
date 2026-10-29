@@ -1,0 +1,40 @@
+{
+  "schema": "merlin.configuration-hoist.candidate.v1",
+  "identity": "2799cbe840241d6b62c24baf29d3d6ecd67ba243acd00681b467a19f26b1878a",
+  "source_sha256": "0266a1d9d2b679920b47f97885c23e8bc5d5993f5ead955221cdf67942d27213",
+  "final_sha256": "fc1a887a63148fa8659223b552e50e0dc588b596f10543fcb343838808f08bf9",
+  "query_sha256": "19392427c2a2917fc51e79da9877d2441229b0f0b9cdbe0f64bc74c12da5c62a",
+  "module": "ActualConfigurationHoist",
+  "final_root": "ActualConfigurationHoist.complete_kernel",
+  "roots": [
+    "Merlin.GraphState.Configuration.PartialHoist.assign_fixed_after",
+    "Merlin.GraphState.Configuration.PartialHoist.remove_fixed_setups",
+    "Merlin.GraphState.Configuration.PartialHoist.hoist_nonempty_partial",
+    "Merlin.GraphState.Configuration.PartialHoist.safeBody_frame",
+    "Merlin.GraphState.Configuration.PartialHoist.loop_setup",
+    "Merlin.GraphState.Configuration.PartialHoist.execute_append",
+    "Merlin.GraphState.Configuration.PartialHoist.valid_write_fields",
+    "Merlin.GraphState.Configuration.PartialHoist.ready_loop",
+    "Merlin.GraphState.Configuration.PartialHoist.check_sound",
+    "Merlin.GraphState.Configuration.PartialHoist.checked_observation",
+    "Merlin.GraphState.Configuration.PartialHoist.context_preserved",
+    "ActualConfigurationHoist.accepted",
+    "ActualConfigurationHoist.complete_observation",
+    "ActualConfigurationHoist.surrounding_context",
+    "ActualConfigurationHoist.complete_kernel"
+  ],
+  "domain": "one-positive-counted-loop-constant-pure-prefix-empty-completion-v1",
+  "relation": "equal_conditional_complete_kernel_error_terminal_state_hoist",
+  "proof_stage": "canonical",
+  "kernel_outcome": "UNOBSERVED",
+  "authority": false,
+  "ISA_effect_hardware_approved": false,
+  "production_enforcement": false,
+  "premises": [
+    "trusted full Kernel parser/typed dataclass projection and original schema/codec",
+    "exact nonaliasing configuration/world cell interpretation",
+    "total exact pure setter with no other failure/observation/effect",
+    "one common indexed partial retained-call meaning obeying declared ordered effects/frame",
+    "all relevant caller/return/memory/error/observer state represented; no native fidelity claim"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "status": "REVIEWED_EXACT_THREEFILE_WORKER_CANONICAL_INTAKE",
+  "files": [
+    {
+      "source": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/sources/Merlin/GraphStateConfigurationPartialHoist.lean",
+      "target": "src/merlin/verify/lean/Merlin/GraphStateConfigurationPartialHoist.lean",
+      "bytes": 3956,
+      "sha256": "f6794a9c8c1b710071772dfdea7b9a9dc02ac1fbaeb21937fdcdfb9c63427dbd"
+    },
+    {
+      "source": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/sources/Merlin/GraphStateConfigurationHoistModel.lean",
+      "target": "src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistModel.lean",
+      "bytes": 5711,
+      "sha256": "35b510c6d60fa3294f0a4f858b13e476b49341b10873cfbc83226eb9552ca0a3"
+    },
+    {
+      "source": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/sources/Merlin/GraphStateConfigurationHoistChecker.lean",
+      "target": "src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistChecker.lean",
+      "bytes": 8433,
+      "sha256": "a0697593e535a7c506a7469145b996d9ae2ff5c911d370937208459205cca593"
+    }
+  ],
+  "semantic_review": "Generic partial repeat/short-circuit proof, fixedness derived only after successful body frames; exact total pure setter plus disjoint written/clobbered fields; positive loop and explicit empty completion lists, identical atom/frame data, stable source IDs/complete command templates; arbitrary errors/terminal state, surrounding partial context and observers preserved. No source-success or run-equality premise, no native/ISA/decoder/human agreement proved.",
+  "audits": {
+    "generic": [
+      92,
+      311
+    ],
+    "actual": [
+      100,
+      315
+    ],
+    "witness": [
+      124,
+      345
+    ],
+    "std3_violations": 0
+  },
+  "primary_source_edited": false,
+  "full_gate_qualification_pending": true,
+  "time": "2026-10-29T03:44:48.744220+00:00"
+}

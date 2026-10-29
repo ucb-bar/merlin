@@ -1,0 +1,43 @@
+{
+  "status": "phase1_compiled_audited_source_candidates_for_root_review",
+  "files": [
+    {
+      "source": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/sources/Merlin/GraphStateConfigurationPartialHoist.lean",
+      "target": "src/merlin/verify/lean/Merlin/GraphStateConfigurationPartialHoist.lean",
+      "bytes": 3956,
+      "sha256": "f6794a9c8c1b710071772dfdea7b9a9dc02ac1fbaeb21937fdcdfb9c63427dbd"
+    },
+    {
+      "source": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/sources/Merlin/GraphStateConfigurationHoistModel.lean",
+      "target": "src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistModel.lean",
+      "bytes": 5711,
+      "sha256": "35b510c6d60fa3294f0a4f858b13e476b49341b10873cfbc83226eb9552ca0a3"
+    },
+    {
+      "source": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/sources/Merlin/GraphStateConfigurationHoistChecker.lean",
+      "target": "src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistChecker.lean",
+      "bytes": 8433,
+      "sha256": "a0697593e535a7c506a7469145b996d9ae2ff5c911d370937208459205cca593"
+    }
+  ],
+  "generic_audit": {
+    "path": "checker-audit-v1",
+    "roots": 92,
+    "theorems": 311,
+    "std3": true
+  },
+  "actual_audit": {
+    "path": "actual-query-audit-v1",
+    "roots": 100,
+    "theorems": 315,
+    "std3": true
+  },
+  "witness_audit": {
+    "path": "actual-witness-audit-v1",
+    "roots": 124,
+    "theorems": 345,
+    "std3": true
+  },
+  "canonical_edited": false,
+  "qualification_or_native_hardware_human_approval": false
+}

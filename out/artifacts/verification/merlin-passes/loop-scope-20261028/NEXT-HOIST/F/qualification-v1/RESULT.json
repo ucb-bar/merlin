@@ -1,0 +1,18 @@
+{
+  "status": "HOIST_ENGINEERING_BATCH_PASSED",
+  "supported_changed_pairs": 7,
+  "unsupported_boundaries": 9,
+  "valid_negative_pairs": 16,
+  "native_refusals": 15,
+  "host_refusals": 1,
+  "controls": {
+    "forged_requests": 16,
+    "artifacts": 12,
+    "separate_fresh_replay": true
+  },
+  "failures": [],
+  "stopped_first_native_unavailable": false,
+  "human_approved": false,
+  "native_hardware_fidelity": false,
+  "production_enforcement": false
+}

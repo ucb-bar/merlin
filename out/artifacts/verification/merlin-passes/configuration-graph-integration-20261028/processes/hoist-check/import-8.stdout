@@ -1,0 +1,14 @@
+/home/jeremy/Projects/merlin-dce-cse-hoist-integration/src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistChecker.lean:112:43: warning: This simp argument is unused:
+  List.not_mem_nil
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Except.bind, execute, command, ite_true]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`
+/home/jeremy/Projects/merlin-dce-cse-hoist-integration/src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistChecker.lean:112:60: warning: This simp argument is unused:
+  ite_true
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [Except.bind, execute, command, List.not_mem_nil]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`

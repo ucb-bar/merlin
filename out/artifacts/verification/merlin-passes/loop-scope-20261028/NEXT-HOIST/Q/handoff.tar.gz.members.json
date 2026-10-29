@@ -1,0 +1,61 @@
+{
+  "members": [
+    {
+      "path": "REQUIRED-SOURCES.json",
+      "bytes": 32018,
+      "sha256": "0aa8691ee458e892bf2759a60ea01945e9f49ef7453bf6ad22a864f8adacf8de"
+    },
+    {
+      "path": "WORKSPACE.json",
+      "bytes": 199,
+      "sha256": "b457ada14f02dab504ad6a15b3afa6555d860bd0ff552784eddfc7edc6e4a048"
+    },
+    {
+      "path": "owned-source.patch",
+      "bytes": 60203,
+      "sha256": "7950502348e6493fe3c3dfe3071f40bfbb83bb63444dc6bfdd06f37e0b941e19"
+    },
+    {
+      "path": "source-snapshot/merlin/tests/ir/test_configuration_hoist_gate.py",
+      "bytes": 3667,
+      "sha256": "e60532578dfed113373cba3c0028ea5812b4ffbd72bb5b169cd9919655ea6c80"
+    },
+    {
+      "path": "source-snapshot/merlin/tests/ir/test_configuration_hoist_projection.py",
+      "bytes": 3907,
+      "sha256": "2e9370df9bc8d0c6afa63c7d0e2933b65aec1065b12b82de302013c78e33cf2b"
+    },
+    {
+      "path": "source-snapshot/src/merlin/verify/configuration_hoist_bridge.py",
+      "bytes": 10630,
+      "sha256": "8f9b500969fa90a2d061bab486abc8b40158c0214f50fafca3d7a9a42a88ee0c"
+    },
+    {
+      "path": "source-snapshot/src/merlin/verify/configuration_hoist_capture.py",
+      "bytes": 3251,
+      "sha256": "124278e3cf2ce7a9e13bc862f87981593d1d205a4862bae886b4d698e0de8d74"
+    },
+    {
+      "path": "source-snapshot/src/merlin/verify/configuration_hoist_emit.py",
+      "bytes": 5160,
+      "sha256": "ac90f9cb47400ea6660a8b877043428bfbd5c730fb49d6361925b1b73efae0c2"
+    },
+    {
+      "path": "source-snapshot/src/merlin/verify/configuration_hoist_gate.py",
+      "bytes": 15133,
+      "sha256": "247849a33335a3d381398c5b49a225c5b678ab272f7cd11ded9db9a494edfb17"
+    },
+    {
+      "path": "source-snapshot/src/merlin/verify/configuration_hoist_intake.py",
+      "bytes": 7933,
+      "sha256": "268f6902e473babc2eba3b3757d25ae7854e96465a628f8a5ce8d16df11f304c"
+    },
+    {
+      "path": "source-snapshot/src/merlin/verify/configuration_hoist_worker.py",
+      "bytes": 8443,
+      "sha256": "dffb138e2b0af576682b9bb798d0309a66594b3fa20a8400bb9cddc97e1ab281"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "e2a90894e77554fe4d49d023c2b811a2f21d1afbca5b473f2d12185a77787085"
+}

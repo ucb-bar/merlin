@@ -1,0 +1,11 @@
+{
+  "status": "checked",
+  "reason": "complete conditional hoist Kernel obligation and std3/root audit checked",
+  "helper_bound": true,
+  "source_count": 96,
+  "fresh_build": true,
+  "new_host_qualification": false,
+  "report": "/home/jeremy/Projects/merlin-dce-cse-hoist-integration/out/build/configuration-graph-integration-20261028/hoist-check/REPORT.json",
+  "exact_consumer": true,
+  "final_sha256": "fc1a887a63148fa8659223b552e50e0dc588b596f10543fcb343838808f08bf9"
+}

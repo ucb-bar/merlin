@@ -1,0 +1,11 @@
+{
+  "members": [
+    {
+      "path": "README.md",
+      "bytes": 2835,
+      "sha256": "a9e6880602a1a153a910074f90f629414f023ccada57c04ad6b185fba4f01011"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "9bf8ff20de953046f79c55441e9f1157c1f5240d4fdc2c5144bbbf1dd15be331"
+}

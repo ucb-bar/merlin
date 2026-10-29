@@ -121,6 +121,7 @@ def prepare(source, final, hint, *, allocator, index_bits=64):
         parent / "buffer_reuse_gate.py",
         parent / "lean/Merlin/GraphStateAudit.lean",
         parent.parent / "common/owned_process.py",
+        parent.parent / "common/owned_children.py",
         parent.parent / "common/paths.py",
         parent.parent / "common/__init__.py",
         parent / "__init__.py",

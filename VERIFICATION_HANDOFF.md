@@ -1,3 +1,55 @@
+# Latest combined integration — agents remain stopped
+
+This branch integrates primary feat/pass-verification at89ac040ae with Graham's
+DCE/CSE branch. Configuration-write elimination and scoped partial loop hoisting
+are now present alongside the earlier loop/buffer checks. All three workers
+remain stopped; only a NEW user instruction may resume them. Read the current
+integration handoff under out/artifacts/handoff/configuration-graph-integration-20261028/README.md.
+The opt-in compiler selector remains DCE/CSE-only; the new APIs do not install
+compiler-wide enforcement or establish native/human-policy approval.
+The detached e048 producer checkout is preserved read-only for source identity.
+Older integration/qualification statements below retain their original revisions.
+
+---
+
+# Latest target integration — 2026-10-28
+
+This branch integrates the published primary loop/buffer checkpoint d45415489
+with Graham/Agustin DCE/CSE base8215c0015. Start with the
+[combined-tree handoff and fresh evidence](out/artifacts/handoff/loop-buffer-integration-20261028/README.md).
+The compiler selector remains DCE/CSE-only; scoped loop/buffer APIs have fresh
+checks and separate-process replays. Existing structure failures remain.
+Primary feat/pass-verification and the three configuration workers were not
+switched or rebased; their historical instructions below retain their own scope.
+
+
+---
+
+# STOPPED — scoped configuration hoist completed, 2026-10-28
+
+The latest user requested finish loop-invariant configuration hoisting, notify
+them and STOP all agents. This checkpoint fulfills that scoped task; all three
+workers are idle/completed with no live jobs and documented handoffs. No next
+pass is queued. Do not resume from any older continuous-work instruction.
+A NEW user instruction is required. Root integration is feat/pass-verification
+0415d140b (source dbaad5090), with final evidence in this publication checkpoint.
+Read [the exact result, limits and three handoffs](out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/README.md).
+
+Qualified scope: seven actual supported pairs; nine unsupported boundaries;
+fifteen Lean + one host valid-mutant refusals; request/artifact controls, fresh
+replay and independent124-root witness. Primary242tests, structure/lint and
+fresh baseline check/exactconsumer/separate replay passed. Conditional declared
+state/effect model only: no full-pass/all-graph/native/human-review claim.
+Protected semantics/locks, failed profiles and counterexamples remain intact.
+
+Earlier loop/buffer integration is also pushed to Graham branch at e0484f488.
+That detached read-only producer stays pinned there. Configuration elision and
+this hoist are on primary and have not been ported to that branch.
+
+Everything below is historical context, not authorization to resume.
+
+---
+
 # Current — configuration elision integrated; loop-hoist graph work active
 
 Latest continuous-work instruction remains active until a NEW user stop. Root

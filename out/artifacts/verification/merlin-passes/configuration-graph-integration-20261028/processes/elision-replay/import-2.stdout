@@ -1,0 +1,4 @@
+'Merlin.GraphState.swapAt_sound' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.replay_sound' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.check_sound' depends on axioms: [propext, Quot.sound]
+'Merlin.GraphState.observations_preserved' depends on axioms: [propext, Quot.sound]

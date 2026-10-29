@@ -182,6 +182,7 @@ def prepare(buffers, *, reference, settings=Settings()):
         sources.append(file_ref(Path(__file__).with_name(name)))
     sources.append(file_ref(Path(__file__).parent / "lean/Merlin/GraphStateAudit.lean"))
     sources.append(file_ref(Path(__file__).parent.parent / "common/owned_process.py"))
+    sources.append(file_ref(Path(__file__).parent.parent / "common/owned_children.py"))
     sources.extend(capture["producer_sources"])
     return PreparedLoop(buffers, settings, canonical(capture), query, tuple(roots), canonical(sources), str(reference))
 

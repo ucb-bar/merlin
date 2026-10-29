@@ -32,6 +32,21 @@ def candidate():
     )
 
 
+def test_changed_child_cleanup_source_invalidates_request(candidate, monkeypatch):
+    from merlin.verify.configuration_elision_intake import revalidate
+
+    cleanup = (repo_root() / "src/merlin/common/owned_children.py").resolve()
+    read_bytes = Path.read_bytes
+
+    def changed(path):
+        data = read_bytes(path)
+        return data + b"\n" if path.resolve() == cleanup else data
+
+    monkeypatch.setattr(Path, "read_bytes", changed)
+    with pytest.raises(ValueError, match="source changed"):
+        revalidate(candidate)
+
+
 @pytest.mark.parametrize("kind", ["none", "saved", "query", "roots", "domain", "relation", "source", "final"])
 def test_changed_requests_and_saved_status_refused_before_native(candidate, kind, tmp_path, monkeypatch):
     values = {
