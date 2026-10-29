@@ -774,6 +774,14 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         t = _apply_epilogue(t, attrs, env)
         return {out_name: t.to_list()}
 
+    if op == "movement_chain":
+        # select / split_with_sizes / select_scatter as a program of declared movement commands: the stages run in
+        # program order on integer_ops.move / insert_slice; nothing here is arithmetic of its own.
+        from merlin.targetgen.movement_chain_capsule import evaluate_stages
+
+        done = evaluate_stages(attrs["stages"], env)
+        return {name: done[name].to_list() for name in attrs["outs"]}
+
     if op == "conv_backward_spatial":
         # grad_weight = Xcol^T @ dY; grad_input = fold(requant(W @ dY^T)); grad_bias = sum_l dY. Composed from the
         # existing integer semantics only: Tensor.matmul, the readout stage, the permute/reshape movement and the

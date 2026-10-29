@@ -186,17 +186,33 @@ def _scalar_div(divisor: int) -> Callable[[int, int], dict[str, Any]]:
     return make
 
 
-def _select(m: int, n: int) -> dict[str, Any]:
-    # select.int on dim 0 at an interior index: ONE row, the selected dim kept at size 1 (rank-reducing
-    # reshape of the result is a representation change, a separate reshape form).
-    idx = m // 2
-    return {"form": "slice", "shape": [m, n], "offsets": [idx, 0], "sizes": [1, n], "strides": [1, 1]}
+def _chain(kind: str) -> Callable[[int, int], dict[str, Any]]:
+    """A short program of declared movement commands (movement_chain_capsule): select / split / select_scatter."""
+
+    def make(m: int, n: int) -> dict[str, Any]:
+        return {"chain": kind, "shape": [m, n]}
+
+    return make
 
 
-def _split_chunk(m: int, n: int) -> dict[str, Any]:
-    # split_with_sizes along dim 0, the SECOND chunk (the first one starts at offset 0; this one does not).
-    first = max(1, m // 2)
-    return {"form": "slice", "shape": [m, n], "offsets": [first, 0], "sizes": [max(1, m - first), n], "strides": [1, 1]}
+def _squeeze_dims(m: int, n: int) -> dict[str, Any]:
+    # torch squeeze(dim=[0, 2]): TWO non-adjacent size-1 dims removed in one reshape.
+    return {"form": "reshape", "shape": [1, m, 1, n], "out_shape": [m, n]}
+
+
+def _clone(m: int, n: int) -> dict[str, Any]:
+    # torch clone: the identity round trip with the dtype PRESERVED (no widening, no scale).
+    return {"form": "identity", "preserve_dtype": True, "shape": [m, n]}
+
+
+def _copy_into(m: int, n: int) -> dict[str, Any]:
+    # torch copy(self, src): src written over the WHOLE of an existing destination (full-extent insert_slice).
+    return {"dest": "D", "src": "S", "dest_shape": [m, n], "src_shape": [m, n], "offsets": [0, 0], "strides": [1, 1]}
+
+
+def _alias(m: int, n: int) -> dict[str, Any]:
+    # torch alias: a view with the SAME extents (a reshape to the source's own shape; no regrouping, no change).
+    return {"form": "reshape", "shape": [m, n], "out_shape": [m, n]}
 
 
 FORM_TABLE: dict[tuple[str, str], FormEntry] = {
@@ -237,12 +253,17 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     ("movement", "as_strided"): FormEntry("movement", _as_strided, ("copy",)),
     ("movement", "upsample_nearest"): FormEntry("movement", _upsample, ("copy",)),
     ("movement", "concat"): FormEntry("concat", _concat, ("copy",)),
-    ("movement", "select"): FormEntry("movement", _select, ("copy",)),
-    ("movement", "split_chunk"): FormEntry("movement", _split_chunk, ("copy",)),
+    ("movement", "select"): FormEntry("movement_chain", _chain("select"), ("copy",)),
+    ("movement", "split_sizes"): FormEntry("movement_chain", _chain("split"), ("copy",)),
+    ("movement", "select_scatter"): FormEntry("movement_chain", _chain("select_scatter"), ("copy",)),
+    ("movement", "squeeze_dims"): FormEntry("movement", _squeeze_dims, ("copy",)),
+    ("movement", "clone"): FormEntry("movement", _clone, ("copy",)),
+    ("movement", "copy_into"): FormEntry("insert_slice", _copy_into, ("copy",)),
+    ("movement", "alias"): FormEntry("movement", _alias, ("copy",)),
     ("movement", "fill"): FormEntry("fill", _fill(5), ("broadcast",)),
     ("movement", "fill_zero"): FormEntry("fill", _fill(0), ("zero_fill",)),
-    # torch scalar_tensor: ONE element (a 0-dim tensor has no other shape), written once as a one-element fill.
-    ("movement", "fill_scalar"): FormEntry("fill", lambda m, n: {"shape": [1], "value_code": 5}, ("broadcast",), once=True),
+    # torch scalar_tensor: a RANK-0 result (a 0-dim tensor), written once as a one-element fill.
+    ("movement", "fill_scalar"): FormEntry("fill", lambda m, n: {"shape": [], "value_code": 5}, ("broadcast",), once=True),
     ("movement", "insert_slice"): FormEntry("insert_slice", _insert_slice, ("copy",)),
 }
 

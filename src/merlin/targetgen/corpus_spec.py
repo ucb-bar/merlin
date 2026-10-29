@@ -26,6 +26,7 @@ from .capsule_intent import _semantic_block as _semantic_block
 from .column_sum_capsule import build_column_sum, column_sum_program
 from .scalar_affine_capsule import build_scalar_affine, scalar_affine_program
 from .conv_backward_spatial_capsule import build_conv_backward_spatial
+from .movement_chain_capsule import build_movement_chain
 from .conv_backward_capsule import build_conv_backward, conv_backward_program
 from .prefix_sum_capsule import build_prefix_sum, prefix_sum_program
 from .tensor_sub_capsule import build_tensor_sub, tensor_sub_program
@@ -1256,6 +1257,7 @@ def build_resident_reuse(entry: dict, binding: CorpusBinding) -> tuple[dict, str
 #: The attributes each MOVEMENT ``form`` states (``merlin.runtime.integer_ops._MOVE_FORMS``, plus the pad
 #: ``value_code``). A movement entry that declares a ``form`` carries them under these entry keys.
 _MOVE_FORM_KEYS: dict[str, tuple[str, ...]] = {
+    "identity": (),
     "permute": ("perm",),
     "slice": ("offsets", "sizes", "strides"),
     "pad": ("low", "high", "mode", "value_code"),
@@ -1386,7 +1388,7 @@ def build_movement(entry: dict, binding: CorpusBinding) -> tuple[dict, str]:
     """A load->store dequant movement capsule (op == movement): operand dtype in, accumulate dtype out.
 
     An entry that declares a ``form`` (and its ``shape``) is the shape-general integer movement instead."""
-    if entry.get("form") not in (None, "identity"):
+    if entry.get("form") not in (None, "identity") or entry.get("preserve_dtype"):
         return _build_movement_form(entry, binding)
     D = binding.tile_dim
     M = entry.get("M", entry.get("M_tiles", 1) * D)
@@ -2621,6 +2623,7 @@ def build_activation_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, 
 
 
 BUILDERS["activation_matmul"] = build_activation_matmul
+BUILDERS["movement_chain"] = build_movement_chain  # select / split / select_scatter as short movement programs (movement_chain_capsule)
 BUILDERS["conv_backward_spatial"] = build_conv_backward_spatial  # 3x3 padded conv grads incl. the fold (conv_backward_spatial_capsule)
 BUILDERS["conv_backward"] = build_conv_backward  # pointwise conv grads: dX, dW, db (conv_backward_capsule)
 BUILDERS["prefix_sum"] = build_prefix_sum  # inclusive scan down the outer axis (prefix_sum_capsule)

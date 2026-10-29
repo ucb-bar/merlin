@@ -512,6 +512,7 @@ _OP_FAMILY: dict[str, str] = {
     "prefix_sum": "reduction",
     "conv_backward": "contraction",
     "conv_backward_spatial": "contraction",
+    "movement_chain": "movement",
     "rope": "elementwise_map",
     "rope_qkv": "elementwise_map",
     "logit_softcap": "elementwise_map",

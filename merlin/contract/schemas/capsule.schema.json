@@ -220,6 +220,7 @@
             "prefix_sum",
             "conv_backward",
             "conv_backward_spatial",
+            "movement_chain",
             "concat",
             "insert_slice",
             "fill",
