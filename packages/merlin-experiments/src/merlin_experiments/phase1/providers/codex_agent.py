@@ -612,6 +612,18 @@ def _link_for_aet(run_dir: Path, raw_path: Path, rnd: int) -> Path | None:
 
 #: A continuation needs enough budget left to be worth a turn; below this the session stops cleanly
 #: rather than spawning a process that will be killed mid-thought.
+#: The standing continuation instruction for a resumed turn (shared verbatim by the Claude CLI author).
+DEFAULT_CONTINUATION_PROMPT = (
+    "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
+    "backend under submission/. Follow TASK.md for the selected engine routing and physical "
+    "qualification gates. With agent_selfcheck, check capsules an edit affects in one request with "
+    "`--wait-budget 5`, keep working, and collect it with `--attach <id>`; several requests "
+    "may be in flight. Check edits by naming capsules (`--capsules changed` is a slow sweep); "
+    "`--capsules failing` re-checks "
+    "what did not pass. Try alternatives with `--submission variants/<name>` and copy the "
+    "winner into submission/. Use `--capsules all` only after focused checks improve. You "
+    "may edit while a check runs; compare the verdict's source digest."
+)
 _CONTINUE_MIN_S = 120
 #: A backstop so a pathological loop cannot spin against the API for the whole budget.
 _CONTINUE_MAX_TURNS = 200
@@ -979,21 +991,7 @@ def run_round(
     stamped_f = open(stamped_path, "w")
     #: Sent when resuming. Deliberately the SAME standing instruction, never a hint: an arm that got
     #: extra guidance mid-session would not be comparable to one that did not.
-    _CONTINUE_MSG = (
-        continuation_prompt
-        if continuation_prompt is not None
-        else (
-            "Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
-            "backend under submission/. Follow TASK.md for the selected engine routing and physical "
-            "qualification gates. With agent_selfcheck, check capsules an edit affects in one request with "
-            "`--wait-budget 5`, keep working, and collect it with `--attach <id>`; several requests "
-            "may be in flight. Check edits by naming capsules (`--capsules changed` is a slow sweep); "
-            "`--capsules failing` re-checks "
-            "what did not pass. Try alternatives with `--submission variants/<name>` and copy the "
-            "winner into submission/. Use `--capsules all` only after focused checks improve. You "
-            "may edit while a check runs; compare the verdict's source digest."
-        )
-    )
+    _CONTINUE_MSG = continuation_prompt if continuation_prompt is not None else DEFAULT_CONTINUATION_PROMPT
     _CONTINUE_MSG = delegation_user_prompt(_CONTINUE_MSG, max_concurrent_subagents)
     _CONTINUE_MSG += _AS.continuation_guidance(capacity, max_concurrent_subagents)
     from .token_admission import ManagedTokens

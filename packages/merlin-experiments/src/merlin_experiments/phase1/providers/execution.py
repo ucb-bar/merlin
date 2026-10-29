@@ -338,8 +338,10 @@ def launch(
         )
         if config.provider.codex_runtime is not None and drv != "codex":
             raise ValueError("explicit client runtime requires the Codex provider")
-        if config.provider.codex_max_subagents is not None and (drv != "codex" or sandbox != "bwrap"):
-            raise ValueError("Codex subagents require the Codex provider and bwrap sandbox")
+        if config.provider.codex_max_subagents is not None and (
+            drv not in ("codex", "claudecode") or sandbox != "bwrap"
+        ):
+            raise ValueError("Codex subagents require the Codex or Claude CLI provider and bwrap sandbox")
         # A (model, harness) pairing that needs the bridge needs the proxy running. Started here rather
         # than by the launcher so EVERY entry point (launch_ab_batch, chia_ab_batch, watchdog resume, a
         # bare run) gets it, and idempotently so concurrent arms of one campaign share one instance.
@@ -434,11 +436,22 @@ def launch(
 
         _bridge_env = _BR.claude_env(model)
         _cli_model = _BR.claude_model_name(model, provider=config.provider.provider)
-        inner = (
-            f"claude --print --model {_cli_model} --effort {effort} "
-            f"--permission-mode bypassPermissions --add-dir {ws} "
-            f"--output-format stream-json --verbose < {ws_task}"
-        )
+        # The Claude author gets the SAME kickoff bytes as the Codex author (authoring_prompt() + the delegation
+        # request), TASK.md staying in the workspace, and under --schedule continuous is resumed for the wall
+        # budget like the Codex thread (see claude_agent). A bridged non-Anthropic model keeps its old stdin path.
+        if _bridge_env:
+            inner = (
+                f"claude --print --model {_cli_model} --effort {effort} "
+                f"--permission-mode bypassPermissions --add-dir {ws} "
+                f"--output-format stream-json --verbose < {ws_task}"
+            )
+        else:
+            from merlin_experiments.phase1.providers import claude_agent as _CLA
+
+            inner = _CLA.session_script(
+                cli_model=_cli_model, effort=effort, ws=ws, limit=config.provider.codex_max_subagents,
+                continuous=continuous, timeout=timeout,
+            )
         if _bridge_env:
             # Exported INSIDE the sandbox: bwrap keeps the network namespace (loopback reaches the
             # proxy) but not the environment.

@@ -60,10 +60,16 @@ def local_provider_only(command, *args, **kwargs):
     workspace=Path(cwd)
     if not workspace.is_absolute() or not workspace.resolve().is_relative_to(root.resolve()):
         return forbidden()
-    expected=(f"claude --print --model claude-fixture --effort high "
-              f"--permission-mode bypassPermissions --add-dir {workspace} "
-              f"--output-format stream-json --verbose < {workspace/'TASK.md'}")
-    if list(command) != ["bash","-c",expected]:
+    from merlin_experiments.phase1.providers.authoring_prompt import authoring_prompt
+    import shlex
+    prefix=(f"claude --print --model claude-fixture --effort high "
+            f"--permission-mode bypassPermissions --add-dir {workspace} "
+            f"--output-format stream-json --verbose --session-id ")
+    # The Claude author receives the same kickoff bytes as the Codex author, not TASK.md on stdin.
+    if len(command)!=3 or list(command[:2])!=["bash","-c"] or not command[2].startswith(prefix):
+        return forbidden()
+    rest=command[2][len(prefix):].split(" ",1)[1]
+    if rest!=shlex.quote(authoring_prompt())+" < /dev/null":
         return forbidden()
     # Validate the exact production wrapper, then run ONLY our inert provider.
     # Shell parsing/redirection and the real provider transport are NOT qualified.
