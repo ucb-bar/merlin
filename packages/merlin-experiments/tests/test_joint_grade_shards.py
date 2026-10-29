@@ -224,3 +224,26 @@ def test_validate_unshardable_group_falls_back_in_process(tmp_path, monkeypatch)
     monkeypatch.setattr(S, "grade_sharded", lambda **kw: None)
     report = F.validate(prepared, inputs=inputs, frozen=frozen, compiler_sha256=digest)
     assert report["n_passed"] == 246 and len([c for c in calls if c[0] == "capsules"]) == 2
+
+
+def test_unmeasured_shard_cannot_veto_and_nested_aggregates_are_recomputed():
+    caps = _caps(8)
+    shards = S.partition(caps, 2)
+    a, b = _shard_score(shards[0]), _shard_score(shards[1])
+    for score, assigned in ((a, shards[0]), (b, shards[1])):
+        score["public_passed"] = f"{len(assigned)}/{len(assigned)}"
+        score["highest_tier"] = "L2"
+        score["pass_evidence"] = {
+            "n_passed": len(assigned),
+            "rtl_tiers_seen": [],
+            "fidelity_seen": ["functional_model"],
+        }
+        score["tier_reuse"] = {"executed": {"L2": len(assigned)}, "carried": {}, "capsules_with_a_carried_tier": 0}
+    empty = _shard_score(shards[1])  # a shard that measured nothing reports false closure flags
+    empty.update(n_capsules=0, n_passed=0, structural_evidence_all_pass=False, gradeable=False, numeric_all_exact=None)
+    merged = S.merge_scores([(shards[0], a, None), (shards[1], b, None)], caps=caps, admission=_admission(caps))
+    assert merged["public_passed"] == "8/8" and merged["pass_evidence"]["n_passed"] == 8
+    assert merged["tier_reuse"]["executed"] == {"L2": 8} and merged["highest_tier"] == "L2"
+    assert merged["coverage"] is None if "coverage" in merged else True
+    veto = S.merge_scores([(shards[0], a, None), (shards[1], empty, None)], caps=caps, admission=_admission(caps))
+    assert veto["structural_evidence_all_pass"] is True and veto["gradeable"] is True

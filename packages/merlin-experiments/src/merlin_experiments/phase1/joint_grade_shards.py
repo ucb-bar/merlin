@@ -151,9 +151,22 @@ def partition(caps, processes: int):
 
 
 def _and(values):
+    """Any False vetoes; otherwise True when some shard measured and none objects; else unknown (None)."""
     if any(v is False for v in values):
         return False
-    return True if values and all(v is True for v in values) else None
+    return True if any(v is True for v in values) else None
+
+
+def _sum_ints(dicts):
+    total: dict = {}
+    for d in dicts:
+        for k, v in (d or {}).items():
+            if type(v) is int:
+                total[k] = total.get(k, 0) + v
+    return total
+
+
+_TIERS = ("L0", "L1", "L2", "L3", "L4", "L5")
 
 
 def _admission(caps, root, descriptor_sha256):
@@ -219,9 +232,11 @@ def merge_scores(shards, *, caps, admission, processes=None, wall_s=None):
         if k not in {*_AND_KEYS, *_SUM_KEYS, *_UNION_KEYS, *_COUNTER_KEYS, "per_capsule"}
         and any(s.get(k) != scores[0].get(k) for s in scores[1:])
     )
+    # The closure flags are over MEASURED rows: a shard that measured nothing (all deferred) has no verdict on
+    # them and must not veto the other shards' rows (the unsharded grade excludes deferred rows the same way).
+    measured = [s for s in scores if type(s.get("n_capsules")) is int and s["n_capsules"] > 0]
     for key in _AND_KEYS:
-        values = [s.get(key) for s in scores]
-        merged[key] = _and(values)
+        merged[key] = _and([s.get(key) for s in measured])
     for key in _SUM_KEYS:
         merged[key] = sum(s.get(key, 0) for s in scores if type(s.get(key, 0)) is int)
     for key in _UNION_KEYS:
@@ -284,6 +299,34 @@ def merge_scores(shards, *, caps, admission, processes=None, wall_s=None):
             **(evidence[0] if evidence and isinstance(evidence[0], dict) else {}),
             "claim": None,
         }
+    # Nested aggregates of the shard-0 copy would misreport the roster: sum or recompute, else drop.
+    for key in ("structural_evidence_scope",):
+        if key in merged:
+            merged[key] = {**merged[key], **_sum_ints(s.get(key) for s in scores)}
+    if any(isinstance(s.get("pass_evidence"), dict) for s in scores):
+        pe = [s.get("pass_evidence") or {} for s in scores]
+        merged["pass_evidence"] = {
+            **pe[0],
+            **_sum_ints(pe),
+            "rtl_tiers_seen": sorted({x for p in pe for x in p.get("rtl_tiers_seen", [])}),
+            "fidelity_seen": sorted({x for p in pe for x in p.get("fidelity_seen", [])}),
+        }
+    if any(isinstance(s.get("tier_reuse"), dict) for s in scores):
+        reuse = [s.get("tier_reuse") or {} for s in scores]
+        merged["tier_reuse"] = {
+            "executed": _sum_ints(r.get("executed") for r in reuse),
+            "carried": _sum_ints(r.get("carried") for r in reuse),
+            "capsules_with_a_carried_tier": sum(r.get("capsules_with_a_carried_tier", 0) for r in reuse),
+        }
+    fractions = [s.get("public_passed") for s in scores if isinstance(s.get("public_passed"), str)]
+    if fractions:
+        parts = [f.split("/") for f in fractions if f.count("/") == 1 and all(x.isdecimal() for x in f.split("/"))]
+        merged["public_passed"] = f"{sum(int(a) for a, _ in parts)}/{sum(int(b) for _, b in parts)}"
+    highest = [s.get("highest_tier") for s in scores]  # the tier cleared by EVERY capsule: the weakest shard's
+    merged["highest_tier"] = min(highest, key=_TIERS.index) if highest and all(h in _TIERS for h in highest) else None
+    for key in ("coverage", "perf_ledger"):  # per-shard products; not additive. See sharded_grade.shard_scores.
+        if key in merged:
+            merged[key] = None
     integrity = [s.get("integrity_status") for s in scores]
     merged["integrity_status"] = next((i for i in integrity if i != "clean"), "clean" if scores else None)
     timing = [s.get("timing_rollup") or {} for s in scores]
@@ -451,9 +494,11 @@ def grade_sharded(
     if verify is not None:
         verify()
     admission = _admission(caps, root, descriptor_sha256)
-    return merge_scores(
+    merged = merge_scores(
         results, caps=caps, admission=admission, processes=processes, wall_s=round(time.time() - started, 1)
     )
+    merged["sharded_grade"]["shard_scores"] = [str(d / "score.json") for _, _, d, _ in live]
+    return merged
 
 
 # -------------------------------------------------------------------------------------------- the child
