@@ -255,6 +255,7 @@ def _cost(op: str) -> tuple:
         "add": 2,
         "reduce_sum": 1,
         "column_sum": 1,
+        "scalar_affine": 1,
         "gelu": 1,
         "silu": 1,
         "bias_add": 2,

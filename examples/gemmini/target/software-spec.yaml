@@ -355,7 +355,7 @@ operations:
       packet: packet2.md R14; seal3-base 155-174
       basis: Configs.scala:75-114; Scratchpad.scala:407-421,828-848; VectorScalarMultiplier.scala:130-138; PE.scala:23;
         exact numerator precedes selected readout
-    emission_obligations:
+    emission_obligations: &elementwise_standalone_obligations
       execution_program:
         status: compiler_obligation
         condition:
@@ -427,6 +427,43 @@ operations:
         check: unit_mvin_scale
         constraints:
           eq: 1.0
+  # Scalar-immediate affine forms of the standalone elementwise map: y = weight * x + bias with ONE tensor operand
+  # and literal immediates (add.Scalar: weight 1, bias +c; sub.Scalar: weight 1, bias -c; mul.Scalar: weight w).
+  # The constraints and the compiler/instruction obligations are exactly those of elementwise_map_standalone (the
+  # same anchor); this row only names the capsule forms that exercise its affine class, so it adds no new admission.
+  elementwise_map_scalar_affine:
+    status: reviewed
+    families: [elementwise_map]
+    forms: [scalar_add, scalar_sub, scalar_mul]
+    hardware: standalone
+    arithmetic: integer_affine
+    max_tensor_operands: 2
+    expressions: [affine]
+    broadcasting: [none, outer]
+    ranks: [0, 1, 2, 3, 4, 5]
+    layouts: [row_major_contiguous]
+    aliasing: [disjoint_inputs_outputs]
+    unconstrained:
+      tails: each result element reads only its own operand elements; padded lanes never reach a valid result
+    evidence:
+      review_status: reviewed
+      reviewed_by: >-
+        Loren Hung (approved in operator chat 2026-10-29). Reviewed by Loren Hung (approved in operator chat
+        2026-10-29); the stated evidence and qualification scope remain mandatory.
+      basis: >-
+        Same evidence as elementwise_map_standalone (Configs.scala:75-114; Scratchpad.scala:407-421,828-848;
+        VectorScalarMultiplier.scala:130-138; PE.scala:23; exact numerator precedes selected readout), read for a
+        single tensor operand. Addendum, forms scalar_add / scalar_sub / scalar_mul: the contract states the
+        standalone form out = sat_int8(RNE(s_o * act(sum_i w_i * x_i + c))) with one broadcast constant c, so a
+        scalar immediate is the constant c (an int32 accumulator seed loaded unscaled, shrink 0, once:
+        accumulator_seed_tensor / transfer_contracts.accumulator_seed_load) and a multiplier is the weight w_i (a
+        signed int8 on the mesh, PE.scala:23, wrapping at 20 bits per MAC: native_unit_contract.mesh_mac). The result
+        is read out at accumulator width (raw i32 exit), so the comparison is exact. Primitives required: the
+        accumulate-on-load unit-scale load and the weighted integer mesh (or the identity weight for add/sub). No
+        scale is applied, no saturation is claimed, and a weight outside signed int8 is outside this row (an exact
+        decomposition is a separate claim). Division by a scalar is NOT this row: integer division is not an affine
+        map, and a reciprocal readout scale is a different (rounded) construction.
+    emission_obligations: *elementwise_standalone_obligations
   elementwise_map_after_operand_sum:
     status: reviewed
     numerical_contract: operand_sum_exhaustive_i8_v1

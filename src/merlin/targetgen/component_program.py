@@ -68,6 +68,8 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
         extra = (
             {"dtype"}
             if op == "cast"
+            else {"weight", "bias", "dtype"}
+            if op == "affine"
             else {"axis", "dtype"}
             if op == "reduce_sum"
             else {"shape"}
@@ -75,7 +77,7 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             else set()
         )
         supported = {"matmul", "add", "copy", "transpose", "alias", "update"} | (
-            {"cast", "reduce_sum", "reshape"} if v2 else set()
+            {"cast", "reduce_sum", "reshape", "affine"} if v2 else set()
         )
         if set(node) != {"name", "op", "inputs"} | extra or op not in supported:
             raise ValueError("unsupported component node; use explicit supported generic tensor operations")
@@ -109,6 +111,19 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             if shape[0] * shape[1] != lhs.shape[0] * lhs.shape[1]:
                 raise ValueError("component reshape must preserve the element count")
             result = ValueType(tuple(shape), lhs.dtype)
+        elif op == "affine":
+            # A scalar-immediate affine map y = weight * x + bias: ONE tensor operand and two literal
+            # integer immediates. The weight is a signed int8 (the mesh weight / load-path multiplier);
+            # the bias is the int32 accumulator-seed constant. Computed in the node's own (wide) dtype.
+            dtype = _integer_dtype(node["dtype"], operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
+            weight, bias = node["weight"], node["bias"]
+            if type(weight) is not int or type(bias) is not int or isinstance(weight, bool) or isinstance(bias, bool):
+                raise ValueError("component affine requires literal integer weight and bias")
+            if not -128 <= weight <= 127:
+                raise ValueError("component affine weight must be a signed int8 literal")
+            if int(lhs.dtype[1:]) > int(dtype[1:]):
+                raise ValueError("component affine requires a result at least as wide as its input")
+            result = ValueType(tuple(lhs.shape), dtype)
         elif op in {"cast", "reduce_sum"}:
             dtype = _integer_dtype(node["dtype"], operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
             shape = list(lhs.shape)
@@ -245,7 +260,7 @@ def render(program, *, operand_dtype, accumulator_dtype):
                     f"outs({temporary('empty')} : {result.mlir}) permutation = [1, 0]"
                 )
             continue
-        if op in {"cast", "reduce_sum"}:
+        if op in {"cast", "reduce_sum", "affine"}:
             source = types[actual[0]]
             reduction = op == "reduce_sum"
             axis = node.get("axis")
@@ -271,7 +286,7 @@ def render(program, *, operand_dtype, accumulator_dtype):
                 f"iterator_types = {iterators}}} "
                 f"ins({values[actual[0]]} : {source.mlir}) outs({destination} : {inner.mlir}) "
                 f'attrs = {{prov.region_id = "component_{node["ordinal"]}", prov.op = "{op}", '
-                f'prov.family = "{"reduction" if reduction else "cast"}"}} {{'
+                f'prov.family = "{"reduction" if reduction else "elementwise" if op == "affine" else "cast"}"}} {{'
             )
             lines.append(
                 f"      ^bb{node['ordinal']}({scalar('element')}: {source.dtype}, {scalar('old')}: {result.dtype}):"
@@ -286,6 +301,21 @@ def render(program, *, operand_dtype, accumulator_dtype):
             if reduction:
                 lines.append(f"        {scalar('sum')} = arith.addi {scalar('old')}, {element} : {result.dtype}")
                 element = scalar("sum")
+            if op == "affine":
+                weight, bias = node["weight"], node["bias"]
+                if weight != 1:
+                    lines.append(f"        {scalar('weight')} = arith.constant {weight} : {result.dtype}")
+                    lines.append(
+                        f"        {scalar('scaled')} = arith.muli {element}, {scalar('weight')} : {result.dtype}"
+                    )
+                    element = scalar("scaled")
+                if bias:
+                    lines.append(f"        {scalar('bias')} = arith.constant {abs(bias)} : {result.dtype}")
+                    lines.append(
+                        f"        {scalar('shifted')} = arith.{'addi' if bias > 0 else 'subi'} "
+                        f"{element}, {scalar('bias')} : {result.dtype}"
+                    )
+                    element = scalar("shifted")
             lines.extend([f"        linalg.yield {element} : {result.dtype}", f"    }} -> {inner.mlir}"])
             if reduction:
                 lines.append(

@@ -88,6 +88,19 @@ def _fill(code: int) -> Callable[[int, int], dict[str, Any]]:
     return make
 
 
+def _scalar_affine(weight: int, bias: int) -> Callable[[int, int], dict[str, Any]]:
+    """A scalar-immediate affine map ``y = weight * x + bias`` (literal immediates; one tensor operand).
+
+    ``add.Scalar`` is weight 1 / bias +c, ``sub.Scalar`` is weight 1 / bias -c (written ``subi``), ``mul.Scalar``
+    is weight w / bias 0. The immediates are small literals: the weight a signed int8 (mesh / load-path
+    multiplier), the bias an int32 accumulator-seed constant."""
+
+    def make(m: int, n: int) -> dict[str, Any]:
+        return {"weight": weight, "bias": bias}
+
+    return make
+
+
 def _select(m: int, n: int) -> dict[str, Any]:
     # select.int on dim 0 at an interior index: ONE row, the selected dim kept at size 1 (rank-reducing
     # reshape of the result is a representation change, a separate reshape form).
@@ -102,6 +115,13 @@ def _split_chunk(m: int, n: int) -> dict[str, Any]:
 
 
 FORM_TABLE: dict[tuple[str, str], FormEntry] = {
+    # elementwise_map standalone affine forms: the contract states `out = sat_int8(RNE(s_o * act(sum_i w_i * x_i + c)))`
+    # with one broadcast constant c; the hardware primitives are the unit-scale accumulating load (c as the
+    # accumulator seed) and the weighted integer mesh (w), both documented on the spec row, not on the contract's
+    # movement `forms` vocabulary, so none is listed here.
+    ("elementwise_map", "scalar_add"): FormEntry("scalar_affine", _scalar_affine(1, 3)),
+    ("elementwise_map", "scalar_sub"): FormEntry("scalar_affine", _scalar_affine(1, -3)),
+    ("elementwise_map", "scalar_mul"): FormEntry("scalar_affine", _scalar_affine(3, 0)),
     ("movement", "slice"): FormEntry("movement", _slice, ("copy",)),
     ("movement", "flip"): FormEntry("movement", _flip, ("copy", "permutation")),
     ("movement", "pad_constant"): FormEntry("movement", _pad("constant"), ("copy", "zero_fill")),
