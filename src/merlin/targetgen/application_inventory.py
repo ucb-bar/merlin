@@ -959,6 +959,17 @@ def _application_operation_inventory(
             "layout_evidence": layout_evidence or None,
             # Graph-derived access observations in the software declarations' vocabulary; None = unknown.
             **access_observations.observe(op, family),
+            # An elementwise map is admitted by its operand count, scalar expression degree and broadcast class
+            # (the standalone elementwise rows constrain exactly these); the site screen reads them the same way.
+            **(
+                {
+                    **{k: v for k, v in access_observations.primitive_signature(op).items() if v is not None},
+                    # The pipeline's own calibration policy is static per-tensor (as in the site screen).
+                    "scale_granularity": "tensor",
+                }
+                if family == "elementwise_map" and getattr(op, "name", "") == "linalg.generic"
+                else {}
+            ),
             "disposition": disposition,
             "reason": reason,
             "provenance_present": bool(frontend or source_op),
