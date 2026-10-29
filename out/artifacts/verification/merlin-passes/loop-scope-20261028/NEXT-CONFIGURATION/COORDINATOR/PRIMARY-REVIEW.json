@@ -1,0 +1,21 @@
+{
+  "status": "PRIMARY_POSTMERGE_QUALIFICATION_PASSED",
+  "merge": "f6ab5cdc3",
+  "source": "bc2ba713f",
+  "tests": {
+    "passed": 211,
+    "skips": 0,
+    "first_attempt": "189passed22missing-fixture setup errors; exact retained fixture copy resolved them without source edits"
+  },
+  "structure": "passed",
+  "ruff": "passed all19 new Python modules/tests",
+  "native_primary": "actual baseline check+exact final consumer and separatePython fresh replay;17roots247std3theorems/0violations; nooldobjects",
+  "worker_campaign": "Q3/F3 13positives,21Lean+1hostvalidrefusals,15forged11artifactcontrols, separatefreshreplay, independent110root witness",
+  "model_review": "conditional common Admitted instruction model, unknown initial config, pure total overwrite premise; trusted projection/ISA/native/human/actualmodel/adjacentcomposition remain open",
+  "historical": "Q1cwd unavailable;Q2UNQUALIFIED reservedmetadata gap;Q3fixedstructuredlexer beforeparser",
+  "whole_pass_verified": false,
+  "policy_reviewed": false,
+  "primitive_model_laws_verified": false,
+  "target_branch_integration": "e0484f488 on feat/pass-verification-dce-cse contains previous loop/buffer bundle; configuration not yet ported there",
+  "next_workers": "NEXT-HOIST phase1 QactualKernelbridge/Wpartial-loopproof/Ffixtures; read-onlyproducer e0484f488"
+}

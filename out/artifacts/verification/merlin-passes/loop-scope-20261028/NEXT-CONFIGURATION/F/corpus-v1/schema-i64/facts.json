@@ -1,0 +1,28 @@
+{
+  "facts": {
+    "capacity": 4,
+    "codes": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "offsets": [
+      0,
+      8,
+      16,
+      80
+    ],
+    "target": "configuration_fixture",
+    "widths": [
+      8,
+      8,
+      64,
+      64
+    ],
+    "word_bits": 144
+  }
+}

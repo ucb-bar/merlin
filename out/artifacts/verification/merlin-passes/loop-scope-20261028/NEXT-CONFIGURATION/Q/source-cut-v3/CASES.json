@@ -1,0 +1,138 @@
+[
+  {
+    "case": "single_fields",
+    "host_status": "prepared",
+    "candidate": "5373a2d6b7dc2ba90f451a12f74ebdb8ad2773e91e0a87c5f653fe3fe45c6e76",
+    "query_sha256": "53c763aebf99085d71fb184cf3d91e70b8721e306414df3c62008a51a09f6e48",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "multifield",
+    "host_status": "prepared",
+    "candidate": "8b88baf120c7aeb39af539f4f66141dc4ed53e5fb531abd3264b92d39e63ac05",
+    "query_sha256": "9cfb2201cf203d371c8beb6f1507ef3bd977ef2e7acbd658e9180f14c6230e36",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "partially_changed_value",
+    "host_status": "prepared",
+    "candidate": "245c4478b488f76ac3d51df46420d2f48c2d43c64e7de7002960fde21cc90c7b",
+    "query_sha256": "3d4ff92e14fbf1d102dc0dc5743cea232f20b9fd8d34a60c7d78869ee64c00df",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "partial_clobber",
+    "host_status": "prepared",
+    "candidate": "1d72d7a565aaf48035a03d72fa0084a9856b056e4a28e8d51fb2034f568d4068",
+    "query_sha256": "55be9da229c9686deff858d11cf6939842b64fd4d9bb6da818fedbc941539b74",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "unknown_effect",
+    "host_status": "prepared",
+    "candidate": "a23f39e9308ad806b8a0de583c929c26bf44912cfb4192f36c7bcaa61553f6a5",
+    "query_sha256": "e0d4867a19d199088d80d211562d3b4ebf9320b694402348069e831eef9d7340",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "unordered_effect",
+    "host_status": "prepared",
+    "candidate": "54836cdd32075c341f4ba8ce1370166af9c4f706ab16b486fcf89189fb63a1a2",
+    "query_sha256": "a747819221f36e58073ece601e022bf3b20ade1475270a1bd01af4330f7d7119",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "pulse_retained",
+    "host_status": "prepared",
+    "candidate": "5f97c8fa0db2eae995718fb692c547589ff80024609e5f0dcb28fc1ea47017c4",
+    "query_sha256": "727a3fdc917f77054bcb01cdb87230f3dd1243beb3e408cf64619c25ee3e4af8",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "ssa_results",
+    "host_status": "prepared",
+    "candidate": "9ea48ac3fc9c019fbaed64cfab33ef7d8a56b8d8cd53a4fcfd4c65bb9a81493b",
+    "query_sha256": "0ca59b3f1a2fad049febf489fed45e9cfa7647d5efb90bdbc208f4ffb7d31f38",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "unsigned_i32_bits",
+    "host_status": "prepared",
+    "candidate": "ff302425634b4a768b0c157a3a10e096494453b46629ce03373d69449be68919",
+    "query_sha256": "e1becb3e7c6749fed5c15545c6956a194f4b952fb56b94028d6e435242fc8b99",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "unsigned_i64_bits",
+    "host_status": "prepared",
+    "candidate": "0b4fc3d49b39010e01b8d15eaa5d76eb2ed1b667dc205ca490fc609ccaccce5b",
+    "query_sha256": "256ba3b8c72e2fa047a8ba638831d161854522ee56127fda364ae3f270aa522d",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "independent_invocations",
+    "host_status": "prepared",
+    "candidate": "fc6145a57718eab1b8d3fb2fc27f79bf2cce5380137eab404f2e79da89846d50",
+    "query_sha256": "5fe95ce81999e82c76ad25e40c672ab4f3542f7caf3b50ce2cf7f2f1c8539864",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "unchanged_helper",
+    "host_status": "prepared",
+    "candidate": "840d25bec236d4752d50e893fad503a8e59cb19b4270f03d05bd7d28943aad10",
+    "query_sha256": "fbfae8d320486d30f9da7fd87efaac4f27477369374eeab041ae9f7c3388e789",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  },
+  {
+    "case": "dynamic_operand",
+    "host_status": "unsupported",
+    "reason": "configuration fields require actual undecorated integer constants",
+    "authority": false
+  },
+  {
+    "case": "metadata_barrier",
+    "host_status": "prepared",
+    "candidate": "f7ad0b09147e91b9e9a76f88aec433c39dfedee5986e7855ae65a43f92533849",
+    "query_sha256": "b9807b3efa3affa8e578b74a255fd4f67a2c77375a32732f6ae759ef4c63c612",
+    "roots": 17,
+    "sources": 68,
+    "native_outcome": "UNOBSERVED",
+    "authority": false
+  }
+]

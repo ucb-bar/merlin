@@ -1,0 +1,7 @@
+[
+  {
+    "root": "Merlin.GraphState.Elision.assign_as_put",
+    "W": "forall {Value : Type} (literal : Int -> Value) (writes : Merlin.GraphState.Elision.Assignments) (state : Merlin.StateEffects.State Value), Eq.{1} (Merlin.StateEffects.State Value) (Merlin.GraphState.Elision.assign Value literal writes state) (Merlin.GraphState.Configuration.put Value (List.map.{0, 0} (Prod.{0, 0} Nat Int) Nat (fun (x._@.src.merlin.verify.lean.Merlin.GraphStateElisionContract.2141755608._hygCtx._hyg.22 : Prod.{0, 0} Nat Int) => Prod.fst.{0, 0} Nat Int x._@.src.merlin.verify.lean.Merlin.GraphStateElisionContract.2141755608._hygCtx._hyg.22) writes) (fun (key : Nat) => literal (Option.getD.{0} Int (List.lookup.{0, 0} Nat Int (instBEqOfDecidableEq.{0} Nat instDecidableEqNat) key writes) (OfNat.ofNat.{0} Int 0 (instOfNat 0)))) state)",
+    "F": "forall {Value : Type} (literal : Int -> Value) (writes : Merlin.GraphState.Elision.Assignments) (state : Merlin.StateEffects.State Value), Eq.{1} (Merlin.StateEffects.State Value) (Merlin.GraphState.Elision.assign Value literal writes state) (Merlin.GraphState.Configuration.put Value (List.map.{0, 0} (Prod.{0, 0} Nat Int) Nat (fun (x._@.Merlin.GraphStateElisionContract.2141755608._hygCtx._hyg.22 : Prod.{0, 0} Nat Int) => Prod.fst.{0, 0} Nat Int x._@.Merlin.GraphStateElisionContract.2141755608._hygCtx._hyg.22) writes) (fun (key : Nat) => literal (Option.getD.{0} Int (List.lookup.{0, 0} Nat Int (instBEqOfDecidableEq.{0} Nat instDecidableEqNat) key writes) (OfNat.ofNat.{0} Int 0 (instOfNat 0)))) state)"
+  }
+]

@@ -1,0 +1,21 @@
+{
+  "status": "PARTIAL_83_VALID_1_INVALID_AUTHORITATIVE_MLIR_MUTATION",
+  "positive_actual_cases": 14,
+  "mutation_pairs": 21,
+  "compiler_valid_buffers": 83,
+  "invalid": [
+    {
+      "parsed_bytes": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/corpus-v1/negatives/changed_metadata/stage1.mlir",
+        "sha256": "f8d7217226521bed3eeb01c46c1d84dd159e22d44cc1438bd6ec2b8f7534dac1",
+        "bytes": 1100
+      },
+      "valid": false,
+      "reason": "Unable to parse module assembly:\nerror: \"-\":1:1: 'builtin.module' op can only contain attributes with dialect-prefixed names, found: 'fixture'\n note: \"-\":1:1: see current operation: \n  \"builtin.module\"() ({\n    \"func.func\"() <{function_type = (i32) -> (), sym_name = \"run\"}> ({\n    ^bb0(%arg0: i32):\n      %0 = \"arith.constant\"() <{value = 0 : i8}> : () -> i8\n      %1 = \"arith.constant\"() <{value = 1 : i8}> : () -> i8\n      %2 = \"arith.constant\"() <{value = 2 : i8}> : () -> i8\n      %3 = \"arith.constant\"() <{value = 3 : i8}> : () -> i8\n      %4 = \"arith.constant\"() <{value = 0 : i32}> : () -> i32\n      %5 = \"arith.constant\"() <{value = 3 : i32}> : () -> i32\n      %6 = \"arith.constant\"() <{value = 5 : i32}> : () -> i32\n      %7 = \"arith.constant\"() <{value = 7 : i32}> : () -> i32\n      %8 = \"arith.constant\"() <{value = -1 : i32}> : () -> i32\n      %9 = \"arith.constant\"() <{value = 3 : i32}> : () -> i32\n      \"configuration_fixture_isa.pair\"(%0, %5, %6) : (i8, i32, i32) -> ()\n      \"configuration_fixture_isa.work\"(%0, %4, %4) : (i8, i32, i32) -> ()\n      \"configuration_fixture_isa.work\"(%0, %4, %4) : (i8, i32, i32) -> ()\n      \"func.return\"() : () -> ()\n    }) : () -> ()\n  }) {fixture = \"changed\"} : () -> ()"
+    }
+  ],
+  "owned_job17561": "terminal1/reaped",
+  "reason": "module attributes require dialect-prefixed name; own mutation fixture used fixture",
+  "no_formal_checker_run": true,
+  "native_retry": false
+}

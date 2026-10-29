@@ -1,0 +1,18 @@
+{
+  "status": "REVIEWED_Q3_SOURCE_AND_COMPLETEENTRY_LEAN_INTAKE",
+  "Qmanifest_files": 221,
+  "Qmanifest_sha256": "a21acb15ada9d459c75ea125909dbbf4c02fcaae119a2dd61fd35faebe6d0f0d",
+  "files": [
+    "src/merlin/verify/configuration_elision_producer.py",
+    "src/merlin/verify/configuration_elision_bridge.py",
+    "src/merlin/verify/configuration_elision_emit.py",
+    "src/merlin/verify/configuration_elision_intake.py",
+    "src/merlin/verify/configuration_elision_gate.py",
+    "merlin/tests/ir/test_configuration_elision_bridge_unit.py",
+    "merlin/tests/ir/test_configuration_elision_gate_unit.py",
+    "src/merlin/verify/lean/Merlin/GraphStateConfigurationEntries.lean"
+  ],
+  "Fqualified_status": "SCOPED_Q3_F3_CONFIGURATION_ENGINEERING_QUALIFICATION_COMPLETE",
+  "semantic_review": "Whole entry/name/header/frame preservation and conditional common partial interpretation; known-state induction from unknown initial config; exact pure setters only; complete Except errors/terminalworld, all13 actualpairs bound to actualproducer; reservedrawkey gap failclosed before parser, unchanged closedqueries. Host/ISA/native/human/modelcoverage/adjacentcomposition remain assumptions/obligations.",
+  "native_campaign": "13positive,21Leanrefusals+1host,15forgeries11artifact, separatePythonreplay; independent110root actualwitness."
+}

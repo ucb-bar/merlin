@@ -1,0 +1,5 @@
+{
+  "initial_archive_attempt": "Stopped by native-object guard on binary negative-control object; no source/proof or native-execution changes.",
+  "final_archive": "select UTF8source/text; exclude compiled objects and symlink attack fixtures explicitly in members manifests",
+  "original_evidence_untouched": true
+}

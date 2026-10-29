@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/home/jeremy/Projects/model2MLIR/.venv/bin/python",
+    "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/configuration_elision_qualification_worker.py",
+    "verify"
+  ],
+  "cwd": "/home/jeremy/Projects/merlin-loop-verification",
+  "timeout": 120,
+  "owned_process_group": true,
+  "environment": {
+    "PYTHONPATH": "/home/jeremy/Projects/merlin-loop-verification/src",
+    "MERLIN_REPO_ROOT": "/home/jeremy/Projects/merlin-loop-verification",
+    "PYTHONDONTWRITEBYTECODE": "1"
+  }
+}

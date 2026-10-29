@@ -1,0 +1,114 @@
+[
+  {
+    "name": "single_fields",
+    "bits": 32,
+    "removed": 2,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "multifield",
+    "bits": 32,
+    "removed": 2,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "partially_changed_value",
+    "bits": 32,
+    "removed": 2,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "partial_clobber",
+    "bits": 32,
+    "removed": 2,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "unknown_effect",
+    "bits": 32,
+    "removed": 1,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "unordered_effect",
+    "bits": 32,
+    "removed": 1,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "pulse_retained",
+    "bits": 32,
+    "removed": 1,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "ssa_results",
+    "bits": 32,
+    "removed": 1,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "unsigned_i32_bits",
+    "bits": 32,
+    "removed": 1,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "unsigned_i64_bits",
+    "bits": 64,
+    "removed": 1,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "independent_invocations",
+    "bits": 32,
+    "removed": 2,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "unchanged_helper",
+    "bits": 32,
+    "removed": 1,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "dynamic_operand",
+    "bits": 32,
+    "removed": 1,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  },
+  {
+    "name": "metadata_barrier",
+    "bits": 32,
+    "removed": 1,
+    "status": "ACTUAL_PRODUCER_CHANGED_UNCOMPILED",
+    "human_approved": false,
+    "source_decoder_compared": true
+  }
+]
