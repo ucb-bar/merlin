@@ -116,7 +116,9 @@ def command(row, plan, observers):
             + " ".join((_string(atom["key"]), private_view(item), "true" if instruction["retained"] else "false"))
         )
     if kind == "initialize":
-        return ".initialize link" + str(row["initializer"])
+        item = plan["privateViews"][instruction["object"]]
+        constructor = ".initializeLine link" if len(item["shape"]) == 1 else ".initialize link"
+        return constructor + str(row["initializer"])
     if kind in ("load", "store"):
         return (
             "."

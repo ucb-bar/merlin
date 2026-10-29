@@ -6,6 +6,8 @@ final bound_local_simulations statement. This remains a candidate until compiled
 import Merlin.GraphLoopsMemorySCFAfterAccessLocal
 import Merlin.GraphLoopsMemorySCFAfterAllocationLocal
 import Merlin.GraphLoopsMemorySCFAfterUntiledLocal
+import Merlin.GraphLoopsMemorySCFAfterLineLocal
+import Merlin.GraphLoopsMemorySCFAfterLineTiledLocal
 
 set_option autoImplicit false
 
@@ -51,6 +53,7 @@ theorem Expansion.local_checked {Value User : Type} (bits : Nat) (indices : Inde
           opcode notCall).trans (Epoch.graph_release plan.opcodes scalar operation opcode)
         exact release_local plan context sourceClock clock operation item checked (inside item.object itemValid.2.1) scalar _ action
     | «initialize» link => exact False.elim facts
+    | initializeLine link => exact False.elim facts
     | load key operation access result =>
       rcases checked.1 with ⟨_, accessValid, opcode, notCall, _⟩
       have action := (expanded_primitive (User := User) bits indices plan kernel target noOverrides scalar depth operation .load
@@ -85,6 +88,20 @@ theorem Expansion.local_checked {Value User : Type} (bits : Nat) (indices : Inde
       (by simp only [Epoch.memoryOpcode,storeOpcode]) (by simp only [Epoch.memoryOpcode,loopOpcode])
     rw [← memory] at result
     exact result
+  | untiledLine link =>
+    rcases facts with ⟨_,positive⟩
+    rcases checked.1 with ⟨_,_,_,_,objectInside,storeOpcode,loopOpcode⟩
+    let base : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
+      withCalls (withIndex (Epoch.scalarAllocationBase plan.opcodes scalar) bits indices)
+        (expandedModule plan kernel target)
+        (GraphLoopsShape.invoke (finalMeaning bits indices plan.opcodes scalar)
+          (expandedModule plan kernel target) false (depth+1))
+    have memory := expanded_memory (User := User) bits indices plan planValid kernel target scalar depth
+    have result := line_initializer_local plan planValid context sourceClock clock link checked positive
+      (inside link.config.object objectInside) scalar base (Epoch.memoryOpcode plan.opcodes)
+      (by simp only [Epoch.memoryOpcode,storeOpcode]) (by simp only [Epoch.memoryOpcode,loopOpcode])
+    rw [← memory] at result
+    exact result
   | tiled link program =>
     rcases facts with ⟨_, sameUniform, _, _, controls, bounds, fresh,
       addIndex, minIndex, addOld, minOld, addNotCall, minNotCall⟩
@@ -99,6 +116,26 @@ theorem Expansion.local_checked {Value User : Type} (bits : Nat) (indices : Inde
     have minimum := expanded_generated (User := User) bits indices plan kernel target scalar depth program.minKey .minimum minIndex minOld minNotCall
     rw [memory] at add minimum
     have result := initializer_local plan planValid context sourceClock clock link program checked sameUniform controls bits bounds
+      (fresh program.tile (List.mem_cons_self)) (inside link.config.object objectInside) scalar base
+      (Epoch.memoryOpcode plan.opcodes)
+      (by simp only [sameUniform, Epoch.memoryOpcode, storeOpcode])
+      (by simp only [sameUniform, Epoch.memoryOpcode, loopOpcode]) add minimum
+    rw [← memory] at result
+    exact result
+  | tiledLine link program =>
+    rcases facts with ⟨_, sameUniform, _, _, controls, bounds, fresh,
+      addIndex, minIndex, addOld, minOld, addNotCall, minNotCall⟩
+    rcases checked.1 with ⟨_, _, _, _, objectInside, storeOpcode, loopOpcode⟩
+    let base : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
+      withCalls (withIndex (Epoch.scalarAllocationBase plan.opcodes scalar) bits indices)
+        (expandedModule plan kernel target)
+        (GraphLoopsShape.invoke (finalMeaning bits indices plan.opcodes scalar)
+          (expandedModule plan kernel target) false (depth + 1))
+    have memory := expanded_memory (User := User) bits indices plan planValid kernel target scalar depth
+    have add := expanded_generated (User := User) bits indices plan kernel target scalar depth program.addKey .add addIndex addOld addNotCall
+    have minimum := expanded_generated (User := User) bits indices plan kernel target scalar depth program.minKey .minimum minIndex minOld minNotCall
+    rw [memory] at add minimum
+    have result := tiled_line_initializer_local plan planValid context sourceClock clock link program checked sameUniform controls bits bounds
       (fresh program.tile (List.mem_cons_self)) (inside link.config.object objectInside) scalar base
       (Epoch.memoryOpcode plan.opcodes)
       (by simp only [sameUniform, Epoch.memoryOpcode, storeOpcode])

@@ -4,6 +4,7 @@ certificate by assertion: subsequent soundness derives every dynamic step. -/
 import Merlin.GraphLoopsShapeEpochAllocationSteps
 import Merlin.GraphLoopsShapeEpochMemorySteps
 import Merlin.GraphLoopsShapeEpochInitializerSteps
+import Merlin.GraphLoopsShapeEpochLineSteps
 import Merlin.GraphLoopsShapeEpochObserverSteps
 
 set_option autoImplicit false
@@ -27,6 +28,7 @@ inductive Command where
   | allocate (operation : String) (item : PrivateView) (retained : Bool)
   | release (operation : String) (item : PrivateView) (retained : Bool)
   | initialize (link : InitializerLink)
+  | initializeLine (link : LineInitializerLink)
   | load (key operation : String) (access : Access) (result : Binding)
   | store (key operation : String) (access : Access) (operand : Binding)
   | observer (key operation name : String) (input buffer result : Binding) (program : Touch)
@@ -38,6 +40,7 @@ def Command.atom : Command → Atom
   | .allocate operation item _ => .action operation [] [item.binding]
   | .release operation item _ => .action operation [item.binding] []
   | .initialize link => link.canonical.atom
+  | .initializeLine link => link.canonical.atom
   | .load _ operation access result => .action operation (access.buffer :: access.indices) [result]
   | .store _ operation access operand => .action operation (operand :: access.buffer :: access.indices) []
   | .observer _ operation _ input buffer result _ => .action operation [input, buffer] [result]
@@ -47,6 +50,7 @@ def Command.instruction : Command → GraphLoopsReuse.Instruction
   | .allocate _ item retained => .allocate item.object retained
   | .release _ item retained => .release item.object retained
   | .initialize link => .initialize link.config.object link.config.key
+  | .initializeLine link => .initialize link.config.object link.config.key
   | .load key _ access _ => .load access.object key
   | .store key _ access _ => .store access.object key
 
@@ -61,6 +65,8 @@ def Command.inputs : Command → List Binding
   | .release _ item _ => [item.binding]
   | .initialize link => [link.canonical.seed, link.canonical.buffer, link.canonical.zero,
       link.canonical.rows, link.canonical.columns, link.canonical.one]
+  | .initializeLine link => [link.canonical.seed, link.canonical.buffer, link.canonical.zero,
+      link.canonical.extent, link.canonical.one]
   | .load _ _ access _ => access.buffer :: access.indices
   | .store _ _ access operand => operand :: access.buffer :: access.indices
   | .observer _ _ _ input buffer _ _ => [input, buffer]
@@ -103,6 +109,10 @@ def Command.Operations (plan : PlanContext) (context : Context) (clock : Nat) : 
   | .release operation item _ =>
       item.Valid plan ∧ opcodeAt plan.opcodes operation = some .release ∧ callTarget plan.module.calls operation = none
   | .initialize link =>
+      link.Facts ∧ link.Bound context plan.views ∧ link.config ∈ plan.configs ∧ link.mapping = plan.mapping ∧
+      link.config.object < plan.objects.length ∧ opcodeAt plan.opcodes link.canonical.storeKey = some .store ∧
+      opcodeAt plan.opcodes link.canonical.loopKey = some .loop
+  | .initializeLine link =>
       link.Facts ∧ link.Bound context plan.views ∧ link.config ∈ plan.configs ∧ link.mapping = plan.mapping ∧
       link.config.object < plan.objects.length ∧ opcodeAt plan.opcodes link.canonical.storeKey = some .store ∧
       opcodeAt plan.opcodes link.canonical.loopKey = some .loop

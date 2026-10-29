@@ -3,6 +3,7 @@ Every expansion records its EXACT old command; no instruction is omitted from
 source binding. These checks are not a substitute for per-command simulation.
 -/
 import Merlin.GraphLoopsMemorySCFAfterScope
+import Merlin.GraphLoopsMemorySCFAfterLineTiled
 import Merlin.GraphLoopsShapeEpochFunction
 import Merlin.GraphLoopsShapeAfter
 
@@ -18,6 +19,8 @@ inductive Expansion where
   | dropRelease (operation : String) (item : Epoch.PrivateView)
   | tiled (link : Epoch.InitializerLink) (program : TiledInitializer)
   | untiled (link : Epoch.InitializerLink)
+  | tiledLine (link : Epoch.LineInitializerLink) (program : TiledLine)
+  | untiledLine (link : Epoch.LineInitializerLink)
   deriving DecidableEq, Repr
 
 def Expansion.source : Expansion → Epoch.Command
@@ -26,15 +29,22 @@ def Expansion.source : Expansion → Epoch.Command
   | .dropRelease operation item => .release operation item false
   | .tiled link _ => .initialize link
   | .untiled link => .initialize link
+  | .tiledLine link _ => .initializeLine link
+  | .untiledLine link => .initializeLine link
 
 def Expansion.fragments : Expansion → List Fragment
   | .keep command => [.atom command.atom]
   | .alias _ item owner => [.alias owner.binding item.binding (Epoch.type item.shape item.element)]
   | .dropRelease _ _ => [.empty]
   | .untiled link => [.atom link.canonical.atom]
+  | .untiledLine link => [.atom link.canonical.atom]
   | .tiled link program =>
       [.atom (.constant program.tile link.config.tile),
        .atom (.region program.uniform.loopKey [program.uniform.zero, program.uniform.rows, program.tile]
+         [program.tileIV] [] program.body)]
+  | .tiledLine link program =>
+      [.atom (.constant program.tile link.config.tile),
+       .atom (.region program.uniform.loopKey [program.uniform.zero, program.uniform.extent, program.tile]
          [program.tileIV] [] program.body)]
 
 def Expansion.nextClock (clock : Nat) (expansion : Expansion) : Nat :=
@@ -44,6 +54,7 @@ def Expansion.nextClock (clock : Nat) (expansion : Expansion) : Nat :=
 
 def Expansion.generated : Expansion → List Binding
   | .tiled _ program => [program.tile, program.tileIV, program.sum, program.bound]
+  | .tiledLine _ program => [program.tile, program.tileIV, program.sum, program.bound]
   | _ => []
 
 def Expansion.Facts (bits : Nat) (plan : Epoch.PlanContext) (indices : IndexOpcodes)
@@ -52,7 +63,7 @@ def Expansion.Facts (bits : Nat) (plan : Epoch.PlanContext) (indices : IndexOpco
     | .allocate _ item true => item.Valid plan ∧
         GraphLoopsReuse.slotOf plan.objects item.object = clock ∧ clock < plan.objects.length
     | .release _ item true => item.Valid plan ∧ GraphLoopsReuse.slotOf plan.objects item.object < plan.objects.length
-    | .allocate _ _ false | .release _ _ false | .initialize _ => False
+    | .allocate _ _ false | .release _ _ false | .initialize _ | .initializeLine _ => False
     | _ => True
   | .alias _ item owner =>
       item.Valid plan ∧ owner.Valid plan ∧ owner.binding ∈ context ∧
@@ -61,10 +72,20 @@ def Expansion.Facts (bits : Nat) (plan : Epoch.PlanContext) (indices : IndexOpco
       GraphLoopsReuse.slotOf plan.objects item.object < plan.objects.length
   | .dropRelease _ item => item.Valid plan
   | .untiled link => link.Facts ∧ 0 < link.config.tile
+  | .untiledLine link => link.Facts ∧ 0 < link.config.tile
   | .tiled link program =>
       link.Facts ∧ program.uniform = link.canonical ∧
       program.tile.kind = .index ∧ program.tile.known = some link.config.tile ∧
       program.ControlFacts ∧ (GraphLoopsSegment.Bounds.mk bits 0 link.rows 1 link.config.tile).Valid ∧
+      (∀ binding ∈ [program.tile, program.tileIV, program.sum, program.bound], binding.name ∉ names context) ∧
+      indexOpcodeAt indices program.addKey = some .add ∧ indexOpcodeAt indices program.minKey = some .minimum ∧
+      Epoch.opcodeAt plan.opcodes program.addKey = none ∧ Epoch.opcodeAt plan.opcodes program.minKey = none ∧
+      callTarget plan.module.calls program.addKey = none ∧ callTarget plan.module.calls program.minKey = none
+
+  | .tiledLine link program =>
+      link.Facts ∧ program.uniform = link.canonical ∧
+      program.tile.kind = .index ∧ program.tile.known = some link.config.tile ∧
+      program.ControlFacts ∧ (GraphLoopsSegment.Bounds.mk bits 0 link.extent 1 link.config.tile).Valid ∧
       (∀ binding ∈ [program.tile, program.tileIV, program.sum, program.bound], binding.name ∉ names context) ∧
       indexOpcodeAt indices program.addKey = some .add ∧ indexOpcodeAt indices program.minKey = some .minimum ∧
       Epoch.opcodeAt plan.opcodes program.addKey = none ∧ Epoch.opcodeAt plan.opcodes program.minKey = none ∧
@@ -78,8 +99,8 @@ instance expansionFactsDecidable (bits : Nat) (plan : Epoch.PlanContext) (indice
     cases command with
     | allocate operation item retained => cases retained <;> unfold Expansion.Facts <;> infer_instance
     | release operation item retained => cases retained <;> unfold Expansion.Facts <;> infer_instance
-    | constant | binary | «initialize» | load | store | observer => unfold Expansion.Facts; infer_instance
-  | alias | dropRelease | tiled | untiled => unfold Expansion.Facts; infer_instance
+    | constant | binary | «initialize» | initializeLine | load | store | observer => unfold Expansion.Facts; infer_instance
+  | alias | dropRelease | tiled | untiled | tiledLine | untiledLine => unfold Expansion.Facts; infer_instance
 
 def ExpansionsValid (bits : Nat) (plan : Epoch.PlanContext) (indices : IndexOpcodes) :
     Context → Nat → List Expansion → Prop

@@ -64,7 +64,7 @@ theorem Kernel.depth_one_refused {Value User : Type} (plan : PlanContext) (kerne
     | observer key operation name input buffer result program =>
       intro initial world final after
       exact zero_call_refused _ _ operation name call.1 call.2 [input, buffer] [result] initial final world after
-    | constant | binary | allocate | release | «initialize» | load | store => exact False.elim call
+    | constant | binary | allocate | release | «initialize» | initializeLine | load | store => exact False.elim call
   exact sequence_refused _ _ command.atom (List.mem_map_of_mem member) refuses _ env before after sequence
 
 theorem Kernel.depth_equivalent {Value User : Type} (plan : PlanContext) (planValid : plan.Valid)

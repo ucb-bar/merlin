@@ -61,6 +61,21 @@ theorem Command.correspondence {Value User : Type} (plan : PlanContext) (planVal
       (memoryOpcode plan.opcodes) classifiedStore classifiedLoop before registers env world
     rw [← plan.meaning_memory planValid scalar depth] at step
     simpa only [mapping, Command.atom, Command.instruction, Command.nextClock, PlanContext.oldMeaning] using step
+  | initializeLine link =>
+    rcases operations with ⟨facts, inputBound, configMember, mapping, inside, store, loop⟩
+    have classifiedStore : memoryOpcode plan.opcodes link.canonical.storeKey = .store := by
+      simp only [memoryOpcode, store]
+    have classifiedLoop : memoryOpcode plan.opcodes link.canonical.loopKey = .loop := by
+      simp only [memoryOpcode, loop]
+    have unique : ∀ actual ∈ plan.configs, actual.key = link.config.key → actual = link.config :=
+      fun actual member equal => planValid.1 actual member link.config configMember equal
+    have step := line_initializer_atom link (decide_eq_true facts) context plan.views (decide_eq_true inputBound)
+      plan.objects.length clock inside plan.objects plan.configs configMember unique plan.specifications scalar
+      (withCalls (scalarAllocationBase plan.opcodes scalar) plan.module
+        (GraphLoopsShape.invoke (graphMeaning plan.opcodes scalar) plan.module false (depth + 1)))
+      (memoryOpcode plan.opcodes) classifiedStore classifiedLoop before registers env world
+    rw [← plan.meaning_memory planValid scalar depth] at step
+    simpa only [mapping, Command.atom, Command.instruction, Command.nextClock, PlanContext.oldMeaning] using step
   | load key operation access result =>
     rcases operations with ⟨selected, accessValid, opcode, notCall, _⟩
     obtain ⟨coordinates, indices⟩ := indices_of_typed context before.observed.registers registers.1 access.indices

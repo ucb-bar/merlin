@@ -87,7 +87,7 @@ theorem expanded_depth_one_refused {Value User : Type} (bits : Nat) (indices : I
     intro actual world next final
     exact Epoch.zero_call_refused _ (expandedModule plan kernel expansions) operation name target
       (by rw [found]; rfl) [input, buffer] [result] actual next world final
-  | constant | binary | allocate | release | «initialize» | load | store => exact False.elim call
+  | constant | binary | allocate | release | «initialize» | initializeLine | load | store => exact False.elim call
 
 theorem expanded_complete_equivalent {Value User : Type} (bits : Nat) (indices : IndexOpcodes)
     (plan : Epoch.PlanContext) (planValid : plan.Valid) (kernel : Epoch.Kernel) (facts : kernel.Facts plan)

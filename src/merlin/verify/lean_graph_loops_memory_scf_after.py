@@ -24,6 +24,42 @@ def _single(values, label):
     return values[0]
 
 
+def _line_initializer(region, addition, minimum, point):
+    store = point["body"]
+    if store["tag"] != "action" or json.loads(store["key"])["name"] != "memref.store":
+        raise ValueError("actual line target requires its store")
+    if any(len(node["operands"]) != 3 for node in (region, point)) or len(store["operands"]) != 3:
+        raise ValueError("line target control/store arity differs")
+    uniform = dict(
+        storeKey=store["key"],
+        loopKey=region["key"],
+        seed=store["operands"][0],
+        buffer=store["operands"][1],
+        index=_single(point["parameters"], "point induction binding"),
+        zero=region["operands"][0],
+        extent=region["operands"][1],
+        one=point["operands"][2],
+    )
+    kind = uniform["buffer"]["kind"]
+    if kind["tag"] != "view" or len(kind["type"]["shape"]) != 1:
+        raise ValueError("one-dimensional static final initializer required")
+    if uniform["zero"]["known"] != 0 or uniform["one"]["known"] != 1:
+        raise ValueError("current final line subset requires zero lower bound and unit point stride")
+    if [uniform["extent"]["known"]] != kind["type"]["shape"]:
+        raise ValueError("current final line initializer must cover its complete view")
+    return dict(
+        uniform=uniform,
+        tile=region["operands"][2],
+        tileIV=_single(region["parameters"], "tile induction binding"),
+        sum=_single(addition["results"], "addition result"),
+        bound=_single(minimum["results"], "minimum result"),
+        addKey=addition["key"],
+        minKey=minimum["key"],
+        shape=kind["type"]["shape"],
+        element=kind["type"]["element"],
+    )
+
+
 def initializer(region):
     """Extract a hint; emitted equality checks the complete original region."""
     addition = region["body"]
@@ -33,6 +69,8 @@ def initializer(region):
     if minimum["tag"] != "action" or json.loads(minimum["key"])["name"] != "arith.minui":
         raise ValueError("actual outer body must retain the generated minimum")
     inner = minimum["rest"]
+    if inner["tag"] == "region" and inner["body"]["tag"] == "action":
+        return _line_initializer(region, addition, minimum, inner)
     if inner["tag"] != "region" or inner["body"]["tag"] != "region":
         raise ValueError("actual target requires inner point and column loops")
     row, store = inner["body"], inner["body"]["body"]
@@ -87,6 +125,31 @@ def initializers(module):
 
 def _initializer_execution(name, site, bits):
     """Instantiate the local semantic root; whole-function joining stays separate."""
+    if len(site["shape"]) == 1:
+        extent = _nat(site["shape"][0])
+        tile, element = _nat(site["tile"]["known"]), _string(site["element"])
+        return f"""theorem {name}_execution {{Value Public : Type}}
+    (base : Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
+    (object : Nat) (value : Value)
+    (store : classify {name}.uniform.storeKey = .store)
+    (loop : classify {name}.uniform.loopKey = .loop)
+    (add : (withMemory base classify).action {name}.addKey =
+      GraphLoopsMemorySCF.After.IndexAction {_nat(bits)} .add)
+    (minimum : (withMemory base classify).action {name}.minKey =
+      GraphLoopsMemorySCF.After.IndexAction {_nat(bits)} .minimum)
+    (aliases : Aliases) (env : Merlin.GraphLoopsShape.Env Value)
+    (inputs : {name}.Inputs env object {extent} {tile} {element} value)
+    (meaning : GraphLoopsMemorySCF.PureMeaning Value)
+    (before after : MemoryWorld Value Public) (outputs : List (Runtime Value)) :
+    Eval (withMemory base classify) false aliases {name}.code env before outputs after ↔
+      outputs = [] ∧ after.observed = before.observed ∧
+        GraphLoopsMemorySCF.HeapRun meaning
+          (Epoch.uniformLine {extent} {name}.uniform.index.name {name}.uniform.seed.name)
+          {tile} object true (Epoch.eraseEnv env) before.heap after.heap :=
+  {name}.eval_epoch base classify {_nat(bits)} {extent} {tile} object {element} value
+    {name}_bounds_valid {name}_uniform_facts {name}_control_facts
+    store loop add minimum aliases env inputs meaning before after outputs
+"""
     rows, columns = map(_nat, site["shape"])
     tile, element = _nat(site["tile"]["known"]), _string(site["element"])
     return f"""theorem {name}_execution {{Value Public : Type}}
@@ -124,6 +187,8 @@ set_option maxHeartbeats 8000000
 open Merlin Merlin.GraphLoopsShape
 namespace GraphMemoryAfterCandidate
 """
+    if any(len(site["shape"]) == 1 for site in sites):
+        text = "import Merlin.GraphLoopsMemorySCFAfterLineTiled\n" + text
     text += "def actualFinal : Module := " + module_literal(model["module"]) + "\n"
     text += (
         "def actualIndexOpcodes : GraphLoopsMemorySCF.After.IndexOpcodes := "
@@ -135,7 +200,9 @@ namespace GraphMemoryAfterCandidate
         name = "initializer" + str(index)
         fields = [uniform_literal(site["uniform"])] + [binding(site[key]) for key in ("tile", "tileIV", "sum", "bound")]
         fields += [_string(site[key]) for key in ("addKey", "minKey")]
-        text += "def " + name + " : GraphLoopsMemorySCF.After.TiledInitializer := ⟨" + ", ".join(fields) + "⟩\n"
+        constructor = "TiledLine" if len(site["shape"]) == 1 else "TiledInitializer"
+        dimensions = " ".join(_nat(value) for value in site["shape"])
+        text += "def " + name + " : GraphLoopsMemorySCF.After." + constructor + " := ⟨" + ", ".join(fields) + "⟩\n"
         text += f"""theorem {name}_syntax :
     (functionAt actualFinal {_string(site["function"])}).map
       (fun function => (Epoch.topRegions function.code)[{_nat(site["position"])}]?) =
@@ -144,7 +211,7 @@ def {name}_bounds : GraphLoopsSegment.Bounds :=
   ⟨{_nat(bits)}, 0, {_nat(site["shape"][0])}, 1, {_nat(site["tile"]["known"])}⟩
 theorem {name}_bounds_valid : {name}_bounds.Valid := by decide
 theorem {name}_uniform_facts :
-    {name}.uniform.Facts {_nat(site["shape"][0])} {_nat(site["shape"][1])} {_string(site["element"])} := by decide
+    {name}.uniform.Facts {dimensions} {_string(site["element"])} := by decide
 theorem {name}_control_facts : {name}.ControlFacts := by decide
 """
         text += _initializer_execution(name, site, bits)
@@ -171,7 +238,11 @@ def prepare_final(raw, *, parser, index_bits, max_nodes, tiled=True):
         roots=roots,
         query_format="pure-declarations",
         query_version="actual-final-local-tiled-v2",
-        local_initializer_root="Merlin.GraphLoopsMemorySCF.After.TiledInitializer.eval_epoch",
+        local_initializer_root=(
+            "Merlin.GraphLoopsMemorySCF.After.TiledLine.eval_epoch"
+            if sites and all(len(site["shape"]) == 1 for site in sites)
+            else "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.eval_epoch"
+        ),
         local_initializer_root_kernel_checked=False,
         complete_memory_bridge_proved=False,
         kernel_checked=False,

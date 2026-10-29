@@ -18,6 +18,7 @@ theorem Command.assignment {Value World : Type} (plan : PlanContext) (context : 
   | allocate => obtain ⟨values, _, typed, assigned⟩ := run; exact ⟨values, typed, assigned⟩
   | release => obtain ⟨values, _, typed, assigned⟩ := run; exact ⟨values, typed, assigned⟩
   | «initialize» => obtain ⟨values, _, typed, assigned⟩ := run; exact ⟨values, typed, assigned⟩
+  | initializeLine => obtain ⟨values, _, typed, assigned⟩ := run; exact ⟨values, typed, assigned⟩
   | load => obtain ⟨values, _, typed, assigned⟩ := run; exact ⟨values, typed, assigned⟩
   | store => obtain ⟨values, _, typed, assigned⟩ := run; exact ⟨values, typed, assigned⟩
   | observer => obtain ⟨values, _, typed, assigned⟩ := run; exact ⟨values, typed, assigned⟩
@@ -43,7 +44,7 @@ theorem Command.pins_preserved {Value User : Type} (plan : PlanContext) (planVal
       simpa only [GraphLoopsReuse.clearMemory, Bool.false_and, Bool.false_eq_true, ↓reduceIte] using envEqual
     rw [same]
     exact registers.2
-  | constant | binary | release | «initialize» | load | store | observer =>
+  | constant | binary | release | «initialize» | initializeLine | load | store | observer =>
     rw [assigned]
     exact pinned_assign plan.views before.observed.registers registers.2 _ values checked.2.2.2.1
 

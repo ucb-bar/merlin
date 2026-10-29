@@ -38,6 +38,15 @@ def module_literal(module):
 
 
 def uniform_literal(program):
+    if "index" in program:
+        return (
+            "⟨"
+            + ", ".join(
+                [_string(program[key]) for key in ("storeKey", "loopKey")]
+                + [binding(program[key]) for key in ("seed", "buffer", "index", "zero", "extent", "one")]
+            )
+            + "⟩"
+        )
     return (
         "⟨"
         + ", ".join(
@@ -129,20 +138,35 @@ def obligation(adapter):
                 "checked_context",
             )
         )
+    line_initializers = any(len(row["shape"]) == 1 for row in adapter["initializers"])
+    if line_initializers:
+        # Root supplies these canonical modules with the additive line bridge.
+        source = "import Merlin.GraphLoopsShapeEpochLineSteps\n" + source
+        roots += [
+            "Merlin.GraphLoopsShape.Epoch.UniformLine.checked_eval",
+            "Merlin.GraphLoopsShape.Epoch.LineInitializerLink.checked_execution",
+            "Merlin.GraphLoopsShape.Epoch.LineInitializerLink.from_registers",
+            "Merlin.GraphLoopsShape.Epoch.LineInitializerLink.clocked",
+            "Merlin.GraphLoopsShape.Epoch.line_initializer_atom",
+        ]
     extra = []
     for index, row in enumerate(adapter["initializers"]):
         name = "initializer" + str(index)
-        extra.append(f"""def {name} : Epoch.Uniform := {uniform_literal(row["program"])}
+        line = len(row["shape"]) == 1
+        initializer_type = "Epoch.UniformLine" if line else "Epoch.Uniform"
+        dimensions = " ".join(_nat(value) for value in row["shape"])
+        extra.append(f"""def {name} : {initializer_type} := {uniform_literal(row["program"])}
 theorem {name}_syntax :
     (functionAt actualNormalized {_string(row["function"])}).map
       (fun function => (Epoch.topRegions function.code)[{_nat(row["position"])}]?) = some (some {name}.code) := by rfl
 theorem {name}_facts :
-    decide ({name}.Facts {_nat(row["shape"][0])} {_nat(row["shape"][1])} {_string(row["element"])}) = true := by decide
+    decide ({name}.Facts {dimensions} {_string(row["element"])}) = true := by decide
 """)
         roots += ["GraphShapeEpochObligation." + name + suffix for suffix in ("_syntax", "_facts")]
     for index, link in enumerate(adapter.get("initializer_links", [])):
         name = "link" + str(index)
-        extra.append(f"""def {name} : Epoch.InitializerLink := {link_literal(link)}
+        link_type = "Epoch.LineInitializerLink" if "extent" in link else "Epoch.InitializerLink"
+        extra.append(f"""def {name} : {link_type} := {link_literal(link)}
 theorem {name}_checked : decide {name}.Facts = true := by decide
 theorem {name}_canonical : {name}.canonical = initializer{index} := by rfl
 theorem {name}_old_configuration :
@@ -203,5 +227,9 @@ def link_literal(link):
 
     fields = [uniform_literal(link["raw"]), uniform_literal(link["canonical"]), configuration(link["config"])]
     fields.append(_list(link["mapping"], lambda pair: "(" + _nat(pair[0]) + ", " + _nat(pair[1]) + ")"))
-    fields.extend((_nat(link["rows"]), _nat(link["columns"]), _string(link["element"]), _nat(link["sourceBuffer"])))
+    if "extent" in link:
+        fields.append(_nat(link["extent"]))
+    else:
+        fields.extend((_nat(link["rows"]), _nat(link["columns"])))
+    fields.extend((_string(link["element"]), _nat(link["sourceBuffer"])))
     return "⟨" + ", ".join(fields) + "⟩"

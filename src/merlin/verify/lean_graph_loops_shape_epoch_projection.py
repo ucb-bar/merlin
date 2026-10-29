@@ -75,7 +75,42 @@ def top_regions(code):
     return regions
 
 
+def _uniform_line(region):
+    """Extract only the actual one-dimensional, single-store loop."""
+    if region["tag"] != "region" or region["results"] or len(region["parameters"]) != 1:
+        raise ValueError("line initializer requires one induction variable and no carries")
+    cell = region["body"]
+    if cell["tag"] != "action" or cell["results"] or json.loads(cell["key"])["name"] != "memref.store":
+        raise ValueError("line initializer requires one concrete store body")
+    if any(row["rest"] != dict(tag="returned", values=[]) for row in (region, cell)):
+        raise ValueError("line initializer gained a surrounding/leaf effect")
+    if len(region["operands"]) != 3 or len(cell["operands"]) != 3:
+        raise ValueError("line initializer control/store operand arity changed")
+    zero, extent, one = region["operands"]
+    seed, buffer, coordinate = cell["operands"]
+    index = region["parameters"][0]
+    if coordinate != index:
+        raise ValueError("line initializer actual store coordinate differs")
+    if json.loads(region["key"])["name"] != "scf.for":
+        raise ValueError("line initializer requires a plain SCF operation meaning")
+    view = buffer["kind"]
+    if view["tag"] != "view" or len(view["type"]["shape"]) != 1:
+        raise ValueError("line initializer requires its actual rank-one view")
+    return dict(
+        storeKey=cell["key"],
+        loopKey=region["key"],
+        seed=seed,
+        buffer=buffer,
+        index=index,
+        zero=zero,
+        extent=extent,
+        one=one,
+    )
+
+
 def uniform(region):
+    if region["tag"] == "region" and region["body"]["tag"] == "action":
+        return _uniform_line(region)
     if region["tag"] != "region" or region["results"] or len(region["parameters"]) != 1:
         raise ValueError("partial epoch adapter requires one outer induction variable and no carries")
     inner = region["body"]
@@ -120,8 +155,8 @@ def project_adapter(before, after, *, index_bits, max_nodes):
         for position, region in enumerate(top_regions(function["code"])):
             program = uniform(region)
             view_type = program["buffer"]["kind"]
-            if view_type["tag"] != "view" or len(view_type["type"]["shape"]) != 2:
-                raise ValueError("partial initializer adapter requires a rank-two view")
+            if view_type["tag"] != "view" or len(view_type["type"]["shape"]) not in (1, 2):
+                raise ValueError("partial initializer adapter requires a rank-one or rank-two view")
             initializers.append(
                 dict(
                     function=function["name"],
@@ -193,13 +228,16 @@ def bind_memory(adapter, normalized_export, memory_exports, *, index_bits, max_n
                 raise ValueError("canonical initializer lost its complete actual syntax binding")
             if program["buffer"]["name"] != epoch["source_value"]:
                 raise ValueError("initializer store names the wrong private allocation")
+            coordinates = (
+                [program["index"]["name"]]
+                if len(expected[0]["shape"]) == 1
+                else [program["outer"]["name"], program["inner"]["name"]]
+            )
             if config["program"] != dict(
                 shape=expected[0]["shape"],
-                ivs=[program["outer"]["name"], program["inner"]["name"]],
+                ivs=coordinates,
                 outerPrefix=[],
-                leaf=dict(
-                    ops=[], value=program["seed"]["name"], indices=[program["outer"]["name"], program["inner"]["name"]]
-                ),
+                leaf=dict(ops=[], value=program["seed"]["name"], indices=coordinates),
             ):
                 raise ValueError("raw epoch scalar/coordinate program differs from the typed initializer")
             links.append(
@@ -208,8 +246,11 @@ def bind_memory(adapter, normalized_export, memory_exports, *, index_bits, max_n
                     canonical=canonical,
                     config=config,
                     mapping=sorted(mapping.items()),
-                    rows=expected[0]["shape"][0],
-                    columns=expected[0]["shape"][1],
+                    **(
+                        dict(extent=expected[0]["shape"][0])
+                        if len(expected[0]["shape"]) == 1
+                        else dict(rows=expected[0]["shape"][0], columns=expected[0]["shape"][1])
+                    ),
                     element=expected[0]["element"],
                     sourceBuffer=epoch["source_value"],
                     function=function["name"],

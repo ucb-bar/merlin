@@ -26,6 +26,21 @@ def _sequence(atoms, returned):
 
 
 def _uniform_atom(uniform):
+    if "index" in uniform:
+        store = dict(
+            tag="action",
+            key=uniform["storeKey"],
+            results=[],
+            operands=[uniform[key] for key in ("seed", "buffer", "index")],
+        )
+        return dict(
+            tag="region",
+            key=uniform["loopKey"],
+            operands=[uniform[key] for key in ("zero", "extent", "one")],
+            parameters=[uniform["index"]],
+            results=[],
+            body=_sequence([store], []),
+        )
     store = dict(
         tag="action",
         key=uniform["storeKey"],
@@ -51,6 +66,38 @@ def _uniform_atom(uniform):
 
 
 def _tiled_atoms(uniform, tile, fresh, index_keys):
+    if "index" in uniform:
+        tiled = dict(uniform=copy.deepcopy(uniform))
+        for key in ("tile", "tileIV", "sum", "bound"):
+            tiled[key] = dict(name=next(fresh), kind=dict(tag="index"), known=tile if key == "tile" else None)
+        tiled.update(addKey=index_keys["add"], minKey=index_keys["minimum"])
+        store = dict(
+            tag="action",
+            key=uniform["storeKey"],
+            results=[],
+            operands=[uniform[key] for key in ("seed", "buffer", "index")],
+        )
+        point = dict(
+            tag="region",
+            key=uniform["loopKey"],
+            operands=[tiled["tileIV"], tiled["bound"], uniform["one"]],
+            parameters=[uniform["index"]],
+            results=[],
+            body=_sequence([store], []),
+        )
+        add = dict(tag="action", key=tiled["addKey"], operands=[tiled["tileIV"], tiled["tile"]], results=[tiled["sum"]])
+        minimum = dict(
+            tag="action", key=tiled["minKey"], operands=[tiled["sum"], uniform["extent"]], results=[tiled["bound"]]
+        )
+        outer = dict(
+            tag="region",
+            key=uniform["loopKey"],
+            operands=[uniform["zero"], uniform["extent"], tiled["tile"]],
+            parameters=[tiled["tileIV"]],
+            results=[],
+            body=_sequence([add, minimum, point], []),
+        )
+        return [dict(tag="constant", result=tiled["tile"], value=tile), outer], tiled
     tiled = dict(uniform=copy.deepcopy(uniform))
     for key in ("tile", "tileIV", "sum", "bound"):
         tiled[key] = dict(name=next(fresh), kind=dict(tag="index"), known=tile if key == "tile" else None)
@@ -159,11 +206,18 @@ def expand(adapter, index_opcodes):
             link = adapter["initializer_links"][step["initializer"]]
             if untiled:
                 atoms.append(_uniform_atom(link["canonical"]))
-                site.update(kind="untiled-initializer", link=step["initializer"])
+                site.update(
+                    kind="untiled-line-initializer" if "index" in link["canonical"] else "untiled-initializer",
+                    link=step["initializer"],
+                )
             else:
                 generated, tiled = _tiled_atoms(link["canonical"], link["config"]["tile"], fresh, keys)
                 atoms.extend(generated)
-                site.update(kind="tiled-initializer", initializer=tiled, link=step["initializer"])
+                site.update(
+                    kind="tiled-line-initializer" if "index" in link["canonical"] else "tiled-initializer",
+                    initializer=tiled,
+                    link=step["initializer"],
+                )
         else:
             atoms.append(atom)
             site["kind"] = "retained"

@@ -94,6 +94,10 @@ theorem candidate_assignment {Value User : Type} (plan : Epoch.PlanContext)
     have equal := candidate_initializer_public plan.objects plan.configs (plan.oldMeaning scalar)
       link.config.object link.config.key before after run
     exact ⟨[], .nil, congrArg Epoch.PublicState.registers equal⟩
+  | initializeLine link =>
+    have equal := candidate_initializer_public plan.objects plan.configs (plan.oldMeaning scalar)
+      link.config.object link.config.key before after run
+    exact ⟨[], .nil, congrArg Epoch.PublicState.registers equal⟩
   | load key operation access result =>
     have validAccess := checked.1.2.1
     obtain ⟨coordinates, value, _, _, holds, rfl⟩ :=
@@ -121,7 +125,7 @@ theorem candidate_pins {Value User : Type} (plan : Epoch.PlanContext)
       item.object retained before after).mp run
     rw [equal]
     cases retained <;> exact registers.2
-  | constant | binary | release | «initialize» | load | store | observer =>
+  | constant | binary | release | «initialize» | initializeLine | load | store | observer =>
     rw [assigned]
     exact Epoch.pinned_assign plan.views before.observed.registers registers.2 _ values checked.2.2.2.1
 

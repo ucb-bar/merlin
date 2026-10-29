@@ -38,8 +38,12 @@ def _expansion(site, step, plan, observers):
         )
     if tag == "empty-release":
         return ".dropRelease " + _string(step["atom"]["key"]) + " " + private_view(views[step["instruction"]["object"]])
+    if tag == "tiled-line-initializer":
+        return ".tiledLine link" + str(step["initializer"]) + " " + _tiled(site["initializer"])
     if tag == "tiled-initializer":
         return ".tiled link" + str(step["initializer"]) + " " + _tiled(site["initializer"])
+    if tag == "untiled-line-initializer":
+        return ".untiledLine link" + str(step["initializer"])
     if tag == "untiled-initializer":
         return ".untiled link" + str(step["initializer"])
     if tag not in ("retained", "retained-allocation", "retained-release"):
