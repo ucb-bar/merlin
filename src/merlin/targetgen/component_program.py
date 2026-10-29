@@ -79,7 +79,7 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             else set()
         )
         supported = {"matmul", "add", "copy", "transpose", "alias", "update"} | (
-            {"cast", "reduce_sum", "reshape", "affine", "sub", "cumsum"} if v2 else set()
+            {"cast", "reduce_sum", "reshape", "affine", "relu", "sub", "cumsum"} if v2 else set()
         )
         if set(node) != {"name", "op", "inputs"} | extra or op not in supported:
             raise ValueError("unsupported component node; use explicit supported generic tensor operations")
