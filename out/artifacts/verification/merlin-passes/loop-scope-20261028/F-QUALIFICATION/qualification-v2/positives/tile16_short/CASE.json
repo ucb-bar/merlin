@@ -1,0 +1,17 @@
+{
+  "settings": {
+    "factor": 2,
+    "tile": 16,
+    "index_bits": 64
+  },
+  "metadata": {
+    "name": "tile16_short",
+    "factor": 2,
+    "tile": 16,
+    "carries": 2,
+    "lower": 3,
+    "step": 2,
+    "count": 34,
+    "nonaligned_upper": false
+  }
+}

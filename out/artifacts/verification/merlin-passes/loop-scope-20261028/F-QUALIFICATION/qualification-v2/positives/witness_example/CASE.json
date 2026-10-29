@@ -1,0 +1,10 @@
+{
+  "settings": {
+    "factor": 2,
+    "tile": 3,
+    "index_bits": 64
+  },
+  "metadata": {
+    "reused_current_Q_example": true
+  }
+}

@@ -1,3 +1,29 @@
+# Current graph-first progress — 2026-10-28
+
+The user has resumed continuous work until a NEW interruption; historical stop
+and numerical assignments below are superseded. Primary remains
+feat/pass-verification. Read the [scoped loop result and paper example](../loop-scope-20261028/COORDINATOR-REVIEW/LOOP-README.md).
+
+Ordered no-tail unrolling and ordered1D segmentation now have a reviewed direct
+checker/consumer, a fixed proof-processing repair, and full frozen engineering
+qualification:8actual changed cases,15valid mutations,12unsupported cases/settings,
+real CLI/final-byte delivery, fresh rebuild/separate-process replay and binding
+controls. Primary integration independently passed fresh actual check/replay and
+56focused tests. Numerical fidelity, general tiling, compiler-wide enforcement,
+actual-model coverage and independent human approval are separate obligations.
+
+The three workers continue bounded-buffer gate integration, source-bound proofs
+and independent qualification; Q/W then cover the existing one-kernel-call
+wrapper context in isolated candidates. Buffer selected/all-entry proofs and a
+constructive nonzero changed-kernel execution are checked components, with
+possible-success/public-observation and total/private/unobservable allocator
+premises. Fresh gate qualification/replay is in progress. Memory source changes
+remain in the isolated loop worktree pending reviewed primary integration.
+MACC integration is published; its numerical policy is not approved. All earlier
+failures/counterexamples retain their original status; no old context is promoted.
+
+---
+
 > **2026-10-26 USER STOP at5% allowance.** All five workers are paused after portable handoffs. Start with repository-root `VERIFICATION_HANDOFF.md`; historical keep-working prompts do not authorize resume. New graph candidates remain UNCOMPILED/UNQUALIFIED.
 
 **LATEST — 2026-10-26: five workers, graph proofs before numerics.**

@@ -1,0 +1,5 @@
+'Merlin.GraphState.Scalar.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Merlin.GraphState.Scalar.check_typed' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Merlin.GraphState.Scalar.check_composes' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Merlin.GraphState.Scalar.check_initialized' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Merlin.GraphState.Scalar.check_operands_initialized' depends on axioms: [propext, Classical.choice, Quot.sound]

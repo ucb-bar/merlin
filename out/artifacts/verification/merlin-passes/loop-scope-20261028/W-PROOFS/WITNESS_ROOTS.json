@@ -1,0 +1,18 @@
+[
+  "Merlin.LoopScopedWitness.provider_step",
+  "Merlin.LoopScopedWitness.staticIndices",
+  "Merlin.LoopScopedWitness.loop_success",
+  "Merlin.LoopScopedWitness.loop_failure",
+  "Merlin.LoopScopedWitness.observer",
+  "Merlin.LoopScopedWitness.source_success",
+  "Merlin.LoopScopedWitness.source_failure",
+  "Merlin.LoopScopedWitness.input_arity",
+  "Merlin.LoopScopedWitness.input_nonzero",
+  "Merlin.LoopScopedWitness.input_word_domain",
+  "Merlin.LoopScopedWitness.actual_source_success",
+  "Merlin.LoopScopedWitness.actual_final_success",
+  "Merlin.LoopScopedWitness.actual_source_failure",
+  "Merlin.LoopScopedWitness.actual_final_failure",
+  "Merlin.LoopScopedWitness.source_initialized",
+  "Merlin.LoopScopedWitness.final_initialized"
+]

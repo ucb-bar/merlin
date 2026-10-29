@@ -1,0 +1,188 @@
+{
+  "status": "REVIEWED_SCOPED_LOOP_ENGINEERING_RESULT",
+  "source_files": [
+    {
+      "path": "src/merlin/verify/loop_transform_bridge.py",
+      "sha256": "89bc991c604dd5ba259d7fd531de7b93d6fd29d90d577bb3a4e9ecbc0dda9e9e",
+      "bytes": 4195,
+      "snapshot": "sources/src/merlin/verify/loop_transform_bridge.py"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_intake.py",
+      "sha256": "c1f76873f9ed4e580cf1b1e5d5495209c601e4120c386e0b1278208e3866f94a",
+      "bytes": 7782,
+      "snapshot": "sources/src/merlin/verify/loop_transform_intake.py"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_gate.py",
+      "sha256": "0571bca2efe4c5957e6cb540e7c870c1b4e227cfd465488f4f45ffdad210546c",
+      "bytes": 12089,
+      "snapshot": "sources/src/merlin/verify/loop_transform_gate.py"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_cli.py",
+      "sha256": "bbdd0966e831daf55866392dbb8514174aa7e3097178d173ea83c8f9e1306fed",
+      "bytes": 2520,
+      "snapshot": "sources/src/merlin/verify/loop_transform_cli.py"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "sha256": "b7db1592f1e3692fa8d0e783532dcb5f0170a329d7ebfadc57012b1bd71d9eb9",
+      "bytes": 28278,
+      "snapshot": "sources/src/merlin/verify/lean_graph_state_pipeline_emit.py"
+    },
+    {
+      "path": "merlin/tests/ir/test_loop_transform_integration_unit.py",
+      "sha256": "527004f4d5eb5219806615dfd92de295e4e17b3ae574148a68993c146b1db697",
+      "bytes": 6838,
+      "snapshot": "sources/merlin/tests/ir/test_loop_transform_integration_unit.py"
+    },
+    {
+      "path": "merlin/tests/ir/test_loop_body_group_emitter_unit.py",
+      "sha256": "166df76f00f4b19557383839ec433646cade8a56d615dbb5635a3c4a2c997481",
+      "bytes": 5531,
+      "snapshot": "sources/merlin/tests/ir/test_loop_body_group_emitter_unit.py"
+    },
+    {
+      "path": "merlin/tests/ir/loop_transform_qualification.py",
+      "bytes": 17255,
+      "sha256": "c07c6faedf05bfa0e541d4b7a46bce3ec63a2a75fc469e823f30b043f1cafd84"
+    },
+    {
+      "path": "merlin/tests/ir/loop_transform_qualification_cases.py",
+      "bytes": 7845,
+      "sha256": "02e03ebf897389d0589f93cf2841d13c8531a16c05f262c4977f26dcee653aee"
+    },
+    {
+      "path": "merlin/tests/ir/loop_transform_qualification_worker.py",
+      "bytes": 2885,
+      "sha256": "cc029b14c36278c898a9c53bb7b23758477aacdd08e8ea3c201923c8d6d646e6"
+    },
+    {
+      "path": "merlin/tests/ir/loop_transform_qualification_classifier.py",
+      "bytes": 3686,
+      "sha256": "0d9e5f5c97dd38527a458975b8cf3fa360e261a8b1459f6e829681d540c9f0a0"
+    },
+    {
+      "path": "merlin/tests/ir/test_loop_transform_qualification_classifier.py",
+      "bytes": 1966,
+      "sha256": "ac5858ca6ea3f495c0e4347cb2bf01ce65f8de63e0d606af3a6e29f3870bcf24"
+    }
+  ],
+  "reviewed_source_commits": [
+    "3aa1a2366",
+    "f3a6c7b13"
+  ],
+  "root_tests": "56 passed",
+  "ruff": "passed",
+  "docs_structure": "passed",
+  "native_result": {
+    "actual_changed_positives": 8,
+    "MLIR_valid_mutations": 15,
+    "expected_Lean_obligation_refusals": 9,
+    "host_projection_domain_refusals": 6,
+    "unsupported": 12,
+    "CLI_exact_delivery": true,
+    "fresh_rebuild_replay": true,
+    "separate_Python_replay": true,
+    "request_identity_controls": 7,
+    "separate_stale_artifact_refusals": 4
+  },
+  "reports": [
+    {
+      "name": "factor2_carry1_short",
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/native-reports/factor2_carry1_short.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor2_carry1_short/REPORT.json",
+        "sha256": "b6c31ab34c619bbde3f5900aa6f80710b448f6dbca564072d505e6b98b703489",
+        "bytes": 222465
+      }
+    },
+    {
+      "name": "factor3_carry2_nonaligned",
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/native-reports/factor3_carry2_nonaligned.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/REPORT.json",
+        "sha256": "c23355a869eb441a54c434b8014644a8f904cc26b798108cd389ee28f7f39717",
+        "bytes": 223278
+      }
+    },
+    {
+      "name": "factor4_carry3_short",
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/native-reports/factor4_carry3_short.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor4_carry3_short/REPORT.json",
+        "sha256": "0908e44c9e0bb445ba03a89dd32706901e6e0ddcd3e8ffe85c919eeb048710fb",
+        "bytes": 223291
+      }
+    },
+    {
+      "name": "factor2_carry4_short",
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/native-reports/factor2_carry4_short.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor2_carry4_short/REPORT.json",
+        "sha256": "8c33da85799c6a4ebd76622bcd6fd96ca73e88c4478bfe64a4af10b28387f4e6",
+        "bytes": 223302
+      }
+    },
+    {
+      "name": "tile16_short",
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/native-reports/tile16_short.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/tile16_short/REPORT.json",
+        "sha256": "305134de9063a20f49abd9a6a077891fa9f635e58f291a56dfea6032d22ac82a",
+        "bytes": 222113
+      }
+    },
+    {
+      "name": "tile7_short",
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/native-reports/tile7_short.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/tile7_short/REPORT.json",
+        "sha256": "86ff4ab8b27c23b33f0fe0b4a5953a77e1201202952ef491ecdbc6db2db4acda",
+        "bytes": 221873
+      }
+    },
+    {
+      "name": "factor4_nonunit",
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/native-reports/factor4_nonunit.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor4_nonunit/REPORT.json",
+        "sha256": "0acfd0b5ef203e49a4966bb230ddfe1093e5843c3f006e6b3eff30a48909bb9c",
+        "bytes": 222618
+      }
+    },
+    {
+      "name": "witness_example",
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/native-reports/witness_example.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/witness_example/REPORT.json",
+        "sha256": "6f8030904c29f73fa3808a122ed4acf70174bbdd3cc11ee268347ab32908b94e",
+        "bytes": 218341
+      }
+    }
+  ],
+  "scope": "direct original-unrolled-segmented complete-entry checker under common total pure primitives, explicit index interpretation and local partial-external result arity; trusted complete IR projection",
+  "identity_prefix_CSE_LICM_coverage": false,
+  "general_tiling": false,
+  "compiler_wide_enforcement": false,
+  "actual_model_coverage": false,
+  "human_approved": false,
+  "native_fidelity": false,
+  "whole_pass_verified": false,
+  "unresolved_historical_failures": [
+    "fixed2M processing limit on old proof construction; retained",
+    "protocol-v1 middle_wrong_call native SIGSEGV cause UNKNOWN; retained",
+    "witness wrapper schema assertion corrected offline after native compile/audit/types success; original wrapper failure retained"
+  ],
+  "omitted_material": "SDKs, native objects/private images and unselected development output remain local; retained paths/hashes are not a self-contained portable execution archive",
+  "primary_merge": "298f707e2",
+  "primary_post_merge": {
+    "SDK_free_tests": "56 passed",
+    "structure": "passed",
+    "actual_CLI_delivery": "passed",
+    "separate_process_fresh_replay": "passed",
+    "distinct_new_coverage_cases": 0,
+    "same_case": "factor3_carry2_nonaligned"
+  }
+}

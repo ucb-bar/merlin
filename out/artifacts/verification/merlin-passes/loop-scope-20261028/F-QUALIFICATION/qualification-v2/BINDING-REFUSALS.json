@@ -1,0 +1,9 @@
+{
+  "forged_requests": [
+    "query",
+    "roots",
+    "domain"
+  ],
+  "constructed_completions": 3,
+  "copied_live_request": 1
+}

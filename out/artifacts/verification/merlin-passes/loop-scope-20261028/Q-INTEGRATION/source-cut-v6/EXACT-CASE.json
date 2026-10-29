@@ -1,0 +1,17 @@
+{
+  "query": "out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/body-group-successor/ExactFactor4Carry3.lean",
+  "sha256": "a3d6b056d8566e44c4b666c4cc1d3945881651547040c764ef77739610f820fe",
+  "semantic_definitions_and_options_preserved": 41,
+  "original_theorem_types_preserved": 42,
+  "new_roots": [
+    "Merlin.GraphStatePipelineInstance.F4.B2_factored",
+    "Merlin.GraphStatePipelineInstance.F4.B3_factored"
+  ],
+  "byte_equal_W_v12": true,
+  "native_outcome": "UNOBSERVED",
+  "source_buffers": [
+    "8f09b9a96a800b78146ed26a1bdb51aadf3477910fdf93f0d70c02a794ec7653",
+    "a08f56fde56fd480534f616f35522fb79808a73e1a739df36e7b52d84be349e8",
+    "665e65c041cfca20d7c9485c0c0e873acfbe181b90ebdc769345db5684d923ff"
+  ]
+}

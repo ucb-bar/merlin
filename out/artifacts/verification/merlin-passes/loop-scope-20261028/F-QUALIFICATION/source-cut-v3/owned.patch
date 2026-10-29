@@ -1,0 +1,843 @@
+diff --git a/merlin/tests/ir/loop_transform_qualification.py b/merlin/tests/ir/loop_transform_qualification.py
+new file mode 100644
+index 000000000..ab6eae072
+--- /dev/null
++++ b/merlin/tests/ir/loop_transform_qualification.py
+@@ -0,0 +1,382 @@
++"""Independent actual-loop qualification; ordinary selected Lean, no mock proofs."""
++
++import argparse
++import dataclasses
++import json
++import os
++import shutil
++import subprocess
++import sys
++from pathlib import Path
++from unittest.mock import patch
++
++from merlin.common.paths import repo_root
++from merlin.verify import loop_transform_gate as gate
++from merlin.verify.loop_transform_intake import Settings, Unavailable, Unsupported, file_ref, prepare, produce
++
++
++def save(path, data):
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text(json.dumps(data, indent=2) + "\n")
++
++
++def run(command, directory, *, environment=None, input=None, timeout=120):
++    directory.mkdir(parents=True, exist_ok=False)
++    save(directory / "INTENT.json", {"command": list(map(str, command)), "timeout": timeout})
++    try:
++        process = subprocess.run(
++            list(map(str, command)),
++            cwd=repo_root(),
++            env=environment,
++            input=input,
++            text=True,
++            capture_output=True,
++            timeout=timeout,
++            check=False,
++        )
++        result = {"returncode": process.returncode, "timeout": False}
++        stdout, stderr = process.stdout, process.stderr
++    except subprocess.TimeoutExpired as error:
++        result = {"returncode": None, "timeout": True}
++        stdout, stderr = error.stdout or b"", error.stderr or b""
++        if isinstance(stdout, bytes):
++            stdout = stdout.decode(errors="replace")
++        if isinstance(stderr, bytes):
++            stderr = stderr.decode(errors="replace")
++    (directory / "stdout.txt").write_text(stdout)
++    (directory / "stderr.txt").write_text(stderr)
++    save(directory / "PROCESS.json", result)
++    return result, stdout
++
++
++def verify(files, compiler, output):
++    worker = repo_root() / "merlin/tests/ir/loop_transform_qualification_worker.py"
++    result, stdout = run(
++        [compiler, worker, "verify"], output, input=json.dumps({"files": list(map(str, files))}), timeout=120
++    )
++    if result["returncode"] != 0:
++        raise RuntimeError("authoritative parser unavailable")
++    rows = json.loads(stdout)["result"]
++    if not all(row["valid"] for row in rows):
++        raise ValueError("fixture MLIR verifier refused: " + str(rows))
++    return rows
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--output", required=True, type=Path)
++    parser.add_argument("--objects", required=True, type=Path)
++    parser.add_argument("--reference", required=True, type=Path)
++    parser.add_argument("--lean", required=True, type=Path)
++    parser.add_argument("--compiler-python", required=True, type=Path)
++    parser.add_argument("--q-source-cut", type=Path, help="exact reviewed successor Q source manifest")
++    parser.add_argument(
++        "--protocol-only", action="store_true", help="independent protocol subset; not the full positive roster"
++    )
++    args = parser.parse_args()
++    output = args.output.resolve()
++    output.mkdir(parents=True, exist_ok=False)
++    args.objects = args.objects.resolve()
++    from loop_transform_qualification_cases import POSITIVES, mutations, unsupported_sources
++
++    source_paths = [
++        Path(__file__),
++        repo_root() / "merlin/tests/ir/loop_transform_qualification_cases.py",
++        repo_root() / "merlin/tests/ir/loop_transform_qualification_worker.py",
++        repo_root() / "merlin/tests/ir/loop_transform_qualification_classifier.py",
++        repo_root() / "merlin/tests/ir/test_loop_transform_qualification_classifier.py",
++    ]
++    qcut = args.q_source_cut or (
++        repo_root()
++        / "out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/source-cut-v5/SOURCES.json"
++    )
++    selected = json.loads(qcut.read_text())
++    for row in selected["sources"]:
++        if file_ref(repo_root() / row["path"])["sha256"] != row["sha256"]:
++            raise ValueError("Q frozen source changed")
++    source_cut = {
++        "Q_cut": file_ref(qcut),
++        "F_sources": [file_ref(f) for f in source_paths],
++        "lean": file_ref(args.lean),
++        "compiler_python": file_ref(args.compiler_python.resolve()),
++        "reference_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
++    }
++    save(output / "SOURCE-CUT.json", source_cut)
++    cases = []
++    for case in POSITIVES[1:2] if args.protocol_only else POSITIVES:
++        settings = Settings(case.factor, case.tile)
++        buffers = produce(case.source, reference=args.reference, settings=settings)
++        cases.append((case.name, case.source, settings, buffers, dataclasses.asdict(case)))
++    historical = (
++        repo_root() / "out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/first-example"
++    )
++    buffers = tuple((historical / f"stage{i}.mlir").read_text() for i in range(3))
++    if not args.protocol_only:
++        cases.append(("witness_example", buffers[0], Settings(), buffers, {"reused_current_Q_example": True}))
++    all_files = []
++    for name, source, settings, buffers, metadata in cases:
++        folder = output / "positives" / name
++        folder.mkdir(parents=True)
++        (folder / "original-input.mlir").write_text(source)
++        for i, text in enumerate(buffers):
++            path = folder / f"stage{i}.mlir"
++            path.write_text(text)
++            all_files.append(path)
++        save(folder / "CASE.json", {"settings": dataclasses.asdict(settings), "metadata": metadata})
++    verify(all_files, args.compiler_python, output / "positive-mlir-verifier")
++    results = []
++    live = {}
++    for name, source, settings, buffers, metadata in cases:
++        prepared = prepare(buffers, reference=args.reference, settings=settings)
++        save(output / "positives" / name / "PREPARED.json", prepared.describe())
++        token = gate.check(prepared, lean=args.lean, destination=args.objects / "positives" / name)
++        delivered = []
++        gate.deliver(token, prepared, delivered.append)
++        if delivered != [buffers[-1]]:
++            raise ValueError("consumer received wrong bytes")
++        (output / "positives" / name / "delivered.mlir").write_text(delivered[0])
++        report = json.loads(Path(token.report).read_text())
++        results.append(
++            {
++                "name": name,
++                "report": file_ref(Path(token.report)),
++                "roots": len(prepared.roots),
++                "theorems": report["audit"]["theorems_audited"],
++                "consumer_bytes_identical": True,
++                "short_last_segment": name != "witness_example",
++                "status": "KERNEL_CHECKED",
++            }
++        )
++        live[name] = (prepared, token)
++        save(output / "POSITIVES.json", results)
++    # Every malformed target must first pass the authoritative verifier.
++    name = "factor3_carry2_nonaligned"
++    prepared, token = live[name]
++    negative = mutations(prepared.buffers)
++    files = []
++    for label, buffers in negative.items():
++        folder = output / "negatives" / label
++        folder.mkdir(parents=True)
++        for i, text in enumerate(buffers):
++            path = folder / f"stage{i}.mlir"
++            path.write_text(text)
++            files.append(path)
++    verify(files, args.compiler_python, output / "negative-mlir-verifier")
++    negative_results = []
++    for label, buffers in negative.items():
++        folder = output / "negatives" / label
++        called = []
++        try:
++            request = prepare(buffers, reference=args.reference, settings=prepared.settings)
++            completion = gate.check(request, lean=args.lean, destination=args.objects / "unexpected-negative" / label)
++            gate.deliver(completion, request, called.append)
++        except (Unsupported, Unavailable, ValueError) as error:
++            outcome = {"phase": "HOST_REFUSAL", "class": type(error).__name__, "reason": str(error)}
++        else:
++            raise AssertionError("mutated boundary passed live gate: " + label)
++        if called:
++            raise AssertionError("mutated output reached consumer")
++        # Direct component queries challenge the Lean relation independently of
++        # optimizer-attribution refusal. They never create live gate authority.
++        request = {
++            "reference": str(args.reference.resolve()),
++            "projection_sources": str(repo_root() / "src/merlin/verify"),
++            "buffers": buffers,
++            "factor": 3,
++            "tile": 2,
++        }
++        environment = {**os.environ, "PYTHONPATH": str(args.reference.resolve() / "src")}
++        process, stdout = run(
++            [sys.executable, repo_root() / "merlin/tests/ir/loop_transform_qualification_worker.py", "project"],
++            folder / "projection",
++            environment=environment,
++            input=json.dumps(request),
++        )
++        try:
++            document = json.loads(stdout)
++            if process["returncode"] != 0:
++                raise ValueError(document.get("reason", "projection unavailable"))
++            from merlin.verify.lean_graph_state_pipeline_emit import emit
++
++            query = emit(document["result"])
++            path = folder / "Query.lean"
++            path.write_text(query)
++        except ValueError as error:
++            outcome["component"] = "HOST_PROJECTION_OR_DOMAIN_REFUSAL"
++            outcome["component_reason"] = str(error)
++        else:
++            env = {**os.environ, "LEAN_PATH": str(args.objects / "positives" / name / "lib")}
++            result, stdout = run([args.lean, "-j1", path], folder / "lean", environment=env)
++            from loop_transform_qualification_classifier import classify
++
++            classified = classify(
++                label, result["returncode"], stdout, (folder / "lean" / "stderr.txt").read_text(), query, path
++            )
++            save(folder / "lean" / "CLASSIFICATION.json", classified)
++            if classified["classification"] != "LEAN_COMPONENT_OBLIGATION_REFUSAL":
++                outcome["component"] = "PROOF_UNAVAILABLE"
++                outcome["component_reason"] = classified
++            else:
++                outcome["component"] = "LEAN_PROOF_REFUSAL"
++                outcome["failed_obligation"] = classified["root"]
++        negative_results.append({"name": label, "MLIR_valid": True, "consumer_called": False, **outcome})
++        save(output / "NEGATIVES.json", negative_results)
++    unsupported = []
++    sources = unsupported_sources()
++    for label, source in sources.items():
++        path = output / "unsupported" / (label + ".mlir")
++        path.parent.mkdir(parents=True, exist_ok=True)
++        path.write_text(source)
++    verify(list((output / "unsupported").glob("*.mlir")), args.compiler_python, output / "unsupported-mlir-verifier")
++    for label, source in sources.items():
++        try:
++            buffers = produce(source, reference=args.reference)
++            prepare(buffers, reference=args.reference)
++        except Unsupported as error:
++            unsupported.append({"name": label, "outcome": "UNSUPPORTED", "reason": str(error)})
++        else:
++            raise AssertionError("outside-domain source admitted: " + label)
++    for settings in [Settings(1), Settings(5), Settings(tile=1), Settings(tile=17), Settings(index_bits=32)]:
++        try:
++            prepare(prepared.buffers, reference=args.reference, settings=settings)
++        except Unsupported:
++            unsupported.append({"settings": dataclasses.asdict(settings), "outcome": "UNSUPPORTED"})
++        else:
++            raise AssertionError("unsupported settings admitted")
++    save(output / "UNSUPPORTED.json", unsupported)
++    # Actual source -> producer -> checker -> CLI consumer, same expected bytes.
++    source_path = output / "positives" / name / "original-input.mlir"
++    delivered = output / "cli-delivered.mlir"
++    status, stdout = run(
++        [
++            sys.executable,
++            "-m",
++            "merlin.verify.loop_transform_cli",
++            "--source",
++            source_path,
++            "--reference",
++            args.reference,
++            "--lean",
++            args.lean,
++            "--destination",
++            args.objects / "cli",
++            "--factor",
++            "3",
++            "--tile",
++            "2",
++            "--output",
++            delivered,
++        ],
++        output / "cli",
++    )
++    if status["returncode"] != 0 or delivered.read_text() != prepared.buffers[-1]:
++        raise AssertionError("real CLI delivery failed")
++    replayed = gate.replay(
++        token.report, reference=args.reference, lean=args.lean, destination=args.objects / "fresh-replay"
++    )
++    save(
++        output / "REPLAY.json", {"original": file_ref(Path(token.report)), "replayed": file_ref(Path(replayed.report))}
++    )
++    # Forged request values must stop before launching a native process.
++    stale = []
++    for field, value in [
++        ("query", prepared.query + "\n"),
++        ("roots", (prepared.roots[-1],)),
++        ("domain", "general_tiling"),
++    ]:
++        forged = dataclasses.replace(prepared, **{field: value})
++        with patch.object(gate, "_run", side_effect=AssertionError("native launched for forged request")):
++            try:
++                gate.check(forged, lean=args.lean, destination=args.objects / "forged" / field)
++            except Unavailable:
++                stale.append(field)
++            else:
++                raise AssertionError("forged preparation accepted")
++    for candidate in [None, {"status": "checked"}, gate.Completion(prepared.identity, token.report)]:
++        try:
++            gate.deliver(candidate, prepared, lambda _: (_ for _ in ()).throw(AssertionError("forged delivery")))
++        except Unavailable:
++            pass
++        else:
++            raise AssertionError("saved/constructed completion accepted")
++    try:
++        gate.deliver(
++            token,
++            dataclasses.replace(prepared),
++            lambda _: (_ for _ in ()).throw(AssertionError("copied request delivered")),
++        )
++    except Unavailable:
++        pass
++    else:
++        raise AssertionError("copied request accepted")
++    save(
++        output / "BINDING-REFUSALS.json",
++        {"forged_requests": stale, "constructed_completions": 3, "copied_live_request": 1},
++    )
++    # Each tamper owns a separately checked candidate. Original qualified outputs
++    # stay immutable, and exact pre-attack snapshots remain available.
++    attacks = []
++    for kind in ["query", "object", "report", "middle"]:
++        candidate = gate.check(prepared, lean=args.lean, destination=args.objects / "attacks" / kind)
++        report = json.loads(Path(candidate.report).read_text())
++        original = args.objects / "attacks" / kind
++        snapshot = output / "attacks" / kind / "before"
++        snapshot.parent.mkdir(parents=True)
++        shutil.copytree(original, snapshot)
++        target = {
++            "query": report["query"]["path"],
++            "object": report["object"]["path"],
++            "report": candidate.report,
++            "middle": report["buffers"][1]["path"],
++        }[kind]
++        path = Path(target)
++        path.write_bytes(path.read_bytes() + b"\nSTALE")
++        called = []
++        try:
++            gate.deliver(candidate, prepared, called.append)
++        except Unavailable:
++            pass
++        else:
++            raise AssertionError("stale " + kind + " delivered")
++        if called:
++            raise AssertionError("stale consumer invoked")
++        attacks.append(
++            {"kind": kind, "consumer_called": False, "changed": file_ref(path), "before_snapshot": str(snapshot)}
++        )
++        save(output / "ARTIFACT-ATTACKS.json", attacks)
++    for row in selected["sources"]:
++        if file_ref(repo_root() / row["path"])["sha256"] != row["sha256"]:
++            raise ValueError("Q source changed during batch")
++    for ref in [*source_cut["F_sources"], source_cut["Q_cut"], source_cut["lean"], source_cut["compiler_python"]]:
++        if file_ref(Path(ref["path"])) != ref:
++            raise ValueError("selected qualification source/tool changed during batch")
++    unavailable = [x["name"] for x in negative_results if x["component"] == "PROOF_UNAVAILABLE"]
++    final = {
++        "status": "PARTIAL_UNAVAILABLE"
++        if unavailable
++        else "PROTOCOL_SUBSET_PASSED_FULL_ROSTER_PENDING"
++        if args.protocol_only
++        else "SCOPED_LOOP_ENGINEERING_BATCH_PASSED",
++        "full_positive_roster_checked": not args.protocol_only,
++        "distinct_actual_positives": len(results),
++        "MLIR_valid_mutations": len(negative_results),
++        "Lean_component_refusals": sum(x["component"] == "LEAN_PROOF_REFUSAL" for x in negative_results),
++        "host_component_refusals": sum(x["component"] == "HOST_PROJECTION_OR_DOMAIN_REFUSAL" for x in negative_results),
++        "unavailable_mutations": unavailable,
++        "explicit_unsupported": len(unsupported),
++        "fresh_replay": True,
++        "actual_CLI_delivery": True,
++        "binding_attacks": attacks,
++        "human_approved": False,
++        "general_multidimensional_tiling": False,
++        "native_fidelity": False,
++        "compiler_wide_enforcement": False,
++    }
++    save(output / "RESULT.json", final)
++    print(json.dumps({k: v for k, v in final.items() if k != "binding_attacks"}))
++    if unavailable:
++        raise SystemExit(1)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/merlin/tests/ir/loop_transform_qualification_cases.py b/merlin/tests/ir/loop_transform_qualification_cases.py
+new file mode 100644
+index 000000000..65d460026
+--- /dev/null
++++ b/merlin/tests/ir/loop_transform_qualification_cases.py
+@@ -0,0 +1,205 @@
++"""Independent bounded loop fixtures and structural, verifier-valid mutations."""
++
++from dataclasses import dataclass
++
++
++@dataclass(frozen=True)
++class LoopCase:
++    name: str
++    factor: int
++    tile: int
++    carries: int
++    lower: int
++    step: int
++    count: int
++    nonaligned_upper: bool = False
++
++    @property
++    def source(self):
++        upper = self.lower + self.step * self.count - int(self.nonaligned_upper)
++        types = ", ".join(["i32"] * self.carries)
++        initial = ", ".join(f"%c{i} = %{'x' if i % 2 == 0 else 'y'}" for i in range(self.carries))
++        lines = []
++        for i in range(self.carries):
++            lines += [f"%a{i} = arith.addi %c{i}, %y : i32", f"%b{i} = func.call @step(%a{i}, %i) : (i32,index) -> i32"]
++        lines += ["func.call @observe(%c0, %y) : (i32,i32) -> ()"]
++        if not (self.factor == 4 and self.carries == 3):
++            lines += ["func.call @observe(%y, %c0) : (i32,i32) -> ()"]
++        lines += ["scf.yield " + ", ".join(f"%b{i}" for i in range(self.carries)) + " : " + types]
++        returned = ", ".join(f"%r#{i}" for i in range(self.carries))
++        return f"""builtin.module {{
++func.func private @step(i32, index) -> i32
++func.func private @other(i32, index) -> i32
++func.func private @observe(i32, i32)
++func.func private @watch(i32)
++func.func @main(%x:i32, %y:i32) -> ({types}) {{
++%lb = arith.constant {self.lower} : index
++%ub = arith.constant {upper} : index
++%st = arith.constant {self.step} : index
++%r:{self.carries} = scf.for %i = %lb to %ub step %st iter_args({initial}) -> ({types}) {{
++{chr(10).join(lines)}
++}}
++func.call @watch(%r#0) : (i32) -> ()
++func.return {returned} : {types}
++}}
++func.func @untouched(%x:i32) -> i32 {{ func.return %x : i32 }}
++}}"""
++
++
++POSITIVES = (
++    LoopCase("factor2_carry1_short", 2, 3, 1, 3, 2, 14),
++    LoopCase("factor3_carry2_nonaligned", 3, 2, 2, 5, 3, 15, True),
++    LoopCase("factor4_carry3_short", 4, 4, 3, 2, 2, 20),
++    LoopCase("factor2_carry4_short", 2, 2, 4, 1, 1, 10),
++    LoopCase("tile16_short", 2, 16, 2, 3, 2, 34),
++    LoopCase("tile7_short", 3, 7, 1, 0, 1, 27),
++    LoopCase("factor4_nonunit", 4, 2, 2, 9, 4, 12),
++)
++
++
++def mutations(buffers):
++    """Mutate actual structured IR; no production algorithm or source is edited."""
++    from xdsl.dialects import arith, builtin, func, scf
++    from xdsl.rewriter import Rewriter
++
++    from merlin.llvmlower.passes_xdsl import parse_mlir_text
++    from merlin.xdsl_dialects._common import text
++
++    def change(stage, mutation):
++        module = parse_mlir_text(buffers[stage])
++        entry = next(op for op in module.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "main")
++        loops = [op for op in entry.walk() if isinstance(op, scf.ForOp)]
++        mutation(entry, loops)
++        module.verify()
++        result = list(buffers)
++        result[stage] = text(module, generic=True)
++        if result[stage] == buffers[stage]:
++            raise ValueError("mutation changed no bytes")
++        return tuple(result)
++
++    def constant(value, delta):
++        owner = value.owner
++        if not isinstance(owner, arith.ConstantOp):
++            raise ValueError("control fixture requires literal owner")
++        old = owner.value.value.data
++        owner.properties["value"] = builtin.IntegerAttr(old + delta, builtin.IndexType())
++
++    def replace_operand(op, position, value):
++        values = list(op.operands)
++        values[position] = value
++        op.operands = values
++
++    result = {}
++    result["source_wrong_cutoff"] = change(0, lambda entry, loops: constant(loops[0].ub, 9))
++    result["middle_wrong_stride"] = change(1, lambda entry, loops: constant(loops[0].step, 1))
++    result["middle_wrong_cutoff"] = change(1, lambda entry, loops: constant(loops[0].ub, -1))
++    result["final_wrong_tile_stride"] = change(2, lambda entry, loops: constant(loops[0].step, 1))
++    result["middle_carry_order"] = change(
++        1,
++        lambda entry, loops: setattr(
++            loops[0], "operands", [*list(loops[0].operands)[:3], *reversed(list(loops[0].operands)[3:])]
++        ),
++    )
++    result["middle_yield_order"] = change(
++        1,
++        lambda entry, loops: setattr(
++            loops[0].body.block.last_op, "operands", list(reversed(loops[0].body.block.last_op.operands))
++        ),
++    )
++    result["final_return_order"] = change(
++        2,
++        lambda entry, loops: setattr(
++            entry.body.block.last_op, "operands", list(reversed(entry.body.block.last_op.operands))
++        ),
++    )
++
++    def lane(entry, loops):
++        op = next(
++            op
++            for op in loops[0].body.block.ops
++            if isinstance(op, arith.AddiOp) and isinstance(op.result.type, builtin.IndexType)
++        )
++        replace_operand(op, 0, loops[0].ub)
++
++    result["middle_lane_iv"] = change(1, lane)
++
++    def capture(entry, loops):
++        op = next(
++            op
++            for op in entry.walk()
++            if isinstance(op, arith.AddiOp) and isinstance(op.result.type, builtin.IntegerType)
++        )
++        replace_operand(op, 1, entry.args[0])
++
++    result["final_wrong_capture"] = change(2, capture)
++
++    def body(entry, loops):
++        op = next(
++            op
++            for op in entry.walk()
++            if isinstance(op, arith.AddiOp) and isinstance(op.result.type, builtin.IntegerType)
++        )
++        Rewriter.replace_op(op, arith.SubiOp(op.operands[0], op.operands[1]))
++
++    result["final_wrong_body"] = change(2, body)
++
++    def callee(entry, loops):
++        call = next(
++            op for op in entry.walk() if isinstance(op, func.CallOp) and op.callee.root_reference.data == "step"
++        )
++        call.properties["callee"] = builtin.SymbolRefAttr("other")
++
++    result["middle_wrong_call"] = change(1, callee)
++
++    def observe_order(entry, loops):
++        calls = [
++            op for op in entry.walk() if isinstance(op, func.CallOp) and op.callee.root_reference.data == "observe"
++        ]
++        first, second = calls[:2]
++        a, b = list(first.operands), list(second.operands)
++        first.operands, second.operands = b, a
++
++    result["final_partial_effect_order"] = change(2, observe_order)
++
++    def observer(entry, loops):
++        call = next(op for op in entry.body.block.ops if isinstance(op, func.CallOp))
++        Rewriter.erase_op(call)
++
++    result["final_missing_observer"] = change(2, observer)
++
++    def inner_bound(entry, loops):
++        replace_operand(loops[1], 1, loops[0].ub)
++
++    result["final_wrong_inner_cutoff"] = change(2, inner_bound)
++
++    def entry_name(entry, loops):
++        entry.properties["sym_name"] = builtin.StringAttr("changed_entry")
++
++    result["final_changed_entry"] = change(2, entry_name)
++    return result
++
++
++def unsupported_sources():
++    base = LoopCase("unsupported", 2, 3, 1, 3, 2, 12).source
++    dynamic = "\n".join(line for line in base.splitlines() if not line.startswith("%ub ="))
++    dynamic = dynamic.replace("%y:i32)", "%y:i32, %dynamic:index)").replace("to %ub", "to %dynamic")
++    nested = base.replace("%a0 =", "scf.for %j = %lb to %ub step %st { scf.yield }\n%a0 =", 1)
++    from xdsl.dialects.builtin import StringAttr
++
++    from merlin.llvmlower.passes_xdsl import parse_mlir_text
++    from merlin.xdsl_dialects._common import text
++
++    module = parse_mlir_text(base)
++    entry = next(op for op in module.ops if op.name == "func.func" and op.sym_name.data == "main")
++    extra = entry.clone()
++    extra.properties["sym_name"] = StringAttr("main2")
++    module.body.block.add_op(extra)
++    return {
++        "empty": LoopCase("empty", 2, 3, 1, 3, 2, 0).source,
++        "inline": LoopCase("inline", 2, 3, 1, 3, 2, 2).source,
++        "tail": LoopCase("tail", 2, 3, 1, 3, 2, 7).source,
++        "negative_lower": LoopCase("negative", 2, 3, 1, -2, 1, 12).source,
++        "dynamic": dynamic,
++        "nested_general_tiling": nested,
++        "two_changed_loops": text(module, generic=True),
++    }
+diff --git a/merlin/tests/ir/loop_transform_qualification_worker.py b/merlin/tests/ir/loop_transform_qualification_worker.py
+new file mode 100644
+index 000000000..4784b245e
+--- /dev/null
++++ b/merlin/tests/ir/loop_transform_qualification_worker.py
+@@ -0,0 +1,76 @@
++"""Independent component projection / authoritative MLIR verification workers.
++
++Projection never produces a gate completion. It deliberately omits optimizer
++attribution so mutated, valid actual IR can challenge the unchanged Lean emitter.
++"""
++
++import importlib.metadata
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++
++def project(request):
++    reference = Path(request["reference"]).resolve()
++    revision = subprocess.check_output(["git", "-C", str(reference), "rev-parse", "HEAD"], text=True).strip()
++    if revision != "4499eebb959c0f92cefd92cc6d80646ba66474ed":
++        raise ValueError("independent projection selected wrong producer source")
++    sys.path.insert(0, request["projection_sources"])
++    from lean_graph_input_admission import parse_admitted
++    from lean_graph_state_pipeline_capture import project_modules
++
++    from merlin.transforms.certificates import parse_ir
++
++    modules = [parse_admitted(s, parse_ir) for s in request["buffers"]]
++    for module in modules:
++        module.verify()
++    stages, controls = project_modules([modules[0], modules[0], modules[0], modules[1], modules[2]])
++    return {
++        "stages": stages,
++        "index_operations": controls,
++        "factor": request["factor"],
++        "tile": request["tile"],
++        "index_bits": 64,
++    }
++
++
++def verify(request):
++    from torch_mlir import ir
++
++    results = []
++    for path in request["files"]:
++        try:
++            with ir.Context() as context:
++                context.allow_unregistered_dialects = True
++                module = ir.Module.parse(Path(path).read_text())
++                valid = bool(module.operation.verify())
++            results.append({"path": path, "valid": valid})
++        except Exception as error:
++            results.append({"path": path, "valid": False, "error": str(error)})
++    return results
++
++
++if __name__ == "__main__":
++    request = json.loads(sys.stdin.read())
++    try:
++        result = project(request) if sys.argv[1] == "project" else verify(request)
++        document = {"status": "ok", "result": result}
++        if sys.argv[1] == "verify":
++            import torch_mlir
++
++            document["oracle"] = {
++                "python": sys.version,
++                "executable": sys.executable,
++                "torch_mlir_module": str(torch_mlir.__file__),
++                "distributions": {
++                    name: importlib.metadata.version(name)
++                    for name in importlib.metadata.packages_distributions().get("torch_mlir", [])
++                },
++                "allow_unregistered_dialects": True,
++                "verification": "Module.parse followed by operation.verify on every complete buffer",
++            }
++        print(json.dumps(document))
++    except Exception as error:
++        print(json.dumps({"status": "refused", "error": type(error).__name__, "reason": str(error)}))
++        raise SystemExit(1)
+diff --git a/merlin/tests/ir/loop_transform_qualification_classifier.py b/merlin/tests/ir/loop_transform_qualification_classifier.py
+new file mode 100644
+index 000000000..9b39e0b4b
+--- /dev/null
++++ b/merlin/tests/ir/loop_transform_qualification_classifier.py
+@@ -0,0 +1,94 @@
++"""Conservative classification of retained mutated-query diagnostics, SDK-free.
++
++An ordinary proof-obligation refusal is not a semantic counterexample. Unknown
++execution/import/resource errors are unavailable, regardless of return code1.
++"""
++
++from pathlib import Path
++
++EXPECTED = {
++    "middle_yield_order": "body_group",
++    "final_return_order": "suffixAccepted34",
++    "middle_lane_iv": "body_group",
++    "final_wrong_capture": "innerAccepted",
++    "final_wrong_body": "innerAccepted",
++    "middle_wrong_call": "body_group",
++    "final_partial_effect_order": "innerAccepted",
++    "final_missing_observer": "suffixAccepted34",
++    "final_wrong_inner_cutoff": "outer_form",
++}
++RESOURCE_OR_INFRA = (
++    "maximum number of heartbeats",
++    "maximum recursion depth",
++    "deterministic) timeout",
++    "out of memory",
++    "stack overflow",
++    "internal error",
++    "panic",
++    "interrupted",
++    "segmentation fault",
++    "unknown module prefix",
++    "could not resolve module",
++    "failed to import",
++    "failed to read",
++    "object file",
++    "invalid header",
++    "unknown constant",
++    "unknown identifier",
++    "unexpected token",
++)
++
++
++def classify(label, returncode, stdout, stderr, query, path):
++    if returncode != 1:
++        return {"classification": "UNAVAILABLE", "reason": "no ordinary error exit1"}
++    combined = (stdout + "\n" + stderr).lower()
++    if any(marker in combined for marker in RESOURCE_OR_INFRA):
++        return {"classification": "UNAVAILABLE", "reason": "resource/import/internal/unknown execution failure"}
++    if label not in EXPECTED:
++        return {"classification": "UNAVAILABLE", "reason": "no reviewed expected obligation for this mutation"}
++    prefix = str(Path(path)) + ":"
++    first = None
++    for line in stdout.splitlines():
++        if line.startswith(prefix) and ": error: " in line:
++            rest = line[len(prefix) :]
++            number, _, rest = rest.partition(":")
++            column, _, message = rest.partition(":")
++            if not number.isdigit() or not column.isdigit():
++                return {"classification": "UNAVAILABLE", "reason": "unknown diagnostic location"}
++            first = int(number), message.strip().removeprefix("error: ")
++            break
++    if first is None:
++        return {"classification": "UNAVAILABLE", "reason": "missing actual bound-query diagnostic"}
++    number, message = first
++    namespace = []
++    theorem = None
++    lines = query.splitlines()
++    if not 1 <= number <= len(lines):
++        return {"classification": "UNAVAILABLE", "reason": "diagnostic outside bound source"}
++    for line in lines[:number]:
++        words = line.split()
++        if words[:1] == ["namespace"]:
++            namespace.append(words[1])
++        elif words[:1] == ["end"] and namespace:
++            namespace.pop()
++        elif words[:1] == ["theorem"]:
++            theorem = ".".join([*namespace, words[1]])
++    if theorem is None or theorem.rsplit(".", 1)[-1] != EXPECTED[label]:
++        return {"classification": "UNAVAILABLE", "reason": "a different obligation failed", "root": theorem}
++    ordinary = (
++        message.startswith("unsolved goals")
++        or message.startswith("Tactic `rfl` failed:")
++        or message.startswith("Type mismatch")
++        or message.startswith("type mismatch")
++        or message.startswith("Tactic `decide` proved that the proposition")
++        and "is false" in stdout
++    )
++    if not ordinary:
++        return {"classification": "UNAVAILABLE", "reason": "unrecognized proof diagnostic", "root": theorem}
++    return {
++        "classification": "LEAN_COMPONENT_OBLIGATION_REFUSAL",
++        "root": theorem,
++        "line": number,
++        "diagnostic": message,
++    }
+diff --git a/merlin/tests/ir/test_loop_transform_qualification_classifier.py b/merlin/tests/ir/test_loop_transform_qualification_classifier.py
+new file mode 100644
+index 000000000..0f34332a5
+--- /dev/null
++++ b/merlin/tests/ir/test_loop_transform_qualification_classifier.py
+@@ -0,0 +1,56 @@
++"""SDK-free refusal/resource classification; no mocked proof acceptance."""
++
++import pytest
++from loop_transform_qualification_classifier import classify
++
++PATH = "/bound/Query.lean"
++QUERY = """namespace Merlin.GraphStatePipelineInstance
++namespace F4
++theorem body_group : True := by
++  fail_if_success trivial
++end F4
++end Merlin.GraphStatePipelineInstance
++"""
++ERROR = PATH + ":4:2: error: unsolved goals\n"
++
++
++@pytest.mark.parametrize(
++    "marker",
++    [
++        "maximum number of heartbeats",
++        "maximum recursion depth",
++        "out of memory",
++        "stack overflow",
++        "internal error",
++        "panic",
++        "unknown module prefix",
++        "failed to read file",
++        "object file unavailable",
++        "unknown identifier",
++    ],
++)
++def test_resource_or_infrastructure_never_counts_as_refusal(marker):
++    assert classify("middle_wrong_call", 1, ERROR + marker, "", QUERY, PATH)["classification"] == "UNAVAILABLE"
++
++
++@pytest.mark.parametrize("code", [-11, -9, 2, None, 0])
++def test_signal_timeout_unknown_exit_is_unavailable(code):
++    assert classify("middle_wrong_call", code, ERROR, "", QUERY, PATH)["classification"] == "UNAVAILABLE"
++
++
++def test_requires_the_expected_actual_bound_obligation():
++    assert classify("final_wrong_capture", 1, ERROR, "", QUERY, PATH)["classification"] == "UNAVAILABLE"
++    assert (
++        classify("middle_wrong_call", 1, ERROR, "", QUERY, "/different/Query.lean")["classification"] == "UNAVAILABLE"
++    )
++
++
++def test_ordinary_obligation_failure_is_attributed():
++    result = classify("middle_wrong_call", 1, ERROR, "", QUERY, PATH)
++    assert result["classification"] == "LEAN_COMPONENT_OBLIGATION_REFUSAL"
++    assert result["root"] == "Merlin.GraphStatePipelineInstance.F4.body_group"
++
++
++def test_generic_error_text_is_not_sufficient():
++    error = ERROR.replace("unsolved goals", "something unexpected")
++    assert classify("middle_wrong_call", 1, error, "", QUERY, PATH)["classification"] == "UNAVAILABLE"

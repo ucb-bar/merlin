@@ -1,0 +1,11 @@
+{
+  "cmd": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "--run",
+    "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+    "ExactFactor4Carry3"
+  ],
+  "returncode": 0,
+  "seconds": 4.16999077796936,
+  "source_sha256": "a3d6b056d8566e44c4b666c4cc1d3945881651547040c764ef77739610f820fe"
+}

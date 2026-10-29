@@ -1,0 +1,17 @@
+{
+  "settings": {
+    "factor": 4,
+    "tile": 2,
+    "index_bits": 64
+  },
+  "metadata": {
+    "name": "factor4_nonunit",
+    "factor": 4,
+    "tile": 2,
+    "carries": 2,
+    "lower": 9,
+    "step": 4,
+    "count": 12,
+    "nonaligned_upper": false
+  }
+}

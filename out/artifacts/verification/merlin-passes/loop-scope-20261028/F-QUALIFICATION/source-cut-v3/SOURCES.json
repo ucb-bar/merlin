@@ -1,0 +1,31 @@
+{
+  "status": "FROZEN_NEW_RUNNER_NOT_QUALIFIED",
+  "changes": "Conservative exact expected-obligation classifier; unknown failures continue as unavailable with nonzero terminal status; exact Q successor selection; oracle versions; all F/tool postchecks",
+  "sources": [
+    {
+      "path": "merlin/tests/ir/loop_transform_qualification.py",
+      "bytes": 17255,
+      "sha256": "c07c6faedf05bfa0e541d4b7a46bce3ec63a2a75fc469e823f30b043f1cafd84"
+    },
+    {
+      "path": "merlin/tests/ir/loop_transform_qualification_cases.py",
+      "bytes": 7845,
+      "sha256": "02e03ebf897389d0589f93cf2841d13c8531a16c05f262c4977f26dcee653aee"
+    },
+    {
+      "path": "merlin/tests/ir/loop_transform_qualification_worker.py",
+      "bytes": 2885,
+      "sha256": "cc029b14c36278c898a9c53bb7b23758477aacdd08e8ea3c201923c8d6d646e6"
+    },
+    {
+      "path": "merlin/tests/ir/loop_transform_qualification_classifier.py",
+      "bytes": 3686,
+      "sha256": "0d9e5f5c97dd38527a458975b8cf3fa360e261a8b1459f6e829681d540c9f0a0"
+    },
+    {
+      "path": "merlin/tests/ir/test_loop_transform_qualification_classifier.py",
+      "bytes": 1966,
+      "sha256": "ac5858ca6ea3f495c0e4347cb2bf01ce65f8de63e0d606af3a6e29f3870bcf24"
+    }
+  ]
+}

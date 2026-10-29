@@ -1,0 +1,206 @@
+{
+  "order": [
+    "Merlin.GraphStateScalarContract",
+    "Merlin.GraphStatePipelineFailure",
+    "Merlin.StateEffects",
+    "Merlin.ResourceGeometry",
+    "Merlin.GraphLoopsSegment",
+    "Merlin.GraphLoopsSegmentBounds",
+    "Merlin.GraphLoopsSegmentModel",
+    "Merlin.GraphLoopsSegmentState",
+    "Merlin.GraphLoopsUnroll",
+    "Merlin.GraphLoopsUnrollGrouping",
+    "Merlin.GraphStatePipelineControl",
+    "Merlin.GraphLoopsUnrollBounds",
+    "Merlin.GraphStatePipelineIndex",
+    "Merlin.GraphStatePipelineLiterals",
+    "Merlin.GraphStateScalarNormalize",
+    "Merlin.GraphStateScalarSound",
+    "Merlin.GraphStatePipelineScope",
+    "Merlin.GraphStatePipelineFold",
+    "Merlin.GraphStatePipelineSegments",
+    "Merlin.GraphStatePipelineLoops",
+    "Merlin.GraphStateScalarTyping",
+    "Merlin.GraphStatePipelineProgram",
+    "Merlin.GraphStateScalarInitialized",
+    "Merlin.GraphStateScalar"
+  ],
+  "sources": {
+    "Merlin.GraphStatePipelineIndex": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+      "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+      "imports": [
+        "Merlin.GraphStatePipelineControl",
+        "Merlin.GraphLoopsUnrollBounds"
+      ]
+    },
+    "Merlin.GraphStatePipelineControl": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+      "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+      "imports": [
+        "Merlin.GraphStatePipelineFailure",
+        "Merlin.GraphLoopsUnrollGrouping"
+      ]
+    },
+    "Merlin.GraphStatePipelineFailure": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+      "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+      "imports": [
+        "Merlin.GraphStateScalarContract"
+      ]
+    },
+    "Merlin.GraphStateScalarContract": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "imports": [
+        "Init"
+      ]
+    },
+    "Merlin.GraphLoopsUnrollGrouping": {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+      "imports": [
+        "Merlin.GraphLoopsUnroll"
+      ]
+    },
+    "Merlin.GraphLoopsUnroll": {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+      "imports": [
+        "Merlin.GraphLoopsSegmentState"
+      ]
+    },
+    "Merlin.GraphLoopsSegmentState": {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+      "imports": [
+        "Merlin.GraphLoopsSegmentModel"
+      ]
+    },
+    "Merlin.GraphLoopsSegmentModel": {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "imports": [
+        "Merlin.GraphLoopsSegmentBounds"
+      ]
+    },
+    "Merlin.GraphLoopsSegmentBounds": {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+      "imports": [
+        "Merlin.GraphLoopsSegment"
+      ]
+    },
+    "Merlin.GraphLoopsSegment": {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+      "imports": [
+        "Merlin.StateEffects",
+        "Merlin.ResourceGeometry"
+      ]
+    },
+    "Merlin.StateEffects": {
+      "path": "src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+      "imports": [
+        "Init.Data.List.Lemmas"
+      ]
+    },
+    "Merlin.ResourceGeometry": {
+      "path": "src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+      "imports": [
+        "Lean.Elab.Tactic.Omega"
+      ]
+    },
+    "Merlin.GraphLoopsUnrollBounds": {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+      "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+      "imports": [
+        "Merlin.GraphLoopsUnrollGrouping"
+      ]
+    },
+    "Merlin.GraphStatePipelineLiterals": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+      "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+      "imports": [
+        "Merlin.GraphStatePipelineIndex"
+      ]
+    },
+    "Merlin.GraphStatePipelineScope": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean",
+      "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+      "imports": [
+        "Merlin.GraphStateScalarSound"
+      ]
+    },
+    "Merlin.GraphStateScalarSound": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "imports": [
+        "Merlin.GraphStateScalarNormalize"
+      ]
+    },
+    "Merlin.GraphStateScalarNormalize": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "imports": [
+        "Merlin.GraphStateScalarContract"
+      ]
+    },
+    "Merlin.GraphStatePipelineLoops": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean",
+      "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+      "imports": [
+        "Merlin.GraphStatePipelineSegments",
+        "Merlin.GraphStateScalarSound"
+      ]
+    },
+    "Merlin.GraphStatePipelineSegments": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean",
+      "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+      "imports": [
+        "Merlin.GraphStatePipelineFold"
+      ]
+    },
+    "Merlin.GraphStatePipelineFold": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean",
+      "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+      "imports": [
+        "Merlin.GraphStatePipelineControl"
+      ]
+    },
+    "Merlin.GraphStatePipelineProgram": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+      "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+      "imports": [
+        "Merlin.GraphStatePipelineIndex",
+        "Merlin.GraphStateScalarTyping"
+      ]
+    },
+    "Merlin.GraphStateScalarTyping": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "imports": [
+        "Merlin.GraphStateScalarNormalize"
+      ]
+    },
+    "Merlin.GraphStateScalar": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "imports": [
+        "Merlin.GraphStateScalarSound",
+        "Merlin.GraphStateScalarTyping",
+        "Merlin.GraphStateScalarInitialized"
+      ]
+    },
+    "Merlin.GraphStateScalarInitialized": {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "imports": [
+        "Merlin.GraphStateScalarSound",
+        "Merlin.GraphStateScalarTyping"
+      ]
+    }
+  }
+}

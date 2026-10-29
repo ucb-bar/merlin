@@ -1,0 +1,21 @@
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/final_wrong_capture/Query.lean:44:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/final_wrong_capture/Query.lean:47:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/final_wrong_capture/Query.lean:50:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/final_wrong_capture/Query.lean:254:70: error: Tactic `decide` proved that the proposition
+  Scope.check registry LS RS B3 I4 = true
+is false

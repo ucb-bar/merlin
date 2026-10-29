@@ -1,0 +1,10 @@
+{
+  "cmd": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "--run",
+    "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+    "Factored"
+  ],
+  "returncode": 0,
+  "seconds": 4.177475690841675
+}

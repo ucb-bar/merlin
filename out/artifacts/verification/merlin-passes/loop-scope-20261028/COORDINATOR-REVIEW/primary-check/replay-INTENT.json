@@ -1,0 +1,16 @@
+{
+  "command": [
+    "/home/jeremy/Projects/merlin/.venv/bin/python",
+    "-m",
+    "merlin.verify.loop_transform_cli",
+    "--replay",
+    "/home/jeremy/Projects/merlin/out/build/loop-primary-20261028/check-v1/REPORT.json",
+    "--reference",
+    "/home/jeremy/Projects/merlin-graph-proof-intake",
+    "--lean",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "--destination",
+    "/home/jeremy/Projects/merlin/out/build/loop-primary-20261028/replay-v1"
+  ],
+  "timeout": 180
+}

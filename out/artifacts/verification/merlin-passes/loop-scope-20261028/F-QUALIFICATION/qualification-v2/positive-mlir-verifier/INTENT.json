@@ -1,0 +1,8 @@
+{
+  "command": [
+    "/home/jeremy/Projects/model2MLIR/.venv/bin/python",
+    "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification_worker.py",
+    "verify"
+  ],
+  "timeout": 120
+}

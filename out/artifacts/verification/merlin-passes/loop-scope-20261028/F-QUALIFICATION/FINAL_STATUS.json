@@ -1,0 +1,72 @@
+{
+  "schema": "merlin.loop-transform.F-status.v1",
+  "status": "SCOPED_LOOP_ENGINEERING_QUALIFICATION_COMPLETE",
+  "base": "65e44afbf4dbb6c7270e8936c4ef76b579a78492",
+  "branch": "feat/loop-transform-verification",
+  "HEAD": "65e44afbf4dbb6c7270e8936c4ef76b579a78492",
+  "claim": "Acceptance establishes complete-entry outcome equality under existing common explicit model, trusted IR projection and local external arity contract.",
+  "full_batch": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/RESULT.json",
+    "sha256": "2034e14d3fec221f846e0ea96a0c0f6f1f7776054d799881748f700ffe0d42aa",
+    "bytes": 2699
+  },
+  "source_manifest": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/SOURCE-DELIVERY.json",
+    "sha256": "e87a5d3e13ef975259421683d3862a91543f7af8d720c2ba350f8a944d4ba9d7",
+    "bytes": 30267
+  },
+  "F_cut": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/source-cut-v3/SOURCES.json",
+    "sha256": "269e9fe485050dd49dbfa393acc8d13b3cfe20c170675a222b22b50f99f7cc1e",
+    "bytes": 1226
+  },
+  "Q_cut": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/source-cut-v6/SOURCES.json",
+    "sha256": "1150d42f1ae432a7ffa7214097afa9f5af81abec31fa8486e91fb8417b12d817",
+    "bytes": 2728
+  },
+  "fresh_process_replay": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/fresh-process-replay-v1/RESULT.json",
+    "sha256": "bc7c3914c5e909f6efdf208c3441cff6cd70b282622c5770667fdba5de2c381c",
+    "bytes": 200351
+  },
+  "current_witness": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/witness-v2/RESULT.json",
+    "sha256": "c9de782061d637cb0cec4b2581574623684d3ee3609537b8ee1dd7cf2ad6f00b",
+    "bytes": 213340
+  },
+  "main_process": {
+    "owned_session": 8849,
+    "returncode": 0,
+    "reaped": true
+  },
+  "fresh_process": {
+    "owned_session": 14351,
+    "returncode": 0,
+    "reaped": true
+  },
+  "witness_wrapper": {
+    "owned_session": 41294,
+    "returncode": 1,
+    "reaped": true,
+    "native_compile_audit_types_returncode": 0,
+    "offline_schema_binding": "witness-v2/bind-retained.py",
+    "native_repeated": false
+  },
+  "current_owned_jobs": [],
+  "retained_prior_failures": [
+    "qualification-v1:fixed2M heartbeat",
+    "protocol-v1:middle_wrong_call rc-11 UNKNOWN",
+    "protocol-distinct-v1:initial bytes/size host-schema guard",
+    "witness-v1:wrong guessed root names",
+    "witness-v2:wrapper top-level/nested statements shape corrected offline"
+  ],
+  "human_approved": false,
+  "native_fidelity": false,
+  "compiler_wide_enforcement": false,
+  "general_multidimensional_tiling": false,
+  "source_only_patch": "source-cut-v3/owned.patch",
+  "paper_example": "PAPER-EXAMPLE-v2/README.md",
+  "remaining_obligations": "REMAINING-OBLIGATIONS.md",
+  "next_assignment": "../NEXT-BUFFER/F/TASK.md"
+}

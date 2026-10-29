@@ -1,0 +1,46 @@
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/final_wrong_inner_cutoff/Query.lean:44:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/final_wrong_inner_cutoff/Query.lean:47:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/final_wrong_inner_cutoff/Query.lean:50:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/final_wrong_inner_cutoff/Query.lean:299:2: error: Tactic `rfl` failed: The left-hand side
+  evalProgram (M primitive external) B4 ([base, c0, c1] ++ E4 primitive x0 x1) world
+is not definitionally equal to the right-hand side
+  Except.bind
+    (loopEval 2
+      (fun i cs w =>
+        evalProgram (M primitive external) I4
+          (i :: cs ++ ([min (base + 18) 50, base + 18, base, c0, c1] ++ E4 primitive x0 x1)) w)
+      (indexIterations base (min (base + 18) 50) 9) [c0, c1] world)
+    fun result =>
+    evalProgram (M primitive external) (Program.ret [0, 1])
+      (result.fst ++ ([min (base + 18) 50, base + 18, base, c0, c1] ++ E4 primitive x0 x1)) result.snd
+
+World Error : Type
+primitive : Prim → List Int → Int
+external : External World Error registry
+x0 x1 base c0 c1 : Int
+world : World
+⊢ evalProgram (M primitive external) B4 ([base, c0, c1] ++ E4 primitive x0 x1) world =
+    Except.bind
+      (loopEval 2
+        (fun i cs w =>
+          evalProgram (M primitive external) I4
+            (i :: cs ++ ([min (base + 18) 50, base + 18, base, c0, c1] ++ E4 primitive x0 x1)) w)
+        (indexIterations base (min (base + 18) 50) 9) [c0, c1] world)
+      fun result =>
+      evalProgram (M primitive external) (Program.ret [0, 1])
+        (result.fst ++ ([min (base + 18) 50, base + 18, base, c0, c1] ++ E4 primitive x0 x1)) result.snd

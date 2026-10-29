@@ -1,0 +1,94 @@
+{
+  "pid": 172437,
+  "original": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/REPORT.json",
+    "sha256": "c23355a869eb441a54c434b8014644a8f904cc26b798108cd389ee28f7f39717",
+    "bytes": 223278
+  },
+  "initial_live_ledger_size": 0,
+  "command": "gate.replay(original REPORT, pinned4499, pinnedLean, NEW fresh-process-replay-v1 objects)",
+  "sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification.py",
+      "sha256": "c07c6faedf05bfa0e541d4b7a46bce3ec63a2a75fc469e823f30b043f1cafd84",
+      "bytes": 17255
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification_cases.py",
+      "sha256": "02e03ebf897389d0589f93cf2841d13c8531a16c05f262c4977f26dcee653aee",
+      "bytes": 7845
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification_worker.py",
+      "sha256": "cc029b14c36278c898a9c53bb7b23758477aacdd08e8ea3c201923c8d6d646e6",
+      "bytes": 2885
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification_classifier.py",
+      "sha256": "0d9e5f5c97dd38527a458975b8cf3fa360e261a8b1459f6e829681d540c9f0a0",
+      "bytes": 3686
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/test_loop_transform_qualification_classifier.py",
+      "sha256": "ac5858ca6ea3f495c0e4347cb2bf01ce65f8de63e0d606af3a6e29f3870bcf24",
+      "bytes": 1966
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/source-cut-v6/SOURCES.json",
+      "sha256": "1150d42f1ae432a7ffa7214097afa9f5af81abec31fa8486e91fb8417b12d817",
+      "bytes": 2728
+    },
+    {
+      "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+      "bytes": 9024
+    },
+    {
+      "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+      "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+      "bytes": 30913848
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_bridge.py",
+      "sha256": "89bc991c604dd5ba259d7fd531de7b93d6fd29d90d577bb3a4e9ecbc0dda9e9e",
+      "bytes": 4195,
+      "snapshot": "sources/src/merlin/verify/loop_transform_bridge.py"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_intake.py",
+      "sha256": "c1f76873f9ed4e580cf1b1e5d5495209c601e4120c386e0b1278208e3866f94a",
+      "bytes": 7782,
+      "snapshot": "sources/src/merlin/verify/loop_transform_intake.py"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_gate.py",
+      "sha256": "0571bca2efe4c5957e6cb540e7c870c1b4e227cfd465488f4f45ffdad210546c",
+      "bytes": 12089,
+      "snapshot": "sources/src/merlin/verify/loop_transform_gate.py"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_cli.py",
+      "sha256": "bbdd0966e831daf55866392dbb8514174aa7e3097178d173ea83c8f9e1306fed",
+      "bytes": 2520,
+      "snapshot": "sources/src/merlin/verify/loop_transform_cli.py"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "sha256": "b7db1592f1e3692fa8d0e783532dcb5f0170a329d7ebfadc57012b1bd71d9eb9",
+      "bytes": 28278,
+      "snapshot": "sources/src/merlin/verify/lean_graph_state_pipeline_emit.py"
+    },
+    {
+      "path": "merlin/tests/ir/test_loop_transform_integration_unit.py",
+      "sha256": "527004f4d5eb5219806615dfd92de295e4e17b3ae574148a68993c146b1db697",
+      "bytes": 6838,
+      "snapshot": "sources/merlin/tests/ir/test_loop_transform_integration_unit.py"
+    },
+    {
+      "path": "merlin/tests/ir/test_loop_body_group_emitter_unit.py",
+      "sha256": "166df76f00f4b19557383839ec433646cade8a56d615dbb5635a3c4a2c997481",
+      "bytes": 5531,
+      "snapshot": "sources/merlin/tests/ir/test_loop_body_group_emitter_unit.py"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/home/jeremy/Projects/merlin/.venv/bin/python",
+    "-m",
+    "merlin.verify.loop_transform_cli",
+    "--source",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/loop-primary-20261028/source.mlir",
+    "--factor",
+    "3",
+    "--tile",
+    "2",
+    "--reference",
+    "/home/jeremy/Projects/merlin-graph-proof-intake",
+    "--lean",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "--destination",
+    "/home/jeremy/Projects/merlin/out/build/loop-primary-20261028/check-v1",
+    "--output",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/loop-primary-20261028/after.mlir"
+  ],
+  "timeout": 180
+}

@@ -1,0 +1,45 @@
+{
+  "Q_cut": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/source-cut-v6/SOURCES.json",
+    "sha256": "1150d42f1ae432a7ffa7214097afa9f5af81abec31fa8486e91fb8417b12d817",
+    "bytes": 2728
+  },
+  "F_sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification.py",
+      "sha256": "c07c6faedf05bfa0e541d4b7a46bce3ec63a2a75fc469e823f30b043f1cafd84",
+      "bytes": 17255
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification_cases.py",
+      "sha256": "02e03ebf897389d0589f93cf2841d13c8531a16c05f262c4977f26dcee653aee",
+      "bytes": 7845
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification_worker.py",
+      "sha256": "cc029b14c36278c898a9c53bb7b23758477aacdd08e8ea3c201923c8d6d646e6",
+      "bytes": 2885
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/loop_transform_qualification_classifier.py",
+      "sha256": "0d9e5f5c97dd38527a458975b8cf3fa360e261a8b1459f6e829681d540c9f0a0",
+      "bytes": 3686
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/test_loop_transform_qualification_classifier.py",
+      "sha256": "ac5858ca6ea3f495c0e4347cb2bf01ce65f8de63e0d606af3a6e29f3870bcf24",
+      "bytes": 1966
+    }
+  ],
+  "lean": {
+    "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+    "bytes": 9024
+  },
+  "compiler_python": {
+    "path": "/home/jeremy/.local/share/uv/python/cpython-3.12.14-linux-x86_64-gnu/bin/python3.12",
+    "sha256": "f7c6210eb40fadcd3c2889dddd24a15fc2c9f926aec5a03bf9da66e12d581526",
+    "bytes": 30913848
+  },
+  "reference_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed"
+}

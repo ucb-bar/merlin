@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/witness-v2/run.py", line 29, in <module>
+    assert set(outputs['types'])==set(roots)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

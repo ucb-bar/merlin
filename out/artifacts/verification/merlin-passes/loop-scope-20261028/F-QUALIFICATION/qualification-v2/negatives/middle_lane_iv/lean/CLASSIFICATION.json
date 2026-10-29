@@ -1,0 +1,6 @@
+{
+  "classification": "LEAN_COMPONENT_OBLIGATION_REFUSAL",
+  "root": "Merlin.GraphStatePipelineInstance.F4.body_group",
+  "line": 160,
+  "diagnostic": "unsolved goals"
+}

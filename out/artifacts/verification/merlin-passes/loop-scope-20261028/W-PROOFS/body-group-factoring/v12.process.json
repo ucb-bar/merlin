@@ -1,0 +1,12 @@
+{
+  "cmd": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "-R",
+    "/home/jeremy/Projects/merlin-loop-verification",
+    "-o",
+    "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Factored.olean",
+    "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/W-PROOFS/body-group-factoring/Factored.lean"
+  ],
+  "returncode": 0,
+  "seconds": 34.65947389602661
+}

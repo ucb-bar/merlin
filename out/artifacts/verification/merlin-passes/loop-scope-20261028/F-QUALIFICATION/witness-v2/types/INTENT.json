@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "--run",
+    "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+    "--statements",
+    "Merlin.LoopScopedWitness.provider_step,Merlin.LoopScopedWitness.staticIndices,Merlin.LoopScopedWitness.loop_success,Merlin.LoopScopedWitness.loop_failure,Merlin.LoopScopedWitness.observer,Merlin.LoopScopedWitness.source_success,Merlin.LoopScopedWitness.source_failure,Merlin.LoopScopedWitness.input_arity,Merlin.LoopScopedWitness.input_nonzero,Merlin.LoopScopedWitness.input_word_domain,Merlin.LoopScopedWitness.actual_source_success,Merlin.LoopScopedWitness.actual_final_success,Merlin.LoopScopedWitness.actual_source_failure,Merlin.LoopScopedWitness.actual_final_failure,Merlin.LoopScopedWitness.source_initialized,Merlin.LoopScopedWitness.final_initialized",
+    "CurrentWitness"
+  ],
+  "timeout": 120
+}

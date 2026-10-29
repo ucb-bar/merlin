@@ -1,0 +1,74 @@
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/middle_yield_order/Query.lean:44:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/middle_yield_order/Query.lean:47:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/middle_yield_order/Query.lean:50:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/middle_yield_order/Query.lean:243:36: error: unsolved goals
+case ok.ok.ok.ok.ok.ok.ok.ok.ok.ok.ok.ok
+World Error : Type
+primitive : Prim → List Int → Int
+external : External World Error registry
+x0 x1 base : Int
+world : World
+c0 c1 : Int
+arity : [c0, c1].length = 2
+csize0 : [c1].length = 1
+w0 : World
+v0_0 : Int
+step0 : external.run 9 [primitive (Prim.add 32) [c0, x1], base] world = Except.ok ([v0_0], w0)
+size✝¹⁰ : [v0_0].length = 1
+w1 : World
+v1_0 : Int
+step1 : external.run 9 [primitive (Prim.add 32) [c1, x1], base] w0 = Except.ok ([v1_0], w1)
+size✝⁹ : [v1_0].length = 1
+w2 : World
+step2 : external.run 10 [c0, x1] w1 = Except.ok ([], w2)
+size✝⁸ : [].length = 0
+w3 : World
+step3 : external.run 10 [x1, c0] w2 = Except.ok ([], w3)
+size✝⁷ : [].length = 0
+w4 : World
+v4_0 : Int
+step4 : external.run 9 [primitive (Prim.add 32) [v0_0, x1], base + 3] w3 = Except.ok ([v4_0], w4)
+size✝⁶ : [v4_0].length = 1
+w5 : World
+v5_0 : Int
+step5 : external.run 9 [primitive (Prim.add 32) [v1_0, x1], base + 3] w4 = Except.ok ([v5_0], w5)
+size✝⁵ : [v5_0].length = 1
+w6 : World
+step6 : external.run 10 [v0_0, x1] w5 = Except.ok ([], w6)
+size✝⁴ : [].length = 0
+w7 : World
+step7 : external.run 10 [x1, v0_0] w6 = Except.ok ([], w7)
+size✝³ : [].length = 0
+w8 : World
+v8_0 : Int
+step8 : external.run 9 [primitive (Prim.add 32) [v4_0, x1], base + 6] w7 = Except.ok ([v8_0], w8)
+size✝² : [v8_0].length = 1
+w9 : World
+v9_0 : Int
+step9 : external.run 9 [primitive (Prim.add 32) [v5_0, x1], base + 6] w8 = Except.ok ([v9_0], w9)
+size✝¹ : [v9_0].length = 1
+w10 : World
+step10 : external.run 10 [v4_0, x1] w9 = Except.ok ([], w10)
+size✝ : [].length = 0
+w11 : World
+step11 : external.run 10 [x1, v4_0] w10 = Except.ok ([], w11)
+size : [].length = 0
+⊢ Except.ok ([v9_0, v8_0], w11) = Except.ok ([v8_0, v9_0], w11)
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/middle_yield_order/Query.lean:254:70: error: Tactic `decide` proved that the proposition
+  Scope.check registry LS RS B3 I4 = true
+is false

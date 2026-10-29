@@ -1,3 +1,32 @@
+# Current planner entry — 2026-10-28
+
+Start with the [reviewed scoped loop result](../../loop-scope-20261028/COORDINATOR-REVIEW/LOOP-README.md)
+and repository-root VERIFICATION_HANDOFF.md before historical reports below.
+The user currently requests continuous work by the three existing workers until a
+NEW interruption. Numerical work is deferred; primary is feat/pass-verification.
+
+The actual original→unrolled→segmented direct checker is integrated and qualified
+for its stated static no-tail/index64/ordered1D domain:8changed positives,
+15MLIR-valid mutations,12unsupported cases/settings, real consumer/CLI delivery,
+fresh rebuild and separate-Python replay. This is conditional complete-entry
+model correctness, not general tiling, compiler-wide enforcement or native/model
+fidelity. The primary integration also passed fresh actual CLI/replay and56 tests.
+
+Active Q/W/F work is bounded-buffer integration/proofs/independent qualification,
+then isolated one-kernel-call caller-context coverage, in
+/home/jeremy/Projects/merlin-loop-verification (feat/loop-transform-verification).
+Read its loop-scope-20261028 QUEUE and new CONTEXT tasks after compaction. Do not
+restart historical numerics or SDK investigation. Buffer kernel/all-entry
+component proofs and a nonzero constructive source execution are separate from
+fresh gate qualification, native allocator fidelity and independent review.
+MACC code is integrated; human numerical-policy approval remains absent.
+
+The newer user resume/publication instructions supersede old stop/publication
+headers below. Frozen semantics/specifications/locks, failed evidence and
+counterexamples remain protected. No all-graph/whole-model correctness claim.
+
+---
+
 > **2026-10-26 USER STOP at5% allowance.** All five workers are paused after portable handoffs. Start with repository-root `VERIFICATION_HANDOFF.md`; historical keep-working prompts do not authorize resume. New graph candidates remain UNCOMPILED/UNQUALIFIED.
 
 **CURRENT USER RESUME — 3.5-DAY PAPER DEADLINE.**
