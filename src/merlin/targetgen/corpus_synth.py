@@ -1212,6 +1212,12 @@ def synthesize(
             if op is None:
                 unexpressable.append(f"{cell.get('cell')} (family {family!r}{form.row_note()})")
                 continue
+            if form.form and alignment != "aligned":
+                from .corpus_form_table import FORM_TABLE as _FORMS
+
+                # A fixed-geometry form ignores the cell's extents, so other alignments would repeat it.
+                if _FORMS[(family, form.form)].once:
+                    continue
             fused = bool(epilogue)
             # The FIRST form keeps the cell's own name, so a family declared by one row names its capsule
             # exactly as before; a further row's form is qualified by what distinguishes that row.
@@ -1254,6 +1260,11 @@ def synthesize(
 
                 _m, _n = resolve_extents(entry, probes)
                 entry.update(entry_fields(family, form.form, _m, _n))
+                from merlin.targetgen import semantic_families as _sfk
+
+                # The reduction kind the form's op computes, for the eligibility oracle's kind-restricted row.
+                if _sfk.reduction_kind_of_op(op) is not None:
+                    entry["generalization"] = {"reduction_kind": _sfk.reduction_kind_of_op(op)}
             if kinds:
                 from merlin.targetgen import semantic_families as _sf
 

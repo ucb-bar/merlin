@@ -18,7 +18,7 @@ def _t(shape):
 
 
 @pytest.mark.parametrize("alignment", ["aligned", "partial", "sub_tile"])
-@pytest.mark.parametrize("form", sorted(f for _, f in ft.FORM_TABLE))
+@pytest.mark.parametrize("form", sorted(f for fam, f in ft.FORM_TABLE if fam == "movement"))
 def test_form_fields_evaluate(form, alignment):
     ext = extents_for(alignment, PROBES)
     m, n = ft.resolve_extents(ext, PROBES)

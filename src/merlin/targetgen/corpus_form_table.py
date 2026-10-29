@@ -24,6 +24,8 @@ class FormEntry:
     op: str
     make: Callable[[int, int], dict[str, Any]]
     primitives: tuple[str, ...] = ()
+    #: A form whose geometry is fixed (it ignores the cell's extents): written once, at the aligned cell.
+    once: bool = False
 
 
 def _slice(m: int, n: int) -> dict[str, Any]:
@@ -117,6 +119,23 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     ("movement", "fill_zero"): FormEntry("fill", _fill(0), ("zero_fill",)),
     ("movement", "insert_slice"): FormEntry("insert_slice", _insert_slice, ("copy",)),
 }
+
+
+def _window_forms() -> dict[tuple[str, str], FormEntry]:
+    """The standalone SUM reduction's window-sum forms (geometry and operators: ``corpus_window_forms``)."""
+    import copy
+
+    from .corpus_window_forms import WINDOW_FORMS
+
+    def make(entry: dict[str, Any]) -> Callable[[int, int], dict[str, Any]]:
+        return lambda m, n: copy.deepcopy(entry)
+
+    # No hardware primitive is composed here: the row's evidence is the standalone accumulate-on-load
+    # SUM path (contract reduction capability, kinds [sum]) plus one readout scale.
+    return {("reduction", f): FormEntry("window_sum", make(v["entry"]), (), True) for f, v in WINDOW_FORMS.items()}
+
+
+FORM_TABLE.update(_window_forms())
 
 
 def entry_fields(family: str, form: str, m: int, n: int) -> dict[str, Any]:

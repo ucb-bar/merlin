@@ -677,7 +677,17 @@ operations:
     status: reviewed
     hardware: standalone
     arithmetic: integer_sum
-    kinds: [sum]
+    # Capsule forms this row declares (one named shape-general window_sum capsule each; FORM_TABLE family
+    # reduction, geometries in corpus_window_forms): window pools of rank 1/2/3 (avg_pool1d/2d/3d, one with a
+    # non-power-of-two count), adaptive pools (rank 1/2/3), their transposes (avg_pool2d_backward,
+    # _adaptive_avg_pool2d_backward), fold (col2im, raw i32 sum) and reduce (mean.dim, mean.default).
+    forms: [pool1d, pool2d, pool2d_odd_count, pool3d, adaptive1d, adaptive2d, adaptive3d, pool2d_backward, adaptive2d_backward, fold, mean_dim, mean_all]
+    evidence:
+      review_status: reviewed
+      reviewed_by: "Reviewed by Loren Hung (approved in operator chat 2026-10-29); the stated evidence and qualification scope remain mandatory."
+      scope: "Declares which window-sum capsule forms the derived corpus must contain; not RTL qualification of any compiler lowering. Exact integer semantics: merlin.runtime.integer_ops.window_sum (exact i32 window sums, then one readout)."
+      requires_hardware: "Only the standalone accumulate-on-load SUM path (contract reduction capability, kinds [sum]) and one readout scale; no max path and no other primitive is composed. An exact-rational readout for a window count that is not a power of two is NOT given by the facts: the forms with such a count (pool2d_odd_count, adaptive pools with clipped windows, mean over 6x6) measure the f32 readout against the exact definition and may differ by one LSB near a tie."
+      basis: "Operator decision D3a (2026-10-17): Spike and stock GemminiRocketConfig RTL bit-exact for mean.dim, the avg/adaptive pools and their backwards and col2im; gate-3 int8 numerics 0 LSB; FireSim jobs 2933/2944 (gemmini-coverage analysis/FINAL_LISTS.md); /scratch2/loren/backend-verify/results-all.csv canonical results for all thirteen window operators (device, spec_int8, admitted)."
     ranks: [0, 1, 2, 3, 4, 5]
     layouts: [row_major_contiguous]
     tails: [zero_pad_valid_window]

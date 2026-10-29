@@ -1197,3 +1197,16 @@ def test_float_and_block_scaled_operands_are_not_signed_integer_operands():
     assert has_signed_integer_operands({"operand_dtype": "int8"})
     for token in ("f32", "bf16", "fp8_e4m3", "mxint8", "not_a_format", None):
         assert not has_signed_integer_operands({"operand_dtype": token})
+
+
+def test_declared_window_forms_are_written_once_at_the_aligned_cell_as_window_sum():
+    from merlin.targetgen.corpus_window_forms import WINDOW_FORMS
+
+    doc = {**_reduction_doc(), "declared_forms": {"reduction": list(WINDOW_FORMS)}}
+    res = CS.synthesize(doc, capability_contract=_two_row_contract(_FUSED_ROW, _SUM_ROW))
+    by_name = {e["name"]: e for e in _cell_entries(res)}
+    windows = {f"{CS.SYNTH_PREFIX}_reduction_{form}_i8_aligned" for form in WINDOW_FORMS}
+    assert windows <= set(by_name)
+    assert {n for n in by_name if "window" in str(by_name[n]["op"])} == windows
+    assert {by_name[n]["op"] for n in windows} == {"window_sum"}
+    assert all(by_name[n]["generalization"] == {"reduction_kind": "sum"} for n in windows)
