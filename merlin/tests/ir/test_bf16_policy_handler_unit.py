@@ -163,7 +163,7 @@ def test_fake_installed_flag_is_not_a_review_record(tmp_path):
         gate.require_admission(tmp_path)
 
 
-def test_environment_pending_precedes_tool_construction(tmp_path, monkeypatch):
+def test_unregistered_policy_selector_refuses_before_tool_construction(tmp_path, monkeypatch):
     from merlin.common import paths
     from merlin.verify import pass_validation
 
@@ -171,7 +171,7 @@ def test_environment_pending_precedes_tool_construction(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_VALIDATE_PASSES", gate.PASS)
     monkeypatch.setenv("MERLIN_LEAN_SDK_BIN", "/forbidden")
     monkeypatch.setattr(pass_validation, "CheckerTools", lambda *a: pytest.fail("opened SDK"))
-    with pytest.raises(GateRejected, match="human_review_pending"):
+    with pytest.raises(ValueError, match="nonempty subset"):
         pass_validation.from_environment(tmp_path)
 
 
@@ -181,8 +181,41 @@ def test_environment_pending_precedes_tool_construction(tmp_path, monkeypatch):
 def test_worker_never_accepts_normal_pending_return(tmp_path, monkeypatch, detail):
     from merlin.verify import gate_worker
 
-    (tmp_path / "request.json").write_text(json.dumps({"check": "bf16_f32acc_policy"}))
+    (tmp_path / "request.json").write_text(json.dumps({"check": "compiler_macc_contract"}))
     monkeypatch.setattr(gate_worker, "resolve", lambda name: lambda request: detail)
+    assert gate_worker.main(["worker", str(tmp_path)]) == 0
+    assert json.loads((tmp_path / "verdict.json").read_text())["verdict"] == "not_established"
+
+
+@pytest.mark.parametrize("mutation", ["none", "empty", "unqualified", "boolean_index", "boolean_result", "duplicate"])
+def test_worker_refuses_malformed_draft_sites(tmp_path, monkeypatch, mutation):
+    from merlin.verify import compiler_macc, gate_worker
+
+    site = {"function": "subject", "source_operation": 1, "source_results": [10], "qualification_passed": True}
+    sites = [site]
+    if mutation == "none":
+        sites = [None]
+    elif mutation == "empty":
+        sites = [{}]
+    elif mutation == "unqualified":
+        site["qualification_passed"] = False
+    elif mutation == "boolean_index":
+        site["source_operation"] = True
+    elif mutation == "boolean_result":
+        site["source_results"] = [True]
+    else:
+        sites.append(dict(site))
+    detail = {
+        "status": "checked_draft_contract",
+        "claim_type": "draft_policy_conformance",
+        "theorem": compiler_macc.THEOREM,
+        "policy_reviewed": False,
+        "numerical_policy_verdict": "abstracted",
+        "original_source_equivalence": False,
+        "sites": sites,
+    }
+    (tmp_path / "request.json").write_text(json.dumps({"check": "compiler_macc_contract"}))
+    monkeypatch.setattr(gate_worker, "resolve", lambda _: lambda request: detail)
     assert gate_worker.main(["worker", str(tmp_path)]) == 0
     assert json.loads((tmp_path / "verdict.json").read_text())["verdict"] == "not_established"
 
@@ -227,13 +260,15 @@ def test_selected_policy_cannot_be_rerouted_to_other_handler(tmp_path, override)
     from merlin.verify.speculative_gate import SpeculativeGate
 
     options = (
-        {"aliases": {"bf16_f32acc_policy": "tensor_refinement"}} if override == "alias" else {"worker_path": [tmp_path]}
+        {"aliases": {"compiler_macc_contract": "tensor_refinement"}}
+        if override == "alias"
+        else {"worker_path": [tmp_path]}
     )
     worker = SpeculativeGate(tmp_path / "gate", **options)
-    validation = SimpleNamespace(passes={gate.PASS}, gate=worker)
+    validation = SimpleNamespace(passes={"bf16_f32acc_draft_contract"}, gate=worker)
     try:
         with pytest.raises(ValueError, match="canonical handler"):
-            pass_validation._policy_handler(validation)
+            pass_validation.require_canonical_handler(validation, "compiler_macc_contract")
     finally:
         worker.close()
 

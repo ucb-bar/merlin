@@ -235,6 +235,8 @@ def observed(pass_name: str):
     def decorate(transform):
         @functools.wraps(transform)
         def invoke(module, *args, **kwargs):
+            if not selected(pass_name):
+                return transform(module, *args, **kwargs)
             return observe(pass_name, module, lambda actual: transform(actual, *args, **kwargs))
 
         return invoke

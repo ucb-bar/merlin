@@ -254,7 +254,7 @@ def test_worker_has_no_accepted_verdict_on_nonadmission(tmp_path, monkeypatch, o
 
 
 def test_wip_policy_is_not_a_builtin_worker(tmp_path, monkeypatch):
-    monkeypatch.setattr(gate, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(gate, "installed_root", lambda: tmp_path)
     monkeypatch.setattr(gate.subprocess, "run", forbidden)
     (tmp_path / "request.json").write_text(json.dumps(job(tmp_path)))
     assert gate_worker.main(["worker", str(tmp_path)]) == 0

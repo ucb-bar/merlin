@@ -60,6 +60,49 @@ def _stop_group(signum, frame) -> None:
     os.killpg(os.getpgid(0), signal.SIGKILL)
 
 
+def _require_builtin_result(name, detail):
+    if name != "compiler_macc_contract":
+        return
+    from .compiler_macc import THEOREM
+    from .gate_errors import GateRejected
+
+    # The canonical handler must complete its live proof/delivery path. An
+    # accidental pending/empty return cannot stand in for that claim. This
+    # shape check is not independent proof or numerical approval authority.
+    if (
+        type(detail) is not dict
+        or detail.get("status") != "checked_draft_contract"
+        or detail.get("claim_type") != "draft_policy_conformance"
+        or detail.get("theorem") != THEOREM
+        or detail.get("policy_reviewed") is not False
+        or detail.get("numerical_policy_verdict") != "abstracted"
+        or detail.get("original_source_equivalence") is not False
+        or type(detail.get("sites")) is not list
+        or not detail["sites"]
+    ):
+        raise GateRejected("draft MACC handler did not establish its complete conditional claim")
+    seen = set()
+    for site in detail["sites"]:
+        if (
+            type(site) is not dict
+            or set(site) != {"function", "source_operation", "source_results", "qualification_passed"}
+            or type(site["function"]) is not str
+            or not site["function"]
+            or type(site["source_operation"]) is not int
+            or site["source_operation"] < 0
+            or site["qualification_passed"] is not True
+            or type(site["source_results"]) is not list
+            or not site["source_results"]
+            or any(type(value) is not int or value < 0 for value in site["source_results"])
+            or len(set(site["source_results"])) != len(site["source_results"])
+        ):
+            raise GateRejected("draft MACC handler returned a malformed or unqualified site")
+        key = (site["function"], site["source_operation"])
+        if key in seen:
+            raise GateRejected("draft MACC handler returned duplicate site coverage")
+        seen.add(key)
+
+
 def main(argv: list[str]) -> int:
     if os.getpgid(0) == os.getpid():  # only as the leader of its own group (how the gate starts it)
         signal.signal(signal.SIGTERM, _stop_group)
@@ -71,7 +114,9 @@ def main(argv: list[str]) -> int:
     directory = Path(argv[1])
     request = json.loads((directory / "request.json").read_text())
     try:
-        detail = resolve(request["check"])(request) or {}
+        detail = resolve(request["check"])(request)
+        _require_builtin_result(request["check"], detail)
+        detail = detail or {}
         verdict = {"verdict": "accepted", "reason": "", "detail": detail}
     except BaseException as error:  # noqa: BLE001 -- every outcome must be recorded as a verdict
         verdict = {
