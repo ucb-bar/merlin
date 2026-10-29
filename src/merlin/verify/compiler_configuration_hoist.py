@@ -20,6 +20,7 @@ from .compiler_configuration_hoist_intake import (
     DOMAINS,
     RELATION,
     CurrentHoistCandidate,
+    emit_profile,
     prepare,
     proof_sources,
     reopen,
@@ -28,7 +29,7 @@ from .compiler_configuration_hoist_intake import (
 )
 from .configuration_elision_bridge import canonical, digest, file_ref
 from .configuration_elision_gate import NotEstablished, Unavailable, _exact
-from .configuration_hoist_emit import MODULE, emit
+from .configuration_hoist_emit import MODULE
 from .gate_errors import GateRejected, GateUnavailable, GateUnsupported
 
 SELECTOR = "configuration_loop_hoisting"
@@ -59,10 +60,10 @@ def ready(candidate):
         or candidate.relation != RELATION
     ):
         raise Unavailable("exact current compiler instruction configuration candidate required")
-    generated = emit(json.loads(candidate.projection_json))
+    generated = emit_profile(json.loads(candidate.projection_json), candidate.domain)
     if candidate.query != generated["query"] or list(candidate.roots) != generated["roots"]:
         raise Unavailable("canonical complete configuration query/root roster differs")
-    if json.loads(candidate.proof_sources_json) != proof_sources():
+    if json.loads(candidate.proof_sources_json) != proof_sources(candidate.domain):
         raise Unavailable("canonical configuration proof closure changed")
     try:
         revalidate(candidate)
@@ -79,7 +80,7 @@ def check_candidate(candidate, *, lean, destination, timeout=120):
         timeout=timeout,
         validate=ready,
         query_module=MODULE,
-        source_plan=proof_sources,
+        source_plan=lambda: proof_sources(candidate.domain),
         relation=RELATION,
     )
     report.update(schema="merlin.compiler-configuration-hoist.checked.v1", domain=candidate.domain)

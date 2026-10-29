@@ -20,11 +20,12 @@ from .compiler_configuration_kernel import tree
 from .configuration_elision_bridge import canonical, digest, file_ref
 from .configuration_hoist_bridge import Unsupported, project_current
 from .configuration_hoist_emit import MODULE, ROOT, emit
-from .configuration_hoist_intake import proof_sources
+from .configuration_hoist_intake import proof_sources as single_proof_sources
 
 DOMAIN = "current-compiler-one-positive-loop-constant-pure-hoist-v1"
 INDEXED_DOMAIN = "current-compiler-one-positive-loop-indexed-retained-data-hoist-v2"
-DOMAINS = frozenset({DOMAIN, INDEXED_DOMAIN})
+PREFIX_DOMAIN = "current-compiler-one-positive-loop-pure-prefix-fixed-state-hoist-v3"
+DOMAINS = frozenset({DOMAIN, INDEXED_DOMAIN, PREFIX_DOMAIN})
 RELATION = "equal_conditional_complete_kernel_error_terminal_state_hoist"
 
 
@@ -35,10 +36,38 @@ def _program(text):
     return tree(kernel)
 
 
-def _sources(selection, *, indexed=False):
+def proof_sources(domain=DOMAIN):
+    if domain == PREFIX_DOMAIN:
+        from .compiler_configuration_hoist_prefix import proof_sources as prefix_sources
+
+        return prefix_sources()
+    if domain not in {DOMAIN, INDEXED_DOMAIN}:
+        raise ValueError("exact finite canonical hoist profile required")
+    return single_proof_sources()
+
+
+def emit_profile(projection, domain):
+    if domain == PREFIX_DOMAIN:
+        from .configuration_hoist_prefix_emit import emit as prefix_emit
+
+        return prefix_emit(projection)
+    if domain not in {DOMAIN, INDEXED_DOMAIN}:
+        raise ValueError("exact finite canonical hoist profile required")
+    return emit(projection)
+
+
+def _sources(selection, *, indexed=False, prefix=False):
     rows = list(configuration_sources(selection))
     if indexed:
         rows.append(file_ref(module_source_path("merlin.verify.compiler_configuration_hoist_indexed")))
+    if prefix:
+        rows += [
+            file_ref(module_source_path(name))
+            for name in (
+                "merlin.verify.compiler_configuration_hoist_prefix",
+                "merlin.verify.configuration_hoist_prefix_emit",
+            )
+        ]
     rows += [
         file_ref(module_source_path(name))
         for name in (
@@ -52,7 +81,10 @@ def _sources(selection, *, indexed=False):
             "merlin.sched.ir.events",
         )
     ]
-    rows += [{key: row[key] for key in ("path", "sha256", "bytes")} for row in proof_sources()]
+    rows += [
+        {key: row[key] for key in ("path", "sha256", "bytes")}
+        for row in proof_sources(PREFIX_DOMAIN if prefix else DOMAIN)
+    ]
     return sorted({row["path"]: row for row in rows}.values(), key=lambda row: row["path"])
 
 
@@ -95,15 +127,16 @@ class CurrentHoistCandidate:
             "independently_qualified": False,
             "production_enforcement": False,
             "data_argument_admission": (
-                "trusted_host_index64_bounds" if self.domain == INDEXED_DOMAIN else "static_constants"
+                "trusted_host_index64_bounds" if projection.get("indexed_data_analysis") else "static_constants"
             ),
             "all_index_model_premise_retained": True,
+            "moved_setter_count": len(projection["move"]["setups"]) if self.domain == PREFIX_DOMAIN else 1,
             "premises": [
                 "trusted complete typed Kernel parser/projection and original selected ISA/effect interpretation",
                 "exact nonaliasing configuration/world cells and complete relevant "
                 "caller/return/memory/error/observer state",
                 "one common indexed partial meaning for retained ordered calls respecting declared writes and frame",
-                "moved setter is a total exact overwrite with no failure/pulse/token/memory/observer effect",
+                "each moved setter is a total exact overwrite with no failure/pulse/token/memory/observer effect",
             ],
         }
 
@@ -125,14 +158,20 @@ def prepare(source, final, *, selection):
     except Unsupported:
         from .compiler_configuration_hoist_indexed import project
 
-        projection = project(source_tree, final_tree, isa=isa, effects=effects)
-        domain = INDEXED_DOMAIN
+        try:
+            projection = project(source_tree, final_tree, isa=isa, effects=effects)
+            domain = INDEXED_DOMAIN
+        except Unsupported:
+            from .compiler_configuration_hoist_prefix import project as prefix_project
+
+            projection = prefix_project(source_tree, final_tree, isa=isa, effects=effects)
+            domain = PREFIX_DOMAIN
     if (
         len(projection["before"]["atoms"]) > selection.max_operations
         or len(projection["fields"]) > selection.max_fields
     ):
         raise ValueError("actual hoist projection exceeds original selected budgets")
-    generated = emit(projection)
+    generated = emit_profile(projection, domain)
     resolution = {
         "isa": isa,
         "effects": effects,
@@ -147,8 +186,8 @@ def prepare(source, final, *, selection):
         canonical(projection),
         generated["query"],
         tuple(generated["roots"]),
-        canonical(_sources(selection, indexed=domain == INDEXED_DOMAIN)),
-        canonical(proof_sources()),
+        canonical(_sources(selection, indexed=domain != DOMAIN, prefix=domain == PREFIX_DOMAIN)),
+        canonical(proof_sources(domain)),
         domain=domain,
     )
 

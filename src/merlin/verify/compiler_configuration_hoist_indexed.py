@@ -212,35 +212,39 @@ def _substitute(call, isa, declarations, domains, records):
     return result
 
 
+def program_current(value, isa, effects, *, analyses):
+    original_calls = []
+    substituted = copy.deepcopy(value)
+    kernel = node(substituted, "Kernel", ("name", "args", "body", "attrs"))
+    for position, statement in enumerate(sequence(kernel["body"])):
+        if statement.get("class") == "merlin.sched.ir.kernel.Call":
+            original_calls.append(copy.deepcopy(statement))
+            # Outer calls keep static effects but share this profile's
+            # eager signed-index64 literal admission, including constants.
+            for _, argument in call_shape(statement)[1]:
+                _literal_domain(argument, {})
+            decode_effect(statement, isa, effects)
+            continue
+        loop = node(statement, "Loop", ("var", "extent", "body", "iter_args", "yields", "results"))
+        if type(loop["extent"]) is not int or not 0 < loop["extent"] <= 1_000_000:
+            raise Unsupported("positive bounded indexed loop domain required")
+        domains = {loop["var"]: (0, loop["extent"] - 1)}
+        for index, call in enumerate(sequence(loop["body"])):
+            original_calls.append(copy.deepcopy(call))
+            loop["body"]["tuple"][index] = _substitute(call, isa, effects, domains, analyses)
+    projected, descriptor = program(substituted, isa, effects)
+    if len(projected["atoms"]) != len(original_calls):
+        raise ValueError("actual indexed atom roster changed")
+    for atom, call in zip(projected["atoms"], original_calls, strict=True):
+        atom["token"] = canonical(call)
+    return projected, descriptor
+
+
 def project(source, final, *, isa, effects):
     analyses = []
 
     def actual_program(value, isa, effects):
-        original_calls = []
-        substituted = copy.deepcopy(value)
-        kernel = node(substituted, "Kernel", ("name", "args", "body", "attrs"))
-        for position, statement in enumerate(sequence(kernel["body"])):
-            if statement.get("class") == "merlin.sched.ir.kernel.Call":
-                original_calls.append(copy.deepcopy(statement))
-                # Outer calls keep static effects but share this profile's
-                # eager signed-index64 literal admission, including constants.
-                for _, argument in call_shape(statement)[1]:
-                    _literal_domain(argument, {})
-                decode_effect(statement, isa, effects)
-                continue
-            loop = node(statement, "Loop", ("var", "extent", "body", "iter_args", "yields", "results"))
-            if type(loop["extent"]) is not int or not 0 < loop["extent"] <= 1_000_000:
-                raise Unsupported("positive bounded indexed loop domain required")
-            domains = {loop["var"]: (0, loop["extent"] - 1)}
-            for index, call in enumerate(sequence(loop["body"])):
-                original_calls.append(copy.deepcopy(call))
-                loop["body"]["tuple"][index] = _substitute(call, isa, effects, domains, analyses)
-        projected, descriptor = program(substituted, isa, effects)
-        if len(projected["atoms"]) != len(original_calls):
-            raise ValueError("actual indexed atom roster changed")
-        for atom, call in zip(projected["atoms"], original_calls, strict=True):
-            atom["token"] = canonical(call)
-        return projected, descriptor
+        return program_current(value, isa, effects, analyses=analyses)
 
     projection = project_current(source, final, isa=isa, effects=effects, program_decoder=actual_program)
     projection.update(
