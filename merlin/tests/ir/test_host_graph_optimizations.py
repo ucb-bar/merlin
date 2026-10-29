@@ -301,6 +301,8 @@ def test_actual_lowering_route_invokes_selected_graph_hook_and_preserves_default
 
     monkeypatch.setattr(lower, "lower_to_llvm_ir", llvm_boundary)
     monkeypatch.setenv("MERLIN_STATIC_ARENA", "")
+    # This hook-only test stubs the backend that emits copy-removal reports.
+    monkeypatch.setenv("MERLIN_AUTOMATIC_HOST_COPIES", "0")
     source = _source()
     baseline = lower.lower_model(source, tmp_path / "baseline", targets=())
     selected = lower.lower_model(source, tmp_path / "selected", targets=(), graph_optimizations=_layout(source))

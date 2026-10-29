@@ -191,7 +191,7 @@ def test_conformance_failure_is_never_a_no_gain_fallback(tmp_path, monkeypatch):
 
     policy = select(tmp_path)
 
-    def broken(*args):
+    def broken(*args, **kwargs):
         raise ValueError("corrupt scalar expression")
 
     monkeypatch.setattr(graph_optimizations, "_check_layout_output", broken)
