@@ -22,7 +22,14 @@ from .gate_errors import GateRejected, GateUnavailable, GateUnsupported
 SELECTOR = "bf16_f32acc_draft_contract"
 CHECK = "compiler_macc_contract"
 THEOREM = "MerlinVerify.Check.Bf16F32AccBoundary.check_sound"
-ROOTS = {**policy_gate.ROOTS, THEOREM: "MerlinVerify.Check.Bf16F32AccBoundary"}
+ROOTS = {
+    **policy_gate.ROOTS,
+    THEOREM: "MerlinVerify.Check.Bf16F32AccBoundary",
+    **{
+        "MerlinVerify.Check.Bf16F32AccOperands." + name: "MerlinVerify.Check.Bf16F32AccOperands"
+        for name in ("pack_nodup", "same_sharing", "bind_sound")
+    },
+}
 SCHEMA = "merlin.macc.draft-boundary.v1"
 
 

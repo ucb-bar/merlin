@@ -4,25 +4,30 @@ only SSA names and the surrounding function wrapper change. The complete-module 
 is independent, so local success cannot excuse unrelated changes elsewhere in the capture. -/
 import MerlinVerify.Check.Bf16F32Acc
 import MerlinVerify.Check.Bf16F32AccExact
+import MerlinVerify.Check.Bf16F32AccOperands
 
 namespace MerlinVerify.Check.Bf16F32AccSites
 
 open MerlinVerify Rules.Bf16F32AccReference
 
 mutual
-  def shiftOps (base : Nat) : List Op → List Op
+  def renameOps (rename : Nat → Nat) : List Op → List Op
     | [] => []
     | .mk name results operands attrs props regions successors :: rest =>
-      .mk name (results.map (shiftValue base)) (operands.map (base + ·)) attrs props
-        (shiftRegions base regions) successors :: shiftOps base rest
-  def shiftRegions (base : Nat) : List Region → List Region
+      .mk name (results.map fun value => { value with id := rename value.id }) (operands.map rename) attrs props
+        (renameRegions rename regions) successors :: renameOps rename rest
+  def renameRegions (rename : Nat → Nat) : List Region → List Region
     | [] => []
-    | .mk blocks :: rest => .mk (shiftBlocks base blocks) :: shiftRegions base rest
-  def shiftBlocks (base : Nat) : List Block → List Block
+    | .mk blocks :: rest => .mk (renameBlocks rename blocks) :: renameRegions rename rest
+  def renameBlocks (rename : Nat → Nat) : List Block → List Block
     | [] => []
     | .mk args ops :: rest =>
-      .mk (args.map (shiftValue base)) (shiftOps base ops) :: shiftBlocks base rest
+      .mk (args.map fun value => { value with id := rename value.id }) (renameOps rename ops) :: renameBlocks rename rest
 end
+
+def shiftOps (base : Nat) := renameOps (base + ·)
+def shiftRegions (base : Nat) := renameRegions (base + ·)
+def shiftBlocks (base : Nat) := renameBlocks (base + ·)
 
 def wrapper (args : List Value) (ops : List Op) (result : Value) : Module :=
   ⟨[.mk "func.func" [] []
@@ -64,17 +69,26 @@ def fragments? (args : List Value) (seen : List Op)
   let [_, _, _, accumulated, _, final] := targets | none
   let [targetLeft, targetRight, _] := accumulated.operands | none
   let [result] := final.results | none
-  -- Put the complete target fragment above every original identifier. The alpha checker below
-  -- validates this renaming, including all block arguments and captured operands.
+  -- Internal target definitions get fresh identifiers. Captured operands map
+  -- back to their actual source identities, including values produced by the
+  -- copied initialization. The alpha checker validates the entire renaming.
   let base := boundOps (source :: initialOps ++ targets) +
     args.foldl (fun n value => max n (value.id + 1)) 0
-  let targetArgs : List Value := [⟨targetLeft, leftTy⟩, ⟨targetRight, rightTy⟩]
-  let shifted := shiftOps base targets
-  if alphaRegion (targetArgs.map fun value => (value.id, base + value.id))
+  let packedSource ← Bf16F32AccOperands.pack? ⟨site.left, leftTy⟩ ⟨site.right, rightTy⟩
+  let targetArgs ← Bf16F32AccOperands.pack? ⟨targetLeft, leftTy⟩ ⟨targetRight, rightTy⟩
+  if packedSource.length != targetArgs.length then none
+  let sourceArgs := packedSource.filter fun value =>
+    !(initialOps.any fun op => op.results.any fun result => result.id == value.id)
+  let rename := fun id =>
+    if id == targetLeft then site.left
+    else if id == targetRight then site.right
+    else base + id
+  let renamed := renameOps rename targets
+  if alphaRegion (targetArgs.map fun value => (value.id, rename value.id))
       (.mk [.mk [] (targets ++ [.mk "func.return" [] [result.id] [] [] [] []])])
-      (.mk [.mk [] (shifted ++ [.mk "func.return" [] [base + result.id] [] [] [] []])]) then
-    return ⟨wrapper [⟨site.left, leftTy⟩, ⟨site.right, rightTy⟩] (initialOps ++ [source]) site.result,
-      wrapper (targetArgs.map (shiftValue base)) (initialOps ++ shifted) (shiftValue base result)⟩
+      (.mk [.mk [] (renamed ++ [.mk "func.return" [] [rename result.id] [] [] [] []])]) then
+    return ⟨wrapper sourceArgs (initialOps ++ [source]) site.result,
+      wrapper sourceArgs (initialOps ++ renamed) { result with id := rename result.id }⟩
   else none
 
 
