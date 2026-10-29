@@ -25,6 +25,7 @@ from merlin.transforms.pipeline_state import PassSpec, PipelineContext, Pipeline
 from .configuration import (
     ConfigurationAdapter,
     ConfigurationEffects,
+    _check_pure_configuration_storage,
     eliminate_redundant_configuration,
     verify_configuration_state,
 )
@@ -1197,21 +1198,9 @@ def compile_schedule(
         checking = validation is not None and "configuration_write_elision" in validation.passes
         original = session.module
         original_text = original.text() if checking else None
-        # Pure setup must also be memory-free and synchronous according to the
-        # independent storage decoder used through final actual-byte checks.
-        for call, effect in zip(session.module.body, session.analysis("source_effects"), strict=True):
-            config = configuration_adapter.project(call)
-            if (
-                config is not None
-                and config.pure_write
-                and (
-                    effect.accesses
-                    or effect.completion != "synchronous"
-                    or effect.exact_copy
-                    or effect.elementwise is not None
-                )
-            ):
-                raise ValueError("pure configuration claim disagrees with decoded execution or memory effects")
+        _check_pure_configuration_storage(
+            session.module.body, session.analysis("source_effects"), configuration_adapter
+        )
         result = eliminate_redundant_configuration(
             session.module,
             configuration_adapter,

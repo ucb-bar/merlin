@@ -127,6 +127,23 @@ def _advance(live, effect):
     live.update(effect.writes)
 
 
+def _check_pure_configuration_storage(calls, source_effects, adapter):
+    """Cross-check pure setup against the independent storage-effect decoder."""
+    for call, effect in zip(calls, source_effects, strict=True):
+        config = adapter.project(call)
+        if (
+            config is not None
+            and config.pure_write
+            and (
+                effect.accesses
+                or effect.completion != "synchronous"
+                or effect.exact_copy
+                or effect.elementwise is not None
+            )
+        ):
+            raise ValueError("pure configuration claim disagrees with decoded execution or memory effects")
+
+
 def eliminate_redundant_configuration(kernel, adapter, *, enabled=True, max_calls=4096, max_fields=256):
     """Keep the first write and drop only fully redundant pure later writes.
 
