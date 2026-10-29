@@ -1,0 +1,3 @@
+'Merlin.GraphState.Elision.replay_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Merlin.GraphState.Elision.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+'Merlin.GraphState.Elision.context_preserved' depends on axioms: [propext, Classical.choice, Quot.sound]

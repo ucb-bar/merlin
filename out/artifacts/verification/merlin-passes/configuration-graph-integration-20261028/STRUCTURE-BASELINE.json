@@ -1,0 +1,86 @@
+{
+  "exit_code": 1,
+  "violations": [
+    {
+      "path": "src/merlin/targetgen/package_runtime.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "b8c935204e7a2af9b4016b268d9f6388744a49aa11ee6d9c73ed4ab383247e0c"
+    },
+    {
+      "path": "src/merlin/targetgen/package_runtime.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "b8c935204e7a2af9b4016b268d9f6388744a49aa11ee6d9c73ed4ab383247e0c"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/block_schedule.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "fd4997d265ec4d61c28e8b3bf2c06ad2985a1d83cd205072ac748ac777e8526c"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/convolution_exploration.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "416dd0abe12bae6bae7da4eb540b74cc107771179be6be9f68e78bc2f1fdf892"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/dense_panel_pipeline.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "598896efd707077493a5aee1b304720415d902920329995ed41c1e0dedbcc365"
+    },
+    {
+      "path": "src/merlin/llvmlower/device_build.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "104def4f716ef4860d0ef21d8132d9d5598b4e8f21380716893e0dff701763ad"
+    },
+    {
+      "path": "src/merlin/runtime/backends/spike_model.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "3671865182c7c16ea28d25199de62c0da18965d184a7d096bd72b68bc8598569"
+    },
+    {
+      "path": "src/merlin/runtime/backends/zephyr_model.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "7e0c3a43dcd254938205d7889c8ab1f56596a8515a740d0a76752f42b106467f"
+    },
+    {
+      "path": "src/merlin/targetgen/_recipe_quantizer.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "7f3cd0ee06f08442895aab0e9650476f4dd80e54c01d942837d96d31b527b56e"
+    },
+    {
+      "path": "src/merlin/targetgen/corpus_spec.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "bb805ba069d601c9f5a079491203d542eefcc07d183544e6bd3a29957af8c6ba"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "cd7c708f202981eb0cb42cbe7ea26831b4f41eacd7262dd98ee5aa1fb6b94cd0"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin/targetgen/owned_host_model_execution.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "cf3987c327a936cba94906b6d747c6e7b11d99bbaccad4df5324655cf918bcc8"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "7a248fc274e602aaf98e1a35f22be6eba3182ef82b68275c865155a15bbbc327"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin_experiments/phase1/authoring.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "cabda1fbddc1fed217b38dd1d38253a1e77ea7d2c51d61e8087a51f2b391fbf1"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin_experiments/phase1/brokers/selfcheck.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "c7816238f8b71367a0b0f57e04b6beabe2899a2fb5a1201651c79495e0ec4f10"
+    },
+    {
+      "path": "packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_agent.py",
+      "unchanged_from_target_before_merge": true,
+      "sha256": "c7939ec41da80cde9ace63be92e644263f8be3d4a13d56c69aed1a5551685ddb"
+    }
+  ],
+  "all_preexisting": true
+}

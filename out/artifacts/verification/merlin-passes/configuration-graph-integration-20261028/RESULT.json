@@ -1,0 +1,53 @@
+{
+  "status": "COMBINED_CONFIGURATION_GRAPH_INTEGRATION_PASSED",
+  "target_branch": "feat/pass-verification-dce-cse",
+  "target_before": "e0484f488",
+  "source_primary": "89ac040ae",
+  "merge": "ccde4e252",
+  "compatibility_fix": "beff617f2",
+  "focused_tests": 250,
+  "lint": "passed",
+  "native": [
+    {
+      "case": "elision-check",
+      "report": "out/artifacts/verification/merlin-passes/configuration-graph-integration-20261028/native-reports/elision-check.json",
+      "types": 17,
+      "audited_theorems": 247,
+      "source_count": 69,
+      "std3": true,
+      "violations": []
+    },
+    {
+      "case": "elision-replay",
+      "report": "out/artifacts/verification/merlin-passes/configuration-graph-integration-20261028/native-reports/elision-replay.json",
+      "types": 17,
+      "audited_theorems": 247,
+      "source_count": 69,
+      "std3": true,
+      "violations": []
+    },
+    {
+      "case": "hoist-check",
+      "report": "out/artifacts/verification/merlin-passes/configuration-graph-integration-20261028/native-reports/hoist-check.json",
+      "types": 15,
+      "audited_theorems": 315,
+      "source_count": 96,
+      "std3": true,
+      "violations": []
+    },
+    {
+      "case": "hoist-replay",
+      "report": "out/artifacts/verification/merlin-passes/configuration-graph-integration-20261028/native-reports/hoist-replay.json",
+      "types": 15,
+      "audited_theorems": 315,
+      "source_count": 96,
+      "std3": true,
+      "violations": []
+    }
+  ],
+  "production_gate_selection": "DCE/CSE only; new APIs remain direct developer gates",
+  "structure": "16 inherited failures, exact source bytes unchanged from target_before",
+  "full_original_campaigns_repeated": false,
+  "all_agents_remain_stopped": true,
+  "scope": "conditional typed IR/state-effect model; no independent human/primitive/native/hardware/model-wide or full-pass claim"
+}

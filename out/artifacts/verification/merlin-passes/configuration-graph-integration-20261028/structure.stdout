@@ -1,0 +1,37 @@
+[  ok] required directories
+[  ok] AGENT.md coverage
+[  ok] experiment status
+[  ok] schema usage
+[  ok] library boundary
+[FAIL] core dependency direction
+[  ok] root docs
+[  ok] schemas
+[  ok] docs
+[  ok] benchmarks
+[  ok] cli docs
+[  ok] package docs
+[  ok] schema docs
+[  ok] docs index
+[  ok] docs freshness
+[  ok] doc paths
+[  ok] test layout
+[  ok] test target marker
+[FAIL] module size
+
+16 problem(s):
+  - core imports optional merlin-experiments: src/merlin/targetgen/package_runtime.py:549: merlin_experiments.phase1.feedback.snapshot_execution.active_snapshot
+  - core imports optional merlin-experiments: src/merlin/targetgen/package_runtime.py:576: merlin_experiments.phase1.full_compiler_workspace.selected
+  - module over 1500 lines (1525); split it: src/merlin/compile/scheduling/block_schedule.py
+  - module over 1500 lines (1621); split it: src/merlin/compile/scheduling/convolution_exploration.py
+  - module over 1500 lines (2116); split it: src/merlin/compile/scheduling/dense_panel_pipeline.py
+  - module over 1500 lines (1525); split it: src/merlin/llvmlower/device_build.py
+  - module over 1500 lines (1561); split it: src/merlin/runtime/backends/spike_model.py
+  - module grew past its recorded ceiling (3540 > 3537 lines); shrink or split it: src/merlin/runtime/backends/zephyr_model.py
+  - module over 1500 lines (1642); split it: src/merlin/targetgen/_recipe_quantizer.py
+  - module grew past its recorded ceiling (2566 > 2552 lines); shrink or split it: src/merlin/targetgen/corpus_spec.py
+  - module grew past its recorded ceiling (6848 > 6825 lines); shrink or split it: packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py
+  - module over 1500 lines (1504); split it: packages/merlin-experiments/src/merlin/targetgen/owned_host_model_execution.py
+  - module over 1500 lines (1612); split it: packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py
+  - module over 1500 lines (1506); split it: packages/merlin-experiments/src/merlin_experiments/phase1/authoring.py
+  - module over 1500 lines (1529); split it: packages/merlin-experiments/src/merlin_experiments/phase1/brokers/selfcheck.py
+  - module over 1500 lines (1526); split it: packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_agent.py

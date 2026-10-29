@@ -1,0 +1,11 @@
+{
+  "status": "checked",
+  "reason": "complete conditional configuration entry obligation and std3/root audit checked",
+  "helper_bound": true,
+  "source_count": 69,
+  "fresh_build": true,
+  "new_host_qualification": false,
+  "report": "/home/jeremy/Projects/merlin-dce-cse-hoist-integration/out/build/configuration-graph-integration-20261028/elision-check/REPORT.json",
+  "exact_consumer": true,
+  "final_sha256": "ccdcd49d926127bd1b3f47860561ca224b33b0086886e15caed47bfab2b1187c"
+}

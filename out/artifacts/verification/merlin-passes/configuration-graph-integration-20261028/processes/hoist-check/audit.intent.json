@@ -1,0 +1,1 @@
+{"command":["/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean","--run","/home/jeremy/Projects/merlin-dce-cse-hoist-integration/src/merlin/verify/lean/Merlin/GraphStateAudit.lean","ActualConfigurationHoist"],"cwd":"/home/jeremy/Projects/merlin-dce-cse-hoist-integration/out/build/configuration-graph-integration-20261028/hoist-check","timeout":120}

@@ -1,3 +1,16 @@
+# Latest target integration — all workers remain stopped
+
+Graham branch feat/pass-verification-dce-cse now includes primary89ac040ae:
+configuration elision and scoped partial-loop configuration hoisting, alongside
+the earlier loop/buffer checks. Read [the combined-tree result and changes](../../../../handoff/configuration-graph-integration-20261028/README.md).
+250focused tests, lint and fresh baseline check/separate replay for both new
+families passed. The16structure failures are inherited target source, unchanged.
+The compiler selector remains DCE/CSE-only; modeled assumptions and independent
+human/native/composition obligations remain explicit. No next task or worker
+resume is authorized. Earlier transport status below is historical.
+
+---
+
 # STOPPED — scoped configuration hoist completed, 2026-10-28
 
 The latest user requested finish loop-invariant configuration hoisting, notify
