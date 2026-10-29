@@ -29,6 +29,7 @@ _FORMS = [
     ("elementwise_map", "scalar_mul", "scalar_affine", "affine"),
     ("elementwise_map", "scalar_neg", "scalar_affine", "affine"),
     ("elementwise_map", "cast_widen", "scalar_affine", "cast"),
+    ("elementwise_map", "relu", "scalar_affine", "relu"),
     ("reduction", "cumsum", "prefix_sum", "aten.cumsum.default"),
 ]
 
