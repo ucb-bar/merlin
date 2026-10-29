@@ -40,6 +40,9 @@ _ZERO_PAD_EXACT_BODY = frozenset(
         "linalg.yield",
     }
 )
+#: Index-mask operations: with a select whose other arm is the literal zero they gate WHICH elements are summed
+#: (a prefix sum's triangular mask) and keep zero the additive identity of every padded element.
+_ZERO_MASK_BODY = frozenset({"linalg.index", "arith.cmpi", "arith.select"})
 _NAMED_CONTRACTIONS = frozenset({"linalg.matmul", "linalg.batch_matmul", "linalg.matvec", "linalg.vecmat"})
 
 
@@ -90,6 +93,18 @@ def _maps(op):
     return positions, kinds
 
 
+def _selects_zero_otherwise(select) -> bool:
+    """Is the false arm of this ``arith.select`` the integer literal zero (so a masked-out element adds nothing)?"""
+    owner = getattr(select.operands[2], "owner", None)
+    if owner is None or getattr(owner, "name", "") != "arith.constant":
+        return False
+    value = getattr(owner, "properties", {}).get("value")
+    if value is None:
+        value = getattr(owner, "attributes", {}).get("value")
+    data = getattr(getattr(value, "value", None), "data", None)
+    return data == 0
+
+
 def _tails(op, family: str | None) -> str | None:
     from merlin.common import mlir_query as mq
 
@@ -99,8 +114,13 @@ def _tails(op, family: str | None) -> str | None:
         return None
     name = mq.op_name(op)
     if name not in _NAMED_CONTRACTIONS:
-        body = [mq.op_name(inner) for inner in mq.walk(op)][1:]
-        if not body or any(inner not in _ZERO_PAD_EXACT_BODY for inner in body):
+        inner_ops = list(mq.walk(op))[1:]
+        body = [mq.op_name(inner) for inner in inner_ops]
+        if not body or any(inner not in _ZERO_PAD_EXACT_BODY | _ZERO_MASK_BODY for inner in body):
+            return None
+        if any(inner in _ZERO_MASK_BODY for inner in body) and not all(
+            _selects_zero_otherwise(inner) for inner in inner_ops if mq.op_name(inner) == "arith.select"
+        ):
             return None
     for value in [*op.operands, *op.results]:
         shape, _dtype = mq.type_shape_dtype(value.type)

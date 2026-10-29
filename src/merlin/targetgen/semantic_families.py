@@ -508,6 +508,9 @@ _OP_FAMILY: dict[str, str] = {
     "cast": "elementwise_map",
     # A scalar-immediate affine map y = weight * x + bias with literal immediates (`scalar_affine_capsule`).
     "scalar_affine": "elementwise_map",
+    "tensor_sub": "elementwise_map",
+    "prefix_sum": "reduction",
+    "conv_backward": "contraction",
     "rope": "elementwise_map",
     "rope_qkv": "elementwise_map",
     "logit_softcap": "elementwise_map",
@@ -794,6 +797,7 @@ def from_op(op: str | None) -> str | None:
 _OP_REDUCTION_KIND: dict[str, str] = {
     "reduce_sum": "sum",
     "column_sum": "sum",
+    "prefix_sum": "sum",
     "window_sum": "sum",
     "sum": "sum",
     "reduce_mean": "sum",

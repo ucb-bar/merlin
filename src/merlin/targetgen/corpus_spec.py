@@ -25,6 +25,9 @@ from merlin.targetgen.capsule_dram import dtype_bits
 from .capsule_intent import _semantic_block as _semantic_block
 from .column_sum_capsule import build_column_sum, column_sum_program
 from .scalar_affine_capsule import build_scalar_affine, scalar_affine_program
+from .conv_backward_capsule import build_conv_backward, conv_backward_program
+from .prefix_sum_capsule import build_prefix_sum, prefix_sum_program
+from .tensor_sub_capsule import build_tensor_sub, tensor_sub_program
 from .window_sum_capsule import build_window_sum
 
 # canonical dtype token -> (capsule.yaml spelling, MLIR spelling, is_integer). Keyed on the dtype, never
@@ -2615,6 +2618,9 @@ def build_activation_matmul(entry: dict, binding: CorpusBinding) -> tuple[dict, 
 
 
 BUILDERS["activation_matmul"] = build_activation_matmul
+BUILDERS["conv_backward"] = build_conv_backward  # pointwise conv grads: dX, dW, db (conv_backward_capsule)
+BUILDERS["prefix_sum"] = build_prefix_sum  # inclusive scan down the outer axis (prefix_sum_capsule)
+BUILDERS["tensor_sub"] = build_tensor_sub  # Y = X0 - X1 over two operands, weights (1, -1) (tensor_sub_capsule)
 BUILDERS["scalar_affine"] = build_scalar_affine  # y = weight * x + bias with literal immediates (scalar_affine_capsule)
 BUILDERS["column_sum"] = build_column_sum  # an integer standalone sum reduction (column_sum_capsule)
 BUILDERS["window_sum"] = build_window_sum  # exact window sums with one readout: mean / avg pools (window_sum_capsule)
@@ -2626,6 +2632,9 @@ COMPONENT_PROGRAM_SOURCES: dict[str, Callable[[dict, CorpusBinding], dict]] = {
     "activation_matmul": activation_matmul_program,
     "column_sum": column_sum_program,
     "scalar_affine": scalar_affine_program,
+    "tensor_sub": tensor_sub_program,
+    "prefix_sum": prefix_sum_program,
+    "conv_backward": conv_backward_program,
 }
 
 

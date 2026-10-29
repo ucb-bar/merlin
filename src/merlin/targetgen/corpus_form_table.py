@@ -102,6 +102,21 @@ def _fill(code: int) -> Callable[[int, int], dict[str, Any]]:
     return make
 
 
+def _tensor_sub(m: int, n: int) -> dict[str, Any]:
+    """``Y = X0 - X1``: two operands of the cell's extents (the affine map with weights (1, -1))."""
+    return {"lhs": "A0", "rhs": "A1"}
+
+
+def _prefix_sum(m: int, n: int) -> dict[str, Any]:
+    """An inclusive scan down the outer axis of an ``m`` x ``n`` source (the triangular-ones sum)."""
+    return {"lhs": "A0"}
+
+
+def _conv_backward(m: int, n: int) -> dict[str, Any]:
+    """The pointwise convolution backward at ``m`` positions and ``n`` output channels (input channels = ``n``)."""
+    return {"M": m, "K": n, "N": n}
+
+
 def _scalar_affine(weight: int, bias: int) -> Callable[[int, int], dict[str, Any]]:
     """A scalar-immediate affine map ``y = weight * x + bias`` (literal immediates; one tensor operand).
 
@@ -133,6 +148,9 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     # with one broadcast constant c; the hardware primitives are the unit-scale accumulating load (c as the
     # accumulator seed) and the weighted integer mesh (w), both documented on the spec row, not on the contract's
     # movement `forms` vocabulary, so none is listed here.
+    ("contraction", "convolution_backward"): FormEntry("conv_backward", _conv_backward),
+    ("reduction", "cumsum"): FormEntry("prefix_sum", _prefix_sum),
+    ("elementwise_map", "tensor_sub"): FormEntry("tensor_sub", _tensor_sub),
     ("elementwise_map", "scalar_add"): FormEntry("scalar_affine", _scalar_affine(1, 3)),
     ("elementwise_map", "scalar_sub"): FormEntry("scalar_affine", _scalar_affine(1, -3)),
     ("elementwise_map", "scalar_mul"): FormEntry("scalar_affine", _scalar_affine(3, 0)),

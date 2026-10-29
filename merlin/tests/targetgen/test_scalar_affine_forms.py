@@ -87,6 +87,6 @@ def test_declared_forms_come_from_the_reviewed_spec_row():
 
     doc = validate_software_spec(spec, "gemmini")
     kept, refused = ft.declared_forms(doc, {})
-    assert kept.get("elementwise_map") == list(_FORMS), (kept, refused)
+    assert [f for f in kept.get("elementwise_map") if f != "tensor_sub"] == list(_FORMS), (kept, refused)
     forms = cell_forms("elementwise_map", "i8", None, available_ops(), tuple(kept["elementwise_map"]))
-    assert {f.form: f.op for f in forms if f.form} == dict.fromkeys(_FORMS, "scalar_affine")
+    assert {f.form: f.op for f in forms if f.form and f.form != "tensor_sub"} == dict.fromkeys(_FORMS, "scalar_affine")
