@@ -1,14 +1,13 @@
 import json
-import os
 import time
 from types import SimpleNamespace
 
 import pytest
 from merlin_experiments.phase1 import joint_final_coverage as F
 from merlin_experiments.phase1 import joint_grade_shards as S
+from test_joint_final_coverage import _native_fixture, _score  # noqa: E402
 
 from merlin.targetgen import capsule_grade as CG
-from test_joint_final_coverage import _native_fixture, _score  # noqa: E402
 
 
 def _caps(n, extends=None):
@@ -87,7 +86,11 @@ def test_failed_missing_or_foreign_shard_never_passes():
     shards = S.partition(caps, 3)
     foreign = _shard_score(shards[1])
     foreign["per_capsule"][0]["capsule"] = "zzz"
-    for bad in ((shards[1], None, "shard exited rc=1"), (shards[1], foreign, None), (shards[1], {"failure": {"plane": "build"}}, None)):
+    for bad in (
+        (shards[1], None, "shard exited rc=1"),
+        (shards[1], foreign, None),
+        (shards[1], {"failure": {"plane": "build"}}, None),
+    ):
         rows = [(shards[0], _shard_score(shards[0]), None), bad, (shards[2], _shard_score(shards[2]), None)]
         merged = S.merge_scores(rows, caps=caps, admission=_admission(caps))
         group = F._capsule_group(caps)
@@ -147,9 +150,21 @@ def _grade_sharded(tmp_path, monkeypatch, behaviours, end_in=60, grace=0):
     inputs = SimpleNamespace(arm="a", public_root=tmp_path, additional_forbidden=())
     checks = []
     merged = S.grade_sharded(
-        caps=caps, root=tmp_path, tag="core", output=tmp_path, frozen=tmp_path / "f", run_dir=tmp_path / "r",
-        context=context, inputs=inputs, contract="c", descriptor_sha256="x", end_epoch=time.time() + end_in,
-        timeout_s=30, processes=4, floor_exempt=False, verify=lambda: checks.append(1),
+        caps=caps,
+        root=tmp_path,
+        tag="core",
+        output=tmp_path,
+        frozen=tmp_path / "f",
+        run_dir=tmp_path / "r",
+        context=context,
+        inputs=inputs,
+        contract="c",
+        descriptor_sha256="x",
+        end_epoch=time.time() + end_in,
+        timeout_s=30,
+        processes=4,
+        floor_exempt=False,
+        verify=lambda: checks.append(1),
     )
     return caps, merged, seen, killed, checks
 

@@ -264,7 +264,11 @@ def merge_scores(shards, *, caps, admission, processes=None, wall_s=None):
         fields = ("n_admitted_capsules", "n_declared_refusals", "n_validated_refusals", "n_executable_capsules")
         merged["expected_refusal_scope"] = {
             **scopes[0],
-            **{f: sum(sc.get(f, 0) for sc in scopes) + sum(len(a) for _, a, _, _ in bad if f in {"n_admitted_capsules", "n_executable_capsules"}) for f in fields},
+            **{
+                f: sum(sc.get(f, 0) for sc in scopes)
+                + sum(len(a) for _, a, _, _ in bad if f in {"n_admitted_capsules", "n_executable_capsules"})
+                for f in fields
+            },
         }
     evidence = [s.get("functional_public_evidence") for s in scores]
     if evidence and all(isinstance(e, dict) for e in evidence):
@@ -276,13 +280,18 @@ def merge_scores(shards, *, caps, admission, processes=None, wall_s=None):
             fpe["claim"] = None
         merged["functional_public_evidence"] = fpe
     else:
-        merged["functional_public_evidence"] = {**(evidence[0] if evidence and isinstance(evidence[0], dict) else {}), "claim": None}
+        merged["functional_public_evidence"] = {
+            **(evidence[0] if evidence and isinstance(evidence[0], dict) else {}),
+            "claim": None,
+        }
     integrity = [s.get("integrity_status") for s in scores]
     merged["integrity_status"] = next((i for i in integrity if i != "clean"), "clean" if scores else None)
     timing = [s.get("timing_rollup") or {} for s in scores]
     merged["timing_rollup"] = {
-        **{k: round(sum(t.get(k, 0) for t in timing if type(t.get(k, 0)) in (int, float)), 3)
-           for k in ("build_s", "sim_active_s", "active_total_s", "oracle_wait_s")},
+        **{
+            k: round(sum(t.get(k, 0) for t in timing if type(t.get(k, 0)) in (int, float)), 3)
+            for k in ("build_s", "sim_active_s", "active_total_s", "oracle_wait_s")
+        },
         "suite_wall_s": max((t.get("suite_wall_s", 0) for t in timing), default=0),
         "max_workers": WORKERS_PER_PROCESS * len(good),
     }
@@ -442,7 +451,9 @@ def grade_sharded(
     if verify is not None:
         verify()
     admission = _admission(caps, root, descriptor_sha256)
-    return merge_scores(results, caps=caps, admission=admission, processes=processes, wall_s=round(time.time() - started, 1))
+    return merge_scores(
+        results, caps=caps, admission=admission, processes=processes, wall_s=round(time.time() - started, 1)
+    )
 
 
 # -------------------------------------------------------------------------------------------- the child
@@ -490,7 +501,6 @@ def _child(spec: dict) -> int:
 
     from merlin.targetgen import capsule_grade as CG
     from merlin.targetgen.target_experiment import load_target_experiment
-    from merlin.targetgen.tier_policy import floor_exempt
 
     from .context import load_context, readback_kwargs
     from .feedback.compiler_profile_runtime import functional_service
@@ -525,6 +535,8 @@ def _child(spec: dict) -> int:
         stack.enter_context(original_selection(run_dir))
         stack.enter_context(compiler_execution(inputs, candidate=frozen, run_dir=run_dir))
         if spec["floor_exempt"]:
+            from merlin.targetgen.tier_policy import floor_exempt
+
             stack.enter_context(floor_exempt(spec["capsule_dirs"]))
         log = stack.enter_context((directory / "grade.log").open("w"))
         stack.enter_context(redirect_stdout(log))
