@@ -17,7 +17,7 @@ MAX_DENSE_FLOAT_BYTES = 256 * 1024
 MAX_LOOP_DENSE_BYTES = 4 * 1024 * 1024
 
 
-def _parse_bounded(raw, *, maximum_bytes, memory):
+def _parse_bounded(raw, *, maximum_bytes, memory, context=None):
     """Limit actual dense literal storage before the parent repeats a splat.
 
     The local class is part of this function's frozen code constants. Ordinary
@@ -68,9 +68,10 @@ def _parse_bounded(raw, *, maximum_bytes, memory):
                 self._charge_dense_type(type)
             return super().parse_dense_int_or_fp_elements_attr(type)
 
-    context = Context(allow_unregistered=True)
-    for dialect in (builtin.Builtin, arith.Arith, func.Func, memref.MemRef, scf.Scf):
-        context.load_dialect(dialect)
+    if context is None:
+        context = Context(allow_unregistered=True)
+        for dialect in (builtin.Builtin, arith.Arith, func.Func, memref.MemRef, scf.Scf):
+            context.load_dialect(dialect)
     module = BoundedParser(context, raw).parse_module()
     module.verify()
     return module
@@ -82,8 +83,8 @@ def parse_memory_module(raw):
 
 
 def parse_loop_module(raw):
-    """Scalar-loop profile: 4MiB aggregate dense bytes; exact dense is retained."""
-    return _parse_bounded(raw, maximum_bytes=MAX_LOOP_DENSE_BYTES, memory=False)
+    """Loop profile:4MiB exact dense float bytes; floating-complex literals refuse."""
+    return _parse_bounded(raw, maximum_bytes=MAX_LOOP_DENSE_BYTES, memory=True)
 
 
 def _admit_nan_attributes(module, *, reject_dense_nan):
@@ -93,12 +94,14 @@ def _admit_nan_attributes(module, *, reject_dense_nan):
             for attribute, path in _attributes(value, f"operation[{index}].{field}"):
                 if isinstance(attribute, builtin.FloatData) and math.isnan(attribute.data):
                     raise InputAdmissionError("scalar-nan", path)
-                if not reject_dense_nan:
-                    continue
                 if isinstance(attribute, builtin.DenseIntOrFPElementsAttr):
                     element = attribute.get_element_type()
                     if isinstance(element, builtin.ComplexType) and isinstance(element.element_type, builtin.AnyFloat):
                         raise InputAdmissionError("complex-floating-dense", path)
+                if not reject_dense_nan:
+                    continue
+                if isinstance(attribute, builtin.DenseIntOrFPElementsAttr):
+                    element = attribute.get_element_type()
                 elif isinstance(attribute, builtin.DenseArrayBase):
                     element = attribute.elt_type
                 else:
