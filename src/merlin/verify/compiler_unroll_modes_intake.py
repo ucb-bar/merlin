@@ -27,8 +27,15 @@ def prepare(buffers, *, factor, tile):
         try:
             result = prepare_query(*buffers, factor=factor, tile=tile)
         except ValueError:
-            return None
-        selected = "entry-composition", result
+            from .compiler_loop_context import prepare_query as prepare_context
+
+            try:
+                result = prepare_context(*buffers, factor=factor)
+            except ValueError:
+                return None
+            selected = "actual-loop-context", result
+        else:
+            selected = "entry-composition", result
     mode, result = selected
     namespace = "Merlin.GraphStatePipeline" + ("Inline" if mode == "inline" else "Tail") + "Instance"
     statement = f"""{{World Error : Type}}
@@ -47,7 +54,7 @@ theorem complete2 {statement} := Merlin.GraphStatePipelineInstance.complete prim
 end Merlin.GraphGateProfileAdjacent
 """
     )
-    if mode == "entry-composition":
+    if mode in ("entry-composition", "actual-loop-context"):
         query = result["query"]
     if len(query.encode()) > 4 * 1024 * 1024:
         raise Unavailable("operational proof query byte resource budget exceeded")

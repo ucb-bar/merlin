@@ -83,6 +83,7 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
             raise Unsupported(str(exc)) from exc
         if mode is not None:
             return mode
+    actual_buffers = buffers
     try:
         modules = [parse_admitted(x, parse_ir, calls="external-only") for x in buffers]
         # Charge actual SSA references, results and block arguments as well as
@@ -149,6 +150,13 @@ def prepare(buffers, *, kinds, factor=2, tile=3, index_bits=64):
         adjacent, _, _ = _adjacent_rosters({"pipeline": capture}, "Merlin.GraphStatePipelineInstance.", changed)
         query += adjacent
     except (ValueError, KeyError, TypeError, IndexError) as exc:
+        if kinds in ((TILE,), (UNROLL, TILE)):
+            from .compiler_loop_context_intake import prepare as prepare_context
+
+            try:
+                return prepare_context(actual_buffers, kinds=kinds, factor=max(2, factor), tile=tile)
+            except (ValueError, KeyError, TypeError, IndexError) as context_error:
+                raise Unsupported(str(context_error)) from context_error
         raise Unsupported(str(exc)) from exc
     roots, namespaces = [], []
     for line in query.splitlines():
