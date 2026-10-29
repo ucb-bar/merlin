@@ -4,7 +4,10 @@ Start from **`feat/pass-verif-integration`**. Compiler-gate work is committed at
 `1ac44938b`; merge `ba4fb6b34` imports the colleague's configuration update
 `018c3795d3`, including primary `89ac040ae` and the elision cleanup-helper fix.
 The user requested a documentation checkpoint and push so a colleague can
-continue. The headers below retain their historical branch/source scopes.
+continue, without waiting for a full test suite. The brief follow-up review
+started from `82430791d`; its findings and draft MACC theorem are recorded in
+the integration and quantization handoffs. The headers below retain their
+historical branch/source scopes.
 `MERLIN_WORKER_ROOT` denotes the original operator-selected worktree parent;
 set local checkout locations explicitly instead of copying another host’s paths.
 
@@ -29,11 +32,20 @@ failures reproduce in pre-integration `1f1b04a64` with byte-identical captured
 IR and identical refusals. 116 tests were not completed. Do not label that run
 as a passing full regression or relax checker expectations to conceal it.
 
-**Quantization is parked.** Source Q/DQ proofs/corrections are inherited;
-W8A8 and bf16/f16 policy work still needs the independent review/admission and
-coverage work in the quantization handoff and `merlin/lean/LEDGER.md`.
-No new quantization proof, numerical gate, float law or SPEC_LOCK change was
-made by this integration. `all` does not request numerical policy checks.
+**Quantization is ready for review, with numerical admission pending.** Source
+Q/DQ proofs/corrections are inherited. The additive
+`Check/Bf16F32AccBoundary.lean` theorem combines complete equality to the draft
+reference with strict qualification of a nonempty set of local MACC sites.
+It compiled with only the standard three axioms. This packages existing
+candidate-policy results; it does not approve the policy or install a compiler
+gate. W8A8 and bf16/f16 still need independent review/admission and the coverage
+work in the quantization handoff and `merlin/lean/LEDGER.md`.
+`all` does not request numerical policy checks; SPEC_LOCK is unchanged.
+
+The review also identified pending canonical MACC admission-root and loop
+artifact-inventory hardening. Neither finding was exercised as a bypass.
+Loop tails/general argument lists and partially changing buffer chains remain
+unsupported. Work is paused for this colleague handoff; no full suite was rerun.
 
 ---
 

@@ -6,7 +6,9 @@ Continue from `feat/pass-verif-integration`, which includes the inherited
 quantization histories and the configuration updates from
 `feat/pass-verification-dce-cse` at `018c3795d3`. See the
 [current integration handoff](../pass-verif-integration-20261028/README.md).
-This session added graph/compiler-gate integration, not new quantization proofs.
+The original integration added graph/compiler gates. The latest brief
+follow-up adds the composed draft MACC theorem described below; it does not
+enable numerical compiler gates.
 
 The current compiler selector has five checks: tensor DCE, CSE, ordered
 unrolling, ordered segmentation and private buffer reuse. `all` selects those
@@ -29,6 +31,40 @@ this exact branch before enabling a new compiler gate. Graph proof success and
 a clean theorem audit are not human source-contract approval.
 
 The branch/source descriptions below retain their original checkpoint scope.
+
+## Latest MACC progress for colleague review
+
+New file: `merlin/lean/MerlinVerify/Check/Bf16F32AccBoundary.lean`.
+Its positive checker requires a nonempty collected site set and the existing
+`Bf16F32AccSites.check` over the actual before/after modules. Its soundness
+theorem composes complete equality to the source-derived candidate reference
+(including unsuccessful executions) with strict initialized-operand
+qualification of every collected site, under the existing SSA/call laws.
+It packages existing bf16/f16 machinery; it introduces no floating-point law.
+The module compiled with Lean 4.35.0 and its theorem audit reports only
+`propext`, `Classical.choice` and `Quot.sound`. No full suite was rerun.
+
+Existing machinery covers bf16/f16 and mixed operand formats, original maps
+and accumulation order, +0 initialization, and the admitted `none`/`contract`
+flags. The draft six-clause f32-accumulation contract was authored after the
+pass was read; independent source/policy review and installed admission remain
+outstanding. The composed theorem neither supplies that approval nor proves
+that original half accumulation equals f32 accumulation. No compiler adapter
+or selector was added. Nonzero initialization and incompatible named maps
+remain checker refusals; the production pass was not modified.
+
+The read-only reviewer also found that `bf16_policy_gate.check_policy` selects
+trusted governance roots through `repo_root()`, honoring `MERLIN_REPO_ROOT`.
+Before enabling an admitted policy gate, bind admission/source-review lookup
+to the installed source owner and add an override-refusal control. This is a
+pending hardening finding, not a demonstrated forged-admission exploit.
+
+Next: independently review the numerical contract, retain conditional draft
+status meanwhile, harden admission binding, then add actual compiler-stage
+capture/delivery/replay and targeted positive/refusal controls. User requested
+a publication break here; no numerical policy choice was assumed.
+
+## Historical source Q/DQ checkpoint
 
 Prepared while completing `integrate/lean-dce-cse-gate`. Quantization work is
 parked for a separate agent. No quantization contract, arithmetic, admitted

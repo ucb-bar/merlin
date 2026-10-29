@@ -309,11 +309,12 @@
     "checker_weakened": false
   },
   "numerical_status": {
-    "new_numerical_proofs_added": false,
+    "new_numerical_proofs_added": true,
     "source_qdq_proofs": "inherited; historical scope/review limits retained",
     "w8a8_policy": "review/admission pending;not registered",
     "bf16_f16_f32acc": "review/admission pending;not registered",
-    "frozen_semantics_or_spec_lock_changed": false
+    "frozen_semantics_or_spec_lock_changed": false,
+    "new_proof_scope": "Additive composition of existing draft MACC exact-reference equality and nonempty strict local-site qualification; no new numerical law or admission"
   },
   "source_files": [
     {
@@ -475,5 +476,37 @@
   ],
   "authority": false,
   "human_model_approved": false,
-  "raw_evidence": "Local out/build/pass-verif-integration-20261028;rawSDK/proof/test trees are notpublished"
+  "raw_evidence": "Local out/build/pass-verif-integration-20261028;rawSDK/proof/test trees are notpublished",
+  "source_files_scope": "Historical integration inventory before the brief MACC/review follow-up; these hashes are not the final branch tree",
+  "colleague_review_followup": {
+    "base_commit": "82430791d375d2c2b70611169e8bc5bdafabebbb",
+    "macc_commit": "6030939b9",
+    "status": "paused_for_requested_colleague_review",
+    "full_suite_rerun": false,
+    "new_compiler_adapter_or_selector": false,
+    "numerical_policy_approved": false,
+    "new_proof": {
+      "path": "merlin/lean/MerlinVerify/Check/Bf16F32AccBoundary.lean",
+      "sha256": "51914283f013fb3d8ed4f12c50e3bb36e777224b74f4d5d3cc5bce20b738b630",
+      "lean_version": "4.35.0",
+      "compilation_exit_code": 0,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "validation_log": "out/build/pass-verif-integration-20261028/macc-worktree/out/build/macc-proof/validation.txt",
+      "claim": "Nonempty strict MACC site qualification and complete equality to source-derived draft reference, conditional on existing SSA/call laws"
+    },
+    "read_only_review": {
+      "tests_or_exploits_run": false,
+      "pending": [
+        "Bind MACC governance lookup to installed owner instead of MERLIN_REPO_ROOT",
+        "Freeze loop compiled-artifact inventory before audit and verify tree membership at completion",
+        "Generalize loop entry arguments/carries and tail/empty/inline profiles with proofs",
+        "Support mixed identity/changing loop stages and partially changing buffer chains with proofs",
+        "Obtain independent numerical policy review before admitted MACC compiler integration"
+      ]
+    }
+  }
 }

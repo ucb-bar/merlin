@@ -6,6 +6,11 @@ Continue from `feat/pass-verif-integration`. Compiler work is committed at
 `89ac040ae`. Original histories are retained. This checkpoint is a development
 branch, not a completed qualification or human semantic approval.
 
+The latest user requested immediate publication for colleague review, without
+a full test suite. The follow-up starts from published `82430791d` and adds the
+small MACC theorem and review findings below. Both follow-up workers have
+finished; no compiler adapter or numerical approval was added.
+
 ## Start here
 
 - [Compiler stack: location, interface, example and claim](../../../../docs/guides/lean_compiler_stack.md)
@@ -59,6 +64,36 @@ completion-token/asynchronous and overlapping-body-write hoists are excluded.
 
 ## Evidence and limits
 
+### Follow-up review for this handoff
+
+`MerlinVerify.Check.Bf16F32AccBoundary.check_sound` composes the existing exact
+output/reference equality and strict local-site qualification, requiring at
+least one collected source contraction. It includes unsuccessful executions
+in the equality claim, under explicit SSA-renaming/call-locality laws. This is
+conformance to the source-derived **draft numerical reference**, not equality
+to the original half-accumulation program. The new module compiled with Lean
+4.35.0; its theorem uses only `propext`, `Classical.choice` and `Quot.sound`.
+No compiler selector, adapter, admission record or frozen semantics changed.
+
+The read-only review found these remaining tasks; it ran no adversarial tests:
+
+- `bf16_policy_gate.check_policy` obtains trusted admission/review roots through
+  `repo_root()`, which honors `MERLIN_REPO_ROOT`. Bind governance records to the
+  installed source owner and test override refusal before enabling a policy gate.
+- `loop_transform_gate` records compiled-artifact hashes after its audit and
+  completion checks the recorded roster without checking tree membership.
+  Bring this in line with the buffer gate's pre-audit inventory and mutation
+  checks. No bypass was demonstrated.
+- The loop compiler profile requires one changed top-level loop, exactly two
+  entry arguments and 1–4 word carries. Tails, empty and fully inlined loops
+  are excluded. Selected mixed unchanged/changed loop stages are refused.
+- The buffer compiler route requires normalization, reuse and tiling all to
+  change. Already-normalized and reuse-only chains need proof/adapter work.
+
+The new theorem's targeted compilation is the only new proof execution in this
+follow-up. Earlier results below retain their original source cuts. The full
+suite was not rerun, as requested.
+
 The original compiler cut passed **35 distinct compiler tests**: a retained
 33-test run plus a nine-case focused recheck overlapping seven cases. Thirteen
 positive compiler cases accepted fresh proofs and emitted byte-identical gated
@@ -106,8 +141,11 @@ checkpoint; final checkpoint checks are recorded separately.
 
 ## Next owner
 
-1. Run the full current `merlin/tests/ir/test_compiler_formal_transforms.py`
-   suite (38 tests), including its new separate-process replay checks. Repeat
+1. Review the changes on `origin/feat/pass-verif-integration` and the findings
+   above. No full-suite run is needed to inspect this development branch.
+   For qualification, run focused current compiler controls in
+   `merlin/tests/ir/test_compiler_formal_transforms.py` (38 tests), including
+   its new separate-process replay checks. Repeat
    the accepted loop/memory profiles after the updated source inventories; do
    not recover authority from saved reports.
 2. Complete the 116 pending legacy nodes listed in `qualification.json` and
@@ -122,8 +160,10 @@ checkpoint; final checkpoint checks are recorded separately.
 4. Refresh the final source/evidence manifest and stack status only after those
    checks. Raw test/proof/SDK trees remain local under
    `out/build/pass-verif-integration-20261028/`; saved JSON is descriptive data.
-5. Quantization stays a separate assignment. Review source contracts, capture
-   binding, numerical domains and admission before registering numerical gates.
+5. Resume MACC through the [quantization handoff](../quantization-lean-20261028/README.md).
+   Decide the source contract through independent review, harden its admission
+   root, then integrate exact captures and fresh replay. Candidate-reference
+   conformance must retain its distinct status until numerical admission.
 
 Loop proofs concern equal returns/errors/terminal world under their common
 scalar/SCF interpretation. Buffer proofs concern possible successful public

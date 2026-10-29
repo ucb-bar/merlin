@@ -18,6 +18,14 @@ coverage limits recorded below. This integration adds no numerical admission,
 float law, approved source contract or changed A9 assumption. Numerical gates
 remain outside `--validate-passes all`.
 
+The additive `Check/Bf16F32AccBoundary.lean` packages the existing candidate
+reference equality and strict local-site qualification behind a nonempty-site
+check. Its theorem compiled with only the standard three axioms. It is not
+independent numerical approval, a new float law or a registered compiler gate.
+The handoffs record pending canonical admission-root hardening and loop
+artifact-inventory hardening from the latest read-only review; neither was
+tested as an exploit. Work is paused for colleague review without a full rerun.
+
 Read the [quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md)
 and [current integration checkpoint](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
 before resuming numerical work. Historical evidence retains its original source
