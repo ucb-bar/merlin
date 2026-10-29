@@ -332,8 +332,14 @@ def test_pending_policy_cannot_block_normal_preparation(tmp_path, monkeypatch, s
     monkeypatch.setattr(gate, "require_admission", forbidden)
     monkeypatch.setattr(gate, "check_policy", forbidden)
     try:
-        result, _features = zephyr_model.prepare_for_lowering(source, work)
-        assert result.is_file()
+        if source_init == "1.000000e+00":
+            # Reviewed producer legality now rejects unsupported policy before
+            # mutation. This is separate from pending independent policy review.
+            with pytest.raises(ValueError, match="unsupported contraction legality"):
+                zephyr_model.prepare_for_lowering(source, work)
+        else:
+            result, _features = zephyr_model.prepare_for_lowering(source, work)
+            assert result.is_file()
         assert runner.verdicts == []
     finally:
         runner.close()

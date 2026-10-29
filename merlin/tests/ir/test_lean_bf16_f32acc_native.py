@@ -190,24 +190,32 @@ def test_f16_accumulation_overflow_is_removed(compiler, tmp_path):
     assert after[0, 0, 0] == 0 and np.array_equal(after, contract_reference(left, right, "f16"))
 
 
-def test_pass_drops_a_nonzero_destination_numerically(compiler, tmp_path):
-    rng = np.random.default_rng(3)
-    left, right = random_bits(rng, (2, 3, 5), "bf16"), random_bits(rng, (2, 5, 4), "bf16")
-    output, _ = run_pass(bmm(init="1.000000e+00"))
-    got = execute(compiler, tmp_path, output, [(left, "bf16"), (right, "bf16")], (2, 3, 4), "bf16")
-    assert np.array_equal(got, contract_reference(left, right, "bf16"))  # the 1.0 is gone
-    assert not np.array_equal(got, contract_reference(left, right, "bf16", init=1.0))
+def test_nonzero_source_is_refused_and_zero_init_fault_remains_observable(compiler, tmp_path):
+    source = bmm(init="1.000000e+00")
+    with pytest.raises(ValueError, match="unsupported contraction legality"):
+        run_pass(source)
+    left, right = np.zeros((2, 3, 5), dtype=np.uint16), np.zeros((2, 5, 4), dtype=np.uint16)
+    original = execute(compiler, tmp_path / "source", source, [(left, "bf16"), (right, "bf16")], (2, 3, 4), "bf16")
+    wrong, _ = run_pass(bmm())
+    got = execute(compiler, tmp_path / "old-fault", wrong, [(left, "bf16"), (right, "bf16")], (2, 3, 4), "bf16")
+    assert np.array_equal(got, contract_reference(left, right, "bf16"))
+    assert not np.array_equal(got, original)
+    assert np.array_equal(original, contract_reference(left, right, "bf16", init=1.0))
 
 
-def test_pass_computes_the_untransposed_product(compiler, tmp_path):
+def test_pass_executes_original_transposed_maps_and_old_fault_differs(compiler, tmp_path):
     rng = np.random.default_rng(5)
     left, right = random_bits(rng, (4, 4), "bf16"), random_bits(rng, (4, 4), "bf16")
-    output, _ = run_pass(matmul(m=4, n=4, depth=4, transposed=True))
-    got = execute(compiler, tmp_path, output, [(left, "bf16"), (right, "bf16")], (4, 4), "bf16")
+    source = matmul(m=4, n=4, depth=4, transposed=True)
+    output, _ = run_pass(source)
+    got = execute(compiler, tmp_path / "correct", output, [(left, "bf16"), (right, "bf16")], (4, 4), "bf16")
     untransposed = contract_reference(left[None], right[None], "bf16")[0]
     intended = contract_reference(left[None], right.T[None], "bf16")[0]
     assert not np.array_equal(untransposed, intended)
-    assert np.array_equal(got, untransposed)
+    assert np.array_equal(got, intended)
+    wrong = replace_once(output, "-> (d1, d2)>", "-> (d2, d1)>")
+    old = execute(compiler, tmp_path / "old-fault", wrong, [(left, "bf16"), (right, "bf16")], (4, 4), "bf16")
+    assert np.array_equal(old, untransposed)
 
 
 def extract_site(text: str, ordinal: int) -> tuple[str, list[str], str]:

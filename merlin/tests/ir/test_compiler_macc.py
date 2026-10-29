@@ -113,8 +113,13 @@ def test_actual_wrong_output_cannot_reach_delivery(pass_gate_tools, tmp_path, ca
         if case == "transposed-map"
         else bmm(init="1.000000e+00" if case == "nonzero-init" else "0.000000e+00", batch=1, m=2, n=3, depth=5)
     )
-    output, count = run_pass(source)
+    # Construct adversarial output independently after producer refusal or
+    # correct map preservation; the checker must retain every former fault.
+    produced_source = bmm(batch=1, m=2, n=3, depth=5) if case == "nonzero-init" else source
+    output, count = run_pass(produced_source)
     assert count == 1
+    if case == "transposed-map":
+        output = replace_once(output, "-> (d1, d2)>", "-> (d2, d1)>")
     if case == "wrong-add":
         add = line_with(output, '"arith.addf"')
         left, right = operands(add)

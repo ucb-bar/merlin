@@ -1,4 +1,21 @@
-# MACC producer legality review packet (unapplied)
+# MACC producer legality review packet
+
+The user approved **explicit unsupported-policy rejection** on 2026-10-29.
+`producer-legality-reject.patch` is now installed, with import/line formatting
+normalized by Ruff. The fallback alternative remains unapplied. Numerical
+admission remains draft pending independent review.
+
+The installed producer and independent checker regression cohort passed
+49 cases, with 3 retained-artifact cases explicitly skipped. Evidence is in
+`out/build/macc-engineering-20261029/approved-rejection.{xml,log}`. The old
+nonzero-initialization, wrong-dataflow and wrong-map outputs remain independent
+checker counterexamples rather than disappearing with the producer correction.
+Two current native regression comparisons also passed, preserving the observable
+nonzero-initialization fault and checking actual transposed-map execution against
+the former wrong-map output (`approved-native.{xml,log}`).
+The producer conservatively refuses any half-result generic reduction or batch
+matmul outside its admitted legality profile; the formal MACC candidate roster
+is narrower. Such refusal supplies no positive policy coverage.
 
 The curated patches and compact JSON evidence in this directory are tracked.
 The reproduction scripts below remain in local task scratch; they are not
@@ -8,7 +25,7 @@ in `merlin/tests/ir/lean_bf16_f32acc_cases.py`, `test_compiler_macc.py` and
 the branch name, identifies the patch base.
 
 `producer-legality.patch` and `producer-legality-reject.patch` are alternative
-proposed changes to `src/merlin/llvmlower/passes_xdsl.py`. Neither has been applied. `manifest.json`
+review alternatives for `src/merlin/llvmlower/passes_xdsl.py`. `manifest.json`
 binds the reviewed source and candidate SHA256 values. The numerical contract
 remains a draft; this packet creates no independent approval or admission.
 
@@ -22,10 +39,9 @@ requested unsupported policy before any mutation. The check is atomic across all
 a module so an unsupported site cannot be silently omitted from a partially
 changed boundary's conservative denominator.
 
-Human review must decide whether to install these producer legality changes
-and choose unchanged-source fallback or explicit rejection. The change can reduce optimization coverage: mixed-format inputs,
+The selected rejection behavior can reduce optimization coverage: mixed-format inputs,
 nonzero initialization, unsupported attributes/maps/nested sites and mixtures
-of supported/unsupported half contractions keep the source route. An independent
+of supported/unsupported half contractions reject the requested policy before mutation. An independent
 review of the numerical reference and its fusion/format assumptions is a
 separate decision; approval of this producer patch would not approve them.
 
@@ -46,8 +62,10 @@ Evidence on the final candidate:
   accumulation-accuracy or rounding permission.
 - Native and structural evidence bind the same candidate/source hashes.
 
-Reproduce from the repository root with the existing explicitly selected
-Lean/MLIR environment and one bounded CPU lane:
+The following scripts reproduce the **pre-installation review evidence** against
+the original source hash in `manifest.json`. Use that source cut in an isolated
+checkout. Current installed regressions are ordinary pytest tests listed above.
+With the existing explicitly selected Lean/MLIR environment and one bounded CPU lane:
 
 ```sh
 source out/build/pass-verif-integration-20261028/environment.sh

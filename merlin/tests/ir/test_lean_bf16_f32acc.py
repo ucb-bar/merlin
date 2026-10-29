@@ -23,7 +23,7 @@ from lean_bf16_f32acc_cases import (
 )
 
 from merlin.verify.lean.bf16_f32acc import CHECKER, THEOREM, run_checker
-from merlin.verify.lean.export import ExportError, export_file
+from merlin.verify.lean.export import export_file
 
 
 def check(tools, work: Path, before: str, after: str) -> dict:
@@ -177,51 +177,46 @@ def test_permitted_variant_is_accepted(lean_tools, tmp_path, actual, name):
     assert outcome["conditional_match"], (name, outcome["reason"])
 
 
-def test_pass_drops_a_nonzero_destination(lean_tools, tmp_path):
-    """Defect: the pass rewrites a contraction initialized to 1.0 and discards the 1.0."""
+def test_pass_refuses_nonzero_initialization_and_checker_retains_counterexample(lean_tools, tmp_path):
     source = bmm(init="1.000000e+00")
-    output, count = run_pass(source)
+    with pytest.raises(ValueError, match="unsupported contraction legality"):
+        run_pass(source)
+    # Retain the independent former bug shape: target zero accumulation for a
+    # source initialized to one must still be refused by the checker.
+    wrong, count = run_pass(bmm())
     assert count == 1
-    assert operands(_acc_line(output))[2] != "%s"  # the 1.0 destination is no longer read
-    outcome = check(lean_tools, tmp_path, source, output)
+    outcome = check(lean_tools, tmp_path, source, wrong)
     assert not outcome["conditional_match"]
     assert "destination is not a +0.0 splat or fill" in outcome["reason"]
 
 
-def test_pass_ignores_explicit_matmul_maps(lean_tools, tmp_path):
-    """Defect: a transposed-B ``linalg.matmul`` is rewritten with the default (d2, d1) map."""
+def test_pass_preserves_explicit_matmul_maps_and_checker_refuses_the_old_fault(lean_tools, tmp_path):
     source = matmul(m=4, n=4, depth=4, transposed=True)
     output, count = run_pass(source)
-    assert count == 1
-    assert "-> (d2, d1)>" in _acc_line(output)
-    outcome = check(lean_tools, tmp_path, source, output)
+    assert count == 1 and "-> (d1, d2)>" in _acc_line(output)
+    outcome = check(lean_tools, tmp_path / "correct", source, output)
+    assert outcome["pass_boundary"]["positive_boundary_checked"]
+    wrong = replace_once(output, "-> (d1, d2)>", "-> (d2, d1)>")
+    outcome = check(lean_tools, tmp_path / "old-fault", source, wrong)
     assert not outcome["conditional_match"]
 
 
-def test_pass_rewrites_a_square_as_a_product(lean_tools, tmp_path):
-    """Defect: a body computing acc + a*a is rewritten as acc + a*b."""
+def test_pass_binds_generic_arithmetic_and_checker_retains_counterexample(lean_tools, tmp_path):
     body = STANDARD_BODY.replace('"arith.mulf"(%x, %y)', '"arith.mulf"(%x, %x)')
     source = bmm(body=body, m=3, n=5, depth=5)
-    output, count = run_pass(source)
+    with pytest.raises(ValueError, match="unsupported contraction legality"):
+        run_pass(source)
+    wrong, count = run_pass(bmm(m=3, n=5, depth=5))
     assert count == 1
-    mul = line_with(output, '"arith.mulf"')
-    assert len(set(operands(mul))) == 2  # the rewrite multiplies two distinct operands
-    outcome = check(lean_tools, tmp_path, source, output)
+    outcome = check(lean_tools, tmp_path, source, wrong)
     assert not outcome["conditional_match"]
     assert "body is not yield(acc + a * b)" in outcome["reason"]
 
 
-def test_pass_emits_invalid_ir_for_f32_operands(lean_tools, tmp_path):
-    """Defect: f32 operands with a bf16 result get ``arith.extf`` f32 -> f32, which MLIR rejects."""
+def test_pass_refuses_f32_operands_before_emitting_invalid_casts():
     source = matmul(operand="f32")
-    output, count = run_pass(source)
-    assert count == 1
-    extf = [line for line in output.splitlines() if '"arith.extf"' in line]
-    assert extf and all(line.rstrip().endswith("(f32) -> f32") for line in extf)
-    path = tmp_path / "after.mlir"
-    path.write_text(output)
-    with pytest.raises(ExportError):
-        export_file(path, tmp_path / "after.json", backend="mlir", m2m_python=lean_tools.m2m_python)
+    with pytest.raises(ValueError, match="unsupported contraction legality"):
+        run_pass(source)
 
 
 def test_report_states_refusal_reason_for_outside_candidates(lean_tools, tmp_path):
