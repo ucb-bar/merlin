@@ -65,7 +65,7 @@ def policy(path):
 
 #: Opt-in drain/preemption knobs. Never ``setdefault`` them into the stored policy: a resumed run compares
 #: its stored policy dict byte for byte, so absent keys must stay absent and be defaulted at read time.
-PREEMPTION_DEFAULT = {"mode": "abort", "min_age_s": 180, "abort_grace_s": 60}
+PREEMPTION_DEFAULT = {"mode": "off", "min_age_s": 180, "abort_grace_s": 60}
 
 
 def _optional(value):
