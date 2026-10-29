@@ -139,6 +139,70 @@ def test_batch_subset_and_partial_shim_refuse_without_changing_input(tmp_path, m
         sibling_source_route.with_borrowed_bridge(unit, selected, host.components[0])
 
 
+@pytest.mark.parametrize("kind", ["raw", "typed", "heads"])
+def test_device_emission_batch_reads_full_source_only_at_its_two_boundaries(tmp_path, monkeypatch, kind):
+    from merlin.llvmlower.device_build import _sibling_emission_batch
+
+    selected, host, _, _, _ = prepared(tmp_path, monkeypatch, kind)
+    checks, reads = [], []
+    original_require, original_text = sibling_source_route.require_host, sibling_source_route._text
+
+    def require(actual, selection):
+        checks.append(actual)
+        return original_require(actual, selection)
+
+    def text(module):
+        reads.append(module)
+        return original_text(module)
+
+    monkeypatch.setattr(sibling_source_route, "require_host", require)
+    monkeypatch.setattr(sibling_source_route, "_text", text)
+    with _sibling_emission_batch((selected, host)) as interfaces:
+        assert checks == [host]
+        components = sibling_source_route.component_hosts(host)
+        for component in components:
+            assert interfaces[component.device_symbol] == (
+                component.interface, len(component.rewrite.call_buffers[component.device_symbol]))
+        with pytest.raises(TypeError):
+            interfaces[components[0].device_symbol] = ("foreign", 0)
+        assert checks == [host]
+    assert checks == [host, host]
+    if kind != "heads":
+        assert sum(module is host.source for module in reads) == 2
+        assert sum(module is host.module for module in reads) == 2
+
+
+@pytest.mark.parametrize("callback_raises", [False, True])
+def test_device_emission_batch_refuses_source_mutation_after_callbacks_even_on_error(
+        tmp_path, monkeypatch, callback_raises):
+    from merlin.llvmlower.device_build import _sibling_emission_batch
+
+    selected, host, _, _, _ = prepared(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="changed"):
+        with _sibling_emission_batch((selected, host)) as interfaces:
+            assert interfaces
+            # Model an arbitrary package callback mutating another source owner.
+            host.source.attributes["changed_by_package_callback"] = StringAttr("yes")
+            if callback_raises:
+                raise RuntimeError("package callback failed after mutation")
+
+
+def test_device_emission_batch_uses_frozen_interfaces_if_callback_restores_an_owner(tmp_path, monkeypatch):
+    from merlin.llvmlower.device_build import _sibling_emission_batch
+
+    selected, host, _, _, _ = prepared(tmp_path, monkeypatch)
+    component = host.components[0]
+    original = component.interface
+    with _sibling_emission_batch((selected, host)) as interfaces:
+        try:
+            object.__setattr__(component, "interface", "temporary untrusted replacement")
+            assert interfaces[component.device_symbol][0] == original
+        finally:
+            object.__setattr__(component, "interface", original)
+    # Temporary mutation cannot replace any actual package input. Fresh final
+    # validation succeeds only because the complete original owner is restored.
+
+
 @pytest.mark.parametrize("kind", ["raw", "typed"])
 def test_actual_compiled_bridges_keep_all_typed_buffers_and_dispatch_once(tmp_path, monkeypatch, kind):
     cc = shutil.which("cc")

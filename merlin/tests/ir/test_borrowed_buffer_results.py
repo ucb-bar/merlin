@@ -262,6 +262,32 @@ def test_current_plural_body_and_both_fresh_generations_are_checked():
 
 
 @native
+@pytest.mark.parametrize("damage", [None, "owned", "release", "retain", "observer"])
+def test_only_inert_original_ownership_bookkeeping_can_surround_forwarder(damage):
+    bookkeeping = '''
+   %f=arith.constant false
+   %unused_true=arith.constant true
+   %base,%offset,%size:2,%stride:2=memref.extract_strided_metadata %out_a:
+     memref<2x19xi8> -> memref<i8>,index,index,index,index,index
+   "bufferization.dealloc"(%base,%f) <{operandSegmentSizes=array<i32:1,1,0>}>:(memref<i8>,i1)->()
+'''
+    if damage == "owned":
+        bookkeeping = bookkeeping.replace("constant false", "constant true")
+    elif damage == "release":
+        bookkeeping += "memref.dealloc %out_b:memref<3x7xi16>\n"
+    elif damage == "retain":
+        bookkeeping = bookkeeping.replace('(%base,%f)', '(%base,%f,%base)').replace(
+            'array<i32:1,1,0>', 'array<i32:1,1,1>').replace(
+            ':(memref<i8>,i1)->()', ':(memref<i8>,i1,memref<i8>)->i1')
+        bookkeeping = bookkeeping.replace('"bufferization.dealloc"', '%keep="bufferization.dealloc"')
+    elif damage == "observer":
+        bookkeeping += '%read=memref.load %base[]:memref<i8>\n'
+    current = source().replace("   return\n }", bookkeeping + "   return\n }", 1)
+    violations = dealloc_placement_violations(current, borrowed_calls=(ROW,))
+    assert bool(violations) is (damage is not None)
+
+
+@native
 @pytest.mark.parametrize(
     "before,after",
     [

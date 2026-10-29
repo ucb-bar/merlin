@@ -64,6 +64,55 @@ def test_geometry_capacity_and_out_of_bounds_refuse():
         ConvolutionGatherRuns((1, 1, 1, 17), (1, 1, 1), (1, 1 << 62), (1, 1), (1, 1), 16)
 
 
+class DeferredBuilder(IntegerBuilder):
+    @staticmethod
+    def evaluate(value, count):
+        return value(count) if callable(value) else value
+
+    def op(self, operation, left, right):
+        return lambda count: super(DeferredBuilder, self).op(
+            operation, self.evaluate(left, count), self.evaluate(right, count))
+
+    def cmp(self, operation, left, right):
+        return lambda count: super(DeferredBuilder, self).cmp(
+            operation, self.evaluate(left, count), self.evaluate(right, count))
+
+    def select(self, condition, left, right):
+        return lambda count: self.evaluate(left if self.evaluate(condition, count) else right, count)
+
+
+@pytest.mark.parametrize("ow", [1, 7, 14, 28])
+def test_dynamic_row_tail_preserves_every_sample_across_source_rows_and_images(ow):
+    from merlin.compile.scheduling.affine_gather_runs import emit_convolution_matrix_gather
+
+    plan = ConvolutionGatherRuns((2, 5, 2 * ow - 1, 12), (2, 3, ow),
+                                (2, 2), (1, 1), (1, 1), 16)
+    builder = DeferredBuilder()
+    for first in range(6 * ow):
+        bound = min(16, 6 * ow - first)
+        dynamic_count = lambda count: count
+        emitted = emit_convolution_matrix_gather(
+            plan, builder, first, dynamic_count, max_count=bound,
+            reduction_block=2, reduction_tile=4)
+        for count in range(bound + 1):
+            actual = tuple(tuple(builder.evaluate(v, count) for v in fragment) for fragment in emitted)
+            actual = tuple(fragment for fragment in actual if fragment[2])
+            expected = tuple((base + 8, local, length) for base, local, length in
+                             plan.fragments(first, count)) if count else ()
+            assert actual == expected
+
+
+def test_dynamic_gather_requires_a_valid_explicit_bound_and_keeps_static_count_checks():
+    plan = ConvolutionGatherRuns((1, 5, 13, 12), (1, 3, 7),
+                                (2, 2), (1, 1), (1, 1), 16)
+    for bound in (None, 0, 17, True):
+        with pytest.raises(ValueError, match="row count"):
+            emit_convolution_gather_runs(plan, DeferredBuilder(), 0, lambda count: count,
+                                         max_count=bound)
+    with pytest.raises(ValueError, match="explicit bounded domain"):
+        emit_convolution_gather_runs(plan, IntegerBuilder(), 0, 4, max_count=3)
+
+
 @pytest.mark.parametrize('stride,dilation', [((1, 1), (1, 1)), ((2, 3), (2, 1))])
 @pytest.mark.parametrize('channels,tile', [(16, 16), (32, 16), (6, 3)])
 def test_implicit_matrix_tiles_equal_original_ordered_convolution(stride, dilation, channels, tile):

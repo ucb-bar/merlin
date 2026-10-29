@@ -99,7 +99,7 @@ def test_singleton_axis_view_keeps_coordinates_through_later_readout():
     relayout, result_type, why = _binding(group, entry)
     assert why == "" and result_type == TensorType(i8, [4, 16])
     operations = relayout(Block(arg_types=[result_type]).args[0])
-    assert [op.name for op in operations] == ["tensor.collapse_shape", "tensor.expand_shape"]
+    assert [op.name for op in operations] == ["tensor.expand_shape"]
     for op in operations:
         op.verify()
     assert operations[-1].results[0].type == TensorType(i8, [1, 4, 16])
@@ -253,15 +253,18 @@ def test_unknown_body_effects_cannot_hide_in_an_index_preserving_stage():
     assert _binding(group, entry)[2]
 
 
-def _unit_residual(rows=12, columns=48):
-    shape = f"1x{rows}x{columns}"
+def _unit_residual(rows=12, columns=48, *, leading_shape=None):
+    dimensions = (1, rows, columns) if leading_shape is None else (*leading_shape, columns)
+    shape = "x".join(map(str, dimensions))
+    coordinate_names = ",".join(f"d{i}" for i in range(len(dimensions)))
+    identity = f"affine_map<({coordinate_names})->({coordinate_names})>"
+    iterators = ",".join('"parallel"' for _ in dimensions)
     module = mq.parse(f'''module {{
       func.func @forward(%a: tensor<{shape}xf32>, %b: tensor<{shape}xf32>,
                          %s: tensor<f32>, %z: tensor<i64>) -> tensor<{shape}xi8> {{
         %e = tensor.empty() : tensor<{shape}xf32>
         %r = linalg.generic {{indexing_maps = [
-          affine_map<(d0,d1,d2)->(d0,d1,d2)>, affine_map<(d0,d1,d2)->(d0,d1,d2)>,
-          affine_map<(d0,d1,d2)->(d0,d1,d2)>], iterator_types = ["parallel","parallel","parallel"]}}
+          {identity}, {identity}, {identity}], iterator_types = [{iterators}]}}
           ins(%a,%b : tensor<{shape}xf32>,tensor<{shape}xf32>) outs(%e : tensor<{shape}xf32>) {{
           ^bb0(%x: f32,%y: f32,%o: f32):
             %v = arith.addf %x,%y : f32
@@ -326,3 +329,183 @@ def test_leading_unit_extent_alone_does_not_authorize_a_residual_view(mutation):
         entry["M"] = 48
         entry["N"] = 12
     assert _binding(group, entry)[2]
+
+
+@pytest.mark.parametrize("leading_shape,columns", [((1, 7, 7), 2048), ((1, 3, 5), 17), ((2, 3, 5), 7)])
+def test_complete_dense_residual_spatial_axes_bind_without_permutation(leading_shape, columns):
+    from math import prod
+    from merlin.llvmlower.group_host_call import _logical_group_call
+
+    rows = prod(leading_shape)
+    module, group, entry = _unit_residual(rows, columns, leading_shape=leading_shape)
+    module.verify()
+    source_type = TensorType(i8, [*leading_shape, columns])
+    pair = tuple(Block(arg_types=[source_type, source_type]).args)
+    operands, views, roles, why = _logical_group_call(
+        group, SimpleNamespace(stored_operand=None), entry, pair, None, {}, "",
+    )
+    assert not why and roles == ["input_0", "input_1"] and len(views) == 2
+    expected = [list(range(len(leading_shape))), [len(leading_shape)]]
+    for original, view, operand in zip(pair, views, operands, strict=True):
+        view.verify()
+        assert view.operands[0] is original and operand is view.results[0]
+        assert operand.type == TensorType(i8, [rows, columns])
+        assert [[axis.value.data for axis in axes] for axes in view.reassociation] == expected
+    relayout, device_type, why = _binding(group, entry)
+    assert not why and device_type == TensorType(i8, [rows, columns])
+    (expand,) = relayout(Block(arg_types=[device_type]).args[0])
+    expand.verify()
+    assert expand.results[0].type == source_type
+
+
+@pytest.mark.parametrize("mutation", ["permutation", "encoding", "escaping", "extent", "readout_coordinates"])
+def test_spatial_product_alone_does_not_authorize_a_residual_matrix(mutation):
+    from xdsl.dialects.builtin import AffineMapAttr, StringAttr
+    from xdsl.ir.affine import AffineDimExpr, AffineMap
+
+    _, group, entry = _unit_residual(15, 17, leading_shape=(1, 3, 5))
+    root = group.root
+    if mutation == "permutation":
+        maps = list(root.indexing_maps)
+        maps[0] = AffineMapAttr(AffineMap(4, 0, tuple(AffineDimExpr(i) for i in (0, 2, 1, 3))))
+        root.properties["indexing_maps"] = ArrayAttr(maps)
+    elif mutation == "encoding":
+        root.results[0]._type = TensorType(f32, [1, 3, 5, 17], StringAttr("non_dense"))
+    elif mutation == "escaping":
+        tensor.CollapseShapeOp(
+            operands=[root.results[0]], result_types=[TensorType(f32, [255])],
+            properties={"reassociation": ArrayAttr([ArrayAttr([IntegerAttr(i, i64) for i in range(4)])])},
+        )
+    elif mutation == "extent":
+        entry.update(M=17, N=15)
+    else:
+        group.members[-1].operands = (*reversed(group.members[-1].operands),)
+    assert _binding(group, entry)[2]
+
+
+def _inverse_view_pair():
+    from xdsl.dialects.builtin import DenseArrayBase
+    from xdsl.dialects.linalg.ops import TransposeOp
+
+    module, group, entry = _closed()
+    view = next(op for op in group.members if isinstance(op, tensor.CollapseShapeOp)
+                and len(op.operands[0].type.get_shape()) == 4)
+    source = view.operands[0]
+    empty0 = tensor.EmptyOp((), TensorType(f32, [1, 1, 4, 16]))
+    first = TransposeOp(source, empty0.results[0], DenseArrayBase.from_list(i64, [0, 3, 1, 2]))
+    empty1 = tensor.EmptyOp((), source.type)
+    second = TransposeOp(first.results[0], empty1.results[0], DenseArrayBase.from_list(i64, [0, 2, 3, 1]))
+    view.parent.insert_ops_before([empty0, first, empty1, second], view)
+    view.operands = (second.results[0],)
+    index = group.members.index(view)
+    group.members[index:index] = [first, second]
+    return module, group, entry, first, second
+
+
+@pytest.mark.parametrize("operation", ["matmul", "conv2d"])
+def test_complete_contraction_views_cancel_only_a_direct_typed_inverse_pair(operation):
+    module, group, entry, first, second = _inverse_view_pair()
+    if operation == "conv2d":
+        entry = dict(op="conv2d", N=16, ci=8, Himg=2, Wimg=2, kh=1, kw=1,
+                     stride=[1, 1], padding=[0, 0, 0, 0])
+    module.verify()
+    relayout, result_type, why = _binding(group, entry)
+    assert not why and result_type == TensorType(i8, [4, 16])
+    operations = relayout(Block(arg_types=[result_type]).args[0])
+    assert len(operations) == 4 and all(op.name != "linalg.transpose" for op in operations)
+    for op in operations:
+        op.verify()
+    assert operations[-1].results[0].type == group.members[-1].results[0].type
+
+
+@pytest.mark.parametrize("mutation", ["non_inverse", "escaping", "attribute", "missing_second", "encoded_destination"])
+def test_equal_element_counts_cannot_replace_the_exact_inverse_pair(mutation):
+    from xdsl.dialects.builtin import DenseArrayBase, StringAttr
+
+    _, group, entry, first, second = _inverse_view_pair()
+    if mutation == "non_inverse":
+        second.properties["permutation"] = DenseArrayBase.from_list(i64, [0, 1, 3, 2])
+    elif mutation == "escaping":
+        tensor.CollapseShapeOp(
+            operands=[first.results[0]], result_types=[TensorType(f32, [64])],
+            properties={"reassociation": ArrayAttr([ArrayAttr([IntegerAttr(i, i64) for i in range(4)])])},
+        )
+    elif mutation == "attribute":
+        first.attributes["unknown_semantics"] = IntegerAttr(1, i64)
+    elif mutation == "missing_second":
+        group.members.remove(second)
+    else:
+        second.results[0]._type = TensorType(f32, [1, 4, 16, 1], StringAttr("opaque"))
+    assert _binding(group, entry)[2]
+
+
+def test_source_contiguous_channel_last_result_and_input_views_cancel_to_original_value():
+    from merlin.llvmlower.group_host_call import _logical_group_call, cancel_relayouts
+
+    module, group, entry = _closed(leading_singleton=True)
+    relayout, device_type, why = _binding(group, entry)
+    assert not why
+    block = Block(arg_types=[device_type])
+    (expand,) = relayout(block.args[0])
+    block.add_op(expand)
+    _, residual, residual_entry = _unit_residual(4, 16)
+    pair = (expand.results[0], expand.results[0])
+    operands, views, _, why = _logical_group_call(
+        residual, SimpleNamespace(stored_operand=None), residual_entry, pair, None, {}, "",
+    )
+    assert not why
+    from xdsl.dialects.func import CallOp
+    for view in views:
+        block.add_op(view)
+    call = CallOp("observe", operands, [])
+    block.add_op(call)
+    result = cancel_relayouts([expand, *views])
+    assert result["views_folded"] == 2
+    assert all(value is block.args[0] for value in call.operands)
+
+
+@pytest.mark.parametrize("inverse,other_consumer", [(True, False), (True, True), (False, False)])
+def test_original_direct_inverse_can_cancel_generated_layout_without_moving_preparation(inverse, other_consumer):
+    from xdsl.dialects.builtin import DenseArrayBase, ModuleOp
+    from xdsl.dialects.func import CallOp, FuncOp, ReturnOp
+    from xdsl.ir import Region
+    from xdsl.dialects.linalg.ops import TransposeOp
+    from merlin.llvmlower.group_host_call import cancel_relayouts
+
+    matrix = TensorType(i8, [49, 2048])
+    nhwc = TensorType(i8, [1, 7, 7, 2048])
+    nchw = TensorType(i8, [1, 2048, 7, 7])
+    block = Block(arg_types=[matrix])
+    groups = ArrayAttr([ArrayAttr([IntegerAttr(i, i64) for i in (0, 1, 2)]),
+                        ArrayAttr([IntegerAttr(3, i64)])])
+    expand = tensor.ExpandShapeOp(block.args[0], (), groups, [1, 7, 7, 2048], nhwc)
+    empty0 = tensor.EmptyOp((), nchw)
+    generated = TransposeOp(expand.results[0], empty0.results[0], DenseArrayBase.from_list(i64, [0, 3, 1, 2]))
+    empty1 = tensor.EmptyOp((), nhwc)
+    permutation = [0, 2, 3, 1] if inverse else [0, 3, 2, 1]
+    original = TransposeOp(generated.results[0], empty1.results[0], DenseArrayBase.from_list(i64, permutation))
+    collapse = tensor.CollapseShapeOp(operands=[original.results[0]], result_types=[matrix],
+                                      properties={"reassociation": groups})
+    observe = CallOp("observe", [collapse.results[0]], [])
+    block.add_ops([expand, empty0, generated, empty1, original, collapse, observe])
+    retained = None
+    if other_consumer:
+        retained = CallOp("keep_original_layout", [generated.results[0]], [])
+        block.add_op(retained)
+    block.add_op(ReturnOp())
+    module = ModuleOp([FuncOp.from_region("forward", [matrix], [], Region(block)),
+                       FuncOp.external("observe", [matrix], []),
+                       FuncOp.external("keep_original_layout", [nchw], [])])
+    module.verify()
+    report = cancel_relayouts([expand, generated, collapse])
+    if inverse:
+        assert report == dict(transposes_cancelled=1, views_folded=1)
+        assert observe.operands[0] is block.args[0] and original.parent is None
+        assert (generated.parent is block) == other_consumer
+        if retained is not None:
+            assert retained.operands[0] is generated.results[0]
+    else:
+        assert report == dict(transposes_cancelled=0, views_folded=0)
+        assert observe.operands[0] is collapse.results[0] and original.parent is block
+
+    module.verify()

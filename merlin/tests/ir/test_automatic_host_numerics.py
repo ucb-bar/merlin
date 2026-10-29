@@ -74,7 +74,7 @@ def _scalar_outputs(module, values):
     body = next(op for op in module.walk() if op.name == "linalg.generic").regions[0]
     interpreter = Interpreter(module)
     for functions in (ArithFunctions(), LinalgFunctions(), _ScalarConversions()):
-        interpreter.register_implementations(functions)
+        interpreter.register_implementations(functions, override=isinstance(functions, _ScalarConversions))
     return np.array([interpreter.run_ssacfg_region(body, (float(value), 0))[0] for value in values])
 
 
@@ -135,7 +135,8 @@ def test_unknown_effects_remain_barriers():
     assert report["refused_effect_bodies"] == 1
 
 
-def test_ordinary_preparation_selects_pass_after_placement_without_extra_flags(tmp_path):
+@pytest.mark.parametrize("reuse_destination", [False, True])
+def test_ordinary_preparation_consumes_bound_policy_before_later_source_stages(tmp_path, reuse_destination):
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
 
     source = tmp_path / "model.mlir"
@@ -143,14 +144,22 @@ def test_ordinary_preparation_selects_pass_after_placement_without_extra_flags(t
     work = tmp_path / "build"
     work.mkdir()
     original = source.read_bytes()
+    features = {"respect_captured_quantization_scope"}
+    if reuse_destination:
+        features.add("reuse_tensor_destination")
     result, _features = prepare_for_lowering(
-        source, work, int8_compute=True, blocking=False, features=frozenset({"respect_captured_quantization_scope"})
-    )
+        source, work, int8_compute=True, blocking=False, features=frozenset(features))
     assert source.read_bytes() == original
     actual = parse_mlir_text(result.read_text())
     assert not any(op.name == "math.roundeven" for op in actual.walk())
     report = json.loads((work / "automatic_host/report.json").read_text())
     assert report["rewrites"] == 1
+    policy = json.loads((work / "quantization-policy.json").read_text())
+    assert report["source_file_sha256"] == policy["prepared_mlir_sha256"]
+    if reuse_destination:
+        destination = json.loads((work / "insert_slice_destination/receipt.json").read_text())
+        assert destination["source_sha256"] == report["output_file_sha256"]
+        assert result.parent.name == "insert_slice_destination"
 
 
 def test_missing_policy_and_explicit_ablation_are_inert(tmp_path):

@@ -27,18 +27,20 @@ idle_tuning = importlib.import_module("merlin_experiments.phase1.feedback.idle_t
 FAKE_SELFCHECK = r"""
 import argparse, json, os, pathlib
 p = argparse.ArgumentParser()
-for flag in ("--out", "--submission", "--sim", "--capsules", "--workers", "--timeout", "--progress-out"):
+for flag in ("--out", "--submission", "--sim", "--capsules", "--workers", "--timeout",
+             "--progress-out", "--suite", "--tiers"):
     p.add_argument(flag)
 a, _ = p.parse_known_args()
 tree = pathlib.Path(a.submission)
+enabled = json.loads((tree / "tuning.json").read_text())["ready_readout"]
 from merlin.common.cpu_pool import PRIORITY_ENV
 pathlib.Path(a.out).write_text(json.dumps({
     "all_pass": True,
     "per_capsule": [{"capsule": "c1", "pass": True,
-        "performance": {"estimated_whole_soc_cycles": 75 if json.loads((tree / "tuning.json").read_text())["ready_readout"] else 100,
+        "performance": {"estimated_whole_soc_cycles": 75 if enabled else 100,
                         "model_sha256": "model-one", "timing_mode": "untuned", "timing_epoch": 0,
                         "scope_sha256": "case-one", "comparison_domain_sha256": "domain-one",
-                        "elf_sha256": "stand-in-elf-" + str(json.loads((tree / "tuning.json").read_text())["ready_readout"])}}],
+                        "elf_sha256": "stand-in-elf-" + str(enabled)}}],
     "performance_brief": {"largest_headroom": [{"test_case": "c1"}]},
     "graded_tree": sorted(f"{x.relative_to(tree)}={x.read_text()}" for x in tree.rglob("*") if x.is_file()),
     "promotion_env": sorted(k for k in os.environ if k.startswith("MERLIN_SELFCHECK_PROMOTION_")),
@@ -172,3 +174,35 @@ def test_standalone_knob_sweep_uses_real_broker_private_snapshots(tmp_path, monk
     assert report["comparisons"][0]["delta_pct"] == -25
     assert (ws / "submission" / "tuning.json").read_text() == SETTINGS
     assert seen["promoted"] == [] and seen["frozen"] == []
+
+
+def test_core_performance_baselines_do_not_promote_but_ordinary_core_checks_still_do(tmp_path, monkeypatch):
+    ws = _workspace(tmp_path)
+    ch = ws / ".qa_channel"
+    official = broker._submission_digest(ws / "submission")
+    baseline = {"schema": idle_tuning.EXPERIMENT_SCHEMA, "base_sha256": official,
+                "candidate": {"kind": "baseline", "key": "baseline"}, "origin": "author_sweep"}
+    from merlin_experiments.phase1.feedback import background_admission
+    foreground = []
+
+    @contextlib.contextmanager
+    def marker(**kwargs):
+        foreground.append(kwargs["request"]["request_id"])
+        yield
+
+    monkeypatch.setattr(background_admission, "active_full_selfcheck", marker)
+    with _broker(tmp_path, ws, monkeypatch) as seen:
+        rid = _submit(ch, official, {"tuning_experiment": baseline})
+        response = _wait(ch, rid)
+        assert response["official"] is False and response["advisory_only"] is True
+        assert response["promotion_env"] == [] and seen["promoted"] == [] and seen["frozen"] == []
+        assert foreground == []
+        # An ordinary author correctness request retains both original behaviours.
+        rid = idle_performance.submit(ch, ["c1"], official, origin="author", prefix="3_ordinary_",
+                                      timeout=30, extra={"suite": "core", "sim": None})
+        response = _wait(ch, rid)
+        assert response["promotion_env"] and foreground == [rid]
+        limit = time.monotonic() + 2
+        while not seen["promoted"] and time.monotonic() < limit:
+            time.sleep(0.01)
+        assert seen["promoted"] and seen["frozen"]

@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 from merlin.common.paths import runtime_dir
-from merlin.runtime.out_bin import parse_binary_console
+from merlin.runtime.out_bin import OutBinError, parse_binary_console, restore_onlcr_console
 
 
 def _frame(payload: bytes, *, name: str = "out") -> bytes:
@@ -27,6 +27,22 @@ def test_raw_frame_roundtrips_nul_newline_magic_and_non_utf8() -> None:
     outputs, metrics = parse_binary_console(_frame(payload))
     assert outputs == {"out": [list(payload)]}
     assert metrics == {"cycles": 7}
+
+
+def test_explicit_terminal_restoration_preserves_all_bytes_and_original_crlf():
+    payload = bytes(range(256)) + b"\r\n\r\r\n\nOUT_BIN_END\x00"
+    original = _frame(payload)
+    transcript = original.replace(b"\n", b"\r\n")
+    with pytest.raises(OutBinError):
+        parse_binary_console(transcript)
+    assert restore_onlcr_console(transcript) == original
+    assert parse_binary_console(restore_onlcr_console(transcript))[0]['out'] == [list(payload)]
+
+
+def test_terminal_restoration_cannot_repair_a_damaged_payload():
+    transcript = _frame(b"original\r\npayload").replace(b"\n", b"\r\n")
+    with pytest.raises(OutBinError, match="checksum"):
+        restore_onlcr_console(transcript.replace(b"payload", b"damaged"))
 
 
 def test_real_freestanding_packer_roundtrips_all_container_widths(tmp_path) -> None:

@@ -152,6 +152,36 @@ def test_computed_scale_dag_preserves_runtime_scalar_and_each_original_body():
     result.verify()
 
 
+def splat_computed_fixture():
+    source = computed_fixture()
+    source = source.replace("    %pinit =", "    %scalar = tensor.extract %runtime[] : tensor<f32>\n"
+        "    %same = tensor.splat %scalar : tensor<8x1xf32>\n    %pinit =")
+    source = source.replace("affine_map<(i,j)->()>", "affine_map<(i,j)->(i,j)>")
+    return source.replace("%runtime : tensor<8x1xf32>, tensor<f32>", "%same : tensor<8x1xf32>, tensor<8x1xf32>")
+
+
+def test_computed_scale_splat_preserves_actual_runtime_scalar_and_each_arithmetic_body():
+    source = parse_mlir_text(splat_computed_fixture())
+    result, report = hoist_repeated_pointwise(source, immutable_argument_loader=binding([2] * 4 + [3] * 4))
+    assert report["rewrites"] == 1 and report["computed_side_producers"] == 3
+    assert report["cloned_side_scalar_evaluations"] == {"arith.mulf": 2, "arith.addf": 2}
+    reduced = [op for op in result.walk() if op.name == "tensor.splat" and op.result.type.get_shape() == (2, 1)]
+    assert len(reduced) == 1 and reduced[0].input.owner.name == "tensor.extract"
+    assert reduced[0].input.owner.tensor is result.body.block.first_op.body.block.args[2]
+    small = [op for op in result.walk() if op.name == "linalg.generic" and op.results[0].type.get_shape() == (2, 1)]
+    assert [[x.name for x in op.body.block.ops] for op in small] == [
+        ["arith.mulf", "linalg.yield"], ["arith.addf", "linalg.yield"]]
+    result.verify()
+
+
+@pytest.mark.parametrize("loader", [None, binding([2, 2, 2, 3, 3, 3, 3, 3]),
+                                    binding([0.0, -0.0, 0.0, 0.0, 3, 3, 3, 3])])
+def test_splat_side_input_does_not_hide_unproved_or_different_scale_words(loader):
+    source = parse_mlir_text(splat_computed_fixture())
+    result, report = hoist_repeated_pointwise(source, immutable_argument_loader=loader)
+    assert report["rewrites"] == 0 and text(result, generic=True) == text(source, generic=True)
+
+
 @pytest.mark.parametrize(
     "loader", [None, binding([2, 2, 2, 3, 3, 3, 3, 3]), binding([0.0, -0.0, 0.0, 0.0, 3, 3, 3, 3])]
 )
@@ -273,11 +303,12 @@ def test_fresh_native_outputs_include_ties_negative_values_and_all_repeated_rows
             np.testing.assert_array_equal(output, expected)
 
 
-def test_computed_scale_dag_fresh_native_outputs_for_distinct_runtime_scalars(tmp_path):
+@pytest.mark.parametrize("splat", [False, True])
+def test_computed_scale_dag_fresh_native_outputs_for_distinct_runtime_scalars(tmp_path, splat):
     from merlin.llvmlower.abi import HostModel, PrivateHostImagePolicy
     from merlin.llvmlower.lower import lower_model
 
-    source = parse_mlir_text(computed_fixture())
+    source = parse_mlir_text(splat_computed_fixture() if splat else computed_fixture())
     transformed, _ = hoist_repeated_pointwise(source, immutable_argument_loader=binding([2] * 4 + [3] * 4))
     functions = []
     for name, module in [("original", source), ("prepared", transformed)]:

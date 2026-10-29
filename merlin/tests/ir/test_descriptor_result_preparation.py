@@ -15,6 +15,23 @@ def identities():
     return (selection(parse_mlir_text(source())),)
 
 
+def test_wide_ciface_descriptor_custody_binds_final_returned_llvm(tmp_path):
+    from merlin.common.digest import sha256_file
+
+    original = source()
+    extra = ",".join(f"%unused{i}:tensor<2x7xi32>" for i in range(40))
+    original = original.replace("%b:tensor<2x7xi32>)->", f"%b:tensor<2x7xi32>,{extra})->")
+    result = L.lower_model(
+        original, tmp_path, targets=(), descriptor_result_identities=identities(),
+        index_bits=64, data_layout="e-p:64:64",
+    )
+    recipe = json.loads((tmp_path / "lowering_recipe.json").read_text())
+    assert result.stats["ciface_boundary_inline"]["count"] == 1
+    assert recipe["returned_llvm_ir"]["sha256"] == sha256_file(result.ll_path)
+    assert recipe["upstream_returned_llvm_ir"] != recipe["returned_llvm_ir"]
+    assert recipe["descriptor_result_identity"]["report"] == result.stats["descriptor_result_identity"]["report"]
+
+
 def test_missing_effects_reports_fallback_and_preserves_exact_source_bytes(tmp_path):
     roster = (replace(identities()[0], borrowed_effects=None),)
     prepared = DescriptorResultPreparation(roster)

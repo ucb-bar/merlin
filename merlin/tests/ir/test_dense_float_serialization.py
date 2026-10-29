@@ -89,3 +89,28 @@ def test_numeric_integer_scalar_float_and_quoted_raw_dense_values_keep_their_mea
 def test_out_of_range_or_signed_float_bit_patterns_refuse(reader, literal):
     with pytest.raises(ParseError):
         reader(f"builtin.module {{ %c = arith.constant dense<{literal}> : tensor<2xf32> }}")
+
+
+@pytest.mark.parametrize("payload", [b"", bytes(range(256)) * 3,
+    (b"source/function/block/operation_1234 " * 2048) + b'"\\\n\0' + bytes(range(256))])
+def test_literal_span_printing_is_byte_identical_to_xdsl(payload):
+    from io import StringIO
+    from xdsl.printer import Printer
+    from merlin.common.dense_float_ir import DenseFloatPrinter
+
+    reference, actual = StringIO(), StringIO()
+    Printer(stream=reference).print_bytes_literal(payload)
+    DenseFloatPrinter(stream=actual).print_bytes_literal(payload)
+    assert actual.getvalue() == reference.getvalue()
+
+
+def test_unicode_provenance_keeps_original_utf8_byte_escaping():
+    from io import StringIO
+    from xdsl.printer import Printer
+    from merlin.common.dense_float_ir import DenseFloatPrinter
+
+    reference, actual = StringIO(), StringIO()
+    label = 'source "quoted" \\ λ 雪 🧭\n'
+    Printer(stream=reference).print_string_literal(label)
+    DenseFloatPrinter(stream=actual).print_string_literal(label)
+    assert actual.getvalue() == reference.getvalue()

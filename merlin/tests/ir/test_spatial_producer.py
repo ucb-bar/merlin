@@ -11,7 +11,8 @@ from xdsl.dialects.builtin import ModuleOp, StringAttr, UnregisteredOp
 from merlin.compile.scheduling.block_schedule import SpatialMaxReadout
 from merlin.compile.scheduling.llvm_program import FnBuilderControlAdapter
 from merlin.compile.scheduling.program_limits import AddressWindow
-from merlin.compile.scheduling.spatial_producer import SpatialProducerPlan, emit_spatial_producer
+from merlin.compile.scheduling.spatial_producer import (SpatialProducerPlan, SpatialProducerBand,SpatialProducerBandAdmission,
+    emit_spatial_producer,emit_spatial_producer_band,spatial_producer_band_choices)
 from merlin.compile.scheduling.spatial_readout import (
     ReadoutCompositionUnavailable,
     RoundedReadout,
@@ -106,8 +107,15 @@ def small_plan(*, raw=False, bias=True, staged=False):
 
 @pytest.mark.parametrize("raw,staged", [(False, False), (True, False), (False, True)])
 @pytest.mark.parametrize("biased", [False, True])
-def test_actual_effects_equal_original_convolution_and_pool(raw, biased, staged):
-    plan = small_plan(raw=raw, bias=biased, staged=staged)
+def test_actual_effects_equal_original_convolution_and_pool(raw, biased, staged, band_rows=1,rhs_mode=False,
+                                                           selected=None,selected_rhs=None,trace=None,force_band=False):
+    plan = small_plan(raw=raw, bias=biased, staged=staged)if selected is None else selected
+    if band_rows>1 and selected is None:
+        plan=replace(plan,producer=replace(plan.producer,accumulator_rows=80),
+                     intermediate=replace(plan.intermediate,size=280))
+    if rhs_mode and selected is None:plan=replace(plan,producer=replace(plan.producer,operand_rows=128))
+    band=SpatialProducerBand(plan,band_rows)if band_rows>1 or force_band else None
+    storage_rows=band.temporary_rows if band else plan.temporary_rows
     p, s = plan.producer, plan.spatial
     image = (np.arange(np.prod(p.window.input_shape)) % 17 - 8).astype(np.int8).reshape(p.window.input_shape)
     weight = (np.arange(3 * 3 * 3 * 5) % 13 - 6).astype(np.int8).reshape(3, 3, 3, 5)
@@ -115,15 +123,15 @@ def test_actual_effects_equal_original_convolution_and_pool(raw, biased, staged)
     lhs = np.zeros((p.row_tile, p.channel_tile), dtype=np.int8)
     acc = np.zeros((p.accumulator_rows, p.column_tile), dtype=np.int32)
     raw_written = np.zeros_like(acc, dtype=bool)
-    scratch = np.zeros((plan.temporary_rows, p.column_tile), dtype=np.int8)
+    scratch = np.zeros((storage_rows, p.column_tile), dtype=np.int8)
     scratch_writes = np.zeros_like(scratch, dtype=int)
     oh, ow = s.output_hw
     output = np.zeros((2 * oh * ow, 5), dtype=np.int8)
     writes = np.zeros_like(output, dtype=int)
-    rhs = None
+    rhs = {}
 
     def lower(kind, a):
-        nonlocal rhs
+        if trace is not None:trace.append((kind,dict(a)))
         if kind == "initialize_bias":
             row, col = a["accumulator_row"], a["output_column"]
             acc[row : row + a["rows"], : a["columns"]] = bias[col : col + a["columns"]]
@@ -134,14 +142,16 @@ def test_actual_effects_equal_original_convolution_and_pool(raw, biased, staged)
                     0 if a["zero"] else image.ravel()[first : first + a["columns"]]
                 )
         elif kind == "load_weight":
-            rhs = weight.reshape(-1, 5)[
+            tile = weight.reshape(-1, 5)[
                 a["reduction_row"] : a["reduction_row"] + a["rows"],
                 a["output_column"] : a["output_column"] + a["columns"],
             ]
+            for r in range(a['rows']):rhs[a['local_row']+r]=tile[r]
         elif kind == "compute":
             row, rows, columns = a["accumulator_row"], a["rows"], a["columns"]
-            assert p.accumulator_row <= row < row + rows <= p.accumulator_row + plan.temporary_rows
-            product = lhs[:rows, : a["depth"]].astype(np.int32) @ rhs.astype(np.int32)
+            assert p.accumulator_row <= row < row + rows <= p.accumulator_row + storage_rows
+            weights=np.stack([rhs[a['rhs_row']+r]for r in range(a['depth'])])
+            product = lhs[:rows, : a["depth"]].astype(np.int32) @ weights.astype(np.int32)
             if a["first_reduction"] and not a["bias"]:
                 acc[row : row + rows, :columns] = product
             else:
@@ -174,17 +184,34 @@ def test_actual_effects_equal_original_convolution_and_pool(raw, biased, staged)
             values = np.array([quantized(int(x), q.scales, q.relu) for x in tile.ravel()], dtype=np.int8).reshape(
                 tile.shape
             )
-            for x in range(a["output_pixels"]):
-                row, col = a["output_row"] + x, a["output_column"]
-                maximum = values[:, x * s.stride[1] : x * s.stride[1] + s.window[1]].max(axis=(0, 1))
-                output[row, col : col + a["columns"]] = maximum
-                writes[row, col : col + a["columns"]] += 1
+            for y in range(a.get('output_rows',1)):
+                for x in range(a["output_pixels"]):
+                    row, col = a["output_row"] + y*ow+x, a["output_column"]
+                    maximum = values[y*s.stride[0]:y*s.stride[0]+s.window[0],
+                        x*s.stride[1]:x*s.stride[1]+s.window[1]].max(axis=(0, 1))
+                    output[row, col : col + a["columns"]] = maximum
+                    writes[row, col : col + a["columns"]] += 1
             raw_written.fill(False)
             scratch_writes.fill(0)
         else:
             raise AssertionError(kind)
 
-    receipt = emit_spatial_producer(plan, Integers(), lower, synchronous_completion=True)
+    admission=(SpatialProducerBandAdmission(plan.identity,'neutral-test','TEST-ONLY-rectangular-pool',
+        3,3,7,7,81,True,True,True,True)if band else None)
+    resident=selected_rhs
+    if rhs_mode and resident is None:
+        from merlin.compile.scheduling.convolution_exploration import (
+            ConvolutionExplorationSource,ConvolutionScheduleChoice,ConvolutionRhsResidencyLaw,
+            plan_convolution_schedule,plan_convolution_rhs_residency)
+        src=ConvolutionExplorationSource(p,((0,4),(4,1)),plan.identity)
+        schedule=plan_convolution_schedule(src,ConvolutionScheduleChoice())
+        law=ConvolutionRhsResidencyLaw('neutral-test','original-i32',src.identity,
+            'TEST-ONLY-synchronous-immutable-RHS',True,True,True,True,True)
+        resident=plan_convolution_rhs_residency(schedule,operand_rows=p.operand_rows,law=law)
+        assert resident is not None
+    receipt=(emit_spatial_producer_band(band,Integers(),lower,synchronous_completion=True,admission=admission,
+        rhs=resident,rhs_complete=lambda *_:None)if band else
+             emit_spatial_producer(plan, Integers(), lower, synchronous_completion=True))
     expected = np.zeros((2, 6, 7, 5), dtype=np.int32)
     padded = np.pad(image.astype(np.int64), ((0, 0), (1, 1), (1, 1), (0, 0)))
     for b in range(2):
@@ -212,6 +239,80 @@ def test_actual_effects_equal_original_convolution_and_pool(raw, biased, staged)
     )
     assert np.array_equal(output, pooled) and np.all(writes == 1)
     assert receipt["full_intermediate_image_bytes"] == receipt["host_payload_operations"] == 0
+
+
+@pytest.mark.parametrize('rows',[2,3])
+@pytest.mark.parametrize('bias',[False,True])
+@pytest.mark.parametrize('resident_rhs',[False,True])
+def test_bands_retain_both_readouts_original_products_and_output_tails(rows,bias,resident_rhs):
+    test_actual_effects_equal_original_convolution_and_pool(False,bias,True,rows,resident_rhs)
+
+
+def test_band_choices_bind_actual_scratch_acc_and_recomputation_before_effects():
+    p=small_plan(staged=True)
+    assert [b.output_rows for b in spatial_producer_band_choices(p,max_output_rows=3)]==[1]
+    roomy=replace(p,producer=replace(p.producer,accumulator_rows=80),
+                  intermediate=replace(p.intermediate,size=280))
+    choices=spatial_producer_band_choices(roomy,max_output_rows=3)
+    assert [b.output_rows for b in choices]==[1,2,3]
+    assert choices[1].report()['producer_halo_pixels']<choices[0].report()['producer_halo_pixels']
+    with pytest.raises(ValueError,match='capacity'):SpatialProducerBand(p,2)
+    with pytest.raises(ValueError,match='readouts'):SpatialProducerBand(small_plan(),2)
+    band=choices[1];events=[]
+    object.__setattr__(band.source.intermediate,'size',1)
+    with pytest.raises(ValueError):emit_spatial_producer_band(band,Integers(),lambda *a:events.append(a),synchronous_completion=True,admission=None)
+    assert not events
+
+
+@pytest.mark.parametrize('change',['rectangle','tracking','source','readouts'])
+def test_band_target_law_refuses_before_real_source_effects(change):
+    p=small_plan(staged=True)
+    p=replace(p,producer=replace(p.producer,accumulator_rows=80),intermediate=replace(p.intermediate,size=280))
+    band=SpatialProducerBand(p,2)
+    admission=SpatialProducerBandAdmission(p.identity,'neutral-test','TEST-ONLY-completed-pool',
+        2,3,5,7,54,True,True,True,True)
+    if change=='rectangle':admission=replace(admission,rectangular_pool_mapping=False)
+    elif change=='tracking':admission=replace(admission,maximum_pool_row_requests=53)
+    elif change=='source':admission=replace(admission,source_identity='changed-source')
+    else:admission=replace(admission,original_q1_q2=False)
+    events=[]
+    with pytest.raises(ValueError,match='admission'):
+        emit_spatial_producer_band(band,Integers(),lambda *a:events.append(a),
+                                  synchronous_completion=True,admission=admission)
+    assert not events
+
+
+def test_spatial_registry_combines_band_and_rhs_orders_and_deduplicates_actual_effects():
+    import json,hashlib
+    from merlin.compile.scheduling.spatial_producer import spatial_producer_pass_space,explore_spatial_producer
+    from merlin.compile.scheduling.convolution_exploration import (
+        ConvolutionExplorationSource,ConvolutionScheduleChoice,ConvolutionRhsResidencyLaw,
+        plan_convolution_schedule,plan_convolution_rhs_residency)
+    from merlin.transforms.pass_exploration import EmittedProgram
+    from merlin.transforms.pipeline_state import PipelineContext
+    source=small_plan(staged=True)
+    source=replace(source,producer=replace(source.producer,accumulator_rows=80,operand_rows=128),
+                   intermediate=replace(source.intermediate,size=280))
+    original=ConvolutionExplorationSource(source.producer,((0,4),(4,1)),source.identity)
+    schedule=plan_convolution_schedule(original,ConvolutionScheduleChoice())
+    law=ConvolutionRhsResidencyLaw('neutral-test','original-i32',original.identity,
+        'TEST-ONLY-synchronous-immutable-RHS',True,True,True,True,True)
+    rhs=plan_convolution_rhs_residency(schedule,operand_rows=128,law=law)
+    def realize(value):
+        effects=[]
+        test_actual_effects_equal_original_convolution_and_pool(False,True,True,value.band.output_rows,
+            value.rhs is not None,selected=value.band.source,selected_rhs=value.rhs,trace=effects,force_band=True)
+        return EmittedProgram(json.dumps(effects).encode(),'actual-original-spatial-effects',value.identity)
+    space=spatial_producer_pass_space(source,output_row_limits=(1,2),rhs_choices=(None,rhs),
+        verify_source=lambda p:None,realize=realize,max_candidates=8)
+    seen=[]
+    def feedback(value,receipt):
+        seen.append(value.data)
+        return dict(program_sha256=hashlib.sha256(value.data).hexdigest(),cycles=None)
+    results=list(explore_spatial_producer(source,space,context=PipelineContext(),verify_source=lambda p:None,
+        feedback=feedback))
+    assert len(results)==8 and all(r.evaluation.status=='compiled'for r in results)
+    assert len(seen)==4 and len({r.emission.data for r in results})==4
 
 
 @pytest.mark.parametrize(

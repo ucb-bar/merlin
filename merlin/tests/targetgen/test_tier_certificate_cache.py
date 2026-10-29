@@ -571,7 +571,7 @@ def _ladder(monkeypatch, tmp_path):
     monkeypatch.setattr(CR, "_match_by_policy", lambda *a, **k: True)
     monkeypatch.setattr(
         CR.CG,
-        "compare",
+        "compare_declared_outputs",
         lambda *a, **k: {
             "status": "pass",
             "policy": "p",

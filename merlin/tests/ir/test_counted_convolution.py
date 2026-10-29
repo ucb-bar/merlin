@@ -17,6 +17,7 @@ class Integers:
     def loop(self,start,stop,step,body):
         for index in range(start,stop,step):body(index)
     def branch(self,predicate,yes,no):(yes if predicate else no)()
+    def select(self,predicate,yes,no):return yes if predicate else no
 
 
 @pytest.mark.parametrize("shape,kernel,stride,padding,dilation",[

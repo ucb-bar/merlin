@@ -156,6 +156,33 @@ def test_runtime_scalar_omitting_repeat_axis_and_all_independent_planes_survive(
     assert sum(row["members"] for row in batched.record()["batches"]) == 12
 
 
+def test_original_quantization_annotation_survives_exact_coordinate_composition():
+    original = source(scale="scalar")
+    marker = builtin.StringAttr("an-original-numerical-policy")
+    original.attributes["prov.quantization"] = marker
+    before = ir_digest(original)
+    _, _, selected, batched = prepare(original)
+    assert ir_digest(original) == before
+    assert selected.candidate.attributes["prov.quantization"] == marker
+    assert batched.candidate.attributes["prov.quantization"] == marker
+    # The annotation neither grants a coordinate relation nor changes scalar
+    # arithmetic: a truly varying per-head coefficient remains unsupported.
+    varying = source(scale="runtime")
+    varying.attributes["prov.quantization"] = marker
+    hoisted, _ = hoist_repeated_pointwise(varying)
+    assert plan_shared_rhs_row_views(hoisted) is None
+
+
+@pytest.mark.parametrize("attribute", ["prov.quantization", "prov.unrecognized_policy"])
+def test_malformed_or_unknown_module_policy_does_not_authorize_row_views(attribute):
+    original = source(scale="scalar")
+    original.attributes[attribute] = builtin.UnitAttr()
+    hoisted, _ = hoist_repeated_pointwise(original)
+    before = ir_digest(hoisted)
+    assert plan_shared_rhs_row_views(hoisted) is None
+    assert ir_digest(hoisted) == before
+
+
 @pytest.mark.parametrize("kwargs", [{"scale": "runtime"}, {"differing": True}])
 def test_equal_shape_or_differing_literals_do_not_authorize_sharing(kwargs):
     original = source(**kwargs)

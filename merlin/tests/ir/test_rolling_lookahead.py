@@ -166,3 +166,78 @@ def test_rhs_frontier_refuses_incomplete_source_runs_and_growing_next_span():
         with pytest.raises(ValueError):
             materialize_lookahead_rolling_window(p,output_rows=3,consumer_runs=runs,
                 rhs_frontier=invalid,future_input=False)
+
+
+@pytest.mark.parametrize("shape,kernel,stride,padding,dilation", [
+    ((3,7,9,5),(3,3),(1,1),(0,0,0,0),(1,1)),
+    ((2,9,7,3),(3,3),(2,1),(1,1,1,1),(2,1)),
+    ((1,5,7,5),(1,3),(1,1),(0,0,0,0),(1,1)),
+])
+@pytest.mark.parametrize('image_windows',[1,2])
+def test_batch_frontier_stages_each_original_row_after_its_final_source_read(
+        shape,kernel,stride,padding,dilation,image_windows):
+    from merlin.compile.scheduling.rolling_lookahead import RollingBatchFrontier, RollingBatchFrontierAdmission
+    window=Window2D(shape,kernel,stride,dilation,padding)
+    oh,ow=window.output_spatial
+    slots=(kernel[0]-1)*dilation[0]+1+(oh-1)*stride[0]
+    p=plan(shape,kernel,stride,padding,dilation,slots)
+    if image_windows>1:
+        p=replace(p,slots=slots*image_windows,image_windows=image_windows,
+            cache=replace(p.cache,size=p.cache.size*image_windows))
+    chunks=(shape[-1]+3)//4;runs=kernel[0]*kernel[1]*chunks
+    frontier=RollingBatchFrontier(p.source_identity,4)
+    options=dict(output_rows=oh,consumer_runs=runs,future_input=False,batch_frontier=frontier)
+    module=materialize_lookahead_rolling_window(p,**options)
+    cache={};staged=[];seen=[];completed=[];events=[];counter=0
+    def lower(kind,f):
+        nonlocal counter
+        events.append(kind)
+        if kind=='begin_transport':counter+=1;return counter
+        if kind=='stage_row':
+            if image_windows>1 and f['image']>=image_windows:
+                assert f['image']-image_windows in completed
+            cache[f['cache_byte']]=(f['image'],f['input_row']if f['valid']else None)
+            staged.append((f['image'],f['input_row']))
+        elif kind=='await_transport':return f['transfer']
+        elif kind=='start_consumer':
+            def advance(first,stop,after_run=None):
+                for run in range(first,stop):
+                    ky=run//(kernel[1]*chunks)
+                    for y in range(oh):
+                        unbiased=y*stride[0]+ky*dilation[0];iy=unbiased-padding[0]
+                        slot=(f['image']%image_windows)*p.image_slots+unbiased%p.image_slots
+                        key=p.cache.start+slot*p.row_stride_bytes
+                        assert cache[key]==(f['image'],iy if 0<=iy<shape[1]else None)
+                    if run==0:seen.append(f['image'])
+                    if after_run:after_run(run,0,min(4,shape[-1]-(run%chunks)*4))
+            return ConvolutionGroupContinuation(runs,advance,lambda:completed.append(f['image']))
+        elif kind=='advance_consumer':
+            return f['consumer'].advance(f['first_run'],f['run_count'],after_run=f.get('after_run'))
+        elif kind=='finish_consumer':f['consumer'].finish()
+        return 0
+    law=RollingBatchFrontierAdmission('test-hardware','test-numerics','TEST-only original input effects',
+                                     True,True,True,True,True,True)
+    result=emit_lookahead_rolling_window(module,p,IntegerBuilder(),lower,
+        admission=admission(),batch_frontier_admission=law,**options)
+    assert seen==completed==list(range(shape[0]))
+    assert len(staged)==shape[0]*slots==result['dynamic_stage_rows']
+    assert len(set(staged))==len(staged)
+    assert events.count('complete')==shape[0]
+    assert events.count('await_transport')==shape[0]+1
+    if shape[0]>1:
+        assert 'stage_row'in events[events.index('advance_consumer'):events.index('finish_consumer')]
+
+
+def test_batch_frontier_refuses_partial_source_and_changed_actual_row_write():
+    from merlin.compile.scheduling.rolling_lookahead import RollingBatchFrontier
+    p=plan(shape=(2,7,9,5),padding=(0,0,0,0),slots=7)
+    frontier=RollingBatchFrontier(p.source_identity,4)
+    with pytest.raises(ValueError,match='complete original'):
+        materialize_lookahead_rolling_window(p,output_rows=4,consumer_runs=18,
+            batch_frontier=frontier,future_input=False)
+    options=dict(output_rows=5,consumer_runs=18,batch_frontier=frontier,future_input=False)
+    m=materialize_lookahead_rolling_window(p,**options)
+    stage=next(o for o in m.walk()if type(o)is StageRowOp)
+    stage.properties['row_bytes']=builtin.IntegerAttr(p.row_bytes-1,64)
+    with pytest.raises(ValueError,match='SCF'):
+        verify_lookahead_rolling_window(m,p,**options)

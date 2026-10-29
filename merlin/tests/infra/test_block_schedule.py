@@ -11,6 +11,7 @@ earlier load overwrote never leaves the pass.
 from __future__ import annotations
 
 import itertools
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -174,6 +175,54 @@ def test_each_placement_policy_puts_the_resident_region_where_it_says(name):
     assert bases[OPPOSITE_END] == geometry.operand_rows - streamed_rows
     assert bases[BANK_ALIGNED] == geometry.operand_bank_rows, "the first bank boundary past the inputs"
     assert bases[CONTIGUOUS] == streamed_rows, "directly after the inputs, sharing their bank"
+
+
+@pytest.mark.parametrize("name", sorted(GEOMETRIES))
+def test_fixed_capacity_rebanking_changes_only_bank_relative_placement(name):
+    """Synthetic fact variants test adaptation and arithmetic, not bank timing."""
+    facts = GEOMETRIES[name]
+    old = _geometry("bank_variant", **facts)
+    new = _geometry("bank_variant", **{**facts, "operand_depth": 2 * facts["operand_depth"]})
+    assert old.operand_rows == new.operand_rows
+    assert old.accumulator_rows == new.accumulator_rows
+    assert old.block == new.block
+    assert old.operand_rows // old.operand_bank_rows == 4
+    assert new.operand_rows // new.operand_bank_rows == 2
+    d = old.block
+    source = Contraction(m=2 * d, k=3 * d, n=2 * d)
+    before = schedule_contraction(source, old, Knobs(placement=BANK_ALIGNED))
+    after = schedule_contraction(source, new, Knobs(placement=BANK_ALIGNED))
+    old_rhs, new_rhs = before.regions[WEIGHT][0], after.regions[WEIGHT][0]
+    assert old_rhs == old.operand_bank_rows
+    assert new_rhs == new.operand_bank_rows == 2 * old_rhs
+    assert old_rhs // old.operand_bank_rows == 1
+    assert old_rhs // new.operand_bank_rows == 0  # Retained placement now shares the input bank.
+    assert new_rhs // new.operand_bank_rows == 1
+
+    def relative_ops(schedule):
+        base = schedule.regions[WEIGHT][0]
+        result = []
+        for op in schedule.ops:
+            if isinstance(op, Load) and op.role == WEIGHT:
+                op = replace(op, row=op.row - base)
+            elif isinstance(op, Preload) and op.weight_row is not None:
+                op = replace(op, weight_row=op.weight_row - base)
+            result.append(op)
+        return tuple(result)
+
+    # Only a uniform relocation of the private weight region changes. Preserve
+    # every original source block, reduction, transfer and output instruction.
+    assert relative_ops(before) == relative_ops(after)
+    controls = [schedule_contraction(source, geometry, Knobs(placement=OPPOSITE_END))
+                for geometry in (old, new)]
+    assert controls[0].ops == controls[1].ops
+    rng = np.random.default_rng(37)
+    lhs = rng.integers(-4, 5, (source.m, source.k), dtype=np.int64)
+    rhs = rng.integers(-4, 5, (source.k, source.n), dtype=np.int64)
+    expected = lhs @ rhs
+    for schedule in (before, after, *controls):
+        check_residency(schedule)
+        np.testing.assert_array_equal(execute(schedule, lhs, rhs), expected)
 
 
 def test_bank_aligned_placement_is_refused_when_the_facts_have_no_bank_depth():

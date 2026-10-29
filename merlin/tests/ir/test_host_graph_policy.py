@@ -64,6 +64,24 @@ def test_current_source_bound_after_preparation_and_full_policy_custody(tmp_path
         }
 
 
+def test_selected_integer_reduction_layout_uses_normal_policy_and_reopens_original_products(tmp_path):
+    from test_dense_reduction_layout import quantized_source
+
+    policy = read_host_graph_policy(
+        software(tmp_path, floating_environment_unobserved_nontrapping=True),
+        target="neutral", entry="forward", physical_layout=False, column_reduction_layout=True)
+    original = quantized_source()
+    selected, report = retain(tmp_path, policy, original)
+    assert report["column_reduction_layout"]["rewrite"]["rewritten"] == 1
+    assert "merlin.preserve_contraction_orientation" in selected
+    assert policy.record()["column_reduction_layout"] is True
+    assert recheck_host_graph_artifacts(tmp_path, policy)["selected"]["path"]
+    # Exact original source and software must remain available at use.
+    (tmp_path / "host-graph-optimized.mlir").write_text(selected.replace("quant_max = 127", "quant_max = 126"))
+    with pytest.raises(ValueError, match="selection changed"):
+        recheck_host_graph_artifacts(tmp_path, policy)
+
+
 @pytest.mark.parametrize(
     "premises",
     [

@@ -311,12 +311,15 @@ def test_completed_recipe_checks_preparation_and_selected_executable(tmp_path):
         _verify(recipe, elf)
 
 
-def test_completed_recipe_refuses_duplicate_preparation_identity(tmp_path):
+def test_completed_recipe_reopens_identical_preparation_roles_and_refuses_changed_alias(tmp_path):
     recipe, elf, tool, producer, source, obj = _fake_completed_recipe(tmp_path, preparation=True)
     document = _read(tmp_path)
     document["preparation"]["second_role"] = document["preparation"]["policy"]
     recipe.write_text(json.dumps(document))
-    with pytest.raises(ValueError, match="repeats a preparation identity"):
+    assert _verify(recipe, elf)["preparation"] == document["preparation"]
+    document["preparation"]["second_role"] = dict(document["preparation"]["policy"], sha256="0" * 64)
+    recipe.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="preparation bytes changed"):
         _verify(recipe, elf)
 
 

@@ -321,3 +321,83 @@ def test_conv_composition_refuses_changed_numerical_contract(tmp_path):
     source.write_text(source.read_text().replace('epilogue = ["bias_add"]', 'epilogue = ["bias_add", "relu"]'))
     with pytest.raises(ValueError, match="original valid K3 NHWC bias INT8 anchor"):
         recipe.prepare_inputs(tmp_path / "conv", profile="conv-composition", **kwargs)
+
+
+def test_same_conv_family_uses_source_padding_and_one_axis_frozen_sweeps(tmp_path, monkeypatch):
+    import yaml
+    from merlin_experiments.corpus import public_references
+
+    recipe = _load("inputs")
+    kwargs = _conv_fixture(recipe, tmp_path)
+    monkeypatch.setattr(public_references, "stage", lambda *_args: {})
+    monkeypatch.setattr(recipe, "capacity_boundary", lambda *_: pytest.fail("unrelated capacity sweep"))
+    out = tmp_path / "same-family"
+    doc = recipe.prepare_inputs(out, profile="conv-family-v2", **kwargs)
+    assert doc["counts"] == {"train": 3, "heldout": 15}
+    expected_train = {(4, 28, 128, 128), (2, 28, 128, 128), (4, 21, 128, 128)}
+    expected_hidden = (
+        {(b, 28, 128, 128) for b in (1, 6, 8)}
+        | {(4, h, 128, 128) for h in (14, 32, 35, 42)}
+        | {(4, 28, ci, 128) for ci in (64, 96, 192, 256)}
+        | {(4, 28, 128, co) for co in (64, 96, 192, 256)}
+    )
+    shapes = {"train": set(), "heldout": set()}
+    for row in doc["cases"]:
+        cb = parse_interface_mlir(Path(row["source"]["path"]).read_text())
+        conv = next(c for c in cb["commands"] if c["opcode"] == "CONV2D")
+        attrs = conv["attributes"]
+        batch, height, width, cin = cb["tensors"]["IFM"]["shape"]
+        cout = attrs["kernel"][-1]
+        shape = (batch, height, cin, cout)
+        shapes[row["split"]].add(shape)
+        assert width == height and attrs["padding"] == [1, 1, 1, 1]
+        assert attrs["stride"] == attrs["dilation"] == [1, 1]
+        assert cb["tensors"]["W"]["shape"] == [9 * cin, cout]
+        assert cb["tensors"]["B"]["shape"] == [cout]
+        assert cb["tensors"]["Y"]["shape"] == [batch * height * height, cout]
+        assert attrs["epilogue"] == ["bias_add"] and attrs["output_dtype"] == "i8"
+        assert "acc_scale" not in attrs and "acc_scale_by_column" not in attrs
+        cap = yaml.safe_load(Path(row["capsule"]["path"]).read_text())
+        assert cap["operation"]["attributes"]["padding"] == [1, 1, 1, 1]
+        assert cap["operation"]["attributes"]["ci"] == cin
+        assert not row["original_source_bytes"]
+        if row["split"] == "heldout":
+            assert sum(a != b for a, b in zip(shape, (4, 28, 128, 128), strict=True)) == 1
+    assert shapes == {"train": expected_train, "heldout": expected_hidden}
+    assert shapes["train"].isdisjoint(shapes["heldout"])
+    panel = json.loads((out / "small-panel.json").read_text())
+    assert len(panel["selection"]["training_case_ids"]) == 3
+    assert len(panel["selection"]["heldout_case_ids"]) == 15
+    assert all(name.startswith("CV2_") for names in panel["selection"].values() for name in names)
+    original = parse_interface_mlir((kwargs["corpus"] / recipe.CONVS[1] / "input.mlir").read_text())
+    assert next(c for c in original["commands"] if c["opcode"] == "CONV2D")["attributes"]["padding"] == [0] * 4
+
+
+def test_same_conv_family_refuses_inventing_varying_readout_coefficients(tmp_path):
+    recipe = _load("inputs")
+    kwargs = _conv_fixture(recipe, tmp_path)
+    cb = parse_interface_mlir((kwargs["corpus"] / recipe.CONVS[1] / "input.mlir").read_text())
+    next(c for c in cb["commands"] if c["opcode"] == "CONV2D")["attributes"]["acc_scale_by_column"] = [0.5] * 128
+    with pytest.raises(ValueError, match="original uniform bias/i8 identity readout"):
+        recipe.same_conv_case(cb, batch=4, spatial=28, input_channels=256, output_channels=256)
+
+
+def test_projection_family_has_public_variety_and_disjoint_single_axis_sweeps(tmp_path, monkeypatch):
+    from merlin_experiments.corpus import public_references
+
+    recipe = _load("inputs")
+    kwargs = _projection_fixture(recipe, tmp_path)
+    monkeypatch.setattr(public_references, "stage", lambda *_args: {})
+    monkeypatch.setattr(recipe, "capacity_boundary", lambda *_: pytest.fail("unrelated capacity sweep"))
+    doc = recipe.prepare_inputs(tmp_path / "projection-family", profile="projection-family-v2", **kwargs)
+    assert doc["counts"] == {"train": 3, "heldout": 14}
+    shapes = {split: {tuple(row["contract"]["products"][0]["shape_mkn"])
+        for row in doc["cases"] if row["split"] == split} for split in ("train", "heldout")}
+    assert shapes["train"] == {(16, 2048, 2048), (8, 2048, 2048), (16, 1024, 2048)}
+    assert shapes["train"].isdisjoint(shapes["heldout"])
+    assert len(shapes["heldout"]) == 14
+    assert all(sum(a != b for a, b in zip(shape, (16, 2048, 2048), strict=True)) == 1
+        for shape in shapes["heldout"])
+    assert {m for m, k, n in shapes["heldout"] if (k, n) == (2048, 2048)} == {4, 24, 32, 48, 64}
+    assert {k for m, k, n in shapes["heldout"] if (m, n) == (16, 2048)} == {512, 1536, 3072, 4096}
+    assert {n for m, k, n in shapes["heldout"] if (m, k) == (16, 2048)} == {512, 1024, 1536, 3072, 4096}

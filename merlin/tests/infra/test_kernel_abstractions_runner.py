@@ -112,6 +112,11 @@ def continuation_fixture(tmp_path, prep, base, framework):
     rejected = previous / "ab/rejected"
     rejected.mkdir(parents=True)
     (rejected / "README.md").write_text("rejected: this order was slower\n")
+    variant = previous / "variants/rejected"
+    variant.mkdir(parents=True)
+    (variant / "backend.py").write_text("whole prior implementation\n")
+    (variant / "build").mkdir()
+    (variant / "build/private.log").write_text("not a source artifact\n")
     run = tmp_path / "previous-run"
     (run / "rounds").mkdir(parents=True)
     (run / "rounds/last.final.txt").write_text("continue from the accepted incumbent\n")
@@ -158,6 +163,11 @@ def test_explicit_continuation_keeps_full_seed_and_common_history_with_fresh_clo
         assert "slower" in (workspace / "SEED_EXPERIMENTS/ab/rejected/README.md").read_text()
         assert "prior successful" in (workspace / "SEED_NOTES/REPORT.md").read_text()
         assert "accepted incumbent" in (workspace / "PREVIOUS_SESSION.md").read_text()
+        assert (workspace / "SEED_VARIANTS/rejected/backend.py").read_text() == "whole prior implementation\n"
+        assert not (workspace / "SEED_VARIANTS/rejected/build").exists()
+        assert (workspace / "SEED_PERFORMANCE/baseline.json").is_file()
+        assert not (workspace / "RUN_PRIVATE").exists()
+        assert (Path(row["private"]) / "seed_baseline.json").is_file()
         assert "No previous author conversation or experiment history" not in (workspace / "TASK.md").read_text()
         assert row["wall_s"] == 37 and row["cpu_quota_percent"] == 200
         assert row["library_guidance"] and row["schedule_guidance"] and not row["sdk_readonly"]
@@ -165,6 +175,8 @@ def test_explicit_continuation_keeps_full_seed_and_common_history_with_fresh_clo
         assert record["selection"]["sha256"] == prep.digest(selected)
         assert record["effective_source_sha256"] == row["initial_submission_sha256"]
         assert "none" in record["certificate_reuse"]
+        assert record["carry"] == dict(certificates=False, results=False, rules=True, handoff=True,
+                                      variants=True, performance=True)
         evidence.append(record["evidence"]["pin"]["sha256"])
     assert evidence[0] == evidence[1]
     assert values[0]["reference_guidance"] == "off" and values[1]["reference_guidance"] == "on"
@@ -502,3 +514,52 @@ def test_launcher_reuses_one_reservation_and_independent_lifetime_bound_services
         assert "--property=After=merlinphase1studytest.service" in argv
         assert "--property=KillMode=control-group" in argv
     assert not (root / "cpu-reservation.json").exists()  # planning reserves or launches nothing
+
+
+def test_three_parallel_pairs_share_one_reservation_with_disjoint_pools(tmp_path):
+    prep, base, inputs, framework, library, _ = fixture(tmp_path)
+    pools = [[4, 5, 6, 7], [48, 49, 50, 51], [52, 53, 54, 55]]
+    rows = []
+    for index, cpus in enumerate(pools):
+        settings = json.loads(base.read_bytes())
+        settings["cpus"] = cpus
+        prep.write(base, settings)
+        runs = prep.prepare(base, inputs, tmp_path / f"pair-{index}", framework=framework,
+                            library=library, replicas=1,
+                            treatments=["library_schedule", "cca_library_schedule"])
+        for row in runs["runs"]:
+            c = json.loads(Path(row["config"]).read_bytes())
+            assert c["cpus"] == cpus and c["cpu_quota_percent"] == 200
+            assert c["environment"]["MERLIN_COMPUTE_CPUS"] == ",".join(map(str, cpus))
+        rows.extend(runs["runs"])
+    path = tmp_path / "combined/runs.json"
+    prep.write(path, dict(runs=rows, author_launched=False))
+    selected = module("launch").plan(path, "merlinphase1paralleltest", user="fixture")
+    assert selected["cpus"] == [cpu for pool in pools for cpu in pool]
+    assert selected["quota_percent"] == 200 and len(selected["children"]) == 6
+    outer = selected["reservation_argv"]
+    assert outer.count("--cpus") == 1
+    assert outer[outer.index("--cpus") + 1] == "4,5,6,7,48,49,50,51,52,53,54,55"
+    for index, child in enumerate(selected["children"]):
+        pool = pools[index // 2]
+        assert f"--property=AllowedCPUs={pool[0]}-{pool[-1]}" in child["argv"]
+        assert "--property=CPUQuota=200%" in child["argv"]
+        assert "--property=BindsTo=merlinphase1paralleltest.service" in child["argv"]
+    assert len({json.loads(Path(row["config"]).read_bytes())["workspace"] for row in rows}) == 6
+    assert not (path.parent / "cpu-reservation.json").exists()
+
+
+def test_parallel_launcher_refuses_partially_overlapping_pools(tmp_path):
+    prep, base, inputs, framework, library, _ = fixture(tmp_path)
+    rows = []
+    for index, cpus in enumerate(([4, 5, 6, 7], [6, 7, 8, 9])):
+        settings = json.loads(base.read_bytes())
+        settings["cpus"] = cpus
+        prep.write(base, settings)
+        rows.extend(prep.prepare(base, inputs, tmp_path / f"pair-{index}", framework=framework,
+                                 library=library, replicas=1,
+                                 treatments=["library_schedule", "cca_library_schedule"])["runs"])
+    path = tmp_path / "combined/runs.json"
+    prep.write(path, dict(runs=rows))
+    with pytest.raises(ValueError, match="must be disjoint"):
+        module("launch").plan(path, "merlinphase1overlaptest", user="fixture")

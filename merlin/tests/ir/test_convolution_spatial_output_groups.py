@@ -57,7 +57,8 @@ def selected(shape=(1, 5, 11, 5), padding=(1, 1, 1, 1), *, bias=True, slots=3, m
 
 
 def run(s, rhs, inp, group, array, readout, *, pending_limit=0, ready_readout=False, trace=None,
-        readout_transfer_law=None, grouped_transport=False,rhs_phase_prefetch_law=None):
+        readout_transfer_law=None, grouped_transport=False,rhs_phase_prefetch_law=None,input_prefetch_law=None,
+        batch_input_prefetch_law=None, input_first_use_law=None):
     p = s.source.plan
     shape = p.window.input_shape
     ci = shape[-1]
@@ -93,9 +94,9 @@ def run(s, rhs, inp, group, array, readout, *, pending_limit=0, ready_readout=Fa
                     sp[a["local_row"] + r, c] = int(weights[a["reduction_row"] + r, a["output_column"] + c])
             ids[a["local_row"]] = (a["reduction_row"], a["output_column"])
         elif kind == "initialize_bias":
-            acc[a["accumulator_row"]] = np.broadcast_to(
-                bias[a["output_column"] : a["output_column"] + a["columns"]], (a["rows"], a["columns"])
-            ).copy()
+            for r in range(a['rows']):
+                for c in range(a['columns']):
+                    acc[a['accumulator_row']+r,c]=bias[a['output_column']+c]
         elif kind == "compute":
             identity = ids[a["rhs_row"]], a["depth"], a["columns"]
             if a.get("fresh_weights", True):
@@ -108,8 +109,10 @@ def run(s, rhs, inp, group, array, readout, *, pending_limit=0, ready_readout=Fa
             )
             weight = np.array([[sp[a["rhs_row"] + r, c] for c in range(a["columns"])] for r in range(a["depth"])])
             value = lhs.astype(np.int64) @ weight.astype(np.int64)
-            key = a["accumulator_row"]
-            acc[key] = value if a["first_reduction"] and not p.bias else acc[key] + value
+            for r in range(a['rows']):
+                for c in range(a['columns']):
+                    key=a['accumulator_row']+r,c
+                    acc[key]=(value[r,c]if a['first_reduction']and not p.bias else acc[key]+value[r,c])
             for r in range(a["rows"]):
                 for c in range(a["columns"]):
                     products.setdefault((a["output_row"] + r, a["output_column"] + c), []).append(ids[a["rhs_row"]][0])
@@ -120,7 +123,7 @@ def run(s, rhs, inp, group, array, readout, *, pending_limit=0, ready_readout=Fa
                     assert key not in written
                     assert products[key] == [tap * ci + k for tap in range(9) for k in range(0, ci, 4)]
                     step = p.primitive if readout_transfer_law is None else readout_transfer_law.block_rows
-                    written[key] = acc[a["accumulator_row"] + (c // p.column_tile) * step][r, c % p.column_tile]
+                    written[key] = acc[a["accumulator_row"] + (c // p.column_tile) * step+r,c % p.column_tile]
         else:
             raise AssertionError(kind)
 
@@ -160,6 +163,9 @@ def run(s, rhs, inp, group, array, readout, *, pending_limit=0, ready_readout=Fa
         ready_readout=ready_readout,
         readout_transfer_law=readout_transfer_law,
         grouped_transport=grouped_transport,
+        input_prefetch_law=input_prefetch_law,
+        batch_input_prefetch_law=batch_input_prefetch_law,
+        input_first_use_law=input_first_use_law,
         rhs_phase_prefetch_law=rhs_phase_prefetch_law,
     )
     assert not pending
@@ -182,6 +188,59 @@ def run(s, rhs, inp, group, array, readout, *, pending_limit=0, ready_readout=Fa
     original_k = [tap * ci + c for tap in range(9) for c in range(0, ci, 4)]
     assert all(v == original_k for v in products.values())
     return events, fresh, report
+
+
+@pytest.mark.parametrize('pending_limit',[0,2])
+@pytest.mark.parametrize('ready_readout',[False,True])
+@pytest.mark.parametrize('bias',[False,True])
+def test_direct_ring_fragments_pack_acc_and_keep_original_products(pending_limit,ready_readout,bias):
+    from merlin.compile.scheduling.convolution_output_groups import plan_rolling_convolution_row_fragments
+    s,rhs,inp,ordinary,array,readout=selected(shape=(2,7,11,5),slots=7,max_output_rows=3,bias=bias)
+    packed=plan_rolling_convolution_row_fragments(s,rhs,inp,max_output_rows=3)
+    assert packed.row_blocks==9 and ordinary.row_blocks==9
+    # Three rows of11 become nine packed slots; source-row crossings split
+    # actual ring reads, including row, band, image, K and output-column tails.
+    old_trace=[];new_trace=[]
+    run(s,rhs,inp,ordinary,array,readout,pending_limit=pending_limit,ready_readout=ready_readout,
+        trace=old_trace,grouped_transport=True)
+    _,_,receipt=run(s,rhs,inp,packed,array,readout,pending_limit=pending_limit,ready_readout=ready_readout,
+        trace=new_trace,grouped_transport=True)
+    for kind in ('stage_input_rows','fill_input_rows','initialize_bias','input_ready','input_last_use'):
+        assert sum(k==kind for k,a in old_trace)==sum(k==kind for k,a in new_trace)
+    assert receipt['spatial_output_group']['row_fragments']['extra_input_bytes']==0
+    assert any(a['accumulator_row']%s.source.plan.primitive for k,a in new_trace if k=='compute')
+
+
+def test_direct_ring_fragment_choice_compacts_without_extra_compute_for_aligned_bands():
+    from merlin.compile.scheduling.convolution_output_groups import (
+        plan_rolling_convolution_row_fragments,plan_rolling_convolution_output_group)
+    s,rhs,inp,ordinary,array,readout=selected(shape=(1,4,14,5),slots=6,max_output_rows=4)
+    source=replace(s.source,plan=replace(s.source.plan,accumulator_rows=256))
+    s=plan_convolution_schedule(source,s.choice,retention_law=s.retention_law,
+                               issue_law=s.issue_law,epoch_law=s.epoch_law)
+    rhs=plan_convolution_rhs_residency(s,operand_rows=1024,rhs_base=512,law=rhs_law())
+    inp=replace(inp,source_identity=source.identity)
+    ordinary=plan_rolling_convolution_output_group(s,rhs,inp,max_output_rows=4)
+    packed=plan_rolling_convolution_row_fragments(s,rhs,inp,max_output_rows=4)
+    assert ordinary.row_blocks==16 and packed.row_blocks==14
+    old=[];new=[]
+    run(s,rhs,inp,ordinary,array,readout,trace=old,grouped_transport=True,pending_limit=2)
+    run(s,rhs,inp,packed,array,readout,trace=new,grouped_transport=True,pending_limit=2)
+    assert sum(k=='compute'for k,a in old)==sum(k=='compute'for k,a in new)
+    assert sum(k=='store'for k,a in new)<sum(k=='store'for k,a in old)
+
+
+@pytest.mark.parametrize('mutation',['source','gather','capacity'])
+def test_direct_ring_fragments_reject_changed_source_or_storage_before_effects(mutation):
+    from merlin.compile.scheduling.convolution_output_groups import plan_rolling_convolution_row_fragments
+    s,rhs,inp,ordinary,array,readout=selected(shape=(2,7,11,5),slots=7,max_output_rows=3)
+    packed=plan_rolling_convolution_row_fragments(s,rhs,inp,max_output_rows=3)
+    if mutation=='source':packed=replace(packed,source_identity='0'*64)
+    elif mutation=='gather':packed=replace(packed,gather=replace(packed.gather,dilation=(1,2),kernel=(3,2)))
+    else:object.__setattr__(packed.panel,'accumulator_capacity_rows',1)
+    trace=[]
+    with pytest.raises(ValueError):run(s,rhs,inp,packed,array,readout,trace=trace,grouped_transport=True)
+    assert not trace
 
 
 @pytest.mark.parametrize(
@@ -543,6 +602,45 @@ def test_grouped_transport_preserves_all_source_work_and_removes_empty_row_waits
         rolling = child["rolling_transport"]
         assert rolling["consumer_groups"] == new.count("input_ready") // (2 if phases else 1)
         assert rolling["source_row_union"] <= inp.slots
+
+
+@pytest.mark.parametrize('pending_limit',[0,2])
+@pytest.mark.parametrize('width',[11,21])
+def test_invocation_input_prefetch_uses_actual_original_k_run_continuations(pending_limit,width):
+    from merlin.compile.scheduling.rolling_lookahead import RollingLookaheadAdmission
+    args=selected(shape=(2,9,width,5),slots=6,max_output_rows=2)
+    law=RollingLookaheadAdmission('neutral','TEST-ONLY-complete-source-effects',True,True,True,True,True,True)
+    trace=[]
+    run(*args,pending_limit=pending_limit,grouped_transport=True,input_prefetch_law=law,trace=trace)
+    kinds=[kind for kind,_ in trace]
+    first=kinds.index('compute');last=len(kinds)-1-kinds[::-1].index('compute')
+    assert any(kind in ('stage_input_rows','fill_input_rows')for kind in kinds[first+1:last])
+
+
+def test_invocation_input_prefetch_refuses_missing_ring_horizon_before_rhs_preparation():
+    from merlin.compile.scheduling.rolling_lookahead import RollingLookaheadAdmission
+    s,rhs,inp,group,array,readout=selected(shape=(1,9,11,5),slots=4,max_output_rows=2)
+    law=RollingLookaheadAdmission('neutral','TEST-ONLY-complete-source-effects',True,True,True,True,True,True)
+    trace=[]
+    with pytest.raises(ValueError):
+        run(s,rhs,inp,group,array,readout,grouped_transport=True,input_prefetch_law=law,trace=trace)
+    assert not trace
+
+
+@pytest.mark.parametrize('pending_limit',[0,2])
+@pytest.mark.parametrize('image_windows',[1,2])
+def test_invocation_batch_frontier_reuses_only_source_dead_input_rows(pending_limit,image_windows):
+    from merlin.compile.scheduling.rolling_lookahead import RollingBatchFrontierAdmission
+    args=list(selected(shape=(2,7,9,5),padding=(0,0,0,0),slots=7,max_output_rows=5))
+    if image_windows>1:args[2]=replace(args[2],slots=14,image_windows=image_windows)
+    assert args[3].output_rows==5
+    law=RollingBatchFrontierAdmission('neutral','source-i32','TEST-only original source effects',
+                                     True,True,True,True,True,True)
+    trace=[]
+    run(*args,pending_limit=pending_limit,grouped_transport=True,batch_input_prefetch_law=law,trace=trace)
+    kinds=[k for k,_ in trace]
+    first=kinds.index('compute');last=len(kinds)-1-kinds[::-1].index('compute')
+    assert any(k in ('stage_input_rows','fill_input_rows')for k in kinds[first+1:last])
 
 
 def test_grouped_transport_admits_actual_transfer_count_before_any_effect():

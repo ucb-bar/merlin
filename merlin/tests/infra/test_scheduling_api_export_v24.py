@@ -43,10 +43,12 @@ def test_v24_exports_and_executes_actual_shared_rhs_owner(tmp_path):
     assert set(library_modules(24)) - set(library_modules(23)) == {
         prefix + name for name in ("compact_dense_group", "compact_dense_group_check", "dense_shared_rhs",
                                    "dense_shared_rhs_check", "shared_rhs_schedule_ir", "horizontal_convolution",
-                                   "rolling_lookahead", "operand_slots", "projection_dense", "projection_provenance")
+                                   "rolling_lookahead", "convolution_input_first_use", "operand_slots",
+                                   "projection_dense", "projection_provenance")
     } | source_public | source_implementation
     assert set(public_modules(24)) - set(public_modules(23)) == {
         prefix + "dense_shared_rhs", prefix + "horizontal_convolution", prefix + "rolling_lookahead",
+        prefix + "convolution_input_first_use",
         prefix + "operand_slots", prefix + "projection_dense",
     } | source_public
     assert _SHARED_SUBSTRATES[COMMON_SUBSTRATE_V17] == 24
@@ -116,6 +118,8 @@ receipt = emit_lookahead_rolling_window(lookahead,p,IntegerBuilder(),rolling_eff
 assert receipt['actual_ir_sha256'] == checked_lookahead['actual_ir_sha256']
 assert consumed == [(b,y) for b in range(p.window.input_shape[0]) for y in range(p.output_y_count)]
 from test_rolling_lookahead import test_actual_scf_preserves_original_taps_and_never_overwrites_current_union
+from test_convolution_input_first_use import test_first_use_preserves_original_products_traffic_and_actual_completion
+test_first_use_preserves_original_products_traffic_and_actual_completion((0,0,0,0),(2,7,6,5),7,2,None,None)
 for original_runs in (1,17):
  test_actual_scf_preserves_original_taps_and_never_overwrites_current_union(p,3,original_runs)
 from test_convolution_joint_storage import test_narrower_rhs_phases_free_real_accumulators_for_more_original_rows
@@ -128,6 +132,22 @@ for symbol in frontier_rows[0]['symbols']:
  assert callable(getattr(importlib.import_module(module), name))
 from test_convolution_joint_storage import test_rhs_frontier_prefetch_waits_for_last_batch_and_spatial_consumer
 test_rhs_frontier_prefetch_waits_for_last_batch_and_spatial_consumer(2)
+fragment_rows = [r for r in scheduling_capabilities(24)['capabilities']
+                 if r['name'] == 'direct_ring_convolution_row_fragments']
+assert len(fragment_rows) == 1
+for symbol in fragment_rows[0]['symbols']:
+ module, name = symbol.rsplit('.', 1)
+ assert callable(getattr(importlib.import_module(module), name))
+from test_convolution_spatial_output_groups import test_direct_ring_fragment_choice_compacts_without_extra_compute_for_aligned_bands
+test_direct_ring_fragment_choice_compacts_without_extra_compute_for_aligned_bands()
+band_rows = [r for r in scheduling_capabilities(24)['capabilities']
+             if r['name'] == 'staged_spatial_producer_bands']
+assert len(band_rows) == 1
+for symbol in band_rows[0]['symbols']:
+ module, name = symbol.rsplit('.', 1)
+ assert callable(getattr(importlib.import_module(module), name))
+from test_spatial_producer import test_spatial_registry_combines_band_and_rhs_orders_and_deduplicates_actual_effects
+test_spatial_registry_combines_band_and_rhs_orders_and_deduplicates_actual_effects()
 from merlin.compile.scheduling.operand_slots import allocate_pipeline_operand_slots, verify_pipeline_operand_slots
 from merlin.compile.scheduling.scf_commands import materialize_scf_commands
 from test_operand_slots import source as slot_source, ADAPTER as slot_adapter
@@ -145,6 +165,22 @@ for overlap, lookahead in ((False,1),(True,1),(True,2)):
  assert checked['operands']['invariant']['assigned_distinct_bases'] == 1
  assert checked['operands']['advancing']['assigned_distinct_bases'] == (lookahead+1 if overlap else 1)
  materialize_scf_commands(allocated.kernel).verify()
+ready_slot_rows = [r for r in scheduling_capabilities(24)['capabilities']
+                   if r['name'] == 'retained_ready_input_placement']
+assert len(ready_slot_rows) == 1
+assert not any(r['name'] == 'retained_ready_input_placement'
+               for r in scheduling_capabilities(23)['capabilities'])
+for symbol in ready_slot_rows[0]['symbols']:
+ module, name = symbol.rsplit('.', 1)
+ assert callable(getattr(importlib.import_module(module), name))
+from test_dense_ready_readout import test_ready_input_selection_joins_live_footprints_before_explicit_plan
+ready_native = pathlib.Path('ready-native')
+ready_native.mkdir()
+test_ready_input_selection_joins_live_footprints_before_explicit_plan((23,13,23),'lhs_rows',ready_native)
+from test_dense_ready_readout import test_counted_final_k_prefix_keeps_array_runs_and_emits_only_fresh_final_stores
+prefix_native = pathlib.Path('prefix-native')
+prefix_native.mkdir()
+test_counted_final_k_prefix_keeps_array_runs_and_emits_only_fresh_final_stores((23,13,23),prefix_native)
 convolution = CountedConvolutionPlan(Window2D((1,6,11,3),(3,3),(2,2),padding=(1,2,0,1)),
                                    7,4,4,4,4,2048,64,0,16,0,False)
 horizontal = plan_horizontal_convolution_panels(convolution,max_row_blocks=3,
@@ -217,6 +253,17 @@ stored_source = parse_mlir_text(ROW_SLICE_RUNTIME_SOURCE)
 _, stored_report = prepare_contraction_row_slices(stored_source,bundle_dir=fixed_bundle)
 assert stored_report['rewrites'] == 1 and stored_report['immutable_generated_argument_indices'] == [2]
 from test_projection_dense import setup as projection_setup, bind as projection_bind
+from test_dense_m_panels import test_two_geometries_derive_m_panels_and_reuse_weights_in_actual_counted_ir
+for shape, tile in (((8,6,8),(2,3,4)), ((18,4,10),(3,2,5))):
+ test_two_geometries_derive_m_panels_and_reuse_weights_in_actual_counted_ir(shape, tile)
+m_panel_rows = [r for r in scheduling_capabilities(24)['capabilities']
+                if r['name'] == 'capacity_derived_m_panels_with_rhs_reuse']
+assert len(m_panel_rows) == 1
+assert not any(r['name'] == 'capacity_derived_m_panels_with_rhs_reuse'
+               for r in scheduling_capabilities(23)['capabilities'])
+for symbol in m_panel_rows[0]['symbols']:
+ module, name = symbol.rsplit('.', 1)
+ assert callable(getattr(importlib.import_module(module), name))
 projection_rows = [r for r in scheduling_capabilities(24)['capabilities']
                    if r['name'] == 'counted_projection_pointer_binding']
 assert len(projection_rows) == 1
@@ -246,8 +293,10 @@ for name, module in tuple(sys.modules.items()):
   path = getattr(module, '__file__', None)
   if path: assert pathlib.Path(path).is_relative_to(SDK), (name, path)
 """
+    observer_recipe = (repo_root() / "packages/merlin-experiments/src/merlin_experiments/phase1/author_skills"
+                       / "heavy-pass-recipes/scripts/source_observer_recipe.py")
     code = ("SDK = " + repr(str(root)) + "\nROW_SLICE_SOURCE = " + repr(row_slice_source())
-            + "\nOBSERVER_RECIPE = " + repr(str(repo_root() / "packages/merlin-experiments/src/merlin_experiments/phase1/author_skills/heavy-pass-recipes/scripts/source_observer_recipe.py"))
+            + "\nOBSERVER_RECIPE = " + repr(str(observer_recipe))
             + "\nROW_SLICE_RUNTIME_SOURCE = " + repr(row_slice_source(runtime_scale=True)) + "\n" + code)
     env = {**os.environ, "PYTHONPATH": os.pathsep.join((str(root), str(repo_root() / "merlin/tests/infra"),
                                                       str(repo_root() / "merlin/tests/ir"),

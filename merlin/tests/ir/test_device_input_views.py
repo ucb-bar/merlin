@@ -10,6 +10,8 @@ from xdsl.dialects import builtin
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.device_input_views import prepare, rewrite_readonly_dense_offsets, validate_selection
 
+pytestmark = pytest.mark.target("gemmini")
+
 
 def source():
     return '''builtin.module {
@@ -79,7 +81,7 @@ def test_unsupported_bindings_refuse_atomically(case):
     assert str(module) == before
 
 
-def compiled_shim(tmp_path, monkeypatch, *, batch=None, symbol='writer', descriptor_results=False):
+def compiled_shim(tmp_path, monkeypatch, *, batch=None, symbol='writer', descriptor_results=False, connected=False):
     from logical_device_target import install
 
     from merlin.common import invocation_record as I
@@ -101,12 +103,32 @@ def compiled_shim(tmp_path, monkeypatch, *, batch=None, symbol='writer', descrip
         {"opcode": "COMMIT", "operands": {"src": "C", "dst": "Y"},
          "attributes": {"output_dtype": "i32", "epilogue": []}},
     ]}
-    interface = emit_interface_mlir(cb)
+    entry = None
+    if connected:
+        from merlin.targetgen import corpus_spec as CS
+        from merlin.llvmlower.whole_program import source_bound_group_buffers
+
+        metadata = dict(kind="op", source_role="handauthored_compiler_test", source_reference="public original pair")
+        producer = dict(metadata, name="producer", op="conv2d", Himg=1, Wimg=5, ci=8, kh=1, kw=1, N=6,
+                        ifm="A", weight="W", out="Q", epilogue=["acc_scale"], acc_scale=0.5, output_dtype="i8")
+        residual = dict(metadata, name="sum", op="residual_add", M=5, N=6, lhs="L", rhs="S", out="Y",
+                        lhs_scale=1.0, rhs_scale=1.0, source_scales=[1.0]*3, epilogue=["relu"], bound_lsb=1)
+        entry = dict(metadata, name="pair", schema="connected_quantized_sum_entry_v1", op="quantized_producer_sum",
+                     operand_dtype="int8", producer_result_operand=0, components=[producer, residual])
+        binding = CS.CorpusBinding("gemmini", 16, "int8", "i32", True, [], "exact_int",
+                                   requant_output_dtype="i8", readout_inputs={})
+        _, interface = CS.build(entry, binding)
+        buffers, reason = source_bound_group_buffers(entry, interface, binding=binding)
+    else:
+        interface = emit_interface_mlir(cb)
+        buffers, reason = S.logical_buffers(interface)
     (tmp_path / f"{symbol}.iface.mlir").write_text(interface)
-    buffers, reason = S.logical_buffers(interface)
     assert buffers is not None, reason
     call = [{"role": role, "shape": shape, "dtype": dtype} for role, shape, dtype in (
         ("input_0", [5, 8], "i8"), ("weight_0", [8, 6], "i8"), ("out_0", [5, 6], "i32"))]
+    if connected:
+        call = [{"role": role, "shape": shape, "dtype": "i8"} for role, shape in (
+            ("input_0", [1, 1, 5, 8]), ("weight_0", [8, 6]), ("input_1", [5, 6]), ("out_0", [5, 6]))]
     if batch is not None:
         call = [{**row, "shape": [batch, *row["shape"]]} for row in call]
     unit = S.emit_logical_translation_unit("gemmini", {symbol: (buffers, call)},
@@ -124,12 +146,68 @@ def compiled_shim(tmp_path, monkeypatch, *, batch=None, symbol='writer', descrip
                         shim_invocation={"path": str(invocation), "sha256": sha256_file(invocation)})
     original = tmp_path / "source.mlir"
     original.write_text(source().replace('"writer"', f'"{symbol}"').replace('@writer', f'@{symbol}'))
+    if connected:
+        original.write_text(f'''builtin.module {{
+          func.func private @{symbol}(%a:tensor<1x1x5x8xi8> {{bufferization.access="read"}},
+              %w:tensor<8x6xi8> {{bufferization.access="read"}},
+              %s:tensor<5x6xi8> {{bufferization.access="read"}},
+              %y:tensor<5x6xi8> {{bufferization.access="write"}})->tensor<5x6xi8>
+              attributes {{llvm.emit_c_interface}}
+          func.func @forward(%a:tensor<1x1x5x8xi8>,%w:tensor<8x6xi8>,%s:tensor<5x6xi8>)->tensor<5x6xi8> {{
+            %e=tensor.empty():tensor<5x6xi8>
+            %r=func.call @{symbol}(%a,%w,%s,%e)
+              :(tensor<1x1x5x8xi8>,tensor<8x6xi8>,tensor<5x6xi8>,tensor<5x6xi8>)->tensor<5x6xi8>
+            return %r:tensor<5x6xi8>
+          }}
+        }}''')
     sidecar = tmp_path / "sidecar.json"
     sidecar.write_text(json.dumps({"device": "gemmini", "granularity": "group",
                                   "call_buffers": {symbol: call},
-                                  "arg_access": {symbol: ["read", "read", "write"]}}))
+                                  "arg_access": {symbol: ["read", "read", "read", "write"] if connected else ["read", "read", "write"]},
+                                  **({"entries": {symbol: entry}} if connected else {})}))
     recipe = CompilationRecipe(tmp_path, producer=Path(__file__))
     return original, sidecar, built, recipe
+
+
+@pytest.mark.parametrize("descriptor_results", [False, True])
+def test_connected_source_reopens_actual_compiled_final_only_shim(tmp_path, monkeypatch, descriptor_results):
+    original, sidecar, built, recipe = compiled_shim(tmp_path, monkeypatch, connected=True,
+                                                    descriptor_results=descriptor_results)
+    selected = prepare(original, sidecar, built, tmp_path/"views", recipe)
+    declaration = parse_mlir_text(selected.read_text()).body.block.first_op
+    assert len(declaration.function_type.inputs) == 4
+    assert "bufferization.buffer_layout" not in declaration.arg_attrs.data[0].data
+    assert all("bufferization.buffer_layout" in a.data for a in declaration.arg_attrs.data[1:3])
+    assert declaration.arg_attrs.data[3].data == {"bufferization.access": builtin.StringAttr("write")}
+    assert "merlin_disjoint" in built.shim_unit.text
+    if descriptor_results:
+        assert len(built.shim_unit.result_identities) == 1
+        assert built.shim_unit.result_identities[0].result_argument == 3
+
+
+@pytest.mark.parametrize("change", ["source_scale", "interface_scale", "interface_target", "source_output"])
+def test_connected_reopening_requires_whole_original_source_program(tmp_path, monkeypatch, change):
+    from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
+
+    original, sidecar, built, recipe = compiled_shim(tmp_path, monkeypatch, connected=True)
+    if change in ("interface_scale", "interface_target"):
+        path = tmp_path/"writer.iface.mlir"
+        cb = parse_interface_mlir(path.read_text())
+        if change == "interface_scale":
+            next(c for c in cb["commands"] if c["opcode"] == "CONV2D")["attributes"]["acc_scale"] = 0.25
+        else:
+            cb["target"] = "another_target"
+        path.write_text(emit_interface_mlir(cb))
+    else:
+        data = json.loads(sidecar.read_text())
+        entry = data["entries"]["writer"]
+        if change == "source_scale":
+            entry["components"][0]["acc_scale"] = 0.25
+        else:
+            entry["components"][1]["out"] = "unrelated"
+        sidecar.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="original connected observations"):
+        prepare(original, sidecar, built, tmp_path/"views", recipe)
 
 
 @pytest.mark.parametrize('batch,stride', [(2, 1), (3, 1), (2, 2)])

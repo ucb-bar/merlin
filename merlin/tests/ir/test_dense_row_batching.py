@@ -153,6 +153,30 @@ def test_each_original_contraction_boundary_annotation_survives_on_its_actual_re
         verify_dense_row_batching(module, selected.candidate, index_bits=64)
 
 
+def test_multiple_batches_share_one_entry_and_later_mutations_are_rechecked():
+    module = source(parts=(1, 1), rank3=False)
+    extra = source(parts=(1, 1), rank3=False).body.block.first_op.body.block
+    function = module.body.block.first_op
+    entry, returned = function.body.block, function.body.block.last_op
+    mapping = {old: entry.insert_arg(old.type, len(entry.args)) for old in extra.args}
+    for operation in tuple(extra.ops)[:-1]:
+        entry.insert_op_before(operation.clone(mapping), returned)
+    returned.operands = (*returned.operands, *(mapping[value] for value in extra.last_op.operands))
+    function.update_function_type()
+    module.verify()
+    selected = plan(module)
+    assert selected is not None
+    assert len(verify_dense_row_batching(module, selected.candidate, index_bits=64)) == 2
+
+    # The checker-local block snapshot must not survive another invocation.
+    candidate_function = selected.candidate.body.block.first_op
+    candidate_entry = candidate_function.body.block
+    candidate_entry.insert_op_before(func.CallOp("observe", [], []), candidate_entry.last_op)
+    selected.candidate.body.block.add_op(func.FuncOp.external("observe", [], []))
+    with pytest.raises(ValueError):
+        verify_dense_row_batching(module, selected.candidate, index_bits=64)
+
+
 def test_refused_intervening_scalar_metadata_leaves_no_analysis_clone_ssa_uses():
     module = source(update_state=True)
     function = module.body.block.first_op

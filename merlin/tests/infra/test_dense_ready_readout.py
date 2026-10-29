@@ -271,6 +271,239 @@ def test_single_pipeline_entry_consumes_input_slot_and_rejects_unused_routes():
         schedule_dense_pipeline(p, r, s, ADAPTER, **{**options, "schedule_plan": None})
 
 
+@pytest.mark.parametrize("shape", [(24, 14, 24), (23, 13, 23)])
+@pytest.mark.parametrize("limited_role", ["lhs_rows", "operand_bytes"])
+def test_ready_input_selection_joins_live_footprints_before_explicit_plan(shape, limited_role, tmp_path):
+    from test_dense_retained_reduction import chosen, inputs
+
+    from merlin.compile.scheduling.dense_panel_pipeline import dense_retained_choices
+    from merlin.compile.scheduling.dense_ready_readout import dense_ready_input_choices, schedule_dense_pipeline
+    from merlin.compile.scheduling.schedule_ir import parse_dense_schedule_plan
+
+    p, r, s, _, admission = inputs(shape)
+    if limited_role == "lhs_rows":
+        s = replace(s, lhs=replace(s.lhs, capacity=30))
+    else:
+        r = replace(r, operand_bytes=180)
+    ordinary = dense_retained_choices(p, r, s, roles=("weight",))[0]
+    placements = dense_ready_input_choices(p, r, s)
+    placement = placements[0]
+    assert (ordinary.block.m, ordinary.block.n) == (2, 2)
+    assert (placement.block.m, placement.block.n) == (1, 2)
+    assert ordinary.block not in [choice.block for choice in placements]
+    assert placement.lhs_slot_offset + placement.lhs_rows <= s.lhs.capacity
+    assert ((placement.lhs_slot_offset + placement.lhs_rows) * s.lhs.unit_bytes
+            + placement.rhs_rows * s.rhs.unit_bytes <= r.operand_bytes)
+
+    def build(block, **input_options):
+        law = replace(admission, max_issued_readouts=block.m * block.n, pending_readouts=2,
+                      readout_configuration="ordered_snapshot_before_store_issue")
+        original = chosen(p, r, s, block, law, role="weight", order=("n", "m"), compute_order=("k", "n", "m"))
+        ready = DenseReadyReadoutAdmission(law.hardware_identity, law.numerical_policy_identity,
+            "TEST-ONLY-producer", "TEST-ONLY-store", block.m * block.n, 2,
+            disjoint_load_qualification_identity="TEST-ONLY-load-ready-conjunction")
+        return schedule_dense_pipeline(p, r, s, ADAPTER, name="retained", dtypes=("i8", "i8", "i32"),
+            source_identity=original.source_identity, external_buffers_disjoint=True,
+            schedule_plan=parse_dense_schedule_plan(original.realization["schedule_ir"]["text"]),
+            pipeline_admission=law, batch_readouts=True, readout_mode="ready", readout_admission=ready,
+            static_budget=128, **input_options)
+
+    # The old selected shape still refuses; the new option never silently
+    # shrinks an explicit block or repairs somebody else's ownership.
+    with pytest.raises(ValueError, match="assigned private view|operand byte budget"):
+        build(ordinary.block, input_pipeline_row_offset=ordinary.block.m * ordinary.block.k * p.tile_m)
+    with pytest.raises(ValueError, match="cannot replace the explicit selected block"):
+        build(ordinary.block, input_pipeline_placement=placement)
+    result = build(placement.block, input_pipeline_placement=placement)
+    execute(result.kernel, p)
+    result.materialize_scf().verify()
+    assert result.input_pipeline_placement is placement
+    assert result.realization["input_pipeline_placement"]["lhs_rows"] == placement.lhs_rows
+    assert all(region["actual_role_windows"]["lhs_read"] == (
+        s.lhs.base, s.lhs.base + placement.lhs_rows) for region in result.realization["input_pipeline"])
+    manual = build(placement.block, input_pipeline_row_offset=placement.lhs_slot_offset)
+    assert result.kernel == manual.kernel  # placement supplies no new schedule policy
+    assert result.realization["dynamic_epoch_drains"] == manual.realization["dynamic_epoch_drains"]
+    if limited_role == "lhs_rows":
+        _execute_emitted_ready_c(tmp_path, result, p, s)
+    with pytest.raises(ValueError, match="footprint"):
+        replace(placement, lhs_rows=placement.lhs_rows - 1).validate_for(p, r, s)
+    with pytest.raises(ValueError, match="footprint"):
+        placement.validate_for(p, r, replace(s, lhs=replace(s.lhs, capacity=s.lhs.capacity + 1)))
+
+
+def _execute_emitted_ready_c(directory, result, p, storage):
+    """Native scalar effects execute the emitted counted control and row slots."""
+    import ctypes
+    import shutil
+    import subprocess
+
+    from merlin.compile.scheduling.dense_panel_pipeline import _calls
+    from merlin.sched.codegen import emit_c_function
+    from merlin.sched.isa import InstrDef, InstructionSet, Operand
+
+    cc = shutil.which("cc")
+    if cc is None:
+        pytest.skip("native C compiler unavailable")
+    definitions = {}
+    for call in _calls(result.kernel.body):
+        suffix = ", lhs" if call.instr == "lhs_load" else ", rhs" if call.instr == "weight_load" else (
+            ", output" if call.instr == "store" else "")
+        definitions[call.instr] = InstrDef(call.instr, tuple(Operand(k, "int") for k, _ in call.args),
+            render_c=lambda args, n=call.instr, end=suffix: f"do_{n}({', '.join(args)}{end});")
+    instruction_set = InstructionSet("neutral-ready-native", definitions,
+        {"i8": "int8_t", "i32": "int32_t"}, "/* scalar synchronous effects */")
+    views = (storage.lhs, storage.rhs, storage.accumulator)
+    source = "#include <stdint.h>\n#include <string.h>\n"
+    for name, view in zip(("left", "right", "sums"), views, strict=True):
+        source += f"static unsigned char {name}[{(view.base + view.capacity + 2) * view.unit_bytes}];\n"
+    source += ("static int64_t wr, ar, cont, nc; uint64_t products;\n"
+               f"static int8_t resident[{p.tile_k}][{p.tile_n}];\n")
+    for name, view, columns in (("lhs", storage.lhs, p.k), ("weight", storage.rhs, p.n)):
+        memory = "left" if name == "lhs" else "right"
+        source += f"""
+static void do_{name}_load(int64_t a,int64_t b,int64_t r,int64_t c,int64_t nr,int64_t nc,
+                          int64_t dst,int64_t step,int8_t *src) {{
+  for(int i=0;i<nr;i++) for(int j=0;j<nc;j++)
+    {memory}[(dst+i)*{view.unit_bytes}+j]=(unsigned char)src[(r+i*step)*{columns}+c+j];
+}}
+"""
+    source += f"""
+static void do_preload(int64_t w,int64_t k,int64_t n,int64_t a,int64_t c,
+                       int64_t rows,int64_t cols,int64_t depth) {{wr=w;ar=a;cont=c;nc=cols;}}
+static void do_keep_descriptor(int64_t a,int64_t c,int64_t rows,int64_t cols,int64_t depth)
+  {{ar=a;cont=c;nc=cols;}}
+static void pair(int64_t l,int64_t rows,int64_t depth,int fresh) {{
+  if(fresh) for(int t=0;t<depth;t++) for(int j=0;j<nc;j++)
+    resident[t][j]=(int8_t)right[(wr+t)*{storage.rhs.unit_bytes}+j];
+  for(int i=0;i<rows;i++) for(int j=0;j<nc;j++) {{
+    int32_t value=0;
+    if(cont) memcpy(&value,sums+(ar+i)*{storage.accumulator.unit_bytes}+4*j,4);
+    for(int t=0;t<depth;t++) {{
+      value+=(int8_t)left[(l+i)*{storage.lhs.unit_bytes}+t]*resident[t][j]; products++;
+    }}
+    memcpy(sums+(ar+i)*{storage.accumulator.unit_bytes}+4*j,&value,4);
+  }}
+}}
+static void do_compute(int64_t l,int64_t m,int64_t k,int64_t rows,int64_t depth) {{pair(l,rows,depth,1);}}
+static void do_stay(int64_t l,int64_t m,int64_t k,int64_t rows,int64_t depth) {{pair(l,rows,depth,0);}}
+static void do_store(int64_t r,int64_t c,int64_t rows,int64_t cols,int64_t a,int32_t *dst) {{
+  for(int i=0;i<rows;i++) for(int j=0;j<cols;j++)
+    memcpy(dst+(r+i)*{p.n}+c+j,sums+(a+i)*{storage.accumulator.unit_bytes}+4*j,4);
+}}
+static void do_{DRAIN}(void) {{}}
+"""
+    result.revalidate()
+    source += emit_c_function(result.kernel, instruction_set, symbol="ready", index_bits=64)
+    result.revalidate()
+    source += "\nvoid run(int8_t *lhs,int8_t *rhs,int32_t *output) {ready(lhs,rhs,output);}\n"
+    source += "\nvoid init(void) {products=0;memset(left,85,sizeof(left));"
+    source += "memset(right,85,sizeof(right));memset(sums,85,sizeof(sums));}\nint guards(void) {"
+    for name, view in zip(("left", "right", "sums"), views, strict=True):
+        source += (f"for(int i=0;i<sizeof({name});i++) if((i<{view.base * view.unit_bytes}"
+                   f"||i>={(view.base + view.capacity) * view.unit_bytes})&&{name}[i]!=85) return 0;")
+    source += "return 1;}\n"
+    # Passed pytest directories may be recycled while dlopen caches a handle
+    # by absolute path. Distinct shapes must retain distinct library names.
+    c_file = directory / "ready.c"
+    library = directory / f"ready_{p.m}_{p.k}_{p.n}.so"
+    c_file.write_text(source)
+    subprocess.run([cc, "-std=c11", "-O1", "-shared", "-fPIC", str(c_file), "-o", str(library)],
+                   check=True, capture_output=True)
+    native = ctypes.CDLL(str(library))
+    lhs = (np.arange(p.m * p.k) % 7 - 3).astype(np.int8).reshape(p.m, p.k)
+    rhs = (np.arange(p.k * p.n) % 5 - 2).astype(np.int8).reshape(p.k, p.n)
+    output = np.full(p.m * p.n + 16, -1234567, dtype=np.int32)
+    native.init()
+    native.run(ctypes.c_void_p(lhs.ctypes.data), ctypes.c_void_p(rhs.ctypes.data),
+               ctypes.c_void_p(output.ctypes.data + 8 * output.itemsize))
+    np.testing.assert_array_equal(output[8:-8].reshape(p.m, p.n), lhs.astype(np.int32) @ rhs.astype(np.int32))
+    assert np.all(output[:8] == -1234567) and np.all(output[-8:] == -1234567)
+    assert native.guards() == 1
+    assert ctypes.c_uint64.in_dll(native, "products").value == p.m * p.k * p.n
+
+
+def test_ready_input_placement_is_checked_against_actual_accesses_and_completion_law():
+    from merlin.compile.scheduling.dense_ready_readout import (
+        dense_ready_input_choices,
+        propose_dense_ready_input_pipeline,
+    )
+
+    p, r, s, b, original, law = retained_setup((24, 14, 24))
+    placement = next(c for c in dense_ready_input_choices(p, r, s) if c.block == b)
+    ready, _ = propose_dense_ready_readout(original.kernel, p, ADAPTER)
+    with pytest.raises(ValueError, match="actual ready input accesses"):
+        propose_dense_ready_input_pipeline(ready, ADAPTER, s, row_offset=placement.lhs_slot_offset,
+            placement=replace(placement, lhs_rows=placement.lhs_rows - 1))
+    with pytest.raises(ValueError, match="separately selected"):
+        schedule_dense_ready_readout(original, p, b, r, s, ADAPTER, law,
+                                     input_pipeline_placement=placement)
+    with pytest.raises(ValueError, match="one typed placement"):
+        schedule_dense_ready_readout(original, p, b, r, s, ADAPTER, law,
+            input_pipeline_placement=placement, input_pipeline_row_offset=placement.lhs_slot_offset)
+
+
+@pytest.mark.parametrize("shape", [(24, 12, 24), (23, 13, 23)])
+def test_counted_final_k_prefix_keeps_array_runs_and_emits_only_fresh_final_stores(shape, tmp_path):
+    from test_dense_array_retention import ADAPTER as array_adapter
+    from test_dense_array_retention import LAW
+    from test_dense_array_retention import execute as array_execute
+
+    from merlin.compile.scheduling.dense_ready_readout import schedule_dense_pipeline
+    from merlin.compile.scheduling.schedule_ir import parse_dense_schedule_plan
+
+    p, r, s, b, original, law = retained_setup(shape)
+    law = replace(law, disjoint_load_qualification_identity="TEST-ONLY-load-ready-conjunction")
+    result = schedule_dense_pipeline(p, r, s, array_adapter, name="retained", dtypes=("i8", "i8", "i32"),
+        source_identity=original.source_identity, external_buffers_disjoint=True,
+        schedule_plan=parse_dense_schedule_plan(original.realization["schedule_ir"]["text"]),
+        pipeline_admission=original.admission, batch_readouts=True, readout_mode="ready", readout_admission=law,
+        array_prefix_admission=LAW, input_pipeline_row_offset=b.m*b.k*p.tile_m, static_budget=128)
+    array_execute(result.kernel, p)
+    _execute_emitted_ready_c(tmp_path, result, p, s)
+    assert result.realization["array_prefix_projection"]["fresh_read_kernel_sha256"] != result.kernel.digest()
+    assert any(call.instr == "stay" for call, _ in instances(result.kernel))
+    previous = None
+    for call, env in instances(result.kernel):
+        if call.instr == DRAIN:
+            previous = None
+            continue
+        op = array_adapter.project(replace(call, args=tuple((k, evaluate(v, env)) for k, v in call.args)))
+        if type(op) is Store:
+            assert type(previous) is Compute and previous.fresh_weights
+            assert previous.input_block[1] == p.tiles[1] - 1
+        previous = op
+    result.materialize_scf().verify()
+    result.revalidate()
+    projection = DenseReadyReadoutCheckingProjection(original.kernel, p,
+        input_pipeline_row_offset=b.m*b.k*p.tile_m, final_k_prefix=True, array_prefix_admission=LAW)
+    with pytest.raises(ValueError, match="exact pure retained-prefix"):
+        projection.hazard_kernel(replace(result.kernel, name="changed"), array_adapter, s)
+    with pytest.raises(ValueError, match="original selected adapter"):
+        schedule_dense_ready_readout(original, p, b, r, s, array_adapter, law,
+            array_prefix_admission=replace(LAW, hardware_identity="other"))
+    with pytest.raises(ValueError, match="actual commands|capability or owner"):
+        replace(result, array_prefix_admission=replace(LAW, qualification_identity="different")).revalidate()
+
+
+def test_final_k_prefix_refuses_one_k_and_no_reusable_m_without_repair():
+    from test_dense_array_retention import ADAPTER as array_adapter
+    from test_dense_array_retention import LAW
+    from test_dense_retained_reduction import chosen, inputs
+
+    from merlin.transforms.dense_planning import dense_blocks
+
+    p, r, s, b, original, law = retained_setup((24, 3, 24))
+    with pytest.raises(ValueError, match="at least two K slices"):
+        schedule_dense_ready_readout(original, p, b, r, s, array_adapter, law, array_prefix_admission=LAW)
+    p, r, s, _, a = inputs((24, 12, 24))
+    b = next(b for b in dense_blocks(p, r) if (b.m, b.k, b.n) == (1, p.tiles[1], 2))
+    original = chosen(p, r, s, b, a, role="weight", order=("n", "m"), compute_order=("k", "n", "m"))
+    with pytest.raises(ValueError, match="at least one reusable M run"):
+        propose_dense_ready_readout(original.kernel, p, array_adapter, final_k_prefix=True,
+                                    array_prefix_admission=LAW)
+
+
 @pytest.mark.parametrize("retained", [False, True])
 @pytest.mark.parametrize("external", [False, True])
 def test_final_wide_bands_keep_causal_order_original_source_and_strict_owner(retained, external):

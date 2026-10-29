@@ -50,6 +50,34 @@ def test_repeated_validation_reuses_only_successful_exact_content(tmp_path, monk
     assert len(calls) == 3
 
 
+def test_readonly_weight_analysis_reuses_file_parse_but_reopens_changed_bytes(tmp_path, monkeypatch):
+    from merlin.common import mlir_query as mq
+
+    source = _bundle(tmp_path / "source")
+    path = source / "model.mlir"
+    original = path.read_bytes()
+    parses = []
+    parse_file = mq.parse_mlir_file
+
+    def counted(*args, **kwargs):
+        parses.append(args[0])
+        return parse_file(*args, **kwargs)
+
+    monkeypatch.setattr(mq, "parse_mlir_file", counted)
+    with mq.parse_scope():
+        assert wp.plan(source).ok
+        assert wp.plan(source).ok
+        assert len(parses) == 1
+        assert path.read_bytes() == original
+        timestamp = path.stat()
+        changed = original.replace(b"func.func ", b"func.func\t", 1)
+        assert changed != original and len(changed) == len(original)
+        path.write_bytes(changed)
+        os.utime(path, ns=(timestamp.st_atime_ns, timestamp.st_mtime_ns))
+        assert wp.plan(source).ok
+        assert len(parses) == 2
+
+
 def test_changes_during_semantic_validation_are_not_remembered(tmp_path, monkeypatch):
     from merlin.capture import rewrite
 

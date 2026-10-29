@@ -45,6 +45,27 @@ def test_absent_preparation_or_device_retains_original_object(tmp_path, monkeypa
     assert not (work / "device_capture_preparation.json").exists()
 
 
+def test_descriptor_factory_is_retained_without_issuing_effects_before_preparation(tmp_path, monkeypatch):
+    source, prepared, work, route = selected(tmp_path, monkeypatch)
+
+    def factory(*args):
+        pytest.fail("weight preparation cannot issue borrowed effects")
+
+    route = replace(route, descriptor_results=True, descriptor_effects=factory)
+    bound = rebind(route, source=source, prepared=prepared, work=work)
+    assert bound.capture == prepared / "model.mlir"
+    assert bound.descriptor_results and bound.descriptor_effects is factory
+    assert route.capture == source / "model.mlir"
+
+
+@pytest.mark.parametrize("descriptor_selected,factory", [(True, None), (True, object()), (False, lambda: None)])
+def test_descriptor_preparation_requires_an_unissued_selected_factory(descriptor_selected, factory, tmp_path, monkeypatch):
+    source, prepared, work, route = selected(tmp_path, monkeypatch)
+    with pytest.raises(weight_prepack.PrepackRefused, match="checked composition"):
+        rebind(replace(route, descriptor_results=descriptor_selected, descriptor_effects=factory),
+               source=source, prepared=prepared, work=work)
+
+
 @pytest.mark.parametrize("field", ["exact_selection", "catalog_builder", "prepared_transform", "offload_selection"])
 def test_source_bound_routes_do_not_inherit_new_storage(field, tmp_path, monkeypatch):
     source, prepared, work, route = selected(tmp_path, monkeypatch)

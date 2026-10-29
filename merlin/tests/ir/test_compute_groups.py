@@ -370,6 +370,49 @@ def test_quantized_sum_closes_before_downstream_integer_layout() -> None:
     assert any("movement" in group.stages for group in groups if group is not summed)
 
 
+@pytest.mark.parametrize("shape_views", [False, True])
+def test_quantized_sum_keeps_upstream_integer_layout_outside_its_arithmetic(shape_views) -> None:
+    source = _residual(lhs_scale=0.5, rhs_scale=0.25, out_scale=1.0)
+    source = source.replace("%b: tensor<4x16xi8>", "%b: tensor<16x4xi8>", 1)
+    preparation = ("    %me = tensor.empty() : tensor<4x16xi8>\n"
+                   "    %moved = linalg.transpose ins(%b : tensor<16x4xi8>) "
+                   "outs(%me : tensor<4x16xi8>) permutation = [1, 0]\n")
+    prepared = "%moved"
+    if shape_views:
+        preparation += ("    %flat = tensor.collapse_shape %moved [[0, 1]] : "
+                        "tensor<4x16xi8> into tensor<64xi8>\n"
+                        "    %view = tensor.expand_shape %flat [[0, 1]] output_shape [4, 16] : "
+                        "tensor<64xi8> into tensor<4x16xi8>\n")
+        prepared = "%view"
+    source = source.replace("    %bd =", preparation + "    %bd =", 1)
+    source = source.replace('"quant_ext.dequantize_per_tensor"(%b,',
+                            '"quant_ext.dequantize_per_tensor"(' + prepared + ",", 1)
+    module = mq.parse(source)
+    module.verify()
+    original = str(module)
+    groups = CG.form_groups(module, "synthetic", oracle=_summing())
+    (summed,) = [g for g in groups if g.operand_sum is not None]
+    assert summed.stages == ["dequantize", "dequantize", "residual_add", "relu", "quantize"]
+    assert summed.operand_sum["source_scales"] == (0.5, 0.25, 1.0)
+    assert CG.capsule_entry(summed)["M"] == 4 and CG.capsule_entry(summed)["N"] == 16
+    movement = next(g for g in groups if "movement" in g.stages)
+    assert movement.placement == CG.HOST
+    assert not set(movement.members) & set(summed.members)
+    assert str(module) == original
+    module.verify()
+
+
+def test_quantized_sum_does_not_absorb_a_transpose_after_dequantize() -> None:
+    source = _residual().replace("4x16", "4x4")
+    source = source.replace("    %e0 =", "    %me = tensor.empty() : tensor<4x4xf32>\n"
+                            "    %moved = linalg.transpose ins(%bd : tensor<4x4xf32>) "
+                            "outs(%me : tensor<4x4xf32>) permutation = [1, 0]\n    %e0 =", 1)
+    source = source.replace("ins(%ad, %bd :", "ins(%ad, %moved :", 1)
+    module = mq.parse(source)
+    module.verify()
+    assert not any(g.operand_sum is not None for g in CG.form_groups(module, "synthetic", oracle=_summing()))
+
+
 def test_a_multiplier_above_one_goes_to_the_readout_and_the_bound_says_what_that_costs() -> None:
     # 1.5 through a saturating load would clip an operand the other could have cancelled. The
     # common factor is divided out and the readout's scale carries it, at a wider bound.

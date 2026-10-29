@@ -247,7 +247,7 @@ def _ladder_env(monkeypatch, tmp_path, trace, fail_seeds):
     monkeypatch.setattr(CR, "_match_by_policy", lambda *a, **k: True)
     ok = {"status": "pass", "policy": "p", "max_abs_error": 0, "max_rel_error": 0, "mismatch_count": 0,
           "first_mismatch": None, "per_output": {}}  # fmt: skip
-    monkeypatch.setattr(CR.CG, "compare", lambda *a, **k: dict(ok))
+    monkeypatch.setattr(CR.CG, "compare_declared_outputs", lambda *a, **k: dict(ok))
     from merlin.targetgen import provenance as _PROV
 
     monkeypatch.setattr(_PROV, "toolchain_shas", lambda *a, **k: dict(base.SHAS))

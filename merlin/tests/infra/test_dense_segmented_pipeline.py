@@ -54,6 +54,89 @@ def chosen(p, r, s, b, a, prefetch=True, issue_order=None):
         external_buffers_disjoint=True)
 
 
+def lookahead_inputs(shape):
+    p, r, s, _, admission = inputs(shape, 1)
+    s = replace(s, rhs=replace(s.rhs, capacity=256))
+    r = replace(r, operand_bytes=s.lhs.capacity * s.lhs.unit_bytes + s.rhs.capacity * s.rhs.unit_bytes,
+                max_k_blocks=p.tiles[1])
+    block = next(b for b in dense_blocks(p, r) if (b.m, b.k, b.n) == (2, p.tiles[1], 2))
+    return p, r, s, block, admission
+
+
+@pytest.mark.parametrize("shape", [(5, 14, 9), (5, 14, 17), (5, 14, 29), (4, 6, 37), (4, 6, 41)])
+def test_full_k_rhs_lookahead_has_actual_mixed_epochs_and_preserves_all_tail_products(shape):
+    from merlin.compile.scheduling.dense_segmented_pipeline import OUTPUT_GROUP_PREFETCH
+
+    p, r, s, b, admission = lookahead_inputs(shape)
+    previous = chosen(p, r, s, b, admission)
+    result = chosen(p, r, s, b, admission, issue_order=OUTPUT_GROUP_PREFETCH)
+    assert previous.realization["overlapped_compute_pairs"] == 0
+    assert result.realization["overlapped_compute_pairs"] > 0
+    assert result.realization["source"]["output_tiles"] == p.tiles[0] * p.tiles[2]
+    for field in ("lhs_loads", "rhs_loads", "requested_load_bytes", "requested_store_bytes"):
+        assert result.realization["source"][field] == previous.realization["source"][field]
+    result.materialize_scf().verify()
+    result.revalidate()
+
+
+def test_full_k_rhs_lookahead_runs_the_independent_original_integer_executor(monkeypatch):
+    import test_compact_dense as existing
+    from merlin.compile.scheduling.dense_segmented_pipeline import OUTPUT_GROUP_PREFETCH
+
+    original_fixture = existing.fixture
+
+    def capacity_fixture(**kwargs):
+        p, r, s = original_fixture(**kwargs)
+        s = replace(s, lhs=replace(s.lhs, capacity=256), rhs=replace(s.rhs, capacity=256),
+                    accumulator=replace(s.accumulator, capacity=64))
+        r = replace(r, operand_bytes=256 * (s.lhs.unit_bytes + s.rhs.unit_bytes),
+                    accumulator_bytes=64 * s.accumulator.unit_bytes,
+                    max_m_blocks=2, max_n_blocks=2, max_k_blocks=p.tiles[1])
+        return p, r, s
+
+    def schedule(p, r, s, **kwargs):
+        b = next(b for b in dense_blocks(p, r) if (b.m, b.k, b.n) == (2, p.tiles[1], 2))
+        admission = lookahead_inputs((5, 14, 13))[-1]
+        result = chosen(p, r, s, b, admission, issue_order=OUTPUT_GROUP_PREFETCH)
+        return replace(result, kernel=_serial_projection(result.kernel), realization=result.realization["source"])
+
+    monkeypatch.setattr(existing, "fixture", capacity_fixture)
+    monkeypatch.setattr(existing, "schedule", schedule)
+    existing.test_tails_reuse_and_independent_execution(("m", "n"), False)
+
+
+def test_full_k_rhs_lookahead_rejects_missing_frontiers_and_current_slot_overwrite():
+    from merlin.compile.scheduling.dense_segmented_pipeline import OUTPUT_GROUP_PREFETCH
+    from merlin.compile.scheduling.tile_load_coalescing import _linear
+
+    p, r, s, b, admission = lookahead_inputs((5, 14, 29))
+    with pytest.raises(ValueError, match="prefetched epoch"):
+        chosen(p, r, s, b, admission, prefetch=False, issue_order=OUTPUT_GROUP_PREFETCH)
+    shorter = next(x for x in dense_blocks(p, replace(r, max_k_blocks=1)) if (x.m, x.n) == (2, 2))
+    with pytest.raises(ValueError, match="full K"):
+        chosen(p, r, s, shorter, admission, issue_order=OUTPUT_GROUP_PREFETCH)
+    result = chosen(p, r, s, b, admission, issue_order=OUTPUT_GROUP_PREFETCH)
+    second_slot = s.rhs.base + b.k * b.n * p.tile_k
+
+    def overwrite(body):
+        rewritten = []
+        for statement in body:
+            if type(statement) is Loop:
+                statement = replace(statement, body=overwrite(statement.body))
+            elif statement.instr == "weight_load":
+                # Map every RHS write into slot0 while current slot0 readers
+                # remain live. The original range/epoch owner must reject it.
+                operation = ADAPTER.project(statement)
+                if _linear(operation.row)[0] >= second_slot:
+                    statement = ADAPTER.encode(replace(operation, row=operation.row + (s.rhs.base - second_slot)))
+            rewritten.append(statement)
+        return tuple(rewritten)
+
+    with pytest.raises(ValueError, match="overlapping in-flight"):
+        verify_dense_segmented_pipeline(replace(result.kernel, body=overwrite(result.kernel.body)),
+            p, b, r, s, ADAPTER, admission, static_budget=128)
+
+
 @pytest.mark.parametrize("shape,segment", [((5, 14, 13), 2), ((4, 27, 8), 2), ((4, 6, 8), 2), ((4, 7, 8), 2)])
 def test_actual_segmented_source_tails_and_serial_control_have_identical_data_calls(shape, segment):
     p, r, s, b, a = inputs(shape, segment)

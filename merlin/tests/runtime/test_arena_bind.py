@@ -444,6 +444,27 @@ def test_a_libm_name_is_matched_exactly_not_by_prefix():
     assert not ab._is_non_capturing("<indirect>")
 
 
+@pytest.mark.parametrize('suffix', ['memory(none)', '#0\nattributes #0 = { memory(none) }'])
+def test_plain_scalar_effects_come_from_actual_memory_attribute(suffix):
+    from merlin.llvmlower.llvm_scalar_effects import memory_none_float_callees
+
+    program = ('declare float @unlisted_scalar(float) '+suffix+'\n'+DESCRIPTOR).replace(
+        '  br i1 true, label %fa, label %m1',
+        '  %value = call float @unlisted_scalar(float 1.0)\n  br i1 true, label %fa, label %m1')
+    assert not ab._is_non_capturing('@unlisted_scalar')
+    assert '@unlisted_scalar' in memory_none_float_callees(program)
+    _, report = _bind(program)
+    assert report.bound == 1 and report.refused == 0
+    for changed in (program.replace('memory(none)', 'memory(read)'),
+                    program.replace('memory(none)', '"memory(none)"'),
+                    program.replace('@unlisted_scalar(float) ', '@unlisted_scalar(ptr) '),
+                    program.replace('@unlisted_scalar(float) ', '@unlisted_scalar(float, ...) '),
+                    'declare float @unlisted_scalar(float) memory(none)\n'+program):
+        assert '@unlisted_scalar' not in memory_none_float_callees(changed)
+        _, conservative = _bind(changed)
+        assert conservative.bound == 0
+
+
 def test_a_computed_malloc_size_is_left_on_the_heap():
     """A non-literal size is a dynamically shaped buffer. ``arena_plan`` refuses a dynamic extent
     for the same reason: a plan that looks complete over a buffer it could not size is an arena that
