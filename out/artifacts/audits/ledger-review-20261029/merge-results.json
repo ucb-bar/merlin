@@ -15,6 +15,29 @@
     "file": "merlin/tests/ir/test_compiler_memory_origin.py",
     "preserved_ast_sha256": "a3c28874d2a2d50563279c1c9ebee9b7e0d0ec44a01c1487148e19f65098414c"
   },
+  "formatting": [
+    {
+      "after_sha256": "b7c70cae4fc53dafaf835d93302a04c071c93253502a01b82075b57eabea2496",
+      "ast_equal": true,
+      "ast_sha256": "430df86c35df8a4261309adb5c3a19dda721b9845aab775c45320d8e209e6b7d",
+      "before_sha256": "f624204db1581aec4ce756c57e538d593f679b543cae41ad8ea1d25981650d3d",
+      "path": "src/merlin/llvmlower/graph_optimizations.py"
+    },
+    {
+      "after_sha256": "3eb7c9d7a0c59e2b84c61ce61fd1684857ecd90a4f22257a621b0e0950d8ecbf",
+      "ast_equal": true,
+      "ast_sha256": "bd4193919b1fd61b5b062ac66e0f307a87014c9a49cc8f191b50d0d3e0b13abf",
+      "before_sha256": "018cf59eacc5c3b89ef881a09e1b484304ff1a18d92e106e45db004892e95928",
+      "path": "merlin/tests/ir/test_host_graph_optimizations.py"
+    },
+    {
+      "after_sha256": "da3e8e262f331ff648186461b70d9e0133b448102fb48bf0e9ce1bfe236e34a0",
+      "ast_equal": true,
+      "ast_sha256": "88f6a617e64d935c9a587f1579ba63ed5a4dde343ff37f287fc7db0c460cbc84",
+      "before_sha256": "cfe441b62bad6fe72ed4812082df63fbfa3f8fae3fc9808fcce383bfc7ca2a8c",
+      "path": "merlin/tests/ir/test_host_graph_policy.py"
+    }
+  ],
   "frozen_file_guard": "passed",
   "integration_status": "targeted_merge_qualification_complete_broad_run_interrupted",
   "integration_tests": [
@@ -33,6 +56,7 @@
   "logs": {
     "compatibility.log": "a37ca6eb787c76f5363ba011e368331340aa6fb32f7f52a29dd5fd3b330198ef",
     "core-dependencies.log": "8822a10b30abccf8d197683cdadd162241b11c3506153b58864d2bb8ec830bea",
+    "host-format-refresh.log": "b10cb6a394b7c3d9dfeb768ca1fd9dead80128b087f70ac71b6781fb6eb6e209",
     "host-fusion-refresh.log": "39cc068ab6fe538ca8465bc5cebc5b4316d18c698c8ec9adea524590d1156599",
     "macc-refresh.log": "fdb6d76a311fbedb1b120076d7444f6f7b0103e52f869f837ddc784d98647691",
     "memory-origin-diagnostic.log": "a068b91a780624f9901cc15026965ee1d26624603bb51923d5b97a4f861d55da",
@@ -230,14 +254,14 @@
     },
     {
       "file_references_checked": 1178,
-      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/host-fusion-0/REPORT.json",
-      "sha256": "2c686b9743068d670ba08b69a3ed9c7d04dc3be77d190129c0cbf6da61999250",
+      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/host-fusion-format-0/REPORT.json",
+      "sha256": "4ac39bd06b01a8484d5f9d2dc8b38d70c4701b3dd987de228cb6ccc3ae347c27",
       "source_references": 474
     },
     {
       "file_references_checked": 1178,
-      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/host-fusion-1/REPORT.json",
-      "sha256": "14001878f0823274b5a0f324589817435ad8ea4c624a75b7a6bcaceb6951e253",
+      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/host-fusion-format-1/REPORT.json",
+      "sha256": "44e3518db10d344c359df679a643361e60f61cf9626da4dbff2c8cccea31f2ec",
       "source_references": 474
     }
   ],
@@ -256,6 +280,18 @@
       "time": "1.979",
       "timestamp": "2026-10-29T14:03:09.224536-07:00",
       "xml_sha256": "1f98307b6ae2818630f2e4b170eb6ce6f6a772f38ac89cfae55ab387e4c9274c"
+    },
+    "format-check": {
+      "errors": "0",
+      "failures": "0",
+      "hostname": "jmills-framework",
+      "log_sha256": "8b5f58006b67ba97d3b0cf3c8c718626aaf066e7c6ecf5e17cf666eb80e53904",
+      "name": "pytest",
+      "skipped": "0",
+      "tests": "73",
+      "time": "19.036",
+      "timestamp": "2026-10-29T14:08:01.462651-07:00",
+      "xml_sha256": "313cc50690f2d15195a0feea1406baef5b4a926545b35bcbb6e4eaf2ccae76ec"
     },
     "integration": {
       "errors": "0",
@@ -308,12 +344,12 @@
     "merlin/tests/ir/host_graph_fusion_cases.py": "e82dbb8f204e609c0a78e37803b13ca04b87797dab39729050c4e9d1178dc147",
     "merlin/tests/ir/test_compiler_host_graph_fusion.py": "d6c3081a98db6e346f3e9a4c48eba24474916cb6b04dc3f99b308046426adc57",
     "merlin/tests/ir/test_compiler_memory_origin.py": "7a5867876eeb15e35164374a5e9bb1ec99b8d906c71122922fa36c10c81ded41",
-    "merlin/tests/ir/test_host_graph_optimizations.py": "018cf59eacc5c3b89ef881a09e1b484304ff1a18d92e106e45db004892e95928",
-    "merlin/tests/ir/test_host_graph_policy.py": "cfe441b62bad6fe72ed4812082df63fbfa3f8fae3fc9808fcce383bfc7ca2a8c",
+    "merlin/tests/ir/test_host_graph_optimizations.py": "3eb7c9d7a0c59e2b84c61ce61fd1684857ecd90a4f22257a621b0e0950d8ecbf",
+    "merlin/tests/ir/test_host_graph_policy.py": "da3e8e262f331ff648186461b70d9e0133b448102fb48bf0e9ce1bfe236e34a0",
     "merlin/tests/ir/test_lean_bf16_f32acc.py": "8c4018c072477d361095e0b39339b191bb5168f399ff48ae4e0249b3bdeba9f7",
     "merlin/tests/ir/test_lean_numerical_domains.py": "6397b95980622068f2d2a57ed88a9b07c81683b460df30f6d274eb85dad54925",
     "merlin/tests/ir/test_lean_w8a8_dequant_width.py": "607b25d9535dff78ddac680870294c13c54869db2f277469161ad0d118daab71",
-    "src/merlin/llvmlower/graph_optimizations.py": "f624204db1581aec4ce756c57e538d593f679b543cae41ad8ea1d25981650d3d",
+    "src/merlin/llvmlower/graph_optimizations.py": "b7c70cae4fc53dafaf835d93302a04c071c93253502a01b82075b57eabea2496",
     "src/merlin/verify/compiler_host_graph_fusion.py": "e6103be46804dea9c2994b8ffd01e5213d6d136a64ba17bba12b053f8edfe095",
     "src/merlin/verify/gate_checks.py": "efb598aac7b6c52868c3e8562f6f4b1952e732bf6eccf4b2a003a06e1c65a1a9",
     "src/merlin/verify/gate_worker.py": "cfc31f9181ea25c607efd9ddf526ff96d98d36336ba4b94022fdd7d46926f45a",
@@ -323,6 +359,24 @@
     "src/merlin/verify/lean/bf16_f32acc.py": "7e2fbec2292931d568e85c14c81d12b9ca5d42b49069fe161a57171739f858f1",
     "src/merlin/verify/pass_validation.py": "ac3a86320210d7703b09e7c51f2c14dcd9cf62dc6048919beec2fc24a1c659d7"
   },
+  "superseded_host_receipts": [
+    {
+      "current": false,
+      "file_references_checked": 1178,
+      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/host-fusion-0/REPORT.json",
+      "reason": "graph producer formatting changed its bound source bytes",
+      "sha256": "2c686b9743068d670ba08b69a3ed9c7d04dc3be77d190129c0cbf6da61999250",
+      "source_references": 474
+    },
+    {
+      "current": false,
+      "file_references_checked": 1178,
+      "path": "out/artifacts/audits/ledger-review-20261029/merge-df8799c42/host-fusion-1/REPORT.json",
+      "reason": "graph producer formatting changed its bound source bytes",
+      "sha256": "14001878f0823274b5a0f324589817435ad8ea4c624a75b7a6bcaceb6951e253",
+      "source_references": 474
+    }
+  ],
   "unique_completed_cases_after_corrected_followup": 179,
   "unresolved_test_failures": [],
   "untiled_native": {

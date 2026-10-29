@@ -46,6 +46,13 @@ against the local parent also reports pre-existing import ordering in
 That file is outside this push's diff from the remote. Push-range checks are
 recorded separately; no gate or allowlist is relaxed.
 
+The push-range formatter required three touched graph files to be formatted.
+Their parsed Python ASTs are exactly unchanged, with before/after hashes in the
+manifest. All 73 existing graph and native compiler cases pass on the formatted
+sources. Both host-fusion boundaries were then independently replayed again in
+`host-fusion-format-0/` and `host-fusion-format-1/`. The earlier host receipts are
+explicitly superseded; Q/DQ and MACC bindings are unaffected and remain current.
+
 Use the tool environment in the original review and a new output directory.
 
 ```sh

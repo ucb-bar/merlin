@@ -69,7 +69,11 @@ def test_selected_integer_reduction_layout_uses_normal_policy_and_reopens_origin
 
     policy = read_host_graph_policy(
         software(tmp_path, floating_environment_unobserved_nontrapping=True),
-        target="neutral", entry="forward", physical_layout=False, column_reduction_layout=True)
+        target="neutral",
+        entry="forward",
+        physical_layout=False,
+        column_reduction_layout=True,
+    )
     original = quantized_source()
     selected, report = retain(tmp_path, policy, original)
     assert report["column_reduction_layout"]["rewrite"]["rewritten"] == 1

@@ -454,10 +454,11 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
 
         if not contract.independent_element_order_unobserved:
             raise ValueError("contraction layout requires explicit independent-element order permission")
-        if (not contract.floating_environment_unobserved_nontrapping
-                and any(isinstance(v.type, builtin.TensorType)
-                        and not isinstance(v.type.element_type, builtin.IntegerType)
-                        for op in module.walk() for v in (*op.operands, *op.results))):
+        if not contract.floating_environment_unobserved_nontrapping and any(
+            isinstance(v.type, builtin.TensorType) and not isinstance(v.type.element_type, builtin.IntegerType)
+            for op in module.walk()
+            for v in (*op.operands, *op.results)
+        ):
             raise GraphOptimizationUnavailable("contraction layout requires its unobserved floating environment")
         before_operations = sum(1 for _ in module.walk())
         reduction = orient_reductions(module)
