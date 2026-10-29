@@ -253,14 +253,14 @@ def test_worker_has_no_accepted_verdict_on_nonadmission(tmp_path, monkeypatch, o
     )
 
 
-def test_real_builtin_worker_pending_without_native(tmp_path, monkeypatch):
+def test_wip_policy_is_not_a_builtin_worker(tmp_path, monkeypatch):
     monkeypatch.setattr(gate, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(gate.subprocess, "run", forbidden)
     (tmp_path / "request.json").write_text(json.dumps(job(tmp_path)))
     assert gate_worker.main(["worker", str(tmp_path)]) == 0
     verdict = json.loads((tmp_path / "verdict.json").read_text())
-    assert verdict["verdict"] == "not_established"
-    assert "human_review_pending" in verdict["reason"]
+    assert verdict["verdict"] == "unavailable"
+    assert "neither a built-in" in verdict["reason"]
 
 
 def test_selected_auditor_command_never_prepends_elan(tmp_path, monkeypatch):
@@ -289,16 +289,14 @@ def test_selected_auditor_command_never_prepends_elan(tmp_path, monkeypatch):
     assert len(calls) == 2 + len(gate.ROOTS)
 
 
-def test_registration_uses_policy_not_tensor_refinement():
-    assert pass_validation.CHECKS[gate.PASS] == "bf16_f32acc_policy"
-    assert "bf16_f32acc_policy" in gate_worker.BUILTIN_CHECKS
+def test_policy_is_standalone_and_not_a_compiler_gate():
+    assert gate.PASS not in pass_validation.CHECKS
+    assert "bf16_f32acc_policy" not in gate_worker.BUILTIN_CHECKS
 
 
-def test_actual_preparation_hook_preserves_ungated_bytes(tmp_path, monkeypatch):
+def test_actual_preparation_preserves_bytes_without_policy_observers(tmp_path, monkeypatch):
     from lean_bf16_f32acc_cases import bmm
-
     from merlin.runtime.backends import zephyr_model
-    from merlin.xdsl_dialects._common import text
 
     source = tmp_path / "source.mlir"
     source.write_text(bmm())
@@ -306,53 +304,35 @@ def test_actual_preparation_hook_preserves_ungated_bytes(tmp_path, monkeypatch):
     plain.mkdir()
     observed.mkdir()
     expected = zephyr_model._prepare_model_mlir(source, plain).read_bytes()
-    pairs = []
-    original = pass_validation.observe
-
-    def observe(name, module, transform):
-        if name != gate.PASS:
-            return original(name, module, transform)
-        before = text(module, generic=True)
-        count = transform(module)
-        pairs.append((before, text(module, generic=True), count))
-        return count
-
-    monkeypatch.setattr(pass_validation, "observe", observe)
+    monkeypatch.setattr(gate, "require_admission", forbidden)
+    monkeypatch.setattr(pass_validation, "observe", forbidden)
     actual = zephyr_model._prepare_model_mlir(source, observed).read_bytes()
     assert actual == expected
-    assert len(pairs) == 1 and pairs[0][2] == 1
-    assert pairs[0][0] != pairs[0][1]
-    assert "arith.extf" in pairs[0][1] and "arith.truncf" in pairs[0][1]
+    assert b"arith.extf" in actual and b"arith.truncf" in actual
 
 
 @pytest.mark.parametrize("source_init", ["0.000000e+00", "1.000000e+00"])
-def test_actual_preparation_pending_gate_stops_consumer(tmp_path, monkeypatch, source_init):
-    """Real Python preparation/owned gate worker; policy pending, NO Lean/MLIR call."""
+def test_pending_policy_cannot_block_normal_preparation(tmp_path, monkeypatch, source_init):
     from lean_bf16_f32acc_cases import bmm
-
     from merlin.runtime.backends import zephyr_model
-    from merlin.verify.speculative_gate import GateFailure, SpeculativeGate
+    from merlin.verify.speculative_gate import SpeculativeGate
 
     source = tmp_path / "source.mlir"
     source.write_text(bmm(init=source_init))
     work = tmp_path / "preparation"
     work.mkdir()
-    # Test-only tool record; constructor would perform native freshness checks.
     tools = object.__new__(pass_validation.CheckerTools)
     object.__setattr__(tools, "sdk_bin", Path("/NEVER_OPEN_SDK"))
     object.__setattr__(tools, "compiler_python", Path("/NEVER_OPEN_COMPILER"))
     runner = SpeculativeGate(tmp_path / "gate", job_timeout=20)
-    validation = pass_validation.PassValidation(runner, tools, frozenset({gate.PASS}))
+    validation = pass_validation.PassValidation(runner, tools)
     monkeypatch.setattr(pass_validation, "from_environment", lambda *a, **k: validation)
-    result = None
+    monkeypatch.setattr(gate, "require_admission", forbidden)
+    monkeypatch.setattr(gate, "check_policy", forbidden)
     try:
-        with pytest.raises(GateFailure) as raised:
-            result = zephyr_model.prepare_for_lowering(source, work)
-        assert result is None
-        assert raised.value.report["verdict"] == "not_established"
-        assert "human_review_pending" in raised.value.report["reason"]
-        assert raised.value.report["before"] != raised.value.report["after"]
-        assert not list(work.rglob("*.ll")) and not list(work.rglob("*.so")) and not list(work.rglob("*.o"))
+        result, _features = zephyr_model.prepare_for_lowering(source, work)
+        assert result.is_file()
+        assert runner.verdicts == []
     finally:
         runner.close()
     assert not runner._processes

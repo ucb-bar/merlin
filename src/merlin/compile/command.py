@@ -119,8 +119,8 @@ def parser(
     ap.add_argument(
         "--validate-passes",
         metavar="PASSES",
-        help="check these passes against Merlin's Lean proofs beside the compile ('all' or a comma "
-        "list); a failed check stops the compile",
+        help="check DCE (prune_dead_pure_tensor_ops) and CSE against Lean proofs "
+        "('all' selects both, or supply their comma list); a failed check stops the compile",
     )
     ap.add_argument("--lean-sdk-bin", metavar="DIR", help="Lean SDK bin directory for --validate-passes")
     ap.add_argument(

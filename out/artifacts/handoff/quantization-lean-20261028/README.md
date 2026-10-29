@@ -17,16 +17,16 @@ implementation to existing callers, including the dequantizer body checker.
   `feat/megaphase-feedback-integration`) now retains the complete original histories of
   `feat/pass-verification` through `c3ad8e10f` and the independent review branch
   `feat/pass-verification-verf` through `4b1d71a20`. It inherits the source Q/DQ
-  proofs, numerical compiler corrections and existing quantization gate hooks.
+  proofs and numerical compiler corrections. Quantization and policy compiler
+  gate registrations are disabled; standalone proof/review tooling is retained.
   Frozen tensor semantics and SPEC_LOCK still match the published reference.
-  The DCE/CSE-specific qualification selection is
-  `prune_dead_pure_tensor_ops,cse`; inherited Q/DQ gates remain separate selections.
-  `all` additionally selects an unapproved BF16 policy and refuses without its
-  independently installed human review admission.
+  The only production compiler gate selection is
+  `prune_dead_pure_tensor_ops,cse`; `all` selects exactly those two. No WIP policy
+  admission or quantization proof is required by that selector.
 
 The ancestry repair restores existing upstream work; it does not advance
-quantization proofs or broaden their profile. Requalify inherited gates against
-the integrated checkout before numerical rollout. Earlier instructions to port
+quantization proofs or broaden their profile. Requalify standalone numerical proofs against
+the integrated checkout before proposing a separate numerical gate. Earlier instructions to port
 isolated numerical fixes applied to the former main-based import and are
 superseded by the restored upstream ancestry.
 
@@ -86,8 +86,8 @@ rebuild/replay for a new checkout rather than treating saved JSON as authority.
 2. Review the deliberate SPEC_LOCK updates and ledger A9: the three modeled
    Q/DQ operations only compute values, permitting DCE and CSE reuse. Lock
    consistency and passing tests are not human approval.
-3. Requalify the inherited numerical compiler corrections and gate hooks on
-   the integrated branch; validate actual before/after buffers on both routes.
+3. Requalify the inherited numerical compiler corrections and standalone proofs
+   on the integrated branch; validate actual before/after buffers on both routes.
    The restored ancestry already contains those corrections; no new port is needed.
    Carry forward the current gate's reporting correction: universal conditional
    boundary acceptance does not widen strict refinement beyond the declared

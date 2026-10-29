@@ -18,13 +18,13 @@ publication destinations for the same converged result. The two proof-source
 branches and main are unchanged.
 
 Upstream compiler features, Q/DQ arithmetic corrections, graph verification,
-policy refusal controls and independent review evidence are inherited. The
+standalone policy review tooling and independent review evidence are inherited. The
 DCE/CSE alpha-comparison, receipt reuse and worker cleanup remain present.
 The shared tensor proof delta from upstream is only the proved AlphaFast
 implementation and its imports; the frozen semantics and SPEC_LOCK are unchanged.
-Use `--validate-passes prune_dead_pure_tensor_ops,cse` for this delivery's
-DCE/CSE scope. Upstream `all` also selects the unapproved BF16 policy and refuses
-until its independent review admission exists. No quantization proof work is
+Use `--validate-passes all` or `prune_dead_pure_tensor_ops,cse` for the
+DCE/CSE scope. `all` selects exactly those two checks; numerical and WIP policy
+checks are not registered compiler gates. No quantization proof work is
 advanced by this ancestry repair.
 
 The qualification counts below describe the earlier DCE/CSE-only snapshot
@@ -282,3 +282,26 @@ The separate artifact-layout scan reports 48 inherited development findings
 root). Every affected file is byte-identical to the original development
 snapshot; see `inherited-artifact-findings.json`. The artifact-layout gate is
 failed, not waived or counted as passing.
+
+## Production gate roster correction
+
+The convergence merge temporarily restored upstream Q/DQ and BF16 policy
+registrations, contrary to the DCE/CSE-only delivery scope. The correction
+removes those registrations, worker dispatch and preparation observers. The
+production selector and `all` now contain exactly `prune_dead_pure_tensor_ops`
+and `cse`. No W8A8, BF16 or quantization review/admission blocks this selector.
+
+Standalone specifications, proofs, numerical compiler code and review tools
+remain available for handoff. Their former compiler-integration assertions are
+retired in favor of explicit scope/isolation regressions; independent numerical
+contract tests remain in place. No Lean proof source or frozen lock changes.
+
+Gate-scope regression controls: `dce-cse-only-tests-v2.log` records 91 passed
+host/worker/policy-isolation tests. These include `all` selecting exactly the
+two delivered boundaries, unregistered requests refusing before tool access,
+and actual preparation completing without consulting pending policy review.
+The additional real-compiler `all` regression records its exact accepted
+DCE/CSE labels separately in `dce-cse-only-real-final.log`.
+
+The final real compiler `all` regression passed (1 test, 147.21 seconds),
+with exactly the pruning and CSE verdicts accepted and no draft-policy call.

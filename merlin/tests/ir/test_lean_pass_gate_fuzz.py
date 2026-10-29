@@ -8,9 +8,12 @@ dead values) and checks two properties:
   does not, the real output is identical to this file's independent rendering of the expected
   output and that is refused too: a checker gap (recorded and reported) rather than a pass bug. Any
   other refusal is a failure;
-* soundness -- at every validated boundary (prune, quantization, the whole-model textual route, cse) a
+* soundness -- at each checked boundary (production DCE/CSE and standalone numerical cases) a
   mutated pass output that the oracle can tell apart from the program on random inputs is never
   accepted. A mutation the oracle cannot tell apart is counted, not asserted.
+
+Only DCE and CSE are registered compiler gates. Numerical cases below call the
+mathematical checker directly for handoff coverage; they do not gate compilation.
 
 The oracle evaluates the generator's own program representation in numpy; it shares no code with
 the passes or the checker. ``MERLIN_FUZZ_SEED`` and ``MERLIN_FUZZ_CASES`` scale the run; a failure

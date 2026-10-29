@@ -1330,7 +1330,4 @@ def preprocess_text_textual(mlir_text: str) -> tuple[str, dict]:
         quant_lowered = lower_quant_ext(module)
         text = module_to_text(module, generic=True)
     text, n_funcs = _attach_c_interface(text)
-    from ..verify import pass_validation
-
-    pass_validation.submit("preprocess_text_textual", mlir_text, text)
     return text, {"dequantize_lowered": n, "quant_ext_lowered": quant_lowered, "c_interface_funcs": n_funcs}
