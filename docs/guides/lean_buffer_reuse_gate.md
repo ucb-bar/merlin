@@ -111,11 +111,14 @@ broader element/rank profiles remain separate engineering.
 An additive rank-one bridge now represents the actual single SCF fill loop,
 its exact source/canonical SSA/configuration link and actual optional tiled
 point loops. It derives local private-slot simulations and lifts them through
-the same complete-entry root. Initial qualification has twelve passing host
-controls plus one complete actual three-buffer kernel check: 250 canonical roots,
-2,545 STD3-audited theorems and exact live delivery. An independent audit
-rechecks all 1,970 recorded hashes. The 33-case compiler/native/replay/mutation
-cohort is running; these broader checks have not yet passed.
+the same complete-entry root. All 33 installed qualification cases pass: 12 host
+and 21 SDK/native cases. Actual untiled and tiled chains cover extents 1, 3 and
+65,536; both routes have fresh-process replay and public compiler delivery.
+The gates audit 250 canonical roots and 2,545 STD3 theorems. Target controls
+include three genuine closed Lean refusals and seven explicit host refusals;
+three additional initializer-link component mutations also refuse. Independent review
+checks the exact source/product joins and all 24 finite native wrap observations
+across the original, ordinary optimized and checked compiler routes.
 
 For example, two nonoverlapping `memref<3xi32>` objects initialized by a captured
 scalar seed can share one slot. The current rank-one bridge requires that sole
