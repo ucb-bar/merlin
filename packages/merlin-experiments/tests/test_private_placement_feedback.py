@@ -94,7 +94,7 @@ def test_parallel_guidance_preserves_one_compiler_and_async_revision_custody():
     assert "isolated lightweight git/task" in text
     assert "Integrate compatible completed changes promptly" in text
     assert "focused checks asynchronously against immutable compiler revisions" in text
-    assert "All 20 selected CPUs are dynamically shared" in text
+    assert "All selected CPUs are dynamically shared" in text
     assert "no fixed" in text and "ordinary compiler" in text
 
 

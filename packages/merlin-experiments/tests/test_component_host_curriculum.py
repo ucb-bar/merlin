@@ -116,7 +116,7 @@ def test_unknown_source_forms_and_versions_refuse(mutation):
     elif mutation == "dtype":
         original["nodes"][1]["dtype"] = "f32"
     elif mutation == "future":
-        original["schema"] = "merlin.component_program.v3"
+        original["schema"] = "merlin.component_program.v999"
     else:
         original["nodes"][2]["schedule"] = "preferred"
     with pytest.raises(ValueError):

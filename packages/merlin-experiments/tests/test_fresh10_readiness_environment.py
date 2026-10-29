@@ -10,7 +10,7 @@ import pytest
 from merlin_experiments.phase1 import author_profiles as A
 from merlin_experiments.phase1 import fresh10_profiles as P
 from merlin_experiments.phase1 import tooling_readiness as R
-from test_fresh10_tooling_profiles import selections
+from test_fresh10_tooling_profiles import fresh10_baseline, selections  # noqa: F401 (fixtures)
 
 
 @pytest.mark.parametrize('name', P.NAMES)

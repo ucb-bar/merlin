@@ -38,6 +38,11 @@ def runtime(tmp_path, monkeypatch):
     )
     calls = []
     fail = {"numeric": False, "partial": False, "compile": False, "native_binding": False}
+    # A worker process owns one target selection, so evaluation exports it to the
+    # environment. Restore it afterwards: in-process tests share their worker.
+    for name in ("MERLIN_TARGET_EXPERIMENT", "MERLIN_TARGET_CONTRACT", "MERLIN_RTL_FACTS"):
+        monkeypatch.setenv(name, "")  # records the original value, even when unset
+        monkeypatch.delenv(name)
     monkeypatch.setattr(L, "shared_compute_pool", lambda **kw: contextlib.nullcontext())
     monkeypatch.setattr(L.PACKAGE, "load_package", lambda package: package)
 

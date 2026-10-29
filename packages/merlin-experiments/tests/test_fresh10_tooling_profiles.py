@@ -17,13 +17,42 @@ from merlin_experiments.phase1 import fresh10_sources as S
 from merlin_experiments.phase1 import fresh10_disclosure as D
 from merlin_experiments.phase1 import full_compiler_workspace as F
 
-REPO = Path(__file__).resolve().parents[3]
+CHECKOUT = Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture(scope='session')
+def fresh10_baseline(tmp_path_factory):
+    """The reviewed rows exported from the frozen baseline revision.
+
+    The projection binds BASE_REVISION bytes plus its reviewed common patches;
+    the live checkout's compiler sources legitimately move past the baseline.
+    """
+    data = S._data()
+    paths = sorted({row.get('source_relative', 'src/' + row['path'])
+                    for profile in data['profiles'].values()
+                    for kind in ('full_members', 'sdk_members') for row in profile[kind]})
+    top = subprocess.run(['git', '-C', str(CHECKOUT), 'rev-parse', '--show-toplevel'],
+                         capture_output=True, text=True)
+    probe = subprocess.run(['git', '-C', str(CHECKOUT), 'cat-file', '-e', P.BASE_REVISION + '^{commit}'],
+                           capture_output=True)
+    if top.returncode or Path(top.stdout.strip()).resolve() != CHECKOUT or probe.returncode:
+        pytest.skip('fresh10 baseline revision is not in this checkout\'s own object store')
+    root = tmp_path_factory.mktemp('fresh10-baseline')
+    archive = subprocess.run(['git', '-C', str(CHECKOUT), 'archive', P.BASE_REVISION, '--', *paths],
+                             capture_output=True, check=True).stdout
+    subprocess.run(['tar', '-x', '-C', str(root)], input=archive, check=True)
+    for relative, patch in data['common_patches'].items():
+        payload = (CHECKOUT / 'src' / relative).read_bytes()
+        if hashlib.sha256(payload).hexdigest() != patch['sha256']:
+            pytest.fail('reviewed fresh10 common patch is not the checkout source: ' + relative)
+        (root / 'src' / relative).write_bytes(payload)
+    return root
 
 
 @pytest.fixture(scope='module')
-def selections(tmp_path_factory):
+def selections(tmp_path_factory, fresh10_baseline):
     root = tmp_path_factory.mktemp('fresh10-projections')
-    return {name: A.prepare_sources(REPO, root / name.rsplit('/', 1)[-1], profile=name,
+    return {name: A.prepare_sources(fresh10_baseline, root / name.rsplit('/', 1)[-1], profile=name,
                                    review_id='test exact reviewed fresh10 source projection') for name in P.NAMES}
 
 
@@ -81,14 +110,14 @@ def test_exact_inventory_and_nested_semantic_delta(selections):
 
 
 @pytest.mark.parametrize('name', P.NAMES)
-def test_real_source_and_readonly_sdk_imports_are_masked_and_usable(name, selections, tmp_path):
+def test_real_source_and_readonly_sdk_imports_are_masked_and_usable(name, selections, fresh10_baseline, tmp_path):
     from merlin.targetgen.compiler_library import CompilerLibraryContract, CompilerLibrarySelection, LibraryMember
     selected = selections[name]
     rows = S._rows(name, 'sdk')
     sdk = tmp_path / 'sdk'
     for row in rows:
         path = sdk / row['path']; path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(S._payload(REPO, row))
+        path.write_bytes(S._payload(fresh10_baseline, row))
     data = S._data()['profiles'][S._arm(name)]
     contract = CompilerLibraryContract('test reviewed retained SDK', tuple(data['sdk_public_modules']),
                 tuple(LibraryMember(r['path'], r['sha256'], r['module']) for r in rows))
@@ -200,7 +229,7 @@ def test_fresh10_prompt_uses_its_own_contract_before_historical_profile_fallback
     assert text.startswith('Construct one general compiler under the selected fresh10 contract')
 
 
-def test_c_receives_real_library_guidance_and_a_does_not(selections, tmp_path, monkeypatch):
+def test_c_receives_real_library_guidance_and_a_does_not(selections, fresh10_baseline, tmp_path, monkeypatch):
     from merlin.targetgen.compiler_library import CompilerLibraryContract, CompilerLibrarySelection, LibraryMember
     from merlin_experiments.phase1 import compiler_library as library
     calls=[]
@@ -211,11 +240,11 @@ def test_c_receives_real_library_guidance_and_a_does_not(selections, tmp_path, m
         ws=tmp_path/str(index);ws.mkdir();run=ws/'run';run.mkdir();sdk=ws/'sdk'
         data=S._data()['profiles'][S._arm(name)];rows=data['sdk_members']
         for row in rows:
-            path=sdk/row['path'];path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(S._payload(REPO,row))
+            path=sdk/row['path'];path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(S._payload(fresh10_baseline,row))
         selected=CompilerLibrarySelection(CompilerLibraryContract('test retained library',tuple(data['sdk_public_modules']),
             tuple(LibraryMember(r['path'],r['sha256'],r['module']) for r in rows)),sdk)
         with F.scoped_full_compiler(selections[name]):
-            library.append_guidance(ws,run,None,selected,repo=REPO)
+            library.append_guidance(ws,run,None,selected,repo=fresh10_baseline)
         assert (ws/'FULL_COMPILER_SOURCE_SELECTION.json').is_file()
         assert (ws/'SELECTED_LIBRARY_GUIDANCE.md').exists() == (name==P.NAMES[2])
     assert len(calls)==1

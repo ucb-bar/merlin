@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from itertools import product
 from math import prod
 
-from .structural_transitions import StaticStridedLayout, _element_bytes
+from .strided_layout import _element_bytes, check_static_strided
 
 
 @dataclass(frozen=True)
@@ -50,14 +50,14 @@ class GroupedAxesStorage:
         if self.physical_shape != expected:
             raise ValueError("physical shape differs from grouped logical extents")
         width = _element_bytes(self.dtype)
-        StaticStridedLayout(
-            self.physical_shape, self.strides_elements, self.storage_elements * width, self.offset_elements
-        ).validate(self.dtype)
+        check_static_strided(
+            self.physical_shape, self.strides_elements, self.storage_elements * width, self.offset_elements, self.dtype
+        )
         # Prove the derived logical address map too. Grouping is mixed-radix,
         # with the last axis in each group varying fastest; it is not a sort.
-        StaticStridedLayout(
-            self.logical_shape, self._logical_strides(), self.storage_elements * width, self.offset_elements
-        ).validate(self.dtype)
+        check_static_strided(
+            self.logical_shape, self._logical_strides(), self.storage_elements * width, self.offset_elements, self.dtype
+        )
 
     def _logical_strides(self) -> tuple[int, ...]:
         result = [0] * len(self.logical_shape)
@@ -99,7 +99,7 @@ class GroupedAxesStorage:
     @classmethod
     def from_dict(cls, record: Mapping) -> GroupedAxesStorage:
         if isinstance(record, Mapping) and record.get("schema") == "factored_tensor_storage_v1":
-            from merlin.compile.scheduling.tensor_storage import FactoredTensorStorage
+            from .factored_storage import FactoredTensorStorage
 
             return FactoredTensorStorage.from_dict(record)
         fields = {

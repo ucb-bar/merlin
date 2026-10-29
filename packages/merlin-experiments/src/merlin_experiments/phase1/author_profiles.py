@@ -38,6 +38,8 @@ LIGHT_SUPPORT = frozenset((
     "merlin.compile", "merlin.compile.logical_abi", "merlin.runtime",
     "merlin.runtime.commandbuffer", "merlin.runtime.tensor", "merlin.xdsl_dialects",
     "merlin.xdsl_dialects._common", "merlin.xdsl_dialects.fp8", "merlin.xdsl_dialects.interface",
+    # Interface tensors may carry a physical storage map; its checker is pure layout arithmetic.
+    "merlin.perf", "merlin.perf.storage_encoding", "merlin.perf.strided_layout", "merlin.perf.factored_storage",
 ))
 CPP_SUPPORT = frozenset((
     "merlin", "merlin.common", "merlin.common.access", "merlin.common.artifacts",
