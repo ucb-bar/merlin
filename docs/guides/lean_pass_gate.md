@@ -118,6 +118,8 @@ PATH=<lean-4.35.0>/bin:$PATH taskset -c 0-7 nice -n 19 lake build MerlinVerify m
 ```
 
 A checker that is out of date with `merlin/lean` (`lake build --no-build`) is refused.
+The freshness check covers the proof library and both executables, including audit-only
+modules that the native checker does not import.
 `build_tools/scripts/check_lean_guard.py` audits every theorem's axioms and the locked files.
 On Linux, workers also require util-linux `setpriv` for parent-death signals. Missing cleanup
 tooling is `unavailable`, never an accepted check.

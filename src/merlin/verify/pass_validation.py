@@ -71,14 +71,21 @@ class CheckerTools:
         self._require_current_checker()
 
     def _require_current_checker(self) -> None:
-        """A checker built from other proof sources must not certify anything."""
+        """Require current executables and proof objects, including audit-only modules."""
         import subprocess
 
         from .lean import check
 
         environment = {**os.environ, "PATH": f"{self.sdk_bin}{os.pathsep}{os.environ.get('PATH', '')}"}
         result = subprocess.run(
-            [str(Path(self.sdk_bin) / "lake"), "build", "--no-build", "merlin-lean", "merlin-lean-audit"],
+            [
+                str(Path(self.sdk_bin) / "lake"),
+                "build",
+                "--no-build",
+                "MerlinVerify",
+                "merlin-lean",
+                "merlin-lean-audit",
+            ],
             cwd=check.lean_root(),
             env=environment,
             capture_output=True,
