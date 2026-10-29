@@ -1,9 +1,10 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
-Work on **`feat/pass-verif-integration`**. Latest qualified commits are
-`ef46cc269` (retained deeper loop bodies) and `91661f328` (original C64 consumer
-and wide-count hoisting). Remote publication and both GitHub identities are
-verified through `adfb4debd`; these newer commits are being prepared for publication.
+Work on **`feat/pass-verif-integration`**. Latest implementation commits are
+`5f9fb92de` (rank-one complete-entry bridges), `ef46cc269` (retained deeper loop
+bodies) and `91661f328` (original C64 consumer and wide-count hoisting). Remote
+publication and both GitHub identities are verified through `0c52a8b5e`;
+the newer rank-one feature is being prepared for publication.
 Earlier proof records retain their own source cuts.
 
 All nine pass families have compiler selectors within their declared profiles.
@@ -139,9 +140,14 @@ New independently reviewed source cuts:
   closures have 9/11 modules, 15/25 roots and 315/392 STD3 declarations; refs are
   861/868/882 by profile. No huge native compilation/execution occurred.
 
-Rank-one buffer integration is being developed in
-`out/build/buffer-rank-one-20261029/`; compiled local source/tiled math is not
-whole-program admission. The staged captured-uniform-seed profile excludes pure
+Rank-one buffer integration is committed in `5f9fb92de`. Its initial actual
+three-buffer gate passes 250 canonical roots and a 2,545-theorem STD3 audit,
+with exact live target delivery; independent review rechecks all 1,970 hashes.
+Twelve installed host controls pass. The remaining 21 tests in the 33-case
+compiler/native/replay/mutation cohort are running serially on CPU28, nice19;
+no broader qualification is claimed. Evidence is under
+`out/build/buffer-rank-one-20261029/{first-untiled-v1,installed-qualification-v1}`
+and the validator's `rank-one-first-untiled-gate-audit-v1.json`. The staged captured-uniform-seed profile excludes pure
 computed initializer bodies, which the actual producer can transform. This is
 remaining engineering, not human-review-only readiness. The current producer
 reuses identical memref types/alignment; equal-byte differently shaped objects

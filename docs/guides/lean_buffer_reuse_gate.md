@@ -3,7 +3,7 @@ title: Check private buffer reuse and segmentation with Lean
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-28
+last_verified: 2026-10-29
 related: [verification, lean_loop_transform_gate, lean_pass_gate]
 code_refs:
   - src/merlin/verify/buffer_reuse_bridge.py
@@ -14,6 +14,11 @@ code_refs:
   - src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean
   - src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterUntiled.lean
   - src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterUntiledLocal.lean
+  - src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLine.lean
+  - src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLineLink.lean
+  - src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterLineLocal.lean
+  - src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterLineTiledLocal.lean
+  - merlin/tests/ir/test_compiler_buffer_rank_one.py
 ---
 
 # Check private buffer reuse and segmentation with Lean
@@ -40,11 +45,12 @@ LLVM route. That adapter uses this same direct checker and requires its fresh
 completion before compiler products are returned. The API below remains usable
 independently of compiler enforcement.
 
-Capture the four complete modules from the selected producer and record its
-revision/configuration. The intake itself checks the IR relationship, not the
-producer's identity. Actual producer reexecution and attribution are separate
-qualification evidence. All four buffers are required; an identity-normalization
-prefix is outside this route.
+Capture the three complete modules from the selected producer, adding the
+fourth only when segmentation is requested, and record its revision/configuration.
+The intake checks the actual IR relationship. Producer reexecution and source
+attribution are separate qualification evidence. An unchanged normalization
+prefix uses the separate complete-syntax identity checker and receives zero
+positive normalization credit.
 
 ```python
 from pathlib import Path
@@ -90,8 +96,25 @@ This subset uses index64 and static normalized integer buffers with checked
 sequential disjoint lifetimes and complete initialization. Its actual-final
 initializer bridge supports the checked rank-two rectangular uniform-loop form
 with i8, i16, i32 or i64 elements. All four widths have fresh-gate qualification;
-rank-one/rank-three source bridges remain engineering work even though some
-lower-level allocation/initialization lemmas have broader domains.
+broader element/rank profiles remain separate engineering.
+
+An additive rank-one bridge now represents the actual single SCF fill loop,
+its exact source/canonical SSA/configuration link and actual optional tiled
+point loops. It derives local private-slot simulations and lifts them through
+the same complete-entry root. Initial qualification has twelve passing host
+controls plus one complete actual three-buffer kernel check: 250 canonical roots,
+2,545 STD3-audited theorems and exact live delivery. An independent audit
+rechecks all 1,970 recorded hashes. The 33-case compiler/native/replay/mutation
+cohort is running; these broader checks have not yet passed.
+
+For example, two nonoverlapping `memref<3xi32>` objects initialized by a captured
+scalar seed can share one slot. The current rank-one bridge requires that sole
+store body. Pure computed initializer prefixes and rank-three source bridges
+remain safely unsupported, although the actual storage planner recognizes
+additional forms. Their extension needs a typed pure-operation meaning and SSA
+execution correspondence; relaxing the source parser alone would be unsound.
+The storage producer reuses identical memref types/alignment, so equal-byte
+objects with different shapes do not share a slot.
 Typed arguments, caller descriptors outside the private partition and the stated
 scalar/literal interpretation are explicit premises. The allocator is modeled as
 total, private and unobservable.

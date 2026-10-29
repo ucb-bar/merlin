@@ -60,8 +60,10 @@ compiler/native qualification through dynamic ancestors, including retained
 deeper bodies with auxiliary stride captures. Explicit original C64 consumers
 now bind actual emitted integer domains and admit symbolic positive extents
 through 2^63−1, preserving default profiles. Nested Kernel commands and broader
-memory/source profiles remain engineering work. Rank-one buffer source/target
-integration is under construction and has not yet earned compiler admission.
+memory/source profiles remain engineering work. The first actual rank-one
+three-buffer check now passes through the complete-entry root; broader compiler,
+native, replay and mutation qualification is running. Computed initializer
+prefixes and rank-three source bridges still need engineering.
 The effort table below is the earlier scope estimate, not remaining effort.
 Broader buffer ranks, producer-language coverage and numerical/source-contract
 coverage remain engineering; the human-review-only exit has not been reached.

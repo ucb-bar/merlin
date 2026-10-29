@@ -88,6 +88,18 @@ does normalization-only change with identity reuse. This does not broaden the
 allocator premise or the existing rank-two i8/i16/i32/i64 domain, and supplies no native
 allocator or full error/world equivalence.
 
+The additive rank-one source and actual tiled/untiled target bridges derive
+one-dimensional Cell/SCF execution, exact source/configuration alpha binding,
+private-slot/world partition and local simulation through the complete-entry
+root. They introduce no whole-run equality or local-simulation premise. The
+first actual three-buffer gate passes 250 roots and a 2,545-theorem STD3 audit;
+independent review rechecks all 1,970 recorded source/tool/product hashes and
+exact live delivery. Twelve installed host controls also pass. The broader
+33-case compiler/native/replay/mutation suite is running, not yet qualified.
+Only captured-uniform-seed initializer bodies are in this additive profile;
+computed initializer prefixes need a typed pure-execution bridge. Allocator,
+possible-success, typed-input and native/error review boundaries remain intact.
+
 Current outer-loop unrolling supports empty, full-inline and bulk-plus-tail
 forms, retaining arbitrary supported nested bodies with dynamic inner bounds
 and modeled external effects. Thirty distinct loop-lane tests passed across

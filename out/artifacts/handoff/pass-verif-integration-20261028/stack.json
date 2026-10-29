@@ -51,7 +51,7 @@
     "example": "Allocate A \u2192 initialize \u2192 use \u2192 free\nAllocate B \u2192 initialize \u2192 use \u2192 free\n\u2192 reuse one private slot for both lifetimes",
     "claim": "Equal sets of possible successful public observations under the explicitly selected total, private, unobservable allocator model.",
     "proof": "GraphMemoryAfterEntries.every_definition",
-    "limit": "Static rank-two i8/i16/i32/i64 rectangular initialization, sequential disjoint private lifetimes. Untiled and tiled actual outputs have proof routes. Explicit total/private/unobservable allocator; no finite-capacity, complete failure-state or native allocator proof.",
+    "limit": "Static rank-two i8/i16/i32/i64 rectangular initialization, sequential disjoint private lifetimes. Untiled and tiled actual outputs have proof routes. Explicit total/private/unobservable allocator; no finite-capacity, complete failure-state or native allocator proof. Additive rank-one uniform-seed bridges pass a first complete actual three-buffer kernel check and 12 host controls. Broader compiler/native/replay/mutation qualification is running; computed prefixes and rank-three source bridges remain engineering.",
     "registered": true,
     "in_all": true
   },
