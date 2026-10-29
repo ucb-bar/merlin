@@ -454,6 +454,13 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
                 raise ValueError(
                     f"{source}: operation {row['id']!r} readout_gain_screens requires an exhaustive numerical contract"
                 )
+        if "forms" in row and (
+            not isinstance(row["forms"], list)
+            or not row["forms"]
+            or any(not isinstance(v, str) or not v for v in row["forms"])
+            or len(set(row["forms"])) != len(row["forms"])
+        ):
+            raise ValueError(f"{source}: operation {row['id']!r} forms must be a nonempty list of distinct names")
         if "emission_obligations" in row:
             validate_emission_obligations(row["emission_obligations"])
         # The author names constraints directly; consumers keep one canonical
@@ -481,6 +488,7 @@ def validate_software_spec(document: dict, target: str | None = None, *, source:
                     "emission_obligations",
                     "admission_conditions",
                     "readout_gain_screens",
+                    "forms",
                 }
             )
             if unknown:

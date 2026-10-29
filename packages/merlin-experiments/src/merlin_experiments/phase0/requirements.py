@@ -788,6 +788,14 @@ def derive(
             "phase0_admission": "not_granted",
         }
     requirement = intersect_requirement(requirement, selected.software_spec, selected.contract)
+    from merlin.targetgen.corpus_form_table import declared_forms as _declared_forms
+
+    _forms, _forms_refused = _declared_forms(selected.software_spec, selected.contract)
+    if _forms:
+        # The reviewed spec rows' capsule forms, hashed into the derivation with the requirement.
+        requirement["declared_forms"] = _forms
+    if _forms_refused:
+        requirement["declared_forms_refused"] = _forms_refused
     # The recipe's tier ladder is an authored PLAN, not evidence that an oracle
     # was constructed. Keep it separate from ``oracle_tiers`` (which remains
     # observed-only) so synthesis can cap unaffordable members to a declared

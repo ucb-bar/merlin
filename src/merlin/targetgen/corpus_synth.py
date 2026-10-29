@@ -1201,7 +1201,9 @@ def synthesize(
         dtype = str(cell.get("dtype") or "")
         alignment = str(cell.get("alignment") or "aligned")
         base_name = f"{SYNTH_PREFIX}_{family}_{dtype}_{alignment}".replace("-", "_")
-        forms = _cell_forms(family, dtype, cap_map.get(family), pool)
+        forms = _cell_forms(
+            family, dtype, cap_map.get(family), pool, tuple((spec_doc.get("declared_forms") or {}).get(family) or ())
+        )
         if not forms:
             unexpressable.append(f"{cell.get('cell')} (family {family!r})")
             continue
@@ -1245,6 +1247,13 @@ def synthesize(
                 "label": "public",
                 **extents_for(alignment, probes, quantum=_quanta.get(dtype)),
             }
+            if form.form:
+                # A DECLARED form: the table gives the entry fields (shape, form attributes) at this cell's
+                # resolved extents; the cell's M/K/N spelling stays so alignment classification is unchanged.
+                from .corpus_form_table import entry_fields, resolve_extents
+
+                _m, _n = resolve_extents(entry, probes)
+                entry.update(entry_fields(family, form.form, _m, _n))
             if kinds:
                 from merlin.targetgen import semantic_families as _sf
 

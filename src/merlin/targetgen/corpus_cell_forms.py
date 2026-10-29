@@ -24,13 +24,20 @@ class CellForm:
     epilogue: tuple[str, ...] = ()
     composed: tuple[str, ...] = ()
     kinds: tuple[str, ...] = ()
+    #: A DECLARED capsule form (a key of :data:`merlin.targetgen.corpus_form_table.FORM_TABLE`): the spec
+    #: row's ``forms`` entry this capsule exercises. Empty for a row-level (identity) capsule.
+    form: str = ""
 
     def qualifier(self) -> str:
+        if self.form:
+            return self.form
         if self.kinds:
             return "_".join(self.kinds)
         return "fused" if self.composed else "standalone"
 
     def row_note(self) -> str:
+        if self.form:
+            return f", declared form {self.form!r}"
         if self.composed:
             return f", row fused with {list(self.composed)}"
         return f", standalone row for {list(self.kinds)} reductions" if self.kinds else ""
@@ -63,7 +70,9 @@ def _row_op(family: str, kinds: tuple, gradeable: set[str], dtype: str) -> str |
     return op_for_family(family, admitted_ops=admitted, dtype=dtype)
 
 
-def cell_forms(family: str, dtype: str, cap: Any, pool: set[str]) -> list[CellForm]:
+def cell_forms(
+    family: str, dtype: str, cap: Any, pool: set[str], declared_forms: tuple[str, ...] = ()
+) -> list[CellForm]:
     """The capsules one (family, dtype, alignment) cell needs: one per declared capability row.
 
     A fused-only row (``composed_with`` a contraction) is satisfied by a contraction carrying the family
@@ -77,7 +86,30 @@ def cell_forms(family: str, dtype: str, cap: Any, pool: set[str]) -> list[CellFo
     # of the three alone produced an entry that died in the other.
     from .corpus_synth import _fused_carrier, ops_gradeable_at
 
-    gradeable = ops_gradeable_at(dtype, pool)
+    base = _row_forms(family, dtype, cap, pool, ops_gradeable_at(dtype, pool), _fused_carrier)
+    return [*base, *_declared_form_cells(family, declared_forms, base, cap, pool)]
+
+
+def _declared_form_cells(family, declared_forms, base, cap, pool) -> list[CellForm]:
+    """One CellForm per spec-declared capsule form that the table knows and the BUILDERS can write.
+
+    A form the table does not know is dropped here and reported by the caller as unexpressable; the
+    dedupe key includes the form, so forms sharing one BUILDERS op are never collapsed."""
+    from .corpus_form_table import FORM_TABLE
+
+    out: list[CellForm] = []
+    for form in dict.fromkeys(declared_forms):
+        row = FORM_TABLE.get((family, form))
+        if row is None:
+            out.append(CellForm(None, form=form))
+        elif row.op in pool:
+            out.append(CellForm(row.op, form=form))
+        else:
+            out.append(CellForm(None, form=form))
+    return out
+
+
+def _row_forms(family, dtype, cap, pool, gradeable, _fused_carrier) -> list[CellForm]:
     rows = _declared_rows(cap, dtype)
     if len(rows) <= 1:
         # `composed_with` is a tuple ATTRIBUTE, not a method. Calling it raised TypeError, a broad
