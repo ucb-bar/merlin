@@ -455,8 +455,10 @@ def lower_bf16_matmul_f32acc(module) -> int:
         C_bf16 = matmul(A_bf16, B_bf16)              # bf16 accumulate
 
     into a ``linalg.generic`` matmul whose body extends each operand to f32, multiplies and
-    accumulates in f32, followed by a ``truncf`` back to bf16 — matching the reference
-    numerics. (``extf``/``truncf`` here are scalar ops inside the generic body, so the
+    accumulates in f32, followed by a ``truncf`` back to bf16, implementing the explicitly
+    selected f32-accumulation policy. This changes the original half-precision recurrence;
+    framework equality and an accuracy bound are separate obligations.
+    (``extf``/``truncf`` here are scalar ops inside the generic body, so the
     earlier "extf is tensor-rank-polymorphic" limitation does not apply.)
 
     Also handles bf16 ``linalg.generic`` contractions (e.g. ``batch_matmul``, ``aten.bmm``)
@@ -490,10 +492,10 @@ def lower_bf16_matmul_f32acc(module) -> int:
     # MIXED-precision contraction (16-bit operands, f32 accumulator) cannot use vector.contract
     # (which is same-type only) and so arrives here as explicit mulf/addf.
     #
-    # This is a strict-accuracy WIN, not a fast-math relaxation: contraction removes the
-    # intermediate rounding of the product, which is exactly the single-rounding semantics the
-    # hardware FMA and the f32 reference path already have. No other fast-math flag is set (no
-    # reassoc/nnan/ninf), so the reduction order is unchanged and NaN/Inf behavior is preserved.
+    # `contract` permits a different rounding of a multiply-add. It is part of the selected
+    # draft policy, not a proof of strict IEEE equivalence or an accuracy improvement for every
+    # input. The Lean model distinguishes flagged operations; native fusion fidelity remains
+    # a separate qualification. No reassoc/nnan/ninf permission is added.
     _CONTRACT = FastMathFlagsAttr([FastMathFlag.ALLOW_CONTRACT])
 
     par, red = L.IteratorType.PARALLEL, L.IteratorType.REDUCTION
@@ -590,7 +592,15 @@ def lower_bf16_matmul_f32acc(module) -> int:
     def is_mul_add_contraction(op):
         if op.name != "linalg.generic":
             return False
-        return any(getattr(a, "data", a) == L.IteratorType.REDUCTION for a in op.iterator_types)
+        if not any(getattr(a, "data", a) == L.IteratorType.REDUCTION for a in op.iterator_types):
+            return False
+        # Ordinary sums/products are outside this policy. Retain malformed
+        # multiply-add reductions in the denominator so eligibility, rather
+        # than this classification, must check their exact operands and body.
+        return any(
+            any(x.name == "arith.mulf" for x in block.ops) and any(x.name == "arith.addf" for x in block.ops)
+            for block in op.body.blocks
+        )
 
     # Keep the existing whole-module draft denominator atomic. An unsupported
     # half contraction must not be silently omitted from a partially changed pair.

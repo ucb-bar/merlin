@@ -214,8 +214,10 @@ def _children(op: dict):
 
 
 def _half_contraction(op: dict) -> bool:
-    # Conservative denominator: all half-result matmul/generic reductions, even
-    # malformed/non-two-input ones. Lean alone establishes actual eligibility.
+    # Conservative superset of the frozen Lean candidates: all half-result
+    # named matmuls and multiply-add generic reductions, including malformed
+    # operand segments/bodies. Ordinary sums/products are outside this policy.
+    # Lean alone establishes actual eligibility.
     half = any(
         r["type"].get("kind") == "tensor"
         and r["type"].get("element") in ({"kind": "float", "format": "bf16"}, {"kind": "float", "format": "f16"})
@@ -226,7 +228,16 @@ def _half_contraction(op: dict) -> bool:
     if op["name"] in ("linalg.matmul", "linalg.batch_matmul"):
         return True
     iters = _attr(op, "iterator_types").get("elements", [])
-    return op["name"] == "linalg.generic" and any(a.get("value") == "reduction" for a in iters)
+    return (
+        op["name"] == "linalg.generic"
+        and any(a.get("value") == "reduction" for a in iters)
+        and any(
+            any(x["name"] == "arith.mulf" for x in block["ops"])
+            and any(x["name"] == "arith.addf" for x in block["ops"])
+            for region in op["regions"]
+            for block in region["blocks"]
+        )
+    )
 
 
 def source_sites(document: dict) -> list[dict]:

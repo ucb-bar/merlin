@@ -40,6 +40,7 @@ def source_export():
                 }
             ],
             props={"iterator_types": {"kind": "array", "elements": [{"kind": "enum", "value": "reduction"}]}},
+            children=[op("arith.mulf"), op("arith.addf"), op("linalg.yield")],
         )
 
     return {
@@ -231,6 +232,24 @@ def test_zero_candidate_is_not_positive_coverage():
     document["module"]["ops"].clear()
     with pytest.raises(GateUnsupported):
         gate.validate_report(raw_report(), document)
+
+
+@pytest.mark.parametrize("operation", ["arith.addf", "arith.mulf"])
+def test_plain_reductions_are_outside_the_macc_denominator(operation):
+    document = source_export()
+    body = document["module"]["ops"][0]["regions"][0]["blocks"][0]["ops"]
+    body[1]["regions"][0]["blocks"][0]["ops"] = [op(operation), op("linalg.yield")]
+    assert [site["source_results"] for site in gate.source_sites(document)] == [[20]]
+    # The old two-site report cannot be relabeled after the denominator changes.
+    with pytest.raises(GateRejected, match="denominator"):
+        gate.validate_report(raw_report(), document)
+
+
+def test_malformed_multiply_add_remains_in_the_conservative_denominator():
+    document = source_export()
+    body = document["module"]["ops"][0]["regions"][0]["blocks"][0]["ops"]
+    body[1]["props"]["operandSegmentSizes"] = {"kind": "dense_array", "values": [1, 1]}
+    assert len(gate.source_sites(document)) == 2
 
 
 @pytest.mark.parametrize("outcome", ["pending", "unsupported", "error", "timeout"])

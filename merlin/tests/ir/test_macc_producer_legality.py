@@ -2,6 +2,7 @@
 
 import pytest
 from lean_bf16_f32acc_cases import STANDARD_BODY, bmm, matmul
+from lean_half_reduction_cases import reduction
 from xdsl.dialects import arith, builtin
 
 from merlin.llvmlower import passes_xdsl
@@ -78,3 +79,21 @@ def test_unsupported_semantic_attribute_is_not_discarded():
     with pytest.raises(ValueError, match="unsupported contraction legality"):
         passes_xdsl.lower_bf16_matmul_f32acc(module)
     assert text(module, generic=True) == before
+
+
+@pytest.mark.parametrize("fmt", ["bf16", "f16", "f32"])
+@pytest.mark.parametrize("operation", ["addf", "mulf"])
+def test_ordinary_reductions_are_unchanged_by_explicit_macc_policy(tmp_path, fmt, operation):
+    from merlin.verify import compiler_transforms as transforms
+
+    module = passes_xdsl.parse_mlir_text(reduction(fmt, operation))
+    module.verify()
+    before = text(module, generic=True)
+    assert passes_xdsl.lower_bf16_matmul_f32acc(module) == 0
+    assert text(module, generic=True) == before
+    # Exercise the public option path as well as the producer; preprocessing
+    # alone does not invoke this optional policy.
+    result, summary = transforms.apply(before, tmp_path, options=transforms.Options(macc_f32acc=True))
+    assert summary["changed"] == []
+    assert transforms.MACC in summary["unchanged"]
+    assert not any(op.name == "arith.extf" for op in passes_xdsl.parse_mlir_text(result).walk())

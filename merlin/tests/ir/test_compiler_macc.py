@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from lean_bf16_f32acc_cases import bmm, line_with, matmul, operands, replace_once, run_pass
+from lean_half_reduction_cases import reduction
 
 from merlin.verify import compiler_macc as gate
 from merlin.verify.gate_errors import GateRejected, GateUnsupported
@@ -148,3 +149,41 @@ def test_all_functions_are_in_the_actual_denominator(pass_gate_tools, tmp_path):
     detail = gate.validate_completion(completion)
     assert [site["function"] for site in detail["sites"]] == ["subject", "second"]
     assert gate.deliver(completion) == output
+
+
+@pytest.mark.parametrize("fmt,operation", [("bf16", "addf"), ("f16", "mulf")])
+def test_unrelated_reduction_survives_complete_boundary_and_replay(pass_gate_tools, tmp_path, fmt, operation):
+    contraction = bmm(fmt, batch=1, m=1, n=2, depth=3).splitlines()
+    ordinary = reduction(fmt, operation).splitlines()
+    source = "\n".join([*contraction[:-1], *ordinary[1:-1], contraction[-1]])
+    output, count = run_pass(source)
+    assert count == 1
+    completion = check(pass_gate_tools, tmp_path, source, output)
+    detail = gate.validate_completion(completion)
+    assert len(detail["sites"]) == 1 and detail["sites"][0]["function"] == "subject"
+    assert gate.deliver(completion) == output
+    replayed = gate.replay(
+        completion.report,
+        tmp_path / "replay",
+        sdk_bin=pass_gate_tools.sdk_bin,
+        compiler_python=pass_gate_tools.compiler_python,
+    )
+    assert gate.deliver(replayed) == output
+    # Excluding a plain reduction from the numerical-site roster must not
+    # permit changing it elsewhere in the same complete output module.
+    from xdsl.dialects import arith
+    from xdsl.rewriter import Rewriter
+
+    from merlin.llvmlower.passes_xdsl import parse_mlir_text
+    from merlin.xdsl_dialects._common import text
+
+    mutant = parse_mlir_text(output)
+    ordinary = next(op for op in mutant.walk() if op.name == "func.func" and op.sym_name.data == "reduce")
+    arithmetic = next(op for op in ordinary.walk() if op.name in ("arith.addf", "arith.mulf"))
+    replacement = arith.MulfOp if arithmetic.name == "arith.addf" else arith.AddfOp
+    Rewriter.replace_op(arithmetic, replacement(*arithmetic.operands))
+    mutant.verify()
+    failed = tmp_path / "unrelated-mutation"
+    failed.mkdir()
+    with pytest.raises(GateRejected):
+        check(pass_gate_tools, failed, source, text(mutant, generic=True))
