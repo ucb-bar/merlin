@@ -428,13 +428,14 @@ operations:
         constraints:
           eq: 1.0
   # Scalar-immediate affine forms of the standalone elementwise map: y = weight * x + bias with ONE tensor operand
-  # and literal immediates (add.Scalar: weight 1, bias +c; sub.Scalar: weight 1, bias -c; mul.Scalar: weight w).
+  # and literal immediates (add.Scalar: weight 1, bias +c; sub.Scalar: weight 1, bias -c; mul.Scalar: weight w; neg: weight -1) and the
+  # identity map read at accumulator width (cast_widen: the int8 -> int32 widening, aten._to_copy).
   # The constraints and the compiler/instruction obligations are exactly those of elementwise_map_standalone (the
   # same anchor); this row only names the capsule forms that exercise its affine class, so it adds no new admission.
   elementwise_map_scalar_affine:
     status: reviewed
     families: [elementwise_map]
-    forms: [scalar_add, scalar_sub, scalar_mul]
+    forms: [scalar_add, scalar_sub, scalar_mul, scalar_neg, cast_widen]
     hardware: standalone
     arithmetic: integer_affine
     max_tensor_operands: 2
@@ -453,7 +454,7 @@ operations:
       basis: >-
         Same evidence as elementwise_map_standalone (Configs.scala:75-114; Scratchpad.scala:407-421,828-848;
         VectorScalarMultiplier.scala:130-138; PE.scala:23; exact numerator precedes selected readout), read for a
-        single tensor operand. Addendum, forms scalar_add / scalar_sub / scalar_mul: the contract states the
+        single tensor operand. Addendum, forms scalar_add / scalar_sub / scalar_mul / scalar_neg / cast_widen: the contract states the
         standalone form out = sat_int8(RNE(s_o * act(sum_i w_i * x_i + c))) with one broadcast constant c, so a
         scalar immediate is the constant c (an int32 accumulator seed loaded unscaled, shrink 0, once:
         accumulator_seed_tensor / transfer_contracts.accumulator_seed_load) and a multiplier is the weight w_i (a
@@ -461,7 +462,9 @@ operations:
         is read out at accumulator width (raw i32 exit), so the comparison is exact. Primitives required: the
         accumulate-on-load unit-scale load and the weighted integer mesh (or the identity weight for add/sub). No
         scale is applied, no saturation is claimed, and a weight outside signed int8 is outside this row (an exact
-        decomposition is a separate claim). Division by a scalar is NOT this row: integer division is not an affine
+        decomposition is a separate claim). scalar_neg is weight -1, a signed int8 that needs no limb decomposition;
+        cast_widen is the identity weight read out at accumulator width, which the contract names as the int8 -> int32
+        widening (sign extension of a signed byte; an unsigned or wider source is outside this row). Division by a scalar is NOT this row: integer division is not an affine
         map, and a reciprocal readout scale is a different (rounded) construction.
     emission_obligations: *elementwise_standalone_obligations
   elementwise_map_after_operand_sum:

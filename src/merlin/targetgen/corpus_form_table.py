@@ -122,6 +122,10 @@ FORM_TABLE: dict[tuple[str, str], FormEntry] = {
     ("elementwise_map", "scalar_add"): FormEntry("scalar_affine", _scalar_affine(1, 3)),
     ("elementwise_map", "scalar_sub"): FormEntry("scalar_affine", _scalar_affine(1, -3)),
     ("elementwise_map", "scalar_mul"): FormEntry("scalar_affine", _scalar_affine(3, 0)),
+    # neg is the multiplier -1 (a signed int8 weight; -1 is representable, so no limb decomposition is involved).
+    ("elementwise_map", "scalar_neg"): FormEntry("scalar_affine", _scalar_affine(-1, 0)),
+    # aten._to_copy int8 -> int32: the identity map read out at accumulator width (sign extension).
+    ("elementwise_map", "cast_widen"): FormEntry("scalar_affine", lambda m, n: {"cast": True}),
     ("movement", "slice"): FormEntry("movement", _slice, ("copy",)),
     ("movement", "flip"): FormEntry("movement", _flip, ("copy", "permutation")),
     ("movement", "pad_constant"): FormEntry("movement", _pad("constant"), ("copy", "zero_fill")),

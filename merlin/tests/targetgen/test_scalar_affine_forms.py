@@ -19,7 +19,10 @@ from merlin.targetgen.corpus_cell_forms import cell_forms
 from merlin.targetgen.corpus_synth import available_ops
 
 pytestmark = pytest.mark.target("gemmini")
-_FORMS = {"scalar_add": (1, 3, "arith.addi"), "scalar_sub": (1, -3, "arith.subi"), "scalar_mul": (3, 0, "arith.muli")}
+_FORMS = {
+    "scalar_add": (1, 3, "arith.addi"), "scalar_sub": (1, -3, "arith.subi"), "scalar_mul": (3, 0, "arith.muli"),
+    "scalar_neg": (-1, 0, "arith.muli"), "cast_widen": (1, 0, "arith.extsi"),
+}  # fmt: skip
 
 
 def _binding():
@@ -40,10 +43,10 @@ def test_form_builds_and_grades_exactly(form, m, n):
         "op": "scalar_affine", "M": m, "N": n, "lhs": "A0", "out": "Y0", "label": "public",
         **ft.entry_fields("elementwise_map", form, m, n),
     }  # fmt: skip
-    assert (entry["weight"], entry["bias"]) == (weight, bias)
+    assert (entry.get("weight", 1), entry.get("bias", 0)) == (weight, bias)
     capsule, text = SPEC.build(entry, _binding())
     assert capsule["semantic"]["semantic_family"] == "elementwise_map"
-    assert body_op in text and 'prov.family = "elementwise"' in text
+    assert body_op in text and ('prov.family = "elementwise"' in text or form == "cast_widen")
     assert text.count("ins(%A0") == 1  # one tensor operand; the immediate is a body literal
     semantics = {"model": {"engine": "integer_reference"}, "overflow": "bounded_exact"}
     capsule["numerical_semantics"] = semantics
@@ -84,6 +87,6 @@ def test_declared_forms_come_from_the_reviewed_spec_row():
 
     doc = validate_software_spec(spec, "gemmini")
     kept, refused = ft.declared_forms(doc, {})
-    assert kept.get("elementwise_map") == ["scalar_add", "scalar_sub", "scalar_mul"], (kept, refused)
+    assert kept.get("elementwise_map") == list(_FORMS), (kept, refused)
     forms = cell_forms("elementwise_map", "i8", None, available_ops(), tuple(kept["elementwise_map"]))
     assert {f.form: f.op for f in forms if f.form} == dict.fromkeys(_FORMS, "scalar_affine")

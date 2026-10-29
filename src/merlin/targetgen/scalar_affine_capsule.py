@@ -5,7 +5,7 @@ integer evaluator ``component_numerics``). The immediate operand is a LITERAL in
 written region has exactly one tensor operand and an affine body: the standalone elementwise-map form the
 contract states (``out = sat_int8(RNE(s_o * act(sum_i w_i * x_i + c)))`` with one broadcast constant c).
 ``weight`` is a signed int8 (a mesh / load-path multiplier); ``bias`` is the int32 accumulator-seed
-constant. The result is read out at accumulator width (the identity map read at accumulator width is the
+constant. ``cast: true`` states the identity map instead (the widening cast). The result is read out at accumulator width (the identity map read at accumulator width is the
 int8 -> int32 widening), so the comparison is exact.
 """
 
@@ -25,9 +25,17 @@ def scalar_affine_program(entry: dict, binding: CorpusBinding) -> dict:
     N = entry.get("N", entry.get("N_tiles", 1) * D)
     if any(type(extent) is not int or extent < 1 for extent in (M, N)):
         raise ValueError(f"{entry.get('name')}: scalar affine needs resolved positive M and N")
+    src, out = entry.get("lhs", "A0"), entry.get("out", "Y0")
+    if entry.get("cast"):
+        # The identity map read out at accumulator width: the int8 -> int32 sign-extending widening (aten._to_copy).
+        return {
+            "schema": SCHEMA_V2,
+            "inputs": [{"name": src, "role": "input", "shape": [M, N], "dtype": "operand"}],
+            "nodes": [{"name": "mapped", "op": "cast", "inputs": [src], "dtype": "accumulator"}],
+            "outputs": [{"name": out, "value": "mapped"}],
+        }  # fmt: skip
     if "weight" not in entry or "bias" not in entry:
         raise ValueError(f"{entry.get('name')}: scalar affine states its weight and bias immediates")
-    src, out = entry.get("lhs", "A0"), entry.get("out", "Y0")
     return {
         "schema": SCHEMA_V2,
         "inputs": [{"name": src, "role": "input", "shape": [M, N], "dtype": "operand"}],
