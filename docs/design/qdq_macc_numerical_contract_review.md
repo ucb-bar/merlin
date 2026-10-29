@@ -134,8 +134,15 @@ The new component contract is ready for a separately named profile. To enable it
 This work does not add that compiler profile. Its remaining source/reference/SSA
 integration is engineering work, not a pending approval flag. Native fusion also
 remains separate: [`contract`](https://llvm.org/docs/LangRef.html#fast-math-flags)
-permits changed rounding. The existing uniform-fusion/injective-extension lemma
-does not cover arbitrary per-site fusion, NaN payloads or every target FP mode.
+permits changed rounding. The additive
+`MerlinVerify.Rules.Bf16F32AccFusion.fused_step_on_image` theorem removes the old
+injectivity premise by recovering only the converted operands. It therefore
+admits conversions that merge bit patterns, including NaNs, without a non-NaN
+input restriction. The historical pinned theorem remains unchanged. Applying
+the local law to a program still requires one operand format, uniform fusion
+and no other contract-flagged f32 multiply/add operations outside those steps.
+Concrete backend NaN behavior, arbitrary per-site fusion and target FP modes
+remain separate correspondence obligations.
 
 ## Paper wording available now
 

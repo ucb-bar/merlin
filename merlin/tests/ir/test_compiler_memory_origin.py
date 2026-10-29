@@ -515,7 +515,10 @@ def test_diagnostic_apply_body_and_unselected_runner_stay_legacy(tmp_path):
     actual = ast.parse((repo_root() / "src/merlin/llvmlower/leading_cse.py").read_text())
     apply_body = next(n for n in actual.body if isinstance(n, ast.FunctionDef) and n.name == "apply")
     # Fixed pre-integration diagnostic compatibility guard, not an execution proof.
-    assert hashlib.sha256(ast.dump(apply_body, include_attributes=False).encode()).hexdigest() == (
+    # Python 3.13+ can omit empty fields; retain the original 3.12 representation
+    # and the same fingerprint instead of weakening the compatibility check.
+    dump_options = {"show_empty": True} if sys.version_info >= (3, 13) else {}
+    assert hashlib.sha256(ast.dump(apply_body, include_attributes=False, **dump_options).encode()).hexdigest() == (
         "a3c28874d2a2d50563279c1c9ebee9b7e0d0ec44a01c1487148e19f65098414c"
     )
     assert cse._PRELUDE.count("        after = operation.get_asm(print_generic_op_form=True)") == 1

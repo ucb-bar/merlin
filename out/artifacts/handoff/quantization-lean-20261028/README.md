@@ -1,5 +1,16 @@
 # Quantization Lean proof handoff — updated 2026-10-29
 
+The [merge qualification](../../audits/ledger-review-20261029/merge-README.md)
+refreshes numerical-boundary evidence after integrating the concurrent compiler
+changes through `df8799c42`; earlier receipts retain their original cuts.
+
+The [ledger review](../../audits/ledger-review-20261029/README.md) adds a uniform
+MACC fusion lemma that no longer requires injective extension, fixes reporting
+premises, and distinguishes the corrected F12 compiler bug from still-uninstalled
+per-channel i64 source support. Existing pins and approvals remain unchanged.
+Fresh Q/DQ receipts/replays bind the revised ledger. They are lowering checks,
+not a rerun of the older pinned PT2 capture-producer campaign.
+
 Additional [numerical contract review work](../../../../docs/design/qdq_macc_numerical_contract_review.md)
 adds conditional quantizer definedness through the actual lowering, initialized
 f32-accumulation component proofs and a plain-reduction producer/report regression

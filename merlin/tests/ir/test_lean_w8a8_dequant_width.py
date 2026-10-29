@@ -1,7 +1,8 @@
 """Qualify the additive i32/i64 source contract, without changing semantic dispatch.
 
 The candidate is evaluated by Lean, pinned PyTorch, and a separately constructed standard-MLIR
-arithmetic program. Production i64 per-channel lowering is kept as a negative control.
+arithmetic program. The corrected production i64 per-channel lowering retains the
+original failing input as a regression; the float-first expression is the negative control.
 """
 
 from __future__ import annotations
@@ -192,6 +193,27 @@ def test_actual_i64_channel_lowering_matches_integer_promotion(tmp_path, lean_to
     assert native["results"][0] == [
         str(int(x)) for x in np.full((2, 8), -16777216, dtype=np.float32).view(np.uint32).flat
     ]
+
+
+@pytest.mark.parametrize("textual", [False, True])
+def test_i64_channel_witness_through_public_compiler(tmp_path, lean_tools, textual):
+    from merlin.llvmlower.abi import HostModel, PrivateHostImagePolicy
+    from merlin.llvmlower.lower import lower_model
+    from merlin.xdsl_dialects._common import text
+
+    # F12 is a compiler correction, not an extension of the formal channel profile.
+    module = source_program(64, "per_channel", (2, 8), 1, reference=False)
+    result = lower_model(text(module, generic=True), tmp_path / "native", targets=("host",), textual=textual)
+    q = np.ones((2, 8), dtype=np.int8)
+    scale = np.ones(8, dtype=np.float32)
+    zero = np.full(8, 16777217, dtype=np.int64)
+    output = np.empty((2, 8), dtype=np.float32)
+    model = HostModel.load(str(result.host_so), image_policy=PrivateHostImagePolicy(result.host_so.parent.resolve()))
+    model([(value.ctypes.data, value.shape) for value in (q, scale, zero, output)])
+    expected = (q.astype(np.int64) - zero).astype(np.float32) * scale
+    legacy = (q.astype(np.float32) - zero.astype(np.float32)) * scale
+    assert np.all(expected == -16777216) and np.all(legacy == -16777215)
+    np.testing.assert_array_equal(output.view(np.uint32), expected.view(np.uint32))
 
 
 @pytest.mark.parametrize("change", [{"zero_width": 16}, {"kind": "per_group"}, {"axis": 2}])

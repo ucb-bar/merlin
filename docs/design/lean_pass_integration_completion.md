@@ -39,11 +39,24 @@ SSA, map, native-reference and independent numerical-review acceptance criteria.
 These component proofs do not complete the broader compiler profiles.
 
 The agreed endpoint covers Merlin pass proofs and their compiler integration
-through output IR. It covers the nine current interfaces: tensor DCE, CSE,
+through output IR. Its original nine interfaces are tensor DCE, CSE,
 ordered unrolling, ordered tiling, private buffer reuse, Q/DQ lowering, MACC
 policy lowering, redundant configuration-write elimination and scoped
 configuration hoisting. Downstream MLIR/LLVM, linking, executable behavior and
 hardware correspondence remain outside this endpoint.
+
+The additional `host_graph_fusion` interface strengthens the existing logical
+graph proof through actual emitted helpers and every public result. It is an
+explicit tenth selector outside `all`, covering one region of static pure integer
+pointwise stages on both compiler routes. Fresh source-bound proof, replay,
+canonical worker enforcement and failed-product quarantine are implemented.
+The next graph extensions are multiple fused regions with exact adjacent joins,
+broader indexing/reduction domains, and composition with earlier layout rewrites.
+Each needs actual producer-boundary and mutation qualification. A concrete MLIR
+arithmetic bridge would strengthen the remaining primitive correspondence premise;
+the current common typed total pure-action interpretation remains explicit.
+See the [stack guide](../guides/lean_compiler_stack.md#logical-host-graph-fusion)
+and [qualification handoff](../../out/artifacts/audits/host-graph-fusion-20261029/README.md).
 
 This is a completion design, not a claim that the endpoint has been achieved.
 Current invocation examples and qualified domains are in

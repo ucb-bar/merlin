@@ -12,6 +12,9 @@ code_refs:
   - src/merlin/verify/compiler_loop_inner.py
   - src/merlin/verify/compiler_macc.py
   - src/merlin/verify/compiler_qdq.py
+  - src/merlin/verify/compiler_host_graph_fusion.py
+  - src/merlin/verify/host_graph_fusion_projection.py
+  - src/merlin/verify/lean/Merlin/HostGraphFusion.lean
   - src/merlin/verify/speculative_gate.py
   - src/merlin/llvmlower/lower.py
   - src/merlin/llvmlower/pipeline.py
@@ -48,7 +51,8 @@ Select transformations to change the compiler's output. Select validation to
 require a proof of their actual input/output boundaries. Both are opt-in.
 `--validate-passes all` selects DCE, CSE, loop and buffer checks. The explicit
 `bf16_f32acc_draft_contract`, proposed-model `lower_quant_ext` and ISA-specific
-`configuration_write_elision` / `configuration_loop_hoisting` checks stay outside `all`.
+`configuration_write_elision` / `configuration_loop_hoisting` checks stay outside `all`,
+as does the logical `host_graph_fusion` profile.
 Selecting checks does not enable transformations. A selected, changing boundary that cannot be proved
 stops compilation. An unchanged boundary needs no proof job.
 
@@ -102,6 +106,7 @@ emitted `.ll` and executing native outputs provide finite regression evidence.
 
 | Registered check | Where it runs | Small example | Established relation |
 | --- | --- | --- | --- |
+| `host_graph_fusion` (explicit only) | Actual host dispatch emission before preprocessing, on either compiler route | Group three connected integer tensor stages while retaining a producer result used elsewhere | Complete ordered public-result equality under common typed total pure actions |
 | `prune_dead_pure_tensor_ops` | xDSL preprocessing, before native lowering | Erase an unused `tensor.empty` | Tensor-stage strict refinement on declared input types, with source support checked |
 | `cse` | The build runner's leading tensor CSE | Two identical pure expressions share one result | Same tensor-stage strict refinement |
 | `ordered_loop_unrolling` | Optional source SCF stage at `lower_model` entry | Two consecutive iterations become two ordered lanes | Same returned values, modeled errors and terminal world in the scalar/SCF interpretation |
@@ -115,6 +120,58 @@ emitted `.ll` and executing native outputs provide finite regression evidence.
 These are separate relations. A buffer success proof does not establish the
 loop checker's error/world equality or finite-memory allocator behavior. No row
 proves the downstream LLVM/object implementation or hardware execution.
+
+## Logical host graph fusion
+
+Select `host_graph_fusion` through `PassValidation` or `MERLIN_VALIDATE_PASSES`.
+The transformation remains selected separately through
+`lower_model(..., graph_optimizations=contract, pass_validation=validation)`.
+The contract's `fusion_groups` selects actual entry operation indices, including
+tensor constructors. A selected fusion submits the actual module immediately
+before outlining and the actual module after helper emission. The existing
+speculative gate joins before compiler products can be returned and quarantines
+products on failure. The same hook serves `textual=False` and `textual=True`.
+Layout rewrites that precede this boundary need their own proof; this gate does
+not compose a layout-prefix theorem or certify downstream lowering.
+
+The independent projector expands actual private call definitions, binds formal
+arguments and results to the actual caller SSA values, and reads every public
+return. It does not accept the producer's fusion report as evidence.
+`Merlin.HostGraphFusion.check_sound` specializes the existing
+`GraphRegions.checkFusion_preserves_observers` theorem to the complete projected
+program. The checked target can hide internal SSA values only while publishing
+every result needed by the suffix or public return. Live-in port permutations
+are allowed with their actual body bindings.
+
+The profile requires one public single-block entry, positive static unencoded
+byte-addressable integer tensors, identity-indexed parallel pointwise bodies,
+initialized public inputs and unread destinations. One target call contains
+2–128 stages; other entry-level calls contain at most one. Only the existing closed
+integer scalar subset is admitted. Syntax guards bound IR bytes, nodes, expanded
+operations and call depth; no tensor elements are enumerated. Floating-point,
+reductions, dynamic shapes, poison modifiers, unknown effects and recursive or
+external reachable calls refuse. Unused private definitions are syntax checked;
+the theorem concerns the public entry, not equivalence of every private symbol.
+
+The relation assumes common total deterministic pure typed tensor actions and
+unobservable successful logical allocation. Parsing, SSA projection, canonical
+scalar-body keys and ordinary private-call semantics are trusted. This is a
+proof of logical dispatch grouping with complete public outputs, not a proof of
+concrete MLIR arithmetic, physical buffers, allocation failures or native fusion.
+The [assumption ledger](../../merlin/lean/LEDGER.md) records the boundary.
+
+The standalone API is `compiler_host_graph_fusion.check_boundary(before, after,
+destination, lean=...)`, followed by `deliver(completion)`. A live completion
+binds the exact sources, ledger, canonical proof closure and tool products.
+`replay(report_path, destination, lean=...)` uses the report only to locate its
+unchanged IR pair and runs a fresh proof. Saved success fields and copied tokens
+cannot authorize delivery. Direct API reports set `compiler_enforcement=False`;
+only the canonical compiler worker sets it to true after checking the boundary.
+
+The [qualification handoff](../../out/artifacts/audits/host-graph-fusion-20261029/README.md)
+contains reproducible commands and paper wording. The executable example and
+native/reference comparisons live in
+`merlin/tests/ir/test_compiler_host_graph_fusion.py`.
 
 ## Tensor DCE and CSE
 

@@ -166,24 +166,26 @@ the evidence, whether it is on the paper path, and its status. (Design §8.5.)
   this is not reported as a compiler fix or as whole-pass verification. The observed TinyLlama
   boundary uses named canonical matmuls and is not a replay of this witness.
 
-## F12 — per-channel i64 zero points still subtract after float conversion
+## F12 — corrected per-channel i64 subtraction order
 
-- **Observed:** `lower_quant_ext` uses integer promotion/subtraction for signed-i8, i32-zero-point,
-  f32 per-channel dequantization, but the equivalent i64 case falls through to separate f32
+- **Historical observation:** `lower_quant_ext` used integer promotion/subtraction for signed-i8, i32-zero-point,
+  f32 per-channel dequantization, but the equivalent i64 case fell through to separate f32
   conversions followed by floating subtraction. PyTorch v2.10.0 subtracts the integer tensors
   first, promoting signed bytes to the zero point's width.
 - **Executed witness:** signed byte `1`, i64 zero point `16777217`, f32 scale `1`. Pinned CPU
   PyTorch and the additive Lean source-contract candidate yield `-16777216`; actual Merlin
-  output, executed through native MLIR, yields `-16777215`. Both results are finite. No overflow,
+  output before the correction, executed through native MLIR, yielded `-16777215`. Both results are finite. No overflow,
   NaN, invalid input, or unregistered operation in the executed output is needed.
 - **Evidence:** `test_lean_w8a8_dequant_width.py`,
-  `test_actual_i64_channel_lowering_still_has_integer_promotion_discrepancy`. The candidate is
+  originally `test_actual_i64_channel_lowering_still_has_integer_promotion_discrepancy`, now
+  `test_actual_i64_channel_lowering_matches_integer_promotion`. The candidate is
   separately compared against pinned PyTorch and standard-MLIR arithmetic for both widths,
   per-tensor/per-channel order, integer endpoints, signed zero, scalar tensors and empty output.
-- **Status:** open; the production pass is unchanged. The candidate does not change the frozen
-  source dispatcher or qualify complete boundaries. TinyLlama's observed W8A8 reuse has per-tensor
-  zero-point-zero dequantization; it is not a replay of this per-channel witness. Source-contract
-  review and a separate compiler fix remain distinct obligations.
+- **Current status:** the production bug is corrected on both xDSL and textual routes as of
+  2026-10-28. Per-channel i64 remains outside the frozen Lean source dispatcher, so the compiler
+  regression does not qualify a complete formal boundary for that profile. Source-contract
+  review remains separate. TinyLlama's observed W8A8 reuse has per-tensor zero-point-zero
+  dequantization; it is not a replay of this per-channel witness.
 
 **Compiler correction (2026-10-28):** both structural and textual lowerings now promote signed
 i8 to the i32/i64 zero-point width, subtract there, and convert once. The retained witness is a

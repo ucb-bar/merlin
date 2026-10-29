@@ -83,6 +83,33 @@ example : Domain 32 failingConversionModel [] input scale zero := by
     assert "none" in result.stdout and "some" in result.stdout
 
 
+@pytest.mark.parametrize("kind", ["f16", "bf16"])
+def test_uniform_fusion_accepts_noninjective_extension(domain_tools, tmp_path, kind):
+    query = f"""import MerlinVerify.Rules.Bf16F32AccFusion
+open MerlinVerify MerlinVerify.Rules.Bf16F32AccContract MerlinVerify.Rules.Bf16F32AccFusion
+def collapsed : FloatModel where
+  op := fun _ _ _ => 0
+  cmp := fun _ _ _ _ => false
+  convert := fun _ _ _ _ => 0
+  toInt := fun _ _ _ _ => none
+  ofInt := fun _ _ _ _ => 0
+theorem noninjective : ¬ Function.Injective (ext collapsed .{kind}) := by
+  intro injective
+  have impossible : (0 : FBits .{kind}) = 1 := @injective 0 1 rfl
+  exact (by decide : (0 : FBits .{kind}) ≠ 1) impossible
+theorem all_bits (a b : FBits .{kind}) (acc : FBits .f32)
+    (fma : FBits .f32 → FBits .f32 → FBits .f32 → FBits .f32) :
+    step (fused collapsed .{kind} rfl fma) ⟨.contract, .contract⟩ a b acc =
+      fma (ext collapsed .{kind} a) (ext collapsed .{kind} b) acc :=
+  fused_step_on_image collapsed .{kind} rfl fma a b acc
+#print axioms noninjective
+#print axioms all_bits
+"""
+    result = check_query(domain_tools, tmp_path, query)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "sorryAx" not in result.stdout
+
+
 def test_mixed_initialized_trace_retains_initial_value_and_order(domain_tools, tmp_path):
     query = """import MerlinVerify.Rules.Bf16F32AccInitialized
 open MerlinVerify MerlinVerify.Sem.Ops.Linalg MerlinVerify.Rules

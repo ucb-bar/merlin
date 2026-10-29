@@ -1,0 +1,338 @@
+[
+  {
+    "path": "src/merlin/verify/lean_graph_loops_shape_runtime.py",
+    "line": 147,
+    "field": "python_interpreter_and_trace_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_state_configuration_capture.py",
+    "line": 154,
+    "field": "projection_trust",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 137,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_state_pipeline_capture.py",
+    "line": 148,
+    "field": "projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_state_pipeline_capture.py",
+    "line": 271,
+    "field": "projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/compiler_configuration_hoist_prefix.py",
+    "line": 72,
+    "field": "Python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/compiler_configuration_hoist_multi.py",
+    "line": 94,
+    "field": "Python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/configuration_hoist_bridge.py",
+    "line": 247,
+    "field": "Python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_state.py",
+    "line": 283,
+    "field": "projection_trust",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 379,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 282,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_regions_fusion.py",
+    "line": 172,
+    "field": "projection_trusted_python",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_regions_fusion.py",
+    "line": 200,
+    "field": "projection_trusted_python",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_capacity.py",
+    "line": 191,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_segment_project.py",
+    "line": 39,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_segment_project.py",
+    "line": 66,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/host_graph_fusion_intake.py",
+    "line": 162,
+    "field": "projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_memory_scf.py",
+    "line": 124,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_memory_scf.py",
+    "line": 49,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/configuration_elision_bridge.py",
+    "line": 417,
+    "field": "projection_is_trusted_python",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_regions_source.py",
+    "line": 29,
+    "field": "projection_trusted_python",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/buffer_reuse_bridge.py",
+    "line": 33,
+    "field": "projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+    "line": 279,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_state_integer_capture.py",
+    "line": 74,
+    "field": "projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops.py",
+    "line": 290,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_storage.py",
+    "line": 430,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_unroll_composition.py",
+    "line": 113,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_unroll_composition.py",
+    "line": 151,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/compiler_configuration_kernel.py",
+    "line": 114,
+    "field": "projection_is_trusted_python",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_regions_projection.py",
+    "line": 186,
+    "field": "projectionTrustedPython",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_shape.py",
+    "line": 109,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_shape.py",
+    "line": 36,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_regions.py",
+    "line": 310,
+    "field": "projection_trusted_python",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_regions.py",
+    "line": 369,
+    "field": "projection_trusted_python",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_shape_projection.py",
+    "line": 254,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_shape_epoch.py",
+    "line": 168,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_shape_epoch.py",
+    "line": 122,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+    "line": 169,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_segment.py",
+    "line": 296,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_segment.py",
+    "line": 205,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_state_pipeline_receipt.py",
+    "line": 227,
+    "field": "projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 133,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 208,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 80,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 124,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_regions_declared_pure_projection.py",
+    "line": 303,
+    "field": "trusted_host_projection",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_memory_scf_capture.py",
+    "line": 81,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_state_schedule_capture.py",
+    "line": 84,
+    "field": "projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_effects.py",
+    "line": 98,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_regions_capture.py",
+    "line": 217,
+    "field": "projection_trust",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_state_capture.py",
+    "line": 120,
+    "field": "projection_trust",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_state_capture.py",
+    "line": 182,
+    "field": "projection_trust",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 100,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 125,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 305,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 211,
+    "field": "python_projection_trusted",
+    "ledger_entry": "T7"
+  }
+]

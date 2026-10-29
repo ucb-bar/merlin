@@ -454,10 +454,11 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
 
         if not contract.independent_element_order_unobserved:
             raise ValueError("contraction layout requires explicit independent-element order permission")
-        if (not contract.floating_environment_unobserved_nontrapping
-                and any(isinstance(v.type, builtin.TensorType)
-                        and not isinstance(v.type.element_type, builtin.IntegerType)
-                        for op in module.walk() for v in (*op.operands, *op.results))):
+        if not contract.floating_environment_unobserved_nontrapping and any(
+            isinstance(v.type, builtin.TensorType) and not isinstance(v.type.element_type, builtin.IntegerType)
+            for op in module.walk()
+            for v in (*op.operands, *op.results)
+        ):
             raise GraphOptimizationUnavailable("contraction layout requires its unobserved floating environment")
         before_operations = sum(1 for _ in module.walk())
         reduction = orient_reductions(module)
@@ -469,6 +470,7 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
             "hardware_conformance": "not_established",
         }
     if contract.fusion_groups:
+        from merlin.verify import pass_validation
         from merlin.xdsl_dialects.lowering.dispatch_program import build_dispatch_program
         from merlin.xdsl_dialects.lowering.global_plan import ValueRepresentation
         from merlin.xdsl_dialects.lowering.global_plan_emission import emit_global_plan
@@ -479,6 +481,7 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
             plan_dispatch_fusion,
         )
 
+        fusion_input = text(module, generic=True) if pass_validation.selected("host_graph_fusion") else None
         original_count = sum(1 for _ in module.walk())
         outlined = outline_dispatches(module, forward=contract.entry)
         program = build_dispatch_program(outlined, entry=contract.entry)
@@ -510,6 +513,8 @@ def optimize_host_graph(source: str, contract: GraphOptimizationContract | HostG
             "cost_kind": "structural_dispatch_proxy",
             "source_correspondence": "static_pointwise_coordinates_and_scalar_regions",
         }
+        if fusion_input is not None:
+            pass_validation.submit("host_graph_fusion", fusion_input, text(module, generic=True))
     if _signature(module, contract.entry) != signature:
         raise ValueError("graph optimization changed the complete public entry ABI")
     output = text(module, generic=True)

@@ -124,5 +124,19 @@
     "proof": "ActualConfigurationHoist.complete_kernel",
     "limit": "V1\u2013V5 remain supported; V6 adds recursive positive counted Kernel loops. Original C64 emission/replay binds actual endpoint domains through extent2^63\u22121; ordinary calls retain the one-million cap. 78 installed pytest cases plus five separate legacy checks pass, including three public workers, fresh C64 replay, two genuine mutations and 27 finite native observations. Completion fields and dynamic configuration effects refuse; model/hardware/native/LLVM fidelity remain separate.",
     "in_all": false
+  },
+  {
+    "id": "host_graph_fusion",
+    "stage": "0 \u00b7 Logical host graph",
+    "title": "Host dispatch fusion",
+    "kind": "tensor",
+    "registered": true,
+    "boundary": "Actual module before outlining \u2192 actual emitted private helper calls, before preprocessing. Both compiler routes share this boundary.",
+    "interface": "--validate-passes host_graph_fusion\nlower_model(..., graph_optimizations=contract, pass_validation=validation)\n# contract.fusion_groups selects actual stages.",
+    "example": "a=x+y; b=a*y; c=b+x; d=b-a; e=c+d\n\u2192 group the middle stages into one private helper\nKeep public returns (e,b,a), including producer fanout.",
+    "claim": "Complete ordered public results agree under one common typed total pure tensor interpretation, using actual helper bodies and call bindings.",
+    "proof": "Merlin.HostGraphFusion.check_sound\nMerlin.GraphRegions.checkFusion_preserves_observers",
+    "limit": "Explicit only, outside all. One fused region with 2\u2013128 static integer pointwise stages; initialized inputs and successful unobservable logical allocation. Trusted Python projection/private-call fidelity. Floating-point, reductions, dynamic/encoded layouts and broader fusion refuse. No physical-buffer, allocation-failure or native/LLVM proof.",
+    "in_all": false
   }
 ]

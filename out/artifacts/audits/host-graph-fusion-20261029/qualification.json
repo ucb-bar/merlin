@@ -1,0 +1,591 @@
+{
+  "base_commit": "c95fb101271c93dabcf7ace72c509bf46398977c",
+  "compiler_receipts": [
+    {
+      "audit": {
+        "assurance": "lean_kernel_std3_no_native_reflection",
+        "axioms_used": [
+          "propext",
+          "Quot.sound",
+          "Classical.choice"
+        ],
+        "theorems_audited": 117,
+        "violations": []
+      },
+      "candidate": {
+        "authority": false,
+        "domain": "static-pure-integer-pointwise-single-host-region-v1",
+        "entry": "forward",
+        "final_root": "ActualHostFusion.complete",
+        "final_sha256": "0566c9e08c00f0398aa320e29213acc8af4002257bf5c713f268a5a2acd93a00",
+        "fused_stages": 3,
+        "identity": "4d826d0d78898bd5c495fc796efe119ad525bd38c5086274ba866a84e7988c39",
+        "module": "ActualHostFusion",
+        "premises": [
+          "trusted xDSL parsing, typed SSA projection and direct private-call expansion",
+          "each exact scalar-body key denotes the same total deterministic pure typed tensor action",
+          "all public input tensor cells are initialized; generic destinations are unread",
+          "logical tensor allocation is unobservable and does not fail",
+          "no proof of primitive MLIR fidelity, downstream lowering, native allocation or hardware behavior"
+        ],
+        "query_sha256": "c923bd15f4dcc2960cf7378e7faefa65681a8d9835f24111b271bc2c5187efd7",
+        "relation": "equal_complete_public_results_under_typed_total_pure_actions",
+        "roots": [
+          "Merlin.HostGraphFusion.check_sound",
+          "Merlin.GraphRegions.checkFusion_preserves_observers",
+          "ActualHostFusion.accepted",
+          "ActualHostFusion.complete"
+        ],
+        "schema": "merlin.host-graph-fusion.candidate.v1",
+        "source_sha256": "00d1a19871601e2103be9f13a734b7730ea571c593407ebe160d3fc7888041a6"
+      },
+      "compiler_verdict": {
+        "compiler_enforcement": true,
+        "path": "out/build/host-graph-fusion-20261029/pytest/v5/test_ordinary_compiler_gate_an0/gate/0001-host-graph-fusion/verdict.json",
+        "sha256": "034201f522e9fccfca41695eca2e75cfa1fd36d7e7a4c0ecfe1280985178ce35"
+      },
+      "fresh_artifact_refs": 1174,
+      "native_images": [
+        {
+          "path": "out/build/host-graph-fusion-20261029/pytest/v5/test_ordinary_compiler_gate_an0/baseline/model_host.so",
+          "sha256": "c88428f95c7e715ef4c693f306056e910b8b92f2463910a645fc092955a9c6e8"
+        },
+        {
+          "path": "out/build/host-graph-fusion-20261029/pytest/v5/test_ordinary_compiler_gate_an0/checked/model_host.so",
+          "sha256": "b7470f19bcb7257b410785bfcd6e483fa089ef85d62fd85a0d5d7f6b6b2db022"
+        }
+      ],
+      "path": "out/build/host-graph-fusion-20261029/pytest/v5/test_ordinary_compiler_gate_an0/gate/0001-host-graph-fusion/proof/REPORT.json",
+      "source_refs": 474,
+      "statement_hashes": {
+        "ActualHostFusion.accepted": "beadd74f4eea073b96ee5e9f8a853d9cc5750324bab1dff02d8b925cb7072dbb",
+        "ActualHostFusion.complete": "03ad24d97521121b8eb8c8a93e395a169e4f426e802efbc479c4e060e9f117d9",
+        "Merlin.GraphRegions.checkFusion_preserves_observers": "7a1a060a7a78e81f6dd5b11065d9cea0b046de44a74f6e93b8498d8407c97c51",
+        "Merlin.HostGraphFusion.check_sound": "931eecc4f19e51003f8c0cba52a9636c73f6c8d02823e62f86f08e6bc562582f"
+      }
+    },
+    {
+      "audit": {
+        "assurance": "lean_kernel_std3_no_native_reflection",
+        "axioms_used": [
+          "propext",
+          "Quot.sound",
+          "Classical.choice"
+        ],
+        "theorems_audited": 117,
+        "violations": []
+      },
+      "candidate": {
+        "authority": false,
+        "domain": "static-pure-integer-pointwise-single-host-region-v1",
+        "entry": "forward",
+        "final_root": "ActualHostFusion.complete",
+        "final_sha256": "0566c9e08c00f0398aa320e29213acc8af4002257bf5c713f268a5a2acd93a00",
+        "fused_stages": 3,
+        "identity": "4d826d0d78898bd5c495fc796efe119ad525bd38c5086274ba866a84e7988c39",
+        "module": "ActualHostFusion",
+        "premises": [
+          "trusted xDSL parsing, typed SSA projection and direct private-call expansion",
+          "each exact scalar-body key denotes the same total deterministic pure typed tensor action",
+          "all public input tensor cells are initialized; generic destinations are unread",
+          "logical tensor allocation is unobservable and does not fail",
+          "no proof of primitive MLIR fidelity, downstream lowering, native allocation or hardware behavior"
+        ],
+        "query_sha256": "c923bd15f4dcc2960cf7378e7faefa65681a8d9835f24111b271bc2c5187efd7",
+        "relation": "equal_complete_public_results_under_typed_total_pure_actions",
+        "roots": [
+          "Merlin.HostGraphFusion.check_sound",
+          "Merlin.GraphRegions.checkFusion_preserves_observers",
+          "ActualHostFusion.accepted",
+          "ActualHostFusion.complete"
+        ],
+        "schema": "merlin.host-graph-fusion.candidate.v1",
+        "source_sha256": "00d1a19871601e2103be9f13a734b7730ea571c593407ebe160d3fc7888041a6"
+      },
+      "compiler_verdict": {
+        "compiler_enforcement": true,
+        "path": "out/build/host-graph-fusion-20261029/pytest/v5/test_ordinary_compiler_gate_an1/gate/0001-host-graph-fusion/verdict.json",
+        "sha256": "0ee74b0fd778c63b618fe4b31134c715dde548ab6b975a29ef7563e169f47aae"
+      },
+      "fresh_artifact_refs": 1174,
+      "native_images": [
+        {
+          "path": "out/build/host-graph-fusion-20261029/pytest/v5/test_ordinary_compiler_gate_an1/baseline/model_host.so",
+          "sha256": "c88428f95c7e715ef4c693f306056e910b8b92f2463910a645fc092955a9c6e8"
+        },
+        {
+          "path": "out/build/host-graph-fusion-20261029/pytest/v5/test_ordinary_compiler_gate_an1/checked/model_host.so",
+          "sha256": "b7470f19bcb7257b410785bfcd6e483fa089ef85d62fd85a0d5d7f6b6b2db022"
+        }
+      ],
+      "path": "out/build/host-graph-fusion-20261029/pytest/v5/test_ordinary_compiler_gate_an1/gate/0001-host-graph-fusion/proof/REPORT.json",
+      "source_refs": 474,
+      "statement_hashes": {
+        "ActualHostFusion.accepted": "beadd74f4eea073b96ee5e9f8a853d9cc5750324bab1dff02d8b925cb7072dbb",
+        "ActualHostFusion.complete": "03ad24d97521121b8eb8c8a93e395a169e4f426e802efbc479c4e060e9f117d9",
+        "Merlin.GraphRegions.checkFusion_preserves_observers": "7a1a060a7a78e81f6dd5b11065d9cea0b046de44a74f6e93b8498d8407c97c51",
+        "Merlin.HostGraphFusion.check_sound": "931eecc4f19e51003f8c0cba52a9636c73f6c8d02823e62f86f08e6bc562582f"
+      }
+    }
+  ],
+  "domain": "static-pure-integer-pointwise-single-host-region-v1",
+  "implementation_commit": "1fe7c728a25e17d42c34619ef8d60f45e3f7ea9b",
+  "independent_compiler_replays": [
+    {
+      "report": "out/artifacts/audits/host-graph-fusion-20261029/compiler-replay-0/REPORT.json",
+      "sha256": "3bda90332e62398afa94435a1741a9f838abaf2295f4ea615257ad508245a624",
+      "theorems_audited": 117
+    },
+    {
+      "report": "out/artifacts/audits/host-graph-fusion-20261029/compiler-replay-1/REPORT.json",
+      "sha256": "198ae2ff19a34ae58a94ad0d77dddae6bbf300d4ba9dbaad928dc09ea899ef8e",
+      "theorems_audited": 117
+    }
+  ],
+  "qualification": {
+    "accepted_theorems_audited": 117,
+    "existing_graph_cases_passed": 71,
+    "native_routes": [
+      "xdsl",
+      "textual"
+    ],
+    "new_cases": 20,
+    "passed": 20,
+    "skipped": 0,
+    "valid_target_mutants_rejected": 5,
+    "worker_cases_passed": 33
+  },
+  "relation": "equal_complete_public_results_under_typed_total_pure_actions",
+  "repository_checks": {
+    "artifact_layout_findings": 48,
+    "baseline_source_comparison": [
+      {
+        "path": "examples/gemmini/phase1/launch/test_fresh_campaign_pair.py",
+        "sha256": "bcfff34cdb14c08082a5eb8183d0a88ff114517db70458f2e44926a60cfe8369",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "experiments/reference-data/public-matmul-event-trace-20261022/events.jsonl",
+        "sha256": "a827f96a2f632b0785bf971568f0d01d12f14cf972236d2558d160726526e74b",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "experiments/reference-data/public-scratchpad-row-arrivals-20261022/matmul-trace/events.jsonl",
+        "sha256": "a848021a7e473834ddf6eeb5961675e83b074ae8d4ab1299f22f0ca2953642f8",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "merlin/tests/infra/test_exploration_retention.py",
+        "sha256": "48535d1f1b5b4d9fa8338dceaaa205df5fdc1141a5095ea2bd2dd902f13f83a6",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "merlin/tests/infra/test_model_check_full_output_audit.py",
+        "sha256": "f8400306d1dbddb1aabc846f94d1cf118ed2e718971c0604676e77b575ba5c06",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "merlin/tests/infra/test_phase1_full_model_supervisor.py",
+        "sha256": "ae8411ba5a319ebb3bd448e4a07346f9a68dfd06b19ee5ebe601739aeb339e05",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin/targetgen/capsule_runner.py",
+        "sha256": "cd7c708f202981eb0cb42cbe7ea26831b4f41eacd7262dd98ee5aa1fb6b94cd0",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin/targetgen/owned_host_model_execution.py",
+        "sha256": "cf3987c327a936cba94906b6d747c6e7b11d99bbaccad4df5324655cf918bcc8",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/corpus/preparation.py",
+        "sha256": "7a248fc274e602aaf98e1a35f22be6eba3182ef82b68275c865155a15bbbc327",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/corpus/storage_budget_selection.py",
+        "sha256": "72421fe377e66b68989f630f2c889694d006e81beeb9204df735fbee52953530",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/authoring.py",
+        "sha256": "cabda1fbddc1fed217b38dd1d38253a1e77ea7d2c51d61e8087a51f2b391fbf1",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/brokers/model_check.py",
+        "sha256": "984b537fcfffefcd25cfabd52fbe352c2a14b29ab333d32186668ea45b9f82ac",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/brokers/selfcheck.py",
+        "sha256": "c7816238f8b71367a0b0f57e04b6beabe2899a2fb5a1201651c79495e0ec4f10",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/feedback/private_placement_feedback.py",
+        "sha256": "f20602e9ec0d2822a396b4d4665524155a45b5b41b3b8c7f00d9b00bb710137c",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/feedback/public_programs.py",
+        "sha256": "bab1dcf789da6a5cd34cc3ed56d513fe333b9fdea8d0d87b54a4b12c7189c9e3",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/fresh10_disclosure.py",
+        "sha256": "0ae34df8e1c6726054288dc4e5957c78f592dbb3eec87c949a22bd43bb3e4ff4",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/gemmini_gsim_alignment.py",
+        "sha256": "5dd8dc187e13e401976b0a9cceafcc6486c748c78bf6b1a8eeb45e438e2d6bde",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/joint_final_model_l3.py",
+        "sha256": "cc73c15acecf9fe6adfc5f14f2e076de6577e4121c37177a81f9c16f856fb1fa",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/providers/codex_agent.py",
+        "sha256": "c7939ec41da80cde9ace63be92e644263f8be3d4a13d56c69aed1a5551685ddb",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase1/seed_prep/baseline.py",
+        "sha256": "3049035631b00b27e083ee79adea95fba185c5e93ac2be93481388f14d0892b9",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase2/lean_native_evaluation.py",
+        "sha256": "0714e155f7962db19ab9495a6d6e2bd5b214a209b433e5a931004cf4bffb4d2d",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase2/owned_model_observation.py",
+        "sha256": "5550d553b2249a9fce041319a3c4e17c53c5035c8382d7d5001d13ea3b6208d0",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/phase2/task_window_profile.py",
+        "sha256": "005866930d551055caa1848e16ff3176ed9b95e3382b9286bcb23afa9aa29aa2",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/src/merlin_experiments/tracking/qualification_audit.py",
+        "sha256": "3248d09e83cdcc24bfbd17a3a390ee9e1f497486893e073aa37c6b7d3908f92d",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_background_grade_priority.py",
+        "sha256": "2f93a595628c18f7994695ec835827487eed673302f3e6b858f11e90302a375f",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_declared_bounds.py",
+        "sha256": "407cb91947f7fcc89c27df69368762eaf2ca65649361fa1ae43bb77d52959bd8",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_independent_model_promotion.py",
+        "sha256": "27334603966998b75149d6ac660e60ffae5759bc22d5e602fe23a224ec95e398",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_model_l3_certification.py",
+        "sha256": "52cceebd520655b61eaa02555814cbf2caaa50e92ce29d3b6d5f920074d664eb",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_phase1_driver_grade_reuse.py",
+        "sha256": "eae639e353b438430d9ebe4fedc776f3c3bea10cd85417c264cda0c5eb220283",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_phase1_loop_grading.py",
+        "sha256": "101b1f1da2fa32ccc08732559bbe03aa62d28e19af386270d3a14f18fef1d6b9",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_phase1_progress.py",
+        "sha256": "b52b3f594cecc678d5cb4797ed43d7245916421297b3ee8ea0cef355ab66f065",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_qualification_audit.py",
+        "sha256": "8de5bd02a5c9e253503c1c25176755d99128b548a3ab0af326612ab6bb219f49",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_reference_analysis_response.py",
+        "sha256": "49c509cd6886f059bd7ff6c72df7e82677534baef2821ff836985d940a945a1c",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_reference_analysis_usability.py",
+        "sha256": "30754a796da72d82c5699cb982aa0ca9fb85f84a5dab3de246b11a11ed6456b0",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_reference_experiment_feedback.py",
+        "sha256": "f496071f5e01b75a1fe94761b5c2f951fd0ff9b4cd482d0fe23cf405b3fb030c",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_reference_mechanisms.py",
+        "sha256": "e3179c376d23406d9a05308884145b3b5a44bf6bb878fdd9fa643621117d2041",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_rolling_observation_lane.py",
+        "sha256": "ad9a010abf61931ad394f05f423dd9625a8d92c35886506e12790b8605ff87e8",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_rolling_performance_feedback.py",
+        "sha256": "57bd7795234014fd8e96f0e65da1f1f0d256abbc0756ebf9398fe99ca74e9e60",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-experiments/tests/test_scratch_retention.py",
+        "sha256": "0f06dd80642f7cd1626c7a5dd1711b21dc60b46313f032a2d879d88c651c096d",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-mining/src/merlin/mining/reference_database.py",
+        "sha256": "63ece75e448df69f9514fecbd54fdc642a1c04019a03665e28f21837cb44fc11",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-mining/tests/test_reconstruction_experiments.py",
+        "sha256": "d1d3d899310a1be7cd84fce9e5474fcf80c04324c8921b96d36d0bfd8e66d3c5",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "packages/merlin-timing/src/merlin_timing/rocket_alu.py",
+        "sha256": "a4d345b9738bed76369a648e23a214d9316bc72a88e940cbbded4a55c4cbcebd",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/common/dense_float_ir.py",
+        "sha256": "7ac691a75dd946bff139f68f2943ab31da48480b63d3547dbadb10c638d4e575",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/compile/scheduling/block_schedule.py",
+        "sha256": "fd4997d265ec4d61c28e8b3bf2c06ad2985a1d83cd205072ac748ac777e8526c",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/compile/scheduling/convolution_exploration.py",
+        "sha256": "416dd0abe12bae6bae7da4eb540b74cc107771179be6be9f68e78bc2f1fdf892",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/compile/scheduling/dense_panel_pipeline.py",
+        "sha256": "598896efd707077493a5aee1b304720415d902920329995ed41c1e0dedbcc365",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/llvmlower/device_build.py",
+        "sha256": "139694644cb30c6d228dc676f740a66b7266a964a8b987f248666463311b9d62",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/llvmlower/group_profile_sibling.py",
+        "sha256": "22b608986d70e283b1aad4ed81ac288fd3ac06547b765b10b483df0adc8b6621",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/llvmlower/integer_convolution_calls.py",
+        "sha256": "426cdb4054a3fe1f315f86085749b69f7312be2e7e3ad87045cf73cfc48c3465",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/llvmlower/integer_matmul_calls.py",
+        "sha256": "4b21ad8ccb9a1cc15e72d2781b1d4c9ca6d7467192ac9c35de2abc8703062480",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/model_check/chain_image_counter.py",
+        "sha256": "57ffe8319c675bf79689346cca008b128e3c8017d4e94e8fe370e46e9c1859ed",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/runtime/backends/spike_model.py",
+        "sha256": "3671865182c7c16ea28d25199de62c0da18965d184a7d096bd72b68bc8598569",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/runtime/backends/zephyr_model.py",
+        "sha256": "7e0c3a43dcd254938205d7889c8ab1f56596a8515a740d0a76752f42b106467f",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/targetgen/_recipe_quantizer.py",
+        "sha256": "7f3cd0ee06f08442895aab0e9650476f4dd80e54c01d942837d96d31b527b56e",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/targetgen/corpus_spec.py",
+        "sha256": "bb805ba069d601c9f5a079491203d542eefcc07d183544e6bd3a29957af8c6ba",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/targetgen/package_runtime.py",
+        "sha256": "b8c935204e7a2af9b4016b268d9f6388744a49aa11ee6d9c73ed4ab383247e0c",
+        "unchanged_from_base": true
+      },
+      {
+        "path": "src/merlin/targetgen/rocc/operand_selection_recipe.py",
+        "sha256": "80842a535a359f8eef2b617d34ee962173983658f44ae76c17433725613efaf8",
+        "unchanged_from_base": true
+      }
+    ],
+    "core_dependency_findings": 2,
+    "frozen_files_and_pinned_statements": "all match; 235 statements",
+    "regex_findings": 44,
+    "structure_findings": 16,
+    "target_name_findings": 7
+  },
+  "repository_sources": {
+    "merlin/lean/LEDGER.md": "ed27c923f76a11961511370d11fb5e2946ed8ab0644810d38f1ee56e35c7cd17",
+    "src/merlin/common/owned_children.py": "d2a91a7ece8ddf33766d2f4145f7f0f3d9cc94daa138da2b0919a6a8ae659ad3",
+    "src/merlin/common/owned_group.py": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910",
+    "src/merlin/common/owned_process.py": "f19d83ed82d28a6df3097294c955e1f1278ec7146d8354bfaadab405b92a8f2f",
+    "src/merlin/common/paths.py": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+    "src/merlin/llvmlower/graph_optimizations.py": "f624204db1581aec4ce756c57e538d593f679b543cae41ad8ea1d25981650d3d",
+    "src/merlin/llvmlower/lower.py": "06d3bfa4ce75c59a8c3a40fe6d93cd652f8c5574bd865c3ff6ed6d1117415287",
+    "src/merlin/verify/compiler_host_graph_fusion.py": "e6103be46804dea9c2994b8ffd01e5213d6d136a64ba17bba12b053f8edfe095",
+    "src/merlin/verify/configuration_elision_bridge.py": "7b922eab2ade26f5afdb02dece40bf5ecc186f0394ab2e93fe83adfb8ff1a54a",
+    "src/merlin/verify/configuration_elision_gate.py": "33f155b825f68e88bb341df9f8f8735adb94f69091bcc6b055eca7a7aff54e69",
+    "src/merlin/verify/configuration_elision_runner.py": "46ff5ff992e6c6a054453d00762effaca401bfa792dcdbe5a1f810087b2b8e5d",
+    "src/merlin/verify/gate_checks.py": "1de6c07a31fd4ec42d7ccf9b8b96db5f84d08e6f64f248ae07b9a5174a2392ea",
+    "src/merlin/verify/gate_errors.py": "6a864a133d910a1237baecc053c58434b5e67c417cbbef09839ee2fb2a23fde0",
+    "src/merlin/verify/gate_worker.py": "3b41afd47735ba01a9978474cf239a53fa4ee104e7691abd299e7bfe7c2c28c6",
+    "src/merlin/verify/host_graph_fusion_intake.py": "d68127ddb8b3b1c02b94829bb8814a5718d3d06476b01819ed43f7ef66ed8380",
+    "src/merlin/verify/host_graph_fusion_projection.py": "a78f753112acf4dc8e77a6e7f342fa0f705478e6efde208196a641085b4a3651",
+    "src/merlin/verify/lean/Merlin/GraphRegions.lean": "dd54f1b6c42b1f4e84029461e15eb3f87e0810827fadc322326487a165d96bac",
+    "src/merlin/verify/lean/Merlin/GraphRegionsFusion.lean": "7076119973823d6f1e9e5e09e5f4b8c23a679423c37475f6b78fe99329f45949",
+    "src/merlin/verify/lean/Merlin/GraphStateAudit.lean": "377eb83eafd6c8d5a625c59f6dbe59d762b4aff003894efcc51df4944580bf99",
+    "src/merlin/verify/lean/Merlin/HostGraphFusion.lean": "49eb779117356e0755f03897a28e042628ad850ad10d3826a8af478cd2da1f95",
+    "src/merlin/verify/lean/Merlin/StateEffects.lean": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+    "src/merlin/verify/lean_graph_regions.py": "a8d2c97cedc1bbd04526dd297cb704314125cee637a98d5baedabe272dc87e74",
+    "src/merlin/verify/lean_graph_regions_projection.py": "b2027c05480da2319468c3f1c35de2b15e58b0eb9e882200f3b476c77f029baf",
+    "src/merlin/verify/pass_validation.py": "dcef99a90df4f78143b8236c23e8ef1b29e57b3ae3608c3e1e481526adc3cb75",
+    "src/merlin/verify/speculative_gate.py": "96234d7efc363fa007ddccdb15f3f7298e5c1eaa8fb52f3a63c3b024eb52195b",
+    "src/merlin/xdsl_dialects/lowering/dispatch_program.py": "53dddb77e5594528abbbfb57788af201d711de26bca901e1d1c963d1ef9bc777",
+    "src/merlin/xdsl_dialects/lowering/global_plan_emission.py": "eba9d7e433be44662d5c90d3eff723a0a5c4bcdd4f0d85422e9def71e43ee33d",
+    "src/merlin/xdsl_dialects/lowering/outline.py": "75d6d0a5347fee2bd61ef1f1a39a14651b64216d48c066a000e0943dc4792efd",
+    "src/merlin/xdsl_dialects/lowering/outlined_plan_emission.py": "8bb9f3c0a5fc76b0f3b1e329c730bb3be5478ecd075e718a1dc60a6bd183fee6"
+  },
+  "runs": {
+    "host-regressions-fixed": {
+      "errors": "0",
+      "failures": "0",
+      "hostname": "jmills-framework",
+      "log": "host-regressions-fixed.log",
+      "log_sha256": "85bb03a7e65cdad2964c9c0f8ca911c3c4dd64eb26a6064164f43e606de4bcb5",
+      "name": "pytest",
+      "skipped": "0",
+      "tested_source_commit": "6796c86080d25c6dc224305c478b6ac5cd4bb07c",
+      "tests": "71",
+      "time": "3.303",
+      "timestamp": "2026-10-29T13:14:38.894649-07:00",
+      "xml": "host-regressions-fixed.xml",
+      "xml_sha256": "eb5aa1f74ace4c6f819b608502483b02d7f85baf8e057385251ebf97b777a398"
+    },
+    "layout": {
+      "errors": "0",
+      "failures": "1",
+      "hostname": "jmills-framework",
+      "log": "layout.log",
+      "log_sha256": "431dff8bb5c2df21c43c54e14e340b9d11541c1102d9965978fe3feeec3898bf",
+      "name": "pytest",
+      "skipped": "3",
+      "tested_source_commit": "6796c86080d25c6dc224305c478b6ac5cd4bb07c",
+      "tests": "173",
+      "time": "25.098",
+      "timestamp": "2026-10-29T13:14:51.883205-07:00",
+      "xml": "layout.xml",
+      "xml_sha256": "0966e80903e974681512f7c5ffa81b9eaf635ea32d14243222e4ff45da6951d5"
+    },
+    "qualification-v4": {
+      "errors": "0",
+      "failures": "2",
+      "hostname": "jmills-framework",
+      "interrupted": true,
+      "log": "qualification-v4.log",
+      "log_sha256": "88d0d4c77c20319963d555938dbc76d765bbe5c844476edfec1dc36b8a1e6a3a",
+      "name": "pytest",
+      "skipped": "0",
+      "tested_source_commit": "1fe7c728a25e17d42c34619ef8d60f45e3f7ea9b",
+      "tests": "127",
+      "time": "539.733",
+      "timestamp": "2026-10-29T13:11:34.252411-07:00",
+      "xml": "qualification-v4.xml",
+      "xml_sha256": "eed90a77d06dd921b42b59a78850289b0b82453b4fad080b1a5571547f79346d"
+    },
+    "qualification-v5": {
+      "errors": "0",
+      "failures": "0",
+      "hostname": "jmills-framework",
+      "log": "qualification-v5.log",
+      "log_sha256": "5d5813245d04e4d8b1ff2be73f746d095fb3e94943fae1a6d0920be7bd56538a",
+      "name": "pytest",
+      "skipped": "0",
+      "tested_source_commit": "1fe7c728a25e17d42c34619ef8d60f45e3f7ea9b",
+      "tests": "20",
+      "time": "106.144",
+      "timestamp": "2026-10-29T13:13:54.061641-07:00",
+      "xml": "qualification-v5.xml",
+      "xml_sha256": "69d50afb83c8567063ecd797f1d2970b6be7924de2424aaaff2190c19113218d"
+    },
+    "worker-regressions": {
+      "errors": "0",
+      "failures": "0",
+      "hostname": "jmills-framework",
+      "log": "worker-regressions.log",
+      "log_sha256": "de7abd19539483f401034c0b536950d9013949fb5e53ae73789585c930d53e6a",
+      "name": "pytest",
+      "skipped": "0",
+      "tested_source_commit": "6796c86080d25c6dc224305c478b6ac5cd4bb07c",
+      "tests": "33",
+      "time": "21.192",
+      "timestamp": "2026-10-29T13:20:33.837996-07:00",
+      "xml": "worker-regressions.xml",
+      "xml_sha256": "345a49616cc904dc4dfa1c1d207ab4bd2bb1b5c4812dcc281715a5095b952dce"
+    }
+  },
+  "schema": "merlin.host-graph-fusion.qualification.v1",
+  "scope_exclusions": {
+    "legacy_graph_capture_paths_account_redacted": true,
+    "legacy_graph_capture_prerequisites": {
+      "/home/<user>/Projects/merlin-graph-proof-intake": false,
+      "/home/<user>/Projects/model2MLIR/.venv/bin/python": false
+    },
+    "release_wheel_qualification": "not performed",
+    "remaining_representative_corpus_cases": "not run; broad DCE/CSE sweep interrupted"
+  },
+  "source_inventory_sha256": "ec841ef10f9d7be9783c61666ac5dd35ed6ac575889632c8221c2377047e2bdf",
+  "test_repair_commit": "6796c86080d25c6dc224305c478b6ac5cd4bb07c",
+  "test_sources": {
+    "merlin/tests/ir/host_graph_fusion_cases.py": "e82dbb8f204e609c0a78e37803b13ca04b87797dab39729050c4e9d1178dc147",
+    "merlin/tests/ir/test_compiler_host_graph_fusion.py": "d6c3081a98db6e346f3e9a4c48eba24474916cb6b04dc3f99b308046426adc57",
+    "merlin/tests/ir/test_host_graph_optimizations.py": "018cf59eacc5c3b89ef881a09e1b484304ff1a18d92e106e45db004892e95928",
+    "merlin/tests/ir/test_host_graph_policy.py": "cfe441b62bad6fe72ed4812082df63fbfa3f8fae3fc9808fcce383bfc7ca2a8c",
+    "merlin/tests/ir/test_lean_pass_gate.py": "94f34c47088d5234e6c70a601ff45daec0b12dc9cd7b41a1c1fbd9780f6ceae5",
+    "merlin/tests/ir/test_pass_gate_audit_freshness.py": "5bcf24c7c5d5e16659a3d46f91f203f7de9b9bce6dc75e170675fc75081b13f8",
+    "merlin/tests/ir/test_speculative_gate.py": "1b4ba9598b65bdbb1bdb5ccfdc0d4cdc6b2a49e0b15638a11bd1d1e0eed32498"
+  },
+  "versions": {
+    "clang": "clang version 23.1.0 (https://github.com/llvm/llvm-project ea7d852a70e8bdfaf601d6626a760f9771b2c4b4)",
+    "compiler": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]\ntorch-mlir 20260531.828",
+    "lean": "Lean (version 4.35.0, x86_64-unknown-linux-gnu, commit eb6cafb7290e8bd5f2937522d8d804f58f02bafc, Release)",
+    "python": "3.14.4 (main, Apr 14 2026, 14:26:14) [Clang 22.1.3 ]",
+    "xdsl": "0.68.0"
+  }
+}

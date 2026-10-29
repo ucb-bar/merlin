@@ -83,7 +83,9 @@ def test_shared_producer_and_multiple_ordered_outputs_are_checked_and_executed()
     source = source.replace("func.return %r : tensor<2x3xi32>", "func.return %r,%a : tensor<2x3xi32>,tensor<3x2xi32>")
     # Read the shared producer in its existing layout while directly writing
     # the next pointwise result in the return layout. Do not recompute %a.
-    source = source.replace("  %e2 = tensor.empty()", """  %next_empty = tensor.empty() : tensor<3x2xi32>
+    source = source.replace(
+        "  %e2 = tensor.empty()",
+        """  %next_empty = tensor.empty() : tensor<3x2xi32>
   %next = linalg.generic {indexing_maps=[affine_map<(d0,d1)->(d0,d1)>,
    affine_map<(d0,d1)->(d0,d1)>],iterator_types=["parallel","parallel"]}
    ins(%a:tensor<3x2xi32>) outs(%next_empty:tensor<3x2xi32>) {
@@ -92,7 +94,8 @@ def test_shared_producer_and_multiple_ordered_outputs_are_checked_and_executed()
     %sum = arith.addi %value,%two : i32
     linalg.yield %sum : i32
   } -> tensor<3x2xi32>
-  %e2 = tensor.empty()""")
+  %e2 = tensor.empty()""",
+    )
     source = source.replace("ins(%a:tensor<3x2xi32>) outs(%e2", "ins(%next:tensor<3x2xi32>) outs(%e2")
     optimized, report = optimize_host_graph(source, _layout(source))
     assert report["layout"]["pointwise_work"]["before_scalar_evaluations"] == 18
@@ -301,6 +304,8 @@ def test_actual_lowering_route_invokes_selected_graph_hook_and_preserves_default
 
     monkeypatch.setattr(lower, "lower_to_llvm_ir", llvm_boundary)
     monkeypatch.setenv("MERLIN_STATIC_ARENA", "")
+    # This hook-only test stubs the backend that emits copy-removal reports.
+    monkeypatch.setenv("MERLIN_AUTOMATIC_HOST_COPIES", "0")
     source = _source()
     baseline = lower.lower_model(source, tmp_path / "baseline", targets=())
     selected = lower.lower_model(source, tmp_path / "selected", targets=(), graph_optimizations=_layout(source))
@@ -321,26 +326,30 @@ def _mixed_source():
     start, end = source.index("  %e ="), source.index("  func.return")
     body = source[start:end].replace("ins(%x:", "ins(%produced:")
     body = body.replace("linalg.yield %sum", "%shifted = arith.addf %sum,%zero : f32\n    linalg.yield %shifted")
-    return source[:start] + """
+    return (
+        source[:start]
+        + """
   %zero = arith.constant 0.0 : f32
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c3 = arith.constant 3 : index
   %loop = scf.for %i = %c0 to %c3 step %c1 iter_args(%current=%x) -> (tensor<3x3xf32>) {
    %produced = func.call @producer(%current) : (tensor<3x3xf32>) -> tensor<3x3xf32>
-""" + body + """
+"""
+        + body
+        + """
    scf.yield %r : tensor<3x3xf32>
   }
   func.return %loop : tensor<3x3xf32>
  }
  func.func private @producer(tensor<3x3xf32>) -> tensor<3x3xf32>
 }"""
+    )
 
 
 def test_mixed_nested_calls_captures_and_declarations_are_checked():
     source = _mixed_source()
-    optimized, report = optimize_host_graph(source, _layout(
-        source, floating_environment_unobserved_nontrapping=True))
+    optimized, report = optimize_host_graph(source, _layout(source, floating_environment_unobserved_nontrapping=True))
     assert "scf.for" in optimized and "producer" in optimized
     assert report["layout"]["after_transpose_bytes"] == 0
     passes = report["layout"]["passes"]
@@ -360,8 +369,9 @@ def test_mixed_layout_corruption_is_rejected_independently(monkeypatch, mutation
     def corrupt(module, **kwargs):
         report = real(module, **kwargs)
         if mutation == "capture":
-            constant = next(op for op in module.walk()
-                            if type(op) is arith.ConstantOp and op.results[0].type == builtin.f32)
+            constant = next(
+                op for op in module.walk() if type(op) is arith.ConstantOp and op.results[0].type == builtin.f32
+            )
             constant.properties["value"] = builtin.FloatAttr(-0.0, builtin.f32)
         elif mutation == "opaque_operand":
             call = next(op for op in module.walk() if op.name == "func.call")
@@ -396,8 +406,9 @@ def test_unknown_executable_metadata_is_a_barrier(operation):
 def test_layout_growth_is_bounded_before_scalar_region_expansion():
     source = _mixed_source()
     with pytest.raises(ValueError, match="compilation-space"):
-        optimize_host_graph(source, _layout(source, maximum_added_operations=1,
-                                           floating_environment_unobserved_nontrapping=True))
+        optimize_host_graph(
+            source, _layout(source, maximum_added_operations=1, floating_environment_unobserved_nontrapping=True)
+        )
 
 
 def test_independent_checker_detects_read_moved_after_opaque_mutation():
@@ -439,8 +450,8 @@ def test_saved_graph_artifact_custody_rejects_changed_bytes(tmp_path, mutation):
     contract = _layout(source)
     selected, report = optimize_host_graph(source, contract)
     input_path, selected_path, report_path = (
-        tmp_path / name for name in (
-            "host-graph-input.mlir", "host-graph-optimized.mlir", "host-graph-optimization.json")
+        tmp_path / name
+        for name in ("host-graph-input.mlir", "host-graph-optimized.mlir", "host-graph-optimization.json")
     )
     input_path.write_text(source)
     selected_path.write_text(selected)
@@ -465,8 +476,10 @@ def test_same_typed_opaque_results_have_distinct_checked_identities():
     from merlin.llvmlower.graph_optimizations import _check_layout_output, _layout_bodies
 
     source = _mixed_source().replace(
-        "  %e = tensor.empty()", "  %other = func.call @producer(%current) : (tensor<3x3xf32>) -> tensor<3x3xf32>\n"
-        "  %e = tensor.empty()", 1)
+        "  %e = tensor.empty()",
+        "  %other = func.call @producer(%current) : (tensor<3x3xf32>) -> tensor<3x3xf32>\n  %e = tensor.empty()",
+        1,
+    )
     original = parse_mlir_text(source)
     modified = original.clone()
     calls = [op for op in modified.walk() if op.name == "func.call"]
@@ -500,9 +513,13 @@ def test_alias_cancellation_retains_snapshot_across_later_effect():
     _check_layout_output(original, module, _layout_bodies(original))
 
 
-@pytest.mark.parametrize("dtype,before,after", [
-    ("f32", "7f800001", "7fc00001"), ("f64", "7ff0000000000001", "7ff8000000000001"),
-])
+@pytest.mark.parametrize(
+    "dtype,before,after",
+    [
+        ("f32", "7f800001", "7fc00001"),
+        ("f64", "7ff0000000000001", "7ff8000000000001"),
+    ],
+)
 @pytest.mark.parametrize("location", ["constant", "nested_metadata"])
 def test_exact_dense_nan_bits_cannot_be_changed_by_default_attribute_printing(dtype, before, after, location):
     from xdsl.dialects import builtin
@@ -546,8 +563,7 @@ def test_provenance_on_scalar_yield_preserves_checked_layout_optimization():
     from xdsl.dialects import builtin
 
     source = _annotated_source()
-    selected, report = optimize_host_graph(source, _layout(
-        source, floating_environment_unobserved_nontrapping=True))
+    selected, report = optimize_host_graph(source, _layout(source, floating_environment_unobserved_nontrapping=True))
     assert report["layout"]["after_transpose_bytes"] == 0
     yields = [op for op in parse_mlir_text(selected).walk() if op.name == "linalg.yield"]
     assert sum(op.attributes.get("prov.source") == builtin.StringAttr("logical-origin") for op in yields) == 1
@@ -609,8 +625,7 @@ def test_independent_work_check_rejects_numerically_identical_shared_recomputati
     from merlin.llvmlower.graph_optimizations import _check_layout_output, _layout_bodies
 
     source = _source(3, 3).replace("-> tensor<3x3xi32> {", "-> (tensor<3x3xi32>,tensor<3x3xi32>) {")
-    source = source.replace("func.return %r : tensor<3x3xi32>",
-                            "func.return %r,%a : tensor<3x3xi32>,tensor<3x3xi32>")
+    source = source.replace("func.return %r : tensor<3x3xi32>", "func.return %r,%a : tensor<3x3xi32>,tensor<3x3xi32>")
     original = parse_mlir_text(source)
     modified = original.clone()
     generic = next(op for op in modified.walk() if op.name == "linalg.generic")

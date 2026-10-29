@@ -25,6 +25,7 @@ BUILTIN_CHECKS = (
     "compiler_qdq_refinement",
     "compiler_configuration_refinement",
     "compiler_configuration_hoist_refinement",
+    "compiler_host_graph_fusion",
 )
 
 
@@ -65,6 +66,27 @@ def _stop_group(signum, frame) -> None:
 
 
 def _require_builtin_result(name, detail):
+    if name == "compiler_host_graph_fusion":
+        from .gate_errors import GateRejected
+        from .host_graph_fusion_intake import DOMAIN, RELATION, ROOT
+
+        if (
+            type(detail) is not dict
+            or detail.get("schema") != "merlin.host-graph-fusion.gate.v1"
+            or detail.get("status") != "checked"
+            or detail.get("domain") != DOMAIN
+            or detail.get("relation") != RELATION
+            or detail.get("compiler_enforcement") is not True
+            or detail.get("native_fidelity") is not False
+            or type(detail.get("theorems")) is not list
+            or ROOT not in detail["theorems"]
+            or type(detail.get("entry")) is not str
+            or not detail["entry"]
+            or type(detail.get("fused_stages")) is not int
+            or not 2 <= detail["fused_stages"] <= 128
+        ):
+            raise GateRejected("host fusion handler did not establish complete public-result preservation")
+        return
     if name == "compiler_memory_dce_refinement":
         from .compiler_memory_dce import DOMAIN, RELATION, ROOTS
         from .gate_errors import GateRejected

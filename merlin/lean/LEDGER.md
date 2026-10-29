@@ -3,6 +3,46 @@
 Everything a verified claim depends on without proving it (design §10). Each entry says what is
 assumed, why, and what evidence stands behind it. A claim that relies on an entry must cite it.
 
+This is a current assumption inventory. Dated test counts retain their original
+source cuts and do not establish freshness after an edit to this file. Historical
+counterexamples and corrections live in [findings.md](findings.md); a repaired
+compiler bug and an unproved semantic extension are separate statuses.
+
+Lean source paths below are relative to the repository root. The tensor/numerical
+tree is `merlin/lean/MerlinVerify/`; the separate graph/loop/state library is
+`src/merlin/verify/lean/Merlin/`. A theorem namespace is not a filesystem path.
+
+## Actual logical host dispatch fusion
+
+The explicit `host_graph_fusion` compiler check is outside `all`.
+`Merlin.HostGraphFusion.check_sound` connects the actual projected target call
+body to the existing `GraphRegions` observer-preservation theorem. It proves
+equality of the complete ordered public results, including producer fanout and
+unchanged prefix/suffix computations, for every well-typed state under a common
+typed total pure-action interpretation. No local native-implementation equality
+premise or producer report supplies the target body.
+
+The admitted source is one public single-block entry with positive static,
+unencoded, byte-addressable integer tensors and identity-indexed parallel
+pointwise generics. Supported scalar bodies are the existing closed total
+integer subset, with no poison-generating modifiers or destination reads.
+Direct private calls are expanded with actual typed argument/result bindings.
+One target call may fuse 2 through 128 stages; other calls contain at most one
+stage. Input-port permutations are allowed only with their actual body bindings
+and a checked live-input permutation. Every public output and the complete
+expanded primitive sequence must match. Shape elements are not enumerated.
+
+Trust boundaries T7 and A10 cover xDSL parsing and source projection, ordinary private-call
+semantics, canonical scalar-body keys, the common typed pure tensor actions,
+initialized public inputs and unobservable successful logical allocation.
+Kernel soundness is relative to that model. It does not prove the actions agree
+with concrete MLIR arithmetic, allocation failures, physical buffers, downstream
+MLIR/LLVM or hardware. This is dispatch grouping, not scalar-loop fusion or a
+performance theorem. Floating-point, reductions, dynamic/encoded layouts,
+external/effectful calls, uninitialized reads and broader fusion patterns refuse.
+Fresh canonical proof objects, audited roots, source/ledger/tool bytes and live
+process ownership are required for delivery. Serialized reports grant no authority.
+
 ## Integration status — 2026-10-29
 
 The current collaboration branch is `feat/pass-verif-integration`. Its five
@@ -16,7 +56,7 @@ instruction IR and straight-line Kernel scheduling. Installed consumer/worker
 qualification includes actual bare instruction and ordinary schedule/native
 paths. `configuration_loop_hoisting` also guards the public producer before its
 ordinary Kernel consumer. Both remain outside `all` and require original selected
-ISA/effect inputs. Hoisting retains its all-index `Models` premise and scoped
+ISA/effect inputs (A10), with Python/xDSL correspondence under T7. Hoisting retains its all-index `Models` premise and scoped
 positive-loop profile; finite host bounds/native examples do not discharge it.
 The additive V3 prefix checker derives sequential last-write-wins assignments
 and preserves complete partial outcomes for multiple/overlapping pure setters,
@@ -75,7 +115,7 @@ coverage limits recorded below. This integration adds no numerical admission,
 float law, approved source contract or changed A9 assumption. Approved numerical
 policy gates remain unavailable; `all` does not request draft MACC conformance.
 
-The additive `Check/Bf16F32AccBoundary.lean` packages the existing candidate
+The additive `merlin/lean/MerlinVerify/Check/Bf16F32AccBoundary.lean` packages the existing candidate
 reference equality and strict local-site qualification behind a nonempty-site
 check. Its theorem compiled with only the standard three axioms. It is not
 independent numerical approval or a new float law. The explicit compiler check
@@ -93,7 +133,8 @@ profiles retain their separate declared parameter domains.
 Complete syntax, symbolic-expression, query-size and runtime resource budgets
 still apply; they do not supply semantic premises. Existing narrower
 standalone source-profile declarations retain their original limits. The new
-`GraphLoopsShape.Identity` checker bridges unchanged normalization with exact
+`Merlin.GraphLoopsShape.Identity` checker
+(`src/merlin/verify/lean/Merlin/GraphLoopsShapeIdentity.lean`) bridges unchanged normalization with exact
 complete syntax equality and zero rewrite sites, preserving the original
 changed-normalization checker. One-to-one private reuse plans retain every
 allocation/free binding. New additive untiled initializer simulation lemmas
@@ -181,15 +222,16 @@ source/format campaigns remain separate from these completed tests.
 
 | Id | Assumption | Where | Evidence / justification |
 |---|---|---|---|
-| A1 | A failing `cf.assert` (or poison condition) is UB: claims hold for inputs on which the source's assertions pass. | `Sem/Ops/Cf.lean` | MLIR aborts; abort is not modelled as an outcome. |
-| A2 | `arith.remsi INT_MIN, -1 = 0` (defined). | `Sem/Ops/Arith.lean` | The Arith spec only names division by zero as UB for `remsi`; LLVM `srem` would make it UB. |
-| A3 | A poison dividend with divisor `-1` in a signed division is UB; a poison divisor is UB. | `Sem/Ops/Arith.lean` | Poison may take the triggering value (`INT_MIN`, `0`); matches LLVM/Alive2 practice. |
-| A4 | `tensor.extract`/`tensor.insert` out of bounds, or with a poison index, is UB. | `Sem/Ops/Tensor.lean` | MLIR leaves out-of-bounds access undefined. |
-| A5 | A structured op's reductions run in lexicographic order of its iteration space. | `Sem/Ops/Linalg.lean` | The order `convert-linalg-to-loops` materializes; integer results are order-independent. The host differential corpus now exercises order-sensitive f32/f64 matmul without fusion or reassociation; other reductions and lowering configurations remain assumptions. See `docs/guides/lean_differential_tests.md`. |
-| A6 | Named linalg ops mean their structured generic form. Map bodies receive inputs followed by the destination element. | `Sem/Ops/LinalgNamed.lean` | Reviewed correction from the legacy inputs-only convention to LLVM [f5e175f](https://github.com/llvm/llvm-project/commit/f5e175f06dacf6751f27f7a4bd9e9a3489e95a5e); executable compiler probes and host comparisons qualify explicit cases. Map progress/definedness and map-to-generic rewriting on typed inputs are now proved. Runtime ranks are established through checked SSA execution; typed receipts/chains preserve that domain. Adjacent closed-expression motion has a separate universal proof, including captured-constant hoisting across static tensor.empty. Adjacent region-free independent operand-taking motion now has a separate source-success proof, with symmetric SSA dependency checks. General non-adjacent and nested motion remain outside this rule. These transformation proofs do not prove general fidelity to MLIR; see `docs/guides/lean_differential_tests.md`. |
-| A7 | `tensor.empty` is a tensor of poison. | `Sem/Ops/Tensor.lean` | MLIR leaves its contents unspecified. As a source, poison is the reading every value refines, so a target may read anything there; as a target, a read of it refines only a source that is also poison there. Treating it as poison is therefore never more permissive than "unspecified" towards the target. |
-| A8 | Integer division overflow (`INT_MIN / -1`) is UB at every width, i1 included. | `Sem/Ops/Arith.lean` | The Arith spec makes signed division overflow UB; for i1, `(-1) / (-1) = 1` is not representable. |
-| A9 | `quant_ext.dequantize_per_tensor`, `quant_ext.dequantize_per_channel` and `quant_ext.quantize_per_tensor` (region-free, value results) only compute their results, so DCE may erase them and CSE may reuse their executed values. | `Rules/Dce.lean` (`dequantOp`, `quantizeOp`), `Check/ExactCse.lean` | Purity is a premise of the three modeled Q/DQ operations; it is not inferred from the dialect name. Current production pruning conservatively retains unregistered Q/DQ until typed lowering. Only these three, whose meanings `Sem/Ops/{Dequant,Quantize}.lean` model, are admitted by the formal rules; other `quant_ext` operations stay ineligible. This wording correction does not change A9. |
+| A1 | A failing `cf.assert` (or poison condition) is UB: claims hold for inputs on which the source's assertions pass. | `merlin/lean/MerlinVerify/Sem/Ops/Cf.lean` | MLIR aborts; abort is not modelled as an outcome. |
+| A2 | `arith.remsi INT_MIN, -1 = 0` (defined). | `merlin/lean/MerlinVerify/Sem/Ops/Arith.lean` | The Arith spec only names division by zero as UB for `remsi`; LLVM `srem` would make it UB. |
+| A3 | A poison dividend with divisor `-1` in a signed division is UB; a poison divisor is UB. | `merlin/lean/MerlinVerify/Sem/Ops/Arith.lean` | Poison may take the triggering value (`INT_MIN`, `0`); matches LLVM/Alive2 practice. |
+| A4 | `tensor.extract`/`tensor.insert` out of bounds, or with a poison index, is UB. | `merlin/lean/MerlinVerify/Sem/Ops/Tensor.lean` | MLIR leaves out-of-bounds access undefined. |
+| A5 | A structured op's reductions run in lexicographic order of its iteration space. | `merlin/lean/MerlinVerify/Sem/Ops/Linalg.lean` | The order `convert-linalg-to-loops` materializes; integer results are order-independent. The host differential corpus now exercises order-sensitive f32/f64 matmul without fusion or reassociation; other reductions and lowering configurations remain assumptions. See `docs/guides/lean_differential_tests.md`. |
+| A6 | Named linalg ops mean their structured generic form. Map bodies receive inputs followed by the destination element. | `merlin/lean/MerlinVerify/Sem/Ops/LinalgNamed.lean` | Reviewed correction from the legacy inputs-only convention to LLVM [f5e175f](https://github.com/llvm/llvm-project/commit/f5e175f06dacf6751f27f7a4bd9e9a3489e95a5e); executable compiler probes and host comparisons qualify explicit cases. Map progress/definedness and map-to-generic rewriting on typed inputs are now proved. Runtime ranks are established through checked SSA execution; typed receipts/chains preserve that domain. Adjacent closed-expression motion has a separate universal proof, including captured-constant hoisting across static tensor.empty. Adjacent region-free independent operand-taking motion now has a separate source-success proof, with symmetric SSA dependency checks. General non-adjacent and nested motion remain outside this rule. These transformation proofs do not prove general fidelity to MLIR; see `docs/guides/lean_differential_tests.md`. |
+| A7 | `tensor.empty` is a tensor of poison. | `merlin/lean/MerlinVerify/Sem/Ops/Tensor.lean` | MLIR leaves its contents unspecified. As a source, poison is the reading every value refines, so a target may read anything there; as a target, a read of it refines only a source that is also poison there. Treating it as poison is therefore never more permissive than "unspecified" towards the target. |
+| A8 | Integer division overflow (`INT_MIN / -1`) is UB at every width, i1 included. | `merlin/lean/MerlinVerify/Sem/Ops/Arith.lean` | The Arith spec makes signed division overflow UB; for i1, `(-1) / (-1) = 1` is not representable. |
+| A9 | `quant_ext.dequantize_per_tensor`, `quant_ext.dequantize_per_channel` and `quant_ext.quantize_per_tensor` (region-free, value results) only compute their results, so DCE may erase them and CSE may reuse their executed values. | `merlin/lean/MerlinVerify/Rules/Dce.lean` (`dequantOp`, `quantizeOp`), `merlin/lean/MerlinVerify/Check/ExactCse.lean` | Purity is a premise of the three modeled Q/DQ operations; it is not inferred from the dialect name. Current production pruning conservatively retains unregistered Q/DQ until typed lowering. Only these three, whose meanings `merlin/lean/MerlinVerify/Sem/Ops/{Dequant,Quantize}.lean` model, are admitted by the formal rules; other `quant_ext` operations stay ineligible. This wording correction does not change A9. |
+| A10 | The original selected primitive/ISA interpretation satisfies each theorem's effect and state premises, including complete relevant state, read locality, frame, declared totality or partial-outcome behavior, and all-index `Models` where required. | `src/merlin/verify/lean/Merlin/StateEffects.lean`, configuration and graph/loop model families | Original-owner selection and exact source binding identify the interpretation; they do not prove its fidelity to the ISA, emitted C, hardware or an unmodeled effect. Configuration elision/hoisting, loop/state and pure graph proofs remain conditional on their respective premises. Finite native samples, bounded host index checks and a saved flag do not discharge universal `Models` or approve an ISA/effect contract. This records existing hypotheses, not a new Lean axiom or semantic approval. |
 
 ## Trusted components (design §10, D11)
 
@@ -197,12 +239,52 @@ source/format campaigns remain separate from these completed tests.
 |---|---|
 | T1 | Lean kernel; Lean compiler and runtime for the compiled checker (including the compiler-generated `_unsafe_rec` twins of recursive definitions); `Lean.Json`. |
 | T2 | The pipeline’s `torch_mlir` parser/printer and Python bridge: export/round trip, receipt byte binding/replay, authored roster selection and gate orchestration. These glue components are regression tested, not formally proved. Within one gate job, a process-local receipt session may reuse actual successful checks instead of executing them twice. The host records the exact result bytes when a live check completes; caller-supplied hashes and saved receipts grant no reuse authority. Schema, provenance, axiom, export and byte bindings are still checked. Edited receipts, other jobs and external composition always replay. |
-| T3 | Fidelity of the MerlinSem op semantics to MLIR and the captured source producer. Not proved. In addition to hand-built `#guard` cases, `merlin/tests/ir/test_lean_differential.py` compares the actual Lean denotation with native upstream MLIR on a deterministic integer/tensor/f32/f64 corpus and checks named-op generalization. The map signature mismatch is corrected and its corpus must pass. Probes bind the installed contract to compiler fingerprints; package versions do not establish LLVM revisions. Coverage limits and required-tool instructions are in `docs/guides/lean_differential_tests.md`; untested forms and targets remain trusted. New bounded integer-folder/named-op and dequantization tests use hash-pinned MLIR. A separate hash-pinned PyTorch 2.10.0+cpu oracle checks both dequantization source operations against NumPy and selected actual MLIR-folded compiler bodies. NaN payloads, complete IEEE-instance qualification, human specification review, and capture-producer binding remain outstanding. |
+| T3 | Fidelity of the MerlinSem op semantics to MLIR and the captured source producer. Not proved. In addition to hand-built `#guard` cases, `merlin/tests/ir/test_lean_differential.py` compares the actual Lean denotation with native upstream MLIR on a deterministic integer/tensor/f32/f64 corpus and checks named-op generalization. The map signature mismatch is corrected and its corpus must pass. Probes bind the installed contract to compiler fingerprints; package versions do not establish LLVM revisions. Coverage limits and required-tool instructions are in `docs/guides/lean_differential_tests.md`; untested forms and targets remain trusted. New bounded integer-folder/named-op and dequantization tests use hash-pinned MLIR. A separate hash-pinned PyTorch 2.10.0+cpu oracle checks both dequantization source operations against NumPy and selected actual MLIR-folded compiler bodies. NaN payloads, complete IEEE-instance qualification, human specification review, and general capture-producer fidelity remain outstanding. The pinned Q/DQ SourceCapture route has exact producer/version binding and finite qualification; that evidence does not establish universal framework correspondence. |
 | T4 | Upstream MLIR lowering below the verified tensor stage, LLVM, the linker, the C runtime. The qualified scalar/parallel defaults and native oracle generalize maps before bufferization. A regression checks the required initializer copy survives; [LLVM issue 213241](https://github.com/llvm/llvm-project/issues/213241) documents the separate direct-map bufferization bug. This is not a proof of downstream lowering. |
 | T5 | Accelerator kernels meeting their stated contracts (the OOT hole, design D8). |
 | T6 | Floating-point accuracy (measured, never proved; floats are parametric in every theorem). |
+| T7 | Trusted Python/xDSL parsing and projection from actual input/output IR to the graph, loop, storage and configuration models. This includes complete operation/attribute/region traversal, typed SSA and alias/initializer bindings, helper-call expansion, shape/index extraction, emitted query construction and source/evidence custody. Lean checks the resulting propositions, not the correctness or completeness of these Python translations. Original ISA/effect resolution is also trusted as a translation; truth of the selected semantic premises is A10. Regression tests, mutation refusals, hashes and replay give evidence of correspondence, not a formal proof of the parser or projector. This is separate from T2's torch_mlir exporter. |
+
+### Projection and interpretation citations
+
+The following families cite T7 for their source-to-model bridge and A10 for
+their selected primitive/effect interpretation. Buffer allocator assumptions
+and each family's partial-outcome or successful-observation relation remain
+separate; these IDs do not make their claims interchangeable.
+
+| Family | Correspondence code | Ledger entries |
+| --- | --- | --- |
+| Scalar/SCF and ordered loop composition | `src/merlin/verify/compiler_loop_intake.py`, `src/merlin/verify/loop_transform_intake.py`, `src/merlin/verify/lean_graph_pipeline_gate_projection.py` | T7, A10 |
+| Buffer reuse and storage/shape projections | `src/merlin/verify/buffer_reuse_bridge.py`, `src/merlin/verify/lean_graph_loops_reuse_projection.py`, `src/merlin/verify/lean_graph_loops_memory_scf.py` | T7, A10, the explicit allocator premise |
+| Configuration elision and hoisting | `src/merlin/verify/configuration_elision_bridge.py`, `src/merlin/verify/compiler_configuration_intake.py`, `src/merlin/verify/compiler_configuration_hoist_intake.py`, `src/merlin/verify/configuration_hoist_bridge.py` | T7, A10, including all-index `Models` |
+| Graph regions, state/schedule and actual host fusion | `src/merlin/verify/lean_graph_regions_projection.py`, `src/merlin/verify/lean_graph_state_capture.py`, `src/merlin/verify/host_graph_fusion_projection.py` | T7, A10 |
+
+Existing report fields keep their historical schemas. All nine projection-trust
+spellings below are citations of T7, not evidence that the projection was proved.
+An AST inventory is retained in the ledger-review handoff; it currently finds
+56 dictionary/keyword emission sites, including repeated branches in one file.
+Free-text premises can also carry T7 and are not included in that count.
+
+| Existing field | Ledger entry |
+| --- | --- |
+| `python_projection_trusted` | T7 |
+| `Python_projection_trusted` | T7 |
+| `projection_trusted` | T7 |
+| `projection_trust` | T7 |
+| `projection_trusted_python` | T7 |
+| `projection_is_trusted_python` | T7 |
+| `projectionTrustedPython` | T7 |
+| `python_interpreter_and_trace_projection_trusted` | T7 |
+| `trusted_host_projection` | T7 |
+
+This mapping makes old reports auditable without silently renaming frozen or
+retained fields. A canonical field migration would need a versioned compatibility
+plan. No current report flag supplies projection correctness or semantic approval.
 
 ## Known model and native qualification limits
+
+S4–S6 retain their historical identifiers. S1–S3 have no defined entries in this
+ledger and must not be used as citations; the old S1 cross-reference is withdrawn.
 
 The input-dependent cast, typed mixed-reshape, nested integer-body, comparison/select and
 combined-pass suites extend T3's bounded evidence. Cast widths, SSA provenance, capture scopes,
@@ -288,7 +370,7 @@ S5: one private checker build crashed in the bundled Clang backend while compili
 `DefinedControl.c` (exit 139). The Lean proof kernels compiled. One isolated replay of the
 preprocessed reproducer and one isolated replay of the original build both succeeded with the
 same compiler/options and unchanged generated C. This intermittent tool failure remains
-unresolved; it is distinct from S1's historical evaluator exit 139 and S4's native tensor behavior.
+unresolved; it is distinct from S4's native tensor behavior.
 Tests accidentally launched against the stale executable were retained as invalid qualification;
 only the subsequent frozen successful build was qualified. Compiler fingerprints, commands,
 backtrace and both diagnostic replays are retained with shared-pass verification artifacts.
@@ -369,7 +451,7 @@ normalizers and preserves the old script-checker interface; no frozen semantics 
 
 ## Proposed dequantization source contract
 
-`Spec/Dequant.lean` specifies the distinct per-tensor and per-channel arithmetic orders from
+`merlin/lean/MerlinVerify/Spec/Dequant.lean` specifies the distinct per-tensor and per-channel arithmetic orders from
 PyTorch v2.10.0 (`_decomposed.py`: per-tensor line 289, per-channel lines 734–738) for signed-i8
 input and f32 scale/result, with an i32 or i64 zero point per-tensor (PyTorch converts the int zero
 point to f32 once, as captured models carry it) and an i32 zero point per-channel, including tensor
@@ -379,24 +461,29 @@ clamped. f64 scales are excluded: PyTorch then multiplies per-channel in f64 and
 to f32, a double rounding the f32 model does not express. Per-channel i64 zero points are excluded
 (they remain outside the proved per-channel profile; the integration compiler now subtracts at the promoted
 integer width on both lowering routes). Its theorems add no axioms or float algebra laws.
-`Sem/Ops/Dequant.lean` dispatches that proposed source contract only for checked tensor types,
+`merlin/lean/MerlinVerify/Sem/Ops/Dequant.lean` dispatches that proposed source contract only for checked tensor types,
 shapes and metadata. The source support rule proves non-stuck evaluation on typed inputs, and
 the registered C1 site rule connects accepted target loops to it. A separate definedness rule
 proves successful, nonpoison results on typed, initialized inputs, with an explicit parameter-axis
 check. Definedness receipts compose with the refinement chain to retain that input domain.
 Such receipts prove refinement relative to this model; they do not establish that the model is
 the captured producer's meaning.
-Human specification review and exact capture-producer/version binding remain required before
-paper qualification (T3). Unsupported granularities, types and attributes remain refused.
+Human specification review remains required (T3). Exact capture-producer/version
+binding is implemented for the pinned Q/DQ SourceCapture profile described above;
+it is not a universal framework correspondence proof. Unsupported granularities,
+types and attributes remain refused.
 
 ## Merlin W8A8 integer component
 
-`Check/PolicyW8A8Body.lean` proves that acceptance of an actual integer region establishes
+`merlin/lean/MerlinVerify/Check/PolicyW8A8Body.lean` proves that acceptance of an actual integer region establishes
 signed i8 extension, multiplication and i32 accumulation, including poison propagation. Repeated
-execution agrees with a modular dot product. `Rules/W8A8Accumulation.lean` proves exact signed
+execution agrees with a modular dot product. `merlin/lean/MerlinVerify/Rules/W8A8Accumulation.lean` proves exact signed
 results for every prefix from zero when `K * 16384 < 2^31`; this covers the full i8 range,
-including -128. The length condition is an explicit theorem premise, not yet a fact extracted
-from an enclosing contraction by a checker. No float law or new assumption is introduced.
+including -128. This scalar theorem takes the length bound as a premise.
+`merlin/lean/MerlinVerify/Check/PolicyW8A8Matmul.lean` now checks the actual contraction's K bound, and
+`merlin/lean/MerlinVerify/Rules/W8A8ReferenceBounds.lean` derives it from the draft source recognizer and
+proves exactness of every coordinate-derived prefix. It is no longer an
+unchecked caller assertion for those accepted profiles. No float law is added.
 
 `test_lean_w8a8_body.py` exercises Merlin-generated bodies, valid MLIR mutations, SSA renaming,
 alias refusal, and bounded comparisons of Lean execution with the MLIR integer folder.
@@ -407,11 +494,11 @@ and chosen-model qualification remain required; upstream LLVM/MLIR passes stay t
 
 ## Merlin W8A8 scalar components
 
-`Rules/W8A8Scalar.lean` proves the ordered abs/max, guarded scale, reciprocal, quantization and
+`merlin/lean/MerlinVerify/Rules/W8A8Scalar.lean` proves the ordered abs/max, guarded scale, reciprocal, quantization and
 requantization scalar execution for all current float models and poison inputs. Alpha checkers
-in `Check/PolicyW8A8Scalar.lean` establish these contracts from actual region syntax. Scale and
+in `merlin/lean/MerlinVerify/Check/PolicyW8A8Scalar.lean` establish these contracts from actual region syntax. Scale and
 quantization captures are learned from the actual executed prefix with SSA invalidation, using
-`Check/PolicyW8A8Captures.lean`; a hint cannot assert their values. No assumption is added.
+`merlin/lean/MerlinVerify/Check/PolicyW8A8Captures.lean`; a hint cannot assert their values. No assumption is added.
 
 The user approved the explicit zero-row rule: select the f32 representation of 0.00001 when the
 row maximum compares equal to zero. F9 retains an axiom-free countermodel separating this recipe
@@ -422,23 +509,28 @@ IEEE clamp-before-convert definedness or whole-source definedness.
 Targeted tests cover real-pass bodies, captured producers, valid MLIR mutations and SSA handling.
 An actual TinyLlama boundary probe matches 155 integer and 155 requantization bodies; SmolVLA's
 quantization boundary is unchanged under captured-scope selection. These are diagnostics, not
-whole-boundary receipts. Tensor maps/axes, source correspondence, reviewed policy semantics,
-site/chain integration and full qualification remain open.
+whole-boundary receipts. Tensor maps/axes and draft source/site/chain composition
+are handled by the later tensor and whole-module checkers below. This scalar
+checker does not supply independent policy review or whole-function numerical
+definedness, which remain open.
 
 ## Merlin W8A8 tensor contraction component
 
-`Rules/W8A8TensorTrace.lean` lifts scalar steps through ordered mapped tensor updates, including
-repeated output coordinates. `Rules/W8A8IntegerTensor.lean` applies the accepted MAC body to every
+`merlin/lean/MerlinVerify/Rules/W8A8TensorTrace.lean` lifts scalar steps through ordered mapped tensor updates, including
+repeated output coordinates. `merlin/lean/MerlinVerify/Rules/W8A8IntegerTensor.lean` applies the accepted MAC body to every
 read/write using independently checked access bounds, with arbitrary poison and initial i32 values.
-`Rules/W8A8Matmul.lean` proves that a standard matmul output cell selects exactly K reduction
+`merlin/lean/MerlinVerify/Rules/W8A8Matmul.lean` proves that a standard matmul output cell selects exactly K reduction
 points in order. No new semantic definition, axiom or float law is introduced.
 
-`Check/PolicyW8A8Matmul.lean` checks the actual maps/iterators, runtime access bounds and scalar
+`merlin/lean/MerlinVerify/Check/PolicyW8A8Matmul.lean` checks the actual maps/iterators, runtime access bounds and scalar
 body, and enforces K < 131072. `check_zero_sound` establishes initialized output cells with exact
 signed integer dot products for initialized byte inputs and a zero-initialized destination. The
-zero destination is an explicit theorem input; recognizing its actual prefix producer and
-connecting actual source operands/quantization/scales remain site obligations. The test adapter
-reconstructs shapes from actual SSA types but does not issue a whole-boundary receipt.
+zero destination is a premise of this component theorem. For a recognized actual
+empty/constant/fill prefix, `merlin/lean/MerlinVerify/Check/PolicyW8A8InitializedMatmul.lean`'s
+`checked_destination` now derives that destination from prefix execution, with
+no caller-provided zero fact. The source-derived policy checkers below handle
+their admitted operand/quantization/scale correspondence. The component test
+adapter alone does not issue a whole-boundary receipt.
 
 Fourteen tensor tests pass, including compiler-verified wrong-map/axis/i16 mutations, the strict
 K-bound threshold, zero extents, and three native differential cases with four samples each.
@@ -448,41 +540,47 @@ Native MLIR, actual Lean generic execution and an independent integer reference 
 
 ## Merlin W8A8 initializer component
 
-`Rules/W8A8Zero.lean` and `Check/PolicyW8A8Zero.lean` prove the actual closed matrix
+`merlin/lean/MerlinVerify/Rules/W8A8Zero.lean` and `merlin/lean/MerlinVerify/Check/PolicyW8A8Zero.lean` prove the actual closed matrix
 empty/constant/fill initializer and its selected post-execution SSA binding. The alpha matcher
 checks literal zero, region wiring, result types and fresh names. The theorem quantifies over
 arbitrary surrounding environments; it assumes no caller-provided zero fact.
-`Check/PolicyW8A8InitializedMatmul.lean` connects the canonical zero tensor to the tensor
-contraction result. Complete source operand/scale correspondence, policy semantics and C5 chain
-integration remain open. All 155 hinted TinyLlama integer initializers match; no full receipt
-is issued. No assumption is added.
+`merlin/lean/MerlinVerify/Check/PolicyW8A8InitializedMatmul.lean` connects the canonical zero tensor to the tensor
+contraction result. The whole-module and suffix checkers below add draft
+source/operand/scale correspondence and composition for their admitted profile.
+Independent policy approval and whole-function numerical definedness remain
+open. All 155 hinted TinyLlama integer initializers matched at the recorded cut;
+that component count is not a full receipt. No assumption is added.
 
 ## Merlin W8A8 floating tensor stage components
 
-`Rules/W8A8TensorOperands.lean` and `Rules/W8A8Pointwise.lean` prove checked mapped reads and
-complete tensor overwrites. `Rules/W8A8FloatTensor.lean` lifts ordered scale, reciprocal,
-quantization and zero/one/two-scale requantization contracts. `Rules/W8A8AbsMax.lean` proves the
+`merlin/lean/MerlinVerify/Rules/W8A8TensorOperands.lean` and `merlin/lean/MerlinVerify/Rules/W8A8Pointwise.lean` prove checked mapped reads and
+complete tensor overwrites. `merlin/lean/MerlinVerify/Rules/W8A8FloatTensor.lean` lifts ordered scale, reciprocal,
+quantization and zero/one/two-scale requantization contracts. `merlin/lean/MerlinVerify/Rules/W8A8AbsMax.lean` proves the
 ordered reduction trace with explicit initial cells. These results preserve poison and quantify
 over the existing parametric float model; no float law or assumption is added.
 
-`Check/PolicyW8A8Geometry.lean`, `PolicyW8A8Pointwise.lean` and `PolicyW8A8AbsMax.lean` check
+`merlin/lean/MerlinVerify/Check/PolicyW8A8Geometry.lean`, `merlin/lean/MerlinVerify/Check/PolicyW8A8Pointwise.lean` and `merlin/lean/MerlinVerify/Check/PolicyW8A8AbsMax.lean` check
 maps, bounds, iterator kinds, types/shapes and region syntax. Scale and clamp literals use
 SSA-invalidated constant facts about the executed environment. Expected parameter dimensions
-remain contract inputs; source-derived grouping and operand/scale correspondence still need a
-site proof. The actual floating zero initializer is not discharged by the reduction theorem.
+remain contract inputs to these components; source-derived grouping and
+operand/scale correspondence are checked by the draft source/site machinery
+below. The bare reduction theorem takes its initial cells as input; the
+`merlin/lean/MerlinVerify/Check/PolicyW8A8InitializedAbsMax.lean` bridge now discharges the positive-zero
+initializer for its recognized producer.
 
 Tests cover actual Merlin stages, zero extents, compiler-verified layout/body mutations,
 rank-zero through rank-three templates and native requantization comparisons with Lean and an
 independent f32 reference. Zero/one-scale test templates are synthetic components. A TinyLlama
 probe accepts 155 hinted tensor requantization stages with per-tensor scales; this is not a
-whole-pass receipt. Policy review, source definedness and C5 site/chain integration remain open.
+whole-pass receipt. Draft site/chain integration and typed support are described
+below; policy review and successful whole-function numerical definedness remain open.
 
 ## Shared W8A8 initialization and initialized abs/max
 
-`Rules/W8A8Fill.lean` and `Check/PolicyW8A8Fill.lean` prove the closed empty/literal/fill producer
+`merlin/lean/MerlinVerify/Rules/W8A8Fill.lean` and `merlin/lean/MerlinVerify/Check/PolicyW8A8Fill.lean` prove the closed empty/literal/fill producer
 and its actual post-execution destination binding for all static ranks. The earlier integer
 matrix initializer now delegates to these shared definitions, preserving its public contracts.
-`Check/PolicyW8A8InitializedAbsMax.lean` checks exact positive-f32-zero bits and connects that
+`merlin/lean/MerlinVerify/Check/PolicyW8A8InitializedAbsMax.lean` checks exact positive-f32-zero bits and connects that
 producer to the ordered abs/max tensor theorem. This removes the caller's zero-destination
 premise for the recognized producer; it assumes no floating identity or new float law.
 
@@ -500,21 +598,25 @@ remain required.
 
 ## Whole-module policy validation and suffix composition
 
-`Check/PolicyModule.lean` checks the actual target against a reference obtained solely from a
+`merlin/lean/MerlinVerify/Check/PolicyModule.lean` checks the actual target against a reference obtained solely from a
 fixed source-to-reference transformer. Expansion refusal is a checker refusal. Its soundness
 theorem proves conditional refinement of every defined reference function; the strict theorem
 requires independently established reference support on the claimed domain. The suffix theorem
 composes universal or typed downstream boundaries and does not assume that a syntactic numerical
 policy preserves refinement of earlier programs. No numerical policy is approved by this module.
 
-`Rules/W8A8Reference.lean` now supplies a source-derived draft transformer with canonical
+`merlin/lean/MerlinVerify/Rules/W8A8Reference.lean` now supplies a source-derived draft transformer with canonical
 contraction eligibility, zero initialization, dynamic groups, and calibrated byte/scale reuse
-through supported source layouts. `Check/PolicyW8A8Module.lean` proves its conditional module
+through supported source layouts. `merlin/lean/MerlinVerify/Check/PolicyW8A8Module.lean` proves its conditional module
 match and a stronger qualification theorem requiring original-source definedness and reference
 support on typed, nonpoison inputs. It does not establish independent review of this draft.
-The compiled draft command always reports the unresolved review requirement. TinyLlama's entire
-function matches the reference, while its source/support obligations still refuse captured
-quantization semantics; this is not a whole-pass verified receipt. F11's noncanonical source
+The compiled draft command always reports the unresolved review requirement.
+Under frozen source semantics, TinyLlama's function matches the reference while
+captured quantization source/support obligations refuse. Under the separate
+provisional source interpretation, `merlin/lean/MerlinVerify/Check/PolicyW8A8Supported.lean` now establishes
+strict typed matching and support for the admitted capture, as described below.
+Neither route establishes approved numerical policy or successful initialized
+whole-capture execution. F11's noncanonical source
 body is refused. No frozen semantics, policy spec, statement pin or production pass is changed.
 
 The byte-bound draft API snapshots and round-trips the actual before/after programs and binds
@@ -523,14 +625,18 @@ promoted to reviewed policy status. Receipt tests reject attempted promotion and
 forged policy verdict from entering the ordinary refinement chain. The source quantization
 contract gaps and independent specification review remain explicit requirements.
 
-`Rules/W8A8DequantWidth.lean` is an additive source-contract review candidate for i32/i64 zero
+`merlin/lean/MerlinVerify/Rules/W8A8DequantWidth.lean` is an additive source-contract review candidate for i32/i64 zero
 points. Its i32 specialization is proved equal to the existing contract, and its tensor output
-is typed and nonpoison for initialized, valid inputs under every current FloatModel. It is not
-installed in the frozen dispatcher. Test-only evaluation compares it with pinned PyTorch and
-executed standard MLIR; F12 records a genuine i64 per-channel production discrepancy. Neither
+is typed and nonpoison for initialized, valid inputs under every current FloatModel.
+Per-tensor i64 is already installed through `merlin/lean/MerlinVerify/Sem/Ops/Dequant.lean` and
+`MerlinVerify.Spec.Dequant.perTensorAt`; only the per-channel i64 extension remains outside
+the frozen dispatcher. Test-only evaluation compares that candidate with pinned
+PyTorch and executed standard MLIR. F12 preserves the historical per-channel i64
+production discrepancy, corrected on both compiler routes on 2026-10-28. The
+correction does not extend the formal per-channel source profile. Neither
 these finite comparisons nor the compatibility theorem add an IEEE law or review approval.
 
-`Check/PolicyW8A8Chain.lean` composes a qualified draft policy boundary with actual downstream
+`merlin/lean/MerlinVerify/Check/PolicyW8A8Chain.lean` composes a qualified draft policy boundary with actual downstream
 boundaries on each function's original typed, nonpoison input domain. Universal C1 or typed
 normalization may establish a suffix step; the typed path checks current source membership and
 the exact common signature. Its final target refines `P_W8A8(original)`, not the original floating
@@ -545,20 +651,20 @@ establish source quantization semantics, or cover an unbound downstream compiler
 Policy chains may now bind the final program to a recorded `handoff.json`, checking the actual
 handoff file and all live witnesses. Checker timeouts produce unmeasured attempts and invalidate
 old receipts. An unqualified policy prefix leaves downstream diagnostics explicitly unmeasured;
-they are never reported as passing. `Check/ExactSyntax.lean` proves a complete structural equality
+they are never reported as passing. `merlin/lean/MerlinVerify/Check/ExactSyntax.lean` proves a complete structural equality
 check used to avoid SSA alignment for identical policy references. Source support and definedness
 remain separate even on this exact-identity path.
 
-`Rules/W8A8QuantizeDomain.lean` characterizes nonpoison byte quantization by success of its exact
+`merlin/lean/MerlinVerify/Rules/W8A8QuantizeDomain.lean` characterizes nonpoison byte quantization by success of its exact
 ordered conversion. A countermodel proves that clamping and initialized data do not imply
 conversion success under every unrestricted FloatModel; the actual proved region may return
 `.ok` containing poison. This adds no float law and does not narrow a frozen claim. A concrete
 floating interpretation or explicitly justified numerical domain remains a review obligation.
 
-`Rules/W8A8ByteFloat.lean` supplies a pure integer-field binary32 min/max and signed-byte
+`merlin/lean/MerlinVerify/Rules/W8A8ByteFloat.lean` supplies a pure integer-field binary32 min/max and signed-byte
 conversion candidate. Its clamp theorem proves conversion success for every non-NaN value,
-including infinities after clipping. `W8A8ByteModel`, `W8A8ByteTensor` and
-`Check/PolicyW8A8ByteDefined.lean` connect this result to the actual scalar region, tensor
+including infinities after clipping. `merlin/lean/MerlinVerify/Rules/W8A8ByteModel.lean`, `merlin/lean/MerlinVerify/Rules/W8A8ByteTensor.lean` and
+`merlin/lean/MerlinVerify/Check/PolicyW8A8ByteDefined.lean` connect this result to the actual scalar region, tensor
 execution and existing untrusted-input quantization checker. Their explicit domain requires
 initialized data and a non-NaN rounded product at every accessed coordinate. They neither assume
 this condition for arbitrary inputs nor install an approved global floating interpretation.
@@ -570,11 +676,11 @@ classification, and poison conversions are never executed natively. The 31-test 
 7601-theorem audit pass without new assumptions or locked-file changes. Captured-source
 quantization semantics and independent policy/domain review remain required for full receipts.
 
-`Rules/W8A8SourceQuantize.lean` adds an uninstalled captured per-tensor source-contract
+`merlin/lean/MerlinVerify/Rules/W8A8SourceQuantize.lean` adds an uninstalled captured per-tensor source-contract
 candidate from versioned PyTorch references. It retains binary64 scalar reciprocal followed
 by f32 conversion, zero-point addition and lower-then-upper clipping to -128/127. It proves
 output typing and initialized execution under its explicit post-addition non-NaN domain;
-`W8A8SourceByte.lean` proves the corresponding full-range byte-conversion obligation. Finite,
+`merlin/lean/MerlinVerify/Rules/W8A8SourceByte.lean` proves the corresponding full-range byte-conversion obligation. Finite,
 positive scalar calibration scales and scalar i32/i64 zero points are checked at runtime.
 
 Lean, pinned PyTorch and separate native MLIR agree on 64 candidate samples; all 89 retained
@@ -583,7 +689,7 @@ The combined 50-test regression and 7646-theorem audit pass. This candidate neit
 frozen quant_ext dispatch nor proves that a complete model satisfies its numerical domain.
 Source-contract review, checked model domains and whole-model suffix qualification remain open.
 
-`Rules/W8A8ReferenceBounds.lean` proves that the actual draft source recognizer's accepted K
+`merlin/lean/MerlinVerify/Rules/W8A8ReferenceBounds.lean` proves that the actual draft source recognizer's accepted K
 implies exact i32 accumulation at every prefix, including the coordinate-derived tensor cell
 trace and the full signed-byte range. All 155 selected TinyLlama source contractions satisfy
 the bound (133 with K=2048, 22 with K=5632). The 22 module tests cover the strict threshold;
@@ -591,14 +697,14 @@ the 7666-theorem audit passes. These are source arithmetic side conditions, not 
 The retained SmolVLA capture has no selected W8A8 sites; its first support refusal is a dynamic
 `tensor.empty` producing `tensor<?xi64>`, rather than evidence of an active W8A8 failure.
 
-`Rules/W8A8SourceContract.lean` recomputes per-tensor Q/DQ eligibility from actual SSA types,
+`merlin/lean/MerlinVerify/Rules/W8A8SourceContract.lean` recomputes per-tensor Q/DQ eligibility from actual SSA types,
 static shapes, signed storage, i32/i64 zero-point widths and source metadata. It refuses unknown
 semantic attributes and duplicate keys; only the reviewed annotation contract permits ignored
 attributes. All 399 retained TinyLlama source operations are recognized (310 DQ, 89 Q). This
 additive adapter is not installed in frozen source dispatch.
 
-`Check/PolicyW8A8SourceDomain.lean` checks actual initialized quantizer inputs and the exact
-post-addition non-NaN domain. `Check/PolicyW8A8Source.lean` combines syntax and runtime checks;
+`merlin/lean/MerlinVerify/Check/PolicyW8A8SourceDomain.lean` checks actual initialized quantizer inputs and the exact
+post-addition non-NaN domain. `merlin/lean/MerlinVerify/Check/PolicyW8A8Source.lean` combines syntax and runtime checks;
 acceptance proves successful, typed, nonpoison candidate execution of that invocation. Its
 dequantizer check distinguishes initialized float bits from finite values. No caller-provided
 definedness flag or new floating law is used. These are instance theorems, not universal
@@ -609,7 +715,7 @@ with zero violations and unchanged locks/pins. All 89 retained quantization para
 the new domain checker on their synthetic inputs, with unchanged retained output observations.
 Independent review, approved semantic integration and whole-model qualification remain open.
 
-`Check/PolicyW8A8SourceFacts.lean` derives exact calibration bindings from scalar constants and
+`merlin/lean/MerlinVerify/Check/PolicyW8A8SourceFacts.lean` derives exact calibration bindings from scalar constants and
 rank-zero splats, forgetting facts on every SSA overwrite. Its generic transfer theorem requires
 an explicit proof that the chosen semantics preserves those producer meanings; the frozen
 semantics satisfies that agreement. No numerical law or source quantization assumption is added.
@@ -617,18 +723,18 @@ Checked parameters imply typed, non-stuck source quantization for arbitrary floa
 typed data of the recognized shape. Poison outputs remain possible without the separate domain
 check, so this is source support rather than whole-function definedness.
 
-`Check/PolicyW8A8SourcePrefix.lean` now proves calibration-fact validity across complete
+`merlin/lean/MerlinVerify/Check/PolicyW8A8SourcePrefix.lean` now proves calibration-fact validity across complete
 successfully executed prefixes under producer-compatible semantics. Its one-pass segment check
 supplies the calibration check at every selected source site; unsupported quant_ext operations
 refuse. This does not establish execution or source definedness from a static scan.
 
-`Rules/W8A8SourceSemantics.lean` integrates the additive per-tensor Q/DQ contracts into an explicit
+`merlin/lean/MerlinVerify/Rules/W8A8SourceSemantics.lean` integrates the additive per-tensor Q/DQ contracts into an explicit
 provisional program interpretation, preserving ordinary frozen dispatch and nested evaluation.
 Lean proves agreement with the checked source adapter and producer compatibility. Complete
 functions and internal calls are executable in a separately labeled differential mode; frozen
 dispatch, the public receipt checker and approved semantics remain unchanged.
 
-`Check/PolicyExact.lean` proves complete-AST policy matching for arbitrary program semantics.
+`merlin/lean/MerlinVerify/Check/PolicyExact.lean` proves complete-AST policy matching for arbitrary program semantics.
 Its strict theorem retains independent source-definedness and reference-support proofs on the
 same context/input domain. This route requires identical SSA identifiers. Raw pass exports can
 renumber identifiers: the existing C1 renaming theorem is frozen-semantics-specific and cannot
@@ -641,29 +747,29 @@ regression and full 7759-theorem audit pass with zero skips/violations. Tests re
 unknown scales, stale scalar/tensor facts and altered literals; nonzero initialized zero points
 are not mislabeled as symmetric-reuse eligibility. Frozen files and statement pins are unchanged.
 
-`Check/ParametricAlpha.lean` and `ParametricModule.lean` now prove whole-module equality under
+`merlin/lean/MerlinVerify/Check/ParametricAlpha.lean` and `merlin/lean/MerlinVerify/Check/ParametricModule.lean` now prove whole-module equality under
 checked SSA renaming for an interpretation satisfying explicit operation/call laws. Operand
 arity and region emptiness remain visible to those laws. A common fuel induction covers
 internal calls, declarations and missing symbols. The checker compares outer metadata and
 non-function operations, checks every function body and refuses unrecognized function views
 or extra function regions before erasing bodies from the outer comparison.
 
-`Rules/W8A8SourceAlpha.lean` proves these laws for the provisional source interpretation.
-`Check/PolicyParametric.lean` connects complete raw before/after modules to the source-derived
+`merlin/lean/MerlinVerify/Rules/W8A8SourceAlpha.lean` proves these laws for the provisional source interpretation.
+`merlin/lean/MerlinVerify/Check/PolicyParametric.lean` connects complete raw before/after modules to the source-derived
 policy, with no source-definedness or reference-support premise hidden in the match theorem.
 Strict qualification retains both independent obligations on the same domain. The retained
 TinyLlama boundary matches under this theorem, including all 155 changed contractions. This
 closes its SSA bridge; it does not establish whole-function numerical definedness, approve a
 source specification, qualify suffixes or issue a verified receipt.
 
-`Check/PolicyW8A8SourceProgress.lean` proves fact-dependent typed support of actual source Q/DQ
-steps, using the current SSA bindings. `Check/PolicyW8A8Support.lean` threads these facts through
+`merlin/lean/MerlinVerify/Check/PolicyW8A8SourceProgress.lean` proves fact-dependent typed support of actual source Q/DQ
+steps, using the current SSA bindings. `merlin/lean/MerlinVerify/Check/PolicyW8A8Support.lean` threads these facts through
 whole-function progress and reuses ordinary typing rules under the provisional interpretation.
 Acceptance proves `FuncNotStuck` for every declared typed input, including poison. Source
 operations inside nested regions and internal-call support currently refuse; matching and
 finite execution support for internal calls are separate results.
 
-`Check/PolicyW8A8Supported.lean` independently checks source/reference support and composes it
+`merlin/lean/MerlinVerify/Check/PolicyW8A8Supported.lean` independently checks source/reference support and composes it
 with the generic policy match. Acceptance proves strict typed `FuncRefines` against the draft
 policy reference, as well as source modelling. The retained TinyLlama boundary passes this
 combined check for all 155 changed contractions. Support permits UB and poison; it establishes
@@ -674,7 +780,7 @@ the public full-qualification gate remain unchanged.
 ## f32-accumulation contract for `lower_bf16_matmul_f32acc`
 
 Additive numerical-contract strengthening (2026-10-29):
-`Rules/Bf16F32AccInitialized.lean` proves the existing zero contract is defined on
+`merlin/lean/MerlinVerify/Rules/Bf16F32AccInitialized.lean` proves the existing zero contract is defined on
 initialized operands with checked mapped accesses, without float laws. It also
 defines an arbitrary per-cell f32 initializer, proves its exact ordered trace,
 empty-trace behavior and definedness, and connects the actual accumulating generic
@@ -690,35 +796,48 @@ atomic refusal when unsupported. Complete output matching remains mandatory.
 Independent numerical review and concrete fusion/IEEE fidelity remain open. See
 the [separate proposals and theorem/domain map](../../docs/design/qdq_macc_numerical_contract_review.md).
 
-`Rules/Bf16F32AccContract.lean` states the contract in six clauses: per-operand `extf` to f32, the
+`merlin/lean/MerlinVerify/Rules/Bf16F32AccContract.lean` states the contract in six clauses: per-operand `extf` to f32, the
 source's own indexing maps, one accumulator per cell folded in lexicographic order (A5), a `+0.0`
 start admitted only for a `+0.0` source destination, one attribute-free `truncf`, and multiply/add
 fast-math exactly `none` or `contract`. It is a review candidate written after reading the pass,
 not a barrier-authored specification; receipts stay `abstracted` until independent review.
 
-`Check/Bf16F32Acc.lean` and `Check/Bf16F32AccChain.lean` prove that accepted outputs (and checked
+`merlin/lean/MerlinVerify/Check/Bf16F32Acc.lean` and `merlin/lean/MerlinVerify/Check/Bf16F32AccChain.lean` prove that accepted outputs (and checked
 downstream refinement suffixes) refine the source-derived reference; strict forms retain separate
-source-definedness and reference-support obligations. `Rules/Bf16F32AccTensor.lean` and
-`Rules/Bf16F32AccSite.lean` prove the reference's emitted operations compute the contract for any
+source-definedness and reference-support obligations. `merlin/lean/MerlinVerify/Rules/Bf16F32AccTensor.lean` and
+`merlin/lean/MerlinVerify/Rules/Bf16F32AccSite.lean` prove the reference's emitted operations compute the contract for any
 checked geometry. Recovered hints choose only `Flag` values and `Spec.Annotations.semanticsFree`
 attributes; every other attribute is compared with the canonical one.
 
 Fusion: the semantics gives `contract`-flagged operations their own uninterpreted functions.
-`Rules/Bf16F32AccFusion.fused_step` proves a fused execution is an instance of the model when the
-target fuses every contract step or none, the operand `extf` is injective (bf16 is a shift; f16 on
-non-NaN inputs) and the source has no other licensed operation (reported as `fusion_premises`).
-Mixed per-site fusion is not covered. Native evidence: `test_lean_bf16_f32acc_native.py` compares
+`merlin/lean/MerlinVerify/Rules/Bf16F32AccFusion.lean` now proves `fused_step_on_image` for every conversion,
+including noninjective conversions and all 16-bit operand patterns. The proof
+selects a preimage and recovers only its extended value, which is all the FMA
+observes. It does not need to recover the original half-precision bits. The
+historical pinned `fused_step` still requires full-domain
+`Function.Injective (ext M k)`; the previous non-NaN explanation did not discharge
+that premise and is withdrawn. Neither a bf16 shift implementation nor f16 NaN
+preservation is assumed by the new theorem.
+
+Using the local theorem as a whole-program floating interpretation still requires
+one operand format, uniform fusion of every contract step or none, and no other
+contract-flagged f32 multiply/add operations outside those steps. These are
+program/target correspondence conditions, not conclusions of the local theorem.
+The `fusion_premises` report records the theorem, source license count and site
+formats; it does not prove what the target fuses. Mixed per-site fusion, target
+FP modes and concrete IEEE/backend correspondence remain unqualified (T3/T4/T6).
+Native evidence: `test_lean_bf16_f32acc_native.py` compares
 JIT execution, including two retained SmolVLA sites at full shape, with an independent NumPy
 reference of the contract, and extends T3's bounded evidence to bf16/f16 `extf`/`truncf`.
 
-Pass-local qualification (2026-10-21): `Check/Bf16F32AccExact.check_sound` establishes equality
+Pass-local qualification (2026-10-21): `merlin/lean/MerlinVerify/Check/Bf16F32AccExact.check_sound` establishes equality
 of the complete actual output and the source-derived reference under any common operation
 semantics satisfying SSA renaming and call locality, including unsuccessful executions. This
-does not supply a successful execution of the capture. `Check/Bf16F32AccSites.check_sound`
+does not supply a successful execution of the capture. `merlin/lean/MerlinVerify/Check/Bf16F32AccSites.check_sound`
 additionally requires strict qualification of reconstructed fragments containing each actual
 source contraction, its actual initialization producers and the actual six target operations.
 `collectOps_coverage` preserves every recognized source contraction and its position, while
-`Rules/Bf16F32AccNonvacuity.operand_domain_nonempty` supplies initialized operands for every
+`merlin/lean/MerlinVerify/Rules/Bf16F32AccNonvacuity.operand_domain_nonempty` supplies initialized operands for every
 admitted local shape, including zero extents. Global output matching is independently required;
 local success cannot excuse another change to the capture.
 
@@ -732,7 +851,7 @@ and all current theorem statements match `SPEC_LOCK`; it cannot approve the poli
 
 ## Ordered per-tensor quantizer components
 
-`Rules/QuantizeDefinedness.lean` adds an explicit model-dependent conversion-safe
+`merlin/lean/MerlinVerify/Rules/QuantizeDefinedness.lean` adds an explicit model-dependent conversion-safe
 domain. `scalar_defined_iff` characterizes nonpoison scalar output by the exact
 conversion; `result_defined` and `run_defined` prove nonpoison output/successful
 source execution on that domain for i32/i64 zero points. `target_result_defined`
@@ -744,28 +863,28 @@ No new compile-time definedness verdict, float law, source approval, format or
 granularity is introduced. The separate IEEE-instance and frozen-specification
 review proposals are linked above.
 
-`Spec/Quantize.lean` is a proposed signed-i8 per-tensor quantizer contract,
+`merlin/lean/MerlinVerify/Spec/Quantize.lean` is a proposed signed-i8 per-tensor quantizer contract,
 following the scalar extraction and operation order in PyTorch v2.10.0. It
 retains binary64 reciprocal formation, conversion to f32, multiply, round-even,
 zero-point conversion/addition, lower-then-upper clamp, and signed conversion.
 The contract is parametric in the existing FloatModel and propagates poison;
 it assumes no floating algebra or concrete conversion-success law.
 
-`Rules/QuantizeScalar.lean` proves the actual reciprocal and quantizer bodies
-and their composition. `Rules/QuantizeTensor.lean` transports those results
+`merlin/lean/MerlinVerify/Rules/QuantizeScalar.lean` proves the actual reciprocal and quantizer bodies
+and their composition. `merlin/lean/MerlinVerify/Rules/QuantizeTensor.lean` transports those results
 through checked SSA renaming, captured clamp constants, mapped reads and full
 tensor overwrites, including rank-zero and empty shapes. Access bounds and
 geometry remain independently checked premises.
 
-`Sem/Ops/Quantize.lean` installs the source operation for static f32 data, rank-zero
+`merlin/lean/MerlinVerify/Sem/Ops/Quantize.lean` installs the source operation for static f32 data, rank-zero
 f32 scales, rank-zero i32/i64 zero points and full-range signed-i8 output.
-`Check/RulesQuantize.lean` proves typed source support. `QuantizeRuntime` and
+`merlin/lean/MerlinVerify/Check/RulesQuantize.lean` proves typed source support. `merlin/lean/MerlinVerify/Rules/QuantizeRuntime.lean` and
 `QuantizeLowering` connect the actual input tensors and checked geometry to the
 independent specification. `QuantizeSite.target_sound` proves execution of all six
 actual target operations, including their temporary SSA values and clamp captures.
 `QuantizeRule.check_sound` binds this to complete source/target fragments; the C1
 synthesizer proposes sites and independently rechecks their actual ASTs.
-`Check/QuantizeCollapse.lean` additionally proves exact typed normalization of the
+`merlin/lean/MerlinVerify/Check/QuantizeCollapse.lean` additionally proves exact typed normalization of the
 actual expansion, checking the entire continuation for temporary escapes. Existing
 region traversal lifts this equality into nested generic bodies. Canonicalization
 of the three supported dtype spellings is separately proved by source execution.

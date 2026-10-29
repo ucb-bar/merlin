@@ -1,5 +1,27 @@
 # Compiler pass verification checkpoint — 2026-10-29
 
+The [merge qualification](../../audits/ledger-review-20261029/merge-README.md)
+combines the host-fusion and ledger work with published memory-gate changes
+through `df8799c42`. Fresh merged-source evidence is separate from earlier cuts.
+
+The [ledger review](../../audits/ledger-review-20261029/README.md) resolves the
+injectivity overclaim with an additive theorem covering noninjective conversions,
+adds T7/A10 citations, reconciles F12 and dispatcher status, and corrects obsolete
+K-bound/initializer gaps. Frozen statements and approval flags are unchanged.
+Its refreshed receipts bind the new ledger; earlier source cuts stay historical.
+
+The additional host graph fusion gate checks actual emitted helper bodies,
+caller bindings and the complete public entry on both compiler routes. Its
+20-case final qualification passes without skips, including independent-process
+replay, valid target mutations, failure quarantine and native references.
+All 71 existing graph regressions also pass after two stale mock corrections.
+See the [graph qualification handoff](../../audits/host-graph-fusion-20261029/README.md)
+for exact sources, failures and paper wording. The theorem is relative to common
+typed total pure tensor actions and successful unobservable logical allocation.
+It does not establish physical fusion, primitive arithmetic correspondence or
+downstream code generation. Earlier receipts retain their original source cuts;
+the updated bound ledger requires fresh checks for current-source claims.
+
 Additional audit/strengthening based on `4d28efe5c`: see the
 [numerical review packet](../../../../docs/design/qdq_macc_numerical_contract_review.md)
 for conditional Q/DQ definedness, initialized/mixed-format MACC component proofs,
@@ -19,17 +41,19 @@ including default-all memory gates and strengthened claim documentation. Incomin
 changes were fast-forwarded through `c95fb1012`, preserving colleague authorship.
 Earlier proof records retain their own source cuts.
 
-All nine pass families have compiler selectors within their declared profiles.
-Five belong to `all`; Q/DQ, draft MACC and the two ISA configuration checks require
-explicit selection. **The human-review-only milestone remains open:** general
-LLM operation contexts, computed initializer prefixes and broader source/profile
-coverage still require engineering. Recursive positive counted-Kernel hoisting
-is now qualified in commits `30ec04967` and `0990c2806`.
+All ten pass families have compiler selectors within their declared profiles.
+Five belong to `all`; Q/DQ, draft MACC, host graph fusion and the two ISA
+configuration checks require explicit selection. **The human-review-only
+milestone remains open:** general LLM operation contexts, computed initializer
+prefixes and broader source/profile coverage still require engineering.
+Recursive positive counted-Kernel hoisting is qualified in commits `30ec04967`
+and `0990c2806`.
 The proof boundary is Merlin-owned transformations through their output IR, with downstream
 MLIR/LLVM/executable/hardware fidelity separate.
 
 | Pass family | Integrated behavior and retained evidence | Main scope boundary |
 | --- | --- | --- |
+| Host graph fusion | Actual helper/call/public-output projection, fresh complete-entry proof, canonical gate on both routes, replay, mutations and native references | One fused region of static pure integer pointwise stages; typed total pure-action model and successful unobservable logical allocation |
 | DCE | Typed tensor refinement; separate ordinary-memory dead-index-constant gate qualified in actual default-all routes | Memory relation equates successful complete return/world outcomes; no categorized-error or downstream fidelity proof |
 | CSE | Leading tensor gate; original live memory route binds authentic unchanged native CSE with zero jobs/credit | Changed memory CSE refuses; downstream lowering remains independent |
 | Unrolling | Empty/inline/bulk/tail, siblings, full lexical contexts and explicit inner depths through dynamic ancestors; 20 actual cases, 18 API controls and public native checks | Actual source strides remain known positive; scalar/SCF/resource admission remains |
