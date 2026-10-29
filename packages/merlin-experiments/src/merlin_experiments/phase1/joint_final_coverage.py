@@ -183,7 +183,38 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
         adapters, engine = _adapters("spike", context.target, te.sim_via, **readback_kwargs(context))
         if engine != "spike" or set(adapters) != {"L2"}:
             raise ValueError("final cheap coverage requires the exact Spike-only adapter")
-        for name, root, caps in (("core", core, core_caps), ("scalability", scale_cases, scale_caps)):
+        suites = (("core", core, core_caps), ("scalability", scale_cases, scale_caps))
+
+        def grade_group(name, root, caps, *, tag, share):
+            """One native grade of a whole group; ``share`` names its cumulative budget (None: the window)."""
+            runs = output / tag
+            # The Spike-only scalability suite owns no L3 adapter: keep it on its declared L0-L2 ladder
+            # under any operator tier floor. Core capsules keep the floor.
+            exempt = floor_exempt([root / cap["name"] for cap in caps]) if name == "scalability" else ExitStack()
+            with exempt, compiler_execution(inputs, candidate=frozen, run_dir=prepared.run_dir):
+                with (output / f"{tag}.log").open("w") as log, redirect_stdout(log), redirect_stderr(log):
+                    score = CG.grade(
+                        frozen,
+                        capsules_root=root,
+                        runs_root=runs,
+                        target=context.target,
+                        labels={"public", "dev"},
+                        contract=contract,
+                        target_experiment=te,
+                        oracle_adapters=adapters,
+                        functional_public_tier="L2",
+                        timeout=max(1, min(900, budget(share))),
+                        max_workers=CG.default_grade_workers(),
+                        additional_forbidden=inputs.additional_forbidden,
+                        model_snapshot_root=runs / ".private_model_sources",
+                        defer_pending=lambda: expired(share),
+                        defer_running=True,
+                    )
+            score_path = output / f"{tag}-score.json"
+            _write(score_path, score)
+            return score, {"path": str(score_path), "sha256": sha256_file(score_path)}
+
+        for name, root, caps in suites:
             group = groups[name]
             try:
                 if budget(name) < 1:
@@ -191,32 +222,7 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
                 prepared.verify_inputs()
                 if inputs.verify_grade_inputs is not None:
                     inputs.verify_grade_inputs()
-                runs = output / name
-                # The Spike-only scalability suite owns no L3 adapter: keep it on its declared L0-L2 ladder
-                # under any operator tier floor. Core capsules keep the floor.
-                exempt = floor_exempt([root / cap["name"] for cap in caps]) if name == "scalability" else ExitStack()
-                with exempt, compiler_execution(inputs, candidate=frozen, run_dir=prepared.run_dir):
-                    with (output / f"{name}.log").open("w") as log, redirect_stdout(log), redirect_stderr(log):
-                        score = CG.grade(
-                            frozen,
-                            capsules_root=root,
-                            runs_root=runs,
-                            target=context.target,
-                            labels={"public", "dev"},
-                            contract=contract,
-                            target_experiment=te,
-                            oracle_adapters=adapters,
-                            functional_public_tier="L2",
-                            timeout=max(1, min(900, budget(name))),
-                            max_workers=CG.default_grade_workers(),
-                            additional_forbidden=inputs.additional_forbidden,
-                            model_snapshot_root=runs / ".private_model_sources",
-                            defer_pending=lambda name=name: expired(name),
-                            defer_running=True,
-                        )
-                score_path = output / f"{name}-score.json"
-                _write(score_path, score)
-                group["evidence"] = {"path": str(score_path), "sha256": sha256_file(score_path)}
+                score, group["evidence"] = grade_group(name, root, caps, tag=name, share=name)
                 _apply_score(group, score)
             except Exception as exc:
                 group["error"] = f"{type(exc).__name__}: {exc}"
@@ -256,6 +262,37 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
                         "status": "skipped",
                         "reason": f"{type(exc).__name__}: {exc}",
                     }
+            save()
+
+        # The cumulative shares only protect later groups from an earlier one; they must never turn a
+        # healthy run incomplete. Whatever window is left (models are small) goes back to any group the
+        # share cut short: a second native pass over the same roster (exact caches make closed rows cheap).
+        for name, root, caps in suites:
+            group = groups[name]
+            unclosed = [r for r in group["obligations"].values() if r["status"] not in {"pass", "fail"}]
+            if not unclosed or budget() < 1:
+                continue
+            try:
+                prepared.verify_inputs()
+                score, evidence = grade_group(name, root, caps, tag=f"{name}-reclaim", share=None)
+                trial = _capsule_group(caps)
+                _apply_score(trial, score)
+                closed = sum(r["status"] in {"pass", "fail"} for r in trial["obligations"].values())
+                before = len(group["obligations"]) - len(unclosed)
+                group["reclaim"] = {
+                    "attempted": True,
+                    "closed_before": before,
+                    "closed_after": closed,
+                    "evidence": evidence,
+                }
+                if closed > before:
+                    kept = {k: group[k] for k in ("reclaim",)}
+                    group.clear()
+                    group.update(trial)
+                    group.update(kept)
+                    group["evidence"] = evidence
+            except Exception as exc:
+                group["reclaim"] = {"attempted": True, "error": f"{type(exc).__name__}: {exc}"}
             save()
 
         groups["models"]["passed"] = all(row["status"] == "pass" for row in groups["models"]["obligations"].values())

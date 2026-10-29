@@ -103,6 +103,7 @@ def run(
         document.update(
             schema="merlin.background_snapshot_owner.v1",
             admission_closed=job["closed"].is_set(),
+            scheduler_closed_at_epoch=job.get("sched_closed_at"),
             snapshot_dir=str(Path(run_dir) / "_qa_work" / f"fcand_{job['tick']}" / "submission"),
             runs_dir=str(Path(run_dir) / "_qa_work" / f"fruns_{job['tick']}"),
             admission_reason=job.get("admission_reason"),
@@ -155,8 +156,13 @@ def run(
         snapshot_publication.claim(workspace, job['token'], source)
 
         def closed(reason):
-            job['admission_reason'] = reason
-            job['closed'].set()
+            job["admission_reason"] = reason
+            if not job["preempt"].is_set():
+                # The scheduler's own close (admission window ended / everything admitted): only from
+                # here does a snapshot owe the newest one the grader, so a slow-to-prepare snapshot is
+                # never preempted before it has admitted -- and given min_age_s to run -- any member.
+                job.setdefault("sched_closed_at", time.time())
+            job["closed"].set()
 
         def preempted_reason():
             return (
@@ -243,7 +249,8 @@ def run(
                 not job["done"].is_set()
                 and not job["preempt"].is_set()
                 and source != job["source"]
-                and now - job["started_at_epoch"] >= policy["min_age_s"]
+                and job.get("sched_closed_at") is not None
+                and now - job["sched_closed_at"] >= policy["min_age_s"]
             ):
                 preempt(job, source)
         if policy["mode"] == "abort" and len(active) >= 2:

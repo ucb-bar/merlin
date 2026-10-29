@@ -33,6 +33,8 @@ from typing import Any
 #: pays off when the head is cheap (a 0.29 s tier priced before 7 workers pay a 24.5 s one); a
 #: full-shape layer at the head of a perf corpus took hours, all of it with every other worker idle.
 CALIBRATION_BUDGET_S = 120.0
+#: Seconds between the scheduler's looks at admission/deferral/revocation while members run.
+ADMISSION_POLL_S = 5
 _DEFER_PROBE: ContextVar[Callable[[], str | None] | None] = ContextVar("merlin_capsule_defer_probe", default=None)
 
 #: Operator-selected directories (``os.pathsep``-separated) whose immediate subdirectories are earlier
@@ -781,7 +783,13 @@ def run_pipelined(
                 continue
             # Observe obsolescence even while running work drains; pending members
             # never start after it, with optional cooperative running-child cancellation.
-            wait_s = 5 if defer_pending is not None or admission_deadline_monotonic is not None or _ADMISSION_OBSERVER.get() is not None else None
+            wait_s = (
+                ADMISSION_POLL_S
+                if defer_pending is not None
+                or admission_deadline_monotonic is not None
+                or _ADMISSION_OBSERVER.get() is not None
+                else None
+            )
             if boundary_readiness is not None:
                 head_wait = boundary_readiness.next_wait()
                 if head_wait is not None:

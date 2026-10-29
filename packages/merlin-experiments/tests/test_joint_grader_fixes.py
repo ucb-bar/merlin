@@ -18,7 +18,17 @@ from merlin_experiments.phase1.feedback import dual_snapshots, snapshot_publicat
 from merlin_experiments.phase1.feedback.background_admission import BackgroundGuard
 
 from merlin.targetgen import tier_policy
-from merlin.targetgen.capsule_scheduling import BackgroundAbort, check_abort, run_pipelined
+from merlin.targetgen.capsule_scheduling import BackgroundAbort, check_abort, rolling_admission, run_pipelined
+
+
+@pytest.fixture(autouse=True)
+def _fast_scheduler_poll(monkeypatch):
+    from merlin.targetgen import capsule_scheduling
+
+    monkeypatch.setattr(capsule_scheduling, "ADMISSION_POLL_S", 0.02)
+
+
+_real_remaining = JC.remaining
 
 
 def _state(**policy):
@@ -34,17 +44,28 @@ def _workspace(tmp_path):
 
 
 def _owners(run):
-    return {
-        json.loads(p.read_text())["tick"]: json.loads(p.read_text())
-        for p in (run / "_qa_work/background_snapshot_owners").glob("*.json")
-    }
+    rows = {}
+    for path in (run / "_qa_work/background_snapshot_owners").glob("*.json"):
+        if path.name.endswith(".next.json"):
+            continue
+        try:
+            row = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        rows[row["tick"]] = row
+    return rows
 
 
 class _Harness:
-    """Fake snapshot grades through the real scheduler: blocked members poll the cooperative checkpoint."""
+    """Fake snapshot grades through the real scheduler: blocked members poll the cooperative checkpoint.
 
-    def __init__(self, cooperative=True, names=6, workers=2):
+    ``window`` is the scheduler's admission window (production: 300 s), the event that closes a snapshot's
+    admission and makes it preemptable; ``prep_s`` is queue preparation before the scheduler runs.
+    """
+
+    def __init__(self, cooperative=True, names=6, workers=2, window=0.1, prep_s=0.0, member_s=None):
         self.cooperative, self.names, self.workers = cooperative, names, workers
+        self.window, self.prep_s, self.member_s = window, prep_s, member_s
         self.started, self.release = [], threading.Event()
         self.lock = threading.Lock()
         self.live, self.peak = 0, 0
@@ -59,14 +80,20 @@ class _Harness:
         def execute(cap, parallel):
             with self.lock:
                 self.started.append(cap["name"])
+            began = time.monotonic()
             while not self.release.is_set():
+                if self.member_s is not None and time.monotonic() - began >= self.member_s:
+                    break
                 if self.cooperative:
                     check_abort()
                 time.sleep(0.005)
             return {"capsule": cap["name"], "status": "pass"}
 
         try:
-            rows = run_pipelined(caps, execute, max_workers=self.workers)
+            time.sleep(self.prep_s)
+            scope = rolling_admission(admission_window_s=self.window) if self.window else nullcontext()
+            with scope:
+                rows = run_pipelined(caps, execute, max_workers=self.workers)
         finally:
             with self.lock:
                 self.live -= 1
@@ -74,7 +101,7 @@ class _Harness:
         return {"all_pass": False, "rows": rows}
 
 
-def _run(tmp_path, monkeypatch, harness, state, sources, *, stop, poll=0.005):
+def _run(tmp_path, monkeypatch, harness, state, sources, *, stop, poll=0.005, interval=0.3):
     ws, run = _workspace(tmp_path)
     monkeypatch.setattr(JC, "selected", lambda: state)
     manager = threading.Thread(
@@ -82,12 +109,13 @@ def _run(tmp_path, monkeypatch, harness, state, sources, *, stop, poll=0.005):
             ws,
             run,
             stop,
-            interval_s=0,
+            interval_s=interval,
             first_grade=harness.grade,
             grade=harness.grade,
             source_identity=lambda: sources[0],
             poll_s=poll,
-        )
+        ),
+        daemon=True,
     )
     manager.start()
     return manager, run
@@ -146,7 +174,7 @@ def test_drain_mode_stops_admission_but_lets_in_flight_finish(tmp_path, monkeypa
 
 
 def test_never_more_than_two_live_snapshots_and_slot_pressure_revokes_oldest(tmp_path, monkeypatch):
-    harness, stop, sources = _Harness(workers=1, names=3), threading.Event(), ["a" * 64]
+    harness, stop, sources = _Harness(workers=2, names=4), threading.Event(), ["a" * 64]
     # Large abort grace: only slot pressure (a third snapshot is due while two exist) may revoke early.
     state = _state(snapshot_preemption={"mode": "abort", "min_age_s": 0, "abort_grace_s": 900})
     manager, run = _run(tmp_path, monkeypatch, harness, state, sources, stop=stop)
@@ -202,7 +230,7 @@ def test_freeze_boundary_with_cooperative_members_unwinds_without_waiting_for_gr
 
 
 def test_non_joint_stop_still_joins_without_cancelling(tmp_path, monkeypatch):
-    harness, stop, sources = _Harness(workers=2, names=6), threading.Event(), ["a" * 64]
+    harness, stop, sources = _Harness(workers=2, names=6, window=None), threading.Event(), ["a" * 64]
     ws, run = _workspace(tmp_path)
     monkeypatch.setattr(JC, "selected", lambda: None)
     manager = threading.Thread(
@@ -392,3 +420,54 @@ def test_drain_checkpoint_only_at_the_joint_freeze_boundary(tmp_path, monkeypatc
     assert H.drain_required(run) is False
     with pytest.raises(ValueError, match="freeze boundary"):
         H.checkpoint(tmp_path / "ws", run, 0, drain=True)
+
+
+def test_continuous_edits_and_slow_preparation_do_not_starve_a_snapshot(tmp_path, monkeypatch):
+    # The author edits constantly and preparation outlasts min_age: a snapshot must still finish rows,
+    # because it can only be preempted after the scheduler itself closed its admission.
+    harness = _Harness(workers=2, names=4, prep_s=0.5, member_s=0.15, window=0.3)
+    stop, counter = threading.Event(), [0]
+
+    class Moving:
+        def __getitem__(self, _):
+            counter[0] += 1
+            return f"{counter[0]:064d}"
+
+    state = _state(snapshot_preemption={"mode": "abort", "min_age_s": 0, "abort_grace_s": 0})
+    manager, run = _run(tmp_path, monkeypatch, harness, state, Moving(), stop=stop, interval=0.1)
+    assert _wait(lambda: any(r["status"] == "pass" for rows in harness.verdicts.values() for r in rows), 8)
+    for owner in _owners(run).values():
+        if owner["preemption"] and owner["preemption"]["at_epoch"]:
+            assert owner["scheduler_closed_at_epoch"] is not None, "preempted before the scheduler closed it"
+    stop.set()
+    harness.release.set()
+    manager.join(5)
+
+
+def test_group_share_cannot_turn_a_healthy_run_incomplete(tmp_path, monkeypatch):
+    from test_joint_final_coverage import _native_fixture, _score
+
+    from merlin.targetgen import capsule_grade as CG
+
+    prepared, inputs, frozen, digest, calls = _native_fixture(tmp_path, monkeypatch)
+    state = F.joint_control.selected()
+    state["policy"].update(duration_s=7200, drain_s=200, final_model_s=3000, final_coverage_s=100)
+    state["started_at_epoch"] = time.time() - 7200 - 45
+    monkeypatch.setattr(F.joint_control, "remaining", _real_remaining)
+    monkeypatch.setattr(F.joint_control, "require_full_model", lambda **kw: 100)
+    seen = []
+
+    def grade(candidate, **kw):
+        tag = Path(kw["runs_root"]).name
+        seen.append(tag)
+        names = [f"scale{i}" for i in range(67)] if tag.startswith("scalability") else [f"core{i}" for i in range(173)]
+        score = _score(names)
+        if tag == "core":  # the 45% share cut the first core pass short
+            score["per_capsule"][-1]["status"] = "gated"
+            score["gradeable"] = False
+        return score
+
+    monkeypatch.setattr(CG, "grade", grade)
+    report = F.validate(prepared, inputs=inputs, frozen=frozen, compiler_sha256=digest)
+    assert "core-reclaim" in seen and report["groups"]["core"]["reclaim"]["closed_after"] == 173
+    assert report["n_passed"] == 246 and report["passed"] is True
