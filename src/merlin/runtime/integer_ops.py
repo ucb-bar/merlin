@@ -45,6 +45,8 @@ _MOVE_FORMS = {
     "broadcast": frozenset(),
     "repeat": frozenset({"repeats"}),
     "reshape": frozenset(),
+    "upsample": frozenset({"scales"}),
+    "as_strided": frozenset({"sizes", "strides", "storage_offset"}),
 }
 _MOVE_COMMON = frozenset(
     {"form", "output_dtype", "semantic", "scale", "quant_min", "quant_max", "value_code"} | _EXACT_ATTRS
@@ -242,6 +244,30 @@ def move(src: Tensor, attrs: dict[str, Any], dst_shape: list[int] | None, *, op:
         if any(d < 0 for d in target) or int(np.prod(target, dtype=np.int64)) != a.size:
             raise IntegerOpError(f"{op}: {list(a.shape)} cannot be reshaped to {list(target)}")
         out = a.reshape(target)
+    elif form == "upsample":
+        # torch nearest upsample by integer factors (repeat_interleave per axis): out[i] = in[i // scale].
+        scales = _int_list(attrs, "scales", op=op, length=rank)
+        if any(s < 1 for s in scales):
+            raise IntegerOpError(f"{op}: upsample scales must be positive integers")
+        out = a
+        for axis, scale in enumerate(scales):
+            out = np.repeat(out, scale, axis=axis)
+    elif form == "as_strided":
+        # torch.as_strided over the row-major storage: out[i0, ..] = flat[storage_offset + sum(ik * stride_k)].
+        # A read-only view: strides are positive and may overlap (sliding rows); the result is a copy.
+        sizes = _int_list(attrs, "sizes", op=op)
+        strides = _int_list(attrs, "strides", op=op, length=len(sizes))
+        offset = attrs.get("storage_offset")
+        if type(offset) is not int or offset < 0 or not sizes or any(n < 1 for n in sizes) or any(s < 1 for s in strides):
+            raise IntegerOpError(f"{op}: as_strided needs a nonnegative storage_offset, positive sizes and strides")
+        if offset + sum((n - 1) * s for n, s in zip(sizes, strides, strict=True)) >= a.size:
+            raise IntegerOpError(f"{op}: as_strided reads past the end of the source storage")
+        index = np.full(tuple(sizes), offset, dtype=np.int64)
+        for axis, (n, s) in enumerate(zip(sizes, strides, strict=True)):
+            shape = [1] * len(sizes)
+            shape[axis] = n
+            index = index + (np.arange(n, dtype=np.int64) * s).reshape(shape)
+        out = a.reshape(-1)[index]
     elif form == "broadcast":
         if dst_shape is None:
             raise IntegerOpError(f"{op}: a broadcast needs its declared destination shape")

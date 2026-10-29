@@ -54,7 +54,30 @@ def _static(*typed: dict | None) -> bool:
 
 
 #: Interface movement forms whose single-source work is stated by the form itself.
-_VIEW_FORM_WORK = {"permute": "permutation", "reshape": "copy"}
+_VIEW_FORM_WORK = {"permute": "permutation", "reshape": "copy", "upsample": "copy", "as_strided": "copy"}
+
+
+def _strided_read_class(attributes: dict, source: dict, result: dict) -> str | None:
+    """Broadcast class of an ``as_strided`` read, from its static sizes, strides and storage offset.
+
+    Every result element is one source element at ``offset + sum(i_k * stride_k)``. Distinct addresses
+    (no element read twice) is ``none``; a repeated read through a contiguous innermost run (stride 1: the
+    DMA reads whole rows at an arbitrary row pitch) is ``outer``; anything else is not stated.
+    """
+    sizes, strides, offset = attributes.get("sizes"), attributes.get("strides"), attributes.get("storage_offset")
+    if (
+        not isinstance(sizes, list) or not isinstance(strides, list) or len(sizes) != len(strides) or not sizes
+        or any(type(v) is not int or v < 1 for v in [*sizes, *strides]) or type(offset) is not int or offset < 0
+        or result["shape"] != sizes or math.prod(sizes) > (1 << 22)
+        or offset + sum((n - 1) * s for n, s in zip(sizes, strides, strict=True)) >= math.prod(source["shape"])
+    ):
+        return None
+    addresses = {offset}
+    for n, s in zip(sizes, strides, strict=True):
+        addresses = {a + i * s for a in addresses for i in range(n)}
+    if len(addresses) == math.prod(sizes):
+        return "none"
+    return "outer" if strides[-1] == 1 else None
 
 
 def _movement_broadcasting(attributes: dict, source: dict | None, result: dict | None) -> str | None:
@@ -77,6 +100,20 @@ def _movement_broadcasting(attributes: dict, source: dict | None, result: dict |
         if isinstance(perm, list) and sorted(perm) == list(range(len(source["shape"]))) and len(result["shape"]) == len(perm):
             return "none" if all(result["shape"][i] == source["shape"][p] for i, p in enumerate(perm)) else None
         return None
+    if form == "as_strided":
+        return _strided_read_class(attributes, source, result)
+    if form == "upsample":
+        # Nearest upsample by integer factors: each result element replays one source element along the
+        # resampled axes. The class is the broadcast class of the replay: `outer` while the innermost axis
+        # is not resampled (scale 1: whole contiguous rows are replayed), `inner` otherwise.
+        scales = attributes.get("scales")
+        if (
+            not isinstance(scales, list) or len(scales) != len(source["shape"]) or len(result["shape"]) != len(scales)
+            or any(type(v) is not int or v < 1 for v in scales)
+            or any(out != n * s for out, n, s in zip(result["shape"], source["shape"], scales, strict=True))
+        ):
+            return None
+        return "inner" if scales[-1] != 1 else "outer"
     if form == "reshape":
         # A row-major reshape (view, squeeze, unsqueeze, flatten) relabels the same elements in the same
         # order: no element is replayed and none is dropped.

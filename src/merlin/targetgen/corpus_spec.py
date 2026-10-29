@@ -1257,6 +1257,8 @@ _MOVE_FORM_KEYS: dict[str, tuple[str, ...]] = {
     "broadcast": (),
     "repeat": ("repeats",),
     "reshape": (),
+    "upsample": ("scales",),
+    "as_strided": ("sizes", "strides", "storage_offset"),
 }
 
 

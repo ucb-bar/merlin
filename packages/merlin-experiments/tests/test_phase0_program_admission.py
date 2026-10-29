@@ -810,3 +810,28 @@ def test_view_like_movement_states_its_work(attributes, src, out, work):
     }  # fmt: skip
     [row] = [r for r in command_rows(cb) if r["semantic_family"] == "movement"]
     assert row["movement_form"] == work
+
+
+@pytest.mark.parametrize(
+    ("attributes", "src", "out", "expected"),
+    [
+        ({"form": "as_strided", "sizes": [6], "strides": [7], "storage_offset": 0}, [6, 6], [6], "none"),
+        ({"form": "as_strided", "sizes": [3, 6], "strides": [3, 1], "storage_offset": 0}, [6, 6], [3, 6], "outer"),
+        ({"form": "as_strided", "sizes": [3, 3], "strides": [3, 2], "storage_offset": 0}, [6, 6], [3, 3], "none"),
+        ({"form": "as_strided", "sizes": [3, 3], "strides": [1, 2], "storage_offset": 0}, [6, 6], [3, 3], None),
+        ({"form": "as_strided", "sizes": [6], "strides": [7], "storage_offset": 8}, [6, 6], [6], None),
+        ({"form": "upsample", "scales": [2, 2, 1]}, [3, 2, 5], [6, 4, 5], "outer"),
+        ({"form": "upsample", "scales": [1, 2]}, [3, 2], [3, 4], "inner"),
+        ({"form": "upsample", "scales": [2, 1]}, [3, 2], [5, 2], None),
+    ],
+)
+def test_strided_read_and_upsample_broadcast_class_is_read_from_the_form(attributes, src, out, expected):
+    from merlin.targetgen.interface_observations import command_rows
+
+    cb = {
+        "abi_version": "0.1", "target": "fixture",
+        "tensors": {"X": {"shape": src, "dtype": "i8", "role": "input"}, "Y": {"shape": out, "dtype": "i8", "role": "output"}},
+        "commands": [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"}, "attributes": attributes}],
+    }  # fmt: skip
+    rows = [row for row in command_rows(cb) if row["semantic_family"] == "movement"]
+    assert len(rows) == 1 and rows[0].get("broadcasting") == expected

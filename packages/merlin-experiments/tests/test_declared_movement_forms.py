@@ -81,3 +81,29 @@ def test_reshape_refuses_a_different_element_count_or_no_shape():
         integer_ops.move(_t([4, 6]), {"form": "reshape"}, [5, 5])
     with pytest.raises(integer_ops.IntegerOpError):
         integer_ops.move(_t([4, 6]), {"form": "reshape"}, None)
+
+
+def test_upsample_is_nearest_per_axis():
+    np = pytest.importorskip("numpy")
+    out = integer_ops.move(_t([3, 2, 5]), {"form": "upsample", "scales": [2, 2, 1]}, None)
+    ref = np.repeat(np.repeat(np.arange(30).reshape(3, 2, 5), 2, axis=0), 2, axis=1)
+    assert out.shape == (6, 4, 5) and out.data == ref.reshape(-1).tolist()
+    with pytest.raises(integer_ops.IntegerOpError):
+        integer_ops.move(_t([3, 2]), {"form": "upsample", "scales": [0, 1]}, None)
+
+
+def test_as_strided_reads_row_major_storage_and_diagonal_is_one_of_them():
+    np = pytest.importorskip("numpy")
+    base = np.arange(36).reshape(6, 6)
+    diag = integer_ops.move(_t([6, 6]), {"form": "as_strided", "sizes": [6], "strides": [7], "storage_offset": 0}, None)
+    assert diag.data == np.diagonal(base).tolist()
+    off = integer_ops.move(_t([6, 6]), {"form": "as_strided", "sizes": [5], "strides": [7], "storage_offset": 1}, None)
+    assert off.data == np.diagonal(base, 1).tolist()
+    sliding = integer_ops.move(_t([6, 6]), {"form": "as_strided", "sizes": [3, 6], "strides": [3, 1], "storage_offset": 0}, None)
+    assert sliding.data == [i + 3 * r for r in range(3) for i in range(6)]
+    for bad in (
+        {"sizes": [6], "strides": [7], "storage_offset": 8},  # reads past the end
+        {"sizes": [6], "strides": [0], "storage_offset": 0},  # stride must be positive
+    ):
+        with pytest.raises(integer_ops.IntegerOpError):
+            integer_ops.move(_t([6, 6]), {"form": "as_strided", **bad}, None)

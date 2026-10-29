@@ -92,12 +92,12 @@ opcodes:
       output_dtype: "the container dtype the values land in (operand dtype in, accumulate dtype out)"
       semantic: "string; the movement form being exercised (e.g. mvin_mvout)"
       form: >-
-        "identity (default) | permute | slice | pad | broadcast | repeat | reshape". Absent, the op is the identity
+        "identity (default) | permute | slice | pad | broadcast | repeat | reshape | upsample | as_strided". Absent, the op is the identity
         round-trip below. Each other form names its own REQUIRED attributes and no default is applied:
         permute {perm}; slice {offsets, sizes, strides (nonzero; a negative stride walks the dim backwards from its offset, so flip is offset d-1 stride -1)}; pad {low, high, mode: constant|reflect|replicate,
         value_code (constant only: the already-quantized pad code)}; broadcast {} (to dst's declared
         shape, LEADING dims only -- a stride-0 load replays whole rows); repeat {repeats}; reshape {} (dst's
-        declared shape holds the same elements in row-major order: torch view/reshape/squeeze/unsqueeze/flatten)
+        declared shape holds the same elements in row-major order: torch view/reshape/squeeze/unsqueeze/flatten); upsample {scales: a positive integer per source dim; out[i] = in[i // scale], torch nearest}; as_strided {sizes, strides (positive), storage_offset: out[i_0..] = row-major source storage[offset + sum(i_k * stride_k)], torch.as_strided / diagonal; strides may overlap, the read must stay inside the source}
       scale: >-
         "legacy binary scalar, optional: exact host clamp(RNE(x * scale)), never an approximate load-path multiply; paired scale_numerator/scale_denominator takes precedence"
     semantics: >-
