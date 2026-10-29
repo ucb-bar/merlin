@@ -40,12 +40,12 @@ class Options:
         if self.tile_size is not None and (type(self.tile_size) is not int or self.tile_size < 2):
             raise ValueError("formal ordered tiling requires an integer size at least two")
         if self.buffer_allocator is not None and (
-            self.buffer_allocator != ALLOCATOR or self.tile_size is None or self.unroll_factor is not None
+            self.buffer_allocator != ALLOCATOR or self.unroll_factor is not None
         ):
             raise ValueError(
-                "buffer reuse requires explicit total_private_unobservable allocator and tiling; no unroll"
+                "buffer reuse requires explicit total_private_unobservable allocator; no unroll"
             )
-        if self.buffer_allocator is not None and self.tile_size > 16:
+        if self.buffer_allocator is not None and self.tile_size is not None and self.tile_size > 16:
             raise ValueError("private buffer proof currently requires tile size at most sixteen")
 
     @property
@@ -126,9 +126,14 @@ def apply(source, directory, *, options=None, index_bits=64):
     if options.buffer_allocator is not None:
         run("shape_view_normalization", lambda: normalization.normalize_shapes(module))
         run(BUFFER, lambda: planning.reuse_storage(module, planning.plan_storage(module)))
-        run(TILE, lambda: loops.segment_loops(module, (options.tile_size,), index_bits=64))
+        if options.tile_size is not None:
+            run(TILE, lambda: loops.segment_loops(module, (options.tile_size,), index_bits=64))
         check_name = "compiler_buffer_refinement"
         required = tuple(name for name in names if name in (BUFFER, TILE))
+        if names and not required:
+            # Normalization is part of this selected storage bundle even when
+            # reuse is identity and no initializer tiling was requested.
+            required = (BUFFER,)
     else:
         if options.unroll_factor is not None:
             run(UNROLL, lambda: unrolling.unroll_ordered_loops(module, (options.unroll_factor,), index_bits=64))

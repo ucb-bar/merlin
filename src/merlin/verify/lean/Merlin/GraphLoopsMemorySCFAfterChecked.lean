@@ -5,7 +5,7 @@ final bound_local_simulations statement. This remains a candidate until compiled
 -/
 import Merlin.GraphLoopsMemorySCFAfterAccessLocal
 import Merlin.GraphLoopsMemorySCFAfterAllocationLocal
-import Merlin.GraphLoopsMemorySCFAfterInitializerLocal
+import Merlin.GraphLoopsMemorySCFAfterUntiledLocal
 
 set_option autoImplicit false
 
@@ -71,6 +71,20 @@ theorem Expansion.local_checked {Value User : Type} (bits : Nat) (indices : Inde
     exact alias_local plan context sourceClock clock operation item owner checked ownerValid ownerBound
       shape.symm element.symm slotsEqual.symm scalar _
   | dropRelease operation item => exact drop_release_local plan context clock operation item scalar _
+  | untiled link =>
+    rcases facts with ⟨_,positive⟩
+    rcases checked.1 with ⟨_,_,_,_,objectInside,storeOpcode,loopOpcode⟩
+    let base : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
+      withCalls (withIndex (Epoch.scalarAllocationBase plan.opcodes scalar) bits indices)
+        (expandedModule plan kernel target)
+        (GraphLoopsShape.invoke (finalMeaning bits indices plan.opcodes scalar)
+          (expandedModule plan kernel target) false (depth+1))
+    have memory := expanded_memory (User := User) bits indices plan planValid kernel target scalar depth
+    have result := untiled_initializer_local plan planValid context sourceClock clock link checked positive
+      (inside link.config.object objectInside) scalar base (Epoch.memoryOpcode plan.opcodes)
+      (by simp only [Epoch.memoryOpcode,storeOpcode]) (by simp only [Epoch.memoryOpcode,loopOpcode])
+    rw [← memory] at result
+    exact result
   | tiled link program =>
     rcases facts with ⟨_, sameUniform, _, _, controls, bounds, fresh,
       addIndex, minIndex, addOld, minOld, addNotCall, minNotCall⟩

@@ -17,6 +17,7 @@ inductive Expansion where
   | alias (operation : String) (item owner : Epoch.PrivateView)
   | dropRelease (operation : String) (item : Epoch.PrivateView)
   | tiled (link : Epoch.InitializerLink) (program : TiledInitializer)
+  | untiled (link : Epoch.InitializerLink)
   deriving DecidableEq, Repr
 
 def Expansion.source : Expansion → Epoch.Command
@@ -24,11 +25,13 @@ def Expansion.source : Expansion → Epoch.Command
   | .alias operation item _ => .allocate operation item false
   | .dropRelease operation item => .release operation item false
   | .tiled link _ => .initialize link
+  | .untiled link => .initialize link
 
 def Expansion.fragments : Expansion → List Fragment
   | .keep command => [.atom command.atom]
   | .alias _ item owner => [.alias owner.binding item.binding (Epoch.type item.shape item.element)]
   | .dropRelease _ _ => [.empty]
+  | .untiled link => [.atom link.canonical.atom]
   | .tiled link program =>
       [.atom (.constant program.tile link.config.tile),
        .atom (.region program.uniform.loopKey [program.uniform.zero, program.uniform.rows, program.tile]
@@ -57,6 +60,7 @@ def Expansion.Facts (bits : Nat) (plan : Epoch.PlanContext) (indices : IndexOpco
       GraphLoopsReuse.slotOf plan.objects item.object = GraphLoopsReuse.slotOf plan.objects owner.object ∧
       GraphLoopsReuse.slotOf plan.objects item.object < plan.objects.length
   | .dropRelease _ item => item.Valid plan
+  | .untiled link => link.Facts ∧ 0 < link.config.tile
   | .tiled link program =>
       link.Facts ∧ program.uniform = link.canonical ∧
       program.tile.kind = .index ∧ program.tile.known = some link.config.tile ∧
@@ -75,7 +79,7 @@ instance expansionFactsDecidable (bits : Nat) (plan : Epoch.PlanContext) (indice
     | allocate operation item retained => cases retained <;> unfold Expansion.Facts <;> infer_instance
     | release operation item retained => cases retained <;> unfold Expansion.Facts <;> infer_instance
     | constant | binary | «initialize» | load | store | observer => unfold Expansion.Facts; infer_instance
-  | alias | dropRelease | tiled => unfold Expansion.Facts; infer_instance
+  | alias | dropRelease | tiled | untiled => unfold Expansion.Facts; infer_instance
 
 def ExpansionsValid (bits : Nat) (plan : Epoch.PlanContext) (indices : IndexOpcodes) :
     Context → Nat → List Expansion → Prop

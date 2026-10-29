@@ -42,10 +42,12 @@ def decode_pair(source, final):
 
 
 def reconstruct_chain(buffers, *, index_bits=64):
-    """Recompute untrusted plan hints from FOUR complete independently parsed IRs.
+    """Recompute untrusted plan hints from actual complete independently parsed IRs.
 
     Shape output and reuse input share the SAME raw normalized buffer, not just
-    an asserted join/hash. No retained plan, receipt or execution outcome is read.
+    an asserted join/hash. The three-buffer route proves the untiled target.
+    Its auxiliary segmentation supplies only a checked epoch-model hint; it is
+    never a submitted boundary or delivered compiler result.
     """
     from .lean_graph_loops_reuse_capture import export as memory_export
     from .lean_graph_loops_shape_after_projection import decode
@@ -53,11 +55,20 @@ def reconstruct_chain(buffers, *, index_bits=64):
 
     if (
         type(buffers) is not tuple
-        or len(buffers) != 4
+        or len(buffers) not in (3, 4)
         or any(type(x) is not str or len(x.encode()) > 256 * 1024 for x in buffers)
     ):
-        raise ValueError("four bounded complete original/normalized/reused/segmented buffers required")
-    original, normalized, reused, segmented = map(parse, buffers)
+        raise ValueError("three or four bounded complete original/normalized/reused[/segmented] buffers required")
+    parsed = tuple(map(parse, buffers))
+    original, normalized, reused = parsed[:3]
+    if len(parsed) == 4:
+        segmented = parsed[3]
+    else:
+        from merlin.transforms.loops import segment_loops
+
+        segmented = reused.clone()
+        segment_loops(segmented, (2,), index_bits=index_bits)
+        segmented.verify()
     shape = {"before_export": export(original), "after_export": export(normalized)}
     memory = {
         key: memory_export(module, calls="shape-direct")
@@ -66,5 +77,7 @@ def reconstruct_chain(buffers, *, index_bits=64):
         )
     }
     adapter = project_chain(shape, memory, index_bits=index_bits, max_nodes=5000)
+    if len(parsed) == 3:
+        adapter["terminal_initializer"] = "untiled"
     frame = decode(shape["after_export"], index_bits=index_bits, max_nodes=5000)["frame"]
     return {"adapter": adapter, "pair": {"afterFrame": frame}}

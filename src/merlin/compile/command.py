@@ -128,7 +128,7 @@ def parser(
         metavar="PASSES",
         help="check selected DCE, CSE, ordered loop and private-buffer boundaries with Lean "
         "('all' selects DCE/CSE/loop/buffer checks; "
-        "lower_quant_ext and bf16_f32acc_draft_contract require explicit selection); "
+        "Q/DQ, draft MACC and ISA configuration checks require explicit selection); "
         "failed checks stop the compile",
     )
     ap.add_argument("--lean-sdk-bin", metavar="DIR", help="Lean SDK bin directory for --validate-passes")
@@ -156,7 +156,7 @@ def parser(
     ap.add_argument(
         "--buffer-reuse-allocator",
         choices=("total_private_unobservable",),
-        help="opt in to private buffer reuse under this explicit allocator model; requires loop tiling",
+        help="opt in to private buffer reuse under this explicit allocator model",
     )
     ap.add_argument(
         "--list-passes",

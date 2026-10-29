@@ -95,7 +95,7 @@ def _ready(candidate):
         or type(candidate.index_bits) is not int
         or candidate.index_bits != 64
     ):
-        raise Unavailable("exact actual4 possible-success request required")
+        raise Unavailable("exact actual-chain possible-success request required")
     _parts(candidate)
 
 
@@ -201,11 +201,25 @@ def require_query_success(process):
     diagnostic = (process.stdout or "") + "\n" + (process.stderr or "")
     lower = diagnostic.lower()
     infrastructure = (
-        "maximum number of heartbeats", "maximum recursion depth", "stack overflow",
-        "(deterministic) timeout", "out of memory", "cannot allocate", "failed to create thread",
-        "unknown module", "unknown identifier", "unknown constant", "unknown namespace",
-        "object file", "invalid header", "no executable code", "internal error",
-        "uncaught exception", "interrupted", "segmentation fault", "panic",
+        "maximum number of heartbeats",
+        "maximum recursion depth",
+        "stack overflow",
+        "(deterministic) timeout",
+        "out of memory",
+        "cannot allocate",
+        "failed to create thread",
+        "unknown module",
+        "unknown identifier",
+        "unknown constant",
+        "unknown namespace",
+        "object file",
+        "invalid header",
+        "no executable code",
+        "internal error",
+        "uncaught exception",
+        "interrupted",
+        "segmentation fault",
+        "panic",
     )
     if any(marker in lower for marker in infrastructure):
         raise Unavailable("query resource/import/runtime failure; first output retained")
@@ -218,8 +232,12 @@ def require_query_success(process):
                 raise Unavailable("query failed with unclassified/tagged error header; first output retained")
             head = payload[2:]
             fields = location.rsplit(":", 2)
-            if (len(fields) != 3 or not fields[0].endswith(".lean")
-                    or not fields[1].isdigit() or not fields[2].isdigit()):
+            if (
+                len(fields) != 3
+                or not fields[0].endswith(".lean")
+                or not fields[1].isdigit()
+                or not fields[2].isdigit()
+            ):
                 raise Unavailable("query failed with unclassified/mixed error location; first output retained")
             headers.append((index, head))
         elif line.startswith("error"):
@@ -227,15 +245,20 @@ def require_query_success(process):
     if not headers:
         raise Unavailable("query failed with unclassified diagnostic; first output retained")
     for index, (line_index, head) in enumerate(headers):
-        stop = headers[index+1][0] if index+1 < len(headers) else len(lines)
-        body = lines[line_index+1:stop]
-        closed_false = (
-            head == "Tactic `decide` proved that the proposition"
-            and any(line.strip() == "is false" for line in body)
+        stop = headers[index + 1][0] if index + 1 < len(headers) else len(lines)
+        body = lines[line_index + 1 : stop]
+        closed_false = head == "Tactic `decide` proved that the proposition" and any(
+            line.strip() == "is false" for line in body
         )
-        known = (closed_false or head.startswith("Tactic `rfl` failed:") or head == "unsolved goals"
-                 or head.startswith("Type mismatch") or head.startswith("type mismatch")
-                 or head.startswith("Application type mismatch") or head.startswith("application type mismatch"))
+        known = (
+            closed_false
+            or head.startswith("Tactic `rfl` failed:")
+            or head == "unsolved goals"
+            or head.startswith("Type mismatch")
+            or head.startswith("type mismatch")
+            or head.startswith("Application type mismatch")
+            or head.startswith("application type mismatch")
+        )
         if not known:
             raise Unavailable("query failed with unclassified/mixed diagnostic; first output retained")
     raise NotEstablished("complete possible-success buffer obligation rejected")
@@ -250,7 +273,7 @@ def _verify(candidate, *, lean, destination, timeout):
         or candidate.relation != RELATION
         or candidate.allocator != ALLOCATOR
     ):
-        raise Unavailable("exact actual4 possible-success request required")
+        raise Unavailable("exact actual-chain possible-success request required")
     fresh = prepare_chain(tuple(json.loads(candidate.raw_chain_json)), allocator=ALLOCATOR)
     if fresh != candidate:
         raise Unavailable("stale or forged buffer preparation")
@@ -359,14 +382,14 @@ def _verify(candidate, *, lean, destination, timeout):
     ):
         _exact(ref)
     report = {
-        "schema": "merlin.buffer-reuse.checked.v2",
+        "schema": "merlin.buffer-reuse.checked.v3" if len(snapshots) == 3 else "merlin.buffer-reuse.checked.v2",
         "status": "checked",
         "kernel_outcome": "checked",
         "qualification": "development_only_unqualified",
         "candidate": candidate.describe(),
         "source_identity": candidate.identity,
         "sources": json.loads(candidate.sources_json),
-        "actual4": snapshots,
+        **({"actual_buffers": snapshots} if len(snapshots) == 3 else {"actual4": snapshots}),
         "query": query_ref,
         "generated_queries": generated,
         "audit_modules": list(MODULES),
@@ -397,7 +420,7 @@ def _verify(candidate, *, lean, destination, timeout):
     token = Completion(candidate.identity, str(path))
     _LIVE[token] = (candidate, _ref(path), report)
     validate_completion(token, candidate)
-    return Result("checked", "complete actual4 possible-success query and audit checked", token)
+    return Result("checked", "complete actual-chain possible-success query and audit checked", token)
 
 
 def check(candidate, *, lean, destination, timeout=120):
@@ -427,7 +450,7 @@ def validate_completion(token, candidate):
     if current_objects != {ref["path"] for ref in report["library"]}:
         raise Unavailable("private proof object tree membership changed")
     for ref in (
-        *report["actual4"],
+        *(report["actual_buffers"] if report["schema"] == "merlin.buffer-reuse.checked.v3" else report["actual4"]),
         report["query"],
         report["object"],
         report["tool"],
@@ -450,9 +473,10 @@ def deliver(token, candidate, consumer):
 def replay(report_path, *, lean, destination, timeout=120):
     try:
         recorded = json.loads(Path(report_path).read_text())
-        refs = recorded["actual4"]
-        if len(refs) != 4:
-            raise Unavailable("exact4 replay buffers required")
+        untiled = recorded.get("schema") == "merlin.buffer-reuse.checked.v3"
+        refs = recorded["actual_buffers"] if untiled else recorded["actual4"]
+        if len(refs) != (3 if untiled else 4):
+            raise Unavailable("exact actual-chain replay buffers required")
         for ref in refs:
             _exact(ref)
         candidate = prepare_chain(tuple(Path(r["path"]).read_text() for r in refs), allocator=ALLOCATOR)

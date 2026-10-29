@@ -156,11 +156,11 @@ theorem {name}_control_facts : {name}.ControlFacts := by decide
     return text, roots
 
 
-def prepare_final(raw, *, parser, index_bits, max_nodes):
+def prepare_final(raw, *, parser, index_bits, max_nodes, tiled=True):
     parsed = parse_admitted(raw, parser, calls="shape-direct")
     actual = export(parsed)
     model = decode_final(actual, index_bits=index_bits, max_nodes=max_nodes)
-    sites = initializers(model["module"])
+    sites = initializers(model["module"]) if tiled else []
     query, roots = obligation(model, sites, index_bits)
     return dict(
         original_sha256=hashlib.sha256(raw.encode()).hexdigest(),

@@ -29,13 +29,19 @@ def _expansion(site, step, plan, observers):
     tag = site["kind"]
     views = {item["object"]: item for item in plan["privateViews"]}
     if tag == "alias":
-        return ".alias " + " ".join((
-            _string(step["atom"]["key"]), private_view(views[site["object"]]), private_view(views[site["owner"]]),
-        ))
+        return ".alias " + " ".join(
+            (
+                _string(step["atom"]["key"]),
+                private_view(views[site["object"]]),
+                private_view(views[site["owner"]]),
+            )
+        )
     if tag == "empty-release":
         return ".dropRelease " + _string(step["atom"]["key"]) + " " + private_view(views[step["instruction"]["object"]])
     if tag == "tiled-initializer":
         return ".tiled link" + str(step["initializer"]) + " " + _tiled(site["initializer"])
+    if tag == "untiled-initializer":
+        return ".untiled link" + str(step["initializer"])
     if tag not in ("retained", "retained-allocation", "retained-release"):
         raise ValueError("unsupported finite expansion constructor")
     return ".keep (" + command(step, plan, observers) + ")"
@@ -43,7 +49,12 @@ def _expansion(site, step, plan, observers):
 
 def prepare_plan(adapter, source_frame, raw_final, *, parser, index_bits, max_nodes):
     prepared = prepare_expansion(
-        adapter, source_frame, raw_final, parser=parser, index_bits=index_bits, max_nodes=max_nodes,
+        adapter,
+        source_frame,
+        raw_final,
+        parser=parser,
+        index_bits=index_bits,
+        max_nodes=max_nodes,
     )
     source, roots = source_obligation(adapter)
     roots = tuple(dict.fromkeys((*SHAPE_ROOTS, *roots)))
@@ -63,8 +74,10 @@ def prepare_plan(adapter, source_frame, raw_final, *, parser, index_bits, max_no
     if not materialization.startswith(prefix):
         raise ValueError("expected exact materialization declaration header")
     source = (
-        "import Merlin.GraphLoopsMemorySCFAfterPlan\n" + declarations["query"]
-        + "\n" + materialization.removeprefix(prefix)
+        "import Merlin.GraphLoopsMemorySCFAfterPlan\n"
+        + declarations["query"]
+        + "\n"
+        + materialization.removeprefix(prefix)
     )
     source += f"""
 namespace GraphMemoryAfterExpansion
