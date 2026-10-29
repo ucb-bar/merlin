@@ -164,3 +164,9 @@ def compiler_qdq_refinement(job: dict[str, Any]) -> dict[str, Any]:
     from .compiler_qdq import check
 
     return check(job)
+
+
+def compiler_configuration_refinement(job: dict[str, Any]) -> dict[str, Any]:
+    from .compiler_configuration import check
+
+    return check(job)

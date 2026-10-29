@@ -9,6 +9,10 @@ code_refs:
   - src/merlin/verify/configuration_elision_intake.py
   - src/merlin/verify/configuration_elision_bridge.py
   - src/merlin/verify/configuration_elision_gate.py
+  - src/merlin/verify/compiler_configuration.py
+  - src/merlin/verify/compiler_configuration_intake.py
+  - src/merlin/compile/scheduling/configuration_ir.py
+  - src/merlin/compile/scheduling/schedule_pipeline.py
   - src/merlin/verify/lean/Merlin/GraphStateElision.lean
   - src/merlin/verify/lean/Merlin/GraphStateConfigurationEntries.lean
 ---
@@ -22,6 +26,25 @@ field is already known equal and the setter has the exact total pure-overwrite
 interpretation. Unknown or unordered effects clear knowledge; declared clobbers
 invalidate fields. Other instructions, SSA operands, order, entries, headers and
 declarations must remain bound to the actual input/output.
+
+The ordinary compiler also provides the explicit selector
+`configuration_write_elision`. With original selected ISA/effect inputs,
+`ConfigurationIRSelection.apply(module, pass_validation=validation)` holds
+the actual result through the canonical compiler worker. It also joins an
+already-active original validation automatically. This route accepts complete
+function-only instruction modules and closed bare instruction modules; it does
+not manufacture a function wrapper around delivered IR.
+
+The configuration stage of `compile_schedule` uses the same owned check on
+complete straight-line Kernel text before emission. Its original owner is
+forwarded through target scheduling and target emission. The selector stays
+outside `all` because the original ISA/effect selection is explicit. Caller
+qualification labels remain premises, not independent hardware evidence. Default
+exported scheduling does not import verifier modules when validation is absent.
+See [the compiler stack](lean_compiler_stack.md) for the end-to-end interface.
+
+The historical standalone API below retains its pinned reference requirement;
+the current-compiler API binds the original live selected inputs instead.
 
 ```python
 from pathlib import Path

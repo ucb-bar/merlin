@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import sys
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from pathlib import Path
@@ -346,6 +347,7 @@ def compile_schedule(
     prefetch_qualification_identity=None,
     post_storage: PostStorageRewrite | None = None,
     copy_pipeline: CopyPipelineMotion | None = None,
+    pass_validation=None,
 ) -> ScheduleCompilation:
     """Allocate, check, encode and finalize through the existing pass session.
 
@@ -353,6 +355,10 @@ def compile_schedule(
     existing legal route. Never emit a partially verified candidate. Target
     execution qualification is separate from shared transformation correctness.
     """
+    owner = sys.modules.get("merlin.verify.pass_validation")
+    active_validation = owner.current() if owner is not None else None
+    if pass_validation is not None and active_validation is not None and pass_validation is not active_validation:
+        raise ValueError("schedule validation differs from active original compiler owner")
     if type(budgets) is not ScheduleBudgets:
         raise ValueError("schedule compilation requires typed work and repair budgets")
     copy_source = copy_objects = copy_positions = None
@@ -1184,6 +1190,13 @@ def compile_schedule(
         )
 
     def configuration():
+        validation = pass_validation
+        if validation is None:
+            owner = sys.modules.get("merlin.verify.pass_validation")
+            validation = owner.current() if owner is not None else None
+        checking = validation is not None and "configuration_write_elision" in validation.passes
+        original = session.module
+        original_text = original.text() if checking else None
         # Pure setup must also be memory-free and synchronous according to the
         # independent storage decoder used through final actual-byte checks.
         for call, effect in zip(session.module.body, session.analysis("source_effects"), strict=True):
@@ -1199,14 +1212,29 @@ def compile_schedule(
                 )
             ):
                 raise ValueError("pure configuration claim disagrees with decoded execution or memory effects")
-        return {
-            "configuration_candidate": eliminate_redundant_configuration(
-                session.module,
-                configuration_adapter,
-                enabled=budgets.eliminate_configuration,
+        result = eliminate_redundant_configuration(
+            session.module,
+            configuration_adapter,
+            enabled=budgets.eliminate_configuration,
+            max_calls=budgets.max_calls,
+        )
+        if checking:
+            if original.text() != original_text:
+                raise ValueError("configuration producer changed the original Kernel before proof")
+            from merlin.verify.compiler_configuration import validated_kernel_result
+
+            result = validated_kernel_result(
+                selected_contracts,
+                configuration_qualification_identity,
+                original,
+                result,
+                validation,
                 max_calls=budgets.max_calls,
+                enabled=budgets.eliminate_configuration,
             )
-        }
+            if original.text() != original_text:
+                raise ValueError("configuration original Kernel changed during proof")
+        return {"configuration_candidate": result}
 
     def rewrite_storage():
         nonlocal rewrite_source, rewrite_objects, rewrite_digest, rewrite_object_record

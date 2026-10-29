@@ -302,12 +302,48 @@ def _effect(op, isa, declarations):
     return effect, {"instruction": instruction["name"], "arguments": values, "word": word}
 
 
-def _program(module, isa, declarations):
+def _block_code(block, isa, declarations, defined):
+    slots = {value: index for index, value in enumerate(block.args)}
+    code = []
+    for operation in block.ops:
+        if operation.regions or operation.successors:
+            raise Unsupported("configuration scope excludes nested regions and branches")
+        if type(operation) is func.CallOp and operation.callee.root_reference.data in defined:
+            raise Unsupported("internal calls require a separate derived call-graph bridge")
+        if any(value not in slots for value in operation.operands):
+            raise Unsupported("configuration SSA operand is out of scope or does not dominate")
+        token = {**_header(operation), "operands": [slots[value] for value in operation.operands]}
+        results = []
+        for value in operation.results:
+            slots[value] = len(slots)
+            results.append(slots[value])
+        token["results"] = results
+        effect, decoded = _effect(operation, isa, declarations)
+        code.append(
+            {
+                "token": canonical(token),
+                "effect": effect,
+                "eraseAllowed": effect is not None and effect["pureWrite"] and not operation.results,
+                "decoded": decoded,
+            }
+        )
+    return code
+
+
+def _program(module, isa, declarations, *, allow_bare=False):
     if len(module.regions) != 1 or len(module.body.blocks) != 1:
         raise Unsupported("configuration module needs one complete top-level block")
     functions = tuple(module.body.block.ops)
     if any(type(op) is not func.FuncOp for op in functions):
-        raise Unsupported("configuration scope currently supports complete function-only modules")
+        if not allow_bare or any(type(op) is func.FuncOp for op in functions) or module.body.block.args:
+            raise Unsupported("configuration scope requires complete function-only or closed instruction modules")
+        header = canonical({"module": _header(module), "scope": "complete-module-body"})
+        return {
+            "frame": header,
+            "entries": [
+                {"name": "<module>", "header": header, "code": _block_code(module.body.block, isa, declarations, set())}
+            ],
+        }
     names = [op.sym_name.data for op in functions]
     if len(names) != len(set(names)):
         raise Unsupported("configuration module function names must be unique")
@@ -323,41 +359,18 @@ def _program(module, isa, declarations):
             continue
         block = function.body.block
         header = {**header, "argument_types": [_attribute(value.type) for value in block.args]}
-        slots = {value: index for index, value in enumerate(block.args)}
-        code = []
-        for operation in block.ops:
-            if operation.regions or operation.successors:
-                raise Unsupported("configuration scope excludes nested regions and branches")
-            if type(operation) is func.CallOp and operation.callee.root_reference.data in defined:
-                raise Unsupported("internal calls require a separate derived call-graph bridge")
-            if any(value not in slots for value in operation.operands):
-                raise Unsupported("configuration SSA operand is out of scope or does not dominate")
-            token = {**_header(operation), "operands": [slots[value] for value in operation.operands]}
-            results = []
-            for value in operation.results:
-                slots[value] = len(slots)
-                results.append(slots[value])
-            token["results"] = results
-            effect, decoded = _effect(operation, isa, declarations)
-            code.append(
-                {
-                    "token": canonical(token),
-                    "effect": effect,
-                    "eraseAllowed": effect is not None and effect["pureWrite"] and not operation.results,
-                    "decoded": decoded,
-                }
-            )
+        code = _block_code(block, isa, declarations, defined)
         entries.append({"name": function.sym_name.data, "header": canonical(header), "code": code})
     return {"frame": canonical({"module": _header(module), "functions": frame}), "entries": entries}
 
 
-def project(source, final, *, isa, effects):
+def project(source, final, *, isa, effects, allow_bare=False):
     """Project both complete actual buffers independently under one field registry.
 
     This emits obligations even for compiler-valid wrong outputs. It never uses
     the producer's deletion plan and does not report host acceptance as proof.
     """
-    before, after = (_program(parse(text), isa, effects) for text in (source, final))
+    before, after = (_program(parse(text), isa, effects, allow_bare=allow_bare) for text in (source, final))
     fields = sorted(
         {
             field

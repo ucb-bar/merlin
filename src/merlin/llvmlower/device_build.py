@@ -852,6 +852,14 @@ def build_device_objects(
         freeze_target = _freeze_target_schedule
     revalidate_target = CC.revalidate_target_configuration if target_schedule is None else CC.revalidate_target_schedule
     target_selection = freeze_target(selected_target, device)
+    configuration_validation = None
+    if target_configuration is not None or target_schedule is not None:
+        from merlin.verify import pass_validation as validation_owner
+
+        active = validation_owner.current()
+        if active is not None and "configuration_write_elision" in active.passes:
+            configuration_validation = active
+            workers = 1
     if target_schedule is not None:
         workers = 1
         if not signatures:
@@ -1222,6 +1230,7 @@ def build_device_objects(
             contract=None,
             timeout=timeout,
             **target_options,
+            pass_validation=configuration_validation,
         )
         object_input.recheck_transform_chain(llvm_transform_chain, frozen_transform)
         if target_selection is not None and (freeze_target(selected_target, device) != target_selection):

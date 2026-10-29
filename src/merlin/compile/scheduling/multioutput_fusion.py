@@ -265,6 +265,7 @@ def compile_source_multioutput(
     private_ownership=False,
     configuration_qualification_identity=None,
     max_source_elements=64 << 20,
+    pass_validation=None,
 ):
     """Check one composed program before allocation and after actual byte decode.
 
@@ -476,6 +477,7 @@ def compile_source_multioutput(
             selected_contracts=selected_contracts,
             configuration_qualification_identity=configuration_qualification_identity,
             fusion_qualification_identity=composition_law.qualification_identity,
+            pass_validation=pass_validation,
         )
         fresh()
         return {"compiled": compiled}

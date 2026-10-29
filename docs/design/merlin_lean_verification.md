@@ -48,8 +48,10 @@ code_refs:
 The current implementation checkpoint is on `feat/pass-verif-integration`;
 see [status and next-owner tasks](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md)
 and [the compiler stack](../guides/lean_compiler_stack.md). Five scoped compiler
-checks are integrated; configuration elision and hoisting use separate explicit
-instruction/effect APIs. An additional explicitly selected MACC draft-contract
+checks are integrated by default. Configuration elision now has an additional
+explicit compiler selector for original instruction-IR and straight-line Kernel
+consumers, while counted hoisting retains its separate instruction/effect API.
+Both require original selected ISA/effect premises. An additional explicitly selected MACC draft-contract
 check remains outside `all`. Scalar compiler intake now supports multiple
 changed definitions and general argument/carry lists within its bounded domain;
 identity normalization/reuse have explicit proof routes. Current qualification

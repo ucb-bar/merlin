@@ -37,10 +37,15 @@ CHECKS = {
     "buffer_reuse": "compiler_buffer_refinement",
     "bf16_f32acc_draft_contract": "compiler_macc_contract",
     "lower_quant_ext": "compiler_qdq_refinement",
+    "configuration_write_elision": "compiler_configuration_refinement",
 }
 # Numerical draft conformance requires explicit selection. It is neither an
 # admitted numerical policy nor an original-source refinement check.
-DEFAULT_CHECKS = frozenset(CHECKS) - {"bf16_f32acc_draft_contract", "lower_quant_ext"}
+DEFAULT_CHECKS = frozenset(CHECKS) - {
+    "bf16_f32acc_draft_contract",
+    "lower_quant_ext",
+    "configuration_write_elision",
+}
 ENV_PASSES = "MERLIN_VALIDATE_PASSES"
 ENV_SDK_BIN = "MERLIN_LEAN_SDK_BIN"
 ENV_COMPILER_PYTHON = "MERLIN_COMPILER_PYTHON"

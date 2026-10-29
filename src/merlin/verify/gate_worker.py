@@ -22,6 +22,7 @@ BUILTIN_CHECKS = (
     "compiler_buffer_refinement",
     "compiler_macc_contract",
     "compiler_qdq_refinement",
+    "compiler_configuration_refinement",
 )
 
 
@@ -62,6 +63,31 @@ def _stop_group(signum, frame) -> None:
 
 
 def _require_builtin_result(name, detail):
+    if name == "compiler_configuration_refinement":
+        from .compiler_configuration_intake import DOMAIN, RELATION
+        from .configuration_elision_emit import FINAL_ROOT
+        from .gate_errors import GateRejected
+
+        if (
+            type(detail) is not dict
+            or detail.get("schema") != "merlin.compiler-configuration.gate.v1"
+            or detail.get("status") != "checked"
+            or detail.get("domain") != DOMAIN
+            or detail.get("relation") != RELATION
+            or detail.get("compiler_enforcement") is not True
+            or detail.get("hardware_model_approved") is not False
+            or detail.get("independently_qualified") is not False
+            or detail.get("native_fidelity") is not False
+            or detail.get("representation") not in {"instruction_mlir", "schedule_kernel"}
+            or type(detail.get("theorems")) is not list
+            or FINAL_ROOT not in detail["theorems"]
+            or type(detail.get("entries")) is not list
+            or not detail["entries"]
+            or any(type(entry) is not str or not entry for entry in detail["entries"])
+            or len(set(detail["entries"])) != len(detail["entries"])
+        ):
+            raise GateRejected("configuration handler did not establish complete entry error/state preservation")
+        return
     if name == "compiler_qdq_refinement":
         from .gate_checks import THEOREMS
         from .gate_errors import GateRejected

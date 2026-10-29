@@ -496,6 +496,7 @@ def compile_source_pointwise(
     pass_order=(),
     rewrites=(),
     schedule_pass_order=(),
+    pass_validation=None,
 ):
     """Use the ordinary scheduler with source admission and final-byte checking.
 
@@ -688,6 +689,7 @@ def compile_source_pointwise(
                 spill_qualification_identity=spill_qualification_identity,
                 pass_order=schedule_pass_order,
                 prefetch_qualification_identity=prefetch_qualification_identity,
+                pass_validation=pass_validation,
             )
         }
 

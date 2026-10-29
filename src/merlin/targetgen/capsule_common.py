@@ -128,8 +128,9 @@ class _TargetConfigurationInvocation:
     selection_record = staticmethod(_configuration_selection_record)
     revalidate_receipt = staticmethod(revalidate_target_configuration)
 
-    def __init__(self, pkg, selection):
+    def __init__(self, pkg, selection, *, pass_validation=None):
         self.pkg, self.selection = pkg, selection
+        self.pass_validation = pass_validation
         self.consumer = _target_consumer_record(pkg)
         self.record = self.selection_record(selection)
         if self.consumer["target"] != selection.selected_contracts.target:
@@ -154,7 +155,8 @@ class _TargetConfigurationInvocation:
 
         self.remember("original_target", original)
         self.verify()
-        self.result = self.selection.apply(self.selection.parse(Path(original).read_text()))
+        options = {} if self.pass_validation is None else {"pass_validation": self.pass_validation}
+        self.result = self.selection.apply(self.selection.parse(Path(original).read_text()), **options)
         self.verify()
         if Path(selected).exists() or Path(selected).is_symlink():
             raise ValueError("target selection requires fresh host-owned output paths")
@@ -562,10 +564,13 @@ def run_entrypoints(
     owned_source = capsule.get("owned_host_source") is not None
     candidate_artifact_name = "candidate-" + fourth_output_name if owned_source else fourth_output_name
     from merlin.compile import owned_shared_source
+
     shared_source = owned_shared_source.selected(capsule)
     projection_validate = None
     if shared_source:
-        iface_path, projection_validate = owned_shared_source.compiler_input(capsule, paths.generated, target=pkg.target)
+        iface_path, projection_validate = owned_shared_source.compiler_input(
+            capsule, paths.generated, target=pkg.target
+        )
     with public_abi_source(capsule, iface_path, paths.generated) as compiler_source:
         cb, artifact = lower_interface(
             pkg,
@@ -613,6 +618,7 @@ def lower_interface(
     memo: dict | None = None,
     target_configuration: ConfigurationIRSelection | None = None,
     target_schedule=None,
+    pass_validation=None,
     shared_pass_requirement: dict | None = None,
 ) -> tuple[dict, str]:
     """ONE stated ``merlin_iface`` capsule through the package's own entrypoints -> (buffer, artifact).
@@ -687,9 +693,9 @@ def lower_interface(
     if target_configuration is not None and target_schedule is not None:
         raise ValueError("select one original target configuration or schedule route")
     selected_target = (
-        _TargetConfigurationInvocation(pkg, target_configuration)
+        _TargetConfigurationInvocation(pkg, target_configuration, pass_validation=pass_validation)
         if target_configuration is not None
-        else _TargetScheduleInvocation(pkg, target_schedule)
+        else _TargetScheduleInvocation(pkg, target_schedule, pass_validation=pass_validation)
         if target_schedule is not None
         else None
     )

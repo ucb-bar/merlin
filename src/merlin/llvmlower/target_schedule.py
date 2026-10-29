@@ -203,7 +203,7 @@ class TargetScheduleSelection:
             name
             for name, parameter in inspect.signature(compile_schedule).parameters.items()
             if parameter.kind is inspect.Parameter.KEYWORD_ONLY
-        } - {"selected_contracts"}
+        } - {"selected_contracts", "pass_validation"}
         if set(self.parameters) - allowed:
             raise ValueError("target scheduling cannot override positional inputs or selected contracts")
         if self.selected_contracts.storage is None:
@@ -286,7 +286,7 @@ class TargetScheduleSelection:
         self.revalidate()
         return result
 
-    def apply(self, module):
+    def apply(self, module, *, pass_validation=None):
         self.revalidate()
         _bounded_text(module, self.max_ir_bytes)
         module.verify()
@@ -304,6 +304,7 @@ class TargetScheduleSelection:
                 self.encoding,
                 self.limits,
                 selected_contracts=self.selected_contracts,
+                pass_validation=pass_validation,
                 **self.parameters,
             )
             # Textual emission cannot erase a segmented launch/continuation ABI.

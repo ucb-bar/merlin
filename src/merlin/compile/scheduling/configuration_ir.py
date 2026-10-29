@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import sys
 from dataclasses import asdict, dataclass, field
 
 from xdsl.dialects import arith, builtin, func, memref, scf
@@ -140,8 +141,17 @@ class ConfigurationIRSelection:
         self.revalidate()
         return module
 
-    def apply(self, module):
-        return _eliminate(module, self)
+    def apply(self, module, *, pass_validation=None):
+        if pass_validation is None:
+            owner = sys.modules.get("merlin.verify.pass_validation")
+            active = owner.current() if owner is not None else None
+            if active is not None and "configuration_write_elision" in active.passes:
+                pass_validation = active
+        if pass_validation is None:
+            return _eliminate(module, self)
+        from merlin.verify.compiler_configuration import validated_apply
+
+        return validated_apply(self, module, pass_validation)
 
 
 def _constant(op):
