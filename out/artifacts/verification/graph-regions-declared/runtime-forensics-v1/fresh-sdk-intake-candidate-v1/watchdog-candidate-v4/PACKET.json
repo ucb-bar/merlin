@@ -1,0 +1,324 @@
+{
+  "status": "SOURCE_FIXED_SYNTHETIC_TESTED_NOT_AUTHORIZED",
+  "source_manifest": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/review-source-cut-v1/MANIFEST.json",
+    "bytes": 12907,
+    "sha256": "9391c61bf2b3a22ad0506275633e9f101a0bfe6a66c60fe46c2a2fcd57c2f999"
+  },
+  "parent_request": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/WATCHDOG-REVIEW-REQUEST.json",
+    "bytes": 3848,
+    "sha256": "581e5192e7d0c3f9c6775074ae5f107555980cea83be87209c2e8fc6c860ea73"
+  },
+  "child_request": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/REVIEW-REQUEST.json",
+    "bytes": 3140,
+    "sha256": "f5e7bb5845e8fd74e0104d1d4d2ed9521148159f465731db828132900a6f03f0"
+  },
+  "tests": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/TEST-WATCHDOG-v1.txt",
+      "bytes": 883,
+      "sha256": "4fffd8ec18da6c2b0d05d9ebdf5dd1439527eeb115a5f30e0445dc1b8d4058aa"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/proposal.json",
+      "bytes": 546,
+      "sha256": "1f750680aa69a065f65bd7fa2c9cae3a7e17a8f7d5b3cd0ec7cf9924c95cf8ad"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_close/CLOSE-ENTERED.txt",
+      "bytes": 27,
+      "sha256": "fa8087685d3b37b2058931407c3d532cfb472eb95617fd47eb3c33ea00e2a185"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_close/CONTROL-STARTED.txt",
+      "bytes": 5,
+      "sha256": "310ff200149b44a32f124023d7caba19a1a890763a980606813d3a3d4a085d36"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_close/FIRST-PARENT-FAILURE.json",
+      "bytes": 757,
+      "sha256": "8fa12a525bcb24c1ab182779cf9a40fa9c205705ced85f93e1e2c543a5064447"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_close/OWNED-CHILD.json",
+      "bytes": 335,
+      "sha256": "0cf01bf35e4b9455d0ae61d53264d60b7eee7d3446f5d97a5ae57ccc5e7b1f4f"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_close/PARENT-ATTEMPT.json",
+      "bytes": 510,
+      "sha256": "9494eee2b46beba3f2ad5afb1e4f07a3f449a8c7cd51b823522313255bb752b7"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_close/PARENT-RESULT.json",
+      "bytes": 942,
+      "sha256": "11cd6a1539e153893efffb0ba41292fb806b02621af77d8550b3936d40b447c8"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_close/child.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_close/child.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_close/partial.bin",
+      "bytes": 30,
+      "sha256": "6038db350efa7ddefdb4bd1f8385bec668633924cf7d4dfc77ca6433f34c24d5"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_open/CONTROL-STARTED.txt",
+      "bytes": 4,
+      "sha256": "2348f998744212575d85959674f9607ab26f67708a917157472832386337c904"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_open/FIRST-PARENT-FAILURE.json",
+      "bytes": 756,
+      "sha256": "d194d0258322fd1b642eabb80e60a046a559b0cdfc9c80e25d1d67476abadd36"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_open/OWNED-CHILD.json",
+      "bytes": 334,
+      "sha256": "3eae3ba994289a2c09395b908405d7f68c7c11145356f9911640b156e5d36d16"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_open/PARENT-ATTEMPT.json",
+      "bytes": 509,
+      "sha256": "cf4c882d85079c17f78f550f186390d8f016ddbbc8f9d1e18bd689fb5c259613"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_open/PARENT-RESULT.json",
+      "bytes": 941,
+      "sha256": "54bdb01bbae4599e62090d2e1d29d73375938c7a83de972e448c2a79493e2a32"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_open/child.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_open/child.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_read/CONTROL-STARTED.txt",
+      "bytes": 4,
+      "sha256": "3316348dbadfb7b11c7c2ea235949419e23f9fa898ad2c198f999617912a9925"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_read/FIRST-PARENT-FAILURE.json",
+      "bytes": 756,
+      "sha256": "5f2d420a0cb9c0e46190b3389f5453fd6f22bf0ec688dbfbf2efd96968d5b654"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_read/OWNED-CHILD.json",
+      "bytes": 334,
+      "sha256": "28b6cfccedc09bcb965d766eab31609b38500e607ffaa94469ccc9dd77ba5133"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_read/PARENT-ATTEMPT.json",
+      "bytes": 509,
+      "sha256": "0e7f1388526d10dc50c6667dcf2628e94fb82634c9c1779996a75daa7e42f2eb"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_read/PARENT-RESULT.json",
+      "bytes": 941,
+      "sha256": "dfd3c0de97f749811c33da1903ce9616c9c4137aa8f0388718e9f4fb295b3dc2"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_read/child.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_read/child.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_block_read/partial.bin",
+      "bytes": 28,
+      "sha256": "7a44d14731ac619800c6560653305663a0c1e481d7bd4dcca315c9d02c59932a"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_kill_reap/CONTROL-STARTED.txt",
+      "bytes": 4,
+      "sha256": "2bda9b4dfbabfdb17cd74d827768da5198ae2b8155002a494524bbeaf6f5cdba"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_kill_reap/FIRST-PARENT-FAILURE.json",
+      "bytes": 756,
+      "sha256": "f264a67a92e42e10b63cda980cf1a125bd1a8fd5fad0a40828dd14e063181482"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_kill_reap/IGNORE-TERM-READY.txt",
+      "bytes": 15,
+      "sha256": "8cc1dcf86ad63c9d31db988170c2bbe94f40295e740194193be14c5acb53b739"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_kill_reap/OWNED-CHILD.json",
+      "bytes": 334,
+      "sha256": "faf8af52dbcb1b7236c79c829a9f9aba8372ce8ba0592cd8de6fb15cf276930f"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_kill_reap/PARENT-ATTEMPT.json",
+      "bytes": 509,
+      "sha256": "cd8c32a83fde1217e53710fb350cd473f5e0d7de21bcd00449e373fb2cc9c81f"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_kill_reap/PARENT-RESULT.json",
+      "bytes": 1006,
+      "sha256": "6811e602d973cd9cf508b5cce600863210d2b0b79369e0c4fe90882012d1a310"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_kill_reap/child.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_kill_reap/child.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_no_resume/COMPLETE.txt",
+      "bytes": 26,
+      "sha256": "991c806b5ab5539b1cf731b84d8a5aa66003e451bd6a291d2ee6697e64fcbc4e"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_no_resume/CONTROL-STARTED.txt",
+      "bytes": 6,
+      "sha256": "317b32c143692b9939c197f6a5df54f9698df9a4882fe8bf19608968662be4fa"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_no_resume/OWNED-CHILD.json",
+      "bytes": 336,
+      "sha256": "3bb2262c2823f9d0efe2036779470acc70b9e2305739986ac27b23bb860552ec"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_no_resume/PARENT-ATTEMPT.json",
+      "bytes": 509,
+      "sha256": "91dc5ba12d621d0aecb5eafd92376e0707f6f322968cab31827d39672e4cf8d8"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_no_resume/PARENT-RESULT.json",
+      "bytes": 624,
+      "sha256": "e3fd0997b715627e250e2327b4c571399555446271c8d43c27dc84526bf0c47b"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_no_resume/child.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_no_resume/child.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_nonzero/CONTROL-STARTED.txt",
+      "bytes": 7,
+      "sha256": "a294469efce3e2bf005427a1180ae291eb19d65b7c3c745b4d185df23eae6235"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_nonzero/FIRST-PARENT-FAILURE.json",
+      "bytes": 623,
+      "sha256": "593be73d6eb9b40e258ef272d3e0cf9c892e63cbf0dfdc9721a0ecb735f393af"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_nonzero/OWNED-CHILD.json",
+      "bytes": 337,
+      "sha256": "50c1434cba40e92fd7baf961f419e9111dd4d612c116f33cfec5a5036de37017"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_nonzero/PARENT-ATTEMPT.json",
+      "bytes": 510,
+      "sha256": "f45617c49f4f387ee0d895909c8988d2c4cb3693c4eee29aa80fe2d8ce1ed47d"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_nonzero/PARENT-RESULT.json",
+      "bytes": 622,
+      "sha256": "a9ce954651ebd15e858930bcbdb70fa86c04316c2b98a36c2bc7a3de4087a0e9"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_nonzero/child.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_nonzero/child.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_normal/COMPLETE.txt",
+      "bytes": 26,
+      "sha256": "991c806b5ab5539b1cf731b84d8a5aa66003e451bd6a291d2ee6697e64fcbc4e"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_normal/CONTROL-STARTED.txt",
+      "bytes": 6,
+      "sha256": "317b32c143692b9939c197f6a5df54f9698df9a4882fe8bf19608968662be4fa"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_normal/OWNED-CHILD.json",
+      "bytes": 336,
+      "sha256": "c70bc9fcd4ed0da92e401fef46c46ad82a31b259a0c071a95a0162be20da4704"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_normal/PARENT-ATTEMPT.json",
+      "bytes": 509,
+      "sha256": "91dc5ba12d621d0aecb5eafd92376e0707f6f322968cab31827d39672e4cf8d8"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_normal/PARENT-RESULT.json",
+      "bytes": 625,
+      "sha256": "85fc55b8b67d9b2656635d9f1044437593d1b9f5bf0b77b64ecac95456288fbc"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_normal/child.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_normal/child.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_parent_prelaunch_failure/FIRST-PARENT-FAILURE.json",
+      "bytes": 708,
+      "sha256": "57ab203393fa4f22a37b02441312813c5ff4ae1450356d47cf4f8945a9435aba"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_parent_prelaunch_failure/PARENT-ATTEMPT.json",
+      "bytes": 509,
+      "sha256": "7263d08c88f31ca1f2bc6feb05ed2507f4abf68c0e560595366187b35247a618"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_parent_prelaunch_failure/PARENT-ERROR-RESULT.json",
+      "bytes": 708,
+      "sha256": "57ab203393fa4f22a37b02441312813c5ff4ae1450356d47cf4f8945a9435aba"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_parent_prelaunch_failure/child.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/synthetic-watchdog-v1/test_parent_prelaunch_failure/child.stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "native_invocations": 0,
+  "real_network_requests": 0,
+  "owned_live_jobs": 0,
+  "old_holds_cleared": false
+}

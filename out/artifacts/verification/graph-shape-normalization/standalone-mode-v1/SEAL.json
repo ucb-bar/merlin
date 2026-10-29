@@ -1,0 +1,36 @@
+{
+  "schema": "merlin.graph.shape.standalone.seal.v1",
+  "source_freeze": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/SOURCE_FREEZE.json",
+    "sha256": "29aa848531f2c027d062077f1d58385e8c9f2dedcf25b6e92a184d879d7ccca4",
+    "bytes": 978441
+  },
+  "qualification": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/QUALIFICATION.json",
+    "sha256": "9957f307a87b097f21a096903e429f0151b62c1b1a5c4c052e76d586fc39fd2f",
+    "bytes": 3683
+  },
+  "delivery": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/DELIVERY.json",
+    "sha256": "e87363409c896d9fd416ab900be12c4d0c7bea8f9be31c6c68eb96c089ca349c",
+    "bytes": 11082
+  },
+  "evidence": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/EVIDENCE_SEAL.json",
+    "sha256": "eb494e743231fa2e25df27d96914d2bfd1c654ac827aa004cd46f6ca0802e69a",
+    "bytes": 304681
+  },
+  "source_count": 22,
+  "originals": 78,
+  "fresh_replays": 1,
+  "replay_tests": 78,
+  "main_roots": 35,
+  "inhabited_roots": 41,
+  "standard_three_only": true,
+  "old72_unchanged": true,
+  "review_complete": false,
+  "adapter_proved": false,
+  "ordinary_compiler_gating": false,
+  "native_or_numerical_claim": false,
+  "structure_gate": "unrelated zephyr_model.py 3557>3537 ceiling failure retained"
+}

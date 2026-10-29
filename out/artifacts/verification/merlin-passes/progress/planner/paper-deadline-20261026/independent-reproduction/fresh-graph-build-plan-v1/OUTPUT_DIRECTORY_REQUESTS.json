@@ -1,0 +1,344 @@
+{
+  "requests": [
+    {
+      "profile": "Q-service-CSE",
+      "case": "Q-service-CSE",
+      "request": {
+        "source": "fresh-build/Q-service-CSE/4745ac240bf987eeb4886f20aab86b1772591e6de13568cd38ce5398f3e4b9a1/Q-service-CSE/source",
+        "objects": "fresh-build/Q-service-CSE/4745ac240bf987eeb4886f20aab86b1772591e6de13568cd38ce5398f3e4b9a1/Q-service-CSE/objects",
+        "query": "fresh-build/Q-service-CSE/4745ac240bf987eeb4886f20aab86b1772591e6de13568cd38ce5398f3e4b9a1/Q-service-CSE/query",
+        "audits": "fresh-build/Q-service-CSE/4745ac240bf987eeb4886f20aab86b1772591e6de13568cd38ce5398f3e4b9a1/Q-service-CSE/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "Q-chain-endpoint",
+      "case": "Q-chain-endpoint",
+      "request": {
+        "source": "fresh-build/Q-chain-endpoint/224c52ff77962e133ebee99342224c6c0513629495d645e499392f14c15bbdb3/Q-chain-endpoint/source",
+        "objects": "fresh-build/Q-chain-endpoint/224c52ff77962e133ebee99342224c6c0513629495d645e499392f14c15bbdb3/Q-chain-endpoint/objects",
+        "query": "fresh-build/Q-chain-endpoint/224c52ff77962e133ebee99342224c6c0513629495d645e499392f14c15bbdb3/Q-chain-endpoint/query",
+        "audits": "fresh-build/Q-chain-endpoint/224c52ff77962e133ebee99342224c6c0513629495d645e499392f14c15bbdb3/Q-chain-endpoint/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "Q-four-transform",
+      "case": "Q-four-transform",
+      "request": {
+        "source": "fresh-build/Q-four-transform/37609c496ad46dd9f4967850ec73e60938be64398c4715d96b7db15a7fd25a7a/Q-four-transform/source",
+        "objects": "fresh-build/Q-four-transform/37609c496ad46dd9f4967850ec73e60938be64398c4715d96b7db15a7fd25a7a/Q-four-transform/objects",
+        "query": "fresh-build/Q-four-transform/37609c496ad46dd9f4967850ec73e60938be64398c4715d96b7db15a7fd25a7a/Q-four-transform/query",
+        "audits": "fresh-build/Q-four-transform/37609c496ad46dd9f4967850ec73e60938be64398c4715d96b7db15a7fd25a7a/Q-four-transform/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "Q-integer-five-transform",
+      "case": "Q-integer-five-transform",
+      "request": {
+        "source": "fresh-build/Q-integer-five-transform/77412eb775b0bab9ccf838126b69cb2d571456cadb07389a97e30def267020bb/Q-integer-five-transform/source",
+        "objects": "fresh-build/Q-integer-five-transform/77412eb775b0bab9ccf838126b69cb2d571456cadb07389a97e30def267020bb/Q-integer-five-transform/objects",
+        "query": "fresh-build/Q-integer-five-transform/77412eb775b0bab9ccf838126b69cb2d571456cadb07389a97e30def267020bb/Q-integer-five-transform/query",
+        "audits": "fresh-build/Q-integer-five-transform/77412eb775b0bab9ccf838126b69cb2d571456cadb07389a97e30def267020bb/Q-integer-five-transform/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "positive",
+      "request": {
+        "source": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/positive/source",
+        "objects": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/positive/objects",
+        "query": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/positive/query",
+        "audits": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/positive/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "source_return",
+      "request": {
+        "source": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/source_return/source",
+        "objects": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/source_return/objects",
+        "query": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/source_return/query",
+        "audits": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/source_return/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "buffer",
+      "request": {
+        "source": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/buffer/source",
+        "objects": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/buffer/objects",
+        "query": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/buffer/query",
+        "audits": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/buffer/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "address",
+      "request": {
+        "source": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/address/source",
+        "objects": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/address/objects",
+        "query": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/address/query",
+        "audits": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/address/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "initializer",
+      "request": {
+        "source": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/initializer/source",
+        "objects": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/initializer/objects",
+        "query": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/initializer/query",
+        "audits": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/initializer/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "initializer_address",
+      "request": {
+        "source": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/initializer_address/source",
+        "objects": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/initializer_address/objects",
+        "query": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/initializer_address/query",
+        "audits": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/initializer_address/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "control",
+      "request": {
+        "source": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/control/source",
+        "objects": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/control/objects",
+        "query": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/control/query",
+        "audits": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/control/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "return",
+      "request": {
+        "source": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/return/source",
+        "objects": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/return/objects",
+        "query": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/return/query",
+        "audits": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/return/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "free",
+      "request": {
+        "source": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/free/source",
+        "objects": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/free/objects",
+        "query": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/free/query",
+        "audits": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/free/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "observer",
+      "request": {
+        "source": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/observer/source",
+        "objects": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/observer/objects",
+        "query": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/observer/query",
+        "audits": "fresh-build/W-whole-v1/e3eea1dd43f9c8790cac673342e1293116d82b9ef2602183eefb8c1579a3870a/observer/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "positive",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/positive/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/positive/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/positive/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/positive/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "untouched_return",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/untouched_return/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/untouched_return/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/untouched_return/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/untouched_return/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "wrapper",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/wrapper/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/wrapper/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/wrapper/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/wrapper/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "arity",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/arity/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/arity/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/arity/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/arity/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "literal",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/literal/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/literal/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/literal/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/literal/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "callee",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/callee/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/callee/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/callee/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/callee/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "caller_buffer",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/caller_buffer/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/caller_buffer/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/caller_buffer/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/caller_buffer/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "interface",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/interface/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/interface/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/interface/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/interface/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "observer",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/observer/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/observer/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/observer/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/observer/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "kernel_return",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/kernel_return/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/kernel_return/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/kernel_return/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/kernel_return/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "missing_entry",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/missing_entry/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/missing_entry/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/missing_entry/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/missing_entry/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "declaration",
+      "request": {
+        "source": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/declaration/source",
+        "objects": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/declaration/objects",
+        "query": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/declaration/query",
+        "audits": "fresh-build/W-entries-successor-v1/ee78ea11f5a0c38c959b2bf2a90470fd91b10c367f6e22077e36715d047bfd5f/declaration/audits"
+      },
+      "created": false,
+      "context": "MISSING_NEW_F_OFFICIAL_SDK_INTAKE",
+      "old_absolute_workspace_reused": false
+    }
+  ],
+  "creation_or_runtime_authorization": false,
+  "absolute_parent": "to be selected in new independently reviewed F context; no old original absolute reference opened"
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "merlin.frontend.finite-optional-symbol-review.v1",
+  "reviewed_pair": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+    "l_Lean_Parser_Tactic_simpLemma___boxed"
+  ],
+  "input_ref": {
+    "path": "out/artifacts/verification/graph-regions-declared/module-runtime-v1-offline-symbol-case/OBSERVATION.json",
+    "bytes": 3457,
+    "sha256": "710f0eb66482a2345f5ce85c61f6f10ed6349545228d6d9b0c6588c54d74f70f"
+  },
+  "raw_trace_inspected": true,
+  "guard_matches_failed_command_source": true,
+  "candidate_trace_code_differs_from_recorded_guard": false,
+  "reported_offline_cases": 5,
+  "case_scope": "exact undefined-symbol diagnostic in original libleanshared namespace0; rc0, unchanged original refs and known runtime maps required",
+  "sdk_runtime_reads": 0,
+  "native_invocations": 0,
+  "permission": "new versioned DEVELOPMENT observer context; offline bind retained successful command/object if association established; do not rerun solely to promote old observer profile",
+  "old_profile_promoted": false,
+  "qualification": false,
+  "unknown_errors_or_additional_symbols_allowed": false
+}

@@ -1,0 +1,4928 @@
+{
+  "status": "DATA_INVENTORY_NOT_REPLAY_OR_QUALIFICATION",
+  "worktree": "/home/jeremy/Projects/merlin-bf16-verification",
+  "branch": "feat/bf16-f32acc-verification",
+  "base": "65e44afbf4dbb6c7270e8936c4ef76b579a78492",
+  "human_reviewed": false,
+  "historical_candidate": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/review/candidate.json",
+    "bytes": 68201,
+    "sha256": "bac5b70287c9f7e00d98af8ae2f5b9b05ab041adf6c7772015c9b08446d0a86c"
+  },
+  "current_lock": {
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/SPEC_LOCK",
+    "bytes": 33934,
+    "sha256": "6cc97b6a0742795378cca76393642932b62cc9f8998693f3961f22a5bc44b23b"
+  },
+  "historical_lock": {
+    "path": "/home/jeremy/Projects/merlin/merlin/lean/SPEC_LOCK",
+    "sha256": "a805dc3f0f78d2a95803463808f7d02f90ed0327b76124d4d14118f61328bc95",
+    "bytes": 31367
+  },
+  "lock_matches_old": false,
+  "policy_files": [
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Rules/Bf16F32AccContract.lean",
+        "sha256": "c2008d1357c856ae131bf69dbeb41755d9ae01e38a5b7f088d534dc213b2469f",
+        "bytes": 9003
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Bf16F32AccContract.lean",
+        "bytes": 9003,
+        "sha256": "c2008d1357c856ae131bf69dbeb41755d9ae01e38a5b7f088d534dc213b2469f"
+      },
+      "same_bytes": true
+    },
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Rules/Bf16F32AccBody.lean",
+        "sha256": "5053c1716d3dfeaa9d6d52fb787d567b843d16fcf56833ff97ffcedd57ba8c97",
+        "bytes": 4564
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Bf16F32AccBody.lean",
+        "bytes": 4564,
+        "sha256": "5053c1716d3dfeaa9d6d52fb787d567b843d16fcf56833ff97ffcedd57ba8c97"
+      },
+      "same_bytes": true
+    },
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Rules/Bf16F32AccReference.lean",
+        "sha256": "02c97b9789a2848e12458e006fcf782315cd79a9aaaff94cb02a1883ce8a0cec",
+        "bytes": 15846
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Bf16F32AccReference.lean",
+        "bytes": 15846,
+        "sha256": "02c97b9789a2848e12458e006fcf782315cd79a9aaaff94cb02a1883ce8a0cec"
+      },
+      "same_bytes": true
+    },
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Rules/W8A8TensorTrace.lean",
+        "sha256": "1b4e18594bbcdf11f33872b404ae3b8e3bd4f8af3c96a0ba08d00642dad0119a",
+        "bytes": 6118
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8TensorTrace.lean",
+        "bytes": 6118,
+        "sha256": "1b4e18594bbcdf11f33872b404ae3b8e3bd4f8af3c96a0ba08d00642dad0119a"
+      },
+      "same_bytes": true
+    },
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Rules/W8A8TensorOperands.lean",
+        "sha256": "a75128749034d0c31c4f1392d75440b8a5746927b5a506527fa1c75d5757fe88",
+        "bytes": 4241
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8TensorOperands.lean",
+        "bytes": 4241,
+        "sha256": "a75128749034d0c31c4f1392d75440b8a5746927b5a506527fa1c75d5757fe88"
+      },
+      "same_bytes": true
+    },
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Rules/W8A8Fill.lean",
+        "sha256": "4dc171d0ae4bbb389c157c806518d42acb9424d13dda2227219177306a517d38",
+        "bytes": 6007
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8Fill.lean",
+        "bytes": 6007,
+        "sha256": "4dc171d0ae4bbb389c157c806518d42acb9424d13dda2227219177306a517d38"
+      },
+      "same_bytes": true
+    },
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Check/Bf16F32Acc.lean",
+        "sha256": "aad559d9780e08ec2f90568b5a0f8081035a346d4080a41a623136e242052980",
+        "bytes": 4976
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Bf16F32Acc.lean",
+        "bytes": 4976,
+        "sha256": "aad559d9780e08ec2f90568b5a0f8081035a346d4080a41a623136e242052980"
+      },
+      "same_bytes": true
+    },
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Check/Bf16F32AccChain.lean",
+        "sha256": "ba1f2fac433004c93f007c6538c2df8989a68079f51803dfa24d3a25e186b77b",
+        "bytes": 4661
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Bf16F32AccChain.lean",
+        "bytes": 4661,
+        "sha256": "ba1f2fac433004c93f007c6538c2df8989a68079f51803dfa24d3a25e186b77b"
+      },
+      "same_bytes": true
+    },
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Check/Bf16F32AccSites.lean",
+        "sha256": "2f74bdf6eb4ad18ed60c80007d89a6c6cc39c896c9bd83d7e39a79292d90f148",
+        "bytes": 9133
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Bf16F32AccSites.lean",
+        "bytes": 9133,
+        "sha256": "2f74bdf6eb4ad18ed60c80007d89a6c6cc39c896c9bd83d7e39a79292d90f148"
+      },
+      "same_bytes": true
+    },
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Check/ParametricAlpha.lean",
+        "sha256": "801452d5e110b73e061ca94b13bfcb301a56f5db4e77d5bee1bde954a012802b",
+        "bytes": 8419
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ParametricAlpha.lean",
+        "bytes": 8419,
+        "sha256": "801452d5e110b73e061ca94b13bfcb301a56f5db4e77d5bee1bde954a012802b"
+      },
+      "same_bytes": true
+    },
+    {
+      "historical": {
+        "path": "/home/jeremy/Projects/merlin/merlin/lean/MerlinVerify/Check/Alpha.lean",
+        "sha256": "b3e5746b03fa6901af0cfae441815270ff06433b21d3fe059ee7b76d8bce111f",
+        "bytes": 12265
+      },
+      "current": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Alpha.lean",
+        "bytes": 12265,
+        "sha256": "b3e5746b03fa6901af0cfae441815270ff06433b21d3fe059ee7b76d8bce111f"
+      },
+      "same_bytes": true
+    }
+  ],
+  "roots": {
+    "MerlinVerify.Check.Bf16F32AccExact.check_sound": "MerlinVerify.Check.Bf16F32AccExact",
+    "MerlinVerify.Check.Bf16F32AccExact.defined_execution": "MerlinVerify.Check.Bf16F32AccExact",
+    "MerlinVerify.Check.Bf16F32AccSites.check_sound": "MerlinVerify.Check.Bf16F32AccSites",
+    "MerlinVerify.Check.Bf16F32AccSites.collectOps_coverage": "MerlinVerify.Check.Bf16F32AccSites",
+    "MerlinVerify.Rules.Bf16F32AccNonvacuity.operand_domain_nonempty": "MerlinVerify.Rules.Bf16F32AccNonvacuity",
+    "MerlinVerify.Rules.Bf16F32AccTensor.accumulate_sound": "MerlinVerify.Rules.Bf16F32AccTensor",
+    "MerlinVerify.Rules.Bf16F32AccTensor.truncate_sound": "MerlinVerify.Rules.Bf16F32AccTensor",
+    "MerlinVerify.Rules.Bf16F32AccTensor.zero_fill_sound": "MerlinVerify.Rules.Bf16F32AccTensor",
+    "MerlinVerify.Rules.Bf16F32AccContract.accumulate_cell": "MerlinVerify.Rules.Bf16F32AccContract",
+    "MerlinVerify.Rules.Bf16F32AccContract.contract_distinct": "MerlinVerify.Rules.Bf16F32AccContract",
+    "MerlinVerify.Rules.Bf16F32AccSite.accumulating_op_sound": "MerlinVerify.Rules.Bf16F32AccSite",
+    "MerlinVerify.Rules.Bf16F32AccSite.final_op_sound": "MerlinVerify.Rules.Bf16F32AccSite",
+    "MerlinVerify.Rules.Bf16F32AccFusion.fused_step": "MerlinVerify.Rules.Bf16F32AccFusion"
+  },
+  "project_closure": {
+    "MerlinVerify.Rules.Bf16F32AccTensor": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Bf16F32AccTensor.lean",
+        "bytes": 10132,
+        "sha256": "9e64289e5f894aa19f4ab6b69d43473092a39082e286aed2c4b43dfd2f4bf820"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Bf16F32AccBody",
+        "MerlinVerify.Rules.W8A8Pointwise",
+        "MerlinVerify.Rules.W8A8Fill"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8Fill": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8Fill.lean",
+        "bytes": 6007,
+        "sha256": "4dc171d0ae4bbb389c157c806518d42acb9424d13dda2227219177306a517d38"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.ParallelFusion",
+        "MerlinVerify.Check.Alpha",
+        "MerlinVerify.Check.Step",
+        "MerlinVerify.Sem.Ops"
+      ]
+    },
+    "MerlinVerify.Sem.Ops": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Ops.lean",
+        "bytes": 6214,
+        "sha256": "adda6f1e0ea38e141c71f298f44f82389fc3962ae75248dbf03ca0a10073f97e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Ops.Arith",
+        "MerlinVerify.Sem.Ops.Linalg",
+        "MerlinVerify.Sem.Ops.LinalgNamed",
+        "MerlinVerify.Sem.Ops.Tensor",
+        "MerlinVerify.Sem.Ops.Func",
+        "MerlinVerify.Sem.Ops.Cf",
+        "MerlinVerify.Sem.Ops.Dequant",
+        "MerlinVerify.Sem.Ops.Quantize",
+        "MerlinVerify.Spec.Annotations"
+      ]
+    },
+    "MerlinVerify.Spec.Annotations": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Spec/Annotations.lean",
+        "bytes": 1148,
+        "sha256": "17febb602da964d15134efdc647bd4271d5bfb30b9d3944dcfbb7aef4f492d7a"
+      },
+      "imports": [
+        "Init"
+      ]
+    },
+    "MerlinVerify.Sem.Ops.Quantize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Ops/Quantize.lean",
+        "bytes": 2522,
+        "sha256": "c113a991aeef2f74dc79b247f4bc81055bf258827b7525d55672676efad5f38e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Spec.Quantize",
+        "MerlinVerify.Sem.Ops.Dequant"
+      ]
+    },
+    "MerlinVerify.Sem.Ops.Dequant": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Ops/Dequant.lean",
+        "bytes": 4303,
+        "sha256": "01bc0cb75525b810c15c9517e9a86b54749555f355a4d78c9fc20326e503e5fa"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Spec.Dequant"
+      ]
+    },
+    "MerlinVerify.Spec.Dequant": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Spec/Dequant.lean",
+        "bytes": 5590,
+        "sha256": "0f091d39d2d6a2438708a4843d2a81efb5971058170b99c9c65eac4222a9aac7"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Float",
+        "MerlinVerify.Sem.Support"
+      ]
+    },
+    "MerlinVerify.Sem.Support": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Support.lean",
+        "bytes": 9863,
+        "sha256": "35c431533dc68e3c9fd4c12c219a09fbc0efd98c22407dc77345719dcc9117dd"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Program",
+        "MerlinVerify.Core.Eq"
+      ]
+    },
+    "MerlinVerify.Core.Eq": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Core/Eq.lean",
+        "bytes": 16084,
+        "sha256": "0bd85efa4087bde2070f157165ad5c9cf07469cfd216314bf2524ced769515f2"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.AST"
+      ]
+    },
+    "MerlinVerify.Core.AST": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Core/AST.lean",
+        "bytes": 6765,
+        "sha256": "022cec55c189ddc40e1ee77e8cc9d8ede4f7734e4ce45a8848e98b96ee5643cd"
+      },
+      "imports": [
+        "Init"
+      ]
+    },
+    "MerlinVerify.Sem.Program": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Program.lean",
+        "bytes": 7600,
+        "sha256": "a9ce2a01a5b0f28d2d1998b0f60507e41d032cb5b67196adb2d471fef66e57a4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Refine",
+        "MerlinVerify.Sem.Float"
+      ]
+    },
+    "MerlinVerify.Sem.Float": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Float.lean",
+        "bytes": 2213,
+        "sha256": "6e30a0e7166c42019234d9d4f0216e57be1084fea19fb0a93d5aa1130dd1011d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.AST"
+      ]
+    },
+    "MerlinVerify.Sem.Refine": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Refine.lean",
+        "bytes": 5341,
+        "sha256": "7bf390e18b372c7b46ece53efceffd345db763e53b0b364a34d2f64d66510e05"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Outcome",
+        "MerlinVerify.Sem.Value",
+        "Mathlib.Data.List.Forall2"
+      ]
+    },
+    "MerlinVerify.Sem.Value": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Value.lean",
+        "bytes": 1269,
+        "sha256": "70f3a86242c13f97a13fac365fa9bd01a41757a63b5353d8ca9c84f8e7229412"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.AST"
+      ]
+    },
+    "MerlinVerify.Sem.Outcome": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Outcome.lean",
+        "bytes": 1953,
+        "sha256": "c473abfe4fbc4b5ac8d40c093691276f69857810e03144a9b42919e9b6c12b62"
+      },
+      "imports": [
+        "Init"
+      ]
+    },
+    "MerlinVerify.Spec.Quantize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Spec/Quantize.lean",
+        "bytes": 2056,
+        "sha256": "839aca4c17b08a2ff78182e88185b2b0ea345eb2b2e4ebcb0425d142521114f0"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Spec.Dequant"
+      ]
+    },
+    "MerlinVerify.Sem.Ops.Cf": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Ops/Cf.lean",
+        "bytes": 883,
+        "sha256": "25dc7727f833f0b55fca9df13b33c70176de87306c49020d9ad76c88352aa587"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Support"
+      ]
+    },
+    "MerlinVerify.Sem.Ops.Func": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Ops/Func.lean",
+        "bytes": 772,
+        "sha256": "3edcd85ac2bb0e69cca0b020b43868599736b46de26708980bc933809f1deef4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Support"
+      ]
+    },
+    "MerlinVerify.Sem.Ops.Tensor": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Ops/Tensor.lean",
+        "bytes": 9318,
+        "sha256": "836ac7dd2cee73630b2e8d3c47da68b1fb54506786930862a16ce69e10e6a732"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Support"
+      ]
+    },
+    "MerlinVerify.Sem.Ops.LinalgNamed": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Ops/LinalgNamed.lean",
+        "bytes": 6152,
+        "sha256": "7db481908f2d3f0f97e625632a0e5f12ea91c6b3012216e8f9b4f03db78b6f43"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Ops.Linalg"
+      ]
+    },
+    "MerlinVerify.Sem.Ops.Linalg": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Ops/Linalg.lean",
+        "bytes": 8776,
+        "sha256": "763a0ca674fb09034ec6ad1fe30d5554c88b45940a60660d7aa61394e846cec1"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Support"
+      ]
+    },
+    "MerlinVerify.Sem.Ops.Arith": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Ops/Arith.lean",
+        "bytes": 15761,
+        "sha256": "cdf786fe633185dfd54f4209aece5b46ab579bfaa90feacc4ece9994c90a5ff1"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.Print",
+        "MerlinVerify.Sem.Support"
+      ]
+    },
+    "MerlinVerify.Core.Print": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Core/Print.lean",
+        "bytes": 7793,
+        "sha256": "8bc1c4dd48d11b18814d812d306eebfaba5dd7b26e84faf01c8b9bb2fe8014bb"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.AST"
+      ]
+    },
+    "MerlinVerify.Check.Step": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Step.lean",
+        "bytes": 4163,
+        "sha256": "9d4d480b518cc7bead0dd977f63b1941b2d10eee1a4110ba80b237434eb3875c"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Alpha"
+      ]
+    },
+    "MerlinVerify.Check.Alpha": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Alpha.lean",
+        "bytes": 12265,
+        "sha256": "b3e5746b03fa6901af0cfae441815270ff06433b21d3fe059ee7b76d8bce111f"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Ops",
+        "MerlinVerify.Check.Corr",
+        "MerlinVerify.Check.ProgramLemmas"
+      ]
+    },
+    "MerlinVerify.Check.ProgramLemmas": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ProgramLemmas.lean",
+        "bytes": 2614,
+        "sha256": "b694c7133db7cb79be3c0ee488eb88a2e73c11dddbd0f9ba01168eaf26609dbb"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Program"
+      ]
+    },
+    "MerlinVerify.Check.Corr": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Corr.lean",
+        "bytes": 4121,
+        "sha256": "b8a0c4cdeb345cb48b37b0ad3b37300970766ca218cfd59acf4b3dcdf063a619"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Program"
+      ]
+    },
+    "MerlinVerify.Rules.ParallelFusion": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/ParallelFusion.lean",
+        "bytes": 6609,
+        "sha256": "1c4b8b895921b47b646cefbe3f51c3f30cf228ca808111dcf42abad3707bec41"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Facts"
+      ]
+    },
+    "MerlinVerify.Sem.Facts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Facts.lean",
+        "bytes": 12423,
+        "sha256": "78069d118499f7a7214b96ac64b91f1cdbdac9e1ab9de4af936508357850805a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Ops.Linalg",
+        "MerlinVerify.Sem.OutcomeLaws",
+        "Mathlib.Data.List.Nodup"
+      ]
+    },
+    "MerlinVerify.Sem.OutcomeLaws": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/OutcomeLaws.lean",
+        "bytes": 341,
+        "sha256": "d527f11b83da67c6d849ba096129fde5a2029a42401bc832401979c17d1617d2"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Outcome"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8Pointwise": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8Pointwise.lean",
+        "bytes": 2385,
+        "sha256": "32eee668791aa606d3888803302f3cd1c467475904107d5a9abe23a6528f4187"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8TensorOperands"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8TensorOperands": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8TensorOperands.lean",
+        "bytes": 4241,
+        "sha256": "a75128749034d0c31c4f1392d75440b8a5746927b5a506527fa1c75d5757fe88"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.StructuredRuntime",
+        "MerlinVerify.Sem.Facts"
+      ]
+    },
+    "MerlinVerify.Check.StructuredRuntime": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/StructuredRuntime.lean",
+        "bytes": 2730,
+        "sha256": "8eea78c98595de61328d562d173bee462da6df99376eaf512529720ba7c445f2"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.RulesLinalg"
+      ]
+    },
+    "MerlinVerify.Check.RulesLinalg": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/RulesLinalg.lean",
+        "bytes": 43311,
+        "sha256": "b35762064ac06badc74b87241610a746e99f4fd9aa3538cfe3b725c6b5dddac1"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Affine",
+        "MerlinVerify.Check.RulesArith"
+      ]
+    },
+    "MerlinVerify.Check.RulesArith": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/RulesArith.lean",
+        "bytes": 32351,
+        "sha256": "3ffe74a0221b85179237dc151a99645e24cecc304c492ee81797ecfa0dfc8a13"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.RulesElementwise"
+      ]
+    },
+    "MerlinVerify.Check.RulesElementwise": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/RulesElementwise.lean",
+        "bytes": 7989,
+        "sha256": "f9a49a9475671f6e4df7ceeba13d71e4e359c85245fce57e4e84cffe9297f150"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.RulesBase",
+        "MerlinVerify.Sem.Ops.Arith",
+        "MerlinVerify.Sem.Facts"
+      ]
+    },
+    "MerlinVerify.Check.RulesBase": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/RulesBase.lean",
+        "bytes": 4051,
+        "sha256": "0cfc083736b7c34339f9ed16758260c6438307e1b24ae3b2c4641578a6a1d1c5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Support",
+        "MerlinVerify.Sem.OutcomeLaws"
+      ]
+    },
+    "MerlinVerify.Check.Support": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Support.lean",
+        "bytes": 4335,
+        "sha256": "38732aa646a0354815cbc0147650c655f7f52c366c6fb331037edf001a960ca3"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Progress",
+        "MerlinVerify.Sem.Ops"
+      ]
+    },
+    "MerlinVerify.Check.Progress": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Progress.lean",
+        "bytes": 11629,
+        "sha256": "7250c43443e38bf4207dc93af91f43c7735dcc04df335c0c1665d72321cda8a7"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Typing",
+        "MerlinVerify.Check.ProgramLemmas"
+      ]
+    },
+    "MerlinVerify.Check.Typing": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Typing.lean",
+        "bytes": 1921,
+        "sha256": "79f9f69b85c5077e0252bf5e527fb28399306a2aab656b6c13ce1f095484a50f"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Support"
+      ]
+    },
+    "MerlinVerify.Check.Affine": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Affine.lean",
+        "bytes": 11280,
+        "sha256": "68e928df86ab046e3ffcbf7d3eb3510bd227b74d8e4cd7d7cad4a09a22e927cf"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Facts"
+      ]
+    },
+    "MerlinVerify.Rules.Bf16F32AccBody": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Bf16F32AccBody.lean",
+        "bytes": 4564,
+        "sha256": "5053c1716d3dfeaa9d6d52fb787d567b843d16fcf56833ff97ffcedd57ba8c97"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Bf16F32AccContract"
+      ]
+    },
+    "MerlinVerify.Rules.Bf16F32AccContract": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Bf16F32AccContract.lean",
+        "bytes": 9003,
+        "sha256": "c2008d1357c856ae131bf69dbeb41755d9ae01e38a5b7f088d534dc213b2469f"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Ops",
+        "MerlinVerify.Rules.W8A8TensorTrace",
+        "MerlinVerify.Rules.W8A8TensorOperands"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8TensorTrace": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8TensorTrace.lean",
+        "bytes": 6118,
+        "sha256": "1b4e18594bbcdf11f33872b404ae3b8e3bd4f8af3c96a0ba08d00642dad0119a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.StructuredRuntime",
+        "MerlinVerify.Sem.Facts"
+      ]
+    },
+    "MerlinVerify.Rules.Bf16F32AccSite": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Bf16F32AccSite.lean",
+        "bytes": 10035,
+        "sha256": "bde8e2b77e210540e57ea8c4b4984c0089a3d4fb8d535bd4b7f1bf1472f5b33d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Bf16F32AccReference"
+      ]
+    },
+    "MerlinVerify.Rules.Bf16F32AccReference": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Bf16F32AccReference.lean",
+        "bytes": 15846,
+        "sha256": "02c97b9789a2848e12458e006fcf782315cd79a9aaaff94cb02a1883ce8a0cec"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Bf16F32AccTensor",
+        "MerlinVerify.Check.PolicyModule"
+      ]
+    },
+    "MerlinVerify.Check.PolicyModule": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyModule.lean",
+        "bytes": 5291,
+        "sha256": "708cd94175f5585fba83924c6c90cf3ff36aa808f6e4583ac3656e29fc953e20"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Module",
+        "MerlinVerify.Check.Chain",
+        "MerlinVerify.Check.ExactSyntax"
+      ]
+    },
+    "MerlinVerify.Check.ExactSyntax": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ExactSyntax.lean",
+        "bytes": 3551,
+        "sha256": "25339e3ae62aa4ecc1c0f13a851e95bfdb99ec49fae6a81855e97ecba9aeb449"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.Eq"
+      ]
+    },
+    "MerlinVerify.Check.Chain": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Chain.lean",
+        "bytes": 3761,
+        "sha256": "2ffd50996a5d9d65c948c2cf069ef727c220a563a33950977e573d906878a538"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Rulebook",
+        "MerlinVerify.Check.DefinedLinalg"
+      ]
+    },
+    "MerlinVerify.Check.DefinedLinalg": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedLinalg.lean",
+        "bytes": 25434,
+        "sha256": "6f8958d79ce1106fadaf810875869e0520d137467dca537fecffb6865243b788"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedLoops",
+        "MerlinVerify.Check.DefinedLeaf",
+        "MerlinVerify.Check.RegionDepth",
+        "MerlinVerify.Check.DefinedComposition",
+        "MerlinVerify.Check.DefinedDequant",
+        "MerlinVerify.Rules.Generalize",
+        "MerlinVerify.Rules.CopyGeneralize",
+        "MerlinVerify.Rules.LayoutGeneralize"
+      ]
+    },
+    "MerlinVerify.Rules.LayoutGeneralize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/LayoutGeneralize.lean",
+        "bytes": 9581,
+        "sha256": "5af27d6950b0b4aa820c36c7fa6e1a50bc4536a2dd20982e5bd43ae81040f18f"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedRewrite",
+        "MerlinVerify.Rules.Generalize"
+      ]
+    },
+    "MerlinVerify.Rules.Generalize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Generalize.lean",
+        "bytes": 8205,
+        "sha256": "191e3f46d6e42970e44ab4e4496ad05ad6052a779c61a1d2c64e7f931a053c29"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.OneOp",
+        "MerlinVerify.Check.RulesLinalg"
+      ]
+    },
+    "MerlinVerify.Rules.OneOp": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/OneOp.lean",
+        "bytes": 4841,
+        "sha256": "628822a441c1eff3e76f60d02643cf3dc4976785d0aa18ba9a63668fb789cad8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.C1"
+      ]
+    },
+    "MerlinVerify.Check.C1": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/C1.lean",
+        "bytes": 12256,
+        "sha256": "ba5037ea3603135533aa0198245f715399662cd9e97690b973fab5a59a1699fd"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Step"
+      ]
+    },
+    "MerlinVerify.Check.TypedRewrite": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TypedRewrite.lean",
+        "bytes": 7012,
+        "sha256": "b3fd0740b39b61e8757bc55d364ba926b6e5204a84417e2dbe5229984c396cef"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Rulebook",
+        "MerlinVerify.Check.C1"
+      ]
+    },
+    "MerlinVerify.Check.Rulebook": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Rulebook.lean",
+        "bytes": 6628,
+        "sha256": "cfbed2484b5d68ac3f437dd10584133b9aaad574d343f2a42c770d66c4a3d3d2"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.RulesLinalg",
+        "MerlinVerify.Check.RulesTensor",
+        "MerlinVerify.Check.RulesDequant",
+        "MerlinVerify.Check.RulesQuantize",
+        "MerlinVerify.Check.RulesBitcast"
+      ]
+    },
+    "MerlinVerify.Check.RulesBitcast": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/RulesBitcast.lean",
+        "bytes": 1385,
+        "sha256": "03a2c4873fbcd1eeea77df63247a8036c9f931d5a526f7e314f5406e64173dfc"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.ScalarBitcast"
+      ]
+    },
+    "MerlinVerify.Rules.ScalarBitcast": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/ScalarBitcast.lean",
+        "bytes": 3332,
+        "sha256": "cbe3e19d8e8891f4ee8afd4b93dd4111a909f48c32358f8229f1a65a63c4573d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.RulesArith"
+      ]
+    },
+    "MerlinVerify.Check.RulesQuantize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/RulesQuantize.lean",
+        "bytes": 2512,
+        "sha256": "55957e7946c54547171bdc59ae27c5aaf22dc57a59e55ef97f9e48adddd5c188"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.QuantizeSource"
+      ]
+    },
+    "MerlinVerify.Rules.QuantizeSource": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/QuantizeSource.lean",
+        "bytes": 2685,
+        "sha256": "5af52b1a44d74a8bf2b0d83ab1ef026237f22faf1d15ec5feb7c1a01e26e601f"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Ops.Quantize",
+        "MerlinVerify.Check.RulesDequant"
+      ]
+    },
+    "MerlinVerify.Check.RulesDequant": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/RulesDequant.lean",
+        "bytes": 6112,
+        "sha256": "d5176818366b6964fcab090dce9bf02bc19dbbb2218f6cd057cdd990851154ab"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.DequantSite"
+      ]
+    },
+    "MerlinVerify.Rules.DequantSite": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/DequantSite.lean",
+        "bytes": 12485,
+        "sha256": "11773eae245f61bbbd82dc8baec0ef8bb69d3fdafd64e890e4330081e6abf208"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.DequantPerTensor",
+        "MerlinVerify.Check.C1",
+        "MerlinVerify.Check.RulesTensor"
+      ]
+    },
+    "MerlinVerify.Check.RulesTensor": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/RulesTensor.lean",
+        "bytes": 34376,
+        "sha256": "310765f1f7380017758442f5938e4d9501d281f80a626b24c6a2e078547640e4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.RulesLinalg"
+      ]
+    },
+    "MerlinVerify.Rules.DequantPerTensor": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/DequantPerTensor.lean",
+        "bytes": 15806,
+        "sha256": "4b8af2d5dce0a329394eddfe14d5505e6b88b604ae01d3dd0414595a41e8774c"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.DequantSource"
+      ]
+    },
+    "MerlinVerify.Rules.DequantSource": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/DequantSource.lean",
+        "bytes": 5362,
+        "sha256": "6e02a9dfe4fc655966fb4a5f2eacfa0edd9fa256d72b3dd6e1ca6747086bfd0c"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.DequantTensor"
+      ]
+    },
+    "MerlinVerify.Rules.DequantTensor": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/DequantTensor.lean",
+        "bytes": 11688,
+        "sha256": "88c160e4831b7c8a934e406501a464ab4df3ded47aec370ded7a3ae1fc537986"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.DequantScalar",
+        "MerlinVerify.Sem.Facts",
+        "MerlinVerify.Check.RulesLinalg"
+      ]
+    },
+    "MerlinVerify.Rules.DequantScalar": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/DequantScalar.lean",
+        "bytes": 10257,
+        "sha256": "10fe9c4a5b65e632b99b08f386c81f5712e7081767b3036e1a1406cea860ea5d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Ops",
+        "MerlinVerify.Spec.Dequant",
+        "MerlinVerify.Check.Alpha"
+      ]
+    },
+    "MerlinVerify.Rules.CopyGeneralize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/CopyGeneralize.lean",
+        "bytes": 5182,
+        "sha256": "25a2ebcd5cf824649baf96c7f1949bb04a530bf0e32d8182655be1cde587efc1"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.MapGeneralize"
+      ]
+    },
+    "MerlinVerify.Rules.MapGeneralize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/MapGeneralize.lean",
+        "bytes": 4614,
+        "sha256": "1ae95a8cb00ed07774709bc7ae05076b0231fe456005d2fc10dd43a4fd6a65a8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedRewrite",
+        "MerlinVerify.Rules.Generalize"
+      ]
+    },
+    "MerlinVerify.Check.DefinedDequant": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedDequant.lean",
+        "bytes": 8019,
+        "sha256": "f88527b5d7aa81995bfe36dd8e67da7715b40852a15a5fb485ca6b9867b0d6c4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedLoops",
+        "MerlinVerify.Check.RulesDequant"
+      ]
+    },
+    "MerlinVerify.Check.DefinedLoops": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedLoops.lean",
+        "bytes": 15707,
+        "sha256": "7d7a3d25ecb1c13a1e077e1acfc761d568b3de22d50c9cfad934f59e45815cd7"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRules",
+        "MerlinVerify.Check.StructuredRuntime"
+      ]
+    },
+    "MerlinVerify.Check.DefinedRules": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedRules.lean",
+        "bytes": 21231,
+        "sha256": "548ba70b85f6eb481462df7342f9d11d0b68f627e84067e064fd9ed59456d218"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Defined",
+        "MerlinVerify.Check.Rulebook"
+      ]
+    },
+    "MerlinVerify.Check.Defined": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Defined.lean",
+        "bytes": 10090,
+        "sha256": "9add534edd7ee0d38afd6e8ef684624ac0a764f178803da680b1b36ce1ec102d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Progress",
+        "MerlinVerify.Sem.Defined"
+      ]
+    },
+    "MerlinVerify.Sem.Defined": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Sem/Defined.lean",
+        "bytes": 3022,
+        "sha256": "6c0e0357a4c07ad960e16744ec34f7fd81253caf6a4370ed388d93d24ffbe05b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Program"
+      ]
+    },
+    "MerlinVerify.Check.DefinedComposition": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedComposition.lean",
+        "bytes": 969,
+        "sha256": "f4d18e0029beb3f1efe2a7048477f3e966755cb2e64417a96188cda386981d13"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Defined"
+      ]
+    },
+    "MerlinVerify.Check.RegionDepth": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/RegionDepth.lean",
+        "bytes": 581,
+        "sha256": "6e59fd9c2272ab6233dee42bedccb110f9137054543beb88922274e0bc6a8137"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.AST"
+      ]
+    },
+    "MerlinVerify.Check.DefinedLeaf": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedLeaf.lean",
+        "bytes": 630,
+        "sha256": "89d324f8fb1cfe49276c6d6b017b4f5832c1f66f0ca3240d58dd784c5a49462b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedFloating",
+        "MerlinVerify.Check.DefinedCarrier",
+        "MerlinVerify.Check.DefinedConversions",
+        "MerlinVerify.Check.DefinedBitcast",
+        "MerlinVerify.Check.DefinedFromElements"
+      ]
+    },
+    "MerlinVerify.Check.DefinedFromElements": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedFromElements.lean",
+        "bytes": 3266,
+        "sha256": "1e96e7c78becedbe8a0abaa51294271432a0b58da42bd7e8375b919b8b9b3ac5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRules",
+        "MerlinVerify.Rules.FromElementsKernel"
+      ]
+    },
+    "MerlinVerify.Rules.FromElementsKernel": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/FromElementsKernel.lean",
+        "bytes": 4357,
+        "sha256": "572d2c67332016e0931c563b0e6d59ea46c92850f2bb9c24a2527b39c3d961e9"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.RulesTensor"
+      ]
+    },
+    "MerlinVerify.Check.DefinedBitcast": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedBitcast.lean",
+        "bytes": 1836,
+        "sha256": "f1222831300fd6a771320f814e8ace34f1040862f48c191d9254e6f3fc609b69"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRules",
+        "MerlinVerify.Rules.ScalarBitcast"
+      ]
+    },
+    "MerlinVerify.Check.DefinedConversions": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedConversions.lean",
+        "bytes": 5165,
+        "sha256": "365d9d552636b4d360a0aec8d40ac42cb548ba0ede3664a7e5dc27eea544c2af"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRules"
+      ]
+    },
+    "MerlinVerify.Check.DefinedCarrier": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedCarrier.lean",
+        "bytes": 1861,
+        "sha256": "daf0458f3a4bd8d684423d70d34eafe70639e4fa6a74570e01fa2655f98a3213"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRules",
+        "MerlinVerify.Rules.ScalarCarrierKernel"
+      ]
+    },
+    "MerlinVerify.Rules.ScalarCarrierKernel": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/ScalarCarrierKernel.lean",
+        "bytes": 1293,
+        "sha256": "595b84bf994f1e3c9648c5cfd3e626d0219a9ee3b79b0986f3169b8e2b94c003"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.UniformFacts"
+      ]
+    },
+    "MerlinVerify.Check.UniformFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/UniformFacts.lean",
+        "bytes": 7391,
+        "sha256": "05892cd433610236ff4d16a0b974028a447c7af570851bb0224c0e4f2b60d244"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BindingFacts",
+        "MerlinVerify.Check.RulesTensor"
+      ]
+    },
+    "MerlinVerify.Check.BindingFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/BindingFacts.lean",
+        "bytes": 3272,
+        "sha256": "36f37772f5ff3bb6513caedb2fce1a649e01a123f618f07f819355c2368b773b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Step"
+      ]
+    },
+    "MerlinVerify.Check.DefinedFloating": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedFloating.lean",
+        "bytes": 5469,
+        "sha256": "6af1ac2992c35a13aca76e6b5078a48d86a1557765b565c71772fc93378ab750"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedControl"
+      ]
+    },
+    "MerlinVerify.Check.DefinedControl": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedControl.lean",
+        "bytes": 9130,
+        "sha256": "8ca487a50b30b2a071c1571ddc36b16a565270dddcb59da6886e07017e3131ef"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRules",
+        "MerlinVerify.Check.DefinedComposition"
+      ]
+    },
+    "MerlinVerify.Check.Module": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Module.lean",
+        "bytes": 3676,
+        "sha256": "74368ca245a8f09deab93769fb290d376e21feba6a653519f9253b837791d53d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Synth",
+        "MerlinVerify.Spec.Annotations"
+      ]
+    },
+    "MerlinVerify.Check.Synth": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Synth.lean",
+        "bytes": 10370,
+        "sha256": "132d8fdae590c049012e6eb1c242bafb9571f3ed569837804f9bc75f24bccbd8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.DequantSite",
+        "MerlinVerify.Rules.QuantizeRule",
+        "MerlinVerify.Rules.Dce",
+        "MerlinVerify.Rules.Cse",
+        "MerlinVerify.Rules.Motion",
+        "MerlinVerify.Rules.MotionIndependent",
+        "MerlinVerify.Rules.Generalize",
+        "MerlinVerify.Rules.Commutative",
+        "MerlinVerify.Rules.IntegerFold",
+        "MerlinVerify.Rules.ReshapeCompose",
+        "MerlinVerify.Rules.IntegerIdentity",
+        "MerlinVerify.Rules.ReshapeMixed"
+      ]
+    },
+    "MerlinVerify.Rules.ReshapeMixed": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/ReshapeMixed.lean",
+        "bytes": 7139,
+        "sha256": "80569c0760922325fad3371161ddcb7d62bbe95ddaa019fbb74e4c825d9d1cc4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.ReshapeCompose"
+      ]
+    },
+    "MerlinVerify.Rules.ReshapeCompose": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/ReshapeCompose.lean",
+        "bytes": 11075,
+        "sha256": "82d8d844ff26d068e89dd36cd6a2ccce901fafa64743b53f7ab2a8be9d5b19f4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.ReshapeGroups",
+        "MerlinVerify.Rules.Motion",
+        "MerlinVerify.Check.CorrLemmas"
+      ]
+    },
+    "MerlinVerify.Check.CorrLemmas": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/CorrLemmas.lean",
+        "bytes": 542,
+        "sha256": "30716a743127ca4c89e91f1faf369e9044690216c77d0cdfed19232fe1417027"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Corr"
+      ]
+    },
+    "MerlinVerify.Rules.Motion": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Motion.lean",
+        "bytes": 6589,
+        "sha256": "d762926a245d55580516fecedd72137eb53f5cf5488b2b446ff86f99a43ec0e5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Cse"
+      ]
+    },
+    "MerlinVerify.Rules.Cse": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Cse.lean",
+        "bytes": 5788,
+        "sha256": "4273daf5726fbc4344458538f2fcc855ea9d7cde076372f63e9059632bfb9492"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Dce"
+      ]
+    },
+    "MerlinVerify.Rules.Dce": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Dce.lean",
+        "bytes": 6265,
+        "sha256": "cb6b2aeb5a225bae44d816076356942c5e7c40775c407a16104ff6ce37429bd3"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.C1"
+      ]
+    },
+    "MerlinVerify.Rules.ReshapeGroups": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/ReshapeGroups.lean",
+        "bytes": 4183,
+        "sha256": "8dd68cc93202cfffff17a4363f684ea99e77213597991c304088477aed6ef3e5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.ReshapeIndex"
+      ]
+    },
+    "MerlinVerify.Rules.ReshapeIndex": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/ReshapeIndex.lean",
+        "bytes": 2716,
+        "sha256": "7f925769ae21c3ee7ec20644406503ce030769308650f51b90c152ef55bcd496"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.RulesTensor"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerIdentity": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerIdentity.lean",
+        "bytes": 13208,
+        "sha256": "2ab6daafb284e46fa2b694f98414ff6cc050d0054e4b4671fdc2798146cf4501"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.CorrLemmas",
+        "MerlinVerify.Check.RulesArith",
+        "MerlinVerify.Rules.Motion"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerFold": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerFold.lean",
+        "bytes": 12390,
+        "sha256": "e31f273c0dfb2fc06c09680ca77be7bba5e7f8b89bfb7721705363dd1853684c"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Dce",
+        "MerlinVerify.Check.RulesArith"
+      ]
+    },
+    "MerlinVerify.Rules.Commutative": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Commutative.lean",
+        "bytes": 8386,
+        "sha256": "5c3fe7d4e6d562d65d0b688a7e37399e72e0c2d992ad48a5aef8ca9002faa4ad"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.OneOp",
+        "MerlinVerify.Check.RulesArith"
+      ]
+    },
+    "MerlinVerify.Rules.MotionIndependent": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/MotionIndependent.lean",
+        "bytes": 7116,
+        "sha256": "bf14aa26bb800820df62d34985d78f5d79e0b9a8d11a8423319deba60df495fb"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Motion"
+      ]
+    },
+    "MerlinVerify.Rules.QuantizeRule": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/QuantizeRule.lean",
+        "bytes": 5736,
+        "sha256": "dc2c13f715f03830d23fe796c26444a9c19869c5c360ec27ac6d2c9a65225054"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.QuantizeSite"
+      ]
+    },
+    "MerlinVerify.Rules.QuantizeSite": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/QuantizeSite.lean",
+        "bytes": 13345,
+        "sha256": "602b47b86ec7cf0a647e0de980c83088ef9d0a0b5df20afbab94e295fb47f1dd"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.QuantizeSiteLemmas",
+        "MerlinVerify.Check.ExactSyntax"
+      ]
+    },
+    "MerlinVerify.Rules.QuantizeSiteLemmas": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/QuantizeSiteLemmas.lean",
+        "bytes": 3335,
+        "sha256": "f67edc511077ad7094adc2618a0ea82f8c582e164d1b394a993ae6067386fec7"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.QuantizeLowering",
+        "MerlinVerify.Rules.DequantSite"
+      ]
+    },
+    "MerlinVerify.Rules.QuantizeLowering": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/QuantizeLowering.lean",
+        "bytes": 4776,
+        "sha256": "4942a6950db773d46d4199131dc2d4ca6e6ca6772481902cbf23f9298dac7ba8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.QuantizeGeometry"
+      ]
+    },
+    "MerlinVerify.Rules.QuantizeGeometry": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/QuantizeGeometry.lean",
+        "bytes": 1068,
+        "sha256": "5af2b67a66dab9bf6c7d1f4bebc26fd46df9f913a3150f537c9f1dba4353342c"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.QuantizeRuntime"
+      ]
+    },
+    "MerlinVerify.Rules.QuantizeRuntime": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/QuantizeRuntime.lean",
+        "bytes": 4762,
+        "sha256": "33d3dd800e21aa1518cf0203e67f2387e8ab00629c73ec2e0dba2967ecd7c585"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.QuantizeSource",
+        "MerlinVerify.Rules.QuantizeTensor"
+      ]
+    },
+    "MerlinVerify.Rules.QuantizeTensor": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/QuantizeTensor.lean",
+        "bytes": 6530,
+        "sha256": "05198fd192111a90190460c8281a57198383e5563e40bad916af15e228ed2bbc"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.QuantizeScalar",
+        "MerlinVerify.Rules.W8A8FloatTensor"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8FloatTensor": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8FloatTensor.lean",
+        "bytes": 6656,
+        "sha256": "a08e05b145a18bc3f7aad1f74028b168563583320d651a770cc29fb29fbea680"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8Pointwise",
+        "MerlinVerify.Rules.W8A8Scalar"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8Scalar": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8Scalar.lean",
+        "bytes": 11909,
+        "sha256": "126954e5b3e7652d8d6c3fd540e8dd4f604f00025c9f28acca9d1e260d450de9"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Ops",
+        "MerlinVerify.Sem.OutcomeLaws",
+        "MerlinVerify.Spec.Dequant",
+        "MerlinVerify.Rules.W8A8Scale"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8Scale": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8Scale.lean",
+        "bytes": 2251,
+        "sha256": "32f9c3c665bc2ec075afc25eac6097ec7edf8e70de04a64690b1e429d8a487bd"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Spec.Dequant"
+      ]
+    },
+    "MerlinVerify.Rules.QuantizeScalar": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/QuantizeScalar.lean",
+        "bytes": 5635,
+        "sha256": "51e7a851fa376cf1487d717305d16072e3b32640c2f71e2f2c69fac7c796ddec"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Spec.Quantize",
+        "MerlinVerify.Rules.DequantScalar",
+        "MerlinVerify.Sem.OutcomeLaws"
+      ]
+    },
+    "MerlinVerify.Rules.Bf16F32AccNonvacuity": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Bf16F32AccNonvacuity.lean",
+        "bytes": 1674,
+        "sha256": "1a1853518861dc1e67f578676278cba12a6587dc8e9f83017246b05a38dfe150"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Bf16F32AccTensor",
+        "MerlinVerify.Sem.Defined"
+      ]
+    },
+    "MerlinVerify.Rules.Bf16F32AccFusion": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/Bf16F32AccFusion.lean",
+        "bytes": 5368,
+        "sha256": "4e222f2f82e38d08d138e2e18d312cb23ee7d09fb715d0a4b3e9c8801c6a96fe"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Bf16F32AccContract"
+      ]
+    },
+    "MerlinVerify.Check.Bf16F32AccSites": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Bf16F32AccSites.lean",
+        "bytes": 9133,
+        "sha256": "2f74bdf6eb4ad18ed60c80007d89a6c6cc39c896c9bd83d7e39a79292d90f148"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Bf16F32Acc",
+        "MerlinVerify.Check.Bf16F32AccExact"
+      ]
+    },
+    "MerlinVerify.Check.Bf16F32AccExact": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Bf16F32AccExact.lean",
+        "bytes": 2701,
+        "sha256": "2d1fa52fda7c840d848d9359a59cb455241c769e317495653c784b093c91920e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Bf16F32AccReference",
+        "MerlinVerify.Check.PolicyParametric"
+      ]
+    },
+    "MerlinVerify.Check.PolicyParametric": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyParametric.lean",
+        "bytes": 2109,
+        "sha256": "536066d0a30fd2d97bfbcc18873be004199d5d85e2461f97375ba8cbf4f05f6e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ParametricModule",
+        "MerlinVerify.Check.PolicyExact"
+      ]
+    },
+    "MerlinVerify.Check.PolicyExact": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyExact.lean",
+        "bytes": 3720,
+        "sha256": "df2bcb6ee96d9bc7a0af63dcab91ea9abd888b597036eed1d4c26aabd52270d7"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyModule",
+        "MerlinVerify.Sem.Defined"
+      ]
+    },
+    "MerlinVerify.Check.ParametricModule": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ParametricModule.lean",
+        "bytes": 4972,
+        "sha256": "8bae5aefad6686b45eee696b5ebfd426914721d6c026315b25079e6da2fec64b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ParametricAlpha",
+        "MerlinVerify.Check.ExactSyntax"
+      ]
+    },
+    "MerlinVerify.Check.ParametricAlpha": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ParametricAlpha.lean",
+        "bytes": 8419,
+        "sha256": "801452d5e110b73e061ca94b13bfcb301a56f5db4e77d5bee1bde954a012802b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.C1",
+        "MerlinVerify.Check.Progress"
+      ]
+    },
+    "MerlinVerify.Check.Bf16F32Acc": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Bf16F32Acc.lean",
+        "bytes": 4976,
+        "sha256": "aad559d9780e08ec2f90568b5a0f8081035a346d4080a41a623136e242052980"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Bf16F32AccReference",
+        "MerlinVerify.Check.TypedModule",
+        "MerlinVerify.Check.DefinedExtended"
+      ]
+    },
+    "MerlinVerify.Check.DefinedExtended": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedExtended.lean",
+        "bytes": 1098,
+        "sha256": "925f91fe76118c93b194e8b3a1dd4d3db69d56a5fc14460d14e1e4482e79c4e2"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedBounds"
+      ]
+    },
+    "MerlinVerify.Check.DefinedBounds": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedBounds.lean",
+        "bytes": 12401,
+        "sha256": "7c9f87ea47dcee3d7bcb2f83c3e000d0664e3091ed9aab3b535a30dc7f370dab"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IndexBounds",
+        "MerlinVerify.Check.DefinedInsert",
+        "MerlinVerify.Check.IndexArithmetic",
+        "MerlinVerify.Check.IndexCastBounds",
+        "MerlinVerify.Check.IndexClampBounds",
+        "MerlinVerify.Check.IndexRemainderBounds",
+        "MerlinVerify.Check.DefinedLinalg"
+      ]
+    },
+    "MerlinVerify.Check.IndexRemainderBounds": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IndexRemainderBounds.lean",
+        "bytes": 5526,
+        "sha256": "f8798133ecfca17d0222839ef6dbbfd717d93ee991f55d433391e2e1eeb48860"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IndexRanges",
+        "MerlinVerify.Check.DefinedControl"
+      ]
+    },
+    "MerlinVerify.Check.IndexRanges": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IndexRanges.lean",
+        "bytes": 3015,
+        "sha256": "d6016f6d45b27938ba86fa20e25c96d67a22e57427368fbbfde6ac9445c96395"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRefinements",
+        "MerlinVerify.Check.DefinedRules"
+      ]
+    },
+    "MerlinVerify.Check.DefinedRefinements": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedRefinements.lean",
+        "bytes": 12360,
+        "sha256": "7dce416d82a98aa55913d2447bd46ef9679b78539b32396dde44f0777e2909b3"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Defined"
+      ]
+    },
+    "MerlinVerify.Check.IndexClampBounds": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IndexClampBounds.lean",
+        "bytes": 6037,
+        "sha256": "959bb3760b1d4cd3cacced53960422c73838d3b60396bbfef11d6d3a0035e2f1"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IndexRanges",
+        "MerlinVerify.Check.DefinedControl"
+      ]
+    },
+    "MerlinVerify.Check.IndexCastBounds": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IndexCastBounds.lean",
+        "bytes": 11020,
+        "sha256": "505179e44a90d8e0b6f43e36b01d9fe7316dab79ad38145d58c240ff816081c4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IndexRanges",
+        "MerlinVerify.Check.DefinedControl"
+      ]
+    },
+    "MerlinVerify.Check.IndexArithmetic": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IndexArithmetic.lean",
+        "bytes": 7505,
+        "sha256": "d668c88e7bdbd53db9c2b70fc506b2aae09969a268832c5659cc4b0c6bf025f0"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IndexRanges",
+        "MerlinVerify.Check.IndexRangeAdd",
+        "MerlinVerify.Check.DefinedControl"
+      ]
+    },
+    "MerlinVerify.Check.IndexRangeAdd": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IndexRangeAdd.lean",
+        "bytes": 2675,
+        "sha256": "32f998ada54e86b494005c5815e681bb4ace449b3c4b4fd7e4be28ec8e652d2d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IndexRanges"
+      ]
+    },
+    "MerlinVerify.Check.DefinedInsert": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedInsert.lean",
+        "bytes": 4304,
+        "sha256": "3692656f5a129221ff0a45ffad3f6ec7ac0da631959494d6888a659c324d96d6"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IndexBounds",
+        "MerlinVerify.Rules.InsertExtractKernel"
+      ]
+    },
+    "MerlinVerify.Rules.InsertExtractKernel": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/InsertExtractKernel.lean",
+        "bytes": 2969,
+        "sha256": "00d8d80936411e47783b17f9a3f93ec88ddc0afd1535367bc0dfeed0577b79c8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.RulesTensor"
+      ]
+    },
+    "MerlinVerify.Check.IndexBounds": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IndexBounds.lean",
+        "bytes": 2010,
+        "sha256": "15a4c8542afbca877ac363ae714c259551dd9c05197f0f6fe45d83ff4c9265c3"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IndexRanges"
+      ]
+    },
+    "MerlinVerify.Check.TypedModule": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TypedModule.lean",
+        "bytes": 2511,
+        "sha256": "c4a3986862aa90be58dc3ce178c985ab205288faebc5849e209012d98d4cb948"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedC1",
+        "MerlinVerify.Check.SplatC1",
+        "MerlinVerify.Check.SplatNestedC1",
+        "MerlinVerify.Check.SharedNormalize",
+        "MerlinVerify.Check.Module",
+        "MerlinVerify.Rules.TypedGeneralize"
+      ]
+    },
+    "MerlinVerify.Rules.TypedGeneralize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/TypedGeneralize.lean",
+        "bytes": 549,
+        "sha256": "a7088d1d5d6b8a6c78b64471299f4e22db1afbda54e86215cf884fa3d8650e00"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedComposition",
+        "MerlinVerify.Rules.FillGeneralize",
+        "MerlinVerify.Rules.MapGeneralize",
+        "MerlinVerify.Rules.CopyGeneralize",
+        "MerlinVerify.Rules.LayoutGeneralize"
+      ]
+    },
+    "MerlinVerify.Rules.FillGeneralize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/FillGeneralize.lean",
+        "bytes": 4550,
+        "sha256": "d5f9bc00a1ed1c32e9ddf56eb9f3d30b866e7763fdd9d8e263cfafd7c81e5873"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedRewrite",
+        "MerlinVerify.Rules.Generalize"
+      ]
+    },
+    "MerlinVerify.Check.TypedComposition": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TypedComposition.lean",
+        "bytes": 732,
+        "sha256": "787243defce682147b2a1ed52ae6c43f89bf46079a5621750eef5378763c4a07"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedRewrite"
+      ]
+    },
+    "MerlinVerify.Check.SharedNormalize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/SharedNormalize.lean",
+        "bytes": 5052,
+        "sha256": "43c41d3a1a18ed0912643b43a781e181299638c51538a612d90975e26e9129ec"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedNormalizeC1",
+        "MerlinVerify.Check.ReshapeNested",
+        "MerlinVerify.Check.IntegerBody",
+        "MerlinVerify.Check.ScalarCarrier",
+        "MerlinVerify.Check.DenseExtract",
+        "MerlinVerify.Check.FromElementsSelect",
+        "MerlinVerify.Rules.IndexCompare",
+        "MerlinVerify.Check.ConstantAlias",
+        "MerlinVerify.Rules.IndexConstant",
+        "MerlinVerify.Rules.IntegerCastPartial",
+        "MerlinVerify.Check.InsertExtract",
+        "MerlinVerify.Rules.IntegerNeutral",
+        "MerlinVerify.Rules.IntegerCompareOrder",
+        "MerlinVerify.Check.RegionExact",
+        "MerlinVerify.Check.AlphaNormalize",
+        "MerlinVerify.Check.ScalarConstantHoist",
+        "MerlinVerify.Check.BitcastCancel",
+        "MerlinVerify.Check.TensorEmptyDead",
+        "MerlinVerify.Check.ParallelFusion",
+        "MerlinVerify.Check.IdentityReturnComparison",
+        "MerlinVerify.Check.ExactCse",
+        "MerlinVerify.Check.QuantizeCollapse"
+      ]
+    },
+    "MerlinVerify.Check.QuantizeCollapse": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/QuantizeCollapse.lean",
+        "bytes": 9641,
+        "sha256": "c17cc0c1c9d72fb311ef1a1f9f5710d274450334b1d0ebaf9e1764d96c1f9ee9"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.StateNormalize",
+        "MerlinVerify.Rules.QuantizeRule"
+      ]
+    },
+    "MerlinVerify.Check.StateNormalize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/StateNormalize.lean",
+        "bytes": 4904,
+        "sha256": "4d063b78ce049cd41a9737f8fe5f8b417af6e3a7c5205814b7880db980fd251e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BodyNormalize"
+      ]
+    },
+    "MerlinVerify.Check.BodyNormalize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/BodyNormalize.lean",
+        "bytes": 2560,
+        "sha256": "45850e0c3c425ed10388bb609008b055f62bac750593f2f1180473c45518e7b6"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.SplatNested"
+      ]
+    },
+    "MerlinVerify.Check.SplatNested": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/SplatNested.lean",
+        "bytes": 13575,
+        "sha256": "13ca7d19551d3a83e626b85c19b60d85377e7cae56848776595879cf9c2f3a58"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.SplatNormalizer",
+        "MerlinVerify.Rules.StructuredBody"
+      ]
+    },
+    "MerlinVerify.Rules.StructuredBody": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/StructuredBody.lean",
+        "bytes": 5271,
+        "sha256": "d398c60a85ee2c98ededeae8a12ef04c699704f3b768f3fbaeb38d9ef93b88f2"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.StructuredRuntime"
+      ]
+    },
+    "MerlinVerify.Check.SplatNormalizer": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/SplatNormalizer.lean",
+        "bytes": 5365,
+        "sha256": "1fccaadc66a7b0f1b8d5df43a9b6fdcb43f94af7a2653caa0885671299e60597"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.SplatNormalize",
+        "MerlinVerify.Check.TypedC1"
+      ]
+    },
+    "MerlinVerify.Check.TypedC1": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TypedC1.lean",
+        "bytes": 3872,
+        "sha256": "0685902d0e8ddfe42d3424a11c2c6c4b25dda0a304a012c23de12c468568cbc5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedRewrite",
+        "MerlinVerify.Check.Synth"
+      ]
+    },
+    "MerlinVerify.Check.SplatNormalize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/SplatNormalize.lean",
+        "bytes": 17667,
+        "sha256": "8e4816619c94f2cff5894eb8ecbb165209fd1fb5bd008c03e30888419ed313c0"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.SplatScalar",
+        "MerlinVerify.Check.UniformFacts",
+        "MerlinVerify.Check.TypedRewrite"
+      ]
+    },
+    "MerlinVerify.Rules.SplatScalar": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/SplatScalar.lean",
+        "bytes": 3851,
+        "sha256": "993074ef36afbaa26995f6e89ee6da98c9cc10a5e6f5a0d1ad68b18149ee862e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.SplatInputs"
+      ]
+    },
+    "MerlinVerify.Rules.SplatInputs": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/SplatInputs.lean",
+        "bytes": 6487,
+        "sha256": "d4c37f72ed829d8a73eb3c90e217dbb134c501a450324b007f607372a459fa7a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.StructuredInputs"
+      ]
+    },
+    "MerlinVerify.Rules.StructuredInputs": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/StructuredInputs.lean",
+        "bytes": 2851,
+        "sha256": "55f73296a8cd6103682cd3d3cac28ca7d4169e3510f37d42707bd75af2737cb3"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.StructuredRuntime"
+      ]
+    },
+    "MerlinVerify.Check.ExactCse": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ExactCse.lean",
+        "bytes": 17639,
+        "sha256": "2e6fccceca57dee0f0bbd894c4ee078d30a288ccf3fdcea195cfac3d4daf63bd"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.CtxNormalize",
+        "MerlinVerify.Check.TypedAlias",
+        "MerlinVerify.Check.Synth"
+      ]
+    },
+    "MerlinVerify.Check.TypedAlias": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TypedAlias.lean",
+        "bytes": 2620,
+        "sha256": "d4f38eaab54734ee7c5073ed14a873c12aee2d36c64ae22490f1a1fdddad4136"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.SplatNormalize",
+        "MerlinVerify.Rules.Cse"
+      ]
+    },
+    "MerlinVerify.Check.CtxNormalize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/CtxNormalize.lean",
+        "bytes": 5374,
+        "sha256": "8e158220535ffde8a703d17e86fec2e156fc524f1327ea18e81fde8293fde6d0"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BodyNormalize"
+      ]
+    },
+    "MerlinVerify.Check.IdentityReturnComparison": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IdentityReturnComparison.lean",
+        "bytes": 454,
+        "sha256": "fddf0f68ea3ef06c87f43be7a7db702dfa9c515cade7bf048da53b93cf6ccd6b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IdentityReturn",
+        "MerlinVerify.Check.TypedComparison"
+      ]
+    },
+    "MerlinVerify.Check.TypedComparison": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TypedComparison.lean",
+        "bytes": 2429,
+        "sha256": "c0c4d64ac0b6b31245838310f75b49be9bf974580c41f6f60ebbba41267322e9"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedC1"
+      ]
+    },
+    "MerlinVerify.Check.IdentityReturn": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IdentityReturn.lean",
+        "bytes": 1864,
+        "sha256": "c293f56f145a35ddacee850c79a3aae28de5209de98cd0fb24867c51325e3b89"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IdentityReturnProof"
+      ]
+    },
+    "MerlinVerify.Check.IdentityReturnProof": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IdentityReturnProof.lean",
+        "bytes": 6852,
+        "sha256": "ecf2a1e2895cc005cb582e5e03dc1ab3353452db2f4b6186887fa6e6fa0138ca"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.IdentityReturnSyntax",
+        "MerlinVerify.Check.C1"
+      ]
+    },
+    "MerlinVerify.Check.IdentityReturnSyntax": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IdentityReturnSyntax.lean",
+        "bytes": 3409,
+        "sha256": "1ae45a9f6d677002e9dd2e04facc3badc0dba8e14741be2b903b4430ba9a4548"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.IdentityReturn",
+        "MerlinVerify.Check.RulesLinalg",
+        "MerlinVerify.Check.Alpha"
+      ]
+    },
+    "MerlinVerify.Rules.IdentityReturn": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IdentityReturn.lean",
+        "bytes": 3124,
+        "sha256": "c69acfaa2339f3af17f72f2bb01bbefa7993e07f22f2652a1f0a3533ced4b027"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.ParallelFusion",
+        "MerlinVerify.Sem.Ops"
+      ]
+    },
+    "MerlinVerify.Check.ParallelFusion": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ParallelFusion.lean",
+        "bytes": 3591,
+        "sha256": "bdfd28b1a7825b32a1ea5c6e07d386ab84f154c2db778d5cdc0f404323a95cac"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ParallelFusionProof",
+        "MerlinVerify.Check.RegionDepth",
+        "MerlinVerify.Check.TypedNormalizer"
+      ]
+    },
+    "MerlinVerify.Check.TypedNormalizer": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TypedNormalizer.lean",
+        "bytes": 1585,
+        "sha256": "6862d5c716839c4ef019f27042e0a0c83b81a14dc6a1f87db54d72a3c1b88400"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedRewrite"
+      ]
+    },
+    "MerlinVerify.Check.ParallelFusionProof": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ParallelFusionProof.lean",
+        "bytes": 10602,
+        "sha256": "07bf678f3a6441d723793eba33fd8649592dc025956c024b34032100bdcbbef4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ParallelFusionSyntax"
+      ]
+    },
+    "MerlinVerify.Check.ParallelFusionSyntax": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ParallelFusionSyntax.lean",
+        "bytes": 6108,
+        "sha256": "3e3337ffca9df416e54375de0c9bbe2aaf09929be91bba2ae8403587ab4eb188"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ParallelFusionRuntime",
+        "MerlinVerify.Check.StateNormalize"
+      ]
+    },
+    "MerlinVerify.Check.ParallelFusionRuntime": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ParallelFusionRuntime.lean",
+        "bytes": 5838,
+        "sha256": "3eb98f4789c3fd9cd628382926f9db24fd25354b2206ea77ee3fd7675b08e77c"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ParallelFusionBody",
+        "MerlinVerify.Check.RulesLinalg",
+        "MerlinVerify.Rules.ParallelFusion"
+      ]
+    },
+    "MerlinVerify.Check.ParallelFusionBody": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ParallelFusionBody.lean",
+        "bytes": 7875,
+        "sha256": "f62dfe0b12a3c0020d1458a834d1061f7df9aa27ffc375941fb32843611ba7fc"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.ParallelFusionScalar",
+        "MerlinVerify.Check.C1"
+      ]
+    },
+    "MerlinVerify.Rules.ParallelFusionScalar": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/ParallelFusionScalar.lean",
+        "bytes": 3283,
+        "sha256": "7d8b9cb95f17e4e2b4fc0de3832a15ecfb6a2b8066bfceec8e8b754676fcece8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.RulesArith"
+      ]
+    },
+    "MerlinVerify.Check.TensorEmptyDead": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TensorEmptyDead.lean",
+        "bytes": 4284,
+        "sha256": "85efe211b440422c3037b0a99f00509f253ac7a750bda2630ca3d2440a5b6fe0"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.StateNormalize",
+        "MerlinVerify.Check.TypedDead"
+      ]
+    },
+    "MerlinVerify.Check.TypedDead": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TypedDead.lean",
+        "bytes": 1573,
+        "sha256": "c9a60fc844132bb5a3ff272ffd17e5bc87cb861afa2a1d4f1f23a6d54e9e836e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.SplatNormalize"
+      ]
+    },
+    "MerlinVerify.Check.BitcastCancel": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/BitcastCancel.lean",
+        "bytes": 11908,
+        "sha256": "17bda97b60ab7c3d59d94b7c0e4949209c7caf7438b4f8d85422a044321fa838"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.BitcastCancelKernel",
+        "MerlinVerify.Check.TailNormalize",
+        "MerlinVerify.Check.TypedAlias",
+        "MerlinVerify.Check.TypedDead"
+      ]
+    },
+    "MerlinVerify.Check.TailNormalize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TailNormalize.lean",
+        "bytes": 2874,
+        "sha256": "548a17fc36e98c66b149813551a8f5983ef1859d2f99a106833a04383f7f12db"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BindingFacts",
+        "MerlinVerify.Check.StateNormalize"
+      ]
+    },
+    "MerlinVerify.Rules.BitcastCancelKernel": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/BitcastCancelKernel.lean",
+        "bytes": 3792,
+        "sha256": "bd3b69f012ec9ac5a15321653ffe33d60effdebf06acfe20ae1d86b334bc1cba"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.ScalarBitcast"
+      ]
+    },
+    "MerlinVerify.Check.ScalarConstantHoist": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ScalarConstantHoist.lean",
+        "bytes": 14417,
+        "sha256": "76ddd6714821ce0240d0a3381179c431a0f45cdfa364676b429604981625e817"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ConstantFacts",
+        "MerlinVerify.Check.StateNormalize",
+        "MerlinVerify.Rules.MotionIndependent",
+        "MerlinVerify.Check.EnvBindingCommute"
+      ]
+    },
+    "MerlinVerify.Check.EnvBindingCommute": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/EnvBindingCommute.lean",
+        "bytes": 1272,
+        "sha256": "6723f67ced91195e30b56f596a88eb6bf0b1561b7e6b21489a5043b8cfd68bea"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Motion"
+      ]
+    },
+    "MerlinVerify.Check.ConstantFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ConstantFacts.lean",
+        "bytes": 4097,
+        "sha256": "0c6bfbedb994d7b747878dc03b5ae8d07bc998970ff1247f109f852d347e159a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BindingFacts",
+        "MerlinVerify.Rules.IntegerFold"
+      ]
+    },
+    "MerlinVerify.Check.AlphaNormalize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/AlphaNormalize.lean",
+        "bytes": 4053,
+        "sha256": "bbd345e41a8c26be0a5c4f0ebb965934b20bb097e06e2ce4a86eef99716e8ea8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedNormalizer",
+        "MerlinVerify.Check.SplatNormalize",
+        "MerlinVerify.Check.RegionDepth"
+      ]
+    },
+    "MerlinVerify.Check.RegionExact": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/RegionExact.lean",
+        "bytes": 5142,
+        "sha256": "12a87630900a1b98d1a76cd83f5f9c545267ee2702a7e4b72e7e1e07f4e8f60f"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedNormalizer",
+        "MerlinVerify.Check.RegionDepth"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerCompareOrder": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerCompareOrder.lean",
+        "bytes": 10288,
+        "sha256": "5fe4b434f8b5cac5255fffd6af8dfb1ec3859779fe47548a106a1b0ec2251dd8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Commutative"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerNeutral": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerNeutral.lean",
+        "bytes": 11297,
+        "sha256": "8d6c121f6a42bcb20de42957bb055a479f0184d82a110632b0bc1cb88eba67d7"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ConstantAlias",
+        "MerlinVerify.Rules.IntegerIdentity",
+        "MerlinVerify.Rules.Commutative"
+      ]
+    },
+    "MerlinVerify.Check.ConstantAlias": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ConstantAlias.lean",
+        "bytes": 8447,
+        "sha256": "5ce38d7f97136bc25220bf5b9d7e82a4010e296ed95ff0a27c5c3eefa92d8bbd"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ConstantFacts",
+        "MerlinVerify.Check.TypedAlias",
+        "MerlinVerify.Check.TypedDead",
+        "MerlinVerify.Check.TailNormalize",
+        "MerlinVerify.Check.BodyNormalize",
+        "MerlinVerify.Check.RegionDepth",
+        "MerlinVerify.Check.TypedNormalizeC1"
+      ]
+    },
+    "MerlinVerify.Check.TypedNormalizeC1": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/TypedNormalizeC1.lean",
+        "bytes": 4730,
+        "sha256": "5d2ee6bbaf1b41f0098168e70fb7dd5b7cd275e06d07576ae7152e357c2227a0"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedNormalizer",
+        "MerlinVerify.Check.TypedComparison"
+      ]
+    },
+    "MerlinVerify.Check.InsertExtract": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/InsertExtract.lean",
+        "bytes": 8185,
+        "sha256": "92eaf83ad6a4a55ab3a66085beb30112ac80d8107f7d632186a64eb431cb913e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.InsertExtractFacts",
+        "MerlinVerify.Check.ConstantAlias"
+      ]
+    },
+    "MerlinVerify.Check.InsertExtractFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/InsertExtractFacts.lean",
+        "bytes": 8212,
+        "sha256": "1e777ceb2970605b8f7caaf1ca45bfe96666f5d0882ff6c9735fc1d9b3322bb5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.InsertExtractKernel",
+        "MerlinVerify.Rules.IndexFold"
+      ]
+    },
+    "MerlinVerify.Rules.IndexFold": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IndexFold.lean",
+        "bytes": 10703,
+        "sha256": "3972f7af27c47723d14246e9b008346fdf3201385cc9dd53edd765b81476714d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ConstantFacts",
+        "MerlinVerify.Check.FactNormalize",
+        "MerlinVerify.Check.DenseExtract"
+      ]
+    },
+    "MerlinVerify.Check.DenseExtract": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DenseExtract.lean",
+        "bytes": 13248,
+        "sha256": "87a166c6ca769af6af287778286fb807ee246df761203aa74b91dcaf8e8f1875"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ConstantFacts",
+        "MerlinVerify.Check.TypedDead",
+        "MerlinVerify.Check.BodyNormalize",
+        "MerlinVerify.Check.RegionDepth",
+        "MerlinVerify.Check.TypedNormalizeC1"
+      ]
+    },
+    "MerlinVerify.Check.FactNormalize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FactNormalize.lean",
+        "bytes": 5134,
+        "sha256": "505a4ed8ccac7633f88cfecdac34193e93df62805e04996a68fb97644294cb94"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BindingFacts",
+        "MerlinVerify.Check.TypedNormalizer",
+        "MerlinVerify.Check.BodyNormalize"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerCastPartial": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerCastPartial.lean",
+        "bytes": 7556,
+        "sha256": "e1bde9d0de366153b55bc1972eafa19b9921317be38467dbdf0c780361d20feb"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.IntegerCastHeader"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerCastHeader": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerCastHeader.lean",
+        "bytes": 3032,
+        "sha256": "70a46c6c17d9f643fa9de28047c62ba2a41bec97e1bb4f98f39956ee21c83395"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.CastCancel"
+      ]
+    },
+    "MerlinVerify.Rules.CastCancel": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/CastCancel.lean",
+        "bytes": 9392,
+        "sha256": "1952fcace6943fea2f862ba1c1162c14f51f909edeee85d95c40ff7566728aa9"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.IntegerCastDead",
+        "MerlinVerify.Check.TypedAlias",
+        "MerlinVerify.Check.TailNormalize",
+        "MerlinVerify.Check.BodyNormalize",
+        "MerlinVerify.Check.RegionDepth",
+        "MerlinVerify.Check.TypedNormalizeC1"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerCastDead": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerCastDead.lean",
+        "bytes": 5303,
+        "sha256": "bb83df30a92312fb110a4d5bbc9e25e951fc0299be345b61d92b4c1178ff6a8d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.TypedDead",
+        "MerlinVerify.Check.TypedNormalizer",
+        "MerlinVerify.Rules.IntegerCast"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerCast": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerCast.lean",
+        "bytes": 16694,
+        "sha256": "68c55a24d11b6bd7642b6bac0ede68001849229afc3599c1399a6b7d8ea5a82a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BindingFacts",
+        "MerlinVerify.Check.TypedNormalizer"
+      ]
+    },
+    "MerlinVerify.Rules.IndexConstant": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IndexConstant.lean",
+        "bytes": 3170,
+        "sha256": "eed9a0a215b9316c84359f84a10bb2d463d8d603d25db6efcef62af7325d3b90"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.FactNormalize",
+        "MerlinVerify.Check.DenseExtract"
+      ]
+    },
+    "MerlinVerify.Rules.IndexCompare": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IndexCompare.lean",
+        "bytes": 6613,
+        "sha256": "10c4e292a79c025da161da1e5f66c93aa9fee0c6a9f19c5d8acaa041df9aaa82"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.IndexFold"
+      ]
+    },
+    "MerlinVerify.Check.FromElementsSelect": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FromElementsSelect.lean",
+        "bytes": 11157,
+        "sha256": "45fdf9aa89a7dc6d375d82974c71acd8730212082b4973b6e231b8a8fecea4a8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.FromElementsFacts",
+        "MerlinVerify.Check.ConstantFacts",
+        "MerlinVerify.Rules.IndexFold",
+        "MerlinVerify.Check.TypedAlias",
+        "MerlinVerify.Check.TypedDead",
+        "MerlinVerify.Check.BodyNormalize",
+        "MerlinVerify.Check.StateNormalize",
+        "MerlinVerify.Check.RegionDepth",
+        "MerlinVerify.Check.TypedNormalizeC1"
+      ]
+    },
+    "MerlinVerify.Check.FromElementsFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FromElementsFacts.lean",
+        "bytes": 5653,
+        "sha256": "8162bebe54c881b368b287eaae992c5c1875f1ef45ad24edd07f4862126957bf"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BindingFacts",
+        "MerlinVerify.Rules.FromElementsKernel"
+      ]
+    },
+    "MerlinVerify.Check.ScalarCarrier": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ScalarCarrier.lean",
+        "bytes": 11158,
+        "sha256": "9da98cee0b8a634698154110474207dec5e15659f6eec12cdd3d63c3c8db29b5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.ScalarCarrierKernel",
+        "MerlinVerify.Check.TypedAlias",
+        "MerlinVerify.Check.BodyNormalize",
+        "MerlinVerify.Check.RegionDepth",
+        "MerlinVerify.Check.TypedNormalizeC1"
+      ]
+    },
+    "MerlinVerify.Check.IntegerBody": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/IntegerBody.lean",
+        "bytes": 4972,
+        "sha256": "d460f62b3d99be12201c882aa6f322076ce6a0fca8965c441fd1b49a5d345d60"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BodyNormalize",
+        "MerlinVerify.Check.RegionDepth",
+        "MerlinVerify.Rules.IntegerOrder",
+        "MerlinVerify.Rules.IntegerIdempotent",
+        "MerlinVerify.Rules.IntegerCastNested"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerCastNested": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerCastNested.lean",
+        "bytes": 979,
+        "sha256": "76989032e5575b37f44371bd9646428e16c1ed17126df5c983237311e90983f7"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BodyNormalize",
+        "MerlinVerify.Rules.IntegerCastDead"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerIdempotent": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerIdempotent.lean",
+        "bytes": 8683,
+        "sha256": "9f99d373293dedb5b9b64f184a7c803b119e23e232efb9667114e46c56113a0b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BodyNormalize",
+        "MerlinVerify.Check.TypedAlias",
+        "MerlinVerify.Check.RulesArith"
+      ]
+    },
+    "MerlinVerify.Rules.IntegerOrder": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/IntegerOrder.lean",
+        "bytes": 4002,
+        "sha256": "084011bc7caf405ccee31d5d829c03870ef00e3b9612a3d6113f7be900753e38"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.Commutative"
+      ]
+    },
+    "MerlinVerify.Check.ReshapeNested": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ReshapeNested.lean",
+        "bytes": 3217,
+        "sha256": "74e6e7cae4afb7341b4878853c46ea396e1727bc92e136de15109fcec60dee61"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ReshapeNormalize",
+        "MerlinVerify.Check.BodyNormalize",
+        "MerlinVerify.Check.RegionDepth",
+        "MerlinVerify.Check.TypedNormalizeC1"
+      ]
+    },
+    "MerlinVerify.Check.ReshapeNormalize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ReshapeNormalize.lean",
+        "bytes": 9667,
+        "sha256": "d74fdf4ab8099cca3f203dbcf0c8764bef5164dbe6a7a03775b60defa8292edb"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ReshapeFacts",
+        "MerlinVerify.Check.ReshapeDead",
+        "MerlinVerify.Check.TypedNormalizer"
+      ]
+    },
+    "MerlinVerify.Check.ReshapeDead": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ReshapeDead.lean",
+        "bytes": 2680,
+        "sha256": "71cb07a1e6cc687ba85a4c686bc0dd067321916b9e599db5adaff1f681607a6b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ReshapeFacts",
+        "MerlinVerify.Check.TypedDead"
+      ]
+    },
+    "MerlinVerify.Check.ReshapeFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ReshapeFacts.lean",
+        "bytes": 6794,
+        "sha256": "4756da8267da3cac8ef6e2edc1dc579f7758d0ef2c9a6885cedb2fc5a08c738d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.BindingFacts",
+        "MerlinVerify.Check.TypedRewrite",
+        "MerlinVerify.Rules.ReshapeCompose"
+      ]
+    },
+    "MerlinVerify.Check.SplatNestedC1": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/SplatNestedC1.lean",
+        "bytes": 1528,
+        "sha256": "93c77c7d6c5a5fab230e6c179a2ce7457b8b58581ee82fabc1fa7c0575c7da83"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.SplatNested",
+        "MerlinVerify.Check.RegionDepth"
+      ]
+    },
+    "MerlinVerify.Check.SplatC1": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/SplatC1.lean",
+        "bytes": 697,
+        "sha256": "6d1bb2d67e2bec1baa998090c7cf9a36dd17b40043f8f282f395670792a44db9"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.SplatNormalizer"
+      ]
+    },
+    "Audit": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/Audit.lean",
+        "bytes": 6971,
+        "sha256": "386bfe82e11609edc75b334e21a0030183f042b76cbe315e431d4e6a9c49d6f4"
+      },
+      "imports": [
+        "Init",
+        "Lean"
+      ]
+    },
+    "Main": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/Main.lean",
+        "bytes": 10039,
+        "sha256": "003a6c0caddafe6eaf0a6999ed09d9f2ff7a76d059a7bcb3ee91816bde4280e5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.Json",
+        "MerlinVerify.Core.Print",
+        "MerlinVerify.Sem.Ops",
+        "MerlinVerify.Check.Types",
+        "MerlinVerify.Check.Synth",
+        "MerlinVerify.Check.Module",
+        "MerlinVerify.Check.Rulebook",
+        "MerlinVerify.Check.DefinedLinalg",
+        "MerlinVerify.Check.DefinedExtended",
+        "MerlinVerify.Check.TypedModule",
+        "MerlinVerify.Driver.W8A8",
+        "MerlinVerify.Driver.W8A8Chain",
+        "MerlinVerify.Driver.Bf16F32Acc"
+      ]
+    },
+    "MerlinVerify.Driver.Bf16F32Acc": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Driver/Bf16F32Acc.lean",
+        "bytes": 17658,
+        "sha256": "044b13f8d7df2bddc59b228c5a1900ffcc79b3cc175f33aa140fa0308262625f"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.Json",
+        "MerlinVerify.Check.Bf16F32AccChain",
+        "MerlinVerify.Check.Bf16F32AccSites"
+      ]
+    },
+    "MerlinVerify.Check.Bf16F32AccChain": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Bf16F32AccChain.lean",
+        "bytes": 4661,
+        "sha256": "ba1f2fac433004c93f007c6538c2df8989a68079f51803dfa24d3a25e186b77b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Bf16F32Acc",
+        "MerlinVerify.Check.PolicyW8A8Chain"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8Chain": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8Chain.lean",
+        "bytes": 4229,
+        "sha256": "f2cb58925358e9616aa5497c5048f7c75943f1df56d1aa535fd784247bce011f"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8Module"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8Module": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8Module.lean",
+        "bytes": 3349,
+        "sha256": "850d99a1664313d83a7242b29e6c31ece684b9a4e93011bdd57e622b9d78b71a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8Reference",
+        "MerlinVerify.Check.TypedModule",
+        "MerlinVerify.Check.DefinedExtended"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8Reference": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8Reference.lean",
+        "bytes": 12531,
+        "sha256": "ed781bfa7957b7e5fb493f673943b58a6fbc7fb26e804bb390a21e22c1ff6bf9"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8Emission",
+        "MerlinVerify.Rules.W8A8ProjectionReference",
+        "MerlinVerify.Check.PolicyModule",
+        "MerlinVerify.Check.ConstantFacts"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8ProjectionReference": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8ProjectionReference.lean",
+        "bytes": 2444,
+        "sha256": "bc17fc96627561384fb3ceba40b0a9b0d5b4b16944ab379c6fb56814c69cfd0c"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8ProjectionLayout",
+        "MerlinVerify.Rules.W8A8Emission"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8Emission": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8Emission.lean",
+        "bytes": 6447,
+        "sha256": "dc5ec896e30163a161d0eb741066d354482e596cb3a7a2191c9760b366c3a3d1"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.AlphaNormalize",
+        "MerlinVerify.Check.PolicyW8A8Geometry",
+        "MerlinVerify.Check.PolicyW8A8AbsMax",
+        "MerlinVerify.Rules.W8A8Fill",
+        "MerlinVerify.Rules.W8A8IntegerBody",
+        "MerlinVerify.Rules.W8A8Scalar"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8IntegerBody": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8IntegerBody.lean",
+        "bytes": 3388,
+        "sha256": "f76fd5baefd3e5ef140d8af387dc63e79969fa41edf4d7effe8baab7c5c1158a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Ops",
+        "MerlinVerify.Rules.W8A8Accumulation"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8Accumulation": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8Accumulation.lean",
+        "bytes": 3359,
+        "sha256": "f7081d897f94d6a2a72d6106166cb817ba238b6d86b12fa0bc6c636886d82aa3"
+      },
+      "imports": [
+        "Init",
+        "Std.Tactic"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8AbsMax": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8AbsMax.lean",
+        "bytes": 2261,
+        "sha256": "458ec4dd235c7492e2a79c7e3c27dffb3be2149fb538d0a0db132339680b3862"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8AbsMax",
+        "MerlinVerify.Check.PolicyW8A8Geometry"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8Geometry": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8Geometry.lean",
+        "bytes": 2233,
+        "sha256": "693b5e638b1493e9115c0479473f4c58d596e59539cc6238d6a7015854293917"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.StructuredRuntime"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8AbsMax": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8AbsMax.lean",
+        "bytes": 3411,
+        "sha256": "f78737705841374c00762c906eb03266695c11c3775b84fb5d6ed3221d0443e5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8TensorTrace",
+        "MerlinVerify.Rules.W8A8FloatTensor",
+        "MerlinVerify.Check.PolicyW8A8Scalar"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8Scalar": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8Scalar.lean",
+        "bytes": 8107,
+        "sha256": "40ca3dbae53158b48724d8ffcf1b0e70783b4d7ca4da66a5c72deac76c3ddeb6"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Alpha",
+        "MerlinVerify.Check.PolicyW8A8Captures",
+        "MerlinVerify.Rules.W8A8Scalar"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8Captures": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8Captures.lean",
+        "bytes": 3669,
+        "sha256": "1db8c8193202c44028bf54f7a3368e82105dc4b0bf21440c1f3691c4fa1958c8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ConstantFacts"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8ProjectionLayout": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8ProjectionLayout.lean",
+        "bytes": 4418,
+        "sha256": "22266b22a7188c3c5b998abb1c97194112193afb0cedfd1c4d194ffe0e931442"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8ProjectionTrace",
+        "MerlinVerify.Check.PolicyW8A8Geometry"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8ProjectionTrace": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8ProjectionTrace.lean",
+        "bytes": 7632,
+        "sha256": "46a26d6e179add78602c0d5f3912114fb4cb4eb597f703b68aa93c72e3ae9d95"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8IntegerTensor"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8IntegerTensor": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8IntegerTensor.lean",
+        "bytes": 10153,
+        "sha256": "d4617f800353795b582dde6d9085a51260c50fd6e985eb8095c790953ed39609"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8TensorTrace",
+        "MerlinVerify.Check.PolicyW8A8Body"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8Body": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8Body.lean",
+        "bytes": 3733,
+        "sha256": "6ff6901f16bbd7adf5b28053826dbb3cdb5620a07a0ecdb77fa7d8e2f0c042b0"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.Alpha",
+        "MerlinVerify.Rules.W8A8IntegerBody"
+      ]
+    },
+    "MerlinVerify.Core.Json": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Core/Json.lean",
+        "bytes": 11350,
+        "sha256": "7112852af0f6f2d6d211c27985f183af525faecaade0e73f94035b2f35ea4f47"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.AST",
+        "Lean.Data.Json"
+      ]
+    },
+    "MerlinVerify.Driver.W8A8Chain": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Driver/W8A8Chain.lean",
+        "bytes": 3975,
+        "sha256": "e095702a63dce636d8b5d1112f4539dc43c560cc69bc8a9c73743949d326baf3"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Driver.W8A8",
+        "MerlinVerify.Check.PolicyW8A8Chain"
+      ]
+    },
+    "MerlinVerify.Driver.W8A8": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Driver/W8A8.lean",
+        "bytes": 4234,
+        "sha256": "1a5f53f0fce8a46fd6fe6124b67e2192606238b80816d316008c8f29a23520b4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.Json",
+        "MerlinVerify.Check.PolicyW8A8Module",
+        "MerlinVerify.Driver.W8A8Dynamic"
+      ]
+    },
+    "MerlinVerify.Driver.W8A8Dynamic": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Driver/W8A8Dynamic.lean",
+        "bytes": 3952,
+        "sha256": "ad4ee4ad0321c19534c16dfa67a1f41916a812e8b0a840791bb1ce791acdb4a8"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Core.Json",
+        "MerlinVerify.Check.PolicyW8A8DynamicChain"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8DynamicChain": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8DynamicChain.lean",
+        "bytes": 5377,
+        "sha256": "0cc2199d9fda055739d906ea9a4c7f27cc325071666008215b573b5b641c86f2"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8DynamicQualified",
+        "MerlinVerify.Check.PolicyW8A8Chain",
+        "MerlinVerify.Check.DeadModule"
+      ]
+    },
+    "MerlinVerify.Check.DeadModule": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DeadModule.lean",
+        "bytes": 3033,
+        "sha256": "4085d61b2b53ab6d5c2bb2b720dd19999657d8f43348bbae3212c20442a16b6c"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.InferredDead",
+        "MerlinVerify.Check.ModuleBodyEquality"
+      ]
+    },
+    "MerlinVerify.Check.ModuleBodyEquality": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/ModuleBodyEquality.lean",
+        "bytes": 4418,
+        "sha256": "9efea015904d002a542644a6dd43fb176fc04558df3c410541b6ec1b014a774f"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ParametricModule"
+      ]
+    },
+    "MerlinVerify.Check.InferredDead": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/InferredDead.lean",
+        "bytes": 6135,
+        "sha256": "1d1b2aa4296db27f0cc57756ec56849846e2fb6648a43fe2e31366473bc37b2d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedLinalg",
+        "MerlinVerify.Check.TypedDead"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8DynamicQualified": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8DynamicQualified.lean",
+        "bytes": 2533,
+        "sha256": "acd250be576e9c218b4e30d3da7a3bb6a7795f0633c2b3b1c30f012ca013bca6"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8DynamicDefined",
+        "MerlinVerify.Check.PolicyW8A8DynamicCalled",
+        "MerlinVerify.Check.PolicyW8A8FiniteQualified",
+        "MerlinVerify.Check.PolicyInitialized"
+      ]
+    },
+    "MerlinVerify.Check.PolicyInitialized": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyInitialized.lean",
+        "bytes": 3754,
+        "sha256": "37990540b3dfc46281a86f8a7f74e4828c7dea78e41023f5505b42454e1ae3ad"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyParametric",
+        "MerlinVerify.Check.TypedModule"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8FiniteQualified": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8FiniteQualified.lean",
+        "bytes": 4598,
+        "sha256": "11405d737ec16175db3613a45b23c8dc1ef11fd1fd812863e6b95504959f7f25"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8FiniteDefined",
+        "MerlinVerify.Check.PolicyW8A8Called",
+        "MerlinVerify.Check.PolicyParametric",
+        "MerlinVerify.Check.TypedModule",
+        "MerlinVerify.Rules.W8A8Reference",
+        "MerlinVerify.Rules.W8A8SourceAlpha"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8SourceAlpha": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8SourceAlpha.lean",
+        "bytes": 3337,
+        "sha256": "35a2dcd01b41a41808d9c5385fee6b09eee819c1e92a0dfdaa85bfd28dc116a5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8SourceSemantics",
+        "MerlinVerify.Check.ParametricAlpha"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8SourceSemantics": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8SourceSemantics.lean",
+        "bytes": 3885,
+        "sha256": "d8f71a37f2a876a50898daab5ce8c035f2670788388739ebd2d47f6541733e7b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8SourcePrefix"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8SourcePrefix": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8SourcePrefix.lean",
+        "bytes": 5180,
+        "sha256": "a7cf1d728ff99a91c6badda90a87e8a1e7f121736a041011dcb634b7a7c716d1"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8SourceFacts"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8SourceFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8SourceFacts.lean",
+        "bytes": 12173,
+        "sha256": "73729873477ca70de32fa67691e1e94b31926c1e1c86bfa026a24d899470f160"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.ConstantFacts",
+        "MerlinVerify.Rules.W8A8SourceContract"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8SourceContract": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8SourceContract.lean",
+        "bytes": 5399,
+        "sha256": "78d5f277996f39f4a1e3a7ff123470ce80aead32517d18a3a6fe0d7a7db21fd3"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8DequantWidth",
+        "MerlinVerify.Rules.W8A8SourceQuantize"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8SourceQuantize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8SourceQuantize.lean",
+        "bytes": 9224,
+        "sha256": "d7e154b644c23c6b78e36b802485ee2e605085c7862595fb6058a87f9f945f55"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8SourceByte",
+        "MerlinVerify.Check.DefinedDequant"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8SourceByte": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8SourceByte.lean",
+        "bytes": 3290,
+        "sha256": "2f3b5a07c3b2bdfea6e228bd1f4592eb414ca33a6ec7045e84c5db5d038c90a4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8ByteModel"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8ByteModel": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8ByteModel.lean",
+        "bytes": 5456,
+        "sha256": "99e4c36a8de86ed74f6b56e21c5b6d4240ff53fe8b0ff657acc802fbc86dfe28"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8ByteFloat"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8ByteFloat": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8ByteFloat.lean",
+        "bytes": 7098,
+        "sha256": "f9e870726b37dbf497578870689209e953399383c0c1528b5c337a1eb6996444"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8QuantizeDomain"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8QuantizeDomain": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8QuantizeDomain.lean",
+        "bytes": 3470,
+        "sha256": "af11f28be9861e81ce3bfd32f69f8a0d56cbb616b93507a2ebe8418052a5e005"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8Scalar"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8DequantWidth": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8DequantWidth.lean",
+        "bytes": 6404,
+        "sha256": "e02052fb241fdfb6ed817d4fa56ae2480a36fab6e8d5cf49c305b3e0f794c60e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedDequant"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8Called": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8Called.lean",
+        "bytes": 4098,
+        "sha256": "313d0f5893422e0a6b608dc5794d333f45add886bde061cefb2a411e3f6b86bb"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedCallContracts",
+        "MerlinVerify.Check.DefinedClosedCalls",
+        "MerlinVerify.Check.FiniteImplication",
+        "MerlinVerify.Check.PolicyW8A8FiniteDefined",
+        "MerlinVerify.Check.TypedModule"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8FiniteDefined": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8FiniteDefined.lean",
+        "bytes": 2737,
+        "sha256": "d43736646245c5b3684643dd8ddddec6f23c71a365887f17c17ddcd5ba427466"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.FiniteProducers",
+        "MerlinVerify.Check.PolicyW8A8FiniteQuantize",
+        "MerlinVerify.Check.FiniteStructured",
+        "MerlinVerify.Check.PolicyW8A8ViewBook"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8ViewBook": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8ViewBook.lean",
+        "bytes": 950,
+        "sha256": "11d12d08252ee2105fea4d752c10ef48f907df0f6fdd8d2bd96a23e347bc4445"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedStaticSlice",
+        "MerlinVerify.Check.DefinedConcat",
+        "MerlinVerify.Check.DefinedReshapeView",
+        "MerlinVerify.Check.DefinedRefinedSplat",
+        "MerlinVerify.Check.W8A8SourceBook"
+      ]
+    },
+    "MerlinVerify.Check.W8A8SourceBook": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/W8A8SourceBook.lean",
+        "bytes": 1127,
+        "sha256": "21b1574eea21c8ed8d00340a4625fe1efb58943b3ebba7d238f88996d6cc1af5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRefinements",
+        "MerlinVerify.Rules.W8A8SourceFree"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8SourceFree": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8SourceFree.lean",
+        "bytes": 5587,
+        "sha256": "21a8d3b69b76b6bf86447db7d4d8e29eb84c8c489281eb9c73ace2692202be51"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8SourceSemantics",
+        "MerlinVerify.Sem.Defined"
+      ]
+    },
+    "MerlinVerify.Check.DefinedRefinedSplat": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedRefinedSplat.lean",
+        "bytes": 2512,
+        "sha256": "cdcb04cc050baa431b54e0cda0503b493b01428562286a0958e0fee0e1b439eb"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedReadView",
+        "MerlinVerify.Check.RulesTensor"
+      ]
+    },
+    "MerlinVerify.Check.DefinedReadView": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedReadView.lean",
+        "bytes": 2195,
+        "sha256": "d311887f0b023cde90048977143ec81225ecaed4c66e442e8a7b2e84fc153cfe"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedElementwise"
+      ]
+    },
+    "MerlinVerify.Check.DefinedElementwise": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedElementwise.lean",
+        "bytes": 8950,
+        "sha256": "fc76023c4dad5d40efe5ca664a3916c2290900541226dd2179d487eed3885db6"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedContext",
+        "MerlinVerify.Check.DefinedLoops"
+      ]
+    },
+    "MerlinVerify.Check.DefinedContext": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedContext.lean",
+        "bytes": 13753,
+        "sha256": "33fe6f953a8d1a6f7c673c37f70665cc55121f57db456f9a70ab65acdeccb05a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRefinements"
+      ]
+    },
+    "MerlinVerify.Check.DefinedReshapeView": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedReshapeView.lean",
+        "bytes": 5469,
+        "sha256": "23f2b7dbf37f96eef2e300083ae7585da61d989b4d54ee68cb801d005e243c3a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedReadView",
+        "MerlinVerify.Check.RulesTensor"
+      ]
+    },
+    "MerlinVerify.Check.DefinedConcat": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedConcat.lean",
+        "bytes": 8860,
+        "sha256": "7848b012d8326d68d42640579759d480c627f54947ab63bd4d39392701178d6b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedReadView",
+        "MerlinVerify.Check.DefinedCommonFacts",
+        "MerlinVerify.Check.RulesTensor"
+      ]
+    },
+    "MerlinVerify.Check.DefinedCommonFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedCommonFacts.lean",
+        "bytes": 2103,
+        "sha256": "ce06497d3fc01965eeee6084ed7bbb9de4bdb2bd139d4a9af72ae9018eb1bfe6"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedContextGeneric"
+      ]
+    },
+    "MerlinVerify.Check.DefinedContextGeneric": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedContextGeneric.lean",
+        "bytes": 17016,
+        "sha256": "9cbc669fbc75d2560878dbba72c38816561a5b1dae31d32523c5642eba5382eb"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedContextLoops",
+        "MerlinVerify.Check.DefinedGeneric",
+        "MerlinVerify.Check.DefinedContextFill"
+      ]
+    },
+    "MerlinVerify.Check.DefinedContextFill": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedContextFill.lean",
+        "bytes": 6835,
+        "sha256": "b1ff66e602565bdfe43bc9644a7a58d3ba2ddcfc5fce399ed16bf97eeb3c172d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedContextLoops",
+        "MerlinVerify.Check.DefinedGeneric",
+        "MerlinVerify.Check.DefinedPointRegions"
+      ]
+    },
+    "MerlinVerify.Check.DefinedPointRegions": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedPointRegions.lean",
+        "bytes": 2905,
+        "sha256": "db917a6793224ee40e15d744dbe748ac31e7c9d8dd595f96c663d5edaad23b89"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRegions"
+      ]
+    },
+    "MerlinVerify.Check.DefinedRegions": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedRegions.lean",
+        "bytes": 2671,
+        "sha256": "08476b87e68f80a447e2cab30785e5ef28320cffa78965c37351cb4dd7768879"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedContext"
+      ]
+    },
+    "MerlinVerify.Check.DefinedGeneric": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedGeneric.lean",
+        "bytes": 8483,
+        "sha256": "4432b6596c151de53e79db6f4ff90dbade7d487abf3e0350c8256f7e0a8646c4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedBounds"
+      ]
+    },
+    "MerlinVerify.Check.DefinedContextLoops": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedContextLoops.lean",
+        "bytes": 16509,
+        "sha256": "4857df46762b78c25e0dc7c0fad74c2a2571937d934f84849727ecfb4e797d2a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedElementwise"
+      ]
+    },
+    "MerlinVerify.Check.DefinedStaticSlice": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedStaticSlice.lean",
+        "bytes": 6316,
+        "sha256": "cc71190e44b2c1a5be25fe113043ce5b68a9620c4ba340acbb6e16c23b3f3e2b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedReadView",
+        "MerlinVerify.Check.RulesTensor"
+      ]
+    },
+    "MerlinVerify.Check.FiniteStructured": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FiniteStructured.lean",
+        "bytes": 1254,
+        "sha256": "8b81cb4474002ee8cc505e1d8ac94c43b83914530cc5053067a258e0efdb9832"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.FiniteImplication",
+        "MerlinVerify.Check.DefinedContextGeneric"
+      ]
+    },
+    "MerlinVerify.Check.FiniteImplication": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FiniteImplication.lean",
+        "bytes": 2946,
+        "sha256": "053e872e827e7cb1d730833a1188d6083cc31fca8a6df3f97dbd14b7729ed9b3"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.FiniteFacts"
+      ]
+    },
+    "MerlinVerify.Check.FiniteFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FiniteFacts.lean",
+        "bytes": 3620,
+        "sha256": "15c2796d6a112cb4809de10aad7762d39a9b5a098b717b253d70e4e50e43396e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRefinements",
+        "MerlinVerify.Check.PolicyW8A8FiniteDomain"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8FiniteDomain": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8FiniteDomain.lean",
+        "bytes": 4165,
+        "sha256": "97511b75e0e9ed5b4adb06a487cb79f401d0ba9b02af271e99fe47ea3c8f2191"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8FiniteLaws",
+        "MerlinVerify.Check.PolicyW8A8SourceDomain"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8SourceDomain": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8SourceDomain.lean",
+        "bytes": 4534,
+        "sha256": "91e9c604f540fa09994edbbd75b5aa13a330a30d50ff51afaacdf926e6fdd92e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8SourceQuantize"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8FiniteLaws": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8FiniteLaws.lean",
+        "bytes": 3710,
+        "sha256": "d0bc890be387b510041c63addfe4ceeb26ee39d1059761e6d33c0ea72a9dd29c"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8SourceQuantize"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8FiniteQuantize": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8FiniteQuantize.lean",
+        "bytes": 6015,
+        "sha256": "a8f119301b9daa77583579c3b6d5c9ec23971725095e484a82668e13636712b3"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedContext",
+        "MerlinVerify.Check.FiniteFacts",
+        "MerlinVerify.Check.PolicyW8A8Dequant"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8Dequant": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8Dequant.lean",
+        "bytes": 6083,
+        "sha256": "d5627f1ce5c1eee4284339bed6aeb3ed0fd40c1a26f27ffbcf841ebacd2b154d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8SourceProgress"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8SourceProgress": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8SourceProgress.lean",
+        "bytes": 7190,
+        "sha256": "0b6357b30ce973e7408edfeffb43b6734e32718c4913cd3a198f3068471a84e0"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8SourceSemantics",
+        "MerlinVerify.Check.RulesDequant"
+      ]
+    },
+    "MerlinVerify.Check.FiniteProducers": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FiniteProducers.lean",
+        "bytes": 4855,
+        "sha256": "1af499acb834e24bf32c9472acedb22b3c009e885309964d9ce15d2db00dcaa9"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.FiniteFacts",
+        "MerlinVerify.Check.PolicyW8A8Defined"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8Defined": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8Defined.lean",
+        "bytes": 5309,
+        "sha256": "55b2bec98268031f67fa1844a04d50f3eaabb05805dfcafcd909bdc1960462c4"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8Dequant",
+        "MerlinVerify.Check.DefinedLinalg",
+        "MerlinVerify.Check.DefinedExtended",
+        "MerlinVerify.Check.DefinedProjection",
+        "MerlinVerify.Check.DefinedGeneric",
+        "MerlinVerify.Rules.W8A8SourceFree"
+      ]
+    },
+    "MerlinVerify.Check.DefinedProjection": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedProjection.lean",
+        "bytes": 2324,
+        "sha256": "77a643241c93510e40477a1e7881b0e7830235c61d548dea3b2d5dbbb509e258"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRefinements"
+      ]
+    },
+    "MerlinVerify.Check.DefinedClosedCalls": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedClosedCalls.lean",
+        "bytes": 2786,
+        "sha256": "a1f46289385dd68075c2b6086b3737c909bcccc1347c5155f31c1c174e7c5168"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedNamedCalls"
+      ]
+    },
+    "MerlinVerify.Check.DefinedNamedCalls": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedNamedCalls.lean",
+        "bytes": 4803,
+        "sha256": "1599fae83e35a207b5214dad9f7ec472068725f64e6ec7d6bbb9b335a74cb67a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedCallContracts",
+        "MerlinVerify.Check.TypedModule"
+      ]
+    },
+    "MerlinVerify.Check.DefinedCallContracts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedCallContracts.lean",
+        "bytes": 5194,
+        "sha256": "a4de7887ec0c63eb92608cecb6fc5c54af100e5f23f11470f45b7dcfde0f4ca0"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedContext",
+        "MerlinVerify.Check.Support"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8DynamicCalled": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8DynamicCalled.lean",
+        "bytes": 2695,
+        "sha256": "6e972cde7b784e27a892b617ed5148891c073d2a487b7687e1c4c358ba767b9b"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8DynamicDefined",
+        "MerlinVerify.Check.PolicyW8A8Called"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8DynamicDefined": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8DynamicDefined.lean",
+        "bytes": 3509,
+        "sha256": "ed926881af798c9fe694dde9e332ae86a3782babc5aa1a3081d95b57ca1ff62e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8DynamicCaptured",
+        "MerlinVerify.Check.FloatProducers",
+        "MerlinVerify.Check.FloatImplication",
+        "MerlinVerify.Check.PolicyW8A8FiniteDefined",
+        "MerlinVerify.Check.PolicyW8A8ViewBook"
+      ]
+    },
+    "MerlinVerify.Check.FloatImplication": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FloatImplication.lean",
+        "bytes": 2854,
+        "sha256": "947eaec34d2a7b00126494588b4863ac71be1c5a0e0a5d1d47a58b5dd531de49"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.FloatFacts"
+      ]
+    },
+    "MerlinVerify.Check.FloatFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FloatFacts.lean",
+        "bytes": 4093,
+        "sha256": "27b63415dc5cdab1b820ce480a1a6e6a81821ff92c240f01608895a536097992"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedFactMap",
+        "MerlinVerify.Check.FiniteStructured",
+        "MerlinVerify.Check.ConstantFacts"
+      ]
+    },
+    "MerlinVerify.Check.DefinedFactMap": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/DefinedFactMap.lean",
+        "bytes": 3439,
+        "sha256": "57a5e07774e497e3f987ea42fbd4703b6e492964dad09021fbb84e17075875d5"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedContext"
+      ]
+    },
+    "MerlinVerify.Check.FloatProducers": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FloatProducers.lean",
+        "bytes": 5004,
+        "sha256": "f4406acf6266a25a48aecb58b419d51d570b9a9d3aec983c3a37c2630e8e8a9a"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.FloatFacts",
+        "MerlinVerify.Check.FiniteProducers"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8DynamicCaptured": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8DynamicCaptured.lean",
+        "bytes": 6091,
+        "sha256": "32bdbbd69fe053dc394199b8f3575988e8b04f2bccf816597e9f5299b1ec8a1d"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8DynamicBodies"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8DynamicBodies": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8DynamicBodies.lean",
+        "bytes": 5278,
+        "sha256": "c3df511b0ae370b107137f1adce9303943f68e7b47955786ee514b37bc93daee"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.DefinedRegions",
+        "MerlinVerify.Check.FloatScalarFacts",
+        "MerlinVerify.Check.PolicyW8A8DynamicContext",
+        "MerlinVerify.Check.PolicyW8A8Scalar"
+      ]
+    },
+    "MerlinVerify.Check.PolicyW8A8DynamicContext": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/PolicyW8A8DynamicContext.lean",
+        "bytes": 961,
+        "sha256": "0fba1d75089e3cfb353ce3e5b961855f806caea077d3330403e7429b0b7d85c7"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.PolicyW8A8FiniteQuantize",
+        "MerlinVerify.Check.DefinedContextLoops",
+        "MerlinVerify.Rules.W8A8DynamicLaws"
+      ]
+    },
+    "MerlinVerify.Rules.W8A8DynamicLaws": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Rules/W8A8DynamicLaws.lean",
+        "bytes": 6542,
+        "sha256": "f59668435aac737e2b7f89eb3d34c494aba81bdb505865ee7bb9f9326caadd3c"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Rules.W8A8FiniteLaws"
+      ]
+    },
+    "MerlinVerify.Check.FloatScalarFacts": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/FloatScalarFacts.lean",
+        "bytes": 3038,
+        "sha256": "9d2a769929f35bc7c7168ec12b99aaf6621e00059f83c409fc8401159b15145e"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Check.FloatFacts",
+        "MerlinVerify.Check.DefinedRules"
+      ]
+    },
+    "MerlinVerify.Check.Types": {
+      "source": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/MerlinVerify/Check/Types.lean",
+        "bytes": 1629,
+        "sha256": "82a91125c84e01aae06e1b97f5957e6e995d59b643417f5a2611fe35a4f15d50"
+      },
+      "imports": [
+        "Init",
+        "MerlinVerify.Sem.Program"
+      ]
+    }
+  },
+  "external_imports": [
+    "Init",
+    "Lean",
+    "Lean.Data.Json",
+    "Mathlib.Data.List.Forall2",
+    "Mathlib.Data.List.Nodup",
+    "Std.Tactic"
+  ],
+  "closure_method": "trusted closed literal header scanner; actual compiler import reporting not executed",
+  "packages": {
+    "version": "1.3.0",
+    "packagesDir": "../../out/build/lean/packages",
+    "packages": [
+      {
+        "url": "https://github.com/leanprover-community/mathlib4.git",
+        "type": "git",
+        "subDir": null,
+        "scope": "",
+        "rev": "56a005855ea17e0b0958f73ec801ae140b0a1679",
+        "name": "mathlib",
+        "manifestFile": "lake-manifest.json",
+        "inputRev": "v4.35.0",
+        "inherited": false,
+        "configFile": "lakefile.lean"
+      },
+      {
+        "url": "https://github.com/leanprover-community/plausible",
+        "type": "git",
+        "subDir": null,
+        "scope": "leanprover-community",
+        "rev": "dfa4f38190d07c37e315953e08b90fe2d95b3c24",
+        "name": "plausible",
+        "manifestFile": "lake-manifest.json",
+        "inputRev": "main",
+        "inherited": true,
+        "configFile": "lakefile.toml"
+      },
+      {
+        "url": "https://github.com/leanprover-community/LeanSearchClient",
+        "type": "git",
+        "subDir": null,
+        "scope": "leanprover-community",
+        "rev": "d6b4c7be5be75ec4917c873ac50c756dc1436372",
+        "name": "LeanSearchClient",
+        "manifestFile": "lake-manifest.json",
+        "inputRev": "main",
+        "inherited": true,
+        "configFile": "lakefile.toml"
+      },
+      {
+        "url": "https://github.com/leanprover-community/import-graph",
+        "type": "git",
+        "subDir": null,
+        "scope": "leanprover-community",
+        "rev": "a41f0e9a4dea23188ea9cc1c41ac9f8bbafe0b93",
+        "name": "importGraph",
+        "manifestFile": "lake-manifest.json",
+        "inputRev": "main",
+        "inherited": true,
+        "configFile": "lakefile.toml"
+      },
+      {
+        "url": "https://github.com/leanprover-community/ProofWidgets4",
+        "type": "git",
+        "subDir": null,
+        "scope": "leanprover-community",
+        "rev": "df72b022e558978a1c50264cfc4d7fec86fa8e04",
+        "name": "proofwidgets",
+        "manifestFile": "lake-manifest.json",
+        "inputRev": "main",
+        "inherited": true,
+        "configFile": "lakefile.lean"
+      },
+      {
+        "url": "https://github.com/leanprover-community/aesop",
+        "type": "git",
+        "subDir": null,
+        "scope": "leanprover-community",
+        "rev": "4a174c490d8707121c4a9290800489f105d85e07",
+        "name": "aesop",
+        "manifestFile": "lake-manifest.json",
+        "inputRev": "master",
+        "inherited": true,
+        "configFile": "lakefile.toml"
+      },
+      {
+        "url": "https://github.com/leanprover-community/quote4",
+        "type": "git",
+        "subDir": null,
+        "scope": "leanprover-community",
+        "rev": "dce0ad79c486cb1fb504af04f953c3466b0c6db8",
+        "name": "Qq",
+        "manifestFile": "lake-manifest.json",
+        "inputRev": "master",
+        "inherited": true,
+        "configFile": "lakefile.toml"
+      },
+      {
+        "url": "https://github.com/leanprover-community/batteries",
+        "type": "git",
+        "subDir": null,
+        "scope": "leanprover-community",
+        "rev": "66e469188fe07963e5cf666c7d4433f45b8131c5",
+        "name": "batteries",
+        "manifestFile": "lake-manifest.json",
+        "inputRev": "main",
+        "inherited": true,
+        "configFile": "lakefile.toml"
+      },
+      {
+        "url": "https://github.com/leanprover/lean4-cli",
+        "type": "git",
+        "subDir": null,
+        "scope": "leanprover",
+        "rev": "c24fe6078c630e89b489bffe59b3e20ac30d12c8",
+        "name": "Cli",
+        "manifestFile": "lake-manifest.json",
+        "inputRev": "v4.35.0",
+        "inherited": true,
+        "configFile": "lakefile.toml"
+      }
+    ],
+    "name": "MerlinVerify",
+    "lakeDir": ".lake",
+    "fixedToolchain": false
+  },
+  "toolchain_metadata": {
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/lean-toolchain",
+    "bytes": 25,
+    "sha256": "ca5f1f601d34c49079e38d7e7041eb0f2a9c227fbc1df0f404820069a052330c"
+  },
+  "compiler_requirements": {
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/build_tools/toolchains/lean-mlir-requirements.txt",
+    "bytes": 427,
+    "sha256": "38d35de250f4ec9e38f9341968fe82209a85aefa265c1e7fec9696039bc4e1e4"
+  },
+  "receipts": [
+    {
+      "name": "SY_model_smolvla",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/receipt.json",
+        "bytes": 3430,
+        "sha256": "771491af83bead0dabe9fcb94f1399c931555b32e38aea1e46882d4a341c8a25"
+      },
+      "historical_verdict": "abstracted",
+      "references": [
+        {
+          "role": "receipt",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/receipt.json",
+            "sha256": "771491af83bead0dabe9fcb94f1399c931555b32e38aea1e46882d4a341c8a25",
+            "bytes": 3430
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/receipt.json",
+            "bytes": 3430,
+            "sha256": "771491af83bead0dabe9fcb94f1399c931555b32e38aea1e46882d4a341c8a25"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "report",
+          "expected": {
+            "bytes": 11193,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/contract-report.json",
+            "sha256": "1145e868cdc71e751875c135f9a313da10febea966db7588e3425f84f4e6111b"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/contract-report.json",
+            "bytes": 11193,
+            "sha256": "1145e868cdc71e751875c135f9a313da10febea966db7588e3425f84f4e6111b"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "before",
+          "expected": {
+            "bytes": 12706745,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "bytes": 12706745,
+            "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "after",
+          "expected": {
+            "bytes": 12732897,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+            "bytes": 12732897,
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "export:after",
+          "expected": {
+            "bytes": 32365394,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_after.json",
+            "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_after.json",
+            "bytes": 32365394,
+            "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "export:before",
+          "expected": {
+            "bytes": 32286898,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_before.json",
+            "sha256": "db1f5d61facdcca6025d24c78e0f8cbbbc20654beb4722ad0bbc4373502f96d2"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_before.json",
+            "bytes": 32286898,
+            "sha256": "db1f5d61facdcca6025d24c78e0f8cbbbc20654beb4722ad0bbc4373502f96d2"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "program_export",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_before.json",
+            "sha256": "db1f5d61facdcca6025d24c78e0f8cbbbc20654beb4722ad0bbc4373502f96d2",
+            "bytes": 32286898
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_before.json",
+            "bytes": 32286898,
+            "sha256": "db1f5d61facdcca6025d24c78e0f8cbbbc20654beb4722ad0bbc4373502f96d2"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "program_export",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_after.json",
+            "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba",
+            "bytes": 32365394
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_after.json",
+            "bytes": 32365394,
+            "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:before",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7",
+            "bytes": 12706745
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "bytes": 12706745,
+            "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:after",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc",
+            "bytes": 12732897
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+            "bytes": 12732897,
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+          },
+          "matches_historical": true
+        }
+      ],
+      "site_roster": [
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 7624,
+          "source_results": [
+            17210
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 8348,
+          "source_results": [
+            18777
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 9070,
+          "source_results": [
+            20338
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 9792,
+          "source_results": [
+            21899
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 10514,
+          "source_results": [
+            23460
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 11236,
+          "source_results": [
+            25021
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 11958,
+          "source_results": [
+            26582
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 12680,
+          "source_results": [
+            28143
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 13402,
+          "source_results": [
+            29704
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 14124,
+          "source_results": [
+            31265
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 14846,
+          "source_results": [
+            32826
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 15568,
+          "source_results": [
+            34387
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 16290,
+          "source_results": [
+            35948
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 17012,
+          "source_results": [
+            37509
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 17734,
+          "source_results": [
+            39070
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 18456,
+          "source_results": [
+            40631
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 19530,
+          "source_results": [
+            42954
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 20942,
+          "source_results": [
+            46001
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 22352,
+          "source_results": [
+            49042
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 23762,
+          "source_results": [
+            52083
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 25172,
+          "source_results": [
+            55124
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 26582,
+          "source_results": [
+            58165
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 27992,
+          "source_results": [
+            61206
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 29402,
+          "source_results": [
+            64247
+          ]
+        }
+      ],
+      "expected_sites": 24,
+      "covered_sites": 24,
+      "before": {
+        "bytes": 12706745,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+        "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7"
+      },
+      "after": {
+        "bytes": 12732897,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+        "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+      },
+      "stage_directories": [
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc"
+      ],
+      "old_tool_metadata_only": {
+        "checker_sha256": "0a60725d2d828fc0aaa680b438440d347b2354118c9b1b96781f7acb6b9769ce",
+        "mathlib_rev": "56a005855ea17e0b0958f73ec801ae140b0a1679",
+        "spec_lock_sha256": "a805dc3f0f78d2a95803463808f7d02f90ed0327b76124d4d14118f61328bc95",
+        "toolchain": "leanprover/lean4:v4.35.0"
+      }
+    },
+    {
+      "name": "SY_model_smolvla-segment",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/receipt.json",
+        "bytes": 3493,
+        "sha256": "b840db933fe60c68771f84b85e2581939c7903181da21153ecbb217a1601d503"
+      },
+      "historical_verdict": "abstracted",
+      "references": [
+        {
+          "role": "receipt",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/receipt.json",
+            "sha256": "b840db933fe60c68771f84b85e2581939c7903181da21153ecbb217a1601d503",
+            "bytes": 3493
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/receipt.json",
+            "bytes": 3493,
+            "sha256": "b840db933fe60c68771f84b85e2581939c7903181da21153ecbb217a1601d503"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "report",
+          "expected": {
+            "bytes": 13824,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/contract-report.json",
+            "sha256": "f2fb19b475da54313e6cc3327e97d7b978386938bdc881d3196b8c7632822713"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/contract-report.json",
+            "bytes": 13824,
+            "sha256": "f2fb19b475da54313e6cc3327e97d7b978386938bdc881d3196b8c7632822713"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "before",
+          "expected": {
+            "bytes": 12706745,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "bytes": 12706745,
+            "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "after",
+          "expected": {
+            "bytes": 12732897,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0009_prepare-fix-bool-sitofp/after.mlir",
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0009_prepare-fix-bool-sitofp/after.mlir",
+            "bytes": 12732897,
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "export:after",
+          "expected": {
+            "bytes": 32365394,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/1_after.json",
+            "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/1_after.json",
+            "bytes": 32365394,
+            "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "export:before",
+          "expected": {
+            "bytes": 32286898,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/0_before.json",
+            "sha256": "db1f5d61facdcca6025d24c78e0f8cbbbc20654beb4722ad0bbc4373502f96d2"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/0_before.json",
+            "bytes": 32286898,
+            "sha256": "db1f5d61facdcca6025d24c78e0f8cbbbc20654beb4722ad0bbc4373502f96d2"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "program_export",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/0_before.json",
+            "sha256": "db1f5d61facdcca6025d24c78e0f8cbbbc20654beb4722ad0bbc4373502f96d2",
+            "bytes": 32286898
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/0_before.json",
+            "bytes": 32286898,
+            "sha256": "db1f5d61facdcca6025d24c78e0f8cbbbc20654beb4722ad0bbc4373502f96d2"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "program_export",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/0_after.json",
+            "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba",
+            "bytes": 32365394
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/0_after.json",
+            "bytes": 32365394,
+            "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "program_export",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/1_after.json",
+            "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba",
+            "bytes": 32365394
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla-segment/lean/803701950fa74b38ac6b287a99a8c80a/1_after.json",
+            "bytes": 32365394,
+            "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:before",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7",
+            "bytes": 12706745
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "bytes": 12706745,
+            "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:after",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc",
+            "bytes": 12732897
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+            "bytes": 12732897,
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:before",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0009_prepare-fix-bool-sitofp/before.mlir",
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc",
+            "bytes": 12732897
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0009_prepare-fix-bool-sitofp/before.mlir",
+            "bytes": 12732897,
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:after",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0009_prepare-fix-bool-sitofp/after.mlir",
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc",
+            "bytes": 12732897
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0009_prepare-fix-bool-sitofp/after.mlir",
+            "bytes": 12732897,
+            "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+          },
+          "matches_historical": true
+        }
+      ],
+      "site_roster": [
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 7624,
+          "source_results": [
+            17210
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 8348,
+          "source_results": [
+            18777
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 9070,
+          "source_results": [
+            20338
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 9792,
+          "source_results": [
+            21899
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 10514,
+          "source_results": [
+            23460
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 11236,
+          "source_results": [
+            25021
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 11958,
+          "source_results": [
+            26582
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 12680,
+          "source_results": [
+            28143
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 13402,
+          "source_results": [
+            29704
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 14124,
+          "source_results": [
+            31265
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 14846,
+          "source_results": [
+            32826
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 15568,
+          "source_results": [
+            34387
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 16290,
+          "source_results": [
+            35948
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 17012,
+          "source_results": [
+            37509
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 17734,
+          "source_results": [
+            39070
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 18456,
+          "source_results": [
+            40631
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 19530,
+          "source_results": [
+            42954
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 20942,
+          "source_results": [
+            46001
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 22352,
+          "source_results": [
+            49042
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 23762,
+          "source_results": [
+            52083
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 25172,
+          "source_results": [
+            55124
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 26582,
+          "source_results": [
+            58165
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 27992,
+          "source_results": [
+            61206
+          ]
+        },
+        {
+          "function": "forward",
+          "qualification_passed": true,
+          "source_operation": 29402,
+          "source_results": [
+            64247
+          ]
+        }
+      ],
+      "expected_sites": 24,
+      "covered_sites": 24,
+      "before": {
+        "bytes": 12706745,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+        "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7"
+      },
+      "after": {
+        "bytes": 12732897,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0009_prepare-fix-bool-sitofp/after.mlir",
+        "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+      },
+      "stage_directories": [
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc",
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0009_prepare-fix-bool-sitofp"
+      ],
+      "old_tool_metadata_only": {
+        "checker_sha256": "0a60725d2d828fc0aaa680b438440d347b2354118c9b1b96781f7acb6b9769ce",
+        "mathlib_rev": "56a005855ea17e0b0958f73ec801ae140b0a1679",
+        "spec_lock_sha256": "a805dc3f0f78d2a95803463808f7d02f90ed0327b76124d4d14118f61328bc95",
+        "toolchain": "leanprover/lean4:v4.35.0"
+      }
+    },
+    {
+      "name": "SY_model_tiny_llama",
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/receipt.json",
+        "bytes": 3428,
+        "sha256": "0e024864024b6c557da527df46ed96c0e4eca823b5cfc79f2a4cbeab0a259350"
+      },
+      "historical_verdict": "abstracted",
+      "references": [
+        {
+          "role": "receipt",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/receipt.json",
+            "sha256": "0e024864024b6c557da527df46ed96c0e4eca823b5cfc79f2a4cbeab0a259350",
+            "bytes": 3428
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/receipt.json",
+            "bytes": 3428,
+            "sha256": "0e024864024b6c557da527df46ed96c0e4eca823b5cfc79f2a4cbeab0a259350"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "report",
+          "expected": {
+            "bytes": 8585,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/contract-report.json",
+            "sha256": "7b25dcc4fb7098f2474ae0e1b580812c7b4de41395d56ef0dbd2c152abff1713"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/contract-report.json",
+            "bytes": 8585,
+            "sha256": "7b25dcc4fb7098f2474ae0e1b580812c7b4de41395d56ef0dbd2c152abff1713"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "before",
+          "expected": {
+            "bytes": 3422012,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "bytes": 3422012,
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "after",
+          "expected": {
+            "bytes": 3422012,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi/after.mlir",
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi/after.mlir",
+            "bytes": 3422012,
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "export:after",
+          "expected": {
+            "bytes": 8944899,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/2_after.json",
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/2_after.json",
+            "bytes": 8944899,
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "export:before",
+          "expected": {
+            "bytes": 8944899,
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/0_before.json",
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3"
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/0_before.json",
+            "bytes": 8944899,
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "program_export",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/0_before.json",
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3",
+            "bytes": 8944899
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/0_before.json",
+            "bytes": 8944899,
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "program_export",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/0_after.json",
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3",
+            "bytes": 8944899
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/0_after.json",
+            "bytes": 8944899,
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "program_export",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/1_after.json",
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3",
+            "bytes": 8944899
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/1_after.json",
+            "bytes": 8944899,
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "program_export",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/2_after.json",
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3",
+            "bytes": 8944899
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_tiny_llama/lean/12b00dce1e75481591bcd7aaecf184b5/2_after.json",
+            "bytes": 8944899,
+            "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:before",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+            "bytes": 3422012
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+            "bytes": 3422012,
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:after",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+            "bytes": 3422012
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+            "bytes": 3422012,
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:before",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0009_prepare-fix-bool-sitofp/before.mlir",
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+            "bytes": 3422012
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0009_prepare-fix-bool-sitofp/before.mlir",
+            "bytes": 3422012,
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:after",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0009_prepare-fix-bool-sitofp/after.mlir",
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+            "bytes": 3422012
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0009_prepare-fix-bool-sitofp/after.mlir",
+            "bytes": 3422012,
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:before",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi/before.mlir",
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+            "bytes": 3422012
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi/before.mlir",
+            "bytes": 3422012,
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+          },
+          "matches_historical": true
+        },
+        {
+          "role": "stage:after",
+          "expected": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi/after.mlir",
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+            "bytes": 3422012
+          },
+          "actual": {
+            "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi/after.mlir",
+            "bytes": 3422012,
+            "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+          },
+          "matches_historical": true
+        }
+      ],
+      "site_roster": [],
+      "expected_sites": 0,
+      "covered_sites": 0,
+      "before": {
+        "bytes": 3422012,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+        "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+      },
+      "after": {
+        "bytes": 3422012,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi/after.mlir",
+        "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c"
+      },
+      "stage_directories": [
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc",
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0009_prepare-fix-bool-sitofp",
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi"
+      ],
+      "old_tool_metadata_only": {
+        "checker_sha256": "0a60725d2d828fc0aaa680b438440d347b2354118c9b1b96781f7acb6b9769ce",
+        "mathlib_rev": "56a005855ea17e0b0958f73ec801ae140b0a1679",
+        "spec_lock_sha256": "a805dc3f0f78d2a95803463808f7d02f90ed0327b76124d4d14118f61328bc95",
+        "toolchain": "leanprover/lean4:v4.35.0"
+      }
+    }
+  ],
+  "distinct_smolvla_site_count": 24,
+  "segment_is_repeated_sites_not_additional_coverage": true,
+  "missing_inputs": [],
+  "native_commands": 0,
+  "sdk_images_opened": 0,
+  "copy_policy": "bind existing complete captures read-only; no redundant recapture",
+  "preserved_findings": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/FINDINGS.md",
+    "bytes": 16661,
+    "sha256": "f8266d34d30d6bb84645a095ef65301506af6a240be3a4f959cbc681b5486859"
+  }
+}

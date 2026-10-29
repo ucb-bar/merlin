@@ -1,0 +1,17 @@
+{
+  "status": "SOURCE_DATA_AUDIT_ONLY",
+  "verified": false,
+  "qualified": false,
+  "solver_ran": false,
+  "parser_ran": false,
+  "native_fidelity": false,
+  "model_coverage": false,
+  "solver_status": null,
+  "query_identity": null,
+  "translator_identity": null,
+  "solver_identity": null,
+  "retained_exact_receipt": null,
+  "in_tree_interface_bytes": null,
+  "command_buffer_bytes": null,
+  "lean_evidence_applicable": false
+}

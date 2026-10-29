@@ -1,0 +1,466 @@
+{
+  "candidate": {
+    "bytes": 68201,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/review/candidate.json",
+    "sha256": "bac5b70287c9f7e00d98af8ae2f5b9b05ab041adf6c7772015c9b08446d0a86c"
+  },
+  "current_lock": {
+    "bytes": 33934,
+    "path": "merlin/lean/SPEC_LOCK",
+    "sha256": "6cc97b6a0742795378cca76393642932b62cc9f8998693f3961f22a5bc44b23b"
+  },
+  "fresh_statement_equality": "UNOBSERVED; historical elaboration cannot supply current proof evidence",
+  "historical_human_reviewed": false,
+  "historical_lock": {
+    "bytes": 31367,
+    "path": "/home/jeremy/Projects/merlin/merlin/lean/SPEC_LOCK",
+    "sha256": "a805dc3f0f78d2a95803463808f7d02f90ed0327b76124d4d14118f61328bc95"
+  },
+  "old_patch": {
+    "bytes": 21594,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/review/after-approval.patch",
+    "sha256": "5f13c2256e1e0bef10d9969fbd1f801083b3efc05e40fc7278bbd8e9075f43b1"
+  },
+  "old_status": "human_review_pending",
+  "receipts": [
+    {
+      "boundary": "prepare-bf16-matmul-f32acc",
+      "candidates": 24,
+      "local": {
+        "checked": true,
+        "covered_sites": 24,
+        "expected_sites": 24,
+        "scope": "bf16 pass boundary; universal local operand domain; complete output equality under SSA-invariant semantics",
+        "semantic_match": true,
+        "semantic_match_theorem": "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+        "site_obligations": [
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 7624,
+            "source_results": [
+              17210
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 8348,
+            "source_results": [
+              18777
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 9070,
+            "source_results": [
+              20338
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 9792,
+            "source_results": [
+              21899
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 10514,
+            "source_results": [
+              23460
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 11236,
+            "source_results": [
+              25021
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 11958,
+            "source_results": [
+              26582
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 12680,
+            "source_results": [
+              28143
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 13402,
+            "source_results": [
+              29704
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 14124,
+            "source_results": [
+              31265
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 14846,
+            "source_results": [
+              32826
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 15568,
+            "source_results": [
+              34387
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 16290,
+            "source_results": [
+              35948
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 17012,
+            "source_results": [
+              37509
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 17734,
+            "source_results": [
+              39070
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 18456,
+            "source_results": [
+              40631
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 19530,
+            "source_results": [
+              42954
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 20942,
+            "source_results": [
+              46001
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 22352,
+            "source_results": [
+              49042
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 23762,
+            "source_results": [
+              52083
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 25172,
+            "source_results": [
+              55124
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 26582,
+            "source_results": [
+              58165
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 27992,
+            "source_results": [
+              61206
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 29402,
+            "source_results": [
+              64247
+            ]
+          }
+        ],
+        "site_qualification_passed": true,
+        "site_qualification_theorem": "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+        "whole_capture_claim": "separate; see function_obligations"
+      },
+      "whole_capture_qualification": false
+    },
+    {
+      "boundary": "prepare-bf16-matmul-f32acc..prepare-fix-bool-sitofp",
+      "candidates": 24,
+      "local": {
+        "checked": true,
+        "covered_sites": 24,
+        "expected_sites": 24,
+        "scope": "bf16 pass boundary; universal local operand domain; complete output equality under SSA-invariant semantics",
+        "semantic_match": true,
+        "semantic_match_theorem": "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+        "site_obligations": [
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 7624,
+            "source_results": [
+              17210
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 8348,
+            "source_results": [
+              18777
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 9070,
+            "source_results": [
+              20338
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 9792,
+            "source_results": [
+              21899
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 10514,
+            "source_results": [
+              23460
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 11236,
+            "source_results": [
+              25021
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 11958,
+            "source_results": [
+              26582
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 12680,
+            "source_results": [
+              28143
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 13402,
+            "source_results": [
+              29704
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 14124,
+            "source_results": [
+              31265
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 14846,
+            "source_results": [
+              32826
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 15568,
+            "source_results": [
+              34387
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 16290,
+            "source_results": [
+              35948
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 17012,
+            "source_results": [
+              37509
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 17734,
+            "source_results": [
+              39070
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 18456,
+            "source_results": [
+              40631
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 19530,
+            "source_results": [
+              42954
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 20942,
+            "source_results": [
+              46001
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 22352,
+            "source_results": [
+              49042
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 23762,
+            "source_results": [
+              52083
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 25172,
+            "source_results": [
+              55124
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 26582,
+            "source_results": [
+              58165
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 27992,
+            "source_results": [
+              61206
+            ]
+          },
+          {
+            "function": "forward",
+            "qualification_passed": true,
+            "source_operation": 29402,
+            "source_results": [
+              64247
+            ]
+          }
+        ],
+        "site_qualification_passed": true,
+        "site_qualification_theorem": "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+        "whole_capture_claim": "separate; see function_obligations"
+      },
+      "whole_capture_qualification": false
+    },
+    {
+      "boundary": "prepare-bf16-matmul-f32acc..prepare-fix-bool-fptosi",
+      "candidates": 0,
+      "local": {
+        "checked": true,
+        "covered_sites": 0,
+        "expected_sites": 0,
+        "scope": "bf16 pass boundary; universal local operand domain; complete output equality under SSA-invariant semantics",
+        "semantic_match": true,
+        "semantic_match_theorem": "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+        "site_obligations": [],
+        "site_qualification_passed": true,
+        "site_qualification_theorem": "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+        "whole_capture_claim": "separate; see function_obligations"
+      },
+      "whole_capture_qualification": false
+    }
+  ],
+  "same_lock": false,
+  "statement_roster_equal": true
+}

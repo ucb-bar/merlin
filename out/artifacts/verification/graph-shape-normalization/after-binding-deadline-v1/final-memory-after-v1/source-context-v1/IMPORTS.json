@@ -1,0 +1,962 @@
+[
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+    "module": "Merlin.GraphLoopsUnroll",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+    "module": "Merlin.GraphLoopsSegmentState",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+    "module": "Merlin.GraphLoopsSegmentModel",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+    "module": "Merlin.GraphLoopsSegmentBounds",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+    "module": "Merlin.GraphLoopsSegment",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+    "module": "Merlin.StateEffects",
+    "project_source": "src/merlin/verify/lean/Merlin/StateEffects.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+    "module": "Merlin.ResourceGeometry",
+    "project_source": "src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+    "module": "Lean.Elab.Tactic.Omega",
+    "project_source": null,
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/StateEffects.lean",
+    "module": "Init.Data.List.Lemmas",
+    "project_source": null,
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterInvariant",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterPlan",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterMemorySteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterScope",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochMemorySteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochPrivate",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrivate.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochState",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+    "module": "Merlin.GraphLoopsShapeEpochLink",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLink.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+    "module": "Merlin.GraphLoopsShapeEpochPrimitives",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+    "module": "Merlin.GraphLoopsShapeEpochAllocation",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+    "module": "Merlin.GraphLoopsShapeEpochObserver",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserver.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+    "module": "Merlin.GraphLoopsShapeEpochSequence",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean",
+    "module": "Merlin.GraphLoopsShapeEpochScope",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScope.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScope.lean",
+    "module": "Merlin.GraphLoopsShapeEpochNormalize",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean",
+    "module": "Merlin.GraphLoopsShapeEpochViews",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochViews.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochViews.lean",
+    "module": "Merlin.GraphLoopsShapeCountermodels",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeCountermodels.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeCountermodels.lean",
+    "module": "Merlin.GraphLoopsShapeWitness",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeWitness.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeWitness.lean",
+    "module": "Merlin.GraphLoopsShapeModel",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean",
+    "module": "Merlin.GraphLoopsShapeMemory",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeMemory.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeMemory.lean",
+    "module": "Merlin.GraphLoopsShapeModule",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeModule.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeModule.lean",
+    "module": "Merlin.GraphLoopsShapeSound",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeSound.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeSound.lean",
+    "module": "Merlin.GraphLoopsShapeCode",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeCode.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeCode.lean",
+    "module": "Merlin.GraphLoopsShapeBindings",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeBindings.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeBindings.lean",
+    "module": "Merlin.GraphLoopsShapeSSA",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeSSA.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeSSA.lean",
+    "module": "Merlin.GraphLoopsShape",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShape.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShape.lean",
+    "module": "Merlin.GraphLoopsMemorySCFBounds",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean",
+    "module": "Merlin.GraphLoopsMemorySCFWitness",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean",
+    "module": "Merlin.GraphLoopsMemorySCFModel",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+    "module": "Merlin.GraphLoopsMemorySCFModes",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+    "module": "Merlin.GraphLoopsSegmentModel",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean",
+    "module": "Merlin.GraphLoopsMemorySCFComposition",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean",
+    "module": "Merlin.GraphLoopsMemorySCFSimulation",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean",
+    "module": "Merlin.GraphLoopsMemorySCFOperational",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean",
+    "module": "Merlin.GraphLoopsMemorySCFEffects",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean",
+    "module": "Merlin.GraphLoopsMemorySCFRect",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean",
+    "module": "Merlin.GraphLoopsMemorySCFCoverage",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean",
+    "module": "Merlin.GraphLoopsMemorySCFLoops",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean",
+    "module": "Merlin.GraphLoopsMemorySCFScope",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean",
+    "module": "Merlin.GraphLoopsMemorySCF",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean",
+    "module": "Merlin.GraphLoopsReuseCountermodels",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseCountermodels.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean",
+    "module": "Merlin.GraphLoopsUnrollGrouping",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseCountermodels.lean",
+    "module": "Merlin.GraphLoopsReuseModel",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseModel.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseModel.lean",
+    "module": "Merlin.GraphLoopsReuseLifetime",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseLifetime.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseLifetime.lean",
+    "module": "Merlin.GraphLoopsReuseGeometry",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseGeometry.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseGeometry.lean",
+    "module": "Merlin.GraphLoopsReuseSemantics",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseSemantics.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseSemantics.lean",
+    "module": "Merlin.GraphLoopsReuseProtocol",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean",
+    "module": "Merlin.GraphLoopsReuse",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean",
+    "module": "Merlin.ResourceGeometry",
+    "project_source": "src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean",
+    "module": "Merlin.StateEffects",
+    "project_source": "src/merlin/verify/lean/Merlin/StateEffects.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserver.lean",
+    "module": "Merlin.GraphLoopsShapeEpochAccess",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAccess.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserver.lean",
+    "module": "Merlin.GraphLoopsShapeEpochPublic",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPublic.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPublic.lean",
+    "module": "Merlin.GraphLoopsShapeEpochAlpha",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAlpha.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAlpha.lean",
+    "module": "Merlin.GraphLoopsShapeEpochInitializer",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean",
+    "module": "Merlin.GraphLoopsShapeEpochCells",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCells.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCells.lean",
+    "module": "Merlin.GraphLoopsShapeEpochSCF",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSCF.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSCF.lean",
+    "module": "Merlin.GraphLoopsShapeEpochViews",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochViews.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAccess.lean",
+    "module": "Merlin.GraphLoopsShapeEpochCells",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCells.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean",
+    "module": "Merlin.GraphLoopsShapeEpochFrame",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFrame.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean",
+    "module": "Merlin.GraphLoopsShapeEpochScope",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScope.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFrame.lean",
+    "module": "Merlin.GraphLoopsShapeEpochPublic",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPublic.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLink.lean",
+    "module": "Merlin.GraphLoopsShapeEpochFrame",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFrame.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLink.lean",
+    "module": "Merlin.GraphLoopsShapeEpochModel",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean",
+    "module": "Merlin.GraphLoopsShapeEpochInitializer",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean",
+    "module": "Merlin.GraphLoopsShapeEpochNormalize",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrivate.lean",
+    "module": "Merlin.GraphLoopsShapeEpochPrimitives",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterObservers",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterTiled",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterRows",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterSCF",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "module": "Merlin.GraphLoopsShapeEpochModel",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterInitializer",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterChunks",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "module": "Merlin.GraphLoopsShapeEpochInitializer",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterMeaning",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "module": "Merlin.GraphLoopsShapeEpochMeaning",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMeaning.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMeaning.lean",
+    "module": "Merlin.GraphLoopsShapeEpochPrimitives",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterAllocationSteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterFragments",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochAllocationSteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocationSteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocationSteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochScalarSteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochState",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochMeaning",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMeaning.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterAllocation",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "module": "Merlin.GraphLoopsShapeEpochSequence",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterSlots",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "module": "Merlin.GraphLoopsShapeEpochAllocation",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterInitializer",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "module": "Merlin.GraphLoopsShapeEpochState",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterScope",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "module": "Merlin.GraphLoopsShapeEpochFunction",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "module": "Merlin.GraphLoopsShapeAfter",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfter.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfter.lean",
+    "module": "Merlin.GraphLoopsShapeAfterRename",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean",
+    "module": "Merlin.GraphLoopsShapeEpochNormalize",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean",
+    "module": "Merlin.GraphLoopsShapeEpochReturn",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochReturn.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean",
+    "module": "Merlin.GraphLoopsShapeEpochEntry",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochEntry.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochEntry.lean",
+    "module": "Merlin.GraphLoopsShapeEpochInvariant",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean",
+    "module": "Merlin.GraphLoopsShapeEpochCommand",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCommand.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCommand.lean",
+    "module": "Merlin.GraphLoopsShapeEpochPlanMeaning",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlanMeaning.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlanMeaning.lean",
+    "module": "Merlin.GraphLoopsShapeEpochPlan",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+    "module": "Merlin.GraphLoopsShapeEpochAllocationSteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocationSteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+    "module": "Merlin.GraphLoopsShapeEpochMemorySteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+    "module": "Merlin.GraphLoopsShapeEpochInitializerSteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+    "module": "Merlin.GraphLoopsShapeEpochObserverSteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserverSteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserverSteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochScalarSteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserverSteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochCallers",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCallers.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCallers.lean",
+    "module": "Merlin.GraphLoopsShapeEpochState",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochState",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean",
+    "module": "Merlin.GraphLoopsShapeEpochSequence",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochReturn.lean",
+    "module": "Merlin.GraphLoopsShapeEpochExecution",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochExecution.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochExecution.lean",
+    "module": "Merlin.GraphLoopsShapeEpochInvariant",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterInitializerLink",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterPlan",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterScope",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+    "module": "Merlin.GraphLoopsShapeEpochInitializerSteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterExecution",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "module": "Merlin.GraphLoopsShapeEpochOutcomes",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochOutcomes.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochOutcomes.lean",
+    "module": "Merlin.GraphLoopsShapeEpochFunction",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterInvariant",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterScopedAccess",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterScopedAllocation",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterTransport",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterInitializerLink",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterScope",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterMemorySteps",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterSupport",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+    "module": "Merlin.GraphLoopsShapeEpochChain",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochChain.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochChain.lean",
+    "module": "Merlin.GraphLoopsShapeEpochOutcomes",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochOutcomes.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochChain.lean",
+    "module": "Merlin.GraphLoopsMemorySCFModel",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterFunction",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterChecked",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterAccessLocal",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterAllocationLocal",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterInitializerLocal",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterRetained",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterDispatch",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterBoundary",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterScopedInitializer",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterRetained",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterRetained",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterEntriesChain",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterEntriesRoster",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterEntriesMeaning",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterEntriesClosure",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterChain",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterContextCall",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterContextSuffix",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterContextActions",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterContextFrame",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterEntriesWitness",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterContextBoundary",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean",
+    "external_runtime_files_opened": false
+  },
+  {
+    "source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean",
+    "module": "Merlin.GraphLoopsMemorySCFAfterContextChain",
+    "project_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean",
+    "external_runtime_files_opened": false
+  }
+]

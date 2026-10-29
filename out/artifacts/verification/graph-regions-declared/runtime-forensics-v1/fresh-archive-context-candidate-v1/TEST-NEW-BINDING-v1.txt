@@ -1,0 +1,8 @@
+test_changed_metadata_bytes_refused_before_preparation (test_archive_context.ArchiveTests.test_changed_metadata_bytes_refused_before_preparation) ... ok
+test_context_selection_mutation_holds_before_image_reads (test_archive_context.ArchiveTests.test_context_selection_mutation_holds_before_image_reads) ... ok
+test_wrong_typed_reference_refused (test_archive_context.ArchiveTests.test_wrong_typed_reference_refused) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.004s
+
+OK

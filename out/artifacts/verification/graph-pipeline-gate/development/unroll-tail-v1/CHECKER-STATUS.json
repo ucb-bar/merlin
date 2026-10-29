@@ -1,0 +1,16 @@
+{
+  "sdk_free_tests": "5 pass; final-tests.txt",
+  "actual_positive_pairs": 4,
+  "compiler_valid_mutations_retained": 11,
+  "lean_compilation": "UNCOMPILED",
+  "kernel_acceptance": "UNOBSERVED",
+  "kernel_negative_results": "UNOBSERVED",
+  "std3_kernel_audit": "UNOBSERVED",
+  "native_qualification": "UNQUALIFIED",
+  "replays": 0,
+  "public_route": "UNSUPPORTED/HELD",
+  "compiler_pass_chain": "not_established",
+  "owned_live_jobs": [],
+  "first_failure": "first-sdk-free-failure.txt; test-construction TypeError, corrected enum API",
+  "old_sdk_incident": "preserved, unknown cause; no runtime reads/retries"
+}

@@ -79,8 +79,10 @@ def test_multiple_granularities_in_one_module():
   func.func @m(%w0: tensor<2x8xi8>, %s0: tensor<2xf32>, %z0: tensor<2xi32>,
                %w1: tensor<2x8xi8>, %s1: tensor<2x2xf32>, %z1: tensor<2x2xi32>)
                -> (tensor<2x8xf32>, tensor<2x8xf32>) {
-    %a = "quant_ext.dequantize_per_channel"(%w0, %s0, %z0) <{axis = 0 : i64}> : (tensor<2x8xi8>, tensor<2xf32>, tensor<2xi32>) -> tensor<2x8xf32>
-    %b = "quant_ext.dequantize_per_group"(%w1, %s1, %z1) <{group_size = 4 : i64, axis = 1 : i64}> : (tensor<2x8xi8>, tensor<2x2xf32>, tensor<2x2xi32>) -> tensor<2x8xf32>
+    %a = "quant_ext.dequantize_per_channel"(%w0, %s0, %z0) <{axis = 0 : i64}> :
+      (tensor<2x8xi8>, tensor<2xf32>, tensor<2xi32>) -> tensor<2x8xf32>
+    %b = "quant_ext.dequantize_per_group"(%w1, %s1, %z1) <{group_size = 4 : i64, axis = 1 : i64}> :
+      (tensor<2x8xi8>, tensor<2x2xf32>, tensor<2x2xi32>) -> tensor<2x8xf32>
     return %a, %b : tensor<2x8xf32>, tensor<2x8xf32>
   }
 }""")
@@ -125,7 +127,8 @@ def test_dequant_f32_scale_to_bf16_result_verifies(kind, attrs, scale_type):
 def test_per_tensor_quantize_lowers_to_exact_standard_qdq_expression():
     mod = parse_mlir_text("""module {
   func.func @q(%x: tensor<2x8xf32>, %s: tensor<f32>, %z: tensor<i64>) -> tensor<2x8xi8> {
-    %r = "quant_ext.quantize_per_tensor"(%x, %s, %z) <{quant_min = -128 : i64, quant_max = 127 : i64}> : (tensor<2x8xf32>, tensor<f32>, tensor<i64>) -> tensor<2x8xi8>
+    %r = "quant_ext.quantize_per_tensor"(%x, %s, %z) <{quant_min = -128 : i64, quant_max = 127 : i64}> :
+      (tensor<2x8xf32>, tensor<f32>, tensor<i64>) -> tensor<2x8xi8>
     return %r : tensor<2x8xi8>
   }
 }""")
@@ -135,7 +138,18 @@ def test_per_tensor_quantize_lowers_to_exact_standard_qdq_expression():
     generics = [o for o in mod.walk() if o.name == "linalg.generic"]
     assert len(generics) == 2
     reciprocal, gen = generics
-    assert [o.name for o in reciprocal.body.blocks[0].ops] == ["arith.constant", "arith.divf", "linalg.yield"]
+    reciprocal_ops = list(reciprocal.body.blocks[0].ops)
+    assert [o.name for o in reciprocal_ops] == [
+        "arith.constant",
+        "arith.extf",
+        "arith.divf",
+        "arith.truncf",
+        "linalg.yield",
+    ]
+    assert str(reciprocal_ops[0].results[0].type) == "f64"
+    assert str(reciprocal_ops[1].results[0].type) == "f64"
+    assert str(reciprocal_ops[2].results[0].type) == "f64"
+    assert str(reciprocal_ops[3].results[0].type) == "f32"
     assert [o.name for o in gen.body.blocks[0].ops] == [
         "arith.mulf",
         "math.roundeven",
@@ -148,6 +162,21 @@ def test_per_tensor_quantize_lowers_to_exact_standard_qdq_expression():
     ]
     assert str(gen.indexing_maps.data[1]) == "affine_map<(d0, d1) -> ()>"
     assert str(gen.indexing_maps.data[2]) == "affine_map<(d0, d1) -> ()>"
+
+
+@pytest.mark.parametrize("zero_type", ["i32", "i64"])
+def test_per_channel_subtracts_at_the_promoted_integer_width(zero_type):
+    mod = _mod(
+        "per_channel", "axis = 0 : i64", "tensor<2x8xi8>", "tensor<2xf32>", f"tensor<2x{zero_type}>", "tensor<2x8xf32>"
+    )
+    assert lower_quant_ext(mod) == 1
+    mod.verify()
+    body = next(op for op in mod.walk() if op.name == "linalg.generic").body.blocks[0]
+    assert [op.name for op in body.ops] == ["arith.extsi", "arith.subi", "arith.sitofp", "arith.mulf", "linalg.yield"]
+    promoted, difference, converted, *_ = body.ops
+    assert str(promoted.results[0].type) == zero_type
+    assert difference.operands[0] == promoted.results[0]
+    assert converted.operands[0] == difference.results[0]
 
 
 def test_per_tensor_quantize_promotes_bf16_activation_to_f32():
@@ -173,7 +202,8 @@ def test_per_tensor_quantize_promotes_bf16_activation_to_f32():
 def test_dead_qdq_cone_is_pruned_without_touching_unknown_side_effects():
     mod = parse_mlir_text("""module {
   func.func @f(%x: tensor<2x8xf32>, %w: tensor<2x8xi8>, %s: tensor<f32>, %z: tensor<i32>) -> tensor<2x8xf32> {
-    %dead = "quant_ext.dequantize_per_tensor"(%w, %s, %z) : (tensor<2x8xi8>, tensor<f32>, tensor<i32>) -> tensor<2x8xf32>
+    %dead = "quant_ext.dequantize_per_tensor"(%w, %s, %z) :
+      (tensor<2x8xi8>, tensor<f32>, tensor<i32>) -> tensor<2x8xf32>
     %zero = arith.constant 0.0 : f32
     %out = tensor.splat %zero : tensor<2x8xf32>
     return %out : tensor<2x8xf32>
@@ -190,7 +220,9 @@ def test_prune_preserves_constants_captured_by_a_live_linalg_region():
   func.func @f(%x: tensor<2xf32>) -> tensor<2xf32> {
     %c = arith.constant 3.0 : f32
     %e = tensor.empty() : tensor<2xf32>
-    %r = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} ins(%x : tensor<2xf32>) outs(%e : tensor<2xf32>) {
+    %r = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
+      iterator_types = ["parallel"]}
+      ins(%x : tensor<2xf32>) outs(%e : tensor<2xf32>) {
     ^bb0(%v: f32, %o: f32):
       %p = arith.mulf %v, %c : f32
       linalg.yield %p : f32
@@ -215,3 +247,23 @@ def test_the_captured_per_channel_spelling_lowers():
     gen = next(o for o in mod.walk() if o.name == "linalg.generic")
     assert gen.attributes["prov.transforms"].data == "dequant_per_channel"
     assert str(gen.indexing_maps.data[1]) == "affine_map<(d0, d1) -> (d1)>"
+
+
+@pytest.mark.parametrize("width", [32, 64])
+def test_textual_channel_subtracts_at_the_promoted_integer_width(width):
+    from merlin.llvmlower.passes_xdsl import preprocess_text_textual
+
+    source = (
+        f"func.func @forward(%w: tensor<2x3xi8>, %s: tensor<3xf32>, %z: tensor<3xi{width}>)"
+        " -> tensor<2x3xf32> {\n"
+        '  %r = "quant_ext.dequantize_per_channel"(%w, %s, %z) '
+        f"<{{axis = 1 : i64}}> : (tensor<2x3xi8>, tensor<3xf32>, tensor<3xi{width}>) -> tensor<2x3xf32>\n"
+        "  return %r : tensor<2x3xf32>\n}"
+    )
+    after, _ = preprocess_text_textual(source)
+    module = parse_mlir_text(after)
+    module.verify()
+    body = next(op for op in module.walk() if op.name == "linalg.generic").body.blocks[0]
+    assert [op.name for op in body.ops] == ["arith.extsi", "arith.subi", "arith.sitofp", "arith.mulf", "linalg.yield"]
+    subtraction = next(op for op in body.ops if op.name == "arith.subi")
+    assert all(str(value.type) == f"i{width}" for value in subtraction.operands)

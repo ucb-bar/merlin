@@ -1,0 +1,71 @@
+{
+  "role": "W-REVIEW",
+  "scope": "MACC_ONLY zero-init bf16/f16 f32 accumulation",
+  "status": "SOURCE_REVIEW_DELIVERABLES_COMPLETE",
+  "human_reviewed": false,
+  "native_jobs_by_W": [],
+  "fresh_Lean_build_by_W": false,
+  "fresh_Lean_audit_by_W": false,
+  "gate_approved_positive": false,
+  "whole_model_verified": false,
+  "whole_shared_interval_verified": false,
+  "W_checks": {
+    "pure_exporter_signed_zero_controls": 6,
+    "extracted_actual_Q_validator_controls": 17,
+    "independent_historical_census": [
+      24,
+      24,
+      0
+    ],
+    "distinct_historical_positive_sites": 24,
+    "raw_export_report_bindings": "matched historical data, NOT replay"
+  },
+  "findings": [
+    {
+      "id": "W-MACC-01",
+      "finding": "pins alone do not establish human review",
+      "status": "Q source correction reviewed; actual approval still absent"
+    },
+    {
+      "id": "W-MACC-02",
+      "finding": "wrong_final_rounding initial xDSL-invalid; not semantic negative",
+      "status": "sent F; native validity/results remain F evidence"
+    },
+    {
+      "id": "W-MACC-03",
+      "finding": "F synthetic fixture obsolete tools field",
+      "status": "sent F; adapt to current protocol"
+    },
+    {
+      "id": "W-MACC-04",
+      "finding": "single checked root concludes reference-program relation, not direct Contract.result formula",
+      "status": "scope clarified; optional additive theorem proposal, not a current soundness counterexample"
+    }
+  ],
+  "active_remaining_obligations": [
+    "independent human decision on exact MACC policy and scope",
+    "F actual current proof/check/valid-mutation/replay engineering evidence",
+    "final Q/F source-cut integration and any new review fixes"
+  ],
+  "no_longer_tasks_or_blockers": [
+    "runtime/loader/SDK/object-closure investigation",
+    "new pinning-system review"
+  ],
+  "entrypoints": [
+    "APPROVAL_REQUEST.md",
+    "REVIEW.md",
+    "IR_MAPPING.md",
+    "MACC_PROOF_NOTES.md",
+    "INTEGRATION_REVIEW.md",
+    "ASSUMPTIONS.json",
+    "MACC_REVIEW_INPUTS.json",
+    "INTEGRATION_SOURCE_CUT.json"
+  ],
+  "limits": [
+    "parametric FloatModel fidelity",
+    "lexicographic reduction lowering",
+    "uniform fusion premises only",
+    "local initialized operands not whole-model definedness",
+    "trusted parser/exporter/host/native lowering"
+  ]
+}

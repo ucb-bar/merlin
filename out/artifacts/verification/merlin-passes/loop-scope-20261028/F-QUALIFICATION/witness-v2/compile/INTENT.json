@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "-j1",
+    "-o",
+    "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/witness-v2/lib/CurrentWitness.olean",
+    "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/witness-v2/CurrentWitness.lean"
+  ],
+  "timeout": 120
+}

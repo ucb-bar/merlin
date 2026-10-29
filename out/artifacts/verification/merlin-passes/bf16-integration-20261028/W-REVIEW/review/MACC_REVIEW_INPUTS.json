@@ -1,0 +1,109 @@
+{
+  "status": "source_review_not_human_approval",
+  "base": "65e44afbf4dbb6c7270e8936c4ef76b579a78492",
+  "branch": "feat/bf16-f32acc-verification",
+  "files": [
+    {
+      "path": "merlin/lean/Main.lean",
+      "sha256": "003a6c0caddafe6eaf0a6999ed09d9f2ff7a76d059a7bcb3ee91816bde4280e5",
+      "bytes": 10039
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Check/Bf16F32Acc.lean",
+      "sha256": "aad559d9780e08ec2f90568b5a0f8081035a346d4080a41a623136e242052980",
+      "bytes": 4976
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Check/Bf16F32AccChain.lean",
+      "sha256": "ba1f2fac433004c93f007c6538c2df8989a68079f51803dfa24d3a25e186b77b",
+      "bytes": 4661
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Check/Bf16F32AccExact.lean",
+      "sha256": "2d1fa52fda7c840d848d9359a59cb455241c769e317495653c784b093c91920e",
+      "bytes": 2701
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Check/Bf16F32AccSites.lean",
+      "sha256": "2f74bdf6eb4ad18ed60c80007d89a6c6cc39c896c9bd83d7e39a79292d90f148",
+      "bytes": 9133
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Check/ParametricAlpha.lean",
+      "sha256": "801452d5e110b73e061ca94b13bfcb301a56f5db4e77d5bee1bde954a012802b",
+      "bytes": 8419
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Check/ParametricModule.lean",
+      "sha256": "8bae5aefad6686b45eee696b5ebfd426914721d6c026315b25079e6da2fec64b",
+      "bytes": 4972
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Driver/Bf16F32Acc.lean",
+      "sha256": "044b13f8d7df2bddc59b228c5a1900ffcc79b3cc175f33aa140fa0308262625f",
+      "bytes": 17658
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Rules/Bf16F32AccBody.lean",
+      "sha256": "5053c1716d3dfeaa9d6d52fb787d567b843d16fcf56833ff97ffcedd57ba8c97",
+      "bytes": 4564
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Rules/Bf16F32AccContract.lean",
+      "sha256": "c2008d1357c856ae131bf69dbeb41755d9ae01e38a5b7f088d534dc213b2469f",
+      "bytes": 9003
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Rules/Bf16F32AccFusion.lean",
+      "sha256": "4e222f2f82e38d08d138e2e18d312cb23ee7d09fb715d0a4b3e9c8801c6a96fe",
+      "bytes": 5368
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Rules/Bf16F32AccNonvacuity.lean",
+      "sha256": "1a1853518861dc1e67f578676278cba12a6587dc8e9f83017246b05a38dfe150",
+      "bytes": 1674
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Rules/Bf16F32AccReference.lean",
+      "sha256": "02c97b9789a2848e12458e006fcf782315cd79a9aaaff94cb02a1883ce8a0cec",
+      "bytes": 15846
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Rules/Bf16F32AccSite.lean",
+      "sha256": "bde8e2b77e210540e57ea8c4b4984c0089a3d4fb8d535bd4b7f1bf1472f5b33d",
+      "bytes": 10035
+    },
+    {
+      "path": "merlin/lean/MerlinVerify/Rules/Bf16F32AccTensor.lean",
+      "sha256": "9e64289e5f894aa19f4ab6b69d43473092a39082e286aed2c4b43dfd2f4bf820",
+      "bytes": 10132
+    },
+    {
+      "path": "merlin/lean/SPEC_LOCK",
+      "sha256": "6cc97b6a0742795378cca76393642932b62cc9f8998693f3961f22a5bc44b23b",
+      "bytes": 33934
+    },
+    {
+      "path": "src/merlin/llvmlower/passes_xdsl.py",
+      "sha256": "14aa9429ec65cb9835f189f8ce947e0d3fd5679aea29bf9e56cc6b970eb6c499",
+      "bytes": 60340
+    },
+    {
+      "path": "src/merlin/verify/lean/bf16_f32acc.py",
+      "sha256": "96cf4ec68c54eef8639e0abb62605f9c515214fc0e1a6177f7d522d7f8ba2d8e",
+      "bytes": 17683
+    },
+    {
+      "path": "src/merlin/verify/lean/export.py",
+      "sha256": "294ef32c54e8df443acc74e957740a196e1a1b31d165039388d5759a0f0ec443",
+      "bytes": 14972
+    },
+    {
+      "path": "src/merlin/verify/lean/mlir_export.py",
+      "sha256": "8a00b918597f110a806fb5bba957bd074d7dd494a5f82d54d78321df5f5633b6",
+      "bytes": 11821
+    }
+  ],
+  "theorem_roots": "THEOREM_ROOTS.json",
+  "new_Lean_audit": "NOT_RUN_BY_W"
+}

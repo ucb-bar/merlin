@@ -1,0 +1,19 @@
+{
+  "retained_files_checked": 4001,
+  "retained_bytes_checked": 339691587,
+  "owned_original_retained_source_pairs_checked": 20,
+  "mismatches": [],
+  "qualified_tests": {
+    "tests": 64,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "all_four_changed_originals": 8,
+  "fresh_replay_cases": 8,
+  "final_type_review": "complete quantifies only shared word primitive and external interpretation; no whole-program equality/body-success premise",
+  "new_native_or_test_replay_by_coordinator": false,
+  "independent_mapping_contract_review": false,
+  "all_graph_verified": false,
+  "ordinary_broker_integration": false
+}

@@ -1,0 +1,593 @@
+{
+  "add": {
+    "accesses": [
+      {
+        "size": {
+          "product": [
+            {
+              "argument": "n"
+            }
+          ],
+          "scale": 2
+        },
+        "space": {
+          "argument": "a",
+          "choices": [
+            {
+              "resource": "private0",
+              "value": 0
+            },
+            {
+              "resource": "private1",
+              "value": 1
+            },
+            {
+              "resource": "input0",
+              "value": 2
+            },
+            {
+              "resource": "input1",
+              "value": 3
+            },
+            {
+              "resource": "input2",
+              "value": 4
+            },
+            {
+              "resource": "input3",
+              "value": 5
+            },
+            {
+              "resource": "output0",
+              "value": 6
+            },
+            {
+              "resource": "output1",
+              "value": 7
+            }
+          ]
+        },
+        "start": {
+          "argument": "ao"
+        },
+        "writes": false
+      },
+      {
+        "size": {
+          "product": [
+            {
+              "argument": "n"
+            }
+          ],
+          "scale": 2
+        },
+        "space": {
+          "argument": "b",
+          "choices": [
+            {
+              "resource": "private0",
+              "value": 0
+            },
+            {
+              "resource": "private1",
+              "value": 1
+            },
+            {
+              "resource": "input0",
+              "value": 2
+            },
+            {
+              "resource": "input1",
+              "value": 3
+            },
+            {
+              "resource": "input2",
+              "value": 4
+            },
+            {
+              "resource": "input3",
+              "value": 5
+            },
+            {
+              "resource": "output0",
+              "value": 6
+            },
+            {
+              "resource": "output1",
+              "value": 7
+            }
+          ]
+        },
+        "start": {
+          "argument": "bo"
+        },
+        "writes": false
+      },
+      {
+        "size": {
+          "product": [
+            {
+              "argument": "n"
+            }
+          ],
+          "scale": 2
+        },
+        "space": {
+          "argument": "dst",
+          "choices": [
+            {
+              "resource": "private0",
+              "value": 0
+            },
+            {
+              "resource": "private1",
+              "value": 1
+            },
+            {
+              "resource": "input0",
+              "value": 2
+            },
+            {
+              "resource": "input1",
+              "value": 3
+            },
+            {
+              "resource": "input2",
+              "value": 4
+            },
+            {
+              "resource": "input3",
+              "value": 5
+            },
+            {
+              "resource": "output0",
+              "value": 6
+            },
+            {
+              "resource": "output1",
+              "value": 7
+            }
+          ]
+        },
+        "start": {
+          "argument": "out"
+        },
+        "writes": true
+      }
+    ],
+    "completion": "synchronous",
+    "configuration_reads": false,
+    "exact_copy": false,
+    "nonmemory_effects": false,
+    "requires_configuration": false,
+    "semantics": {
+      "bindings": {
+        "a": "a",
+        "ao": "ao",
+        "b": "b",
+        "bo": "bo",
+        "c": "c",
+        "co": "co",
+        "dst": "dst",
+        "n": "n",
+        "out": "out",
+        "width": "width"
+      },
+      "parameters": {},
+      "primitive": "neutral.add"
+    },
+    "token": null,
+    "waits": []
+  },
+  "multiply": {
+    "accesses": [
+      {
+        "size": {
+          "product": [
+            {
+              "argument": "n"
+            }
+          ],
+          "scale": 2
+        },
+        "space": {
+          "argument": "a",
+          "choices": [
+            {
+              "resource": "private0",
+              "value": 0
+            },
+            {
+              "resource": "private1",
+              "value": 1
+            },
+            {
+              "resource": "input0",
+              "value": 2
+            },
+            {
+              "resource": "input1",
+              "value": 3
+            },
+            {
+              "resource": "input2",
+              "value": 4
+            },
+            {
+              "resource": "input3",
+              "value": 5
+            },
+            {
+              "resource": "output0",
+              "value": 6
+            },
+            {
+              "resource": "output1",
+              "value": 7
+            }
+          ]
+        },
+        "start": {
+          "argument": "ao"
+        },
+        "writes": false
+      },
+      {
+        "size": {
+          "product": [
+            {
+              "argument": "n"
+            }
+          ],
+          "scale": 2
+        },
+        "space": {
+          "argument": "b",
+          "choices": [
+            {
+              "resource": "private0",
+              "value": 0
+            },
+            {
+              "resource": "private1",
+              "value": 1
+            },
+            {
+              "resource": "input0",
+              "value": 2
+            },
+            {
+              "resource": "input1",
+              "value": 3
+            },
+            {
+              "resource": "input2",
+              "value": 4
+            },
+            {
+              "resource": "input3",
+              "value": 5
+            },
+            {
+              "resource": "output0",
+              "value": 6
+            },
+            {
+              "resource": "output1",
+              "value": 7
+            }
+          ]
+        },
+        "start": {
+          "argument": "bo"
+        },
+        "writes": false
+      },
+      {
+        "size": {
+          "product": [
+            {
+              "argument": "n"
+            }
+          ],
+          "scale": 2
+        },
+        "space": {
+          "argument": "dst",
+          "choices": [
+            {
+              "resource": "private0",
+              "value": 0
+            },
+            {
+              "resource": "private1",
+              "value": 1
+            },
+            {
+              "resource": "input0",
+              "value": 2
+            },
+            {
+              "resource": "input1",
+              "value": 3
+            },
+            {
+              "resource": "input2",
+              "value": 4
+            },
+            {
+              "resource": "input3",
+              "value": 5
+            },
+            {
+              "resource": "output0",
+              "value": 6
+            },
+            {
+              "resource": "output1",
+              "value": 7
+            }
+          ]
+        },
+        "start": {
+          "argument": "out"
+        },
+        "writes": true
+      }
+    ],
+    "completion": "synchronous",
+    "configuration_reads": false,
+    "exact_copy": false,
+    "nonmemory_effects": false,
+    "requires_configuration": false,
+    "semantics": {
+      "bindings": {
+        "a": "a",
+        "ao": "ao",
+        "b": "b",
+        "bo": "bo",
+        "c": "c",
+        "co": "co",
+        "dst": "dst",
+        "n": "n",
+        "out": "out",
+        "width": "width"
+      },
+      "parameters": {},
+      "primitive": "neutral.multiply"
+    },
+    "token": null,
+    "waits": []
+  },
+  "produce": {
+    "accesses": [
+      {
+        "size": {
+          "product": [
+            {
+              "argument": "n"
+            }
+          ],
+          "scale": 2
+        },
+        "space": {
+          "argument": "a",
+          "choices": [
+            {
+              "resource": "private0",
+              "value": 0
+            },
+            {
+              "resource": "private1",
+              "value": 1
+            },
+            {
+              "resource": "input0",
+              "value": 2
+            },
+            {
+              "resource": "input1",
+              "value": 3
+            },
+            {
+              "resource": "input2",
+              "value": 4
+            },
+            {
+              "resource": "input3",
+              "value": 5
+            },
+            {
+              "resource": "output0",
+              "value": 6
+            },
+            {
+              "resource": "output1",
+              "value": 7
+            }
+          ]
+        },
+        "start": {
+          "argument": "ao"
+        },
+        "writes": false
+      },
+      {
+        "size": {
+          "product": [
+            {
+              "argument": "n"
+            }
+          ],
+          "scale": 2
+        },
+        "space": {
+          "argument": "b",
+          "choices": [
+            {
+              "resource": "private0",
+              "value": 0
+            },
+            {
+              "resource": "private1",
+              "value": 1
+            },
+            {
+              "resource": "input0",
+              "value": 2
+            },
+            {
+              "resource": "input1",
+              "value": 3
+            },
+            {
+              "resource": "input2",
+              "value": 4
+            },
+            {
+              "resource": "input3",
+              "value": 5
+            },
+            {
+              "resource": "output0",
+              "value": 6
+            },
+            {
+              "resource": "output1",
+              "value": 7
+            }
+          ]
+        },
+        "start": {
+          "argument": "bo"
+        },
+        "writes": false
+      },
+      {
+        "size": {
+          "product": [
+            {
+              "argument": "n"
+            }
+          ],
+          "scale": 2
+        },
+        "space": {
+          "argument": "c",
+          "choices": [
+            {
+              "resource": "private0",
+              "value": 0
+            },
+            {
+              "resource": "private1",
+              "value": 1
+            },
+            {
+              "resource": "input0",
+              "value": 2
+            },
+            {
+              "resource": "input1",
+              "value": 3
+            },
+            {
+              "resource": "input2",
+              "value": 4
+            },
+            {
+              "resource": "input3",
+              "value": 5
+            },
+            {
+              "resource": "output0",
+              "value": 6
+            },
+            {
+              "resource": "output1",
+              "value": 7
+            }
+          ]
+        },
+        "start": {
+          "argument": "co"
+        },
+        "writes": false
+      },
+      {
+        "size": {
+          "product": [
+            {
+              "argument": "n"
+            }
+          ],
+          "scale": 2
+        },
+        "space": {
+          "argument": "dst",
+          "choices": [
+            {
+              "resource": "private0",
+              "value": 0
+            },
+            {
+              "resource": "private1",
+              "value": 1
+            },
+            {
+              "resource": "input0",
+              "value": 2
+            },
+            {
+              "resource": "input1",
+              "value": 3
+            },
+            {
+              "resource": "input2",
+              "value": 4
+            },
+            {
+              "resource": "input3",
+              "value": 5
+            },
+            {
+              "resource": "output0",
+              "value": 6
+            },
+            {
+              "resource": "output1",
+              "value": 7
+            }
+          ]
+        },
+        "start": {
+          "argument": "out"
+        },
+        "writes": true
+      }
+    ],
+    "completion": "synchronous",
+    "configuration_reads": false,
+    "exact_copy": false,
+    "nonmemory_effects": false,
+    "requires_configuration": false,
+    "semantics": {
+      "bindings": {
+        "a": "a",
+        "ao": "ao",
+        "b": "b",
+        "bo": "bo",
+        "c": "c",
+        "co": "co",
+        "dst": "dst",
+        "n": "n",
+        "out": "out",
+        "width": "width"
+      },
+      "parameters": {},
+      "primitive": "neutral.produce"
+    },
+    "token": null,
+    "waits": []
+  }
+}

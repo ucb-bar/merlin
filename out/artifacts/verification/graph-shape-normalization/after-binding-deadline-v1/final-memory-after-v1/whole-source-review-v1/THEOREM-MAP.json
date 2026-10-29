@@ -1,0 +1,162 @@
+[
+  {
+    "layer": "Index action and live SCF bounds",
+    "existing_anchor": "GraphLoopsSegment.Bounds.outer_control",
+    "relation_or_limit": "Fitting nonnegative index inputs/results; no MLIR bit fidelity",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.generated_controls"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean"
+  },
+  {
+    "layer": "Actual tiled initializer",
+    "existing_anchor": "GraphLoopsSegment.complete_trace_iff; GraphLoopsMemorySCF.segmentation_exact_heaps",
+    "relation_or_limit": "Ordered row/cell trace and actual add/min/inner bounds",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.TiledInitializer.eval_epoch"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean"
+  },
+  {
+    "layer": "Private/caller initializer partition",
+    "existing_anchor": "Epoch.uniform_heap_alpha; Epoch.initializer_world_partition",
+    "relation_or_limit": "Actual captured seed; complete heap partition; raw capture rename",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.target_initializer_link"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean"
+  },
+  {
+    "layer": "Scoped registers and extra scratch",
+    "existing_anchor": "Epoch.RegistersValid; GraphLoopsShape.assign",
+    "relation_or_limit": "Only live bindings related; future allocation ghosts not runtime inputs",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.RegistersRelated"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean"
+  },
+  {
+    "layer": "Candidate invariants",
+    "existing_anchor": "GraphLoopsMemorySCF.Step; Epoch.typed_assign",
+    "relation_or_limit": "Derived from every frozen instruction constructor",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.candidate_preserves"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean"
+  },
+  {
+    "layer": "Load/store",
+    "existing_anchor": "Epoch.load_iff; store_iff; clock_private_store",
+    "relation_or_limit": "Partial initialized reads, actual coordinates and physical slots",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.load_local",
+      "Merlin.GraphLoopsMemorySCF.After.store_local"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean"
+  },
+  {
+    "layer": "Allocation/aliases/free",
+    "existing_anchor": "Epoch.allocation_epoch; release_epoch; cast_result",
+    "relation_or_limit": "Total private modeled allocator; exact retained counter and scoped live owner",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.allocate_local",
+      "Merlin.GraphLoopsMemorySCF.After.alias_local",
+      "Merlin.GraphLoopsMemorySCF.After.release_local",
+      "Merlin.GraphLoopsMemorySCF.After.drop_release_local"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean"
+  },
+  {
+    "layer": "Actual internal observer",
+    "existing_anchor": "Epoch.observer_atom; Touch.call",
+    "relation_or_limit": "Expanded module selected body; external caller descriptor; same partial binary relation",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.observer_local"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean"
+  },
+  {
+    "layer": "Initializer local case",
+    "existing_anchor": "Epoch.InitializerLink.inputs; prior tiled and partition roots",
+    "relation_or_limit": "Finite bounds/capture/configuration checks; no per-loop equality premise",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.initializer_local"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean"
+  },
+  {
+    "layer": "All checked commands",
+    "existing_anchor": "Epoch.Command.Valid; Kernel.Facts",
+    "relation_or_limit": "All Expansion constructors derived; no LocalSimulations premise at final root",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.bound_local_simulations"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean"
+  },
+  {
+    "layer": "Ordered execution and return",
+    "existing_anchor": "GraphLoopsMemorySCF.Execution; Epoch.execution_append",
+    "relation_or_limit": "Induction on syntax length; scalar/index returns; exact full frame",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.expansions_forward",
+      "Merlin.GraphLoopsMemorySCF.After.expansions_backward",
+      "Merlin.GraphLoopsMemorySCF.After.expanded_block"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean"
+  },
+  {
+    "layer": "Entry and actual complete function",
+    "existing_anchor": "Epoch.entryMemory; GraphLoopsShape.invoke; After.checked_complete",
+    "relation_or_limit": "Finite call derivations including refusal at depth zero/one; actual final syntax",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.actual_final_equivalent"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean"
+  },
+  {
+    "layer": "One shared interpreter",
+    "existing_anchor": "GraphLoopsShape.Eval; invoke",
+    "relation_or_limit": "Finite absence of generated index action keys across every source function/callee",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.source_complete_extension"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean"
+  },
+  {
+    "layer": "Complete actual before/after observations",
+    "existing_anchor": "Epoch.Kernel.checked_chain; After.checked_complete",
+    "relation_or_limit": "Same interpretation; entire public heap/returns/user; possible successful outcomes only",
+    "status": "UNCOMPILED",
+    "kernel_audit": "UNOBSERVED",
+    "candidate_roots": [
+      "Merlin.GraphLoopsMemorySCF.After.checked_actual_chain"
+    ],
+    "primary_source": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean"
+  }
+]

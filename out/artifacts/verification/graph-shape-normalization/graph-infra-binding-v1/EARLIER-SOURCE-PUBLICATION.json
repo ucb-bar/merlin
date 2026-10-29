@@ -1,0 +1,597 @@
+{
+  "kind": "SOURCE_PUBLICATION_ONLY_NOT_QUALIFICATION",
+  "branch": "feat/pass-verification",
+  "head_at_checkpoint": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "owned_earlier_sources": [
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAccess.lean",
+      "sha256": "f1f410710384eaa7cd4aa0def577262f1f53c05611b19c7b8b5fb213d792f768",
+      "bytes": 5761
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean",
+      "sha256": "0edc7b495eb1d144333c46a1dbc1329e959c8b6b11062aef8daa89f15f26b067",
+      "bytes": 5148
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocationSteps.lean",
+      "sha256": "0459c81d8a59512f0bc9e4857ef4a0971368db3595eaffcf6aa90076cd019618",
+      "bytes": 5819
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAlpha.lean",
+      "sha256": "49dfd218309960377abf0ff2c8dbd6dbbe7fbb3085a9be1023da720cc5eb4bd0",
+      "bytes": 4726
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCallers.lean",
+      "sha256": "6be387cd2aaa0a1f29bc9208d9e6dd52ae2aab3920060fe502627386e4200700",
+      "bytes": 3550
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCells.lean",
+      "sha256": "0b8e9cb3720e9b4d14064edead3cbe8227bd1e16c7ebfd9128a2758cc37be9fa",
+      "bytes": 5096
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochChain.lean",
+      "sha256": "87cb50172d2ae8b89194a8c3b1c11a00eb05bd04c8d21bb7fa28e05b26ceeb62",
+      "bytes": 4579
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCommand.lean",
+      "sha256": "b813fb95d6f72a9db64f67b85f28b6da167cca275623301d336bbee6cf32a166",
+      "bytes": 7954
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochEntry.lean",
+      "sha256": "fbb11b4a2790a6d4112e478cb48949175561b90be325fd15f63721433c8106a6",
+      "bytes": 7267
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochExecution.lean",
+      "sha256": "a5fc4a526ee2a8d9c1191484b884b9407d1e05753977550de71dbf885a2bcec9",
+      "bytes": 6260
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFrame.lean",
+      "sha256": "3e2ca99074f4bdd0f425667f335f66f68363e8a55ae49e177ec0f1ddf4dba2bb",
+      "bytes": 4019
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean",
+      "sha256": "d090ca0de54891e03ce752dfbb8924e3036f3669c6d064380e1949417795acb5",
+      "bytes": 7530
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean",
+      "sha256": "b2290d23f41cb072f6cb87c1848ecd855393b269f6870df70ed88bda69ef5a4e",
+      "bytes": 14216
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean",
+      "sha256": "6ad862c33a3989dcd1381c2204efad70736b89727ab67a4bdb3bf67835196986",
+      "bytes": 5238
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean",
+      "sha256": "d48b28611e26e0d33d7a3b929d26922509a1936016b4309235d9fd8b475b5cea",
+      "bytes": 4743
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLink.lean",
+      "sha256": "313a13396fee90c55a322936f5976e2b64c19494345c182a6d2e52615fb544af",
+      "bytes": 5324
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMeaning.lean",
+      "sha256": "d66312808776742f3233b97c25acc2202ee9a3f616032cfc80512aca8657265d",
+      "bytes": 5298
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean",
+      "sha256": "7e7b0ddcde788a162559ee5c7e13c8f6845016ec5cab403bed71ea8cc1529414",
+      "bytes": 7069
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean",
+      "sha256": "6cd1969490912288c4393e47a08ac5fdf240c7f8a5a258e44f87965a1f52a9be",
+      "bytes": 4046
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean",
+      "sha256": "0e23fdf6bb90cf53057aa133dee22ff2a8c14db045b13ffc2768a94c91e199d5",
+      "bytes": 7580
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserver.lean",
+      "sha256": "179aee1f802b503c4a2bcd0b813da80c5f5f993d2b00c899b567109c9d726671",
+      "bytes": 13796
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserverSteps.lean",
+      "sha256": "87039b241d2af2e902d8f9e8b230da637e87c33d83a313076df975ac7068cca7",
+      "bytes": 6478
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochOutcomes.lean",
+      "sha256": "606d9b366e046b99f83080b341e3655c4821a7a8e28736321a6b9c937f959ddc",
+      "bytes": 4276
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+      "sha256": "715ca2a51b85011a28ba54d4aa600696f65d81f13746356a504d9011094c1eb2",
+      "bytes": 9344
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlanMeaning.lean",
+      "sha256": "fcb791b786dd64ad8a0a9e07f612fe31caef262c792fd55d467322d7d57cf7fb",
+      "bytes": 4399
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+      "sha256": "05a914ed6fce840db6d6ace89c02022ec546a4f1d1e4bb016b262c898992de58",
+      "bytes": 7623
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrivate.lean",
+      "sha256": "fc839734d4fa92cbfa5c1b94a13a9aa17b32ada6a61cceef8987aaa04f7d0ea9",
+      "bytes": 4619
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPublic.lean",
+      "sha256": "021c98a5f64f1698f995df889242baec59bad916e288d67a54b526eb75b26dc9",
+      "bytes": 5231
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochReturn.lean",
+      "sha256": "9ee400ce401fc5a569b033bb9bb747c808df007a87ebc4817045646bebfe3ee7",
+      "bytes": 5675
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSCF.lean",
+      "sha256": "2a43ac06b57f69b4ab3dca774c92fa03ed5ba8ced1afaf3fbc8a6245bc492cda",
+      "bytes": 5448
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean",
+      "sha256": "7c3cde93cdcc6c74c6ebdbb1a3a7fc7fce0d7b02948c62b01b758a3a4bbe37fb",
+      "bytes": 6136
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScope.lean",
+      "sha256": "925351b9343b271eb9834a47a73d037bc4b3006c91e991bf730dc80181c16f4b",
+      "bytes": 7669
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean",
+      "sha256": "75bede10e21af0ab799aa97569d0ff348e66663ac5b014a70c18451a7f6f2bd2",
+      "bytes": 8067
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+      "sha256": "864a0e489cd7e6974fe21749556d42f11c9a6456c3b58a522920145bcb88af9a",
+      "bytes": 9338
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochViews.lean",
+      "sha256": "4b1618a73d1cdce364a03dc79a8407a60f8d071355ba82ff2510ab7902bb608d",
+      "bytes": 9696
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch.py",
+      "sha256": "4669e2aba418732f1e8d00d159712ba12c2b5fab6dd807951e95c401dc150254",
+      "bytes": 9408
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_cases.py",
+      "sha256": "9f40b6fbe115b2539c8b42b29777155cea3ff597bc5db507810fbd24915743d4",
+      "bytes": 3545
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+      "sha256": "e59eaa5bd18ec5be416255239185600b988c69d323d99f7e7a9320125084fc69",
+      "bytes": 9947
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+      "sha256": "93c61f2589f4551b635917db2ac80208892883803559948ed5836bde4729b21e",
+      "bytes": 5687
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+      "sha256": "50ea898e28ecb0a15d8f16562bda2341bf04b6680143393d8435c1d751edc730",
+      "bytes": 9835
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+      "sha256": "0832d6a9c496b92e064949cd418b7b6746cd447ed3ef7b426c5b16f237a34e44",
+      "bytes": 10425
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_selection.py",
+      "sha256": "2bde23365bf9a278c9b39bd7c7e84fad9b296119945337648a83d3a91c2a55a7",
+      "bytes": 8279
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+      "sha256": "240d4e046e6d65fa699a864bc6b7422abec1ed24ad1b93b915b6ef2a8d00641c",
+      "bytes": 10772
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_witness.py",
+      "sha256": "677dff3252f2df86874717aba38d72d2d027a8081b3049dabe0afbf0c209c71b",
+      "bytes": 13023
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_epoch.py",
+      "sha256": "cd8fe00be7f944f950f2376b7ff809359ab3cf2b3521f750c4296b0c6e805b5b",
+      "bytes": 8922
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_epoch_receipts.py",
+      "sha256": "ca9d750826e63acca762681862b9e9ffcb06d7be88b635b7301e6127f0eaba9a",
+      "bytes": 7084
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_epoch_runtime.py",
+      "sha256": "c0a2c1b697b647c32a29b07c4fa62d934678b4876c81f3ee41cd548bd3e867d9",
+      "bytes": 3725
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_after.py",
+      "sha256": "c09e04f4910def369d93c1d0b89870100768224be4159ff235b51cb875d6bf99",
+      "bytes": 13649
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_after_epoch.py",
+      "sha256": "e8fc5a5fc8590f59ff34e146339c2a28ab7c14b2116cd964b54e131307f2d006",
+      "bytes": 3180
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfter.lean",
+      "sha256": "41e9825fad8b832e7d63471d03b0e35a04b891411aab17bced45735b528feab1",
+      "bytes": 3721
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterEpoch.lean",
+      "sha256": "6ca5346195f4e8c6ba95524d42103bddc67c3772c645c16b8a6298b51005ff38",
+      "bytes": 7645
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean",
+      "sha256": "32bca20f3f2aa8ed0fbfd6b38142db3b3c140677213f5b676bdde80a564ca775",
+      "bytes": 12242
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_after.py",
+      "sha256": "79048c93d3f036787b09c80bea6ae73067f2bb07632d1e131c46b64adb8603b3",
+      "bytes": 2454
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+      "sha256": "ac4f1f49156725a7b938a5654f35cd46a555fe490b820292db78144219078ca1",
+      "bytes": 7480
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_model.py",
+      "sha256": "ed6b8187dbc9069386aa45d1d37e9594f41765e82f0b8c84287640f3f9342efd",
+      "bytes": 2882
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+      "sha256": "d3a4fddf2cdb6ec1d2d1a63335eceab6a100aa7559f8fb685f283184b1b8c71f",
+      "bytes": 11710
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+      "sha256": "5c0f5f88fd8c9d0f7214319147e7c732c7431dd6da1d7fc6c6b498fa96a3218c",
+      "bytes": 3100
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_after_declarations.py",
+      "sha256": "259b05af7d034f58fcbd363b955fd744e0e716d3d055ce4658a697596c0d969a",
+      "bytes": 4377
+    }
+  ],
+  "historical_byte_checks": [
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAccess.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocationSteps.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAlpha.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCallers.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCells.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochChain.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCommand.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochEntry.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochExecution.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFrame.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLink.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMeaning.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserver.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserverSteps.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochOutcomes.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlanMeaning.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrivate.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPublic.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochReturn.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSCF.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScope.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochViews.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_cases.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_selection.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_epoch_witness.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_epoch.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_epoch_receipts.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_epoch_runtime.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+      "matches": true
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_after.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/source-candidate-v1/OWNED.json",
+      "matches": true
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_after_epoch.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/source-candidate-v1/OWNED.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfter.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/source-candidate-v1/OWNED.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterEpoch.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/source-candidate-v1/OWNED.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/source-candidate-v1/OWNED.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_after.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/source-candidate-v1/OWNED.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/source-candidate-v1/OWNED.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_model.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/source-candidate-v1/OWNED.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/source-candidate-v1/OWNED.json",
+      "matches": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/NEW-SOURCES.json",
+      "matches": true
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_graph_loops_shape_after_declarations.py",
+      "historical_manifest": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/NEW-SOURCES.json",
+      "matches": true
+    }
+  ],
+  "all_match": true,
+  "evidence_entrypoints": [
+    "out/artifacts/verification/graph-shape-normalization/epoch-source-only-v2/SOURCE_INVENTORY.json",
+    "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/source-candidate-v1/SOURCE-PACKET.json",
+    "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/declarations-v2b/MANIFEST.json",
+    "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/publication-context-v1/MANIFEST.json",
+    "out/artifacts/verification/graph-shape-normalization/paper-evidence/memory-after-context-v1.md"
+  ]
+}

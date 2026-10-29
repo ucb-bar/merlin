@@ -1,0 +1,31 @@
+{
+  "records": [
+    {
+      "role": "release",
+      "url": "https://api.github.com/repos/leanprover/lean4/releases/tags/v4.35.0",
+      "cap_bytes": 1048576,
+      "timeout_seconds": 20,
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "date": "Mon, 26 Oct 2026 20:55:27 GMT",
+      "etag": "W/\"eb6a25f9cc8da6d880b8b8599c96bed45bf97216f7753ffd488861e986bd92bd\"",
+      "bytes": 18796,
+      "sha256": "dae99e3c6cf350277745139bd8a0f16b8574e55a8c65cd1eaa8220d52d86b99d"
+    },
+    {
+      "role": "tag",
+      "url": "https://api.github.com/repos/leanprover/lean4/git/ref/tags/v4.35.0",
+      "cap_bytes": 1048576,
+      "timeout_seconds": 20,
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "date": "Mon, 26 Oct 2026 20:55:28 GMT",
+      "etag": "W/\"3ce7668069984d0f8592a23e1ae1d4c3b343f3dedbc3201d301dc792a4a963ec\"",
+      "bytes": 343,
+      "sha256": "f179968e849f28a1b2426b68733243394847b8c78d3436b757cbe6cf1dcfdf6b"
+    }
+  ],
+  "archive_downloads": 0,
+  "native_launches": 0,
+  "sdk_image_reads": 0
+}

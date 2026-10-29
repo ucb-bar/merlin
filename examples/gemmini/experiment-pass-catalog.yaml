@@ -1,0 +1,28 @@
+schema_version: 1
+id: gemmini-pass-catalog
+target: gemmini
+description: EL4 plus the static allocation catalog; reuse a reviewed functional corpus without new diagnostics or tests.
+inputs:
+  target: target/descriptor.yaml
+policy:
+  prohibited_instruction_roles: [loop_descriptor]
+phases:
+  1:
+    adapter: capsule_bench
+    config:
+      require_reviewed_corpus: true
+      descriptor: target/descriptor.yaml
+      level: EL4-P
+      bundle: merlin_assisted_pass_catalog_public_v0
+      # Prepared release destination used in phase1/PASS_CATALOG.md. Select the
+      # actual release seal and manifest together at launch; neither is shipped.
+      bundle_manifest: ../../out/artifacts/protocols/gemmini/pass-catalog-v1/payload/experiment/input_bundles/merlin_assisted_pass_catalog_public_v0/input_bundle_manifest.yaml
+      oracle_timing: ../../merlin/experiments/capsule_bench/targets/gemmini/.oracle_timing.gemmini.json
+      model: claude-opus-4-8
+      effort: high
+      driver: claudecode
+      provider: subscription
+      max_wall_s: 43200
+      round_timeout: 43200
+      grade_interval: 900
+      sim_max_jobs: 5

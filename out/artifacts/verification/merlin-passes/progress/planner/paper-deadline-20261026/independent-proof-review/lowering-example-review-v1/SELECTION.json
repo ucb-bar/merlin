@@ -1,0 +1,47 @@
+{
+  "selected_utc": "2026-10-26T21:51:38.285960+00:00",
+  "files": [
+    {
+      "origin": "docs/guides/verification.md",
+      "snapshot": "source/docs/guides/verification.md",
+      "sha256": "11ce3e05e0ed5642111f6ae4260c5b402e885811fa3660210a86e66888b30fad",
+      "bytes": 16492
+    },
+    {
+      "origin": "src/merlin/verify/linalg_semantics.py",
+      "snapshot": "source/src/merlin/verify/linalg_semantics.py",
+      "sha256": "d49af059adeab2dd05bb147212fb855c0fa7f901f1f2b1be6f0dd162ff365740",
+      "bytes": 15706
+    },
+    {
+      "origin": "src/merlin/verify/smt_semantics.py",
+      "snapshot": "source/src/merlin/verify/smt_semantics.py",
+      "sha256": "0582baada01b849831d25d3b62d6682cf78c8262166b8c373365a285f89c851f",
+      "bytes": 21662
+    },
+    {
+      "origin": "src/merlin/verify/receipts.py",
+      "snapshot": "source/src/merlin/verify/receipts.py",
+      "sha256": "8c88f0e723e2151a53ba223232c6236f41d5ce4665d57eb30c9a294129f6b3b3",
+      "bytes": 10515
+    },
+    {
+      "origin": "src/merlin/verify/refine.py",
+      "snapshot": "source/src/merlin/verify/refine.py",
+      "sha256": "e25299d3fd73d9403f1ed9786aa9181a45b7201917d58b4e3bff66cf30cd955b",
+      "bytes": 24136
+    },
+    {
+      "origin": "merlin/tests/ir/test_verify_linalg_generic.py",
+      "snapshot": "source/merlin/tests/ir/test_verify_linalg_generic.py",
+      "sha256": "79393736d18663694c075e884cf9d69863c10773f573eac17ae5bda7e5d97e81",
+      "bytes": 7973
+    },
+    {
+      "origin": "merlin/tests/ir/test_transform_receipts.py",
+      "snapshot": "source/merlin/tests/ir/test_transform_receipts.py",
+      "sha256": "8f5761e8d9f76181db2490a63fbccb2c85a9392e558f784cc2b414b38b95105a",
+      "bytes": 12867
+    }
+  ]
+}

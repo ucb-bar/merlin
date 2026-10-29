@@ -1,0 +1,3064 @@
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsShape.lean
+@@ -0,0 +1,91 @@
++/- Explicit static view descriptors for shape_view_normalization.
++This is a new graph interpretation, not the frozen MerlinVerify evaluator.
++Descriptor/type consistency is a LOCAL semantic premise, not supplied by hashes. -/
++import Merlin.GraphLoopsMemorySCFBounds
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsShape
++
++structure ViewType where
++  shape : List Nat
++  offset : Nat
++  strides : List Nat
++  element : String
++  space : Nat
++  deriving DecidableEq, Repr
++
++/-- Allocation identity and aligned base remain explicit even when an element
++address is offset from that base. Identical casts never rebuild descriptors. -/
++structure Descriptor where
++  allocation : Nat
++  alignedBase : Nat
++  offset : Nat
++  shape : List Nat
++  strides : List Nat
++  element : String
++  space : Nat
++  deriving DecidableEq, Repr
++
++def Conforms (type : ViewType) (descriptor : Descriptor) : Prop :=
++  descriptor.shape = type.shape ∧ descriptor.offset = type.offset ∧
++  descriptor.strides = type.strides ∧ descriptor.element = type.element ∧ descriptor.space = type.space
++
++instance (type : ViewType) (descriptor : Descriptor) : Decidable (Conforms type descriptor) :=
++  inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _ ∧ _))
++
++/-- No observable state or heap is touched. Native descriptor/operator fidelity
++is separate; a logging/trapping cast is not this admitted operation. -/
++def Cast (source target : ViewType) (before after : Descriptor) : Prop :=
++  source = target ∧ Conforms source before ∧ after = before
++
++def Dimension (type : ViewType) (descriptor : Descriptor) (axis result : Nat) : Prop :=
++  Conforms type descriptor ∧ descriptor.shape[axis]? = some result
++
++def ValidDimension (bits : Nat) (type : ViewType) (axis result : Nat) : Prop :=
++  (bits = 32 ∨ bits = 64) ∧ type.shape[axis]? = some result ∧ result < 2 ^ (bits - 1)
++
++instance (bits : Nat) (type : ViewType) (axis result : Nat) : Decidable (ValidDimension bits type axis result) :=
++  inferInstanceAs (Decidable (_ ∧ _ ∧ _))
++
++/-- Same-type casts preserve the ENTIRE descriptor, including allocation/base,
++offset, layout and element/address space. Type equality alone is insufficient
++without a valid input descriptor. -/
++theorem identical_cast (type : ViewType) (descriptor : Descriptor) (valid : Conforms type descriptor) :
++    Cast type type descriptor descriptor := ⟨rfl, valid, rfl⟩
++
++theorem cast_descriptor {source target : ViewType} {before after : Descriptor} (run : Cast source target before after) :
++    after = before := run.2.2
++
++/-- Source metadata read and emitted index literal have the SAME fitting value.
++This also covers zero dimensions independently of old positive-buffer lemmas. -/
++theorem static_dimension {bits : Nat} {type : ViewType} {descriptor : Descriptor} {axis result : Nat}
++    (valid : Conforms type descriptor) (checked : ValidDimension bits type axis result) :
++    Dimension type descriptor axis result ∧ Merlin.GraphLoopsSegment.FitsSigned bits result := by
++  refine ⟨⟨valid, ?_⟩, Merlin.GraphLoopsSegment.fits_signed_of_lt checked.2.2⟩
++  rw [valid.1]
++  exact checked.2.1
++
++/-- The linear address uses actual descriptor offset/strides. This definition
++makes preservation of allocation identity and arbitrary in-bounds addresses
++visible rather than asserting equality between unrelated storage slots. -/
++def linearOffset : List Nat → List Nat → Nat
++  | stride :: strides, index :: indices => stride * index + linearOffset strides indices
++  | _, _ => 0
++
++def address (descriptor : Descriptor) (indices : List Nat) : Nat × Nat :=
++  (descriptor.allocation, descriptor.alignedBase + descriptor.offset + linearOffset descriptor.strides indices)
++
++theorem cast_address {source target : ViewType} {before after : Descriptor} (run : Cast source target before after)
++    (indices : List Nat) : address after indices = address before indices := by rw [cast_descriptor run]
++
++/-- Necessary-premise countermodel: a descriptor advertising a3-row runtime
++shape cannot justify folding a2-row static type. -/
++def inconsistent : Descriptor := ⟨7, 100, 0, [3], [1], "i32", 0⟩
++def declared : ViewType := ⟨[2], 0, [1], "i32", 0⟩
++
++theorem inconsistent_dimension : inconsistent.shape[0]? ≠ declared.shape[0]? := by decide
++
++theorem observable_cast_countermodel : (0 + 1 : Nat) ≠ 0 := by decide
++
++end Merlin.GraphLoopsShape
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsShapeBindings.lean
+@@ -0,0 +1,94 @@
++/- Multiple typed definitions and intrinsic descriptor operations. -/
++import Merlin.GraphLoopsShapeSSA
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsShape
++
++def extendContext : Context → List Binding → Context
++  | context, [] => context
++  | context, binding :: rest => extendContext (binding :: context) rest
++
++def extendAliases : Aliases → List Binding → Aliases
++  | aliases, [] => aliases
++  | aliases, binding :: rest => extendAliases ((binding.name, binding.name) :: aliases) rest
++
++def assign {Value : Type} : Env Value → List Binding → List (Runtime Value) → Env Value
++  | env, binding :: rest, value :: remaining => assign (put env binding.name value) rest remaining
++  | env, _, _ => env
++
++def Fresh : Context → List Binding → Prop
++  | _, [] => True
++  | context, binding :: rest => binding.name ∉ names context ∧ Fresh (binding :: context) rest
++
++def freshDecidable (context : Context) : (bindings : List Binding) → Decidable (Fresh context bindings)
++  | [] => isTrue True.intro
++  | binding :: rest =>
++    letI := freshDecidable (binding :: context) rest
++    inferInstanceAs (Decidable (_ ∧ _))
++
++instance (context : Context) (bindings : List Binding) : Decidable (Fresh context bindings) := freshDecidable context bindings
++
++inductive ValuesHold {Value : Type} : List Binding → List (Runtime Value) → Prop where
++  | nil : ValuesHold [] []
++  | cons {binding : Binding} {value : Runtime Value} {rest : List Binding} {remaining : List (Runtime Value)}
++      (holds : binding.Holds value) (typed : ValuesHold rest remaining) : ValuesHold (binding :: rest) (value :: remaining)
++
++theorem Scope.define_many {context : Context} {aliases : Aliases} (scope : Scope context aliases)
++    (bindings : List Binding) (fresh : Fresh context bindings) :
++    Scope (extendContext context bindings) (extendAliases aliases bindings) := by
++  induction bindings generalizing context aliases with
++  | nil => exact scope
++  | cons binding rest induction => exact induction (scope.extend fresh.1 (Or.inl rfl)) fresh.2
++
++theorem Agreement.define_many {Value : Type} {context : Context} {aliases : Aliases} {source target : Env Value}
++    (same : Agreement context aliases source target) (scope : Scope context aliases)
++    {bindings : List Binding} {values : List (Runtime Value)} (typed : ValuesHold bindings values)
++    (fresh : Fresh context bindings) :
++    Agreement (extendContext context bindings) (extendAliases aliases bindings)
++      (assign source bindings values) (assign target bindings values) := by
++  induction typed generalizing context aliases source target with
++  | nil => exact same
++  | @cons binding value rest remaining holds typed induction =>
++    exact induction (same.define scope binding fresh.1 value holds) (scope.extend fresh.1 (Or.inl rfl)) fresh.2
++
++def readArguments {Value : Type} (mode : Bool) (aliases : Aliases) (env : Env Value) (bindings : List Binding) : List (Runtime Value) :=
++  bindings.map (fun binding => env (if mode then resolve aliases binding.name else binding.name))
++
++theorem Agreement.read_arguments {Value : Type} {context : Context} {aliases : Aliases} {source target : Env Value}
++    (same : Agreement context aliases source target) (operands : List Binding)
++    (bound : ∀ binding ∈ operands, binding ∈ context) :
++    readArguments false aliases source operands = readArguments true aliases target operands := by
++  exact same.arguments operands bound
++
++def castResult {Value : Type} (source target : ViewType) (value : Runtime Value) : Option (Runtime Value) :=
++  match value with
++  | .view actual _ _ => if actual = source ∧ source = target then some value else none
++  | _ => none
++
++def dimensionResult {Value : Type} (type : ViewType) (view axis : Runtime Value) : Option Nat :=
++  match view, axis with
++  | .view actual descriptor _, .index index => if actual = type then descriptor.shape[index]? else none
++  | _, _ => none
++
++theorem cast_result {Value : Type} {value : Runtime Value} {type : ViewType}
++    (typed : value.kind = .view type) : castResult type type value = some value := by
++  obtain ⟨descriptor, valid, rfl⟩ := Runtime.view_of_kind typed
++  simp only [castResult, and_self, ↓reduceIte]
++
++theorem dimension_result {Value : Type} {value : Runtime Value} {type : ViewType} {bits axis result : Nat}
++    (typed : value.kind = .view type) (valid : ValidDimension bits type axis result) :
++    dimensionResult type value (.index axis) = some result := by
++  obtain ⟨descriptor, conforms, rfl⟩ := Runtime.view_of_kind typed
++  simp only [dimensionResult, ↓reduceIte, conforms.1]
++  exact valid.2.1
++
++theorem Binding.holds_index {Value : Type} (binding : Binding) (index : Nat)
++    (kind : binding.kind = .index) (known : binding.known = some index) : binding.Holds (Runtime.index (Value := Value) index) := by
++  refine ⟨kind.symm, ?_⟩
++  intro other equal
++  have same : other = index := (Option.some.inj (equal.symm.trans known))
++  subst other
++  rfl
++
++end Merlin.GraphLoopsShape
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsShapeCode.lean
+@@ -0,0 +1,119 @@
++/- Complete lexical graph blocks with nested region semantics. Operators see
++explicit inputs and scoped region functions, never private SSA stacks. A region
++function restores its captured stack and returns only declared values/world. -/
++import Merlin.GraphLoopsShapeBindings
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsShape
++
++inductive Code where
++  | returned (values : List Binding)
++  | cast (origin result : Binding) (source target : ViewType) (rest : Code)
++  | dimension (view axis result : Binding) (type : ViewType) (axisIndex value : Nat) (rest : Code)
++  | constant (result : Binding) (value : Nat) (rest : Code)
++  | action (key : String) (operands results : List Binding) (rest : Code)
++  | region (key : String) (operands parameters results : List Binding) (body rest : Code)
++  deriving DecidableEq, Repr
++
++abbrev RegionMeaning (Value World : Type) := List (Runtime Value) → World → List (Runtime Value) → World → Prop
++
++structure Interpretation (Value World : Type) where
++  action : String → List (Runtime Value) → World → List (Runtime Value) → World → Prop
++  region : String → List (Runtime Value) → RegionMeaning Value World → World → List (Runtime Value) → World → Prop
++
++def AllBound (context : Context) (operands : List Binding) : Prop := ∀ binding ∈ operands, binding ∈ context
++def Plain (bindings : List Binding) : Prop := ∀ binding ∈ bindings, binding.known = none
++
++instance (context : Context) (operands : List Binding) : Decidable (AllBound context operands) :=
++  inferInstanceAs (Decidable (∀ binding ∈ operands, binding ∈ context))
++instance (bindings : List Binding) : Decidable (Plain bindings) :=
++  inferInstanceAs (Decidable (∀ binding ∈ bindings, binding.known = none))
++
++def CastFacts (context : Context) (origin result : Binding) (source target : ViewType) : Prop :=
++  origin ∈ context ∧ origin.kind = .view source ∧ source = target ∧ result.kind = .view target ∧
++  result.known = none ∧ result.name ∉ names context
++
++def DimensionFacts (bits : Nat) (context : Context) (view axis result : Binding) (type : ViewType) (axisIndex value : Nat) : Prop :=
++  view ∈ context ∧ axis ∈ context ∧ view.kind = .view type ∧ axis.known = some axisIndex ∧
++  result.kind = .index ∧ result.known = some value ∧ ValidDimension bits type axisIndex value ∧ result.name ∉ names context
++
++def ConstantFacts (bits : Nat) (context : Context) (result : Binding) (value : Nat) : Prop :=
++  result.kind = .index ∧ result.known = some value ∧ value < 2 ^ (bits - 1) ∧ result.name ∉ names context
++
++instance (context : Context) (origin result : Binding) (source target : ViewType) :
++    Decidable (CastFacts context origin result source target) := inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _))
++instance (bits : Nat) (context : Context) (view axis result : Binding) (type : ViewType) (axisIndex value : Nat) :
++    Decidable (DimensionFacts bits context view axis result type axisIndex value) := inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _))
++instance (bits : Nat) (context : Context) (result : Binding) (value : Nat) : Decidable (ConstantFacts bits context result value) :=
++  inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _))
++
++/-- Every name, known constant and scope obligation is recomputed from the full
++blueprint. Source metadata alone is not an operational descriptor witness. -/
++def Valid (bits : Nat) (expected : List Kind) (context : Context) (aliases : Aliases) (code : Code) : Prop :=
++  Scope context aliases ∧ match code with
++  | .returned values => AllBound context values ∧ values.map Binding.kind = expected
++  | .cast origin result source target rest => CastFacts context origin result source target ∧
++      Valid bits expected (result :: context) ((result.name, resolve aliases origin.name) :: aliases) rest
++  | .dimension view axis result type axisIndex value rest => DimensionFacts bits context view axis result type axisIndex value ∧
++      Valid bits expected (result :: context) ((result.name, result.name) :: aliases) rest
++  | .constant result value rest => ConstantFacts bits context result value ∧
++      Valid bits expected (result :: context) ((result.name, result.name) :: aliases) rest
++  | .action _ operands results rest => AllBound context operands ∧ Fresh context results ∧ Plain results ∧
++      Valid bits expected (extendContext context results) (extendAliases aliases results) rest
++  | .region _ operands parameters results body rest => AllBound context operands ∧ Fresh context parameters ∧ Plain parameters ∧
++      Valid bits (results.map Binding.kind) (extendContext context parameters) (extendAliases aliases parameters) body ∧
++      Fresh context results ∧ Plain results ∧
++      Valid bits expected (extendContext context results) (extendAliases aliases results) rest
++
++def validDecidable (bits : Nat) (expected : List Kind) (context : Context) (aliases : Aliases) :
++    (code : Code) → Decidable (Valid bits expected context aliases code)
++  | .returned _ => inferInstanceAs (Decidable (_ ∧ _ ∧ _))
++  | .cast origin result _ _ rest =>
++    letI := validDecidable bits expected (result :: context) ((result.name, resolve aliases origin.name) :: aliases) rest
++    inferInstanceAs (Decidable (_ ∧ _ ∧ _))
++  | .dimension _ _ result _ _ _ rest =>
++    letI := validDecidable bits expected (result :: context) ((result.name, result.name) :: aliases) rest
++    inferInstanceAs (Decidable (_ ∧ _ ∧ _))
++  | .constant result _ rest =>
++    letI := validDecidable bits expected (result :: context) ((result.name, result.name) :: aliases) rest
++    inferInstanceAs (Decidable (_ ∧ _ ∧ _))
++  | .action _ _ results rest =>
++    letI := validDecidable bits expected (extendContext context results) (extendAliases aliases results) rest
++    inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _ ∧ _))
++  | .region _ _ parameters results body rest =>
++    letI := validDecidable bits (results.map Binding.kind) (extendContext context parameters) (extendAliases aliases parameters) body
++    letI := validDecidable bits expected (extendContext context results) (extendAliases aliases results) rest
++    inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _))
++
++instance (bits : Nat) (expected : List Kind) (context : Context) (aliases : Aliases) (code : Code) :
++    Decidable (Valid bits expected context aliases code) := validDecidable bits expected context aliases code
++
++/-- Mode false interprets original casts/dim metadata reads; mode true interprets
++actual cast deletion/static index materialization. Logical blueprint recursion
++bounds syntax traversal, not runtime iterations or effects inside region meaning. -/
++def Eval {Value World : Type} (meaning : Interpretation Value World) (mode : Bool) (aliases : Aliases) (code : Code)
++    (env : Env Value) (before : World) (returned : List (Runtime Value)) (after : World) : Prop :=
++  match code with
++  | .returned values => returned = readArguments mode aliases env values ∧ after = before
++  | .cast origin result source target rest =>
++      if mode then Eval meaning mode ((result.name, resolve aliases origin.name) :: aliases) rest env before returned after else
++        ∃ value, castResult source target (env origin.name) = some value ∧
++          Eval meaning mode ((result.name, resolve aliases origin.name) :: aliases) rest (put env result.name value) before returned after
++  | .dimension view axis result type _ value rest =>
++      if mode then Eval meaning mode ((result.name, result.name) :: aliases) rest (put env result.name (.index value)) before returned after else
++        ∃ actual, dimensionResult type (env view.name) (env axis.name) = some actual ∧
++          Eval meaning mode ((result.name, result.name) :: aliases) rest (put env result.name (.index actual)) before returned after
++  | .constant result value rest =>
++      Eval meaning mode ((result.name, result.name) :: aliases) rest (put env result.name (.index value)) before returned after
++  | .action key operands results rest =>
++      ∃ values middle, meaning.action key (readArguments mode aliases env operands) before values middle ∧ ValuesHold results values ∧
++        Eval meaning mode (extendAliases aliases results) rest (assign env results values) middle returned after
++  | .region key operands parameters results body rest =>
++      ∃ values middle, meaning.region key (readArguments mode aliases env operands)
++        (fun inputs initial outputs final => ValuesHold parameters inputs ∧
++          Eval meaning mode (extendAliases aliases parameters) body (assign env parameters inputs) initial outputs final)
++        before values middle ∧ ValuesHold results values ∧
++        Eval meaning mode (extendAliases aliases results) rest (assign env results values) middle returned after
++
++end Merlin.GraphLoopsShape
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsShapeCountermodels.lean
+@@ -0,0 +1,50 @@
++/- Necessary-premise countermodels. They are preserved refusals/domains, not
++extra axioms or alternative semantics silently selected by the validator. -/
++import Merlin.GraphLoopsShapeWitness
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsShape.Countermodels
++
++def type : ViewType := ⟨[2, 3], 0, [3, 1], "i32", 0⟩
++def first : Descriptor := ⟨1, 100, 0, [2, 3], [3, 1], "i32", 0⟩
++def second : Descriptor := ⟨2, 100, 0, [2, 3], [3, 1], "i32", 0⟩
++
++theorem same_type_different_allocation :
++    Conforms type first ∧ Conforms type second ∧ address first [0, 0] ≠ address second [0, 0] := by decide
++
++theorem same_type_cannot_change_buffer : ¬ Cast type type first second := by
++  intro changed
++  have identity := cast_descriptor changed
++  have wrong : second.allocation ≠ first.allocation := by decide
++  exact wrong (congrArg Descriptor.allocation identity)
++
++def LoggedCast (before after : Nat) : Prop := Cast type type first first ∧ after = before + 1
++def ErasedCast (before after : Nat) : Prop := after = before
++
++/-- A logging/trapping intrinsic is not interchangeable with deletion merely
++because a host source/type hash matches. Local nonobservability is essential. -/
++theorem logging_deletion : LoggedCast 0 1 ∧ ¬ ErasedCast 0 1 := by
++  refine ⟨⟨identical_cast type first (by decide), rfl⟩, ?_⟩
++  change (1 : Nat) ≠ 0
++  decide
++
++def TrappingCast (_before _after : Nat) : Prop := False
++
++theorem trapping_deletion : (¬ ∃ after, TrappingCast 0 after) ∧ ErasedCast 0 0 := by
++  refine ⟨?_, rfl⟩
++  rintro ⟨_after, impossible⟩
++  exact impossible
++
++def badShape : Descriptor := ⟨1, 100, 0, [4, 3], [3, 1], "i32", 0⟩
++
++theorem inconsistent_metadata :
++    ¬ Conforms type badShape ∧ badShape.shape[0]? = some 4 ∧ type.shape[0]? = some 2 := by decide
++
++/-- Static shape equality also does not justify changing an aligned base. -/
++def shiftedBase : Descriptor := ⟨1, 101, 0, [2, 3], [3, 1], "i32", 0⟩
++
++theorem same_type_different_base :
++    Conforms type shiftedBase ∧ address shiftedBase [0, 0] ≠ address first [0, 0] := by decide
++
++end Merlin.GraphLoopsShape.Countermodels
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsShapeMemory.lean
+@@ -0,0 +1,83 @@
++/- Concrete view/heap interpretation for shape normalization. Heap addresses are
++logical element-cell addresses; native descriptor/byte ABI conformance is a
++separate local contract. Allocation/other actions may remain partial/observable. -/
++import Merlin.GraphLoopsShapeModule
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsShape
++
++abbrev MemoryWorld (Value Public : Type) := Merlin.GraphLoopsReuse.Memory Value Public
++
++inductive MemoryOpcode where
++  | load
++  | store
++  | loop
++  | other
++  deriving DecidableEq, Repr
++
++/-- Actual allocation identity, base, offset and strides determine the read.
++Descriptor conformance is carried by the typed runtime view, not guessed. -/
++def Load {Value Public : Type} (inputs : List (Runtime Value)) (before : MemoryWorld Value Public)
++    (outputs : List (Runtime Value)) (after : MemoryWorld Value Public) : Prop :=
++  ∃ type descriptor valid coordinates value,
++    inputs = Runtime.view type descriptor valid :: coordinates.map Runtime.index ∧
++    Merlin.GraphLoopsReuse.Geometry.Coordinate descriptor.shape coordinates ∧
++    before.heap descriptor.allocation (descriptor.alignedBase + descriptor.offset + linearOffset descriptor.strides coordinates) = some value ∧
++    outputs = [Runtime.scalar type.element value] ∧ after = before
++
++def Store {Value Public : Type} (inputs : List (Runtime Value)) (before : MemoryWorld Value Public)
++    (outputs : List (Runtime Value)) (after : MemoryWorld Value Public) : Prop :=
++  ∃ type descriptor valid coordinates value,
++    inputs = Runtime.scalar type.element value :: Runtime.view type descriptor valid :: coordinates.map Runtime.index ∧
++    Merlin.GraphLoopsReuse.Geometry.Coordinate descriptor.shape coordinates ∧ outputs = [] ∧
++    after = ⟨before.observed, Merlin.GraphLoopsReuse.replaceCell before.heap descriptor.allocation
++      (descriptor.alignedBase + descriptor.offset + linearOffset descriptor.strides coordinates) value⟩
++
++def loopBody {Value World : Type} (body : RegionMeaning Value World) (index : Nat)
++    (before after : List (Runtime Value) × World) : Prop := body (.index index :: before.1) before.2 after.1 after.2
++
++/-- SCF executes the same ordered body relation, forwarding EVERY carry and the
++entire memory/public world. No iteration or tensor-size expansion occurs here. -/
++def SCF {Value World : Type} (body : RegionMeaning Value World) (inputs : List (Runtime Value))
++    (before : World) (outputs : List (Runtime Value)) (after : World) : Prop :=
++  ∃ lower upper step carried, inputs = .index lower :: .index upper :: .index step :: carried ∧ 0 < step ∧
++    ∃ trace, Merlin.GraphLoopsSegment.Execution (loopBody body) upper step lower (carried, before) trace (outputs, after)
++
++def withMemory {Value Public : Type} (base : Interpretation Value (MemoryWorld Value Public))
++    (classify : String → MemoryOpcode) : Interpretation Value (MemoryWorld Value Public) where
++  action := fun key inputs before outputs after => match classify key with
++    | .load => Load inputs before outputs after
++    | .store => Store inputs before outputs after
++    | _ => base.action key inputs before outputs after
++  region := fun key inputs body before outputs after => match classify key with
++    | .loop => SCF body inputs before outputs after
++    | _ => base.region key inputs body before outputs after
++
++/-- This specialization preserves the exact heap and public world of actual
++loads/stores/SCF plus arbitrary shared partial/observable surrounding actions. -/
++theorem Module.checked_memory {Value Public : Type} (module : Module) (bits : Nat) (valid : module.Valid bits)
++    (base : Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
++    (name : String) (inputs : List (Runtime Value)) (before : MemoryWorld Value Public)
++    (outputs : List (Runtime Value)) (after : MemoryWorld Value Public) :
++    complete (withMemory base classify) module false name inputs before outputs after ↔
++      complete (withMemory base classify) module true name inputs before outputs after :=
++  Module.checked_complete module bits valid (withMemory base classify) name inputs before outputs after
++
++/-- Separate zero-extent domain: no coordinate of a shape containing zero is
++in-bounds. Metadata rewrites need no positive-buffer or element-read premise. -/
++theorem zero_has_no_coordinate {shape coordinates : List Nat} (zero : 0 ∈ shape) :
++    ¬ Merlin.GraphLoopsReuse.Geometry.Coordinate shape coordinates := by
++  intro valid
++  induction shape generalizing coordinates with
++  | nil => cases zero
++  | cons extent rest induction =>
++    cases coordinates with
++    | nil => cases valid
++    | cons index indices =>
++      rcases List.mem_cons.mp zero with equal | member
++      · subst extent
++        exact Nat.not_lt_zero index valid.1
++      · exact induction member valid.2
++
++end Merlin.GraphLoopsShape
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean
+@@ -0,0 +1,63 @@
++/- Actual whole-module shape blueprint checker. The complete raw-IR projection
++is trusted Python. Its strings bind syntax; they do NOT prove descriptor truth. -/
++import Merlin.GraphLoopsShapeMemory
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsShape.Model
++
++def changed : Code → Nat
++  | .returned _ => 0
++  | .cast _ _ _ _ rest => 1 + changed rest
++  | .dimension _ _ _ _ _ _ rest => 1 + changed rest
++  | .constant _ _ rest => changed rest
++  | .action _ _ _ rest => changed rest
++  | .region _ _ _ _ body rest => changed body + changed rest
++
++structure Projection where
++  bits : Nat
++  module : Module
++  sourceBinding : String
++  targetBinding : String
++  deriving DecidableEq, Repr
++
++def Valid (p : Projection) : Prop :=
++  p.module.Valid p.bits ∧ 0 < (p.module.functions.map (fun function => changed function.code)).sum ∧
++  p.sourceBinding ≠ "" ∧ p.targetBinding ≠ ""
++
++instance (p : Projection) : Decidable (Valid p) := inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _))
++
++def check (p : Projection) : Bool := decide (Valid p)
++
++theorem check_sound {p : Projection} (accepted : check p = true) : Valid p := of_decide_eq_true accepted
++
++/-- Both shape rewrite forms, all functions, nested regions, aliases, returns
++and entire modeled worlds. Call meanings unfold internally; external/region
++primitive and runtime-descriptor fidelity remain explicit local contracts. -/
++theorem checked_complete {Value World : Type} {p : Projection} (accepted : check p = true)
++    (meaning : Interpretation Value World) (name : String) (inputs : List (Runtime Value))
++    (before : World) (outputs : List (Runtime Value)) (after : World) :
++    complete meaning p.module false name inputs before outputs after ↔
++      complete meaning p.module true name inputs before outputs after :=
++  Module.checked_complete p.module p.bits (check_sound accepted).1 meaning name inputs before outputs after
++
++theorem checked_memory {Value Public : Type} {p : Projection} (accepted : check p = true)
++    (base : Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
++    (name : String) (inputs : List (Runtime Value)) (before : MemoryWorld Value Public)
++    (outputs : List (Runtime Value)) (after : MemoryWorld Value Public) :
++    complete (withMemory base classify) p.module false name inputs before outputs after ↔
++      complete (withMemory base classify) p.module true name inputs before outputs after :=
++  Module.checked_memory p.module p.bits (check_sound accepted).1 base classify name inputs before outputs after
++
++/-- Any semantic caller of the full function environment observes equal complete
++outcomes. Syntax bytes, native errors, allocator ABI and hardware are not callers
++of this declared denotation. No complete-program agreement premise is used. -/
++theorem checked_context {Value World Outcome : Type} {p : Projection} (accepted : check p = true)
++    (meaning : Interpretation Value World) (context : (String → RegionMeaning Value World) → Outcome) :
++    context (complete meaning p.module false) = context (complete meaning p.module true) := by
++  have same : complete meaning p.module false = complete meaning p.module true := by
++    funext name inputs before outputs after
++    exact propext (checked_complete accepted meaning name inputs before outputs after)
++  rw [same]
++
++end Merlin.GraphLoopsShape.Model
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsShapeModule.lean
+@@ -0,0 +1,117 @@
++/- Whole-module complete outcomes, including internal calls. Call depth bounds
++finite derivations only; loop/body execution is not tensor-volume unrolled.
++External operations and region handlers retain ONE partial interpretation. -/
++import Merlin.GraphLoopsShapeSound
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsShape
++
++structure Function where
++  name : String
++  parameters : List Binding
++  returned : List Kind
++  code : Code
++  deriving DecidableEq, Repr
++
++def Function.Valid (bits : Nat) (function : Function) : Prop :=
++  Fresh [] function.parameters ∧ Plain function.parameters ∧
++  GraphLoopsShape.Valid bits function.returned (extendContext [] function.parameters) (extendAliases [] function.parameters) function.code
++
++instance (bits : Nat) (function : Function) : Decidable (function.Valid bits) :=
++  inferInstanceAs (Decidable (_ ∧ _ ∧ _))
++
++def emptyEnv {Value : Type} : Env Value := fun _ => .index 0
++
++def Function.invoke {Value World : Type} (function : Function) (meaning : Interpretation Value World) (mode : Bool) :
++    RegionMeaning Value World :=
++  fun inputs before outputs after => ValuesHold function.parameters inputs ∧
++    Eval meaning mode (extendAliases [] function.parameters) function.code
++      (assign emptyEnv function.parameters inputs) before outputs after
++
++theorem Function.preservation {Value World : Type} (function : Function) (bits : Nat) (valid : function.Valid bits)
++    (meaning : Interpretation Value World) : function.invoke meaning false = function.invoke meaning true := by
++  funext inputs before outputs after
++  apply propext
++  have emptyScope : Scope [] [] := ⟨List.nodup_nil, by simp⟩
++  have emptySame : Agreement [] [] (emptyEnv (Value := Value)) emptyEnv := ⟨by simp [Typed], by simp⟩
++  constructor
++  · rintro ⟨typed, run⟩
++    exact ⟨typed, (GraphLoopsShape.preservation meaning bits function.code _ _ _ valid.2.2 _ _
++      (emptySame.define_many emptyScope typed valid.1) before outputs after).mp run⟩
++  · rintro ⟨typed, run⟩
++    exact ⟨typed, (GraphLoopsShape.preservation meaning bits function.code _ _ _ valid.2.2 _ _
++      (emptySame.define_many emptyScope typed valid.1) before outputs after).mpr run⟩
++
++structure Module where
++  functions : List Function
++  calls : List (String × String)
++  deriving DecidableEq, Repr
++
++def functionAt (module : Module) (name : String) : Option Function := module.functions.find? (fun function => function.name == name)
++
++def Module.Valid (bits : Nat) (module : Module) : Prop :=
++  (bits = 32 ∨ bits = 64) ∧ (module.functions.map Function.name).Nodup ∧
++  (∀ function ∈ module.functions, function.Valid bits) ∧
++  ∀ first ∈ module.calls, ∀ second ∈ module.calls, first.1 = second.1 → first.2 = second.2
++
++instance (bits : Nat) (module : Module) : Decidable (module.Valid bits) :=
++  inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _))
++
++def callTarget : List (String × String) → String → Option String
++  | [], _ => none
++  | (key, target) :: rest, actual => if actual = key then some target else callTarget rest actual
++
++/-- Only actual internal-call keys are redirected. External calls and all other
++partial operations keep the exact shared primitive meaning. -/
++def withCalls {Value World : Type} (base : Interpretation Value World) (module : Module)
++    (calls : String → RegionMeaning Value World) : Interpretation Value World where
++  action := fun key inputs before outputs after =>
++    match callTarget module.calls key with
++    | some name => if (functionAt module name).isSome then calls name inputs before outputs after else base.action key inputs before outputs after
++    | none => base.action key inputs before outputs after
++  region := base.region
++
++/-- This is a declared operational call interpretation. Zero fuel admits no
++internal function entry; successor unfolds one function with smaller call depth.
++It is not a claimed bridge to a native/frozen evaluator or runtime stack. -/
++def invoke {Value World : Type} (base : Interpretation Value World) (module : Module) (mode : Bool) :
++    Nat → String → RegionMeaning Value World
++  | 0, _ => fun _ _ _ _ => False
++  | depth + 1, name =>
++    match functionAt module name with
++    | none => fun _ _ _ _ => False
++    | some function => function.invoke (withCalls base module (invoke base module mode depth)) mode
++
++theorem Module.checked_calls {Value World : Type} (module : Module) (bits : Nat) (valid : module.Valid bits)
++    (base : Interpretation Value World) : ∀ depth, invoke base module false depth = invoke base module true depth := by
++  intro depth
++  induction depth with
++  | zero => rfl
++  | succ depth induction =>
++    funext name
++    unfold invoke
++    split
++    · rfl
++    · rename_i function found
++      have member : function ∈ module.functions := List.mem_of_find?_eq_some found
++      have functionValid := valid.2.2.1 function member
++      rw [induction]
++      exact Function.preservation function bits functionValid _
++
++def complete {Value World : Type} (base : Interpretation Value World) (module : Module) (mode : Bool)
++    (name : String) (inputs : List (Runtime Value)) (before : World) (outputs : List (Runtime Value)) (after : World) : Prop :=
++  ∃ depth, invoke base module mode depth name inputs before outputs after
++
++/-- Complete returned values AND the entire modeled heap/public world agree.
++No source success, primitive totality, error-code or divergence identity follows. -/
++theorem Module.checked_complete {Value World : Type} (module : Module) (bits : Nat) (valid : module.Valid bits)
++    (base : Interpretation Value World) (name : String) (inputs : List (Runtime Value))
++    (before : World) (outputs : List (Runtime Value)) (after : World) :
++    complete base module false name inputs before outputs after ↔ complete base module true name inputs before outputs after := by
++  unfold complete
++  apply exists_congr
++  intro depth
++  rw [Module.checked_calls module bits valid base depth]
++
++end Merlin.GraphLoopsShape
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsShapeSSA.lean
+@@ -0,0 +1,140 @@
++/- Typed lexical SSA and forward aliases for deleted descriptor operations.
++Distinct source/candidate register stacks are related only at bound names.
++Retained operations receive explicit values, never the private SSA environment. -/
++import Merlin.GraphLoopsShape
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsShape
++
++inductive Kind where
++  | index
++  | scalar (type : String)
++  | view (type : ViewType)
++  deriving DecidableEq, Repr
++
++inductive Runtime (Value : Type) where
++  | index (value : Nat)
++  | scalar (type : String) (value : Value)
++  | view (type : ViewType) (descriptor : Descriptor) (valid : Conforms type descriptor)
++
++def Runtime.kind {Value : Type} : Runtime Value → Kind
++  | .index _ => .index
++  | .scalar type _ => .scalar type
++  | .view type _ _ => .view type
++
++structure Binding where
++  name : Nat
++  kind : Kind
++  known : Option Nat
++  deriving DecidableEq, Repr
++
++def Binding.Holds {Value : Type} (binding : Binding) (value : Runtime Value) : Prop :=
++  value.kind = binding.kind ∧ ∀ index, binding.known = some index → value = .index index
++
++abbrev Env (Value : Type) := Nat → Runtime Value
++abbrev Context := List Binding
++abbrev Aliases := List (Nat × Nat)
++
++def names (context : Context) : List Nat := context.map Binding.name
++
++def resolve : Aliases → Nat → Nat
++  | [], name => name
++  | (source, target) :: rest, name => if name = source then target else resolve rest name
++
++def put {Value : Type} (env : Env Value) (name : Nat) (value : Runtime Value) : Env Value :=
++  fun other => if other = name then value else env other
++
++def Typed {Value : Type} (context : Context) (env : Env Value) : Prop :=
++  ∀ binding ∈ context, binding.Holds (env binding.name)
++
++/-- Images must remain actual previously bound source names. Thus a fresh SSA
++result cannot overwrite a retained target register used by another alias. -/
++def Scope (context : Context) (aliases : Aliases) : Prop :=
++  (names context).Nodup ∧ ∀ binding ∈ context, resolve aliases binding.name ∈ names context
++
++instance (context : Context) (aliases : Aliases) : Decidable (Scope context aliases) :=
++  inferInstanceAs (Decidable (_ ∧ _))
++
++def Agreement {Value : Type} (context : Context) (aliases : Aliases) (source target : Env Value) : Prop :=
++  Typed context source ∧ ∀ binding ∈ context, source binding.name = target (resolve aliases binding.name)
++
++theorem Runtime.view_of_kind {Value : Type} {value : Runtime Value} {type : ViewType}
++    (kind : value.kind = .view type) : ∃ descriptor valid, value = .view type descriptor valid := by
++  cases value with
++  | index => cases kind
++  | scalar => cases kind
++  | view actual descriptor valid =>
++    have same : actual = type := Kind.view.inj kind
++    subst actual
++    exact ⟨descriptor, valid, rfl⟩
++
++theorem known_index {Value : Type} {binding : Binding} {value : Runtime Value} {index : Nat}
++    (holds : binding.Holds value) (known : binding.known = some index) : value = .index index := holds.2 index known
++
++theorem Scope.extend {context : Context} {aliases : Aliases} {binding : Binding} {target : Nat}
++    (scope : Scope context aliases) (fresh : binding.name ∉ names context)
++    (image : target = binding.name ∨ target ∈ names context) :
++    Scope (binding :: context) ((binding.name, target) :: aliases) := by
++  refine ⟨List.nodup_cons.mpr ⟨fresh, scope.1⟩, ?_⟩
++  intro current member
++  rcases List.mem_cons.mp member with rfl | previous
++  · simp only [resolve, ↓reduceIte, names, List.map_cons, List.mem_cons]
++    exact image
++  · have different : current.name ≠ binding.name := by
++      intro same
++      exact fresh (same ▸ List.mem_map_of_mem previous)
++    simp only [resolve, ite_eq_right different, names, List.map_cons, List.mem_cons]
++    exact Or.inr (scope.2 current previous)
++
++/-- Retained definitions extend both stacks, but only after freshness rules
++out overwriting any previous source name OR target alias image. -/
++theorem Agreement.define {Value : Type} {context : Context} {aliases : Aliases} {source target : Env Value}
++    (same : Agreement context aliases source target) (scope : Scope context aliases) (binding : Binding)
++    (fresh : binding.name ∉ names context) (value : Runtime Value) (typed : binding.Holds value) :
++    Agreement (binding :: context) ((binding.name, binding.name) :: aliases)
++      (put source binding.name value) (put target binding.name value) := by
++  have different : ∀ current ∈ context, current.name ≠ binding.name := by
++    intro current member equal
++    exact fresh (equal ▸ List.mem_map_of_mem member)
++  refine ⟨?_, ?_⟩
++  · intro current member
++    rcases List.mem_cons.mp member with rfl | previous
++    · simpa only [put, ↓reduceIte] using typed
++    · simpa only [put, ite_eq_right (different current previous)] using same.1 current previous
++  · intro current member
++    rcases List.mem_cons.mp member with rfl | previous
++    · simp only [resolve, put, ↓reduceIte]
++    · have imageDifferent : resolve aliases current.name ≠ binding.name := by
++        intro equal
++        exact fresh (equal ▸ scope.2 current previous)
++      simpa only [resolve, ite_eq_right (different current previous), put, ite_eq_right imageDifferent] using same.2 current previous
++
++/-- Deleting an identity cast extends ONLY the source stack. The candidate
++uses the original value through the checked forward alias. -/
++theorem Agreement.alias {Value : Type} {context : Context} {aliases : Aliases} {source target : Env Value}
++    (same : Agreement context aliases source target) {origin : Binding} (member : origin ∈ context)
++    (binding : Binding) (fresh : binding.name ∉ names context) (typed : binding.Holds (source origin.name)) :
++    Agreement (binding :: context) ((binding.name, resolve aliases origin.name) :: aliases)
++      (put source binding.name (source origin.name)) target := by
++  refine ⟨?_, ?_⟩
++  · intro current initialized
++    rcases List.mem_cons.mp initialized with rfl | previous
++    · simpa only [put, ↓reduceIte] using typed
++    · have different : current.name ≠ binding.name := fun equal => fresh (equal ▸ List.mem_map_of_mem previous)
++      simpa only [put, ite_eq_right different] using same.1 current previous
++  · intro current initialized
++    rcases List.mem_cons.mp initialized with rfl | previous
++    · simpa only [put, resolve, ↓reduceIte] using same.2 origin member
++    · have different : current.name ≠ binding.name := fun equal => fresh (equal ▸ List.mem_map_of_mem previous)
++      simpa only [put, resolve, ite_eq_right different] using same.2 current previous
++
++theorem Agreement.arguments {Value : Type} {context : Context} {aliases : Aliases} {source target : Env Value}
++    (same : Agreement context aliases source target) (operands : List Binding)
++    (bound : ∀ binding ∈ operands, binding ∈ context) :
++    operands.map (fun binding => source binding.name) = operands.map (fun binding => target (resolve aliases binding.name)) := by
++  apply List.map_congr_left
++  intro binding member
++  exact same.2 binding (bound binding member)
++
++end Merlin.GraphLoopsShape
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsShapeSound.lean
+@@ -0,0 +1,117 @@
++/- Whole-block preservation, including arbitrary partial effects and nested
++lexical regions. Only the intrinsic cast/dimension operations are deleted or
++materialized. No complete-normalizer or whole-program agreement is assumed. -/
++import Merlin.GraphLoopsShapeCode
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsShape
++
++theorem preservation {Value World : Type} (meaning : Interpretation Value World) (bits : Nat) (code : Code) :
++    ∀ expected context aliases, Valid bits expected context aliases code →
++      ∀ source target, Agreement context aliases source target → ∀ before outputs after,
++        Eval meaning false aliases code source before outputs after ↔
++          Eval meaning true aliases code target before outputs after := by
++  induction code with
++  | returned values =>
++    intro expected context aliases valid source target same before outputs after
++    have equal := same.read_arguments values valid.2.1
++    simp only [Eval]
++    rw [equal]
++  | cast origin result sourceType targetType rest induction =>
++    intro expected context aliases valid source target same before outputs after
++    obtain ⟨scope, ⟨member, originKind, rfl, resultKind, known, fresh⟩, tailValid⟩ := valid
++    have typed : (source origin.name).kind = .view sourceType := (same.1 origin member).1.trans originKind
++    have computed := cast_result typed
++    have resultHolds : result.Holds (source origin.name) := by
++      refine ⟨typed.trans resultKind.symm, ?_⟩
++      intro index equal
++      rw [known] at equal
++      cases equal
++    have nextSame := same.alias member result fresh resultHolds
++    have tail := induction _ _ _ tailValid _ _ nextSame before outputs after
++    simp only [Eval, Bool.false_eq_true, ↓reduceIte]
++    constructor
++    · rintro ⟨value, calculated, run⟩
++      have equal : value = source origin.name := Option.some.inj (calculated.symm.trans computed)
++      subst value
++      exact tail.mp run
++    · intro run
++      exact ⟨source origin.name, computed, tail.mpr run⟩
++  | dimension view axis result type axisIndex value rest induction =>
++    intro expected context aliases valid source target same before outputs after
++    obtain ⟨scope, ⟨viewMember, axisMember, viewKind, knownAxis, resultKind, knownResult, dimension, fresh⟩, tailValid⟩ := valid
++    have viewTyped : (source view.name).kind = .view type := (same.1 view viewMember).1.trans viewKind
++    have axisValue := known_index (same.1 axis axisMember) knownAxis
++    have computed : dimensionResult type (source view.name) (source axis.name) = some value := by
++      rw [axisValue]
++      exact dimension_result viewTyped dimension
++    have resultHolds := result.holds_index (Value := Value) value resultKind knownResult
++    have nextSame := same.define scope result fresh (.index value) resultHolds
++    have tail := induction _ _ _ tailValid _ _ nextSame before outputs after
++    simp only [Eval, Bool.false_eq_true, ↓reduceIte]
++    constructor
++    · rintro ⟨actual, calculated, run⟩
++      have equal : actual = value := Option.some.inj (calculated.symm.trans computed)
++      subst actual
++      exact tail.mp run
++    · intro run
++      exact ⟨value, computed, tail.mpr run⟩
++  | constant result value rest induction =>
++    intro expected context aliases valid source target same before outputs after
++    obtain ⟨scope, ⟨kind, known, _fits, fresh⟩, tailValid⟩ := valid
++    have typed := result.holds_index (Value := Value) value kind known
++    exact induction _ _ _ tailValid _ _ (same.define scope result fresh (.index value) typed) before outputs after
++  | action key operands results rest induction =>
++    intro expected context aliases valid source target same before outputs after
++    obtain ⟨scope, bound, fresh, _plain, tailValid⟩ := valid
++    have inputs := same.read_arguments operands bound
++    simp only [Eval]
++    constructor
++    · rintro ⟨values, middle, run, typed, remaining⟩
++      refine ⟨values, middle, ?_, typed, ?_⟩
++      · rw [← inputs]; exact run
++      · exact (induction _ _ _ tailValid _ _ (same.define_many scope typed fresh) middle outputs after).mp remaining
++    · rintro ⟨values, middle, run, typed, remaining⟩
++      refine ⟨values, middle, ?_, typed, ?_⟩
++      · rw [inputs]; exact run
++      · exact (induction _ _ _ tailValid _ _ (same.define_many scope typed fresh) middle outputs after).mpr remaining
++  | region key operands parameters results body rest bodyInduction restInduction =>
++    intro expected context aliases valid source target same before outputs after
++    obtain ⟨scope, bound, freshParams, _plainParams, bodyValid, freshResults, _plainResults, restValid⟩ := valid
++    have inputs := same.read_arguments operands bound
++    have regions :
++        (fun arguments initial returned final => ValuesHold parameters arguments ∧
++          Eval meaning false (extendAliases aliases parameters) body (assign source parameters arguments) initial returned final) =
++        (fun arguments initial returned final => ValuesHold parameters arguments ∧
++          Eval meaning true (extendAliases aliases parameters) body (assign target parameters arguments) initial returned final) := by
++      funext arguments initial returned final
++      apply propext
++      constructor
++      · rintro ⟨typed, run⟩
++        exact ⟨typed, (bodyInduction _ _ _ bodyValid _ _ (same.define_many scope typed freshParams) initial returned final).mp run⟩
++      · rintro ⟨typed, run⟩
++        exact ⟨typed, (bodyInduction _ _ _ bodyValid _ _ (same.define_many scope typed freshParams) initial returned final).mpr run⟩
++    simp only [Eval]
++    constructor
++    · rintro ⟨values, middle, run, typed, remaining⟩
++      refine ⟨values, middle, ?_, typed, ?_⟩
++      · rw [← inputs, ← regions]; exact run
++      · exact (restInduction _ _ _ restValid _ _ (same.define_many scope typed freshResults) middle outputs after).mp remaining
++    · rintro ⟨values, middle, run, typed, remaining⟩
++      refine ⟨values, middle, ?_, typed, ?_⟩
++      · rw [inputs, regions]; exact run
++      · exact (restInduction _ _ _ restValid _ _ (same.define_many scope typed freshResults) middle outputs after).mpr remaining
++
++/-- All possible COMPLETE returned-value/world outcomes, under one declared
++operation/region meaning. Entry descriptors are typed values, not arbitrary
++metadata. Unknown primitive errors/divergence/native conformance remain separate. -/
++theorem entry_equivalence {Value World : Type} (meaning : Interpretation Value World) (bits : Nat) (code : Code)
++    (expected : List Kind) (parameters : Context) (valid : Valid bits expected parameters [] code)
++    (source target : Env Value) (typed : Typed parameters source)
++    (sameInputs : ∀ binding ∈ parameters, source binding.name = target binding.name)
++    (before : World) (outputs : List (Runtime Value)) (after : World) :
++    Eval meaning false [] code source before outputs after ↔ Eval meaning true [] code target before outputs after := by
++  exact preservation meaning bits code expected parameters [] valid source target ⟨typed, sameInputs⟩ before outputs after
++
++end Merlin.GraphLoopsShape
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsShapeWitness.lean
+@@ -0,0 +1,72 @@
++/- Witness constructors for the DECLARED operational interpretation. These are
++kernel proof helpers, not a replacement producer or a native runtime evaluator. -/
++import Merlin.GraphLoopsShapeModel
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsShape
++
++theorem Binding.holds_plain {Value : Type} (binding : Binding) (value : Runtime Value)
++    (kind : value.kind = binding.kind) (plain : binding.known = none) : binding.Holds value := by
++  refine ⟨kind, ?_⟩
++  intro index equal
++  rw [plain] at equal
++  cases equal
++
++theorem Eval.source_cast {Value World : Type} {meaning : Interpretation Value World} {aliases : Aliases}
++    {origin result : Binding} {source target : ViewType} {rest : Code} {env : Env Value} {before after : World}
++    {outputs : List (Runtime Value)} (value : Runtime Value) (computed : castResult source target (env origin.name) = some value)
++    (remaining : Eval meaning false ((result.name, resolve aliases origin.name) :: aliases) rest (put env result.name value) before outputs after) :
++    Eval meaning false aliases (.cast origin result source target rest) env before outputs after := ⟨value, computed, remaining⟩
++
++theorem Eval.source_dimension {Value World : Type} {meaning : Interpretation Value World} {aliases : Aliases}
++    {view axis result : Binding} {type : ViewType} {axisIndex value actual : Nat} {rest : Code} {env : Env Value} {before after : World}
++    {outputs : List (Runtime Value)} (computed : dimensionResult type (env view.name) (env axis.name) = some actual)
++    (remaining : Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (.index actual)) before outputs after) :
++    Eval meaning false aliases (.dimension view axis result type axisIndex value rest) env before outputs after := ⟨actual, computed, remaining⟩
++
++theorem Eval.source_constant {Value World : Type} {meaning : Interpretation Value World} {aliases : Aliases}
++    {result : Binding} {value : Nat} {rest : Code} {env : Env Value} {before after : World} {outputs : List (Runtime Value)}
++    (remaining : Eval meaning false ((result.name, result.name) :: aliases) rest (put env result.name (.index value)) before outputs after) :
++    Eval meaning false aliases (.constant result value rest) env before outputs after := remaining
++
++theorem Eval.source_action {Value World : Type} {meaning : Interpretation Value World} {aliases : Aliases}
++    {key : String} {operands results : List Binding} {rest : Code} {env : Env Value} {before after : World} {outputs : List (Runtime Value)}
++    (values : List (Runtime Value)) (middle : World)
++    (run : meaning.action key (readArguments false aliases env operands) before values middle)
++    (typed : ValuesHold results values)
++    (remaining : Eval meaning false (extendAliases aliases results) rest (assign env results values) middle outputs after) :
++    Eval meaning false aliases (.action key operands results rest) env before outputs after := ⟨values, middle, run, typed, remaining⟩
++
++theorem Eval.source_region {Value World : Type} {meaning : Interpretation Value World} {aliases : Aliases}
++    {key : String} {operands parameters results : List Binding} {body rest : Code} {env : Env Value}
++    {before after : World} {outputs : List (Runtime Value)} (values : List (Runtime Value)) (middle : World)
++    (run : meaning.region key (readArguments false aliases env operands)
++      (fun inputs initial returned final => ValuesHold parameters inputs ∧
++        Eval meaning false (extendAliases aliases parameters) body (assign env parameters inputs) initial returned final)
++      before values middle)
++    (typed : ValuesHold results values)
++    (remaining : Eval meaning false (extendAliases aliases results) rest (assign env results values) middle outputs after) :
++    Eval meaning false aliases (.region key operands parameters results body rest) env before outputs after := ⟨values, middle, run, typed, remaining⟩
++
++theorem Load.ready {Value Public : Type} (type : ViewType) (descriptor : Descriptor) (valid : Conforms type descriptor)
++    (coordinates : List Nat) (value : Value) (memory : MemoryWorld Value Public)
++    (inside : Merlin.GraphLoopsReuse.Geometry.Coordinate descriptor.shape coordinates)
++    (read : memory.heap descriptor.allocation (descriptor.alignedBase + descriptor.offset + linearOffset descriptor.strides coordinates) = some value) :
++    Load (Runtime.view type descriptor valid :: coordinates.map Runtime.index) memory [Runtime.scalar type.element value] memory :=
++  ⟨type, descriptor, valid, coordinates, value, rfl, inside, read, rfl, rfl⟩
++
++theorem Store.ready {Value Public : Type} (type : ViewType) (descriptor : Descriptor) (valid : Conforms type descriptor)
++    (coordinates : List Nat) (value : Value) (memory : MemoryWorld Value Public)
++    (inside : Merlin.GraphLoopsReuse.Geometry.Coordinate descriptor.shape coordinates) :
++    Store (Runtime.scalar type.element value :: Runtime.view type descriptor valid :: coordinates.map Runtime.index) memory []
++      ⟨memory.observed, Merlin.GraphLoopsReuse.replaceCell memory.heap descriptor.allocation
++        (descriptor.alignedBase + descriptor.offset + linearOffset descriptor.strides coordinates) value⟩ :=
++  ⟨type, descriptor, valid, coordinates, value, rfl, inside, rfl, rfl⟩
++
++theorem SCF.once {Value World : Type} (body : RegionMeaning Value World) (before after : World)
++    (run : body [.index 0] before [] after) : SCF body [.index 0, .index 1, .index 1] before [] after := by
++  refine ⟨0, 1, 1, [], rfl, by decide, [0], ?_⟩
++  exact .more (middle := ([], after)) (by decide) run (.done _ (by decide))
++
++end Merlin.GraphLoopsShape
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_shape.py
+@@ -0,0 +1,154 @@
++"""Fresh complete-IR shape normalization validation under declared view semantics.
++
++The typed descriptor/SSA/world theorem is kernel checked. The full parser and
++projection remain trusted Python; this does not gate ordinary compilation.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++from .lean_graph_loops import _reference
++from .lean_graph_loops_memory_scf import audit
++from .lean_graph_loops_shape_model import SHAPE_ROOTS, obligation
++from .lean_graph_loops_shape_projection import project_exports
++
++
++def verify_shape_files(before, after, *, selection, output, index_bits, max_nodes, descriptor_policy):
++    output.mkdir(parents=True, exist_ok=False)
++    try:
++        return _verify(
++            before,
++            after,
++            selection=selection,
++            output=output,
++            index_bits=index_bits,
++            max_nodes=max_nodes,
++            descriptor_policy=descriptor_policy,
++        )
++    except Exception as error:
++        (output / "REFUSAL.json").write_text(
++            json.dumps(
++                dict(
++                    error=str(error),
++                    type=type(error).__name__,
++                    lean_complete_shape_checked=False,
++                    pipeline_receipt_issued=False,
++                    python_projection_trusted=True,
++                ),
++                indent=2,
++            )
++            + "\n"
++        )
++        raise
++
++
++def _verify(before, after, *, selection, output, index_bits, max_nodes, descriptor_policy):
++    if descriptor_policy != "typed_static_identity_layout":
++        raise ValueError(
++            "explicit typed static descriptor policy required; metadata hashes cannot establish conformance"
++        )
++    first, second = before.read_bytes(), after.read_bytes()
++    originals = [_reference(before, first), _reference(after, second)]
++    dependencies = selection.dependencies()
++    saved_before, saved_after = output / "before.mlir", output / "after.mlir"
++    saved_before.write_bytes(first)
++    saved_after.write_bytes(second)
++    from . import lean_graph_loops_shape_capture as capture
++
++    exported = output / "actual-pair.json"
++    env = dict(os.environ, PYTHONPATH=str(selection.source / "src"), PYTHONDONTWRITEBYTECODE="1")
++    command = [
++        sys.executable,
++        str(Path(capture.__file__).resolve()),
++        "--source",
++        str(selection.source),
++        "--revision",
++        selection.revision,
++        "--before",
++        str(saved_before.resolve()),
++        "--after",
++        str(saved_after.resolve()),
++        "--output",
++        str(exported.resolve()),
++    ]
++    parsed = subprocess.run(command, env=env, capture_output=True, text=True, check=False, timeout=120)
++    (output / "projection.stdout").write_text(parsed.stdout)
++    (output / "projection.stderr").write_text(parsed.stderr)
++    if parsed.returncode:
++        raise ValueError("fresh actual parsing/SSA export refused; malformed IR is separate")
++    data = json.loads(exported.read_bytes())
++    export_ref = _reference(exported)
++    if data["schema"] != "merlin.graph.shape.actual_pair.v1" or data["producer_revision"] != selection.revision:
++        raise ValueError("fresh shape parser export schema/source identity changed")
++    if data["before"] != _reference(saved_before, first) or data["after"] != _reference(saved_after, second):
++        raise ValueError("actual shape trees not bound to the same input buffers")
++    manifest = json.loads(selection.manifest.read_bytes())
++    for field in ("producer_source", "xdsl_loaded_source"):
++        if not data[field] or data[field] != manifest[field]:
++            raise ValueError("fresh loaded shape provider/parser differs from original selection")
++    projection = project_exports(
++        data["before_export"], data["after_export"], index_bits=index_bits, max_nodes=max_nodes
++    )
++    model = output / "model.json"
++    model.write_text(json.dumps(projection, sort_keys=True, indent=2) + "\n")
++    model_ref = _reference(model)
++    query = output / "Obligation.lean"
++    query.write_text(obligation(projection))
++    query_ref = _reference(query)
++    proof = selection.proof
++    env.update(LEAN_PATH=str(proof.library), LEAN_SYSROOT=str(proof.executable.parent.parent), LEAN_NUM_THREADS="2")
++    lean_command = [str(proof.executable), "-DautoImplicit=false", "-DrelaxedAutoImplicit=false", str(query.resolve())]
++    checked = subprocess.run(lean_command, env=env, capture_output=True, text=True, check=False, timeout=180)
++    (output / "stdout.log").write_text(checked.stdout)
++    (output / "stderr.log").write_text(checked.stderr)
++    result = dict(
++        schema="merlin.graph.shape.actual_whole_module.v1",
++        originals=originals,
++        dependencies=dependencies,
++        fresh_exports=export_ref,
++        model=model_ref,
++        query=query_ref,
++        command=lean_command,
++        projection_command=command,
++        returncode=checked.returncode,
++        lean_complete_shape_checked=False,
++        python_projection_trusted=True,
++        descriptor_policy=descriptor_policy,
++        typed_runtime_descriptor_fidelity_is_premise=True,
++        retained_operations_may_be_partial_and_observable=True,
++        returned_values_and_entire_world=True,
++        private_ssa_stacks_related_not_equated=True,
++        categorized_error_or_divergence_equivalence=False,
++        primitive_totality_inferred=False,
++        ordinary_compiler_gating=False,
++        pipeline_receipt_issued=False,
++        old_epoch_model_adapter_proved=False,
++        independent_review_complete=False,
++        numerical_gates_discharged=False,
++        native_allocator_abi_hardware_conformance_proved=False,
++        LeanMLIR_selected=False,
++    )
++    if (
++        dependencies != selection.dependencies()
++        or originals != [_reference(before), _reference(after)]
++        or saved_before.read_bytes() != first
++        or saved_after.read_bytes() != second
++        or export_ref != _reference(exported)
++        or model_ref != _reference(model)
++        or query_ref != _reference(query)
++    ):
++        result["refusal"] = "actual inputs/tree/model/query or original proof/source/tool/import/host changed"
++    elif checked.returncode:
++        result["refusal"] = "Lean refused whole-module descriptor/SSA/scope/dimension/call obligations"
++        if checked.returncode < 0:
++            result["context_disqualified_unknown_native_failure"] = True
++    else:
++        result["transitive_axioms"] = audit(checked.stdout, SHAPE_ROOTS)
++        result["lean_complete_shape_checked"] = True
++    (output / "CHECK.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
++    return result
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_shape_capture.py
+@@ -0,0 +1,164 @@
++"""Pinned actual shape normalizer production and fresh complete typed IR export.
++
++Descriptor conformance is a semantic contract; static IR type facts are not
++runtime descriptor witnesses. Parsing/projection remains trusted Python.
++"""
++
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++if __package__:
++    from .lean_graph_loops_capture import _producer_sources
++    from .lean_graph_loops_segment_capture import loaded_xdsl_sources, operation_tree
++else:
++    from lean_graph_loops_capture import _producer_sources
++    from lean_graph_loops_segment_capture import loaded_xdsl_sources, operation_tree
++
++
++def reference(path, data=None):
++    data = path.read_bytes() if data is None else data
++    return dict(path=str(path.resolve()), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data))
++
++
++def type_record(kind):
++    from xdsl.dialects import builtin
++
++    if isinstance(kind, builtin.IndexType):
++        return dict(kind="index", spelling=str(kind))
++    if isinstance(kind, builtin.MemRefType):
++        shape = list(kind.get_shape())
++        contiguous = isinstance(kind.layout, builtin.NoneAttr)
++        default_space = isinstance(kind.memory_space, builtin.NoneAttr)
++        strides, stride = [], 1
++        for extent in reversed(shape):
++            strides.insert(0, stride)
++            stride *= max(0, extent)
++        return dict(
++            kind="view",
++            spelling=str(kind),
++            shape=shape,
++            offset=0,
++            strides=strides,
++            element=str(kind.get_element_type()),
++            space=0,
++            contiguous=contiguous,
++            default_space=default_space,
++            actual_layout=str(kind.layout),
++            actual_space=str(kind.memory_space),
++            static=all(extent >= 0 for extent in shape),
++        )
++    if isinstance(kind, builtin.UnrankedMemRefType):
++        return dict(kind="unsupported_view", spelling=str(kind))
++    return dict(kind="scalar", spelling=str(kind))
++
++
++def export(module):
++    tree = operation_tree(module)
++    values, functions, calls = {}, [], []
++
++    def visit(op, record):
++        from xdsl.dialects import func
++
++        if isinstance(op, func.FuncOp):
++            functions.append(
++                dict(
++                    name=op.sym_name.data,
++                    parameters=[type_record(kind) for kind in op.function_type.inputs.data],
++                    returned=[type_record(kind) for kind in op.function_type.outputs.data],
++                    declaration=not bool(op.body.blocks),
++                )
++            )
++        if isinstance(op, func.CallOp):
++            calls.append(
++                dict(
++                    operation=record,
++                    target=op.callee.root_reference.data,
++                    nested=bool(op.callee.nested_references.data),
++                )
++            )
++        for value, item in zip(op.results, record["results"], strict=True):
++            values[str(item[0])] = type_record(value.type)
++        for region, records in zip(op.regions, record["regions"], strict=True):
++            for block, block_record in zip(region.blocks, records, strict=True):
++                for value, item in zip(block.args, block_record["arguments"], strict=True):
++                    values[str(item[0])] = type_record(value.type)
++                for child, child_record in zip(block.ops, block_record["operations"], strict=True):
++                    visit(child, child_record)
++
++    visit(module, tree)
++    return dict(tree=tree, types=values, functions=functions, calls=calls)
++
++
++def run(*, source, revision, before, output, after=None):
++    sys.dont_write_bytecode = True
++    from merlin.transforms import normalization
++    from merlin.transforms.certificates import ir_text, parse_ir
++
++    observed = subprocess.check_output(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
++    if observed != revision:
++        raise ValueError("original selected shape producer revision changed")
++    original = before.read_bytes()
++    module = parse_ir(original.decode())
++    module.verify()
++    first = export(module)
++    if after is None:
++        output.mkdir(parents=True, exist_ok=False)
++        changes = normalization.normalize_shapes(module)
++        module.verify()
++        candidate = ir_text(module).encode()
++        after = output / "after.mlir"
++        after.write_bytes(candidate)
++        second = export(module)
++        destination = output / "CAPTURE.json"
++        changed = len(changes)
++    else:
++        candidate = after.read_bytes()
++        result = parse_ir(candidate.decode())
++        result.verify()
++        second = export(result)
++        destination, changed = output, None
++    provider = _producer_sources(source, revision, (Path(normalization.__file__).resolve(),))
++    xdsl = loaded_xdsl_sources()
++    result = dict(
++        schema="merlin.graph.shape.actual_pair.v1",
++        before=reference(before, original),
++        after=reference(after, candidate),
++        before_export=first,
++        after_export=second,
++        producer_revision=revision,
++        producer_source=provider,
++        xdsl_loaded_source=xdsl,
++        changed_sites=changed,
++        python_projection_trusted=True,
++        runtime_descriptor_conformance_proved=False,
++        native_or_hardware_proved=False,
++    )
++    if (
++        original != before.read_bytes()
++        or candidate != after.read_bytes()
++        or provider != _producer_sources(source, revision, ())
++        or xdsl != loaded_xdsl_sources()
++    ):
++        raise ValueError("actual pair or selected provider/parser source changed during export")
++    destination.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
++    return result
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    for name in ("source", "before", "output"):
++        parser.add_argument("--" + name, type=Path, required=True)
++    parser.add_argument("--after", type=Path)
++    parser.add_argument("--revision", required=True)
++    result = run(**vars(parser.parse_args()))
++    print(json.dumps({key: result[key] for key in ("schema", "producer_revision", "changed_sites")}))
++
++
++if __name__ == "__main__":
++    main()
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_shape_cases.py
+@@ -0,0 +1,114 @@
++"""Independent whole shape-normalization source families and memory-chain input."""
++
++from dataclasses import dataclass
++
++from .lean_graph_loops_reuse_cases import Case as EpochCase
++from .lean_graph_loops_reuse_cases import source as epoch_source
++
++
++@dataclass(frozen=True)
++class Case:
++    name: str
++    shape: tuple[int, ...]
++    bits: int
++    axis: int
++    index_bits: int = 64
++    nested: bool = False
++    callee: bool = False
++
++
++CASES = (
++    Case("rank_one", (7,), 8, 0, 32),
++    Case("rank_two", (2, 3), 32, 1),
++    Case("rank_three", (3, 5, 2), 64, 2),
++    Case("nested_captures", (4, 3), 16, 0, nested=True),
++    Case("zero_metadata_only", (0, 5), 32, 0),
++    Case("compact_huge", (1_000_000_000, 1024), 32, 1),
++)
++
++
++def source(case):
++    scalar = f"i{case.bits}"
++    kind = "memref<" + "x".join(map(str, case.shape)) + "x" + scalar + ">"
++    sink = f"memref<1x{scalar}>"
++    zero = ", ".join("%zero" for _ in case.shape)
++    other = (case.axis + 1) % len(case.shape)
++    lines = [
++        "builtin.module {",
++        f" func.func @probe(%a: {kind}, %b: {kind}, %sink: {sink}) -> (index, index, {scalar}) {{",
++        "  %zero = arith.constant 0 : index",
++        "  %one = arith.constant 1 : index",
++        f"  %axis = arith.constant {case.axis} : index",
++        f"  %other = arith.constant {other} : index",
++        f'  %first = "memref.cast"(%a) : ({kind}) -> {kind}',
++        f'  %second = "memref.cast"(%first) : ({kind}) -> {kind}',
++        f"  %d0 = memref.dim %second, %axis : {kind}",
++        f"  %d1 = memref.dim %b, %other : {kind}",
++    ]
++    if case.nested:
++        lines.extend(
++            [
++                "  scf.for %i = %zero to %one step %one {",
++                f'   %local = "memref.cast"(%second) : ({kind}) -> {kind}',
++                f"   %localdim = memref.dim %local, %axis : {kind}",
++                f"   %inside = memref.load %local[{zero}] : {kind}",
++                f"   memref.store %inside, %sink[%zero] : {sink}",
++                "   scf.yield",
++                "  }",
++            ]
++        )
++    if 0 in case.shape:
++        lines.append(f"  %value = memref.load %sink[%zero] : {sink}")
++    else:
++        lines.append(f"  %value = memref.load %second[{zero}] : {kind}")
++        lines.append(f"  memref.store %value, %sink[%zero] : {sink}")
++    if case.callee:
++        lines = [
++            f"  %d0 = func.call @dimension(%second) : ({kind}) -> index"
++            if line.startswith("  %d0 = memref.dim")
++            else line
++            for line in lines
++        ]
++    lines.extend([f"  func.return %d0, %d1, %value : index, index, {scalar}", " }"])
++    if case.callee:
++        lines.extend(
++            [
++                f" func.func @dimension(%arg: {kind}) -> index {{",
++                f"  %axis = arith.constant {case.axis} : index",
++                f'  %cast = "memref.cast"(%arg) : ({kind}) -> {kind}',
++                f"  %dim = memref.dim %cast, %axis : {kind}",
++                "  func.return %dim : index",
++                " }",
++            ]
++        )
++    lines.extend([" func.func @untouched(%value: i32) -> i32 {", "  func.return %value : i32", " }", "}"])
++    return "\n".join(lines) + "\n"
++
++
++def memory_chain_source():
++    text = epoch_source(EpochCase("shape_memory_chain", (2, 3), 32, 16, 2))
++    text = text.replace("memref<?xi32>", "memref<1xi32>")
++    lines = []
++    for line in text.splitlines():
++        allocated = None
++        for epoch in (0, 1):
++            if line.startswith(f"  %buffer{epoch} = memref.alloc"):
++                allocated = epoch
++                break
++        if allocated is not None:
++            epoch = allocated
++            lines.extend(
++                [
++                    line,
++                    f'  %view{epoch} = "memref.cast"(%buffer{epoch}) : (memref<2x3xi32>) -> memref<2x3xi32>',
++                    f'  %again{epoch} = "memref.cast"(%view{epoch}) : (memref<2x3xi32>) -> memref<2x3xi32>',
++                    f"  %rows{epoch} = memref.dim %again{epoch}, %zero : memref<2x3xi32>",
++                    f"  %columns{epoch} = memref.dim %again{epoch}, %one : memref<2x3xi32>",
++                ]
++            )
++        else:
++            for epoch in (0, 1):
++                if not line.lstrip().startswith("memref.dealloc "):
++                    line = line.replace(f"%buffer{epoch}", f"%again{epoch}")
++            lines.append(line)
++    return "\n".join(lines) + "\n"
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_shape_model.py
+@@ -0,0 +1,187 @@
++"""Kernel obligation for complete typed shape-normalization module blueprints."""
++
++from .lean_graph_loops_unroll import _list, _nat, _string
++
++SHAPE_ROOTS = (
++    "GraphShapeObligation.valid",
++    "GraphShapeObligation.accepted",
++    "GraphShapeObligation.complete",
++    "GraphShapeObligation.memory",
++    "GraphShapeObligation.contextual",
++    "GraphShapeObligation.call_depth",
++    "Merlin.GraphLoopsShape.identical_cast",
++    "Merlin.GraphLoopsShape.cast_descriptor",
++    "Merlin.GraphLoopsShape.cast_address",
++    "Merlin.GraphLoopsShape.static_dimension",
++    "Merlin.GraphLoopsShape.Scope.extend",
++    "Merlin.GraphLoopsShape.Agreement.define",
++    "Merlin.GraphLoopsShape.Agreement.alias",
++    "Merlin.GraphLoopsShape.Agreement.define_many",
++    "Merlin.GraphLoopsShape.cast_result",
++    "Merlin.GraphLoopsShape.dimension_result",
++    "Merlin.GraphLoopsShape.preservation",
++    "Merlin.GraphLoopsShape.entry_equivalence",
++    "Merlin.GraphLoopsShape.Function.preservation",
++    "Merlin.GraphLoopsShape.Module.checked_calls",
++    "Merlin.GraphLoopsShape.Module.checked_complete",
++    "Merlin.GraphLoopsShape.Module.checked_memory",
++    "Merlin.GraphLoopsShape.Model.check_sound",
++    "Merlin.GraphLoopsShape.Model.checked_complete",
++    "Merlin.GraphLoopsShape.Model.checked_memory",
++    "Merlin.GraphLoopsShape.Model.checked_context",
++    "Merlin.GraphLoopsShape.zero_has_no_coordinate",
++    "Merlin.GraphLoopsShape.inconsistent_dimension",
++    "Merlin.GraphLoopsShape.observable_cast_countermodel",
++    "Merlin.GraphLoopsShape.Countermodels.same_type_different_allocation",
++    "Merlin.GraphLoopsShape.Countermodels.same_type_cannot_change_buffer",
++    "Merlin.GraphLoopsShape.Countermodels.logging_deletion",
++    "Merlin.GraphLoopsShape.Countermodels.trapping_deletion",
++    "Merlin.GraphLoopsShape.Countermodels.inconsistent_metadata",
++    "Merlin.GraphLoopsShape.Countermodels.same_type_different_base",
++)
++
++
++def view_type(row):
++    if set(row) != {"shape", "offset", "strides", "element", "space"}:
++        raise ValueError("complete descriptor type fields required")
++    return (
++        "⟨"
++        + ", ".join(
++            (
++                _list(row["shape"], _nat),
++                _nat(row["offset"]),
++                _list(row["strides"], _nat),
++                _string(row["element"]),
++                _nat(row["space"]),
++            )
++        )
++        + "⟩"
++    )
++
++
++def kind(row):
++    if row == {"tag": "index"}:
++        return ".index"
++    if set(row) == {"tag", "type"} and row["tag"] == "scalar":
++        return "(.scalar " + _string(row["type"]) + ")"
++    if set(row) == {"tag", "type"} and row["tag"] == "view":
++        return "(.view " + view_type(row["type"]) + ")"
++    raise ValueError("unknown typed graph value")
++
++
++def binding(row):
++    if set(row) != {"name", "kind", "known"}:
++        raise ValueError("complete lexical SSA binding required")
++    known = "none" if row["known"] is None else "(some " + _nat(row["known"]) + ")"
++    return "⟨" + ", ".join((_nat(row["name"]), kind(row["kind"]), known)) + "⟩"
++
++
++def bindings(rows):
++    return _list(rows, binding)
++
++
++def code(row):
++    tag = row["tag"]
++    expected = {
++        "returned": {"values"},
++        "cast": {"origin", "result", "source", "target", "rest"},
++        "dimension": {"view", "axis", "result", "type", "axisIndex", "value", "rest"},
++        "constant": {"result", "value", "rest"},
++        "action": {"key", "operands", "results", "rest"},
++        "region": {"key", "operands", "parameters", "results", "body", "rest"},
++    }
++    if tag not in expected or set(row) != expected[tag] | {"tag"}:
++        raise ValueError("unknown/incomplete program node")
++    if tag == "returned":
++        args = [bindings(row["values"])]
++    elif tag == "cast":
++        args = [binding(row["origin"]), binding(row["result"]), view_type(row["source"]), view_type(row["target"])]
++    elif tag == "dimension":
++        args = [binding(row[name]) for name in ("view", "axis", "result")] + [
++            view_type(row["type"]),
++            _nat(row["axisIndex"]),
++            _nat(row["value"]),
++        ]
++    elif tag == "constant":
++        args = [binding(row["result"]), _nat(row["value"])]
++    elif tag == "action":
++        args = [_string(row["key"]), bindings(row["operands"]), bindings(row["results"])]
++    else:
++        args = [
++            _string(row["key"]),
++            bindings(row["operands"]),
++            bindings(row["parameters"]),
++            bindings(row["results"]),
++            code(row["body"]),
++        ]
++    if tag != "returned":
++        args.append(code(row["rest"]))
++    return "(." + tag + " " + " ".join(args) + ")"
++
++
++def function(row):
++    if set(row) != {"name", "parameters", "returned", "code"}:
++        raise ValueError("complete function signature and body required")
++    return (
++        "⟨"
++        + ", ".join(
++            (_string(row["name"]), bindings(row["parameters"]), _list(row["returned"], kind), code(row["code"]))
++        )
++        + "⟩"
++    )
++
++
++def obligation(projection):
++    module = projection["module"]
++    if set(module) != {"functions", "calls"}:
++        raise ValueError("complete function/call environment required")
++    calls = _list(module["calls"], lambda pair: "(" + _string(pair[0]) + ", " + _string(pair[1]) + ")")
++    literal = (
++        "⟨"
++        + ", ".join(
++            (
++                _nat(projection["bits"]),
++                "⟨" + _list(module["functions"], function) + ", " + calls + "⟩",
++                _string(projection["source_binding"]),
++                _string(projection["target_binding"]),
++            )
++        )
++        + "⟩"
++    )
++    roots = "\n".join("#print axioms " + root for root in SHAPE_ROOTS)
++    return f"""import Merlin.GraphLoopsShapeCountermodels
++set_option autoImplicit false
++set_option maxRecDepth 16384
++set_option maxHeartbeats 4000000
++open Merlin Merlin.GraphLoopsShape
++namespace GraphShapeObligation
++def actual : Model.Projection := {literal}
++theorem valid : Model.Valid actual := by
++  simp [Model.Valid, Module.Valid, Function.Valid, GraphLoopsShape.Valid, Scope,
++    CastFacts, DimensionFacts, ConstantFacts, AllBound, Plain, Fresh, names,
++    extendContext, extendAliases, resolve, ValidDimension, actual]
++  all_goals decide
++theorem accepted : Model.check actual = true := by
++  simp only [Model.check, valid, decide_true]
++theorem complete {{Value World : Type}} (meaning : Interpretation Value World)
++    (name : String) (inputs : List (Runtime Value)) (before : World)
++    (outputs : List (Runtime Value)) (after : World) :
++    GraphLoopsShape.complete meaning actual.module false name inputs before outputs after ↔
++      GraphLoopsShape.complete meaning actual.module true name inputs before outputs after :=
++  Model.checked_complete accepted meaning name inputs before outputs after
++theorem memory {{Value Public : Type}} (meaning : Interpretation Value (MemoryWorld Value Public))
++    (classify : String → MemoryOpcode) (name : String) (inputs : List (Runtime Value))
++    (before : MemoryWorld Value Public) (outputs : List (Runtime Value)) (after : MemoryWorld Value Public) :
++    GraphLoopsShape.complete (withMemory meaning classify) actual.module false name inputs before outputs after ↔
++      GraphLoopsShape.complete (withMemory meaning classify) actual.module true name inputs before outputs after :=
++  Model.checked_memory accepted meaning classify name inputs before outputs after
++theorem contextual {{Value World Outcome : Type}} (meaning : Interpretation Value World)
++    (context : (String → RegionMeaning Value World) → Outcome) :
++    context (GraphLoopsShape.complete meaning actual.module false) =
++      context (GraphLoopsShape.complete meaning actual.module true) := Model.checked_context accepted meaning context
++theorem call_depth {{Value World : Type}} (meaning : Interpretation Value World) (depth : Nat) :
++    invoke meaning actual.module false depth = invoke meaning actual.module true depth :=
++  Module.checked_calls actual.module actual.bits (Model.check_sound accepted).1 meaning depth
++end GraphShapeObligation
++{roots}
++"""
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_shape_projection.py
+@@ -0,0 +1,267 @@
++"""Independent complete actual shape-normalization module/SSA matcher.
++
++No producer replay or saved witness is an authority. Every source/candidate
++operation, nested scope, function/callee, observer and result is matched. The
++blueprint preserves explicit source bindings and forward candidate aliases.
++"""
++
++from __future__ import annotations
++
++from .lean_graph_loops_segment_projection import _key, _metadata, _one_block, _types
++from .lean_graph_loops_shape_types import binding, index_constant, kind, operation_key, standard_yield
++
++
++class Decoder:
++    def __init__(self, before, after, *, index_bits, max_nodes):
++        if type(index_bits) is not int or index_bits not in (32, 64):
++            raise ValueError("explicit signed32/64 index domain required")
++        self.before, self.after, self.bits = before, after, index_bits
++        self.types, self.target_types = before["types"], after["types"]
++        self.source_nodes, self.target_nodes, self.nodes = [], [], 0
++        self.collect(before["tree"], self.source_nodes)
++        self.collect(after["tree"], self.target_nodes)
++        if type(max_nodes) is not int or not 0 < self.nodes <= max_nodes:
++            raise ValueError("complete module structural node budget exceeded")
++        for record in [*self.types.values(), *self.target_types.values()]:
++            kind(record)
++        self.changed, self.bound_targets, self.calls, self.sites = 0, set(), [], []
++        self.call_targets = {_key(row["operation"]): row for row in before["calls"]}
++        self.prototypes = {row["name"]: row for row in before["functions"]}
++        if len(self.prototypes) != len(before["functions"]):
++            raise ValueError("duplicate actual function declaration")
++
++    def collect(self, op, result):
++        _metadata(op)
++        self.nodes += 1
++        result.append(op)
++        for region in op["regions"]:
++            for block in region:
++                if set(block) != {"arguments", "operations"}:
++                    raise ValueError("unknown complete block fields")
++                for child in block["operations"]:
++                    self.collect(child, result)
++
++    @staticmethod
++    def operands(source, target, env):
++        if len(source) != len(target) or any(env.get(a) != b for a, b in zip(source, target, strict=True)):
++            raise ValueError("actual operand/capture/return/observer or same-shaped buffer changed")
++
++    def bind(self, source, target, env, context, *, known=None):
++        if _types(source) != _types(target):
++            raise ValueError("actual SSA argument/result type or arity changed")
++        result = []
++        for (name, _), (candidate, _) in zip(source, target, strict=True):
++            if name in context or candidate in self.bound_targets:
++                raise ValueError("source/candidate SSA definition rebound or capture scope violated")
++            env[name] = candidate
++            row = binding(name, self.types, known)
++            context[name] = row
++            self.bound_targets.add(candidate)
++            result.append(row)
++        return result
++
++    @staticmethod
++    def read(names, context):
++        try:
++            return [context[name] for name in names]
++        except KeyError as error:
++            raise ValueError("actual use before scoped SSA definition") from error
++
++    def block(self, source, target, env, context, *, terminal):
++        if not source["operations"] or not target["operations"]:
++            raise ValueError("complete nonempty block and terminator required")
++        self.bind(source["arguments"], target["arguments"], env, context)
++        commands, cursor = [], 0
++        for position, op in enumerate(source["operations"]):
++            if position == len(source["operations"]) - 1:
++                if cursor != len(target["operations"]) - 1:
++                    raise ValueError("extra/missing actual operation at whole-block boundary")
++                last = target["operations"][cursor]
++                standard_yield(op, terminal)
++                standard_yield(last, terminal)
++                if _metadata(op) != _metadata(last):
++                    raise ValueError("actual terminator metadata changed")
++                self.operands(op["operands"], last["operands"], env)
++                returned = self.read(op["operands"], context)
++                code = dict(tag="returned", values=returned)
++                break
++            candidate = target["operations"][cursor] if cursor < len(target["operations"]) else None
++            if op["name"] == "memref.cast":
++                if (
++                    op["attributes"]
++                    or op["properties"]
++                    or op["regions"]
++                    or len(op["operands"]) != 1
++                    or len(op["results"]) != 1
++                ):
++                    raise ValueError("unsupported identity-cast metadata/shape")
++                origin = self.read(op["operands"], context)[0]
++                actual_source = self.types[str(origin["name"])]
++                actual_result = self.types[str(op["results"][0][0])]
++                if origin["kind"]["tag"] != "view" or actual_source != actual_result:
++                    raise ValueError("only exactly identical actual view types may be erased")
++                name = op["results"][0][0]
++                if name in context:
++                    raise ValueError("elided cast rebound an existing SSA value")
++                result = binding(name, self.types)
++                context[name] = result
++                env[name] = env[origin["name"]]
++                commands.append(
++                    dict(
++                        tag="cast",
++                        origin=origin,
++                        result=result,
++                        source=origin["kind"]["type"],
++                        target=result["kind"]["type"],
++                    )
++                )
++                self.changed += 1
++                self.sites.append(
++                    dict(kind="cast", source_operation=_key(op), elided_result=name, candidate_value=env[name])
++                )
++                continue
++            if candidate is None:
++                raise ValueError("actual candidate operation missing")
++            if op["name"] == "memref.dim":
++                if (
++                    op["attributes"]
++                    or op["properties"]
++                    or op["regions"]
++                    or len(op["operands"]) != 2
++                    or len(op["results"]) != 1
++                ):
++                    raise ValueError("unsupported dimension metadata/arity")
++                view, axis = self.read(op["operands"], context)
++                if view["kind"]["tag"] != "view" or axis["known"] is None:
++                    raise ValueError("whole boundary requires a statically defined dimension axis")
++                index, shape = axis["known"], view["kind"]["type"]["shape"]
++                if not 0 <= index < len(shape):
++                    raise ValueError("dimension axis outside declared shape")
++                actual = index_constant(candidate, self.target_types)
++                result = self.bind(op["results"], candidate["results"], env, context, known=shape[index])[0]
++                commands.append(
++                    dict(
++                        tag="dimension",
++                        view=view,
++                        axis=axis,
++                        result=result,
++                        type=view["kind"]["type"],
++                        axisIndex=index,
++                        value=actual,
++                    )
++                )
++                self.changed += 1
++                self.sites.append(
++                    dict(
++                        kind="dimension",
++                        source_operation=_key(op),
++                        candidate_operation=_key(candidate),
++                        expected_value=shape[index],
++                        candidate_value=actual,
++                    )
++                )
++            else:
++                if _metadata(op) != _metadata(candidate):
++                    raise ValueError("actual retained operation/attribute/property/observer changed")
++                self.operands(op["operands"], candidate["operands"], env)
++                operands = self.read(op["operands"], context)
++                if op["name"] == "arith.constant" and op["index_constant"] is not None:
++                    value = index_constant(op, self.types)
++                    index_constant(candidate, self.target_types)
++                    result = self.bind(op["results"], candidate["results"], env, context, known=value)[0]
++                    commands.append(dict(tag="constant", result=result, value=value))
++                elif op["regions"]:
++                    if op["name"] != "scf.for" or op["attributes"] or op["properties"] or len(op["operands"]) < 3:
++                        raise ValueError("only explicit single-body SCF regions are admitted")
++                    if (
++                        any(item["kind"] != dict(tag="index") for item in operands[:3])
++                        or any(item["known"] is None for item in operands[:3])
++                        or operands[2]["known"] <= 0
++                    ):
++                        raise ValueError("SCF requires static nonnegative controls and positive stride")
++                    if len(candidate["regions"]) != 1:
++                        raise ValueError("actual SCF region count changed")
++                    first, second = _one_block(op), _one_block(candidate)
++                    if _types(first["arguments"]) != ["index", *_types(op["results"])]:
++                        raise ValueError("actual SCF argument/carry types unsupported")
++                    parameters = [binding(name, self.types) for name, _ in first["arguments"]]
++                    body = self.block(first, second, dict(env), dict(context), terminal="scf.yield")
++                    results = self.bind(op["results"], candidate["results"], env, context)
++                    commands.append(
++                        dict(
++                            tag="region",
++                            key=operation_key(op),
++                            operands=operands,
++                            parameters=parameters,
++                            results=results,
++                            body=body,
++                        )
++                    )
++                else:
++                    if candidate["regions"]:
++                        raise ValueError("actual retained operation gained hidden control/effects")
++                    if op["name"] in ("memref.subview", "memref.reinterpret_cast", "memref.view", "memref.reshape"):
++                        raise ValueError("unknown descriptor/alias construction is outside this admitted boundary")
++                    results = self.bind(op["results"], candidate["results"], env, context)
++                    key = operation_key(op)
++                    commands.append(dict(tag="action", key=key, operands=operands, results=results))
++                    if op["name"] == "func.call":
++                        call = self.call_targets.get(_key(op))
++                        if call is None or call["nested"]:
++                            raise ValueError("actual call target/declaration unavailable")
++                        self.calls.append([key, call["target"]])
++            cursor += 1
++        for command in reversed(commands):
++            code = dict(command, rest=code)
++        return code
++
++    def project(self):
++        source, target = self.before["tree"], self.after["tree"]
++        if (
++            source["name"] != "builtin.module"
++            or _metadata(source) != _metadata(target)
++            or any(source[field] for field in ("operands", "results", "attributes", "properties"))
++        ):
++            raise ValueError("complete plain module boundary required")
++        first, second = _one_block(source), _one_block(target)
++        if first["arguments"] or second["arguments"] or len(first["operations"]) != len(second["operations"]):
++            raise ValueError("actual module scope/function count changed")
++        functions = []
++        for op, candidate, prototype in zip(
++            first["operations"], second["operations"], self.before["functions"], strict=True
++        ):
++            if op["name"] != "func.func" or _metadata(op) != _metadata(candidate) or op["operands"] or op["results"]:
++                raise ValueError("actual complete function/signature/visibility changed")
++            for record in prototype["parameters"] + prototype["returned"]:
++                kind(record)
++            if prototype["declaration"]:
++                if op != candidate:
++                    raise ValueError("external declaration changed")
++                continue
++            body, after_body = _one_block(op), _one_block(candidate)
++            parameters = [binding(name, self.types) for name, _ in body["arguments"]]
++            code = self.block(body, after_body, {}, {}, terminal="func.return")
++            functions.append(
++                dict(
++                    name=prototype["name"],
++                    parameters=parameters,
++                    returned=[kind(record) for record in prototype["returned"]],
++                    code=code,
++                )
++            )
++        if not self.changed:
++            raise ValueError("identity/declined normalization is separate from changed qualification")
++        return dict(
++            bits=self.bits,
++            module=dict(functions=functions, calls=self.calls),
++            changed_sites=self.sites,
++            structural_nodes=self.nodes,
++            source_binding=_key(source),
++            target_binding=_key(target),
++            typed_descriptor_conformance_is_premise=True,
++            python_projection_trusted=True,
++        )
++
++
++def project_exports(before, after, *, index_bits, max_nodes):
++    return Decoder(before, after, index_bits=index_bits, max_nodes=max_nodes).project()
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_shape_runtime.py
+@@ -0,0 +1,157 @@
++"""Finite xDSL shape-pass executions, separate from proof and native fidelity.
++
++Only identity casts and dimension reads are excluded from the retained-operation
++trace, after checking their descriptor domain. Index constant materialization is
++also unobserved. Partial memory operations validate coordinates and initialization.
++"""
++
++from __future__ import annotations
++
++from math import prod
++
++
++def execute(module, inputs, *, function, index_bits, max_cells=4096):
++    from xdsl.dialects import arith, builtin, func, memref
++    from xdsl.interpreter import Interpreter, InterpreterFunctions, impl, register_impls
++    from xdsl.interpreters.arith import ArithFunctions
++    from xdsl.interpreters.func import FuncFunctions
++    from xdsl.interpreters.memref import MemRefFunctions, xtype_for_el_type
++    from xdsl.interpreters.scf import ScfFunctions
++    from xdsl.interpreters.shaped_array import ShapedArray
++    from xdsl.interpreters.utils.ptr import TypedPtr
++
++    if index_bits not in (32, 64) or type(max_cells) is not int or max_cells <= 0:
++        raise ValueError("finite execution requires explicit index width and positive allocation budget")
++    module.verify()
++    entry = next(op for op in module.walk() if isinstance(op, func.FuncOp) and op.sym_name.data == function)
++    if len(inputs) != len(entry.function_type.inputs):
++        raise ValueError("entry argument arity differs")
++    memories, private = {}, {}
++
++    def descriptor(array, kind):
++        if not isinstance(kind, builtin.MemRefType) or not isinstance(array, ShapedArray):
++            raise ValueError("finite view requires a ranked descriptor")
++        if not isinstance(kind.layout, builtin.NoneAttr) or not isinstance(kind.memory_space, builtin.NoneAttr):
++            raise ValueError("finite view requires identity layout and default space")
++        if list(kind.get_shape()) != array.shape or any(size < 0 for size in array.shape):
++            raise ValueError("runtime descriptor violates static source type")
++        if prod(array.shape) > max_cells:
++            raise ValueError("finite runtime refuses large volume; symbolic proof remains separate")
++
++    for index, (value, kind) in enumerate(zip(inputs, entry.function_type.inputs, strict=True)):
++        if isinstance(kind, builtin.MemRefType):
++            descriptor(value, kind)
++            memories.setdefault(id(value), dict(name=f"input{index}", array=value))
++        elif not isinstance(kind, (builtin.IntegerType, builtin.IndexType)) or type(value) is not int:
++            raise ValueError("finite scalar entry domain unsupported")
++
++    def access(array, indices):
++        if id(array) not in memories or len(indices) != len(array.shape):
++            raise ValueError("unknown descriptor/rank in finite memory access")
++        if any(type(i) is not int or not 0 <= i < size for i, size in zip(indices, array.shape, strict=True)):
++            raise ValueError("out-of-bounds finite memory access")
++        if id(array) in private and not private[id(array)]["live"]:
++            raise ValueError("use after free in finite execution")
++
++    @register_impls
++    class CheckedMemory(InterpreterFunctions):
++        @impl(memref.CastOp)
++        def cast(self, interpreter, op, args):
++            (array,) = args
++            if op.source.type != op.dest.type:
++                raise ValueError("finite shape witness only admits identical casts")
++            descriptor(array, op.source.type)
++            return (array,)
++
++        @impl(memref.DimOp)
++        def dimension(self, interpreter, op, args):
++            array, axis = args
++            descriptor(array, op.source.type)
++            if not 0 <= axis < len(array.shape):
++                raise ValueError("dimension axis out of range")
++            return (array.shape[axis],)
++
++        @impl(memref.AllocOp)
++        def allocate(self, interpreter, op, args):
++            kind = op.memref.type
++            shape = list(kind.get_shape())
++            if args or any(size < 0 for size in shape) or prod(shape) > max_cells:
++                raise ValueError("finite allocation outside static bounded domain")
++            array = ShapedArray(
++                TypedPtr.new([73] * prod(shape), xtype=xtype_for_el_type(kind.get_element_type(), index_bits)), shape
++            )
++            descriptor(array, kind)
++            memories[id(array)] = dict(name=f"private{len(private)}", array=array)
++            private[id(array)] = dict(live=True, initialized=set())
++            return (array,)
++
++        @impl(memref.DeallocOp)
++        def release(self, interpreter, op, args):
++            (array,) = args
++            if id(array) not in private or not private[id(array)]["live"]:
++                raise ValueError("invalid/double private free")
++            private[id(array)]["live"] = False
++            return ()
++
++        @impl(memref.LoadOp)
++        def load(self, interpreter, op, args):
++            array, *indices = args
++            access(array, indices)
++            if id(array) in private and tuple(indices) not in private[id(array)]["initialized"]:
++                raise ValueError("uninitialized private read")
++            return (array.load(tuple(indices)),)
++
++        @impl(memref.StoreOp)
++        def store(self, interpreter, op, args):
++            value, array, *indices = args
++            access(array, indices)
++            array.store(tuple(indices), value)
++            if id(array) in private:
++                private[id(array)]["initialized"].add(tuple(indices))
++            return ()
++
++    def snapshot(value):
++        if isinstance(value, ShapedArray):
++            return dict(view=memories[id(value)]["name"], shape=list(value.shape), cells=list(value.data))
++        if type(value) is not int:
++            raise ValueError("unknown finite observation")
++        return value
++
++    def tracked(op):
++        if isinstance(op, (memref.CastOp, memref.DimOp)):
++            return False
++        if isinstance(op, arith.ConstantOp) and isinstance(op.result.type, builtin.IndexType):
++            return False
++        return op.name.startswith(("memref.", "arith.", "func."))
++
++    class Listener(Interpreter.Listener):
++        def __init__(self):
++            self.trace = []
++
++        def will_interpret_op(self, op, args):
++            if tracked(op):
++                self.trace.append(dict(phase="before", operation=op.name, values=[snapshot(arg) for arg in args]))
++
++        def did_interpret_op(self, op, results):
++            if tracked(op):
++                self.trace.append(dict(phase="after", operation=op.name, values=[snapshot(value) for value in results]))
++
++    listener = Listener()
++    interpreter = Interpreter(module, index_bitwidth=index_bits, listeners=(listener,))
++    for functions in (ArithFunctions(), ScfFunctions(), MemRefFunctions(), FuncFunctions()):
++        interpreter.register_implementations(functions)
++    interpreter.register_implementations(CheckedMemory(), override=True)
++    outputs = interpreter.call_op(function, inputs)
++    if any(row["live"] for row in private.values()):
++        raise ValueError("finite closed-allocation witness has a missing free")
++    return dict(
++        outputs=[snapshot(value) for value in outputs],
++        trace=listener.trace,
++        input_memories=[snapshot(row["array"]) for identity, row in memories.items() if identity not in private],
++        initialized_private_reads=True,
++        valid_private_frees=True,
++        descriptor_conformance_checked_on_finite_entries=True,
++        actual_native_execution=False,
++        native_or_abi_fidelity_proved=False,
++        python_interpreter_and_trace_projection_trusted=True,
++    )
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_shape_selection.py
+@@ -0,0 +1,144 @@
++"""Original source/object/SDK selection for the standalone shape validator.
++
++The inherited memory packet supplies fixed bytes, not a semantic allocator bridge.
++A contract digest binds a selection; independent/native review is still separate.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import subprocess
++from dataclasses import dataclass
++from pathlib import Path
++
++from .lean_graph_loops import LeanSelection, _reference
++from .lean_graph_loops_memory_scf_selection import load_selection as load_parent
++from .lean_graph_loops_shape_model import SHAPE_ROOTS
++
++
++@dataclass(frozen=True)
++class ShapeSelection:
++    proof: LeanSelection
++    source: Path
++    revision: str
++    manifest: Path
++    manifest_sha256: str
++    fixed_context: Path
++    fixed_context_sha256: str
++    contract: Path
++    contract_sha256: str
++
++    @staticmethod
++    def checked(path, digest, label):
++        before = path.stat()
++        data = path.read_bytes()
++        after = path.stat()
++        if (before.st_ino, before.st_size, before.st_mtime_ns) != (
++            after.st_ino,
++            after.st_size,
++            after.st_mtime_ns,
++        ) or hashlib.sha256(data).hexdigest() != digest:
++            raise ValueError("originally selected " + label + " changed")
++        return json.loads(data), _reference(path, data)
++
++    def dependencies(self):
++        contract, contract_ref = self.checked(self.contract, self.contract_sha256, "shape contract")
++        context = {
++            name: str(value.resolve()) if isinstance(value, Path) else value
++            for name, value in vars(self).items()
++            if name not in ("proof", "contract", "contract_sha256")
++        }
++        proof = {
++            name: str(value.resolve()) if isinstance(value, Path) else value for name, value in vars(self.proof).items()
++        }
++        if contract["selected_context"] != dict(context, proof=proof):
++            raise ValueError("replacement shape proof/source/tool context differs from original policy")
++        if (
++            contract["descriptor_policy"] != "typed_static_identity_layout"
++            or contract["allocator_policy"] != "retained_partial_observable"
++        ):
++            raise ValueError("unsupported shape descriptor/operator/allocator policy")
++        fixed, fixed_ref = self.checked(self.fixed_context, self.fixed_context_sha256, "original unaffected context")
++        parent = load_parent(Path(fixed["prior_selection"]["path"]))
++        if (
++            _reference(Path(fixed["prior_selection"]["path"])) != fixed["prior_selection"]
++            or parent.dependencies() != fixed["prior_dependencies"]
++        ):
++            raise ValueError("original parent source/object/import/host bindings changed")
++        manifest, manifest_ref = self.checked(
++            self.manifest, self.manifest_sha256, "actual shape provider/parser manifest"
++        )
++        observed = subprocess.check_output(["git", "-C", str(self.source), "rev-parse", "HEAD"], text=True).strip()
++        if observed != self.revision or manifest["producer_revision"] != self.revision:
++            raise ValueError("selected actual shape provider revision changed")
++        build = json.loads(self.proof.build_record.read_bytes())
++        if sorted(row["module"] for row in build["attempts"]) != contract["proof_modules"]:
++            raise ValueError("complete selected shape source/object closure required")
++        assessment_ref, audit_ref = contract["unaffected_assessment"], contract["root_audit"]
++        assessment, _ = self.checked(Path(assessment_ref["path"]), assessment_ref["sha256"], "import assessment")
++        audit, _ = self.checked(Path(audit_ref["path"]), audit_ref["sha256"], "root audit")
++        if (
++            not assessment["verified_unaffected"]
++            or assessment["suspect_selected"]
++            or assessment["rehash_to_promote"]
++            or assessment["toolchain_written"]
++            or assessment["returncode"] != 0
++            or assessment["missing_original_bindings"]
++            or assessment["changed"]
++            or not assessment["original_bindings_preserved"]
++            or assessment["original_context"] != fixed_ref
++        ):
++            raise ValueError("shape context affected/unconfirmed or repaired")
++        project_modules = sorted(
++            row["module"] for row in assessment["actual_imports"] if row["module"].startswith("Merlin.")
++        )
++        if project_modules != contract["proof_modules"]:
++            raise ValueError("selected project closure differs from the actual inspected imports")
++        if audit["returncode"] != 0 or not audit["bindings_unchanged"] or set(audit["audit"]) != set(SHAPE_ROOTS):
++            raise ValueError("successful exact-root transitive shape audit required")
++        if any(not set(names) <= {"propext", "Classical.choice", "Quot.sound"} for names in audit["audit"].values()):
++            raise ValueError("unapproved shape axiom")
++        if not manifest["producer_source"] or not manifest["xdsl_loaded_source"]:
++            raise ValueError("actual loaded shape parser/provider inventory missing")
++        rows = (
++            [assessment_ref, audit_ref]
++            + manifest["producer_source"]
++            + manifest["xdsl_loaded_source"]
++            + contract["host_sources"]
++        )
++        rows += [row["object"] for row in fixed["copied_objects"]]
++        for row in rows:
++            expected = {name: row[name] for name in ("path", "sha256", "bytes")}
++            path = Path(row["path"])
++            before = path.stat()
++            actual = _reference(path)
++            after = path.stat()
++            if (before.st_ino, before.st_size, before.st_mtime_ns) != (
++                after.st_ino,
++                after.st_size,
++                after.st_mtime_ns,
++            ) or actual != expected:
++                raise ValueError("original shape source/host/object binding changed: " + row["path"])
++        return dict(
++            proof=self.proof.dependencies(),
++            contract=contract_ref,
++            provider_manifest=manifest_ref,
++            original_fixed_context=fixed_ref,
++            original_parent_bindings=fixed["prior_dependencies"],
++            checked_sources=rows,
++            allocator_policy=contract["allocator_policy"],
++            descriptor_fidelity_and_review_pending=True,
++            original_imports_verified_unaffected=True,
++            old_allocator_premise_not_assumed_for_standalone_shape=True,
++        )
++
++
++def load_selection(path):
++    data = json.loads(Path(path).read_bytes())
++    for name in ("executable", "library", "build_record"):
++        data["proof"][name] = Path(data["proof"][name])
++    data["proof"] = LeanSelection(**data["proof"])
++    for name in ("source", "manifest", "fixed_context", "contract"):
++        data[name] = Path(data[name])
++    return ShapeSelection(**data)
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_shape_types.py
+@@ -0,0 +1,47 @@
++"""Lossless typed view/operation projection helpers, trusted Python."""
++
++from .lean_graph_loops_segment_projection import _key, _metadata, _types
++
++
++def kind(record):
++    tag = record["kind"]
++    if tag == "index":
++        return dict(tag="index")
++    if tag == "scalar":
++        if record["spelling"] not in ("i1", "i8", "i16", "i32", "i64"):
++            raise ValueError("only declared signless scalar widths are admitted in this graph mode")
++        return dict(tag="scalar", type=record["spelling"])
++    if tag != "view" or not record["static"] or not record["contiguous"] or not record["default_space"]:
++        raise ValueError("whole boundary requires static ranked identity-layout default-space views")
++    if not record["shape"] or record["element"] not in ("i8", "i16", "i32", "i64"):
++        raise ValueError("ranked integer view domain required")
++    return dict(tag="view", type={name: record[name] for name in ("shape", "offset", "strides", "element", "space")})
++
++
++def binding(identity, types, known=None):
++    return dict(name=identity, kind=kind(types[str(identity)]), known=known)
++
++
++def operation_key(op):
++    return _key(dict(_metadata(op), operand_arity=len(op["operands"]), result_types=_types(op["results"])))
++
++
++def standard_yield(op, name):
++    if op["name"] != name or any(op[field] for field in ("attributes", "properties", "results", "regions")):
++        raise ValueError("exact standard function return or region yield required")
++
++
++def index_constant(op, types):
++    if (
++        op["name"] != "arith.constant"
++        or op["attributes"]
++        or op["operands"]
++        or op["regions"]
++        or set(dict(op["properties"])) != {"value"}
++        or len(op["results"]) != 1
++        or kind(types[str(op["results"][0][0])]) != dict(tag="index")
++        or type(op["index_constant"]) is not int
++        or op["index_constant"] < 0
++    ):
++        raise ValueError("explicit fitting nonnegative index constant required")
++    return op["index_constant"]
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_shape_witness.py
+@@ -0,0 +1,220 @@
++"""Generate untrusted nonzero witness terms for the actual typed memory model.
++
++Lean rechecks every step against the full submitted source blueprint. This is an
++inhabited abstract interpretation, not native execution or a replacement pass.
++"""
++
++import json
++
++from .lean_graph_loops_shape_model import binding, obligation, view_type
++from .lean_graph_loops_unroll import _list, _nat, _string
++
++WITNESS_ROOTS = (
++    "GraphShapeWitness.source_inhabited",
++    "GraphShapeWitness.target_inhabited",
++    "GraphShapeWitness.caller_value",
++    "Merlin.GraphLoopsShape.Load.ready",
++    "Merlin.GraphLoopsShape.Store.ready",
++    "Merlin.GraphLoopsShape.SCF.once",
++)
++
++
++def witness_obligation(projection):
++    function = projection["module"]["functions"][0]
++    if function["name"] != "probe" or any(row["kind"]["tag"] != "view" for row in function["parameters"]):
++        raise ValueError("finite descriptor witness supports the explicit view probe family")
++    declarations, env = [], {}
++    for index, row in enumerate(function["parameters"]):
++        data = row["kind"]["type"]
++        ty = view_type(data)
++        fields = (
++            _nat(index + 1),
++            _nat(100 * (index + 1)),
++            _nat(data["offset"]),
++            _list(data["shape"], _nat),
++            _list(data["strides"], _nat),
++            _string(data["element"]),
++            _nat(data["space"]),
++        )
++        declarations.extend(
++            [
++                f"def ty{index} : ViewType := {ty}",
++                f"def descriptor{index} : Descriptor := ⟨" + ", ".join(fields) + "⟩",
++                f"theorem valid{index} : Conforms ty{index} descriptor{index} := by decide",
++                f"def arg{index} : Runtime Nat := .view ty{index} descriptor{index} valid{index}",
++            ]
++        )
++        env[row["name"]] = dict(tag="view", index=index, type=data, allocation=index + 1, base=100 * (index + 1))
++    classes = {}
++
++    def collect(code):
++        if code["tag"] == "returned":
++            return
++        if code["tag"] in ("action", "region"):
++            name = json.loads(code["key"])["name"]
++            classes[code["key"]] = {"memref.load": "load", "memref.store": "store", "scf.for": "loop"}.get(
++                name, "other"
++            )
++            if code["tag"] == "region":
++                collect(code["body"])
++        collect(code["rest"])
++
++    collect(function["code"])
++    classify = ".other"
++    for key, opcode in reversed(list(classes.items())):
++        classify = f"if key = {_string(key)} then .{opcode} else ({classify})"
++    worlds, current_cells = [], {}
++
++    def literal(value):
++        if value["tag"] == "view":
++            return "arg" + str(value["index"])
++        if value["tag"] == "index":
++            return "(.index " + str(value["value"]) + ")"
++        return "(.scalar " + _string(value["type"]) + " " + str(value["value"]) + ")"
++
++    def typed(rows, values):
++        result = "ValuesHold.nil"
++        for row, value in reversed(list(zip(rows, values, strict=True))):
++            result = f"(ValuesHold.cons (Binding.holds_plain {binding(row)} {literal(value)} rfl rfl) {result})"
++        return result
++
++    def evaluate(code, bindings_env, world):
++        tag = code["tag"]
++        if tag == "returned":
++            return [bindings_env[row["name"]] for row in code["values"]], world, ["exact ⟨rfl, rfl⟩"]
++        local = dict(bindings_env)
++        proof = []
++        if tag == "constant":
++            local[code["result"]["name"]] = dict(tag="index", value=code["value"])
++            proof.append("apply Eval.source_constant")
++        elif tag == "cast":
++            value = local[code["origin"]["name"]]
++            local[code["result"]["name"]] = value
++            proof.extend([f"apply Eval.source_cast {literal(value)}", "· rfl"])
++        elif tag == "dimension":
++            local[code["result"]["name"]] = dict(tag="index", value=code["value"])
++            proof.extend([f"apply Eval.source_dimension (actual := {code['value']})", "· rfl"])
++        elif tag == "action":
++            opcode = classes[code["key"]]
++            values = [local[row["name"]] for row in code["operands"]]
++            if opcode == "load":
++                view, *indices = values
++                coordinates = [value["value"] for value in indices]
++                address = (
++                    view["base"]
++                    + view["type"]["offset"]
++                    + sum(a * b for a, b in zip(view["type"]["strides"], coordinates, strict=True))
++                )
++                stored = current_cells.get((view["allocation"], address), {1: 17, 2: 29, 3: 91}[view["allocation"]])
++                returned = [dict(tag="scalar", type=view["type"]["element"], value=stored)]
++                run = (
++                    f"Load.ready ty{view['index']} descriptor{view['index']} valid{view['index']} "
++                    f"{_list(coordinates, _nat)} {stored} {world} "
++                    f"(by simp [descriptor{view['index']}, Merlin.GraphLoopsReuse.Geometry.Coordinate]) (by rfl)"
++                )
++                next_world = world
++            elif opcode == "store":
++                scalar, view, *indices = values
++                coordinates = [value["value"] for value in indices]
++                address = (
++                    view["base"]
++                    + view["type"]["offset"]
++                    + sum(a * b for a, b in zip(view["type"]["strides"], coordinates, strict=True))
++                )
++                next_world = "world" + str(len(worlds) + 1)
++                worlds.append(
++                    f"def {next_world} : MemoryWorld Nat (List Nat) := ⟨{world}.observed, "
++                    f"Merlin.GraphLoopsReuse.replaceCell {world}.heap "
++                    f"{view['allocation']} {address} {scalar['value']}⟩"
++                )
++                current_cells[view["allocation"], address] = scalar["value"]
++                returned = []
++                run = (
++                    f"Store.ready ty{view['index']} descriptor{view['index']} valid{view['index']} "
++                    f"{_list(coordinates, _nat)} {scalar['value']} {world} "
++                    f"(by simp [descriptor{view['index']}, Merlin.GraphLoopsReuse.Geometry.Coordinate])"
++                )
++            else:
++                raise ValueError("finite witness has no unproved opaque operation meaning")
++            values_literal = _list(returned, literal)
++            proof.extend(
++                [
++                    f"apply Eval.source_action {values_literal} {next_world}",
++                    f"· exact {run}",
++                    f"· exact {typed(code['results'], returned)}",
++                ]
++            )
++            for row, value in zip(code["results"], returned, strict=True):
++                local[row["name"]] = value
++            world = next_world
++        elif tag == "region":
++            values = [local[row["name"]] for row in code["operands"]]
++            if [value.get("value") for value in values] != [0, 1, 1] or code["results"]:
++                raise ValueError(
++                    "finite witness supports one explicit no-carry iteration; general theorem is not bounded here"
++                )
++            child_env = dict(local)
++            child_inputs = [dict(tag="index", value=0)]
++            for row, value in zip(code["parameters"], child_inputs, strict=True):
++                child_env[row["name"]] = value
++            returned, next_world, child_proof = evaluate(code["body"], child_env, world)
++            if returned:
++                raise ValueError("finite no-carry body must yield no values")
++            proof.extend(
++                [
++                    f"apply Eval.source_region [] {next_world}",
++                    "· apply SCF.once",
++                    f"  refine ⟨{typed(code['parameters'], child_inputs)}, ?_⟩",
++                ]
++            )
++            proof.extend("  " + line for line in child_proof)
++            proof.append("· exact ValuesHold.nil")
++            world = next_world
++        else:
++            raise ValueError("unknown witness syntax")
++        outputs, final, remaining = evaluate(code["rest"], local, world)
++        if tag in ("cast", "dimension", "action", "region"):
++            proof.extend(["· " + remaining[0], *["  " + line for line in remaining[1:]]])
++        else:
++            proof.extend(remaining)
++        return outputs, final, proof
++
++    outputs, after, proof = evaluate(function["code"], env, "before")
++    args = [env[row["name"]] for row in function["parameters"]]
++    arg_literal, out_literal = _list(args, literal), _list(outputs, literal)
++    code_source = obligation(projection)
++    caller_value = current_cells.get((3, 300), 91)
++    roots = "\n".join("#print axioms " + root for root in WITNESS_ROOTS)
++    return (
++        code_source
++        + f"""
++namespace GraphShapeWitness
++open Merlin Merlin.GraphLoopsShape
++abbrev actual := GraphShapeObligation.actual
++{chr(10).join(declarations)}
++def classify (key : String) : MemoryOpcode := {classify}
++def base : Interpretation Nat (MemoryWorld Nat (List Nat)) where
++  action := fun _ _ _ _ _ => False
++  region := fun _ _ _ _ _ _ => False
++def meaning := withMemory base classify
++def inputs : List (Runtime Nat) := {arg_literal}
++def before : MemoryWorld Nat (List Nat) := ⟨[], fun object _ =>
++  if object = 1 then some 17 else if object = 2 then some 29 else if object = 3 then some 91 else none⟩
++{chr(10).join(worlds)}
++def after : MemoryWorld Nat (List Nat) := {after}
++def outputs : List (Runtime Nat) := {out_literal}
++theorem source_inhabited : complete meaning actual.module false "probe" inputs before outputs after := by
++  refine ⟨1, ?_⟩
++  change ValuesHold actual.module.functions[0].parameters inputs ∧
++    Eval (withCalls meaning actual.module (invoke meaning actual.module false 0)) false
++      (extendAliases [] actual.module.functions[0].parameters) actual.module.functions[0].code
++      (assign emptyEnv actual.module.functions[0].parameters inputs) before outputs after
++  refine ⟨{typed(function["parameters"], args)}, ?_⟩
++{chr(10).join("  " + line for line in proof)}
++theorem target_inhabited : complete meaning actual.module true "probe" inputs before outputs after :=
++  (GraphShapeObligation.complete meaning "probe" inputs before outputs after).mp source_inhabited
++theorem caller_value : after.heap 3 300 = some {caller_value} := by rfl
++end GraphShapeWitness
++{roots}
++"""
++    )
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_loops_shape.py
+@@ -0,0 +1,289 @@
++"""Whole actual shape boundaries and compiler-valid independent mutations."""
++
++from __future__ import annotations
++
++import io
++import json
++import os
++from pathlib import Path
++
++import pytest
++from xdsl.context import Context
++from xdsl.dialects import arith, builtin, func, memref, scf
++from xdsl.parser import Parser
++from xdsl.printer import Printer
++
++from merlin.common.paths import repo_root
++from merlin.verify.lean_graph_loops_shape import verify_shape_files
++from merlin.verify.lean_graph_loops_shape_model import SHAPE_ROOTS
++from merlin.verify.lean_graph_loops_shape_selection import load_selection
++
++
++def context_data():
++    selected = os.environ.get("MERLIN_GRAPH_SHAPE_SELECTION")
++    if not selected:
++        pytest.skip("explicit unaffected shape proof/source selection unavailable")
++    base = repo_root() / "out/artifacts/verification/graph-shape-normalization"
++    cases = {
++        name: (
++            base / f"actual-cases-v2/{name}.mlir",
++            base / f"actual-cases-v2/{name}/after.mlir",
++            32 if name == "rank_one" else 64,
++        )
++        for name in ("rank_one", "rank_two", "rank_three", "nested_captures", "zero_metadata_only", "compact_huge")
++    }
++    cases["callee_dimensions"] = (
++        base / "additional-cases-v1/callee_dimensions.mlir",
++        base / "additional-cases-v1/callee_dimensions/after.mlir",
++        64,
++    )
++    cases["shape_memory_chain"] = (
++        base / "additional-cases-v2/shape_memory_chain.mlir",
++        base / "additional-cases-v2/shape_memory_chain/after.mlir",
++        64,
++    )
++    return load_selection(selected), cases
++
++
++@pytest.fixture(scope="module")
++def context():
++    return context_data()
++
++
++def parse(text):
++    context = Context(allow_unregistered=True)
++    for dialect in (builtin.Builtin, arith.Arith, scf.Scf, memref.MemRef, func.Func):
++        context.load_dialect(dialect)
++    module = Parser(context, text).parse_module()
++    module.verify()
++    return module
++
++
++def render(module):
++    stream = io.StringIO()
++    Printer(stream=stream, print_generic_format=True).print_op(module)
++    return stream.getvalue()
++
++
++def check(context, output, *, name="rank_two", texts=None, policy="typed_static_identity_layout", max_nodes=5000):
++    selection, cases = context
++    before, after, bits = cases[name]
++    if texts is not None:
++        output.mkdir(parents=True, exist_ok=True)
++        before, after = output / "source.mlir", output / "candidate.mlir"
++        before.write_text(texts[0])
++        after.write_text(texts[1])
++    return verify_shape_files(
++        before,
++        after,
++        selection=selection,
++        output=output / "proof",
++        index_bits=bits,
++        max_nodes=max_nodes,
++        descriptor_policy=policy,
++    )
++
++
++@pytest.mark.parametrize(
++    "name",
++    (
++        "rank_one",
++        "rank_two",
++        "rank_three",
++        "nested_captures",
++        "zero_metadata_only",
++        "compact_huge",
++        "callee_dimensions",
++        "shape_memory_chain",
++    ),
++)
++def test_actual_whole_module(context, tmp_path, name):
++    result = check(context, tmp_path, name=name)
++    assert result["lean_complete_shape_checked"] and result["returncode"] == 0
++    assert list(result["transitive_axioms"]) == list(SHAPE_ROOTS)
++    assert result["returned_values_and_entire_world"] and result["private_ssa_stacks_related_not_equated"]
++    assert result["retained_operations_may_be_partial_and_observable"]
++    assert result["typed_runtime_descriptor_fidelity_is_premise"]
++    assert not any(
++        result[key]
++        for key in (
++            "ordinary_compiler_gating",
++            "pipeline_receipt_issued",
++            "old_epoch_model_adapter_proved",
++            "independent_review_complete",
++            "numerical_gates_discharged",
++            "categorized_error_or_divergence_equivalence",
++            "native_allocator_abi_hardware_conformance_proved",
++        )
++    )
++    model = json.loads(Path(result["model"]["path"]).read_bytes())
++    assert {site["kind"] for site in model["changed_sites"]} == {"cast", "dimension"}
++
++
++def mutate(module, kind):
++    function = next(op for op in module.walk() if isinstance(op, func.FuncOp))
++    block = function.body.block
++    constants = [op for op in block.ops if isinstance(op, arith.ConstantOp)]
++    zero = next(op for op in constants if op.value.value.data == 0)
++    one = next(op for op in constants if op.value.value.data == 1)
++    loads = [op for op in function.walk() if isinstance(op, memref.LoadOp)]
++    ret = next(op for op in block.ops if isinstance(op, func.ReturnOp))
++    if kind == "wrong_buffer":
++        loads[-1].operands = (block.args[1], *loads[-1].operands[1:])
++    elif kind == "wrong_coordinate":
++        loads[-1].operands = (*loads[-1].operands[:-1], one.result)
++    elif kind in ("wrong_dimension", "wrong_other_axis"):
++        dimension = constants[-2] if kind == "wrong_dimension" else constants[-1]
++        dimension.properties["value"] = builtin.IntegerAttr.from_index_int_value(7)
++    elif kind == "changed_return":
++        ret.operands = (ret.operands[1], ret.operands[0], ret.operands[2])
++    elif kind == "extra_effect":
++        store = next(op for op in function.walk() if isinstance(op, memref.StoreOp))
++        block.insert_op_before(store.clone(), ret)
++    elif kind == "missed_cast":
++        block.insert_op_before(memref.CastOp.get(block.args[0], block.args[0].type), ret)
++    elif kind == "missed_dimension":
++        dim = memref.DimOp(block.args[1], zero.result)
++        block.insert_op_before(dim, ret)
++    elif kind == "captured_index":
++        loop = next(op for op in function.walk() if isinstance(op, scf.ForOp))
++        load = next(op for op in loop.walk() if isinstance(op, memref.LoadOp))
++        load.operands = (*load.operands[:-1], one.result)
++    elif kind == "untouched_observer":
++        other = [op for op in module.walk() if isinstance(op, func.FuncOp)][-1]
++        result = other.body.block.last_op
++        constant = arith.ConstantOp.from_int_and_width(0, 32)
++        other.body.block.insert_op_before(constant, result)
++        result.operands = (constant.result,)
++    elif kind == "callee_return":
++        callee = next(op for op in module.walk() if isinstance(op, func.FuncOp) and op.sym_name.data == "dimension")
++        result = callee.body.block.last_op
++        result.operands = (callee.body.block.first_op.results[0],)
++    elif kind in ("missing_free", "double_free", "early_free"):
++        free = next(op for op in block.ops if isinstance(op, memref.DeallocOp))
++        if kind == "missing_free":
++            block.erase_op(free)
++        elif kind == "double_free":
++            block.insert_op_after(free.clone(), free)
++        else:
++            allocation = next(op for op in block.ops if isinstance(op, memref.AllocOp))
++            block.detach_op(free)
++            block.insert_op_after(free, allocation)
++    else:
++        raise AssertionError(kind)
++    module.verify()
++
++
++@pytest.mark.parametrize(
++    "kind,name",
++    [
++        (kind, "rank_two")
++        for kind in (
++            "wrong_buffer",
++            "wrong_coordinate",
++            "wrong_dimension",
++            "wrong_other_axis",
++            "changed_return",
++            "extra_effect",
++            "missed_cast",
++            "missed_dimension",
++            "untouched_observer",
++        )
++    ]
++    + [("captured_index", "nested_captures"), ("callee_return", "callee_dimensions")]
++    + [(kind, "shape_memory_chain") for kind in ("missing_free", "double_free", "early_free")],
++)
++def test_valid_changed_candidate_refused(context, tmp_path, kind, name):
++    _, cases = context
++    before, after, _ = cases[name]
++    candidate = parse(after.read_text())
++    mutate(candidate, kind)
++    text = render(candidate)
++    parse(text)  # The mutation's SSA/types verify before the validator is asked.
++    if kind in ("wrong_dimension", "wrong_other_axis"):
++        result = check(context, tmp_path, name=name, texts=(before.read_text(), text))
++        assert not result["lean_complete_shape_checked"] and result["returncode"] > 0
++        assert "Lean refused" in result["refusal"]
++    else:
++        with pytest.raises(ValueError):
++            check(context, tmp_path, name=name, texts=(before.read_text(), text))
++        refusal = json.loads((tmp_path / "proof/REFUSAL.json").read_bytes())
++        assert not refusal["lean_complete_shape_checked"]
++        assert not (tmp_path / "proof/Obligation.lean").exists()
++
++
++@pytest.mark.parametrize("kind", ("dtype", "layout", "memory_space", "dynamic"))
++def test_valid_unsupported_descriptor_boundary(context, tmp_path, kind):
++    _, cases = context
++    before, after, _ = cases["rank_two"]
++    original, candidate = before.read_text(), after.read_text()
++    if kind == "dtype":
++        candidate = candidate.replace("i32", "i16")
++    else:
++        replacement = {
++            "layout": "memref<2x3xi32, strided<[3, 1], offset: 1>>",
++            "memory_space": "memref<2x3xi32, 1>",
++            "dynamic": "memref<?x3xi32>",
++        }[kind]
++        original = original.replace("memref<2x3xi32>", replacement)
++        candidate = candidate.replace("memref<2x3xi32>", replacement)
++    parse(original)
++    parse(candidate)
++    with pytest.raises(ValueError):
++        check(context, tmp_path, texts=(original, candidate))
++
++
++def test_malformed_input_is_parse_refusal(context, tmp_path):
++    with pytest.raises(ValueError, match="malformed IR"):
++        check(context, tmp_path, texts=("not MLIR", "not MLIR"))
++    assert not (tmp_path / "proof/Obligation.lean").exists()
++
++
++def test_descriptor_contract_cannot_be_inferred(context, tmp_path):
++    with pytest.raises(ValueError, match="descriptor policy"):
++        check(context, tmp_path, policy="metadata_hashes_only")
++
++
++def test_no_prefix_under_work_budget(context, tmp_path):
++    with pytest.raises(ValueError, match="complete module structural node budget"):
++        check(context, tmp_path, max_nodes=1)
++
++
++def test_declined_identity_is_separate(context, tmp_path):
++    _, cases = context
++    normalized = cases["rank_two"][1].read_text()
++    with pytest.raises(ValueError, match="identity/declined"):
++        check(context, tmp_path, texts=(normalized, normalized))
++
++
++def test_signed_dimension_limit_reaches_kernel(context, tmp_path):
++    _, cases = context
++    before, after, _ = cases["rank_one"]
++    source = before.read_text().replace("memref<7xi8>", "memref<2147483648xi8>")
++    candidate = after.read_text().replace("memref<7xi8>", "memref<2147483648xi8>")
++    candidate = candidate.replace("value = 7 : index", "value = 2147483648 : index")
++    parse(source)
++    parse(candidate)
++    result = check(context, tmp_path, name="rank_one", texts=(source, candidate))
++    assert result["returncode"] > 0 and not result["lean_complete_shape_checked"]
++    assert "Lean refused" in result["refusal"]
++
++
++def test_compiler_valid_wrong_index_width(context, tmp_path):
++    from xdsl.rewriter import Rewriter
++
++    _, cases = context
++    before, after, _ = cases["rank_two"]
++    candidate = parse(after.read_text())
++    function = candidate.body.block.first_op
++    # Select the dimension used by the first returned value, independent of position.
++    returned = function.body.block.last_op
++    constant = returned.operands[0].owner
++    replacement = arith.ConstantOp.from_int_and_width(constant.value.value.data, 64)
++    Rewriter.replace_op(constant, replacement)
++    function.properties["function_type"] = builtin.FunctionType.from_lists(
++        function.function_type.inputs, [builtin.i64, builtin.IndexType(), builtin.i32]
++    )
++    candidate.verify()
++    with pytest.raises(ValueError, match="signature"):
++        check(context, tmp_path, texts=(before.read_text(), render(candidate)))
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_loops_shape_receipts.py
+@@ -0,0 +1,156 @@
++"""Original context and same-buffer bindings are gates, not saved-receipt trust."""
++
++from __future__ import annotations
++
++import dataclasses
++import json
++from pathlib import Path
++
++import pytest
++
++from merlin.tests.ir.test_lean_graph_loops_shape import check, context_data
++from merlin.verify import lean_graph_loops_shape as checker
++from merlin.verify.lean_graph_loops import _reference
++from merlin.verify.lean_graph_loops_memory_scf import audit
++from merlin.verify.lean_graph_loops_shape_model import SHAPE_ROOTS
++
++
++@pytest.fixture(scope="module")
++def context():
++    return context_data()
++
++
++def rewritten(path, data):
++    path.write_text(json.dumps(data, indent=2) + "\n")
++    return _reference(path)
++
++
++@pytest.mark.parametrize("kind", ("build_rehashed", "compiler_reselected", "library_reselected", "manifest_rehashed"))
++def test_original_selection_rejects_coherent_local_replacement(context, tmp_path, kind):
++    selection, _ = context
++    if kind == "build_rehashed":
++        data = json.loads(selection.proof.build_record.read_bytes())
++        data["attempts"] = data["attempts"][:-1]
++        path = tmp_path / "proof.json"
++        row = rewritten(path, data)
++        selected = dataclasses.replace(
++            selection, proof=dataclasses.replace(selection.proof, build_record=path, build_sha256=row["sha256"])
++        )
++    elif kind == "compiler_reselected":
++        selected = dataclasses.replace(selection, proof=dataclasses.replace(selection.proof, sha256="0" * 64))
++    elif kind == "library_reselected":
++        selected = dataclasses.replace(selection, proof=dataclasses.replace(selection.proof, library=tmp_path))
++    else:
++        data = json.loads(selection.manifest.read_bytes())
++        data["producer_source"] = data["producer_source"][:-1]
++        path = tmp_path / "manifest.json"
++        row = rewritten(path, data)
++        selected = dataclasses.replace(selection, manifest=path, manifest_sha256=row["sha256"])
++    with pytest.raises(ValueError, match="original policy"):
++        selected.dependencies()
++
++
++@pytest.mark.parametrize(
++    "kind",
++    (
++        "affected",
++        "unknown_import",
++        "changed_import",
++        "wrong_original_context",
++        "audit_axiom",
++        "audit_missing_root",
++        "audit_failed",
++        "host_stale",
++        "descriptor_policy",
++    ),
++)
++def test_rehashed_evidence_cannot_grant_admission(context, tmp_path, kind):
++    selection, _ = context
++    contract = json.loads(selection.contract.read_bytes())
++    if kind.startswith("audit_"):
++        data = json.loads(Path(contract["root_audit"]["path"]).read_bytes())
++        if kind == "audit_axiom":
++            data["audit"][SHAPE_ROOTS[0]] = ["unreviewedNumericalLaw"]
++        elif kind == "audit_missing_root":
++            del data["audit"][SHAPE_ROOTS[0]]
++        else:
++            data["returncode"] = 1
++        contract["root_audit"] = rewritten(tmp_path / "audit.json", data)
++    elif kind == "host_stale":
++        contract["host_sources"][0]["sha256"] = "0" * 64
++    elif kind == "descriptor_policy":
++        contract["descriptor_policy"] = "matching_metadata_grants_runtime_conformance"
++    else:
++        data = json.loads(Path(contract["unaffected_assessment"]["path"]).read_bytes())
++        if kind == "affected":
++            data["suspect_selected"] = True
++        elif kind == "unknown_import":
++            data["missing_original_bindings"] = [{"module": "Unknown"}]
++        elif kind == "changed_import":
++            data["changed"] = [{"module": "Unknown"}]
++        else:
++            data["original_context"]["sha256"] = "0" * 64
++        contract["unaffected_assessment"] = rewritten(tmp_path / "assessment.json", data)
++    path = tmp_path / "contract.json"
++    row = rewritten(path, contract)
++    selected = dataclasses.replace(selection, contract=path, contract_sha256=row["sha256"])
++    with pytest.raises(ValueError):
++        selected.dependencies()
++
++
++def test_missing_actual_import_not_hidden_by_rehashed_rosters(context, tmp_path):
++    selection, _ = context
++    build = json.loads(selection.proof.build_record.read_bytes())
++    removed = build["attempts"].pop()["module"]
++    path = tmp_path / "build.json"
++    row = rewritten(path, build)
++    proof = dataclasses.replace(selection.proof, build_record=path, build_sha256=row["sha256"])
++    contract = json.loads(selection.contract.read_bytes())
++    contract["selected_context"]["proof"]["build_record"] = str(path)
++    contract["selected_context"]["proof"]["build_sha256"] = row["sha256"]
++    contract["proof_modules"].remove(removed)
++    path = tmp_path / "contract.json"
++    row = rewritten(path, contract)
++    selected = dataclasses.replace(selection, proof=proof, contract=path, contract_sha256=row["sha256"])
++    with pytest.raises(ValueError, match="actual inspected imports"):
++        selected.dependencies()
++
++
++@pytest.mark.parametrize("kind", ("original", "saved_buffer", "export", "model", "query"))
++def test_same_buffers_checked_after_oracle(context, tmp_path, monkeypatch, kind):
++    _, cases = context
++    original, candidate, _ = cases["rank_two"]
++    run = checker.subprocess.run
++
++    def changed(command, *args, **kwargs):
++        result = run(command, *args, **kwargs)
++        if command[0] == str(context[0].proof.executable):
++            path = {
++                "original": tmp_path / "source.mlir",
++                "saved_buffer": tmp_path / "proof/before.mlir",
++                "export": tmp_path / "proof/actual-pair.json",
++                "model": tmp_path / "proof/model.json",
++                "query": tmp_path / "proof/Obligation.lean",
++            }[kind]
++            path.write_bytes(path.read_bytes() + b"\n ")
++        return result
++
++    monkeypatch.setattr(checker.subprocess, "run", changed)
++    result = check(context, tmp_path, texts=(original.read_text(), candidate.read_text()))
++    assert result["returncode"] == 0 and not result["lean_complete_shape_checked"]
++    assert "changed" in result["refusal"]
++
++
++@pytest.mark.parametrize("kind", ("missing", "duplicated", "extra", "new_axiom"))
++def test_exact_ordered_axiom_audit(kind):
++    lines = [f"'{root}' does not depend on any axioms" for root in SHAPE_ROOTS]
++    if kind == "missing":
++        lines.pop()
++    elif kind == "duplicated":
++        lines.append(lines[-1])
++    elif kind == "extra":
++        lines.append("'unrelated' does not depend on any axioms")
++    else:
++        lines[0] = f"'{SHAPE_ROOTS[0]}' depends on axioms: [sorryAx]"
++    with pytest.raises(ValueError):
++        audit("\n".join(lines), SHAPE_ROOTS)
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_loops_shape_runtime.py
+@@ -0,0 +1,153 @@
++"""Independent finite xDSL observations and symbolic whole-case Lean witnesses."""
++
++from __future__ import annotations
++
++import json
++import os
++import subprocess
++from math import prod
++from pathlib import Path
++
++import pytest
++from xdsl.dialects import builtin
++from xdsl.interpreters.memref import xtype_for_el_type
++from xdsl.interpreters.shaped_array import ShapedArray
++from xdsl.interpreters.utils.ptr import TypedPtr
++
++from merlin.tests.ir.test_lean_graph_loops_shape import check, context_data, mutate, parse
++from merlin.verify.lean_graph_loops_memory_scf import audit
++from merlin.verify.lean_graph_loops_shape_cases import CASES, Case
++from merlin.verify.lean_graph_loops_shape_model import SHAPE_ROOTS
++from merlin.verify.lean_graph_loops_shape_runtime import execute
++from merlin.verify.lean_graph_loops_shape_witness import WITNESS_ROOTS, witness_obligation
++
++
++@pytest.fixture(scope="module")
++def context():
++    return context_data()
++
++
++FINITE_CASES = tuple(case for case in CASES if case.name != "compact_huge") + (
++    Case("callee_dimensions", (3, 5), 32, 1, callee=True),
++)
++
++
++def array(shape, bits, value, index_bits):
++    return ShapedArray(
++        TypedPtr.new([value] * prod(shape), xtype=xtype_for_el_type(builtin.IntegerType(bits), index_bits)), list(shape)
++    )
++
++
++def arguments(case, *, alias=False):
++    left = array(case.shape, case.bits, 17, case.index_bits)
++    right = left if alias else array(case.shape, case.bits, 29, case.index_bits)
++    return left, right, array((1,), case.bits, 91, case.index_bits)
++
++
++@pytest.mark.parametrize("case", FINITE_CASES, ids=lambda case: case.name)
++@pytest.mark.parametrize("alias", (False, True), ids=("distinct", "same_input_allocation"))
++def test_finite_whole_observations(context, tmp_path, case, alias):
++    _, paths = context
++    before, after, _ = paths[case.name]
++    results = [
++        execute(parse(path.read_text()), arguments(case, alias=alias), function="probe", index_bits=case.index_bits)
++        for path in (before, after)
++    ]
++    (tmp_path / "FINITE.json").write_text(json.dumps(results, indent=2) + "\n")
++    assert results[0] == results[1]
++    expected = [case.shape[case.axis], case.shape[(case.axis + 1) % len(case.shape)], 91 if 0 in case.shape else 17]
++    assert results[0]["outputs"] == expected
++    assert results[0]["input_memories"][-1]["cells"] == [expected[-1]]
++    assert not results[0]["actual_native_execution"]
++
++
++def test_finite_memory_chain(context, tmp_path):
++    _, paths = context
++    before, after, _ = paths["shape_memory_chain"]
++    results = [
++        execute(parse(path.read_text()), (17, 29, array((1,), 32, 91, 64)), function="kernel", index_bits=64)
++        for path in (before, after)
++    ]
++    (tmp_path / "FINITE.json").write_text(json.dumps(results, indent=2) + "\n")
++    assert results[0] == results[1]
++    assert results[0]["input_memories"][0]["cells"] != [91]
++    assert sum(row["operation"] == "memref.alloc" and row["phase"] == "after" for row in results[0]["trace"]) == 2
++
++
++def test_runtime_descriptor_mismatch_refuses(context):
++    _, paths = context
++    module = parse(paths["rank_two"][0].read_text())
++    args = (array((3, 2), 32, 17, 64), array((2, 3), 32, 29, 64), array((1,), 32, 91, 64))
++    with pytest.raises(ValueError, match="runtime descriptor violates static source type"):
++        execute(module, args, function="probe", index_bits=64)
++
++
++def test_zero_view_read_is_not_inhabited(context):
++    from xdsl.dialects import memref
++
++    _, paths = context
++    module = parse(paths["zero_metadata_only"][0].read_text())
++    # Construct a compiler-valid rank-two load from the empty view.
++    function = module.body.block.first_op
++    load = next(op for op in function.walk() if isinstance(op, memref.LoadOp))
++    zero = function.body.block.first_op.result
++    replacement = memref.LoadOp.get(function.body.block.args[0], [zero, zero])
++    load.results[0].replace_all_uses_with(replacement.results[0])
++    function.body.block.insert_op_before(replacement, load)
++    function.body.block.erase_op(load)
++    module.verify()
++    case = next(case for case in CASES if case.name == "zero_metadata_only")
++    with pytest.raises(ValueError, match="out-of-bounds"):
++        execute(module, arguments(case), function="probe", index_bits=64)
++
++
++@pytest.mark.parametrize("mutation", ("wrong_buffer", "wrong_dimension"))
++def test_valid_mutation_has_nonzero_observable_counterexample(context, tmp_path, mutation):
++    _, paths = context
++    before, after, _ = paths["rank_two"]
++    case = next(case for case in CASES if case.name == "rank_two")
++    source, candidate = parse(before.read_text()), parse(after.read_text())
++    mutate(candidate, mutation)
++    results = [execute(module, arguments(case), function="probe", index_bits=64) for module in (source, candidate)]
++    assert results[0]["outputs"] != results[1]["outputs"]
++    (tmp_path / "COUNTEREXAMPLE.json").write_text(json.dumps(results, indent=2) + "\n")
++
++
++@pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
++def test_actual_inhabited_lean_witness(context, tmp_path, case):
++    selection, paths = context
++    before, after, _ = paths[case.name]
++    checked = check(context, tmp_path / "fresh_actual", name=case.name)
++    assert checked["lean_complete_shape_checked"]
++    projection = json.loads(Path(checked["model"]["path"]).read_bytes())
++    query = tmp_path / "Witness.lean"
++    query.write_text(witness_obligation(projection))
++    bindings = selection.dependencies()
++    env = dict(
++        os.environ,
++        LEAN_PATH=str(selection.proof.library),
++        LEAN_SYSROOT=str(selection.proof.executable.parent.parent),
++        LEAN_NUM_THREADS="2",
++    )
++    command = [str(selection.proof.executable), str(query)]
++    result = subprocess.run(command, env=env, capture_output=True, text=True, check=False, timeout=180)
++    (tmp_path / "stdout.log").write_text(result.stdout)
++    (tmp_path / "stderr.log").write_text(result.stderr)
++    assert selection.dependencies() == bindings
++    assert result.returncode == 0, result.stdout + result.stderr
++    roots = audit(result.stdout, SHAPE_ROOTS + WITNESS_ROOTS)
++    (tmp_path / "WITNESS.json").write_text(
++        json.dumps(
++            dict(
++                returncode=result.returncode,
++                roots=roots,
++                source=str(before),
++                candidate=str(after),
++                qualified=False,
++                native_conformance_proved=False,
++            ),
++            indent=2,
++        )
++        + "\n"
++    )
++    assert len(roots) == 41

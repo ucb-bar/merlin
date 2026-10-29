@@ -1,0 +1,7 @@
+{
+  "all61_owned_sources_exact": true,
+  "source_seal_exact": true,
+  "prior50_unchanged": true,
+  "no_native_or_sdk_access": true,
+  "no_live_owned_jobs": true
+}

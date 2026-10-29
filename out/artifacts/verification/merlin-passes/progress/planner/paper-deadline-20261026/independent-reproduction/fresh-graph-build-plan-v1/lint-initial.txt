@@ -1,0 +1,12 @@
+E501 Line too long (124 > 120)
+   --> out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/build_plan.py:409:121
+    |
+407 |                         )
+408 |                     },
+409 |                     "root_resolution": "exact metadata/query pin association only; kernel name/type/axiom audit UNEXECUTED",
+    |                                                                                                                         ^^^^
+410 |                 }
+411 |             )
+    |
+
+Found 1 error.

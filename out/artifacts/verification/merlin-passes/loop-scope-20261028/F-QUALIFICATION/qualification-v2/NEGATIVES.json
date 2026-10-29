@@ -1,0 +1,152 @@
+[
+  {
+    "name": "source_wrong_cutoff",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "HOST_PROJECTION_OR_DOMAIN_REFUSAL",
+    "component_reason": "actual source/bulk/segmented control joins differ"
+  },
+  {
+    "name": "middle_wrong_stride",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "HOST_PROJECTION_OR_DOMAIN_REFUSAL",
+    "component_reason": "actual source/bulk/segmented control joins differ"
+  },
+  {
+    "name": "middle_wrong_cutoff",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "HOST_PROJECTION_OR_DOMAIN_REFUSAL",
+    "component_reason": "actual source/bulk/segmented control joins differ"
+  },
+  {
+    "name": "final_wrong_tile_stride",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "HOST_PROJECTION_OR_DOMAIN_REFUSAL",
+    "component_reason": "actual source/bulk/segmented control joins differ"
+  },
+  {
+    "name": "middle_carry_order",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "HOST_PROJECTION_OR_DOMAIN_REFUSAL",
+    "component_reason": "ordered initial carry bindings differ across complete stages"
+  },
+  {
+    "name": "middle_yield_order",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "LEAN_PROOF_REFUSAL",
+    "failed_obligation": "Merlin.GraphStatePipelineInstance.F4.body_group"
+  },
+  {
+    "name": "final_return_order",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "LEAN_PROOF_REFUSAL",
+    "failed_obligation": "Merlin.GraphStatePipelineInstance.F4.suffixAccepted34"
+  },
+  {
+    "name": "middle_lane_iv",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "LEAN_PROOF_REFUSAL",
+    "failed_obligation": "Merlin.GraphStatePipelineInstance.F4.body_group"
+  },
+  {
+    "name": "final_wrong_capture",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "LEAN_PROOF_REFUSAL",
+    "failed_obligation": "Merlin.GraphStatePipelineInstance.F4.innerAccepted"
+  },
+  {
+    "name": "final_wrong_body",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "LEAN_PROOF_REFUSAL",
+    "failed_obligation": "Merlin.GraphStatePipelineInstance.F4.innerAccepted"
+  },
+  {
+    "name": "middle_wrong_call",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "LEAN_PROOF_REFUSAL",
+    "failed_obligation": "Merlin.GraphStatePipelineInstance.F4.body_group"
+  },
+  {
+    "name": "final_partial_effect_order",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "LEAN_PROOF_REFUSAL",
+    "failed_obligation": "Merlin.GraphStatePipelineInstance.F4.innerAccepted"
+  },
+  {
+    "name": "final_missing_observer",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "LEAN_PROOF_REFUSAL",
+    "failed_obligation": "Merlin.GraphStatePipelineInstance.F4.suffixAccepted34"
+  },
+  {
+    "name": "final_wrong_inner_cutoff",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "LEAN_PROOF_REFUSAL",
+    "failed_obligation": "Merlin.GraphStatePipelineInstance.F4.outer_form"
+  },
+  {
+    "name": "final_changed_entry",
+    "MLIR_valid": true,
+    "consumer_called": false,
+    "phase": "HOST_REFUSAL",
+    "class": "Unsupported",
+    "reason": "host transformation attribution refused: submitted middle/final differ from actual pinned producer output",
+    "component": "HOST_PROJECTION_OR_DOMAIN_REFUSAL",
+    "component_reason": "complete function interface/attributes changed"
+  }
+]

@@ -1,0 +1,21 @@
+kind: shared-pass-verification-pause-record
+version: 1
+as_of_utc: '2026-10-19T04:11:54.363297+00:00'
+status: paused_at_user_request
+branch: feat/pass-verification
+published_implementation_head: 2ceacd3096258a3e09deb760d80f351a6c61447d
+original_local_checkpoint_sha256: 24549e2502177a731af35da239c772529b510f1246a746a163f0cb910d9d1eb3
+path_normalization: Repository-root prefixes removed; original local pause record
+  unchanged.
+publication_scope: Progress documents only. Private implementation commits, binaries
+  and raw logs are excluded. Incomplete suites remain unqualified.
+files:
+  checkpoint.json:
+    sha256: 10073e889b29fa03a650c801d3d42c72cb1804a89fd6d8be7d159a3fd3bebc98
+    size_bytes: 3970
+  PROGRESS.md:
+    sha256: d1e844a398cb47f961b7a0d29e0b18975edcac2d2179fb2d27bf82c1c01a1ae6
+    size_bytes: 8518
+  validation.json:
+    sha256: 20315843f6dcb7687fc2e2084dc8de189423051440318579f0d8283a7e95172e
+    size_bytes: 20644

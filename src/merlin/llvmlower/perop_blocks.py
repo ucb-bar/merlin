@@ -26,7 +26,27 @@ stays in one place; the runner carries no policy it could drift from.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+#: Shared preparation/build handoff for the derived multicore split.
+PARALLEL_ARMS_FILE = "perop_parallel_arms.json"
+
+
+def parallel_arms(work: Path) -> list | None:
+    """Read the derived ``[(op class, tiles)]`` split, preserving absent versus empty tables.
+
+    An absent record keeps class-wide scheduling. An empty list records a derived
+    per-operation table with no splittable contractions.
+    """
+    import json
+
+    path = Path(work) / PARALLEL_ARMS_FILE
+    if not path.is_file():
+        return None
+    rec = json.loads(path.read_text(encoding="utf-8"))
+    return [(op, tuple(int(t) for t in tiles)) for op, tiles in rec.get("arms", ())]
+
 
 #: Marker pass name spliced after specialization; the runner splits the pipeline here.
 BLOCK_TAG_MARKER = "__merlin_tag_perop_blocks__"

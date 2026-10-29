@@ -1,0 +1,21 @@
+{
+  "state": "SDK_FREE_MOCKED_SERVICE_TO_GATE_TO_COMPILER_ELIGIBILITY",
+  "actual_api": "CommonTransformService.apply -> verify_pipeline_change -> gate.verify -> selected Context adapter -> accepted_pipeline_receipt -> compiler_eligible",
+  "changed": true,
+  "same_live_delivery_eligible": true,
+  "serialized_copy_eligible": false,
+  "mocked": [
+    "verify_tool_profile",
+    "bundle snapshot custody functions",
+    "selected Context.check_query",
+    "selected Context.revalidate",
+    "native.check/revalidate dispatch redirected to inactive adapter for unit test only"
+  ],
+  "native_guard_blocked": true,
+  "native_invocations": 0,
+  "runtime_image_reads": 0,
+  "new_Lean_query": "UNCOMPILED",
+  "public_activation": false,
+  "qualification": false,
+  "production_release_authenticity": "NOT_TESTED"
+}

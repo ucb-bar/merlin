@@ -1,0 +1,12 @@
+{
+  "schema": "merlin.registered-coverage.validation.v1",
+  "status": "PASS",
+  "checks": 1970,
+  "errors": [],
+  "fixed_registry_keys": 8,
+  "Graham_variant_rows": 34,
+  "Graham_broader_rows": 57,
+  "new_native_or_semantic_tests": 0,
+  "service_API_cases": 12,
+  "scope": "AST/data/ref/count/status consistency; no new qualification, native or human approval."
+}

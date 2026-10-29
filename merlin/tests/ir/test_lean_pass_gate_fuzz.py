@@ -8,7 +8,7 @@ dead values) and checks two properties:
   does not, the real output is identical to this file's independent rendering of the expected
   output and that is refused too: a checker gap (recorded and reported) rather than a pass bug. Any
   other refusal is a failure;
-* soundness -- at every validated boundary (dead-code pruning and the leading cse) a
+* soundness -- at every validated boundary (prune, quantization, the whole-model textual route, cse) a
   mutated pass output that the oracle can tell apart from the program on random inputs is never
   accepted. A mutation the oracle cannot tell apart is counted, not asserted.
 
@@ -31,7 +31,9 @@ from test_lean_pass_gate import job
 
 from merlin.llvmlower import leading_cse
 from merlin.llvmlower.passes_xdsl import (
+    lower_quant_ext,
     parse_mlir_text,
+    preprocess_text_textual,
     prune_dead_pure_tensor_ops,
 )
 from merlin.verify import gate_checks
@@ -383,7 +385,15 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
         generic_text(render(pruned(program), dead_empty=False))[0],
         "prune",
     )
-    # The pipeline's leading cse, by MLIR itself, on the preprocessed (dequantization-lowered) form.
+    quant_source = render(pruned(program), dead_empty=False)
+    quant_before, quant_after = generic_text(quant_source, lower_quant_ext)
+    if quant_before != quant_after:
+        complete(
+            "lower_quant_ext", quant_before, quant_after, render(lowered(pruned(program)), dead_empty=False), "quant"
+        )
+    textual_after, _ = preprocess_text_textual(source)
+    complete("preprocess_text_textual", source, textual_after, render(lowered(program)), "textual")
+    # The pipeline's leading cse, by MLIR itself, on the whole-model route's preprocessed form.
     cse_source = render(lowered(program))
     (tmp_path / "cse-apply").mkdir()
     cse_after = leading_cse.apply(cse_source, "cse", tmp_path / "cse-apply", "cse")
@@ -396,6 +406,8 @@ def test_fuzzed_programs(tmp_path, pass_gate_tools, case):
     counts = {"rejected": 0, "indistinguishable": 0}
     for boundary, before, expected, dead_empty in (
         ("prune", source, pruned(program), False),
+        ("quant", quant_source, lowered(pruned(program)), False),
+        ("textual", source, lowered(program), True),
         ("cse", cse_source, deduplicated(lowered(program)), True),
     ):
         for attempt in range(2):

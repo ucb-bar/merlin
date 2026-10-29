@@ -1,0 +1,21 @@
+{
+  "observed_utc": "2026-10-26T21:42:46.621728+00:00",
+  "worker": "01a15b82-8d58-75f1-9281-f529977e0bad",
+  "authorization": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/AUTHORIZED-FRESH-SDK-DATA-INTAKE-V2.json",
+    "sha256": "13c254d31967da28f3184faa3f4efa1b651f7eb12d79186551f47b77bb4b64ed",
+    "bytes": 3169
+  },
+  "reviewed_proposal_sha256": "b309cf6b855afab41d9fb65543bbd02d7a302aca5f54b66f1337d0f0864c25e5",
+  "scope": "ONE exact925899528B official Lean4.35.0 HTTPS archive acquisition + bounded DATA-only extraction via exact7-source outer-deadline runner/request, new exclusive root",
+  "disk_free_observed_bytes": 1533070336000,
+  "independent_controls": "44 baseline source/synthetic checks plus12 own-process POSIX timer/blocking/restoration controls; host signal/CPython scheduling trusted, no hard realtime claim",
+  "not_authorized": [
+    "SDK execution/compiler/loader/native qualification",
+    "global/elan install or old SDK/runtime reads/writes",
+    "old expectation replacement, old context repair or hold clearance",
+    "retry/resume, link-policy relaxation or second acquisition"
+  ],
+  "first_failure": "whole intake stops; preserve partial bytes/first error; report unavailability not graph refusal",
+  "post_success": "source/metadata context design; separate exact review needed before native or system/runtime closure access"
+}

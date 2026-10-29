@@ -1,0 +1,28 @@
+{
+  "external_names_only": [
+    "__future__",
+    "argparse",
+    "collections",
+    "copy",
+    "dataclasses",
+    "enum",
+    "hashlib",
+    "importlib",
+    "io",
+    "json",
+    "lean_graph_input_admission",
+    "lean_graph_loops_capture",
+    "lean_graph_loops_segment_capture",
+    "os",
+    "pathlib",
+    "pkgutil",
+    "pytest",
+    "subprocess",
+    "sys",
+    "typing",
+    "xdsl",
+    "z3"
+  ],
+  "method": "conservative Python AST imports, no dynamic import closure claim",
+  "python": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]"
+}

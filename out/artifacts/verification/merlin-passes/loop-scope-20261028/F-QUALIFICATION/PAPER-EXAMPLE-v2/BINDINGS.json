@@ -1,0 +1,242 @@
+{
+  "status": "EXACT_CHECKED_SUCCESSOR_EXAMPLE",
+  "positive": {
+    "name": "factor3_carry2_nonaligned",
+    "report": {
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/REPORT.json",
+      "sha256": "c23355a869eb441a54c434b8014644a8f904cc26b798108cd389ee28f7f39717",
+      "bytes": 223278
+    },
+    "roots": 44,
+    "theorems": 927,
+    "consumer_bytes_identical": true,
+    "short_last_segment": true,
+    "status": "KERNEL_CHECKED"
+  },
+  "copies": [
+    {
+      "copy": "REPORT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/REPORT.json",
+        "sha256": "c23355a869eb441a54c434b8014644a8f904cc26b798108cd389ee28f7f39717",
+        "bytes": 223278
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/REPORT.json",
+        "sha256": "c23355a869eb441a54c434b8014644a8f904cc26b798108cd389ee28f7f39717",
+        "bytes": 223278
+      }
+    },
+    {
+      "copy": "LoopTransformQuery.lean",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/LoopTransformQuery.lean",
+        "sha256": "6ca121eb0db535820a2fdaac5dcdfe3c52a81c5f6a40fb7379f08aaa2847475e",
+        "bytes": 42691
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/LoopTransformQuery.lean",
+        "sha256": "6ca121eb0db535820a2fdaac5dcdfe3c52a81c5f6a40fb7379f08aaa2847475e",
+        "bytes": 42691
+      }
+    },
+    {
+      "copy": "query.stdout",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/query.stdout",
+        "sha256": "a44c03c38e0a54dcdf904208d6b10fb32260e82462e270cf4973a7dd3447a48f",
+        "bytes": 1440
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/query.stdout",
+        "sha256": "a44c03c38e0a54dcdf904208d6b10fb32260e82462e270cf4973a7dd3447a48f",
+        "bytes": 1440
+      }
+    },
+    {
+      "copy": "query.stderr",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/query.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/query.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "copy": "query.process.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/query.process.json",
+        "sha256": "72ad88b46ac6b4f13145b961807e099aec62b5d7d4b3fcf0b3bb7bf7b6d72c3d",
+        "bytes": 437
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/query.process.json",
+        "sha256": "72ad88b46ac6b4f13145b961807e099aec62b5d7d4b3fcf0b3bb7bf7b6d72c3d",
+        "bytes": 437
+      }
+    },
+    {
+      "copy": "audit.stdout",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/audit.stdout",
+        "sha256": "0f57c1c52ada40f2a310f11d4e7768897e6289562b4502e300c7211b3582b571",
+        "bytes": 162710
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/audit.stdout",
+        "sha256": "0f57c1c52ada40f2a310f11d4e7768897e6289562b4502e300c7211b3582b571",
+        "bytes": 162710
+      }
+    },
+    {
+      "copy": "audit.stderr",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/audit.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/audit.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "copy": "audit.process.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/audit.process.json",
+        "sha256": "6766b2ddf2dec6bf857634a05f68de629b525ecb92970e5b07c7fee60fdfa9e3",
+        "bytes": 226
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/audit.process.json",
+        "sha256": "6766b2ddf2dec6bf857634a05f68de629b525ecb92970e5b07c7fee60fdfa9e3",
+        "bytes": 226
+      }
+    },
+    {
+      "copy": "types.stdout",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/types.stdout",
+        "sha256": "c079b625b72a335669a8cb7536ce1dd98603605d212558dd0cb59144608aed74",
+        "bytes": 31941
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/types.stdout",
+        "sha256": "c079b625b72a335669a8cb7536ce1dd98603605d212558dd0cb59144608aed74",
+        "bytes": 31941
+      }
+    },
+    {
+      "copy": "types.stderr",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/types.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/types.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    },
+    {
+      "copy": "types.process.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/types.process.json",
+        "sha256": "202dbd3641a87337b8b2c12505a4efb19c6e6fcacde6b0462679a12f83733f62",
+        "bytes": 2366
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/types.process.json",
+        "sha256": "202dbd3641a87337b8b2c12505a4efb19c6e6fcacde6b0462679a12f83733f62",
+        "bytes": 2366
+      }
+    },
+    {
+      "copy": "stage0.mlir",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/stage0.mlir",
+        "sha256": "6f92431e9f0e15ade7498f0d0c758baa8afb5f0e611531c50fb3a1f216775777",
+        "bytes": 1754
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/stage0.mlir",
+        "sha256": "6f92431e9f0e15ade7498f0d0c758baa8afb5f0e611531c50fb3a1f216775777",
+        "bytes": 1754
+      }
+    },
+    {
+      "copy": "stage1.mlir",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/stage1.mlir",
+        "sha256": "16946f4cf2ff6508323e0ec981725f2daa53defd81428e5c4a42d9135640e3ac",
+        "bytes": 3205
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/stage1.mlir",
+        "sha256": "16946f4cf2ff6508323e0ec981725f2daa53defd81428e5c4a42d9135640e3ac",
+        "bytes": 3205
+      }
+    },
+    {
+      "copy": "stage2.mlir",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/factor3_carry2_nonaligned/stage2.mlir",
+        "sha256": "67cabb891d4e8ebe56e9aeccea269ce3dd9968be8bccfb065366e18666cd0e91",
+        "bytes": 3684
+      },
+      "copied": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/PAPER-EXAMPLE-v2/stage2.mlir",
+        "sha256": "67cabb891d4e8ebe56e9aeccea269ce3dd9968be8bccfb065366e18666cd0e91",
+        "bytes": 3684
+      }
+    }
+  ],
+  "source_cut": "Qv6/Fv3",
+  "source_IVs": [
+    5,
+    8,
+    11,
+    14,
+    17,
+    20,
+    23,
+    26,
+    29,
+    32,
+    35,
+    38,
+    41,
+    44,
+    47
+  ],
+  "bulk_bases": [
+    5,
+    14,
+    23,
+    32,
+    41
+  ],
+  "segment_bases": [
+    [
+      5,
+      14
+    ],
+    [
+      23,
+      32
+    ],
+    [
+      41
+    ]
+  ],
+  "consumer_final_identical": true,
+  "full_batch": "../qualification-v2/RESULT.json",
+  "human_approved": false,
+  "native_fidelity": false
+}

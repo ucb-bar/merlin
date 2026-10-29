@@ -1,0 +1,68 @@
+{
+  "schema": "merlin.graph.memory_scf.seal.v1",
+  "source_freeze": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/SOURCE_FREEZE.json",
+    "sha256": "8166a17f46537c66ea43452d3d96dde0adc8c6027ac7468ff3e64ccae80201cf",
+    "bytes": 890017
+  },
+  "delivery": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/DELIVERY.json",
+    "sha256": "9d643092e5bb69a7de2eb2bd1bcebd7057e32d0120c367b06c6ba5b3c03f35c4",
+    "bytes": 8834
+  },
+  "main_audit": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/AUDIT.json",
+    "sha256": "d933d86ccfb262cbebe68aae1f7e861d10a26003c4cd9135d58010b97b318f35",
+    "bytes": 8021
+  },
+  "qualification": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/QUALIFICATION.json",
+    "sha256": "883c185cc9f230bed48c164fa0ed02b6e0033d6dba702c5308b04de9e04d93c5",
+    "bytes": 3576
+  },
+  "originals": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/original-checks-v1/RUN.json",
+    "sha256": "9676a0f87ca166169743376fb250cd3375dde08106da29796e4a02e248c4fbde",
+    "bytes": 1254
+  },
+  "source_only_patch": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/source-only.patch",
+    "sha256": "74c81a83afebad0e0a0569c85c614dad8009a060806f578ef37606e1f95499d2",
+    "bytes": 170437
+  },
+  "primary_update_patch": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/primary-update.patch",
+    "sha256": "f750765b30e435bcd6013a85674a10d71dcbcd0d04e2ad54fdbf972fd928f3d0",
+    "bytes": 96297
+  },
+  "exact_example": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/EXAMPLE.json",
+    "sha256": "71cf6169e07ab027dcd2692f68b98a72c54748a41f3c60cd0dc9b68d86b8c1ab",
+    "bytes": 1850
+  },
+  "current_owned_files": 24,
+  "total_owned_sources": 72,
+  "postcheck_source_tool_import_host_identities_unchanged": true,
+  "qualification_tests": 71,
+  "one_fresh_replay_tests": 71,
+  "main_root_count": 61,
+  "inhabited_root_count": 63,
+  "source_only_empty_tree_all72_equal": true,
+  "actual_reuse_then_nested_segmentation_relation_qualified": true,
+  "old_frozen_refusal_preserved": true,
+  "all_graph_transformations_verified": false,
+  "ordinary_compilation_gates_on_receipt": false,
+  "raw_parser_and_python_projection_trusted": true,
+  "allocator_total_private_unobservable_is_premise": true,
+  "actual8_to16_byte_counterexample_preserved": true,
+  "categorized_failures_or_divergence_equivalence": false,
+  "numerical_gates_discharged": false,
+  "native_allocator_abi_hardware_conformance_proved": false,
+  "independent_review_complete": false,
+  "foreign_sdk_incident_unresolved": true,
+  "foreign_elision_context_unqualified": true,
+  "staged": false,
+  "committed_by_worker": false,
+  "pushed_by_worker": false,
+  "sealed": true
+}

@@ -1,0 +1,17 @@
+{
+  "settings": {
+    "factor": 4,
+    "tile": 4,
+    "index_bits": 64
+  },
+  "metadata": {
+    "name": "factor4_carry3_short",
+    "factor": 4,
+    "tile": 4,
+    "carries": 3,
+    "lower": 2,
+    "step": 2,
+    "count": 20,
+    "nonaligned_upper": false
+  }
+}

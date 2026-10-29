@@ -1,0 +1,1185 @@
+{
+  "kind": "actual historical IR JSON fragment; not a new compiler capture",
+  "receipt_path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/receipt.json",
+  "source_raw": {
+    "bytes": 12706745,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+    "sha256": "789ff9e279ab8da61266691135403244b0d48a5f3c4ac7bdb3f558eac9978cc7"
+  },
+  "final_raw": {
+    "bytes": 12732897,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_smolvla/lean-preparation/3d2dd40bbd9740f1868470172e4d0aa5/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+    "sha256": "2340e6db9ea30af89af24ededbbc8aae7f99d720c6ea77c588db851698d907fc"
+  },
+  "source_export": {
+    "bytes": 32286898,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_before.json",
+    "sha256": "db1f5d61facdcca6025d24c78e0f8cbbbc20654beb4722ad0bbc4373502f96d2"
+  },
+  "final_export": {
+    "bytes": 32365394,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_after.json",
+    "sha256": "74914684c1d5dfaba16804f78042b4dfd419e3dca9bcd9c439a094a3f4079fba"
+  },
+  "row": {
+    "function": "forward",
+    "source_operation": 7624,
+    "source_results": [
+      17210
+    ],
+    "operand_types": [
+      {
+        "kind": "tensor",
+        "shape": [
+          15,
+          113,
+          113
+        ],
+        "element": {
+          "kind": "float",
+          "format": "bf16"
+        },
+        "encoding": null
+      },
+      {
+        "kind": "tensor",
+        "shape": [
+          15,
+          113,
+          64
+        ],
+        "element": {
+          "kind": "float",
+          "format": "bf16"
+        },
+        "encoding": null
+      },
+      {
+        "kind": "tensor",
+        "shape": [
+          15,
+          113,
+          64
+        ],
+        "element": {
+          "kind": "float",
+          "format": "bf16"
+        },
+        "encoding": null
+      }
+    ],
+    "maps": {
+      "kind": "array",
+      "elements": [
+        {
+          "kind": "affine_map",
+          "dims": 4,
+          "symbols": 0,
+          "results": [
+            {
+              "kind": "dim",
+              "pos": 0
+            },
+            {
+              "kind": "dim",
+              "pos": 1
+            },
+            {
+              "kind": "dim",
+              "pos": 3
+            }
+          ]
+        },
+        {
+          "kind": "affine_map",
+          "dims": 4,
+          "symbols": 0,
+          "results": [
+            {
+              "kind": "dim",
+              "pos": 0
+            },
+            {
+              "kind": "dim",
+              "pos": 3
+            },
+            {
+              "kind": "dim",
+              "pos": 2
+            }
+          ]
+        },
+        {
+          "kind": "affine_map",
+          "dims": 4,
+          "symbols": 0,
+          "results": [
+            {
+              "kind": "dim",
+              "pos": 0
+            },
+            {
+              "kind": "dim",
+              "pos": 1
+            },
+            {
+              "kind": "dim",
+              "pos": 2
+            }
+          ]
+        }
+      ]
+    },
+    "iterators": {
+      "kind": "array",
+      "elements": [
+        {
+          "kind": "enum",
+          "dialect": "linalg",
+          "name": "iterator_type",
+          "value": "parallel"
+        },
+        {
+          "kind": "enum",
+          "dialect": "linalg",
+          "name": "iterator_type",
+          "value": "parallel"
+        },
+        {
+          "kind": "enum",
+          "dialect": "linalg",
+          "name": "iterator_type",
+          "value": "parallel"
+        },
+        {
+          "kind": "enum",
+          "dialect": "linalg",
+          "name": "iterator_type",
+          "value": "reduction"
+        }
+      ]
+    },
+    "initialization": "tensor.splat",
+    "zero_literal": {
+      "kind": "float",
+      "bits": "0",
+      "type": {
+        "kind": "float",
+        "format": "bf16"
+      }
+    },
+    "target_start": 7624,
+    "source_body_order": [
+      [
+        17211,
+        17212
+      ],
+      [
+        17213,
+        17214
+      ],
+      [
+        17215
+      ]
+    ],
+    "target_scalar_ops": [
+      "arith.extf",
+      "arith.extf",
+      "arith.mulf",
+      "arith.addf",
+      "linalg.yield"
+    ],
+    "target_flags": [
+      {
+        "fastmath": {
+          "kind": "enum",
+          "dialect": "arith",
+          "name": "fastmath",
+          "value": "contract"
+        }
+      },
+      {
+        "fastmath": {
+          "kind": "enum",
+          "dialect": "arith",
+          "name": "fastmath",
+          "value": "contract"
+        }
+      }
+    ]
+  },
+  "source_initializer": [
+    {
+      "name": "arith.constant",
+      "results": [
+        {
+          "id": 17208,
+          "type": {
+            "kind": "float",
+            "format": "bf16"
+          }
+        }
+      ],
+      "operands": [],
+      "attrs": {
+        "prov._pattern_hint": {
+          "kind": "string",
+          "value": "batch_matmul"
+        },
+        "prov.aten": {
+          "kind": "string",
+          "value": "aten.bmm.default"
+        },
+        "prov.family": {
+          "kind": "string",
+          "value": "contraction"
+        },
+        "prov.op": {
+          "kind": "string",
+          "value": "batch_matmul"
+        },
+        "prov.orig_dtype": {
+          "kind": "string",
+          "value": "bfloat16"
+        },
+        "prov.region_id": {
+          "kind": "string",
+          "value": "matmul_102"
+        },
+        "value": {
+          "kind": "float",
+          "bits": "0",
+          "type": {
+            "kind": "float",
+            "format": "bf16"
+          }
+        }
+      },
+      "props": {},
+      "regions": [],
+      "successors": []
+    },
+    {
+      "name": "tensor.splat",
+      "results": [
+        {
+          "id": 17209,
+          "type": {
+            "kind": "tensor",
+            "shape": [
+              15,
+              113,
+              64
+            ],
+            "element": {
+              "kind": "float",
+              "format": "bf16"
+            },
+            "encoding": null
+          }
+        }
+      ],
+      "operands": [
+        17208
+      ],
+      "attrs": {
+        "prov._pattern_hint": {
+          "kind": "string",
+          "value": "batch_matmul"
+        },
+        "prov.aten": {
+          "kind": "string",
+          "value": "aten.bmm.default"
+        },
+        "prov.family": {
+          "kind": "string",
+          "value": "contraction"
+        },
+        "prov.op": {
+          "kind": "string",
+          "value": "batch_matmul"
+        },
+        "prov.orig_dtype": {
+          "kind": "string",
+          "value": "bfloat16"
+        },
+        "prov.region_id": {
+          "kind": "string",
+          "value": "matmul_102"
+        }
+      },
+      "props": {},
+      "regions": [],
+      "successors": []
+    }
+  ],
+  "source_op": {
+    "name": "linalg.generic",
+    "results": [
+      {
+        "id": 17210,
+        "type": {
+          "kind": "tensor",
+          "shape": [
+            15,
+            113,
+            64
+          ],
+          "element": {
+            "kind": "float",
+            "format": "bf16"
+          },
+          "encoding": null
+        }
+      }
+    ],
+    "operands": [
+      17201,
+      17207,
+      17209
+    ],
+    "attrs": {
+      "indexing_maps": {
+        "kind": "array",
+        "elements": [
+          {
+            "kind": "affine_map",
+            "dims": 4,
+            "symbols": 0,
+            "results": [
+              {
+                "kind": "dim",
+                "pos": 0
+              },
+              {
+                "kind": "dim",
+                "pos": 1
+              },
+              {
+                "kind": "dim",
+                "pos": 3
+              }
+            ]
+          },
+          {
+            "kind": "affine_map",
+            "dims": 4,
+            "symbols": 0,
+            "results": [
+              {
+                "kind": "dim",
+                "pos": 0
+              },
+              {
+                "kind": "dim",
+                "pos": 3
+              },
+              {
+                "kind": "dim",
+                "pos": 2
+              }
+            ]
+          },
+          {
+            "kind": "affine_map",
+            "dims": 4,
+            "symbols": 0,
+            "results": [
+              {
+                "kind": "dim",
+                "pos": 0
+              },
+              {
+                "kind": "dim",
+                "pos": 1
+              },
+              {
+                "kind": "dim",
+                "pos": 2
+              }
+            ]
+          }
+        ]
+      },
+      "iterator_types": {
+        "kind": "array",
+        "elements": [
+          {
+            "kind": "enum",
+            "dialect": "linalg",
+            "name": "iterator_type",
+            "value": "parallel"
+          },
+          {
+            "kind": "enum",
+            "dialect": "linalg",
+            "name": "iterator_type",
+            "value": "parallel"
+          },
+          {
+            "kind": "enum",
+            "dialect": "linalg",
+            "name": "iterator_type",
+            "value": "parallel"
+          },
+          {
+            "kind": "enum",
+            "dialect": "linalg",
+            "name": "iterator_type",
+            "value": "reduction"
+          }
+        ]
+      },
+      "operandSegmentSizes": {
+        "kind": "dense_array",
+        "element": {
+          "kind": "int",
+          "width": 32
+        },
+        "values": [
+          "2",
+          "1"
+        ]
+      },
+      "prov._pattern_hint": {
+        "kind": "string",
+        "value": "batch_matmul"
+      },
+      "prov.aten": {
+        "kind": "string",
+        "value": "aten.bmm.default"
+      },
+      "prov.family": {
+        "kind": "string",
+        "value": "contraction"
+      },
+      "prov.op": {
+        "kind": "string",
+        "value": "batch_matmul"
+      },
+      "prov.orig_dtype": {
+        "kind": "string",
+        "value": "bfloat16"
+      },
+      "prov.region_id": {
+        "kind": "string",
+        "value": "matmul_102"
+      }
+    },
+    "props": {},
+    "regions": [
+      {
+        "blocks": [
+          {
+            "args": [
+              {
+                "id": 17211,
+                "type": {
+                  "kind": "float",
+                  "format": "bf16"
+                }
+              },
+              {
+                "id": 17212,
+                "type": {
+                  "kind": "float",
+                  "format": "bf16"
+                }
+              },
+              {
+                "id": 17213,
+                "type": {
+                  "kind": "float",
+                  "format": "bf16"
+                }
+              }
+            ],
+            "ops": [
+              {
+                "name": "arith.mulf",
+                "results": [
+                  {
+                    "id": 17214,
+                    "type": {
+                      "kind": "float",
+                      "format": "bf16"
+                    }
+                  }
+                ],
+                "operands": [
+                  17211,
+                  17212
+                ],
+                "attrs": {
+                  "fastmath": {
+                    "kind": "enum",
+                    "dialect": "arith",
+                    "name": "fastmath",
+                    "value": "none"
+                  }
+                },
+                "props": {},
+                "regions": [],
+                "successors": []
+              },
+              {
+                "name": "arith.addf",
+                "results": [
+                  {
+                    "id": 17215,
+                    "type": {
+                      "kind": "float",
+                      "format": "bf16"
+                    }
+                  }
+                ],
+                "operands": [
+                  17213,
+                  17214
+                ],
+                "attrs": {
+                  "fastmath": {
+                    "kind": "enum",
+                    "dialect": "arith",
+                    "name": "fastmath",
+                    "value": "none"
+                  }
+                },
+                "props": {},
+                "regions": [],
+                "successors": []
+              },
+              {
+                "name": "linalg.yield",
+                "results": [],
+                "operands": [
+                  17215
+                ],
+                "attrs": {},
+                "props": {},
+                "regions": [],
+                "successors": []
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "successors": []
+  },
+  "target_ops": [
+    {
+      "name": "tensor.empty",
+      "results": [
+        {
+          "id": 17210,
+          "type": {
+            "kind": "tensor",
+            "shape": [
+              15,
+              113,
+              64
+            ],
+            "element": {
+              "kind": "float",
+              "format": "f32"
+            },
+            "encoding": null
+          }
+        }
+      ],
+      "operands": [],
+      "attrs": {},
+      "props": {},
+      "regions": [],
+      "successors": []
+    },
+    {
+      "name": "arith.constant",
+      "results": [
+        {
+          "id": 17211,
+          "type": {
+            "kind": "float",
+            "format": "f32"
+          }
+        }
+      ],
+      "operands": [],
+      "attrs": {
+        "value": {
+          "kind": "float",
+          "bits": "0",
+          "type": {
+            "kind": "float",
+            "format": "f32"
+          }
+        }
+      },
+      "props": {},
+      "regions": [],
+      "successors": []
+    },
+    {
+      "name": "linalg.fill",
+      "results": [
+        {
+          "id": 17212,
+          "type": {
+            "kind": "tensor",
+            "shape": [
+              15,
+              113,
+              64
+            ],
+            "element": {
+              "kind": "float",
+              "format": "f32"
+            },
+            "encoding": null
+          }
+        }
+      ],
+      "operands": [
+        17211,
+        17210
+      ],
+      "attrs": {
+        "operandSegmentSizes": {
+          "kind": "dense_array",
+          "element": {
+            "kind": "int",
+            "width": 32
+          },
+          "values": [
+            "1",
+            "1"
+          ]
+        }
+      },
+      "props": {},
+      "regions": [
+        {
+          "blocks": [
+            {
+              "args": [
+                {
+                  "id": 17213,
+                  "type": {
+                    "kind": "float",
+                    "format": "f32"
+                  }
+                },
+                {
+                  "id": 17214,
+                  "type": {
+                    "kind": "float",
+                    "format": "f32"
+                  }
+                }
+              ],
+              "ops": [
+                {
+                  "name": "linalg.yield",
+                  "results": [],
+                  "operands": [
+                    17213
+                  ],
+                  "attrs": {},
+                  "props": {},
+                  "regions": [],
+                  "successors": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "successors": []
+    },
+    {
+      "name": "linalg.generic",
+      "results": [
+        {
+          "id": 17215,
+          "type": {
+            "kind": "tensor",
+            "shape": [
+              15,
+              113,
+              64
+            ],
+            "element": {
+              "kind": "float",
+              "format": "f32"
+            },
+            "encoding": null
+          }
+        }
+      ],
+      "operands": [
+        17201,
+        17207,
+        17212
+      ],
+      "attrs": {
+        "indexing_maps": {
+          "kind": "array",
+          "elements": [
+            {
+              "kind": "affine_map",
+              "dims": 4,
+              "symbols": 0,
+              "results": [
+                {
+                  "kind": "dim",
+                  "pos": 0
+                },
+                {
+                  "kind": "dim",
+                  "pos": 1
+                },
+                {
+                  "kind": "dim",
+                  "pos": 3
+                }
+              ]
+            },
+            {
+              "kind": "affine_map",
+              "dims": 4,
+              "symbols": 0,
+              "results": [
+                {
+                  "kind": "dim",
+                  "pos": 0
+                },
+                {
+                  "kind": "dim",
+                  "pos": 3
+                },
+                {
+                  "kind": "dim",
+                  "pos": 2
+                }
+              ]
+            },
+            {
+              "kind": "affine_map",
+              "dims": 4,
+              "symbols": 0,
+              "results": [
+                {
+                  "kind": "dim",
+                  "pos": 0
+                },
+                {
+                  "kind": "dim",
+                  "pos": 1
+                },
+                {
+                  "kind": "dim",
+                  "pos": 2
+                }
+              ]
+            }
+          ]
+        },
+        "iterator_types": {
+          "kind": "array",
+          "elements": [
+            {
+              "kind": "enum",
+              "dialect": "linalg",
+              "name": "iterator_type",
+              "value": "parallel"
+            },
+            {
+              "kind": "enum",
+              "dialect": "linalg",
+              "name": "iterator_type",
+              "value": "parallel"
+            },
+            {
+              "kind": "enum",
+              "dialect": "linalg",
+              "name": "iterator_type",
+              "value": "parallel"
+            },
+            {
+              "kind": "enum",
+              "dialect": "linalg",
+              "name": "iterator_type",
+              "value": "reduction"
+            }
+          ]
+        },
+        "operandSegmentSizes": {
+          "kind": "dense_array",
+          "element": {
+            "kind": "int",
+            "width": 32
+          },
+          "values": [
+            "2",
+            "1"
+          ]
+        },
+        "prov._pattern_hint": {
+          "kind": "string",
+          "value": "batch_matmul"
+        },
+        "prov.aten": {
+          "kind": "string",
+          "value": "aten.bmm.default"
+        },
+        "prov.family": {
+          "kind": "string",
+          "value": "contraction"
+        },
+        "prov.op": {
+          "kind": "string",
+          "value": "batch_matmul"
+        },
+        "prov.orig_dtype": {
+          "kind": "string",
+          "value": "bfloat16"
+        },
+        "prov.region_id": {
+          "kind": "string",
+          "value": "matmul_102"
+        },
+        "prov.transforms": {
+          "kind": "string",
+          "value": "bf16_f32acc"
+        }
+      },
+      "props": {},
+      "regions": [
+        {
+          "blocks": [
+            {
+              "args": [
+                {
+                  "id": 17216,
+                  "type": {
+                    "kind": "float",
+                    "format": "bf16"
+                  }
+                },
+                {
+                  "id": 17217,
+                  "type": {
+                    "kind": "float",
+                    "format": "bf16"
+                  }
+                },
+                {
+                  "id": 17218,
+                  "type": {
+                    "kind": "float",
+                    "format": "f32"
+                  }
+                }
+              ],
+              "ops": [
+                {
+                  "name": "arith.extf",
+                  "results": [
+                    {
+                      "id": 17219,
+                      "type": {
+                        "kind": "float",
+                        "format": "f32"
+                      }
+                    }
+                  ],
+                  "operands": [
+                    17216
+                  ],
+                  "attrs": {},
+                  "props": {},
+                  "regions": [],
+                  "successors": []
+                },
+                {
+                  "name": "arith.extf",
+                  "results": [
+                    {
+                      "id": 17220,
+                      "type": {
+                        "kind": "float",
+                        "format": "f32"
+                      }
+                    }
+                  ],
+                  "operands": [
+                    17217
+                  ],
+                  "attrs": {},
+                  "props": {},
+                  "regions": [],
+                  "successors": []
+                },
+                {
+                  "name": "arith.mulf",
+                  "results": [
+                    {
+                      "id": 17221,
+                      "type": {
+                        "kind": "float",
+                        "format": "f32"
+                      }
+                    }
+                  ],
+                  "operands": [
+                    17219,
+                    17220
+                  ],
+                  "attrs": {
+                    "fastmath": {
+                      "kind": "enum",
+                      "dialect": "arith",
+                      "name": "fastmath",
+                      "value": "contract"
+                    }
+                  },
+                  "props": {},
+                  "regions": [],
+                  "successors": []
+                },
+                {
+                  "name": "arith.addf",
+                  "results": [
+                    {
+                      "id": 17222,
+                      "type": {
+                        "kind": "float",
+                        "format": "f32"
+                      }
+                    }
+                  ],
+                  "operands": [
+                    17218,
+                    17221
+                  ],
+                  "attrs": {
+                    "fastmath": {
+                      "kind": "enum",
+                      "dialect": "arith",
+                      "name": "fastmath",
+                      "value": "contract"
+                    }
+                  },
+                  "props": {},
+                  "regions": [],
+                  "successors": []
+                },
+                {
+                  "name": "linalg.yield",
+                  "results": [],
+                  "operands": [
+                    17222
+                  ],
+                  "attrs": {},
+                  "props": {},
+                  "regions": [],
+                  "successors": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "successors": []
+    },
+    {
+      "name": "tensor.empty",
+      "results": [
+        {
+          "id": 17223,
+          "type": {
+            "kind": "tensor",
+            "shape": [
+              15,
+              113,
+              64
+            ],
+            "element": {
+              "kind": "float",
+              "format": "bf16"
+            },
+            "encoding": null
+          }
+        }
+      ],
+      "operands": [],
+      "attrs": {},
+      "props": {},
+      "regions": [],
+      "successors": []
+    },
+    {
+      "name": "linalg.generic",
+      "results": [
+        {
+          "id": 17224,
+          "type": {
+            "kind": "tensor",
+            "shape": [
+              15,
+              113,
+              64
+            ],
+            "element": {
+              "kind": "float",
+              "format": "bf16"
+            },
+            "encoding": null
+          }
+        }
+      ],
+      "operands": [
+        17215,
+        17223
+      ],
+      "attrs": {
+        "indexing_maps": {
+          "kind": "array",
+          "elements": [
+            {
+              "kind": "affine_map",
+              "dims": 3,
+              "symbols": 0,
+              "results": [
+                {
+                  "kind": "dim",
+                  "pos": 0
+                },
+                {
+                  "kind": "dim",
+                  "pos": 1
+                },
+                {
+                  "kind": "dim",
+                  "pos": 2
+                }
+              ]
+            },
+            {
+              "kind": "affine_map",
+              "dims": 3,
+              "symbols": 0,
+              "results": [
+                {
+                  "kind": "dim",
+                  "pos": 0
+                },
+                {
+                  "kind": "dim",
+                  "pos": 1
+                },
+                {
+                  "kind": "dim",
+                  "pos": 2
+                }
+              ]
+            }
+          ]
+        },
+        "iterator_types": {
+          "kind": "array",
+          "elements": [
+            {
+              "kind": "enum",
+              "dialect": "linalg",
+              "name": "iterator_type",
+              "value": "parallel"
+            },
+            {
+              "kind": "enum",
+              "dialect": "linalg",
+              "name": "iterator_type",
+              "value": "parallel"
+            },
+            {
+              "kind": "enum",
+              "dialect": "linalg",
+              "name": "iterator_type",
+              "value": "parallel"
+            }
+          ]
+        },
+        "operandSegmentSizes": {
+          "kind": "dense_array",
+          "element": {
+            "kind": "int",
+            "width": 32
+          },
+          "values": [
+            "1",
+            "1"
+          ]
+        }
+      },
+      "props": {},
+      "regions": [
+        {
+          "blocks": [
+            {
+              "args": [
+                {
+                  "id": 17225,
+                  "type": {
+                    "kind": "float",
+                    "format": "f32"
+                  }
+                },
+                {
+                  "id": 17226,
+                  "type": {
+                    "kind": "float",
+                    "format": "bf16"
+                  }
+                }
+              ],
+              "ops": [
+                {
+                  "name": "arith.truncf",
+                  "results": [
+                    {
+                      "id": 17227,
+                      "type": {
+                        "kind": "float",
+                        "format": "bf16"
+                      }
+                    }
+                  ],
+                  "operands": [
+                    17225
+                  ],
+                  "attrs": {},
+                  "props": {},
+                  "regions": [],
+                  "successors": []
+                },
+                {
+                  "name": "linalg.yield",
+                  "results": [],
+                  "operands": [
+                    17227
+                  ],
+                  "attrs": {},
+                  "props": {},
+                  "regions": [],
+                  "successors": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "successors": []
+    }
+  ]
+}

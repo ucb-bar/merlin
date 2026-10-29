@@ -1,0 +1,61 @@
+{
+  "native_access": false,
+  "proof_closure": {
+    "bytes": 110138,
+    "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/PROJECT_SOURCE_CLOSURE.json",
+    "sha256": "5fc7c5f4a5137bbbacd5e95b61ebfdd13e03cdb8fdb0a263f7324a19d9c95dc0"
+  },
+  "review_inputs": [
+    {
+      "bytes": 17683,
+      "path": "src/merlin/verify/lean/bf16_f32acc.py",
+      "sha256": "96cf4ec68c54eef8639e0abb62605f9c515214fc0e1a6177f7d522d7f8ba2d8e"
+    },
+    {
+      "bytes": 12328,
+      "path": "build_tools/scripts/prepare_bf16_review.py",
+      "sha256": "ab808d4bc02c70f47ee5651750801cd0b05db7e18bd08137d65f92635bd866a2"
+    },
+    {
+      "bytes": 29954,
+      "path": "build_tools/scripts/check_lean_guard.py",
+      "sha256": "ca3b2b0b550a5f3bff7dbaa36d2f86e4e56ad118325563e8c0c7f5baa6dbe01b"
+    },
+    {
+      "bytes": 33934,
+      "path": "merlin/lean/SPEC_LOCK",
+      "sha256": "6cc97b6a0742795378cca76393642932b62cc9f8998693f3961f22a5bc44b23b"
+    },
+    {
+      "bytes": 25,
+      "path": "merlin/lean/lean-toolchain",
+      "sha256": "ca5f1f601d34c49079e38d7e7041eb0f2a9c227fbc1df0f404820069a052330c"
+    },
+    {
+      "bytes": 748,
+      "path": "merlin/lean/lakefile.toml",
+      "sha256": "6d9009180a567bf4fc7a6f8224d174963f8957a84e5702d864944383233fc99c"
+    },
+    {
+      "bytes": 3145,
+      "path": "merlin/lean/lake-manifest.json",
+      "sha256": "483e372c6cd8ee69b2f3e40b6454651140fdc0f6c4e3de3fa208591d4a14677d"
+    },
+    {
+      "bytes": 14972,
+      "path": "src/merlin/verify/lean/export.py",
+      "sha256": "294ef32c54e8df443acc74e957740a196e1a1b31d165039388d5759a0f0ec443"
+    },
+    {
+      "bytes": 11821,
+      "path": "src/merlin/verify/lean/mlir_export.py",
+      "sha256": "8a00b918597f110a806fb5bba957bd074d7dd494a5f82d54d78321df5f5633b6"
+    },
+    {
+      "bytes": 60340,
+      "path": "src/merlin/llvmlower/passes_xdsl.py",
+      "sha256": "14aa9429ec65cb9835f189f8ce947e0d3fd5679aea29bf9e56cc6b970eb6c499"
+    }
+  ],
+  "status": "SOURCE_REVIEW_ONLY"
+}

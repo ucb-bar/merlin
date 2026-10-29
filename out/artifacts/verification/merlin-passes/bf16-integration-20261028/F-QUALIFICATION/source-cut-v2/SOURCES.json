@@ -1,0 +1,30 @@
+{
+  "status": "FINAL_MACCTASK_SOURCE_CHECKPOINT",
+  "files": [
+    {
+      "path": "merlin/tests/ir/lean_bf16_policy_cases.py",
+      "bytes": 8512,
+      "sha256": "dc9b74016e3dd9d9dee3a17e19c04b752a13879d56313f0b1bdabab23ad69186",
+      "snapshot": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/source-cut-v2/source/merlin/tests/ir/lean_bf16_policy_cases.py"
+    },
+    {
+      "path": "merlin/tests/ir/lean_bf16_policy_mlir.py",
+      "bytes": 1079,
+      "sha256": "401ba6b23b037b0882c52e4c3ee47a61235b1773378e61d72580b65bf14608e0",
+      "snapshot": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/source-cut-v2/source/merlin/tests/ir/lean_bf16_policy_mlir.py"
+    },
+    {
+      "path": "merlin/tests/ir/lean_bf16_policy_qualification.py",
+      "bytes": 13729,
+      "sha256": "7bc26e66840610251cf4c75813746e401b908ca48b707a6d54e91643ba7c6ca7",
+      "snapshot": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/source-cut-v2/source/merlin/tests/ir/lean_bf16_policy_qualification.py"
+    },
+    {
+      "path": "merlin/tests/ir/test_lean_bf16_policy_gate.py",
+      "bytes": 17237,
+      "sha256": "fc550865d6e5383e432d801b6af3720ec8598b6d07295e223917dcb2ece39dcf",
+      "snapshot": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/source-cut-v2/source/merlin/tests/ir/test_lean_bf16_policy_gate.py"
+    }
+  ],
+  "human_policy_reviewed": false
+}

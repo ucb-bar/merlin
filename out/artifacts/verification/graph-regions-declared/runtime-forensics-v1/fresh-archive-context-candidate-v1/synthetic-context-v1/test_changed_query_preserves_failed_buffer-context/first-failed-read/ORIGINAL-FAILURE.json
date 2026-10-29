@@ -1,0 +1,41 @@
+{
+  "evidence": {
+    "after": {
+      "st_ctime_ns": 1793052292242131377,
+      "st_dev": 46,
+      "st_ino": 6073174,
+      "st_mtime_ns": 1793052292242131377,
+      "st_size": 28
+    },
+    "before": {
+      "st_ctime_ns": 1793052292242131377,
+      "st_dev": 46,
+      "st_ino": 6073174,
+      "st_mtime_ns": 1793052292242131377,
+      "st_size": 28
+    },
+    "expected": {
+      "bytes": 75,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_changed_query_preserves_failed_buffer-context/source/Merlin/Query.lean",
+      "sha256": "97245201a2a0718d56d548987ef8f511229f1ae1b7a6fe794c2ac767926955f5"
+    },
+    "live": {
+      "st_ctime_ns": 1793052292242131377,
+      "st_dev": 46,
+      "st_ino": 6073174,
+      "st_mtime_ns": 1793052292242131377,
+      "st_size": 28
+    },
+    "observed_bytes": 28,
+    "observed_sha256": "24bd8a7c61c0572929656c91dead972b73aa185614f01ec470c441feda3a9410",
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_changed_query_preserves_failed_buffer-context/source/Merlin/Query.lean"
+  },
+  "expected": {
+    "bytes": 75,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_changed_query_preserves_failed_buffer-context/source/Merlin/Query.lean",
+    "sha256": "97245201a2a0718d56d548987ef8f511229f1ae1b7a6fe794c2ac767926955f5"
+  },
+  "read_reached_eof": true,
+  "reason": "selected bytes differ; no refreshed expectation",
+  "type": "BindingError"
+}

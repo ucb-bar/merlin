@@ -1,0 +1,13 @@
+# Independent review of the first complete MACC case run
+
+W read and checked F's retained source/export/process/report records. No new native job was launched or requested. `DATA_REVIEW.json` records exact data references and the reproducible source-only checks in `review_data.py`.
+
+- All38 cases have authoritative parser/verifier/export processes returning0 and bound source/export bytes. The actual compiled `check-bf16-f32acc` runs returned the expected candidate-driver exit1 without timeouts.
+- Seventeen actual reports satisfy complete-output matching, all local site qualifications and the positive candidate/site denominator. Nineteen actual reports refuse the policy. Two unchanged decoded modules outside the policy's candidate scope are refused by the host domain/coverage check; they contribute no MACC sites.
+- The nondefault-rounding mutation is accepted by the authoritative MLIR verifier and refused by the Lean policy checker. Its earlier xDSL spelling rejection is retained and does not invalidate this authoritative-route negative.
+- The first fresh full SmolVLA receipt has complete Exact/Sites checks and24/24 covered sites. Its retained fresh replay matches with no stale bindings/differences. Raw MLIR, exported inputs, report and receipt references were checked as data. The current engineering receipt remains `abstracted`, human policy approval is false, and whole-capture qualification remains false.
+- The imported-checker audit reports9,749 theorems with no violations. Its elaborated statement roster has15 gate roots; its axiom roster includes those15 and the two chain roots, all within the standard three axioms. These are different rosters. The first W data-review assertion incorrectly expected17 statements; its failure and correction are retained in `FIRST-DATA-REVIEW-FAILURE.txt`. No missing chain statement was treated as present.
+
+The overlapping Qv2 implementation sources recorded in F's capture run match the reviewed cut. This data review does not replace F's final source qualification or its actual audit/native execution. At this observation the segment/TinyLlama replay batch was still running; no result for those pending jobs is inferred. The segment repeats the same24 SmolVLA sites; TinyLlama has zero numerical sites.
+
+The source-review disposition in `../final-q-v2/README.md` and human decisions in `../APPROVAL_REQUEST.md` remain unchanged. F14/nonzero initialization, F18/fusion differences, FloatModel fidelity, ordered reduction, explicit SSA/call laws and downstream-lowering assumptions remain. No approved policy gate positive, original-half equivalence, whole-model definedness, arbitrary mixed fusion or native bit-exact claim is supplied by these engineering checks.

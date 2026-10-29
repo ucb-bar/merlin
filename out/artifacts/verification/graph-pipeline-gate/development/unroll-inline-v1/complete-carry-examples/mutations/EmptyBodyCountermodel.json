@@ -1,0 +1,1414 @@
+{
+  "projection": {
+    "registry": [
+      {
+        "descriptor": {
+          "attributes": [
+            "dictionary",
+            []
+          ],
+          "class": "xdsl.dialects.arith.ConstantOp",
+          "name": "arith.constant",
+          "operand_types": [],
+          "properties": [
+            "dictionary",
+            [
+              [
+                "value",
+                [
+                  "attribute",
+                  "xdsl.dialects.builtin.IntegerAttr",
+                  "integer",
+                  [
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.IntAttr",
+                      "builtin.int",
+                      [
+                        "int",
+                        2
+                      ]
+                    ],
+                    [
+                      "attribute",
+                      "xdsl.dialects.builtin.IndexType",
+                      "index",
+                      []
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "result_types": [
+            [
+              "attribute",
+              "xdsl.dialects.builtin.IndexType",
+              "index",
+              []
+            ]
+          ]
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "index": true
+          }
+        ],
+        "index_constant": 2
+      },
+      {
+        "descriptor": {
+          "attributes": [
+            "dictionary",
+            []
+          ],
+          "class": "xdsl.dialects.arith.ConstantOp",
+          "name": "arith.constant",
+          "operand_types": [],
+          "properties": [
+            "dictionary",
+            [
+              [
+                "value",
+                [
+                  "attribute",
+                  "xdsl.dialects.builtin.IntegerAttr",
+                  "integer",
+                  [
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.IntAttr",
+                      "builtin.int",
+                      [
+                        "int",
+                        3
+                      ]
+                    ],
+                    [
+                      "attribute",
+                      "xdsl.dialects.builtin.IndexType",
+                      "index",
+                      []
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "result_types": [
+            [
+              "attribute",
+              "xdsl.dialects.builtin.IndexType",
+              "index",
+              []
+            ]
+          ]
+        },
+        "inputs": [],
+        "outputs": [
+          {
+            "index": true
+          }
+        ],
+        "index_constant": 3
+      },
+      {
+        "descriptor": {
+          "attributes": [
+            "dictionary",
+            []
+          ],
+          "class": "xdsl.dialects.func.CallOp",
+          "name": "func.call",
+          "operand_types": [
+            [
+              "attribute",
+              "xdsl.dialects.builtin.IndexType",
+              "index",
+              []
+            ],
+            [
+              "attribute",
+              "xdsl.dialects.builtin.IntegerType",
+              "integer_type",
+              [
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.IntAttr",
+                  "builtin.int",
+                  [
+                    "int",
+                    8
+                  ]
+                ],
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.SignednessAttr",
+                  "builtin.signedness",
+                  [
+                    "xdsl.dialects.builtin.Signedness",
+                    "SIGNLESS",
+                    [
+                      "int",
+                      0
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "properties": [
+            "dictionary",
+            [
+              [
+                "callee",
+                [
+                  "attribute",
+                  "xdsl.dialects.builtin.SymbolRefAttr",
+                  "symbol_ref",
+                  [
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.StringAttr",
+                      "string",
+                      [
+                        "str",
+                        "step"
+                      ]
+                    ],
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        []
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "result_types": [
+            [
+              "attribute",
+              "xdsl.dialects.builtin.IntegerType",
+              "integer_type",
+              [
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.IntAttr",
+                  "builtin.int",
+                  [
+                    "int",
+                    8
+                  ]
+                ],
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.SignednessAttr",
+                  "builtin.signedness",
+                  [
+                    "xdsl.dialects.builtin.Signedness",
+                    "SIGNLESS",
+                    [
+                      "int",
+                      0
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        },
+        "inputs": [
+          {
+            "index": true
+          },
+          {
+            "bits": 8
+          }
+        ],
+        "outputs": [
+          {
+            "bits": 8
+          }
+        ],
+        "index_constant": null
+      },
+      {
+        "descriptor": {
+          "attributes": [
+            "dictionary",
+            []
+          ],
+          "class": "xdsl.dialects.func.CallOp",
+          "name": "func.call",
+          "operand_types": [
+            [
+              "attribute",
+              "xdsl.dialects.builtin.IntegerType",
+              "integer_type",
+              [
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.IntAttr",
+                  "builtin.int",
+                  [
+                    "int",
+                    8
+                  ]
+                ],
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.SignednessAttr",
+                  "builtin.signedness",
+                  [
+                    "xdsl.dialects.builtin.Signedness",
+                    "SIGNLESS",
+                    [
+                      "int",
+                      0
+                    ]
+                  ]
+                ]
+              ]
+            ],
+            [
+              "attribute",
+              "xdsl.dialects.builtin.IntegerType",
+              "integer_type",
+              [
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.IntAttr",
+                  "builtin.int",
+                  [
+                    "int",
+                    8
+                  ]
+                ],
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.SignednessAttr",
+                  "builtin.signedness",
+                  [
+                    "xdsl.dialects.builtin.Signedness",
+                    "SIGNLESS",
+                    [
+                      "int",
+                      0
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "properties": [
+            "dictionary",
+            [
+              [
+                "callee",
+                [
+                  "attribute",
+                  "xdsl.dialects.builtin.SymbolRefAttr",
+                  "symbol_ref",
+                  [
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.StringAttr",
+                      "string",
+                      [
+                        "str",
+                        "observe"
+                      ]
+                    ],
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        []
+                      ]
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "result_types": [
+            [
+              "attribute",
+              "xdsl.dialects.builtin.IntegerType",
+              "integer_type",
+              [
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.IntAttr",
+                  "builtin.int",
+                  [
+                    "int",
+                    8
+                  ]
+                ],
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.SignednessAttr",
+                  "builtin.signedness",
+                  [
+                    "xdsl.dialects.builtin.Signedness",
+                    "SIGNLESS",
+                    [
+                      "int",
+                      0
+                    ]
+                  ]
+                ]
+              ]
+            ]
+          ]
+        },
+        "inputs": [
+          {
+            "bits": 8
+          },
+          {
+            "bits": 8
+          }
+        ],
+        "outputs": [
+          {
+            "bits": 8
+          }
+        ],
+        "index_constant": null
+      }
+    ],
+    "types": [
+      [
+        "attribute",
+        "xdsl.dialects.builtin.IndexType",
+        "index",
+        []
+      ],
+      [
+        "attribute",
+        "xdsl.dialects.builtin.IntegerType",
+        "integer_type",
+        [
+          [
+            "data-attribute",
+            "xdsl.dialects.builtin.IntAttr",
+            "builtin.int",
+            [
+              "int",
+              8
+            ]
+          ],
+          [
+            "data-attribute",
+            "xdsl.dialects.builtin.SignednessAttr",
+            "builtin.signedness",
+            [
+              "xdsl.dialects.builtin.Signedness",
+              "SIGNLESS",
+              [
+                "int",
+                0
+              ]
+            ]
+          ]
+        ]
+      ]
+    ],
+    "functions": [
+      {
+        "name": "step",
+        "header": {
+          "class": "xdsl.dialects.func.FuncOp",
+          "name": "func.func",
+          "attributes": [
+            "dictionary",
+            []
+          ],
+          "properties": [
+            "dictionary",
+            [
+              [
+                "function_type",
+                [
+                  "attribute",
+                  "xdsl.dialects.builtin.FunctionType",
+                  "fun",
+                  [
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        [
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IndexType",
+                            "index",
+                            []
+                          ],
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ],
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        [
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ],
+              [
+                "sym_name",
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.StringAttr",
+                  "string",
+                  [
+                    "str",
+                    "step"
+                  ]
+                ]
+              ],
+              [
+                "sym_visibility",
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.StringAttr",
+                  "string",
+                  [
+                    "str",
+                    "private"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "operand_types": [],
+          "result_types": []
+        },
+        "inputs": [
+          {
+            "index": true
+          },
+          {
+            "bits": 8
+          }
+        ],
+        "outputs": [
+          {
+            "bits": 8
+          }
+        ],
+        "before": null,
+        "after": null,
+        "declaration": true
+      },
+      {
+        "name": "observe",
+        "header": {
+          "class": "xdsl.dialects.func.FuncOp",
+          "name": "func.func",
+          "attributes": [
+            "dictionary",
+            []
+          ],
+          "properties": [
+            "dictionary",
+            [
+              [
+                "function_type",
+                [
+                  "attribute",
+                  "xdsl.dialects.builtin.FunctionType",
+                  "fun",
+                  [
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        [
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ],
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ],
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        [
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ],
+              [
+                "sym_name",
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.StringAttr",
+                  "string",
+                  [
+                    "str",
+                    "observe"
+                  ]
+                ]
+              ],
+              [
+                "sym_visibility",
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.StringAttr",
+                  "string",
+                  [
+                    "str",
+                    "private"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "operand_types": [],
+          "result_types": []
+        },
+        "inputs": [
+          {
+            "bits": 8
+          },
+          {
+            "bits": 8
+          }
+        ],
+        "outputs": [
+          {
+            "bits": 8
+          }
+        ],
+        "before": null,
+        "after": null,
+        "declaration": true
+      },
+      {
+        "name": "altered",
+        "header": {
+          "class": "xdsl.dialects.func.FuncOp",
+          "name": "func.func",
+          "attributes": [
+            "dictionary",
+            []
+          ],
+          "properties": [
+            "dictionary",
+            [
+              [
+                "function_type",
+                [
+                  "attribute",
+                  "xdsl.dialects.builtin.FunctionType",
+                  "fun",
+                  [
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        [
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ],
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ],
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        [
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ],
+              [
+                "sym_name",
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.StringAttr",
+                  "string",
+                  [
+                    "str",
+                    "altered"
+                  ]
+                ]
+              ],
+              [
+                "sym_visibility",
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.StringAttr",
+                  "string",
+                  [
+                    "str",
+                    "private"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "operand_types": [],
+          "result_types": []
+        },
+        "inputs": [
+          {
+            "bits": 8
+          },
+          {
+            "bits": 8
+          }
+        ],
+        "outputs": [
+          {
+            "bits": 8
+          }
+        ],
+        "before": null,
+        "after": null,
+        "declaration": true
+      },
+      {
+        "name": "main",
+        "header": {
+          "class": "xdsl.dialects.func.FuncOp",
+          "name": "func.func",
+          "attributes": [
+            "dictionary",
+            []
+          ],
+          "properties": [
+            "dictionary",
+            [
+              [
+                "function_type",
+                [
+                  "attribute",
+                  "xdsl.dialects.builtin.FunctionType",
+                  "fun",
+                  [
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        [
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ],
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ],
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        [
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ],
+              [
+                "sym_name",
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.StringAttr",
+                  "string",
+                  [
+                    "str",
+                    "main"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "operand_types": [],
+          "result_types": []
+        },
+        "inputs": [
+          {
+            "bits": 8
+          },
+          {
+            "bits": 8
+          }
+        ],
+        "outputs": [
+          {
+            "bits": 8
+          }
+        ],
+        "before": [
+          {
+            "effect": 1,
+            "arguments": [],
+            "outputs": [
+              {
+                "index": true
+              }
+            ]
+          },
+          {
+            "effect": 1,
+            "arguments": [],
+            "outputs": [
+              {
+                "index": true
+              }
+            ]
+          },
+          {
+            "effect": 0,
+            "arguments": [],
+            "outputs": [
+              {
+                "index": true
+              }
+            ]
+          },
+          {
+            "loop": {
+              "bounds": [
+                2,
+                1,
+                0
+              ],
+              "initial": [
+                3,
+                4
+              ],
+              "carries": [
+                {
+                  "bits": 8
+                },
+                {
+                  "bits": 8
+                }
+              ],
+              "body": [
+                {
+                  "pure": {
+                    "kind": "add",
+                    "width": 8
+                  },
+                  "arguments": [
+                    1,
+                    7
+                  ]
+                },
+                {
+                  "effect": 2,
+                  "arguments": [
+                    1,
+                    0
+                  ],
+                  "outputs": [
+                    {
+                      "bits": 8
+                    }
+                  ]
+                },
+                {
+                  "ret": [
+                    0,
+                    4
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "effect": 3,
+            "arguments": [
+              0,
+              1
+            ],
+            "outputs": [
+              {
+                "bits": 8
+              }
+            ]
+          },
+          {
+            "ret": [
+              0
+            ]
+          }
+        ],
+        "after": [
+          {
+            "effect": 1,
+            "arguments": [],
+            "outputs": [
+              {
+                "index": true
+              }
+            ]
+          },
+          {
+            "effect": 1,
+            "arguments": [],
+            "outputs": [
+              {
+                "index": true
+              }
+            ]
+          },
+          {
+            "effect": 0,
+            "arguments": [],
+            "outputs": [
+              {
+                "index": true
+              }
+            ]
+          },
+          {
+            "effect": 2,
+            "arguments": [
+              2,
+              3
+            ],
+            "outputs": [
+              {
+                "bits": 8
+              }
+            ]
+          },
+          {
+            "effect": 3,
+            "arguments": [
+              4,
+              5
+            ],
+            "outputs": [
+              {
+                "bits": 8
+              }
+            ]
+          },
+          {
+            "ret": [
+              0
+            ]
+          }
+        ],
+        "declaration": false
+      },
+      {
+        "name": "untouched",
+        "header": {
+          "class": "xdsl.dialects.func.FuncOp",
+          "name": "func.func",
+          "attributes": [
+            "dictionary",
+            []
+          ],
+          "properties": [
+            "dictionary",
+            [
+              [
+                "function_type",
+                [
+                  "attribute",
+                  "xdsl.dialects.builtin.FunctionType",
+                  "fun",
+                  [
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        [
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ],
+                    [
+                      "data-attribute",
+                      "xdsl.dialects.builtin.ArrayAttr",
+                      "array",
+                      [
+                        "tuple",
+                        [
+                          [
+                            "attribute",
+                            "xdsl.dialects.builtin.IntegerType",
+                            "integer_type",
+                            [
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.IntAttr",
+                                "builtin.int",
+                                [
+                                  "int",
+                                  8
+                                ]
+                              ],
+                              [
+                                "data-attribute",
+                                "xdsl.dialects.builtin.SignednessAttr",
+                                "builtin.signedness",
+                                [
+                                  "xdsl.dialects.builtin.Signedness",
+                                  "SIGNLESS",
+                                  [
+                                    "int",
+                                    0
+                                  ]
+                                ]
+                              ]
+                            ]
+                          ]
+                        ]
+                      ]
+                    ]
+                  ]
+                ]
+              ],
+              [
+                "sym_name",
+                [
+                  "data-attribute",
+                  "xdsl.dialects.builtin.StringAttr",
+                  "string",
+                  [
+                    "str",
+                    "untouched"
+                  ]
+                ]
+              ]
+            ]
+          ],
+          "operand_types": [],
+          "result_types": []
+        },
+        "inputs": [
+          {
+            "bits": 8
+          }
+        ],
+        "outputs": [
+          {
+            "bits": 8
+          }
+        ],
+        "before": [
+          {
+            "ret": [
+              0
+            ]
+          }
+        ],
+        "after": [
+          {
+            "ret": [
+              0
+            ]
+          }
+        ],
+        "declaration": false
+      }
+    ],
+    "module_header": {
+      "class": "xdsl.dialects.builtin.ModuleOp",
+      "name": "builtin.module",
+      "attributes": [
+        "dictionary",
+        []
+      ],
+      "properties": [
+        "dictionary",
+        []
+      ],
+      "operand_types": [],
+      "result_types": []
+    },
+    "operation_budget_used": 17
+  },
+  "roots": [
+    "Merlin.GraphInlineEmptyCountermodel.source_skips_body",
+    "Merlin.GraphInlineEmptyCountermodel.target_executes_body",
+    "Merlin.GraphInlineEmptyCountermodel.observations_differ"
+  ],
+  "query_status": "UNCOMPILED",
+  "outcome": "UNOBSERVED",
+  "model_approved": false
+}

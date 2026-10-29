@@ -1,0 +1,24 @@
+{
+  "created_utc": "2026-10-26T21:03:56.475377+00:00",
+  "primary_branch": "feat/pass-verification",
+  "commits": [
+    {
+      "commit": "0d9b2437fc3492f1f2d9162f201eb70c0cc005d7",
+      "scope": "two-file canonical artifact integrity verifier and tests",
+      "validation": "24 synthetic methods; v1 retained worked-archive check separate; no new archive run",
+      "proof_qualification": false
+    },
+    {
+      "commit": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+      "scope": "F primary25 input admission hooks/tests/fixtures exact frozen source cut",
+      "source_manifest": "out/artifacts/verification/graph-regions-declared/input-admission-review-v1/SOURCES.json",
+      "validation": "81 recorded SDK-free tests, exact source-byte comparison; no fresh Lean qualification",
+      "proof_qualification": false
+    }
+  ],
+  "structure": "only existing zephyr_model.py3557>3537 ceiling failure",
+  "other_unqualified_sources_published": false,
+  "old_holds_cleared": false,
+  "reviewed_remote_ancestor": true,
+  "force_push": false
+}

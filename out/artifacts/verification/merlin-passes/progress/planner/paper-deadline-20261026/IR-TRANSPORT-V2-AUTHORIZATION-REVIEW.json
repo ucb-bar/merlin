@@ -1,0 +1,21 @@
+{
+  "observed_utc": "2026-10-26T21:28:16.743819+00:00",
+  "worker": "01a15b82-8d58-75f1-9281-f529977e0bad",
+  "authorization": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/AUTHORIZED-IR-TRANSPORT-V2.json",
+    "sha256": "0cb85cb56f0f7a15fca44386441c32993cd8797cb246f84a0f71d4ed1ad44d73",
+    "bytes": 2867
+  },
+  "reviewed_proposal_sha256": "60739259749da361ea45e2525e73704d6a06a053889b512def712c6c07ff8424",
+  "scope": "ONE exact2144 originalIR DATA transport only; fixed v2 source/request; exclusive new destination; first failure terminal; no retry",
+  "original_sizes": "unknown/null; measured transport sizes separate after original hash match",
+  "not_authorized": [
+    "base/runtime/installed SDK image reads or writes",
+    "new expected hashes for old images",
+    "native/Lean/compiler/loader/graph acceptance",
+    "SDK repair, IR lookup-path integration or hold clearance",
+    "second attempt or partial-set admission"
+  ],
+  "independent_review": "v1 positive attribution fixed in v2;9focused+8metadata owner tests and7independent source checks; old failed77 matrix retained",
+  "fresh_sdk_intake": "separate source-only task, no actual archive download permission yet"
+}

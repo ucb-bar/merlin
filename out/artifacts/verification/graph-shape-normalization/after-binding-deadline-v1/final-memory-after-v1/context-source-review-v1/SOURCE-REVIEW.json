@@ -1,0 +1,18 @@
+{
+  "lexical_violations": [],
+  "python_ast_parsed": [
+    "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_context.py",
+    "src/merlin/verify/lean_graph_loops_memory_scf_after_context.py",
+    "src/merlin/verify/lean_graph_loops_memory_scf_after_context_data.py",
+    "src/merlin/verify/lean_graph_loops_memory_scf_after_context_witness.py"
+  ],
+  "axioms_audited": false,
+  "lean_compiled": false,
+  "review_notes": [
+    "No whole-callee/run/world equality premise",
+    "Entry support constructed and suffix support derived locally",
+    "No expanded self-normalization check",
+    "Raw wrapper syntax fact restricted to concrete witness, not generic alias route",
+    "No numerical laws added; existing abstract Nat witness reused"
+  ]
+}

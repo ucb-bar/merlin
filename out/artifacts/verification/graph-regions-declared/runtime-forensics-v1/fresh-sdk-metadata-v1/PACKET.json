@@ -1,0 +1,139 @@
+{
+  "status": "OFFICIAL_METADATA_ONLY_PROPOSAL_NOT_AUTHORIZED",
+  "files": [
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/EARLY-WEB-OBSERVATIONS.json",
+      "bytes": 538,
+      "sha256": "fdae42af20e8b420510baef153520a216f632d286b8ea3db89a8b0d319668d3a"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/INTAKE-PLAN.json",
+      "bytes": 3068,
+      "sha256": "4b37789e294d4eed486461f0b4f03b06042c67e3282837bd8a0bc5b9fd32cf64"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/NEW-IDENTITY.json",
+      "bytes": 775,
+      "sha256": "ca79ad6b0c3e9fd5a7dcbe796f1c3a028782cf34ecb191769b4810aa0d253d8f"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/README.md",
+      "bytes": 6347,
+      "sha256": "eda027ab3563bf9e87cce3877730427b0d37572f73afa18c11c74c082ed9435d"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/fetch.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/fetch.stdout.txt",
+      "bytes": 942,
+      "sha256": "a60cbcc3f149ab9a26f96d5adb6913dcbc2f8e18b2f746375d8d4912e961a6a8"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/fetch_metadata.py",
+      "bytes": 2062,
+      "sha256": "cf04db7aa44f5400b57461cacdae918332fed0fc650234a75a0a8b2b4426a325"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-build-source-v1/RESULT.json",
+      "bytes": 872,
+      "sha256": "8aa7bc6a1f7d726cc4de6307aa9b964610239a24c0e5209517da101edd86d3d0"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-build-source-v1/build-template.yml",
+      "bytes": 18204,
+      "sha256": "418e2d9692e9ef333bd6294887347eb21fa2f6ede08b86195b32ae772dc4449e"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-build-source-v1/ci.yml",
+      "bytes": 30805,
+      "sha256": "2304df705c05d9f2e3c1c0a31bfc384b73267ef212a92da4f852dee49aed5845"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-metadata-v1/RESULT.json",
+      "bytes": 1083,
+      "sha256": "49f7e79fd55e19404ace0f8e08196d3373ffee627a37bd586d28c46241660aef"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-metadata-v1/release.json",
+      "bytes": 18796,
+      "sha256": "dae99e3c6cf350277745139bd8a0f16b8574e55a8c65cd1eaa8220d52d86b99d"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-metadata-v1/tag.json",
+      "bytes": 343,
+      "sha256": "f179968e849f28a1b2426b68733243394847b8c78d3436b757cbe6cf1dcfdf6b"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-source-metadata-v1/RESULT.json",
+      "bytes": 938,
+      "sha256": "ce6e41ee5a23e23e8a9639262db473ddd0cae98ff803b9b59f4e6599994dd05a"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-source-metadata-v1/commit.json",
+      "bytes": 1128,
+      "sha256": "50884615dc5ab424c952c55d167e44ea7612b00a4283da0fa8f9b162bc4544b6"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/official-source-metadata-v1/workflows.json",
+      "bytes": 19978,
+      "sha256": "ddef3f345b475bac4ae64b3fe0db654161b364a35c0d65ba21042fef82721577"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/offline-tests-v1/INPUTS.json",
+      "bytes": 980,
+      "sha256": "257a33a5241c8bd0a263e8aa2e73c180c8df114934ce1e2a6f7b2c8b500808d5"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/offline-tests-v1/RESULT.json",
+      "bytes": 121,
+      "sha256": "1e739b22e6f9357f9eed1c7afff2eca0b2a989214c0ac8b52c7c1ab3fb156b6f"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/offline-tests-v1/source/release.json",
+      "bytes": 18796,
+      "sha256": "dae99e3c6cf350277745139bd8a0f16b8574e55a8c65cd1eaa8220d52d86b99d"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/offline-tests-v1/source/release_identity.py",
+      "bytes": 2253,
+      "sha256": "7ca4a2455f89b6712ef8dc30f77dfc02f01d313c7cae4847dff87a9346df9b62"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/offline-tests-v1/source/tag.json",
+      "bytes": 343,
+      "sha256": "f179968e849f28a1b2426b68733243394847b8c78d3436b757cbe6cf1dcfdf6b"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/offline-tests-v1/source/test_release_identity.py",
+      "bytes": 2520,
+      "sha256": "fe9128a4573a3a510df0f567fbf9b93b6914daa2bad30ea1f56403d7f15b9fb0"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/offline-tests-v1/stderr.txt",
+      "bytes": 612,
+      "sha256": "2f0e2c0a79095dc8cedf83f2ee980eb1819cd8998fd249d61759045f299021cd"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/offline-tests-v1/stdout.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/release_identity.py",
+      "bytes": 2253,
+      "sha256": "7ca4a2455f89b6712ef8dc30f77dfc02f01d313c7cae4847dff87a9346df9b62"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1/test_release_identity.py",
+      "bytes": 2520,
+      "sha256": "fe9128a4573a3a510df0f567fbf9b93b6914daa2bad30ea1f56403d7f15b9fb0"
+    }
+  ],
+  "archive_downloads": 0,
+  "sdk_image_reads": 0,
+  "native_launches": 0,
+  "old_holds_cleared": false
+}

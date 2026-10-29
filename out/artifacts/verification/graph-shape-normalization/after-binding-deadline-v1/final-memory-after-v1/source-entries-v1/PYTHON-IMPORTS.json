@@ -1,0 +1,1962 @@
+[
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 3,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 4,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 5,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 7,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 12,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after_projection.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_projection.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_projection.py",
+    "line": 10,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_projection.py",
+    "line": 11,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_types.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_types.py",
+    "line": 3,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_projection.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_projection.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+    "line": 11,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+    "line": 12,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_projection.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_types.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 16,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 17,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 18,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 14,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 15,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 16,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 18,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 19,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll.py",
+    "line": 230,
+    "project_sources": [
+      "src/merlin/verify/__init__.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/__init__.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/__init__.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/__init__.py",
+    "line": 18,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/__init__.py",
+    "line": 25,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_projection.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_projection.py",
+    "line": 10,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 14,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 15,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 16,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 18,
+    "project_sources": [
+      "src/merlin/sched/ir/__init__.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 34,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops.py",
+    "line": 49,
+    "project_sources": [
+      "src/merlin/verify/__init__.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 7,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 14,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 15,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 16,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 104,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 105,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 106,
+    "project_sources": [
+      "src/merlin/sched/ir/expr.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 107,
+    "project_sources": [
+      "src/merlin/sched/ir/kernel.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 108,
+    "project_sources": [
+      "src/merlin/sched/ir/__init__.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 109,
+    "project_sources": [
+      "src/merlin/sched/ir/expr.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_capture.py",
+    "line": 110,
+    "project_sources": [
+      "src/merlin/sched/ir/expr.py"
+    ]
+  },
+  {
+    "source": "src/merlin/sched/ir/expr.py",
+    "line": 14,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/sched/ir/expr.py",
+    "line": 16,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/sched/ir/expr.py",
+    "line": 17,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/sched/ir/__init__.py",
+    "line": 3,
+    "project_sources": [
+      "src/merlin/sched/ir/expr.py"
+    ]
+  },
+  {
+    "source": "src/merlin/sched/ir/__init__.py",
+    "line": 4,
+    "project_sources": [
+      "src/merlin/sched/ir/kernel.py"
+    ]
+  },
+  {
+    "source": "src/merlin/sched/ir/__init__.py",
+    "line": 20,
+    "project_sources": [
+      "src/merlin/sched/ir/parse.py"
+    ]
+  },
+  {
+    "source": "src/merlin/sched/ir/parse.py",
+    "line": 29,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/sched/ir/parse.py",
+    "line": 31,
+    "project_sources": [
+      "src/merlin/sched/ir/expr.py"
+    ]
+  },
+  {
+    "source": "src/merlin/sched/ir/parse.py",
+    "line": 32,
+    "project_sources": [
+      "src/merlin/sched/ir/kernel.py"
+    ]
+  },
+  {
+    "source": "src/merlin/sched/ir/kernel.py",
+    "line": 15,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/sched/ir/kernel.py",
+    "line": 17,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/sched/ir/kernel.py",
+    "line": 18,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/sched/ir/kernel.py",
+    "line": 19,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/sched/ir/kernel.py",
+    "line": 21,
+    "project_sources": [
+      "src/merlin/sched/ir/expr.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+    "line": 7,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+    "line": 8,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+    "line": 9,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+    "line": 192,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+    "line": 145,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+    "line": 151,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_plan.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+    "line": 157,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_model.py",
+    "line": 158,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+    "line": 3,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+    "line": 5,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_reuse.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+    "line": 6,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_reuse.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_model.py",
+    "line": 7,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 14,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 15,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 16,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 17,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 19,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 20,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 21,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_reuse_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 22,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse.py",
+    "line": 304,
+    "project_sources": [
+      "src/merlin/verify/__init__.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_projection.py",
+    "line": 7,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_projection.py",
+    "line": 9,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+    "line": 8,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+    "line": 9,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+    "line": 10,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_plan.py",
+    "line": 11,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_model.py",
+    "line": 3,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_input_admission.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 16,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 17,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 18,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 7,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 14,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 17,
+    "project_sources": [
+      "src/merlin/verify/__init__.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 19,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 22,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 23,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 25,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 26,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 35,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 105,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 106,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 107,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_capture.py",
+    "line": 71,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 14,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 15,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 18,
+    "project_sources": [
+      "src/merlin/verify/__init__.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 20,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 23,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 25,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 31,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 88,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 89,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_segment_capture.py",
+    "line": 94,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+    "line": 11,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+    "line": 12,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_types.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 14,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 15,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 33,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 34,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 47,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 48,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 88,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_input_admission.py",
+    "line": 106,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+    "line": 16,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_types.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+    "line": 152,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py",
+    "line": 153,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+    "line": 10,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_reuse_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_projection.py",
+    "line": 11,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 10,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 11,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after_declarations.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 12,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_plan.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 16,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_declarations.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after_epoch.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+    "line": 11,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_input_admission.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+    "line": 12,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_reuse_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+    "line": 16,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_observer.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+    "line": 17,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+    "line": 18,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_steps.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_epoch.py",
+    "line": 19,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_epoch_steps.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_model.py",
+    "line": 7,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after_model.py",
+    "line": 8,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_input_admission.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after.py",
+    "line": 16,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_shape_after.py",
+    "line": 17,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 7,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 14,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 17,
+    "project_sources": [
+      "src/merlin/verify/__init__.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 19,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 22,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 23,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 25,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 26,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 30,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 31,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 64,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 65,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_reuse_capture.py",
+    "line": 66,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 7,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 13,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 14,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 15,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 16,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 17,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 19,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 20,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after_projection.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 21,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_projection.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 3,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 4,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 5,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 6,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 7,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_projection.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 15,
+    "project_sources": [
+      "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 3,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 4,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 5,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 6,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+    "line": 12,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_input_admission.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_after_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+    "line": 16,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_epoch_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+    "line": 17,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 10,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 11,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 12,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+    "line": 7,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_model.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+    "line": 8,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_unroll.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "line": 7,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "line": 9,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_projection.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "line": 10,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_types.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+    "line": 3,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+    "line": 4,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+    "line": 5,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+    "line": 7,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+    "line": 12,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 3,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 5,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 6,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 7,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 13,
+    "project_sources": [
+      "src/merlin/verify/__init__.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 15,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 18,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 19,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 21,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 22,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_segment_capture.py"
+    ]
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 37,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 38,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 43,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 108,
+    "project_sources": []
+  },
+  {
+    "source": "src/merlin/verify/lean_graph_loops_unroll_capture.py",
+    "line": 109,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 3,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 4,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 5,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 6,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 8,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 9,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 10,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 11,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 12,
+    "project_sources": []
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 14,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_memory_scf_after.py"
+    ]
+  },
+  {
+    "source": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 15,
+    "project_sources": [
+      "src/merlin/verify/lean_graph_loops_shape_projection.py"
+    ]
+  }
+]

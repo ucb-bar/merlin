@@ -1,0 +1,39 @@
+{
+  "packet": "out/artifacts/verification/graph-state-integer/review/sealed-v2",
+  "manifest_sha256": "5a2552cd32bba11b06acc43c2218abed0f8ace4639d99deb814623eb947194fa",
+  "manifest_files_checked": 2250,
+  "manifest_bytes_checked": 131876802,
+  "errors": [],
+  "source_pairs_previously_checked": 20,
+  "tests": {
+    "tests": 75,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "originals": 17,
+  "fresh_replays": 17,
+  "positive_replay_batches": 1,
+  "changed": 14,
+  "identity": 3,
+  "native_proof_or_test_runs": 0,
+  "SDK_file_reads": 0,
+  "qualification_v1_promoted": false,
+  "independent_policy_or_native_review": false,
+  "delivery_claims": {
+    "relation": "canonical-entry complete return/error/terminal-world correspondence",
+    "runtime_intermediate_typing_derived": true,
+    "local_result_contracts_required": true,
+    "canonical_entries_required": true,
+    "python_projection_proved": false,
+    "review_approved": false,
+    "public_acceptance_issued": false,
+    "native_fidelity_proved": false,
+    "poison_freedom_proved": false,
+    "source_success_for_all_models": false,
+    "all_graph_passes_verified": false,
+    "full_model_claim": false,
+    "broker_integration": false,
+    "old_failure_promoted": false
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "head": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "sources": [
+    {
+      "path": "src/merlin/verify/refine.py",
+      "sha256": "e25299d3fd73d9403f1ed9786aa9181a45b7201917d58b4e3bff66cf30cd955b",
+      "bytes": 24136
+    },
+    {
+      "path": "src/merlin/verify/receipts.py",
+      "sha256": "8c88f0e723e2151a53ba223232c6236f41d5ce4665d57eb30c9a294129f6b3b3",
+      "bytes": 10515
+    }
+  ],
+  "implementation_changes": false
+}

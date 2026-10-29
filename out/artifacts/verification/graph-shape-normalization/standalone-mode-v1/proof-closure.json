@@ -1,0 +1,771 @@
+{
+  "compiler": {
+    "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38",
+    "bytes": 9024
+  },
+  "source_root": "/home/jeremy/Projects/merlin/src/merlin/verify/lean",
+  "native_reflection": false,
+  "attempts": [
+    {
+      "module": "Merlin.StateEffects",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/StateEffects.lean",
+        "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+        "bytes": 4537
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/StateEffects.olean",
+        "sha256": "c02d08ef7e456d37c26c32c6cf4735826a1060134951cc246d07c336c604c829",
+        "bytes": 202320
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/StateEffects.olean",
+        "sha256": "c02d08ef7e456d37c26c32c6cf4735826a1060134951cc246d07c336c604c829",
+        "bytes": 202320
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.ResourceGeometry",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/ResourceGeometry.lean",
+        "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+        "bytes": 3246
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/ResourceGeometry.olean",
+        "sha256": "7030a7aa34afb948336f8945679ed324f464e8b979de40ac481b7220a09194c6",
+        "bytes": 110160
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/ResourceGeometry.olean",
+        "sha256": "7030a7aa34afb948336f8945679ed324f464e8b979de40ac481b7220a09194c6",
+        "bytes": 110160
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsReuse",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsReuse.lean",
+        "sha256": "51b46ae3c0e1bb64ca47ec1ec1a2bb36fe96f706d229d8ca4f6302f6e38a5c2c",
+        "bytes": 7525
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsReuse.olean",
+        "sha256": "3b502d58b0cb5e12d3b9670b7e0f8d364892aef06f22657823ad7493d2447763",
+        "bytes": 183064
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsReuse.olean",
+        "sha256": "3b502d58b0cb5e12d3b9670b7e0f8d364892aef06f22657823ad7493d2447763",
+        "bytes": 183064
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsReuseProtocol",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsReuseProtocol.lean",
+        "sha256": "538c4066cb1dca7a8911f5bf99d3cae5e449c475871f2ba0e49b60386b8384f0",
+        "bytes": 6086
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsReuseProtocol.olean",
+        "sha256": "e6af857ad28ed60dadc88b175e4ca79e6e3e3f74eaf26820842e84628abbd4ba",
+        "bytes": 803616
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsReuseProtocol.olean",
+        "sha256": "e6af857ad28ed60dadc88b175e4ca79e6e3e3f74eaf26820842e84628abbd4ba",
+        "bytes": 803616
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsReuseSemantics",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsReuseSemantics.lean",
+        "sha256": "8b5f9d5a71a7aab8559286e5bdb36dfc02e2abeb24a76ad5710434a20bf3da6f",
+        "bytes": 13700
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsReuseSemantics.olean",
+        "sha256": "bc9ae6f19fee90a6ee477bf04635dfd637aeff86eca7000e0d157f3c66bcaff1",
+        "bytes": 561480
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsReuseSemantics.olean",
+        "sha256": "bc9ae6f19fee90a6ee477bf04635dfd637aeff86eca7000e0d157f3c66bcaff1",
+        "bytes": 561480
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsReuseGeometry",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsReuseGeometry.lean",
+        "sha256": "9c2553f3fa45cbdeb03c9f084aa6f84f247a574f98c7a543010c8ffa65018e1a",
+        "bytes": 6933
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsReuseGeometry.olean",
+        "sha256": "94e76dd1a5985dee534a7bd951388397f08ece8bfbbe29c9c3963a5111ab9234",
+        "bytes": 329704
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsReuseGeometry.olean",
+        "sha256": "94e76dd1a5985dee534a7bd951388397f08ece8bfbbe29c9c3963a5111ab9234",
+        "bytes": 329704
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsReuseLifetime",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsReuseLifetime.lean",
+        "sha256": "cb3d7cd2553443fb204209cb369bdad79a31d340619e57efd12106b3f51c6c4a",
+        "bytes": 3194
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsReuseLifetime.olean",
+        "sha256": "69fb1bff8069918b199e8272ea75168ba5e6ce3d4a07e1aa61e5c687630875df",
+        "bytes": 271808
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsReuseLifetime.olean",
+        "sha256": "69fb1bff8069918b199e8272ea75168ba5e6ce3d4a07e1aa61e5c687630875df",
+        "bytes": 271808
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsReuseModel",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsReuseModel.lean",
+        "sha256": "0011d490dffb9d36ab3d7f1c4b3e944c91ce6a30ae84155367c39b3090b54626",
+        "bytes": 7878
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsReuseModel.olean",
+        "sha256": "3a17d2d63210970704928c55292cdc5de495b0a457d7fa6f6baa356c442df2d4",
+        "bytes": 730696
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsReuseModel.olean",
+        "sha256": "3a17d2d63210970704928c55292cdc5de495b0a457d7fa6f6baa356c442df2d4",
+        "bytes": 730696
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsReuseCountermodels",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsReuseCountermodels.lean",
+        "sha256": "ff170131b35e0c972c02573437da450ebfb3595efcd47f07f55d54b657483f98",
+        "bytes": 4299
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsReuseCountermodels.olean",
+        "sha256": "b53f678f956e15207bbcba4c5a9d63a166054937fce8c0ba34828f621fec99bf",
+        "bytes": 1279304
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsReuseCountermodels.olean",
+        "sha256": "b53f678f956e15207bbcba4c5a9d63a166054937fce8c0ba34828f621fec99bf",
+        "bytes": 1279304
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsSegment",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsSegment.lean",
+        "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+        "bytes": 9653
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsSegment.olean",
+        "sha256": "5ded89b8558ee996ce3de4ca4188330439e4ad8222021f76c834d144394514dd",
+        "bytes": 388048
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsSegment.olean",
+        "sha256": "5ded89b8558ee996ce3de4ca4188330439e4ad8222021f76c834d144394514dd",
+        "bytes": 388048
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsSegmentBounds",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsSegmentBounds.lean",
+        "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+        "bytes": 3962
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsSegmentBounds.olean",
+        "sha256": "d456bb1c1dae929d204d695aabe9d7ec0f2d7a9f1096fe8dadffa1406740380c",
+        "bytes": 329176
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsSegmentBounds.olean",
+        "sha256": "d456bb1c1dae929d204d695aabe9d7ec0f2d7a9f1096fe8dadffa1406740380c",
+        "bytes": 329176
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsSegmentModel",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsSegmentModel.lean",
+        "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+        "bytes": 7091
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsSegmentModel.olean",
+        "sha256": "b83c91856a65e8e43370cd3861547d0e0e25984e962966f180e43a243b9a8752",
+        "bytes": 1165184
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsSegmentModel.olean",
+        "sha256": "b83c91856a65e8e43370cd3861547d0e0e25984e962966f180e43a243b9a8752",
+        "bytes": 1165184
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsSegmentState",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsSegmentState.lean",
+        "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+        "bytes": 2118
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsSegmentState.olean",
+        "sha256": "8b94a51eabf36b9484a1ee61e1cec94b068d311f5ad835bcb0d96fbb5ecce900",
+        "bytes": 60552
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsSegmentState.olean",
+        "sha256": "8b94a51eabf36b9484a1ee61e1cec94b068d311f5ad835bcb0d96fbb5ecce900",
+        "bytes": 60552
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsUnroll",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsUnroll.lean",
+        "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+        "bytes": 5730
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsUnroll.olean",
+        "sha256": "1acc45054af6e1b1313c8f6032497874a5b2163936575713a811e3a5cb78185f",
+        "bytes": 292912
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsUnroll.olean",
+        "sha256": "1acc45054af6e1b1313c8f6032497874a5b2163936575713a811e3a5cb78185f",
+        "bytes": 292912
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsUnrollGrouping",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsUnrollGrouping.lean",
+        "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+        "bytes": 9854
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsUnrollGrouping.olean",
+        "sha256": "005708f12de191f6241c2fc558bff1d3a29f3a6bdef14aa4e4d8504e39deef94",
+        "bytes": 294216
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsUnrollGrouping.olean",
+        "sha256": "005708f12de191f6241c2fc558bff1d3a29f3a6bdef14aa4e4d8504e39deef94",
+        "bytes": 294216
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCF",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCF.lean",
+        "sha256": "b7c665843732da433c765da7d8045d4a7463fb7b450c70570e3efe1640ad08f0",
+        "bytes": 4861
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCF.olean",
+        "sha256": "2f4456444b5fbe1e6202f8f90628e634925fb87650e8fba44856f78d568be89c",
+        "bytes": 495192
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCF.olean",
+        "sha256": "2f4456444b5fbe1e6202f8f90628e634925fb87650e8fba44856f78d568be89c",
+        "bytes": 495192
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFScope",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFScope.lean",
+        "sha256": "86c8d7319914a96934964ed8c9b45fdfc80aeb8fdd37f1a94d3f2b026dd7cbc3",
+        "bytes": 3210
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFScope.olean",
+        "sha256": "37806b6ea3f42d7c35a50474914a5708e292a9d95ada3624414610e92ac5c48c",
+        "bytes": 124744
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFScope.olean",
+        "sha256": "37806b6ea3f42d7c35a50474914a5708e292a9d95ada3624414610e92ac5c48c",
+        "bytes": 124744
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFLoops",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFLoops.lean",
+        "sha256": "3d3c97dd9593855f2d9962d407eee4714c229765efaf873074750b50605d9ab4",
+        "bytes": 4269
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFLoops.olean",
+        "sha256": "f6967dc2ad223abb8b1a19417be5dd2fc6ba8de8fec9db2bb6cbb345e78f7378",
+        "bytes": 77808
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFLoops.olean",
+        "sha256": "f6967dc2ad223abb8b1a19417be5dd2fc6ba8de8fec9db2bb6cbb345e78f7378",
+        "bytes": 77808
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFCoverage",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFCoverage.lean",
+        "sha256": "e0dd846bf321516099232b2ba8603cdde9efbb19073058594cb1d9c94eb373bf",
+        "bytes": 5846
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFCoverage.olean",
+        "sha256": "fe6b7bc127279b2f910dbe2ad5d7d37b9c976a31935a681b5aa66057e12dfdec",
+        "bytes": 167648
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFCoverage.olean",
+        "sha256": "fe6b7bc127279b2f910dbe2ad5d7d37b9c976a31935a681b5aa66057e12dfdec",
+        "bytes": 167648
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFRect",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFRect.lean",
+        "sha256": "5f7977123358e7a3de53704f2fa2956d1b89bd7a60c6957a6e8676795c0ce562",
+        "bytes": 6094
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFRect.olean",
+        "sha256": "2daff905fccd834ba09e2f1449ce66729376e0f3ec7495e03953a5fb42bdc13a",
+        "bytes": 177168
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFRect.olean",
+        "sha256": "2daff905fccd834ba09e2f1449ce66729376e0f3ec7495e03953a5fb42bdc13a",
+        "bytes": 177168
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFEffects",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFEffects.lean",
+        "sha256": "17d2fb5c242ad2cbf52859893b6adfdc1e9cf6d97ab3770de53d426ce3e854e1",
+        "bytes": 6157
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFEffects.olean",
+        "sha256": "8be972363a4e75640688a592265cc472366e173f53bb89b7bee52a0f85ac449b",
+        "bytes": 135104
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFEffects.olean",
+        "sha256": "8be972363a4e75640688a592265cc472366e173f53bb89b7bee52a0f85ac449b",
+        "bytes": 135104
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFOperational",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFOperational.lean",
+        "sha256": "ee7ad6757ea921243d03b3458534af11b8e5d6775b10164a70c606ee2dc23670",
+        "bytes": 10841
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFOperational.olean",
+        "sha256": "ace73e4a4be3f8d2f2630074ab7b8cb8201ca5108d6b4ebfa52af8f0484fb595",
+        "bytes": 249552
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFOperational.olean",
+        "sha256": "ace73e4a4be3f8d2f2630074ab7b8cb8201ca5108d6b4ebfa52af8f0484fb595",
+        "bytes": 249552
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFSimulation",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFSimulation.lean",
+        "sha256": "5a9e204faa5375435683b2c15a1344210980979c636862749c9585cf00751e01",
+        "bytes": 4589
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFSimulation.olean",
+        "sha256": "1e0f0e644daf65407f4e6a32ecf76d720c748113e13571b5f099378d8b3c8bd5",
+        "bytes": 64288
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFSimulation.olean",
+        "sha256": "1e0f0e644daf65407f4e6a32ecf76d720c748113e13571b5f099378d8b3c8bd5",
+        "bytes": 64288
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFComposition",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFComposition.lean",
+        "sha256": "26b341f8f6e90187c0dd301c022cdcac5e6037caa26d0a207beaff08441ca7a2",
+        "bytes": 13452
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFComposition.olean",
+        "sha256": "6a53edbfbea92f544ac93bc9c0054e14788affa8c2de6e6e4413acf2c995a7bf",
+        "bytes": 489824
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFComposition.olean",
+        "sha256": "6a53edbfbea92f544ac93bc9c0054e14788affa8c2de6e6e4413acf2c995a7bf",
+        "bytes": 489824
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFModes",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFModes.lean",
+        "sha256": "53d1674540fae8aff754f740e369d29de0bd9a68facacbba0c6154aa981ef37b",
+        "bytes": 5453
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFModes.olean",
+        "sha256": "5453aab72d4da66dc843c998531eea2d1d94bf392fbcf7c9674b698d7ec8b603",
+        "bytes": 77432
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFModes.olean",
+        "sha256": "5453aab72d4da66dc843c998531eea2d1d94bf392fbcf7c9674b698d7ec8b603",
+        "bytes": 77432
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFModel",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFModel.lean",
+        "sha256": "35c8428218b8ae776fb073fd431182ea979e6e9185e0d867253808caf9921a7a",
+        "bytes": 6316
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFModel.olean",
+        "sha256": "9a8748b0cb0f8066ebc9f67ea084ea0e1b88d993347f19ac396e2ffe033cf769",
+        "bytes": 414656
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFModel.olean",
+        "sha256": "9a8748b0cb0f8066ebc9f67ea084ea0e1b88d993347f19ac396e2ffe033cf769",
+        "bytes": 414656
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFWitness",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFWitness.lean",
+        "sha256": "414a5c25490fc099815eed9b491cb99e0c7e114435a7ac498f8e35428ed57cd3",
+        "bytes": 9874
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFWitness.olean",
+        "sha256": "f0700264a20ea60b78d3c5a44404189526f37856bbc7efbe8d315214fcbbece2",
+        "bytes": 296872
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFWitness.olean",
+        "sha256": "f0700264a20ea60b78d3c5a44404189526f37856bbc7efbe8d315214fcbbece2",
+        "bytes": 296872
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsMemorySCFBounds",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsMemorySCFBounds.lean",
+        "sha256": "39517f78dd2987b0527f50e5aedae00a07d5638d1a444def9baa0dcf62800ab2",
+        "bytes": 2768
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsMemorySCFBounds.olean",
+        "sha256": "9be9721d3bfaecf00512f5972ed555f5a1d88a8448d655902871479b6abafbd2",
+        "bytes": 58144
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsMemorySCFBounds.olean",
+        "sha256": "9be9721d3bfaecf00512f5972ed555f5a1d88a8448d655902871479b6abafbd2",
+        "bytes": 58144
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsShape",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsShape.lean",
+        "sha256": "7d4314ce5f13378e3f807be57a39da4c064b16e2fe569b685cddd4a22a9beb4e",
+        "bytes": 4332
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsShape.olean",
+        "sha256": "5228cae83513fe8d267f5eea5132079babf991440129c1af6737955c31bfb77c",
+        "bytes": 376504
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsShape.olean",
+        "sha256": "5228cae83513fe8d267f5eea5132079babf991440129c1af6737955c31bfb77c",
+        "bytes": 376504
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsShapeSSA",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsShapeSSA.lean",
+        "sha256": "daa129e43fc43806eaa54560abfe3541f1ebbd1d93b36a97e28ce0df5c552594",
+        "bytes": 7075
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsShapeSSA.olean",
+        "sha256": "bd8e0d043cdcbeb15555a72f516f0b61f1331691667981358b8f3a95a2c1b182",
+        "bytes": 452288
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsShapeSSA.olean",
+        "sha256": "bd8e0d043cdcbeb15555a72f516f0b61f1331691667981358b8f3a95a2c1b182",
+        "bytes": 452288
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsShapeBindings",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsShapeBindings.lean",
+        "sha256": "0022f37c8c015cd51d4b571592fb01e4723f55152b80240e47d566508f35ebab",
+        "bytes": 4966
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsShapeBindings.olean",
+        "sha256": "326fdab1b977ba1ddb4b72e5ee2ba3893f22f88d288fa9b4424e8da259ccf15b",
+        "bytes": 314872
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsShapeBindings.olean",
+        "sha256": "326fdab1b977ba1ddb4b72e5ee2ba3893f22f88d288fa9b4424e8da259ccf15b",
+        "bytes": 314872
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsShapeCode",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsShapeCode.lean",
+        "sha256": "57784b3dae571bcc1a9d228605ae1a3fd4b40a2b784afd2d3eb4a0bbc22b1432",
+        "bytes": 8871
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsShapeCode.olean",
+        "sha256": "2ee1d463b0d4d0edc5963c4f7f888abf70540069d3c14617eb37be081d72402c",
+        "bytes": 1137032
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsShapeCode.olean",
+        "sha256": "2ee1d463b0d4d0edc5963c4f7f888abf70540069d3c14617eb37be081d72402c",
+        "bytes": 1137032
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsShapeSound",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsShapeSound.lean",
+        "sha256": "93c7be67db0a1eb04ea62bc27adf3ea7b038aa87d01e95ce533a143a30780626",
+        "bytes": 7170
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsShapeSound.olean",
+        "sha256": "f772aa7bcb23ec806b47b576fe3dd51b7acf4509c0286edc75feb78fcf91dcbe",
+        "bytes": 535952
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsShapeSound.olean",
+        "sha256": "f772aa7bcb23ec806b47b576fe3dd51b7acf4509c0286edc75feb78fcf91dcbe",
+        "bytes": 535952
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsShapeModule",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsShapeModule.lean",
+        "sha256": "17ccc635a1718ad775304b5f9daa0715f6a84c249668f8defaa33cb17a98a823",
+        "bytes": 5961
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsShapeModule.olean",
+        "sha256": "fa736e8d73a95d43fdada855f4a7bd42bc267b4a1184382f0edc113adb8a8218",
+        "bytes": 436440
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsShapeModule.olean",
+        "sha256": "fa736e8d73a95d43fdada855f4a7bd42bc267b4a1184382f0edc113adb8a8218",
+        "bytes": 436440
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsShapeMemory",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsShapeMemory.lean",
+        "sha256": "5c53cfb1b3ae15a2aeec82f9acbd3939e32dbd56a0097da8d0aa04c9a8ad3f65",
+        "bytes": 4855
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsShapeMemory.olean",
+        "sha256": "e7f9acc20739d5610202614343972449628a15816367e08aef4b955999b45ccd",
+        "bytes": 160320
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsShapeMemory.olean",
+        "sha256": "e7f9acc20739d5610202614343972449628a15816367e08aef4b955999b45ccd",
+        "bytes": 160320
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsShapeModel",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsShapeModel.lean",
+        "sha256": "38952ca358eebd28a5a8103a18f002c86ecbcc76b3e82b2642e8f5a4245f6371",
+        "bytes": 3342
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsShapeModel.olean",
+        "sha256": "2461abac5333f1ca05d1b32827dbadce2406bc6fad498e15c2c807ee92b62afd",
+        "bytes": 202544
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsShapeModel.olean",
+        "sha256": "2461abac5333f1ca05d1b32827dbadce2406bc6fad498e15c2c807ee92b62afd",
+        "bytes": 202544
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsShapeWitness",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsShapeWitness.lean",
+        "sha256": "766b552e3edec6b89b0111c0cb18e37743f2351827944fd47b487a75aa84eaf8",
+        "bytes": 5646
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsShapeWitness.olean",
+        "sha256": "5a3ee77a0adf607a4c44d10fbe30be7b0291b7a81fa62dc6a01907d816a3de65",
+        "bytes": 99384
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsShapeWitness.olean",
+        "sha256": "5a3ee77a0adf607a4c44d10fbe30be7b0291b7a81fa62dc6a01907d816a3de65",
+        "bytes": 99384
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    },
+    {
+      "module": "Merlin.GraphLoopsShapeCountermodels",
+      "source": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/proof-sources/Merlin/GraphLoopsShapeCountermodels.lean",
+        "sha256": "d855ed8506c22cd01a4843afa64a259880ba8c43c8eb8c8b7e5e7c4e868095ea",
+        "bytes": 2131
+      },
+      "object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/standalone-v1/lib/Merlin/GraphLoopsShapeCountermodels.olean",
+        "sha256": "6f522835be49204782a6a3cc303b71172c633df8ec6b65609d5ee8fe1119f4e1",
+        "bytes": 54976
+      },
+      "original_object": {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-shape-normalization/development/lib/Merlin/GraphLoopsShapeCountermodels.olean",
+        "sha256": "6f522835be49204782a6a3cc303b71172c633df8ec6b65609d5ee8fe1119f4e1",
+        "bytes": 54976
+      },
+      "returncode": 0,
+      "copied_byte_identically": true
+    }
+  ]
+}

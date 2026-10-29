@@ -297,6 +297,12 @@ def main(argv: list[str] | None = None) -> int:
     prepare = operations.add_parser("prepare")
     prepare.add_argument("run_dir", type=Path)
     prepare.add_argument(
+        "--bundle-arm",
+        action="append",
+        default=[],
+        help="generate only these Phase 1 arms (repeatable); omission retains the default ladder",
+    )
+    prepare.add_argument(
         "--output",
         type=Path,
         help="fresh release root; defaults to out/artifacts/protocols/<target>/phase0-<TS>-<sha7>",
@@ -419,6 +425,7 @@ def main(argv: list[str] | None = None) -> int:
                     retirements=args.retirements,
                     generated_only=args.generated_only,
                     phase1_policy_descriptor=args.phase1_policy_descriptor,
+                    bundle_arms=tuple(args.bundle_arm),
                 )
             elif args.operation == "inspect":
                 result = corpus_release.inspect_release(args.release)

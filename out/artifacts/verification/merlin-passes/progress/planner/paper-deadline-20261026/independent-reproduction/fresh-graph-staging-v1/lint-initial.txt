@@ -1,0 +1,16 @@
+F401 [*] `plan_core.canonical` imported but unused
+  --> out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/materialize_plan.py:18:34
+   |
+17 | sys.path.insert(0, str(Path(__file__).resolve().parent))
+18 | from plan_core import PlanError, canonical, closure, decode, header, identifier, pin, relative, require, topo
+   |                                  ^^^^^^^^^
+help: Remove unused import: `plan_core.canonical`
+   |
+17 | sys.path.insert(0, str(Path(__file__).resolve().parent))
+   - from plan_core import PlanError, canonical, closure, decode, header, identifier, pin, relative, require, topo
+18 + from plan_core import PlanError, closure, decode, header, identifier, pin, relative, require, topo
+19 |
+   |
+
+Found 1 error.
+[*] 1 fixable with the `--fix` option.

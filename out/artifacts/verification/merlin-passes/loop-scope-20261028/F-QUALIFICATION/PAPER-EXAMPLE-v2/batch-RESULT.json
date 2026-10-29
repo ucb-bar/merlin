@@ -1,0 +1,58 @@
+{
+  "status": "SCOPED_LOOP_ENGINEERING_BATCH_PASSED",
+  "full_positive_roster_checked": true,
+  "distinct_actual_positives": 8,
+  "MLIR_valid_mutations": 15,
+  "Lean_component_refusals": 9,
+  "host_component_refusals": 6,
+  "unavailable_mutations": [],
+  "explicit_unsupported": 12,
+  "fresh_replay": true,
+  "actual_CLI_delivery": true,
+  "binding_attacks": [
+    {
+      "kind": "query",
+      "consumer_called": false,
+      "changed": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/attacks/query/LoopTransformQuery.lean",
+        "sha256": "8d752a527b4aba3be81f3626fc2bf2e449190b19640ae2d99a3f647e9896fc89",
+        "bytes": 42697
+      },
+      "before_snapshot": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/attacks/query/before"
+    },
+    {
+      "kind": "object",
+      "consumer_called": false,
+      "changed": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/attacks/object/lib/LoopTransformQuery.olean",
+        "sha256": "6a6585cfc86e0f3982ee907f9d0ffd1ee210b267680776d36e13c05d0f26c8d5",
+        "bytes": 2462918
+      },
+      "before_snapshot": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/attacks/object/before"
+    },
+    {
+      "kind": "report",
+      "consumer_called": false,
+      "changed": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/attacks/report/REPORT.json",
+        "sha256": "b6bfde68f9c5a2bfce84b7160e76848d839e7665f6a85fd4b9d7fb41f31696b8",
+        "bytes": 221604
+      },
+      "before_snapshot": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/attacks/report/before"
+    },
+    {
+      "kind": "middle",
+      "consumer_called": false,
+      "changed": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/attacks/middle/stage1.mlir",
+        "sha256": "2440f7a5f853a09a48a95cceeec3d48961145c457545f95ba553f951034b0e02",
+        "bytes": 3211
+      },
+      "before_snapshot": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/attacks/middle/before"
+    }
+  ],
+  "human_approved": false,
+  "general_multidimensional_tiling": false,
+  "native_fidelity": false,
+  "compiler_wide_enforcement": false
+}

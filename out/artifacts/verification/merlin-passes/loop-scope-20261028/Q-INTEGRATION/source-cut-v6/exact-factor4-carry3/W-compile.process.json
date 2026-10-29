@@ -1,0 +1,13 @@
+{
+  "cmd": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "-R",
+    "/home/jeremy/Projects/merlin-loop-verification",
+    "-o",
+    "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/ExactFactor4Carry3.olean",
+    "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/body-group-successor/ExactFactor4Carry3.lean"
+  ],
+  "returncode": 0,
+  "seconds": 34.2107515335083,
+  "source_sha256": "a3d6b056d8566e44c4b666c4cc1d3945881651547040c764ef77739610f820fe"
+}

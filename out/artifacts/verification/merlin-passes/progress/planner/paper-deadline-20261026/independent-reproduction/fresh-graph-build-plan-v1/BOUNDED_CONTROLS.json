@@ -1,0 +1,108 @@
+[
+  {
+    "control": "valid",
+    "observed": {
+      "schema": "merlin.fresh-graph-plan-integrity.v1",
+      "status": "SOURCE_PLAN_INTEGRITY_MATCHED",
+      "profiles": 1,
+      "source_data_files_checked": 4,
+      "unavailable_profiles": [],
+      "unavailable_cases": [],
+      "integrity_only": true,
+      "kernel_root_resolution": "UNEXECUTED",
+      "native_execution_verified": false,
+      "graph_or_model_approval": false,
+      "human_review_approved": false,
+      "all_future_steps": "UNEXECUTED"
+    },
+    "semantic_or_native_case": false
+  },
+  {
+    "control": "missing_source",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_UNAVAILABLE",
+      "reasons": [
+        "missing project source: Merlin.Base"
+      ]
+    },
+    "semantic_or_native_case": false
+  },
+  {
+    "control": "missing_file",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_UNAVAILABLE",
+      "reasons": [
+        "[Errno 2] No such file or directory: '/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/controls/missing_file/payload/not_present.lean'"
+      ]
+    },
+    "semantic_or_native_case": false
+  },
+  {
+    "control": "conflicting_module",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_UNAVAILABLE",
+      "reasons": [
+        "conflicting duplicate module: Merlin.Base"
+      ]
+    },
+    "semantic_or_native_case": false
+  },
+  {
+    "control": "cycle",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_UNAVAILABLE",
+      "reasons": [
+        "cyclic project sources: Merlin.Base,Merlin.Use"
+      ]
+    },
+    "semantic_or_native_case": false
+  },
+  {
+    "control": "source_mutation",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_UNAVAILABLE",
+      "reasons": [
+        "source/data mutation: payload/Base.lean"
+      ]
+    },
+    "semantic_or_native_case": false
+  },
+  {
+    "control": "query_mutation",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_UNAVAILABLE",
+      "reasons": [
+        "source/data mutation: payload/Query.lean"
+      ]
+    },
+    "semantic_or_native_case": false
+  },
+  {
+    "control": "support_root_swap",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_UNAVAILABLE",
+      "reasons": [
+        "query/root binding mismatch: tiny_case:support_roots"
+      ]
+    },
+    "semantic_or_native_case": false
+  },
+  {
+    "control": "plan_root_swap",
+    "observed": {
+      "status": "EXPECTED_PLAN_REFUSAL",
+      "reason": "plan differs from exact source/query/root metadata recomputation"
+    },
+    "semantic_or_native_case": false
+  },
+  {
+    "control": "unknown_header",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_UNAVAILABLE",
+      "reasons": [
+        "unknown/unsupported header command: 'unsupported_header'"
+      ]
+    },
+    "semantic_or_native_case": false
+  }
+]

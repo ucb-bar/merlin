@@ -1,0 +1,36 @@
+{
+  "scope": "own host-Python child only; inert fake data/errors/pipes, no archive/network/SDK/native program",
+  "fixtures": [
+    {
+      "path": "watchdog-fixtures/complete.py",
+      "sha256": "1de5f0f4448791f42f3a7d1df78a4eb554b69298cdbe635a098cb1a6324bea38"
+    },
+    {
+      "path": "watchdog-fixtures/blocking_close.py",
+      "sha256": "83893b6453eff8b2d23a49d900d70dc69f599e7ee6cc12fec94aa838791d001f"
+    },
+    {
+      "path": "watchdog-fixtures/ignores_term.py",
+      "sha256": "d55a249ad3ea2a63c75e41fafc30ab9d7eeeb7386d804e392ea40cc7f38595d8"
+    },
+    {
+      "path": "watchdog-fixtures/nonzero.py",
+      "sha256": "ee3720c83edb49212438b3c2608612d413244d63b232c015f20107b0b4d93df7"
+    }
+  ],
+  "planned_actual_children": [
+    "complete",
+    "blocking_close",
+    "ignores_term",
+    "nonzero"
+  ],
+  "planned_refusals": [
+    "existing workspace must not launch",
+    "foreign command prefix must not launch"
+  ],
+  "budget_seconds": 0.25,
+  "terminate_seconds": 0.1,
+  "reap_seconds": 0.3,
+  "foreign_pid_signaling_authorized": false,
+  "later_exact_fixed_source_selection_required": true
+}

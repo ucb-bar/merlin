@@ -1,0 +1,17 @@
+{
+  "returncode": 0,
+  "command": [
+    "/usr/lib/ld-linux-x86-64.so.2",
+    "--inhibit-cache",
+    "--glibc-hwcaps-mask",
+    "",
+    "--library-path",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean:/usr/lib",
+    "--list",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean"
+  ],
+  "environment": {
+    "LANG": "C",
+    "LC_ALL": "C"
+  }
+}

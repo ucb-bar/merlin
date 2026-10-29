@@ -1,0 +1,54 @@
+{
+  "schema": "merlin.ir-data-transport-review-request.v1",
+  "status": "AUTHORIZED_ONE_SHOT_DATA_TRANSPORT_F_ONLY",
+  "action": "ONE_EXACT_ORIGINAL_IR_DATA_TRANSPORT",
+  "attempts": 1,
+  "attempt_journal": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/ir-transport-candidate-v2/REAL-TRANSPORT-ATTEMPT.json",
+  "source_refs": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/ir-transport-candidate-v2/run_transport.py",
+      "bytes": 4145,
+      "sha256": "d041e99a46cbfaa1542a1b0ec8dceb933fe1f2a55e3357eb69349e7fa67a0f30"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/ir-transport-candidate-v2/transport.py",
+      "bytes": 10032,
+      "sha256": "501b07265d4b7210d7afc57ca7a2b7eafe25902bc9a7c4b12a2a9e44445b19ec"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/ir-transport-candidate-v2/descriptor.py",
+      "bytes": 7438,
+      "sha256": "e76c5af243dd6473b2d8acf2bd63f2e04d4fcc2744b7ea37e5c139dd2d2c58d2"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/ir-transport-candidate-v2/original_inventory.py",
+      "bytes": 2981,
+      "sha256": "e3b380c93b7789564f0e9e36fb829fa5c42a97a295178833c82295b28a5cc1d3"
+    }
+  ],
+  "request": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/ir-transport-candidate-v2/REQUEST.json",
+    "bytes": 433263,
+    "sha256": "09b17bd69a53275cc8192c62988b3f55abe8ee9477d8acb4ea0192bc8051027b"
+  },
+  "inputs": {
+    "archive": {
+      "path": "/home/jeremy/Projects/merlin/out/build/lean-shared-passes/phase7-worktree/out/build/fresh-environment/sha256.json",
+      "bytes": 24814913,
+      "sha256": "546f4bf8afbc55c4653a12f0c2579f26572f41d2939753375e5b9bb84641f697"
+    },
+    "selection": {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/runtime-snapshot-review/METADATA-REVIEW-v2.json",
+      "bytes": 3017778,
+      "sha256": "8c4a1566fac6ecba764c91e8179b5732d7ccda1a5e9a6f58559d7a130770cd82"
+    },
+    "boundary": {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/ir-provenance-remedy-v1/UNCHANGED-RUNTIME-BOUNDARY.json",
+      "bytes": 2703,
+      "sha256": "079fb88104077b2fc2e9a8f996ad87b8be890e53231395b141bddb67beeb373f"
+    }
+  },
+  "authorization_needed": "root authorizes this exact source cut, request and original2144 archive reads; no native/runtime/base reads or writes",
+  "native_authorized": false,
+  "hold_clearance": false
+}

@@ -1,0 +1,27 @@
+{
+  "kind": "W review of F engineering evidence",
+  "human_policy_reviewed": false,
+  "native_executions_by_W": [],
+  "files": [
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/qualification-review-v1/DATA_REVIEW.json",
+      "sha256": "9c334093091915de4732ad35e9378f4d69131562d19ff64edc307cd78fa6f81e",
+      "bytes": 95030
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/qualification-review-v1/FIRST-DATA-REVIEW-FAILURE.txt",
+      "sha256": "aef5a00fde0fda71bff0b13bb48475855411ddff021f0d0fc6d5c8bd5155bb9d",
+      "bytes": 536
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/qualification-review-v1/README.md",
+      "sha256": "fa46e45696cb05e75cb80d150922d0a63e3c24832365a173d56efc85b2875ab0",
+      "bytes": 2735
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/qualification-review-v1/review_data.py",
+      "sha256": "b7570630812d9309e471f32470c478aa38685ef44afc087ba709a197a86cbdda",
+      "bytes": 6239
+    }
+  ]
+}

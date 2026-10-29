@@ -1,0 +1,248 @@
+{
+  "declared_oot_target_sha256": "e772ca1071a5f4558088f66e04c4427319841cd31d8a6adea41b674282a096a5",
+  "files": [
+    {
+      "path": "examples/source-original16.mlir",
+      "sha256": "8540fed9461446088a1d17e07f93e5c694e80bdec5aab3b059e002debb96681e",
+      "bytes": 1224,
+      "origin": "_SOURCE_TEXT literal in selected test",
+      "status": "SAVED_TEST_EMBEDDED_OOT_DIAGNOSTIC_INPUT_NOT_NEW_PARSE"
+    },
+    {
+      "path": "examples/oot-original16.mlir",
+      "sha256": "e772ca1071a5f4558088f66e04c4427319841cd31d8a6adea41b674282a096a5",
+      "bytes": 698,
+      "origin": "_OOT_INTERFACE_TEXT literal in selected test",
+      "status": "SAVED_OOT_DIAGNOSTIC_OUTPUT_TEXT"
+    },
+    {
+      "path": "examples/source-small2.mlir",
+      "sha256": "ce0a5d39c31de10b692f1a54c3cf13263f52e3dcd889b89d1a8ffe9b7b5e770b",
+      "bytes": 1202,
+      "origin": "_source(shape=2) string replacement before project parsing",
+      "status": "DERIVED_SMALL_TEST_TEXT_NOT_EXECUTED"
+    },
+    {
+      "path": "examples/oot-small2.mlir",
+      "sha256": "c7831f95ffc490cd4af5dd83925001f09f079f8a465e23ef6a4fff989ebfadec",
+      "bytes": 688,
+      "origin": "_oot_text(shape=2) exact textual substitution",
+      "status": "DERIVED_SMALL_TEST_TEXT_NOT_EXECUTED"
+    },
+    {
+      "path": "examples/source-case-0-refuted.mlir",
+      "sha256": "5b3b64bd790f9f75c8fe1a1e72d7a5930a7fe995dddad12411034622584ea8c8",
+      "bytes": 1202,
+      "origin": "test_generic_mutations_cannot_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    },
+    {
+      "path": "examples/source-case-1-unsupported.mlir",
+      "sha256": "3a1ce31634aebdfa3ea1d9198ac2bb24586e14eb7b7e911155f7e0ed74017941",
+      "bytes": 1206,
+      "origin": "test_generic_mutations_cannot_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    },
+    {
+      "path": "examples/source-case-2-unsupported.mlir",
+      "sha256": "fc7f1afdc7b4f152ca2295fdb66b686c709c931b78530d3206b5f1316534cdd0",
+      "bytes": 1202,
+      "origin": "test_generic_mutations_cannot_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    },
+    {
+      "path": "examples/source-case-3-unsupported.mlir",
+      "sha256": "13abd74d0a460f91ec9cb833c3ca3f51fcdd49dbc77c3dff8479ebf53e2451e9",
+      "bytes": 1202,
+      "origin": "test_generic_mutations_cannot_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    },
+    {
+      "path": "examples/source-case-4-unsupported.mlir",
+      "sha256": "ec85be1a50328aa0558d7ca4b4b7f7c17616e49443f9e12d21bea55e7871146a",
+      "bytes": 1202,
+      "origin": "test_generic_mutations_cannot_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    },
+    {
+      "path": "examples/oot-case-0-refuted.mlir",
+      "sha256": "2084ecfcbfa4034d46d0d87049e8aba2938aa926f3e3e2624b9b77b79cea6f10",
+      "bytes": 688,
+      "origin": "test_captured_oot_interface_mutations_never_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    },
+    {
+      "path": "examples/oot-case-1-unsupported.mlir",
+      "sha256": "3e350a8f22f4a52c0ce55e9207c9050e73785a0ee638fe9f06f6f65ffa5f335d",
+      "bytes": 689,
+      "origin": "test_captured_oot_interface_mutations_never_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    },
+    {
+      "path": "examples/oot-case-2-unsupported.mlir",
+      "sha256": "3c506bc0cb603e4fc6149b4d39e792745363ca8a04704e956580ca793c960819",
+      "bytes": 707,
+      "origin": "test_captured_oot_interface_mutations_never_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    },
+    {
+      "path": "examples/oot-case-3-unsupported.mlir",
+      "sha256": "83bf7bf8b81b6b8cf6234e9df204ebc6d3ccd5315481b99313e704cda3322ab2",
+      "bytes": 693,
+      "origin": "test_captured_oot_interface_mutations_never_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    },
+    {
+      "path": "examples/oot-case-4-unsupported.mlir",
+      "sha256": "d920de95b9949398fb487298c036a72204300ab38904954491567d81837a3266",
+      "bytes": 694,
+      "origin": "test_captured_oot_interface_mutations_never_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    },
+    {
+      "path": "examples/oot-case-5-unsupported.mlir",
+      "sha256": "3c4f4f5c367257f323a4024982749214921fb1ec8e26a8c3f4dd23c08fa5022c",
+      "bytes": 824,
+      "origin": "test_captured_oot_interface_mutations_never_receive_false_proof",
+      "status": "TEST_EXPECTATION_ONLY_NOT_SOLVER_RESULT"
+    }
+  ],
+  "mutations": [
+    {
+      "file": "source-case-0-refuted.mlir",
+      "expected_status": "refuted",
+      "changes": [
+        [
+          "arith.constant 0 : i32",
+          "arith.constant 1 : i32"
+        ]
+      ],
+      "category": "source expected wrong-result vs unsupported syntax/body distinction",
+      "observed_status": null
+    },
+    {
+      "file": "source-case-1-unsupported.mlir",
+      "expected_status": "unsupported",
+      "changes": [
+        [
+          "%sum = arith.addi %acc, %product",
+          "%sum = arith.addi %product, %product"
+        ]
+      ],
+      "category": "source expected wrong-result vs unsupported syntax/body distinction",
+      "observed_status": null
+    },
+    {
+      "file": "source-case-2-unsupported.mlir",
+      "expected_status": "unsupported",
+      "changes": [
+        [
+          "%lhs_wide = arith.extsi",
+          "%lhs_wide = arith.extui"
+        ]
+      ],
+      "category": "source expected wrong-result vs unsupported syntax/body distinction",
+      "observed_status": null
+    },
+    {
+      "file": "source-case-3-unsupported.mlir",
+      "expected_status": "unsupported",
+      "changes": [
+        [
+          "(d0, d2)",
+          "(d2, d0)"
+        ]
+      ],
+      "category": "source expected wrong-result vs unsupported syntax/body distinction",
+      "observed_status": null
+    },
+    {
+      "file": "source-case-4-unsupported.mlir",
+      "expected_status": "unsupported",
+      "changes": [
+        [
+          "\"parallel\", \"parallel\", \"reduction\"",
+          "\"parallel\", \"reduction\", \"parallel\""
+        ]
+      ],
+      "category": "source expected wrong-result vs unsupported syntax/body distinction",
+      "observed_status": null
+    },
+    {
+      "file": "oot-case-0-refuted.mlir",
+      "expected_status": "refuted",
+      "changes": [
+        [
+          "merlin_iface.matmul %arg0, %Wp",
+          "merlin_iface.matmul %arg1, %Wp"
+        ]
+      ],
+      "category": "target expected wrong-result vs unsupported grammar/contract distinction",
+      "observed_status": null
+    },
+    {
+      "file": "oot-case-1-unsupported.mlir",
+      "expected_status": "unsupported",
+      "changes": [
+        [
+          "name = \"arg1\"",
+          "name = \"other\""
+        ]
+      ],
+      "category": "target expected wrong-result vs unsupported grammar/contract distinction",
+      "observed_status": null
+    },
+    {
+      "file": "oot-case-2-unsupported.mlir",
+      "expected_status": "unsupported",
+      "changes": [
+        [
+          "merlin_iface.matmul %arg0, %Wp :",
+          "merlin_iface.matmul %arg0, %Wp {transpose = true} :"
+        ]
+      ],
+      "category": "target expected wrong-result vs unsupported grammar/contract distinction",
+      "observed_status": null
+    },
+    {
+      "file": "oot-case-3-unsupported.mlir",
+      "expected_status": "unsupported",
+      "changes": [
+        [
+          "merlin_iface.evict",
+          "merlin_iface.unmodelled"
+        ]
+      ],
+      "category": "target expected wrong-result vs unsupported grammar/contract distinction",
+      "observed_status": null
+    },
+    {
+      "file": "oot-case-4-unsupported.mlir",
+      "expected_status": "unsupported",
+      "changes": [
+        [
+          "epilogue = []",
+          "epilogue = [\"relu\"]"
+        ]
+      ],
+      "category": "target expected wrong-result vs unsupported grammar/contract distinction",
+      "observed_status": null
+    },
+    {
+      "file": "oot-case-5-unsupported.mlir",
+      "expected_status": "unsupported",
+      "changes": [
+        [
+          "  merlin_iface.evict %Wp",
+          "  %other = merlin_iface.commit %acc {name = \"other\", epilogue = [], output_dtype = \"i32\"} : (!merlin_iface.acc<i32>) -> tensor<2x2xi32>\n  merlin_iface.evict %Wp"
+        ]
+      ],
+      "category": "target expected wrong-result vs unsupported grammar/contract distinction",
+      "observed_status": null
+    }
+  ],
+  "in_tree_interface_serialized_bytes": null,
+  "command_buffer_serialized_bytes": null,
+  "source_xdsl_generic_receipt_sha256": null,
+  "solver_results_observed": false
+}

@@ -15,9 +15,10 @@ These run before the upstream pipeline:
 from __future__ import annotations
 
 import string
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, Callable
+from typing import Any
 
 from ..frontends.linalg_mlir import make_context, parse_mlir_text  # noqa: F401
 
@@ -155,6 +156,7 @@ def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any],
         f64,
         i8,
         i32,
+        i64,
     )
     from xdsl.dialects.linalg import ops as linalg_ops
     from xdsl.ir import Block, Region
@@ -213,13 +215,13 @@ def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any],
         if (
             kind == "per_channel"
             and w.type.element_type == i8
-            and zp.type.element_type == i32
+            and zp.type.element_type in (i32, i64)
             and elem == f32
             and scale_elem == f32
         ):
-            # PyTorch's signed-i8/i32 per-channel contract subtracts after integer promotion.
+            # PyTorch's per-channel contract subtracts at the promoted zero-point width.
             # Converting both operands first changes results for large zero points.
-            promoted = arith.ExtSIOp(wv, i32)
+            promoted = arith.ExtSIOp(wv, zp.type.element_type)
             difference = arith.SubiOp(promoted.result, zv)
             converted = arith.SIToFPOp(difference.result, compute_elem)
             arithmetic = [promoted, difference, converted]
@@ -287,16 +289,23 @@ def lower_quant_ext(module, *, on_rewrite: Callable[[Any, tuple[Any, ...], Any],
         qmin = int(qmin_attr.value.data)
         qmax = int(qmax_attr.value.data)
 
-        # TorchAO quantizes with x * (1 / scale), not x / scale. Compute the f32 reciprocal once;
-        # besides preserving the exact rounding boundary, this avoids a scalar divide per element
-        # on CPU lanes and on targets which leave quantization outside their native dialect.
+        # PT2E extracts the scalar scale before Python's binary64 reciprocal, then converts
+        # the reciprocal to the activation arithmetic's scalar type. Preserve that order
+        # explicitly for the f32-scale subsection rather than assuming a float identity.
         inv_t = scale.type
         inv_empty = tensor.EmptyOp((), inv_t)
         inv_body = Block(arg_types=[scale.type.element_type, scale.type.element_type])
         _sv, _unused = inv_body.args
-        one = arith.ConstantOp(FloatAttr(1.0, scale.type.element_type))
-        reciprocal = arith.DivfOp(one.result, _sv)
-        inv_body.add_ops([one, reciprocal, linalg_ops.YieldOp(reciprocal.result)])
+        if scale.type.element_type == f32:
+            one = arith.ConstantOp(FloatAttr(1.0, f64))
+            wide_scale = arith.ExtFOp(_sv, f64)
+            reciprocal = arith.DivfOp(one.result, wide_scale.result)
+            narrow_inverse = arith.TruncFOp(reciprocal.result, f32)
+            inv_body.add_ops([one, wide_scale, reciprocal, narrow_inverse, linalg_ops.YieldOp(narrow_inverse.result)])
+        else:
+            one = arith.ConstantOp(FloatAttr(1.0, scale.type.element_type))
+            reciprocal = arith.DivfOp(one.result, _sv)
+            inv_body.add_ops([one, reciprocal, linalg_ops.YieldOp(reciprocal.result)])
         scalar_identity = AffineMap(0, 0, ())
         inv_generic = linalg_ops.GenericOp(
             inputs=(scale,),
@@ -649,9 +658,11 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
         record_stage(audit, PREPROCESS_STAGES[0], module, generic=True)
     stats = {}
     from ..verify import pass_validation
+    from ..verify.lean import stages as _lean_stages
 
     for statistic, stage, name in _PREPROCESS:
         transform = globals()[name]
+        before = _lean_stages.generic_text(module) if _lean_stages.enabled() else None
         stats[statistic] = pass_validation.observe(
             name,
             module,
@@ -661,16 +672,33 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
         )
         if audit is not None:
             record_stage(audit, stage, module, generic=True)
+        if before is not None:
+            _lean_stages.record_boundary(stage, f"{__name__}.{name}", before, _lean_stages.generic_text(module))
         if statistic == "quant_ext_lowered" and _layer_norm_chunked_sums_selected():
             # Optional and default off, so an unselected build records the same stages and emits the same
-            # module. Selecting the pass grants both of its numerical permissions; its rewrite lands in the
-            # next recorded stage, and the transform map owns every operation it adds.
+            # module. Selecting the pass grants both of its numerical permissions; record its own
+            # boundary, and let the transform map own every operation it adds.
             from .normalization_reassociation import chunk_layer_norm_sums
 
-            stats["layer_norm_sums_chunked"] = chunk_layer_norm_sums(
-                module, allow_reassociation=True, assume_finite_intermediates=True, on_rewrite=on_quant_rewrite
+            stats["layer_norm_sums_chunked"] = _lean_stages.run(
+                "xdsl-layer-norm-chunked-sums",
+                chunk_layer_norm_sums,
+                module,
+                allow_reassociation=True,
+                assume_finite_intermediates=True,
+                on_rewrite=on_quant_rewrite,
             )
     return stats
+
+
+def _record_parse(mlir_text: str, module) -> None:
+    """Record the text handed to preprocessing against what the xDSL reader made of it."""
+    from ..verify.lean import stages as _lean_stages
+
+    if _lean_stages.enabled():
+        _lean_stages.record_boundary(
+            "xdsl-parse", f"{__name__}.parse_mlir_text", mlir_text, _lean_stages.generic_text(module)
+        )
 
 
 def preprocess_text(mlir_text: str, *, audit=None) -> tuple[str, dict]:
@@ -678,6 +706,7 @@ def preprocess_text(mlir_text: str, *, audit=None) -> tuple[str, dict]:
     from ..xdsl_dialects._common import text as module_to_text
 
     module = parse_mlir_text(mlir_text)
+    _record_parse(mlir_text, module)
     transform_map = None
     if audit is not None and audit.directory is not None:
         supported = _SourceTransformMap.supports(module)
@@ -724,6 +753,7 @@ def preprocess_text_with_transform_map(mlir_text: str) -> tuple[str, dict, dict]
     from ..xdsl_dialects._common import text as module_to_text
 
     module = parse_mlir_text(mlir_text)
+    _record_parse(mlir_text, module)
     transform_map = _SourceTransformMap(mlir_text, module)
     stats = _preprocess_module(module, on_quant_rewrite=transform_map.record)
     upstream = module_to_text(module, generic=True)
@@ -890,7 +920,7 @@ class _Dequant:
     result_type: str
 
 
-def _parse_dequant(line: str) -> "_Dequant | None":
+def _parse_dequant(line: str) -> _Dequant | None:
     """Split a dequantize line into :class:`_Dequant`, or ``None`` if it is not one."""
     body = line.lstrip()
     indent = line[: len(line) - len(body)]
@@ -931,7 +961,7 @@ def _parse_dequant(line: str) -> "_Dequant | None":
             return _Dequant(indent, result, operands, int(body[digits_at:digits_end]), *parsed)
 
 
-def _dequant_to_generic(op: "_Dequant") -> str:
+def _dequant_to_generic(op: _Dequant) -> str:
     ind, res = op.indent, op.result
     init = f"%dq_init_{res[1:]}"  # %123 -> %dq_init_123 (suffixing %123 is invalid)
     wty, sty, zty, outty = (t.strip() for t in (op.weight_type, op.scale_type, op.zero_type, op.result_type))
@@ -946,11 +976,11 @@ def _dequant_to_generic(op: "_Dequant") -> str:
     welem = wty[len("tensor<") : -1].split("x")[-1]
     zelem = zty[len("tensor<") : -1].split("x")[-1]
     selem = sty[len("tensor<") : -1].split("x")[-1]
-    if (welem, zelem, selem, elem) == ("i8", "i32", "f32", "f32"):
+    if (welem, selem, elem) == ("i8", "f32", "f32") and zelem in {"i32", "i64"}:
         arithmetic = (
-            f"{ind}  %dq_wide = arith.extsi %w_el : i8 to i32\n"
-            f"{ind}  %dq_delta = arith.subi %dq_wide, %z_el : i32\n"
-            f"{ind}  %dq_df = arith.sitofp %dq_delta : i32 to f32\n"
+            f"{ind}  %dq_wide = arith.extsi %w_el : i8 to {zelem}\n"
+            f"{ind}  %dq_delta = arith.subi %dq_wide, %z_el : {zelem}\n"
+            f"{ind}  %dq_df = arith.sitofp %dq_delta : {zelem} to f32\n"
         )
     else:
         arithmetic = (
@@ -1220,7 +1250,7 @@ def _fix_insert_slices(line: str) -> str:
 
 
 def preprocess_text_textual(mlir_text: str) -> tuple[str, dict]:
-    """Whole-model variant of :func:`preprocess_text` (pure text; no xDSL roundtrip)."""
+    """Repair legacy textual captures and lower Q/DQ for whole-model builds."""
     out_lines = []
     n = 0
     for line in mlir_text.splitlines():
@@ -1230,5 +1260,21 @@ def preprocess_text_textual(mlir_text: str) -> tuple[str, dict]:
             n += 1
         else:
             out_lines.append(_fix_insert_slices(_fix_extract_slices(line)))
-    text, n_funcs = _attach_c_interface("\n".join(out_lines))
-    return text, {"dequantize_lowered": n, "c_interface_funcs": n_funcs}
+    text = "\n".join(out_lines)
+    quant_lowered = 0
+    if any(
+        f'"quant_ext.{name}"' in text
+        for name in ("quantize_per_tensor", "dequantize_per_tensor", "dequantize_per_channel")
+    ):
+        # Preserve MLIR's materialized named bodies before the structural quantizer lowering.
+        from ..xdsl_dialects._common import text as module_to_text
+        from .generic_form import to_generic_text
+
+        module = parse_mlir_text(to_generic_text(text))
+        quant_lowered = lower_quant_ext(module)
+        text = module_to_text(module, generic=True)
+    text, n_funcs = _attach_c_interface(text)
+    from ..verify import pass_validation
+
+    pass_validation.submit("preprocess_text_textual", mlir_text, text)
+    return text, {"dequantize_lowered": n, "quant_ext_lowered": quant_lowered, "c_interface_funcs": n_funcs}

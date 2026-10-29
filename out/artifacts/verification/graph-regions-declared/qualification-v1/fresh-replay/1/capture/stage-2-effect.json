@@ -1,0 +1,44 @@
+{
+  "accesses": [
+    {
+      "size": 92,
+      "space": "private1",
+      "start": 1024,
+      "writes": false
+    },
+    {
+      "size": 92,
+      "space": "input3",
+      "start": 0,
+      "writes": false
+    },
+    {
+      "size": 92,
+      "space": "output1",
+      "start": 0,
+      "writes": true
+    }
+  ],
+  "completion": "synchronous",
+  "elementwise": {
+    "byte_orders": [
+      "little",
+      "little",
+      "little"
+    ],
+    "elements": 46,
+    "function_ir": {
+      "bytes": 102,
+      "encoding": "hex",
+      "hex": "6275696c74696e2e6d6f64756c65207b66756e632e66756e632040666f72776172642825703a6931362c25773a693136292d3e693136207b0a25723d61726974682e6d756c692025702c25773a6931360a66756e632e72657475726e2025723a6931360a7d7d"
+    },
+    "readout": null,
+    "stages": [
+      "multiply"
+    ]
+  },
+  "exact_copy": false,
+  "semantic_key": "('multiply', 2, 1, 5, 0, 7)",
+  "token": null,
+  "waits": []
+}

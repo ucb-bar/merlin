@@ -1,0 +1,23 @@
+{
+  "budget_seconds": 2,
+  "child_exit_code": 7,
+  "child_reaped": true,
+  "command": [
+    "/usr/bin/python3",
+    "-I",
+    "-S",
+    "-B",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/own_child_control.py",
+    "nonzero"
+  ],
+  "elapsed_seconds": 0.02415910999843618,
+  "forced_stop": false,
+  "kill_reap_grace_seconds": 0.2,
+  "native_authorized": false,
+  "old_holds_cleared": false,
+  "owned_pid": 235742,
+  "retry": false,
+  "signals": [],
+  "status": "CHILD_FAILED",
+  "terminate_grace_seconds": 0.1
+}

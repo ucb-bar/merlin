@@ -1,0 +1,41 @@
+{
+  "status": "REFUSED_UNPROVED_SEMANTIC_ADAPTER",
+  "source": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/additional-cases-v2/shape_memory_chain.mlir",
+    "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+    "bytes": 2659
+  },
+  "normalized_middle": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/additional-cases-v2/shape_memory_chain/after.mlir",
+    "sha256": "255ddf668a40f0e9d4624223a05897d99ce9a46466f71d1e59d692494972ca1d",
+    "bytes": 3960
+  },
+  "reused_middle": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/actual-memory-chain-v1/middle.mlir",
+    "sha256": "84c0e124321f0b3a57198602baeb1dcedf7f5a7c034f723fbd2613c984df91d9",
+    "bytes": 3782
+  },
+  "segmented_final": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/actual-memory-chain-v1/after.mlir",
+    "sha256": "3b0a5fed1763d89d10284f879777ab40d3ea111f418e8595bf185d6ec7156525",
+    "bytes": 4494
+  },
+  "old_memory_receipt": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/old-memory-chain-check-v1/CHECK.json",
+    "sha256": "b3ab7bd0ba301a085059f2c889ebb94f4f194cd44e719a034a5c627e1458befc",
+    "bytes": 866197
+  },
+  "exact_middle_bytes_equal": true,
+  "shape_semantics": "typed Runtime descriptors, scoped SSA, full heap/public world and finite call-depth complete outcomes",
+  "memory_semantics": "logical epoch/slot memory, capture Datum environment and public state; operational rectangular initializer",
+  "missing": [
+    "derive bounded-scope SSA/public register relation through all actual retained operations",
+    "derive concrete nested typed-SCF initializer correspondence to epoch HeapRun",
+    "derive caller heap and internal-call frame outside private objects",
+    "bind local adapters to the complete actual source/middle/final programs under one interpretation"
+  ],
+  "whole_program_agreement_assumed": false,
+  "composition_claimed": false,
+  "allocator_premise": "old memory edge requires total private unobservable allocation; standalone shape does not",
+  "exact_middle_hashes_do_not_discharge_semantics": true
+}

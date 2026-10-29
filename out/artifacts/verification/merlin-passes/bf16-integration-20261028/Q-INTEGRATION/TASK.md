@@ -1,0 +1,13 @@
+> **SCOPE OVERRIDE:** Read ../MACC_ONLY.md first. No new environment inventory/provider or mismatch investigation. Work strictly on MACC.
+
+# Q — bf16 policy gate integration
+
+Read ../README.md first. Own the Q files listed there; use the NEW worktree, not the old producer-corrections or primary checkout.
+
+1. Trace current pass_validation/SpeculativeGate/worker return semantics and the real prepare-bf16-matmul-f32acc stage. Trace existing check-bf16-f32acc, Exact/Sites coverage and publisher approval logic. Publish INTERFACE.md now with handler input fields, exact before/after/64bit binding, policy identity/admission requirements, output claim and refusal classification. Tell F/W only this interface dependency.
+2. Implement a small policy-specific handler. Require the complete actual output/reference check PLUS strict reconstructed-site qualification, complete source-site position/order coverage and domain facts; the weaker conditional policy matcher alone is insufficient. Validate exact checker/root/source/pin/schema bindings. Review-pending returns must raise the appropriate gate error; no successful fallthrough, truthy dictionary or caller-supplied approval flag.
+3. Integrate the proposed built-in/key into existing registry and actual preparation invocation. Optional gating must preserve ungated bytes and actual pass order; when selected, no qualifying change is allowed to escape the guard. Saved receipt JSON/replays do not substitute for a live checked pair. Explicit unsupported/no-site/identity cases need truthful semantics and coverage labels.
+4. Add focused SDK-free unit controls for malformed results, pending review, changed policy/spec/checker, missing source sites, target mutation, wrong width/flags and fake/stale approval. Coordinate F's real integration tests rather than duplicating its harness. Preserve Q/DQ/CSE behavior and partner-owned primary branch.
+5. Deliver reviewed-source manifest/patch and a short implementation report including required final approval/pin/build steps. Do not wait idly for human review: complete the reviewable handler/hook/protocol and mocked tests while real reviewed acceptance stays closed.
+
+No actual production algorithm/Lean/lock changes. Tests must never turn missing Lean/tools/skips into acceptance. This is a large complete batch; persist through compaction until it is delivered or a NEW user stop.

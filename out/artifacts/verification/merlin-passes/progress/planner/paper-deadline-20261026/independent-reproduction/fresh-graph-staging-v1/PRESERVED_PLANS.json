@@ -1,0 +1,10 @@
+{
+  "old_six_plan": {
+    "path": "../fresh-graph-build-plan-v1/PLAN.json",
+    "sha256": "cc49401b6f102e2db2b15f8dcd8997ffe552b7b884cad0a6501d5565541dadda",
+    "bytes": 1908996
+  },
+  "old_entries_plan_reused_byte_equal_in_normalized_profile": true,
+  "old_six_plan_mutated": false,
+  "new_context_and_Q_profiles_are_separate_successors": true
+}

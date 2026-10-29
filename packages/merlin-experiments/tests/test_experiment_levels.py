@@ -20,6 +20,10 @@ def test_original_comparison_and_optional_branches() -> None:
         ({"arm": "merlin_assisted", "treatment": "rtlchecks", "bundle": "merlin_assisted_rtlchecks_public_v0"}, "EL4"),
         ({"arm": "merlin_assisted", "treatment": "baseline", "bundle": "merlin_assisted_eqsat_public_v0"}, "EL3-E"),
         ({"arm": "merlin_assisted", "treatment": "baseline", "bundle": "merlin_assisted_verify_public_v0"}, "EL4-V"),
+        (
+            {"arm": "merlin_assisted", "treatment": "rtlchecks", "bundle": "merlin_assisted_pass_catalog_public_v0"},
+            "EL4-P",
+        ),
     )
     assert len({entry["id"] for entry in LEVELS}) == len(LEVELS)
     for config, expected in selections:
@@ -43,7 +47,7 @@ def test_catalog_levels_materialize_exact_execution_keys() -> None:
         if phase is None or phase["adapter"] != "capsule_bench":
             continue
         config = phase["config"]
-        if config["level"] == "EL4":
+        if config["level"] in ("EL4", "EL4-P"):
             assert (config["arm"], config["treatment"]) == ("merlin_assisted", "rtlchecks")
         elif config["level"] == "EL1":
             assert (config["arm"], config["treatment"]) == ("raw_baseline", "baseline")

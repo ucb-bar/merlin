@@ -1,0 +1,1624 @@
+# Merlin W8A8 verification progress
+
+Latest local policy result: [complete-program correspondence](modular-policy/README.md),
+**33 tests passed**, 9,984 audited theorems with zero violations, and independently replayed
+complete retained TinyLlama target/reference correspondence. It covers all outcomes/outputs,
+callees/metadata and supplied suffixes under the named source semantics. Successful reference
+execution, independent policy admission and whole-model numerical definedness stay separate.
+The packet includes the complete 68-file additive W8A8-owned delivery patch; integration
+remains held. [Planner briefing](handoff/README.md) records all current owners and next work.
+
+Latest October 22 milestone: [rotary and byte-weight bounds](rotary-domain/README.md),
+**334 tests passed**, 9,974 audited theorems with zero violations, eight changed positive
+boundary replays, and an independent retained TinyLlama replay. All 163 requested prefix
+bounds pass; complete W8A8 still refuses quantizer 1533. The separately named finite/nonzero
+domain adds a proposed frequency exponent cap, without claiming an archive satisfies it.
+The [active scoped paper goal](../progress/planner/eight-day-paper/README.md) targets October 30;
+the next W8A8 task separates complete policy correspondence from whole-model definedness.
+[Worker status](worker-status/README.md) is the current resume record. Publication remains held.
+
+Work resumed on 2026-10-21. The [laptop handoff](laptop-handoff/README.md) records the previous
+pause checkpoint; the latest progress is below. The full pass is not yet qualified. Agustin
+has been nominated for the pending independent review.
+
+Scope: Merlin-authored shared passes between model2MLIR and the OOT compiler, beginning with
+`lower_contraction_int8`. Upstream LLVM/MLIR transformations are trusted. The production pass
+and the frozen semantics are unchanged.
+
+## Implemented integer component
+
+- `Rules/W8A8Accumulation.lean` connects signed byte extension, modular i32 products and a left
+  accumulation fold to an integer dot product. Every prefix is exact from zero under the
+  explicit premise `K * 16384 < 2^31`. The bound covers -128 as well as symmetric quantized bytes.
+- `Rules/W8A8IntegerBody.lean` proves execution of the actual scalar instruction sequence,
+  including every initialized/poison combination and arbitrary external environments.
+- `Check/PolicyW8A8Body.lean` provides an executable Boolean checker and proves that acceptance
+  establishes those semantics. Repeated execution of an accepted actual region satisfies the
+  modular and bounded integer results. Alpha matching checks actual types, attributes, wiring,
+  operation order and SSA freshness; provenance hints do not supply proof facts.
+
+This follows the executable-checker plus acceptance-to-semantics theorem construction in
+[Axon, sections 2.1 and 5.4](https://arxiv.org/html/2605.01660v3). It is a component of Merlin's
+policy checker, not a proof that the entire W8A8 pass is correct.
+
+## Validation
+
+`merlin/tests/ir/test_lean_w8a8_body.py`: **19 passed, zero skipped** with required tools.
+Three independently sized float matmuls are run through Merlin's real pass. Eight mutated
+integer bodies are valid under xDSL and the compiler's MLIR verifier, then refused by Lean:
+unsigned extension, addition replacing multiplication, subtraction replacing accumulation,
+squaring one input, dropping the accumulator, returning the accumulator, and nsw/nuw additions.
+Another test covers consistent SSA renaming and malformed alias refusal. Seven numerical
+cases compare actual Lean execution, actual MLIR integer folding, and an independent integer
+reference, including -128 and both signed wraparound boundaries. MLIR folding is an oracle here;
+these tests do not attempt to verify an upstream pass.
+
+Targeted Lean builds pass. The imported theorem audit reports **1117 theorems, zero violations**;
+claims use only the standard allowed axioms. Ruff passes, and the frozen-file lock is unchanged.
+The repository structure check has one pre-existing failure: `zephyr_model.py` is 3557 lines
+against its recorded ceiling of 3537; this file is identical at the base commit and was not edited.
+
+Local generated evidence: `body-tests.xml`, `body-tests/`, `body-audit.json`, and
+`body-qualification.json`. The qualification record binds the tested sources and tool fingerprints;
+these regenerable files are not committed. New component statements are not yet promoted to the
+reviewed top-level statement pins, and the full integrated guard was not run for this component.
+
+## Still required for the W8A8 pass claim
+
+The remaining obligations are complete source-to-quantization group/axis correspondence,
+captured-weight policy, source definedness and correspondence between complete before/after programs.
+Standard integer matmul coordinates, K bounds and actual matrix initialization now have component
+proofs, described below. No C5 whole-pass receipt is issued. Independently reviewed Lean policy semantics, site/chain integration, all policy
+mutations and qualification on the chosen model remain required. The paper model has not been
+finally selected; the user identified SmolVLA and TinyLlama as candidate integration cases, both
+now captured under the default paper configuration. The implementer has read the pass, so a recipe
+reconstructed from it cannot honestly be labeled an independently authored specification. No new assumption or float law was added.
+
+## Ordered scalar components and captured models
+
+`Rules/W8A8Scalar.lean` and `Check/PolicyW8A8Scalar.lean` now prove execution of the scalar
+abs/max, guarded scale, reciprocal, roundeven/clamp/convert and ordered requantization bodies.
+The constant-capture checker derives bounds and denominator bits from the actual prefix and
+invalidates facts at SSA rebindings. These statements quantify over poison and all raw bit patterns
+under every current float model; they add no float law and do not prove IEEE conversion definedness.
+
+The user approved the explicit zero-row branch on 2026-10-20. See the
+[policy review draft](policy-review/README.md) and finding F9 for the precise distinction from the
+unguarded expression. This decision does not freeze or independently review the entire policy.
+
+The combined integer/scalar qualification has **36 passing tests, zero skipped**. New scalar
+coverage exercises three real-pass shapes, eleven compiler-verified MLIR mutations, dishonest
+capture hints, SSA fact invalidation, and an explicitly scoped component probe. Local retained
+sources and JUnit results are in `scalar-tests-20261020/` and `scalar-tests-20261020.xml`.
+The scalar imported-theorem audit checks 2089 theorems with zero violations. Frozen-file locks
+and Ruff pass; the same unrelated structure ceiling violation remains.
+
+Actual default-configuration preparation boundaries are retained in
+`model-boundaries/20261020T215617Z/`. TinyLlama's W8A8 stage changes; a diagnostic accepts all
+155 hinted integer bodies and 155 hinted requantization bodies in its output. All 155 integer
+contractions have the standard `(m,k), (k,n), (m,n)` maps with parallel/parallel/reduction iterators.
+SmolVLA's W8A8 boundary is unchanged under captured-scope selection. The probe explicitly reports
+`whole_pass_verified: false`; these counts establish neither changed-site correspondence nor
+whole-boundary correctness. No C5 policy receipt is issued.
+
+## Tensor contraction and actual K bound
+
+The tensor contraction component is now proved end to end from an accepted region through mapped
+reads, repeated writes and canonical tensor output. `PolicyW8A8Matmul.check_zero_sound` proves that
+initialized signed bytes and a zero-initialized destination produce exact integer dot products.
+The layout checker recomputes access bounds and requires K < 131072; the proof establishes this
+implies K * 16384 < 2^31. The selected trace has exactly K points per output cell, independently of
+M and N. General execution also preserves poison and arbitrary modular i32 initialization.
+
+The zero-filled destination is explicit in this component theorem; the initializer connection
+below discharges it from a checked actual producer. Source operand/scale correspondence and
+complete policy integration remain open; no whole-pass receipt is issued. The adapter checks actual SSA operand/result types and passes actual maps,
+iterators and region syntax to the component checker. Provenance selects diagnostic candidates
+only, and the report retains its explicit component scope.
+
+**14 tensor tests pass, zero skipped**, in addition to the unchanged 36 integer/scalar tests.
+These cover real-pass shapes and zero extents; both sides of the strict K threshold; four valid
+MLIR mutations (left/right maps, reduction axis and i16 accumulation); and three native MLIR
+comparisons, with four initialized tensor samples each. Actual Lean loop execution, native MLIR
+and a separate integer reference agree, including -128, nonzero initialization and both modular
+wraparound directions. The new imported-theorem audit checks 1905 theorems, zero violations.
+Evidence is retained in `tensor-qualified-20261020/`, `tensor-qualified-20261020.xml` and
+`tensor-audit-20261020.json`. A full tensor diagnostic also accepts all 155 TinyLlama integer
+contractions; `tinyllama-tensor-probe-20261020.json` explicitly says `whole_pass_verified: false`.
+
+## Checked initialization and its connection to the contraction
+
+`PolicyW8A8Zero.check_binding_sound` proves that a matched actual empty/constant/fill prefix
+binds the selected SSA destination to a canonical zero matrix. `PolicyW8A8InitializedMatmul`
+connects that value, including out-of-bounds poison, to the checked tensor contraction. A caller
+cannot certify initialization by declaring a tensor type or an expected value. The rule currently
+recognizes the closed three-operation matrix initializer; other producer arrangements abstain.
+
+All 155 hinted TinyLlama integer sites have accepted actual initializers in
+`tinyllama-zero-probe-20261020.json`. This closes the initializer component obligation, while
+actual source-to-quantized operand correspondence and the full C5 claim remain unimplemented.
+The initializer imported-theorem audit checks 2165 theorems with zero violations.
+
+Initializer mutation tests retain generic MLIR assembly when changing a named fill body: custom
+assembly otherwise reconstructs its default region and erases that mutation. Nonzero fill,
+returning the dirty destination element and bypassing the fill are valid under both xDSL and
+the compiler's MLIR verifier, then refused. Consistent SSA renaming is accepted; malformed alias
+input is refused separately. No production pass, frozen semantics or reviewed lock was changed.
+
+Final combined regression for these components: **58 passed, zero skipped** (90.95 seconds).
+The retained snapshots, native inputs/results, source digests and limits are recorded in
+`qualified-20261020/`, `qualified-20261020.xml` and `qualification-20261020.json`.
+
+## Floating tensor stage components
+
+`Rules/W8A8TensorOperands.lean` and `Rules/W8A8Pointwise.lean` connect checked mapped reads to
+complete tensor overwrites. `Rules/W8A8FloatTensor.lean` lifts the ordered scalar scale,
+reciprocal, quantize and zero/one/two-scale requantize contracts through these loops. Old
+destination cells may be arbitrary, including poison. `Rules/W8A8AbsMax.lean` preserves the
+lexicographic reduction trace and repeated output writes without assuming a floating identity,
+associativity or commutativity. Its initial accumulator remains explicit; the actual floating
+zero initializer is still a separate obligation.
+
+`PolicyW8A8Geometry`, `PolicyW8A8Pointwise` and `PolicyW8A8AbsMax` recompute maps, iterators,
+shapes, bounds and bodies. Expected parameter dimensions are explicit contract inputs; the
+future source/site rule must derive them from the source, rather than accepting the candidate's
+chosen axis. Streaming constant facts justify literal captures in the already executed environment
+even as the tensor loop changes its index. The previous scalar prefix APIs remain available.
+
+The tests exercise all nine floating stages from three actual Merlin contractions, including
+zero extents. Compiler-verified mutations cover reduction and scale axes, transposed output maps,
+scale order and scalar bodies. Rank-zero through rank-three requantization component fixtures
+exercise zero, one and two scales; the zero/one-scale fixtures are constructed templates, not
+claimed production captures. Six native differential cases compare Lean execution, native MLIR
+and an independent ordered NumPy f32 reference, including signed i32 endpoints and values above
+the exact f32 integer range. Native numerical comparison here covers requantization; it does not
+qualify abs/max, scale or quantize floating execution.
+
+The imported-theorem audit checks **2406 theorems with zero violations**. A diagnostic accepts
+all **155** TinyLlama tensor requantization stages with scalar (per-tensor) scales. Its report
+retains `whole_pass_verified: false`; these are stage checks, not source-to-output correspondence
+or C5 receipts. Evidence is in `tensor-stages-qualification.xml`,
+`tensor-stages-qualification.json` and `tinyllama-float-tensor-probe.json`.
+
+Targeted qualification and scalar-capture regression: **47 passed, zero skipped** (124.89 seconds).
+Ruff, artifact layout, whitespace and frozen-file hashes pass; the same unrelated module-size
+ceiling violation remains. The earlier 58-test record is historical and was not relabeled as a
+fresh complete regression.
+
+## Shared literal initialization and initialized abs/max
+
+`Rules/W8A8Fill.lean` proves the closed empty/literal/fill sequence for arbitrary static shapes
+and scalar literals decoded by the existing semantics. `Check/PolicyW8A8Fill.lean` checks that
+sequence and proves its actual destination binding after execution. The existing integer matrix
+initializer delegates to this common implementation with its public contracts preserved.
+
+`PolicyW8A8InitializedAbsMax.lean` specializes it to the exact positive-f32-zero bits and connects
+the resulting canonical tensor to the checked abs/max reduction. This discharges the floating
+initializer obligation for this recognized producer arrangement, including rank zero and zero
+extents. The proof preserves the ordered reduction; it never treats zero as a floating identity.
+Source operand/group correspondence and complete C5 integration remain separate obligations.
+
+The new qualification has **22 passed, zero skipped** (32.49 seconds): actual left/right
+reductions from three Merlin contractions, eight compiler-verified initializer mutations,
+rank-zero through rank-three fills, SSA renaming/alias refusal and four native fill comparisons.
+The native cases compare actual Lean execution and MLIR bit for bit, including positive-zero
+bits and empty output. This does not add native abs/max arithmetic coverage. The imported-theorem
+audit checks **2660 theorems, zero violations**. Retained evidence is in
+`absmax-initialization-qualification.xml`, `absmax-initialization-audit.json` and
+`absmax-initialization-qualification.json`; the integer adapter regression is recorded separately.
+The integer initializer regression also passes: **8 tests, zero skipped** (9.38 seconds).
+Both initialized-reduction and initialized-matmul modules build with only the allowed standard
+axioms. Ruff, artifact layout, whitespace and frozen-file hashes pass; no production pass or
+frozen semantics was edited.
+
+## Native comparison of complete dynamic contractions
+
+`test_lean_w8a8_native_recipe.py` runs complete real-pass output against a separate ordered NumPy
+recipe, without using Merlin's quantization helpers for its expected answers. Twenty finite
+samples span four shapes, zero rows, floor-limited scales, rounding ties, differently scaled
+rows/columns, zero K and empty output. All output bits agree. The tests also detect four
+compiler-verified MLIR corruptions: roundeven replaced by round, wrong requantization scale
+axes, nonzero integer initialization and a changed clamp bound. A known-answer reference check
+exercises ties-to-even and per-group scales.
+
+This is native numerical qualification of the emitted sequence against the declared recipe.
+It does not run Lean's unsupported host max/min evaluator, compare against eager TorchAO, or
+replace the missing source-to-policy theorem and independent specification review. The component
+theorems remain parametric. **Nine targeted tests pass, zero skipped** (4.24 seconds); evidence
+is in `native-recipe-qualified.xml`. No production pass or frozen semantics was edited.
+
+Combined W8A8 regression after the floating-stage and initializer changes: **119 passed, zero
+skipped** (211.66 seconds), in `qualified-floating-initialization.xml`. The combined audit checks
+**2981 imported theorems, zero violations**. Nineteen native/reference tests were also rerun with
+passed-test retention enabled: **19 passed** (27.13 seconds), preserving 18 native execution
+reports and eight full-recipe reference reports in `retained-floating-native/`. The default
+temporary-directory policy removes passing cases from the combined regression; retained native
+evidence is therefore kept separately. Source digests, report digests and remaining obligations
+are recorded in `floating-initialization-qualification.json`. The same unrelated structure
+ceiling failure remains. No C5 whole-pass receipt is issued.
+
+## Whole-module policy checking foundation
+
+`Check/PolicyModule.lean` now proves the generic module obligation against a fixed transformer
+that receives only the actual source. Candidates cannot provide their own reference, turn an
+unsupported expansion into identity, or replace it with the target. Conditional acceptance
+composes with a checked downstream suffix, including typed domains. Strict refinement explicitly
+requires support of the policy reference; source support cannot substitute for this premise.
+The W8A8 source-derived draft and its source/domain checks are being integrated separately.
+This foundation introduces no new numerical law, reviewed policy or whole-pass receipt.
+
+## Source-derived W8A8 reference and domain qualification
+
+`Rules/W8A8Emission.lean` and `Rules/W8A8Reference.lean` construct a complete reference program
+from the actual source, without consulting the target or role hints. The current draft supports
+static canonical matrix contractions with K < 131072, checked multiply/add bodies and positive-zero
+source initialization. It derives dynamic grouping from the source convention, or retains
+calibrated signed bytes and their actual scale through supported reshapes and transposes after
+checking constant-zero zero points and channel correspondence. Unhandled selected sites refuse
+the expansion; their original source is not substituted as a fallback.
+
+`Check/PolicyW8A8Module.lean` proves whole-function matching and the stronger qualification
+obligation: defined original source and strict target refinement of the supported policy
+reference on typed, nonpoison inputs. The reference remains an explicitly **unreviewed draft**,
+because its implementer has read the pass. No independently authored specification or reviewed
+statement pin is implied by these proofs.
+
+The compiled `check-w8a8-draft` command reports matching, original-source definedness and
+reference support separately. Dynamic examples pass these three checks. Actual TinyLlama
+before/after programs match the complete reference across all 155 contractions, including
+calibrated reshape/transpose reuse. Its source/reference support still refuses the captured
+quantization operations, including i64 zero-point dequantization. The command therefore reports
+`abstracted`, `whole_pass_verified: false`, and the exact independent obligations. The retained
+record is `tinyllama-source-reference-draft-report.json`; the emitted reference is
+`tinyllama-reference-draft.mlir`.
+
+Eighteen module tests pass, including valid MLIR wrong source operands, wrong scale
+sources, swapped integer operands, changed floor, omitted lowering, scope widening and
+unsupported source-body/init cases. Four calibrated fixtures cover direct, reshaped and
+transposed reuse. An unknown captured dequantization kind refuses instead of narrowing reach.
+The imported module audit checks **7233 theorems with zero violations**.
+F11 records the real pass's overly broad generic-body recognition; the reference refuses that
+source, and the production pass is unchanged. The byte-bound draft receipt adapter and regression
+qualification are being completed separately.
+
+## Byte-bound draft policy receipts
+
+`merlin.verify.lean.policy.check_w8a8_draft` snapshots both actual boundary files, validates their
+authoritative exports and round trips, invokes the compiled command, audits its theorem, and
+records the checker/lock/exporter identities. A bound report retains all independent obligations.
+The API refuses a driver that attempts to assert review or return `verified` for the draft.
+Pending review does not hide output mismatches. Ordinary refinement-chain replay rejects even a
+forged green policy receipt rather than composing a numerical policy as equivalence.
+
+Final targeted integration regression: **58 passed, zero skipped** (138.90 seconds), including
+the 18 source-derived module cases, the integer-body/export-helper regression, five draft receipt
+cases and existing receipt/preprocessing-chain regressions. The checker build was finalized
+before these receipt tests. Evidence is retained in `module-integration-qualified-v2/`,
+`module-integration-qualified-v2.xml`, `w8a8-module-qualified-audit.json`,
+`tinyllama-module-qualified-report.json` and `module-integration-qualification.json`.
+Ruff, whitespace, artifact layout and frozen-file hashes pass; the same unrelated structure
+ceiling violation remains. No full W8A8 correctness claim or independently reviewed policy pin
+is introduced by this integration.
+
+## Captured dequantization width contract candidate
+
+`Rules/W8A8DequantWidth.lean` adds an unwired i32/i64 source-contract candidate. Lean proves
+compatibility with the current i32 contract and output typing/nonpoison results on valid,
+initialized tensor inputs. Per-tensor conversion/subtraction and per-channel integer
+subtraction remain distinct. Frozen source dispatch, specification files and statement pins
+are unchanged; TinyLlama therefore retains its source-support refusal.
+
+Twelve targeted tests pass, zero skipped (25.17 seconds). Forty candidate samples agree bit
+for bit with pinned PyTorch 2.10.0+cpu / NumPy 2.4.6 and executed standard MLIR. They span both
+integer widths, per-tensor/per-channel parameters, integer endpoints, the f32 exact-integer
+boundary, signed zero, scalar tensors and empty outputs. Three unsupported-contract probes
+refuse explicitly. The test adapter labels its scope and cannot issue a verified verdict.
+The imported-theorem audit checks **2646 theorems, zero violations**.
+
+F12 separately retains the production i64 per-channel discrepancy: byte 1, zero point 16777217,
+scale 1 produces -16777215, while PyTorch and the candidate produce -16777216. The production
+pass is unchanged. Evidence is in `dequant-width-development/`, `dequant-width-development.xml`,
+`dequant-width-audit.json` and `dequant-width-qualification.json`. These results prepare source
+semantics review; they do not close captured quantization support or whole-policy review.
+
+Four existing PyTorch/float-adapter regression tests also pass, zero skipped (10.94 seconds),
+in `dequant-width-regression.xml`. The full Lean guard passes with **7464 theorems, zero
+violations**, including frozen file and existing statement pins. Ruff, whitespace and artifact
+layout pass. The repository structure check still reports only the pre-existing runtime module
+ceiling failure (3557 > 3537 lines); no unrelated runtime file was changed.
+
+## Mixed operands and calibrated channel layouts
+
+`test_lean_w8a8_operand_paths.py` adds **16 passing tests, zero skipped** (17.26 seconds).
+Actual mixed signed-byte/f32 contractions qualify for both operand positions and both canonical
+add operand orders. An unsigned source conversion refuses expansion. Four calibrated per-channel
+cases match the full source-derived reference through independent left/right transposes, while
+retaining the separate source-semantics refusal. Nonzero zero points and reduction-channel
+scales are refused, even when the real pass rewrites them and their shapes remain well-typed.
+
+Four native companions verify mixed one-scale requantization and calibrated two-scale order,
+including transposed byte storage, full-range signed bytes and distinct channel scales.
+F13 records the production reuse path's missing eligibility checks. No compiler fix or new
+source semantics is implied. Evidence is retained in `operand-paths-development/` and
+`operand-paths-development.xml`.
+
+## Policy composition through actual downstream boundaries
+
+`Check/PolicyW8A8Chain.lean` proves strict refinement of `P_W8A8(original)` by the last program
+in a checked downstream suffix, preserving the original-source definedness obligation. Each
+function retains its own typed, nonpoison input domain. A step may use universal C1 or existing
+typed normalization; the typed path checks source membership and the exact common signature.
+This does not move a numerical policy through preceding rewrites or equate the final program
+with the original floating computation.
+
+`check_w8a8_chain_draft` snapshots and round-trips every successive actual program and rechecks
+the entire suffix. It requires byte-identical joins and checks all live inputs, intermediate
+exports and the bound report before publishing. Stored receipt verdicts cannot replace these
+checks. Ordinary refinement chains continue to refuse numerical-policy receipts. The generic
+receipt freshness check now includes the certificate/report file too.
+
+The public commands are available through the existing `merlin-verify lean` entry point:
+
+```sh
+merlin-verify lean w8a8-draft "$W8_STAGE" \
+  --compiler-python "$MERLIN_M2M_PYTHON"
+merlin-verify lean w8a8-chain-draft "$W8_STAGE" "$NEXT_STAGE" \
+  --work out/artifacts/verification/merlin-passes/w8a8/my-chain \
+  --compiler-python "$MERLIN_M2M_PYTHON"
+```
+
+The default reach is captured-only; `--scope all` explicitly requests broader source reach.
+`--index-bits` states the input domain. Both commands report `abstracted` and exit 2 while the
+reference remains unreviewed, even if every operational obligation passes. A checked suffix
+alone does not bind an external compiler handoff or approve source quantization semantics.
+
+Final integration regression: **59 passed, zero skipped** (166.30 seconds), including module,
+policy receipt, typed/universal policy suffix and ordinary receipt/chain tests. A multi-function
+case requires the typed splat proof while universal C1 refuses, and still preserves each
+function's original input domain. Mutation/race tests refuse changed scale floors, disconnected
+joins, forged receipt verdicts, changed live intermediate files and changed bound reports.
+The public CLI regression adds **11 passed, zero skipped** (17.46 seconds). The full Lean guard
+passes with **7481 theorems, zero violations**; frozen files and existing statement pins pass.
+The checker build was finalized before these receipt tests.
+
+Evidence is in `policy-chain-qualified/`, `policy-chain-qualified.xml`,
+`policy-chain-qualified-guard.log`, `policy-cli-qualified/`, `policy-cli-qualified.xml` and
+`policy-chain-qualification.json`. Ruff, whitespace and artifact layout pass; the same unrelated
+runtime module ceiling is the only structure failure. Complete actual-model qualification is
+still blocked by source quantization semantics and independent policy review, rather than
+being inferred from the passing synthetic and real-pass integration cases.
+
+## Handoff qualification and bounded diagnostics
+
+Policy-chain checks now accept `--handoff path/to/handoff.json`, binding the last checked program
+to the actual compiler input bytes and rechecking both the handoff record and file before
+publication. `--checker-timeout` bounds the checker process (300 seconds by default). A timeout
+produces an unmeasured attempt and cannot leave an old successful receipt as the current result.
+When policy-prefix qualification fails, suffix diagnostics are explicitly unmeasured with a
+null match result; an unrun check is not classified as passing or as a disproved rewrite.
+
+`Check/ExactSyntax.lean` proves equality of complete ASTs, including every nested region, SSA id,
+type and attribute. Identical source-derived references use this linear structural check rather
+than SSA-alignment synthesis. Independent source support/definedness checks still run. A valid
+unmodelled source operation can therefore match its unchanged reference but cannot qualify.
+
+The combined module, handoff, timeout, chain, receipt and CLI regression passes **54 tests,
+zero skipped** (55.30 seconds). The full Lean guard passes with **7548 audited theorems, zero
+violations**, including the new conversion-domain theorems; frozen files and existing statement
+pins are unchanged. Ruff, whitespace and artifact layout pass. The unrelated runtime module
+ceiling remains the only structure failure.
+
+Both retained actual model chains now have handoff-bound draft receipts in
+`model-policy-identity-qualification/`. TinyLlama matches all 155 W8A8 contractions but refuses
+source quantization support. SmolVLA's unchanged W8A8 boundary matches, but qualification refuses
+an unmodelled tensor type. Both receipts remain abstracted; their seven downstream boundaries
+are explicitly unmeasured because the policy prefix has not qualified. Earlier interrupted and
+timed-out diagnostics are retained separately and establish no claim.
+
+`Rules/W8A8QuantizeDomain.lean` additionally proves the exact conversion-success condition and
+an unrestricted-float-model counterexample to unconditional nonpoison results. This is an
+explicit numerical-domain obligation, not a new CPU defect or added assumption. The expanded
+[review packet](policy-review/README.md) records captured-source contracts, versioned PyTorch
+references and the remaining independent policy/domain review requirement.
+
+Final evidence is in `policy-identity-qualified/`, `policy-identity-qualified.xml`,
+`policy-identity-qualified-guard.log` and `policy-identity-qualification.json`. No production
+compiler pass, frozen semantics, source quantization dispatcher or approved policy lock changed.
+
+## Concrete byte conversion and nonpoison quantization
+
+`Rules/W8A8ByteFloat.lean` defines binary32 min/max, symmetric clipping and signed-byte
+conversion through integer fields. Lean proves that clipping a non-NaN input to -127/127
+makes conversion defined, including when the unclipped value is infinite. The conversion
+checks the truncated integer: LLVM's defined -128.9 to -128 case is retained.
+
+`W8A8ByteModel` replaces only the default f32 min/max and signed-byte conversion of an explicit
+base model. `W8A8ByteTensor` and `Check/PolicyW8A8ByteDefined.lean` lift the result through actual
+region execution and the existing tensor checker. Initialized operands and a non-NaN rounded
+product at every accessed coordinate are explicit premises. No arithmetic law is assumed and
+the candidate is not installed as an approved global IEEE model.
+
+The test adapter's explicit `w8a8_byte_model` mode compares the actual Lean denotation with
+native MLIR. Twenty complete dynamic-contraction samples across four shapes also agree with
+the independent NumPy recipe. Scalar conversion, min/max and quantizer cases bring the total
+to **801 native sample executions**. Arithmetic NaNs are compared by classification; three
+poison quantizer cases run only in Lean. Default adapter behavior still refuses min/max and
+the candidate refuses unsupported f64 min/max.
+
+Final qualification: **31 tests passed, zero skipped** (59.56 seconds); **7601 theorems audited,
+zero violations**. Frozen files, Lake configuration and existing statement pins are unchanged.
+The oracle fixture builds the existing verified library target before execution, including
+candidate imports without rebuilding the receipt checker. Ruff, whitespace and artifact layout
+pass; the unrelated runtime module size ceiling remains the only structure failure.
+
+Evidence: `byte-model-qualified-v3/`, `byte-model-qualified-v3.xml`,
+`byte-model-qualified-v3-guard.log` and `byte-model-qualification.json`. The earlier v2 guard
+record includes a rejected build-configuration experiment and is not final qualification.
+The existing actual-model receipts remain abstracted: these component results do not approve
+the policy, supply captured-source quantization semantics or qualify their unmeasured suffixes.
+
+## Captured per-tensor quantization candidate
+
+`Rules/W8A8SourceQuantize.lean` supplies the missing per-tensor source operation as an additive
+review candidate. Following the versioned PyTorch implementation, it extracts scalar parameters,
+computes the reciprocal in binary64, converts that scalar to f32, multiplies and rounds, adds
+the converted integer zero point, then clips lower-first to -128/127 and converts to i8. The
+zero-point addition remains present for literal zero; no reciprocal-precision identity is
+assumed. `W8A8SourceByte.lean` proves conversion safety for this asymmetric range.
+
+The runtime candidate checks finite positive calibration scales, scalar f32 scales and scalar
+i32/i64 zero points. Lean proves output typing, an exact conversion-domain characterization and
+successful nonpoison execution under the explicit post-addition non-NaN condition. This does
+not prove the condition for arbitrary model inputs or every unrestricted FloatModel.
+
+Qualification compares Lean, pinned PyTorch 2.10.0+cpu/NumPy 2.4.6 and a separately constructed
+standard-MLIR reference on **64 samples** across both integer widths and four shapes. It also
+refuses invalid scales, unsupported metadata and undefined conversions. All **89 retained
+TinyLlama quantization parameter sets** agree on **1424 scalar observations** with synthetic
+inputs. That second experiment binds the actual capture and parameter inventory; it does not
+execute or verify the complete TinyLlama function.
+
+Combined regression: **50 passed, zero skipped** (93.39 seconds). Full guard: **7646 theorems,
+zero violations**. Frozen semantics, Lake configuration, statement pins and the receipt checker
+binary are unchanged. Evidence is in `source-quantize-qualified/`,
+`source-quantize-qualified.xml`, `source-quantize-qualified-guard.log`,
+`source-quantize-captured-parameters/qualification.json` and `source-quantize-qualification.json`.
+
+Installing this candidate requires source-contract review. Full qualification also needs a
+justified numerical domain and checks establishing it for the claimed inputs, SmolVLA's missing
+tensor semantics, independent W8A8 policy review and actual-model suffix qualification. The
+candidate test adapter cannot issue a verified receipt or enable frozen source dispatch.
+
+## Source-derived accumulation bound and model reach
+
+`Rules/W8A8ReferenceBounds.lean` connects success of the actual source recognizer to the
+full-range signed-byte accumulation bound. It proves exactness of every accumulator prefix,
+then derives the trace length from the checked tensor coordinates. The theorem does not need
+a provenance assertion or an assumed symmetric byte range.
+
+The proof-backed source diagnostic accepts all **155 selected TinyLlama contractions**:
+133 have K=2048 and 22 have K=5632. The complete 22-test module regression passes (31.28 seconds),
+including actual pass output with K=131071 and refused expansion with K=131072 or 131073.
+The full guard passes with **7666 theorems and zero violations**; locks and existing statements
+are unchanged. This is the conservative full-i8 bound, not a claim that every larger dot
+product overflows.
+
+The same captured-scope diagnostic finds **zero selected W8A8 contractions in retained SmolVLA**.
+Inspection of its byte-bound source identifies one dynamic `tensor.empty` with result
+`tensor<?xi64>` (SSA result 1033, dynamic extent 1029). It is the first support refusal;
+the capture's unchanged W8A8 boundary does not demonstrate active policy coverage.
+
+Evidence: `reference-bounds-qualified-v2/`, `reference-bounds-qualified-v2.xml`,
+`reference-bounds-qualified-guard.log`, `reference-bounds-{tinyllama,smolvla}.json`,
+`smolvla-dynamic-source-inventory.json` and `reference-bounds-qualification.json`.
+Independent review is still pending; Jeremy has nominated Agustin as reviewer.
+
+## Source-operation adapter and checked numerical domains
+
+`Rules/W8A8SourceContract.lean` recognizes actual per-tensor Q/DQ operations from their SSA
+declarations, operand/result shapes and types, zero-point widths and exact metadata. Unknown
+semantic attributes and duplicate keys refuse; provenance cannot choose the contract. Scalar
+f32 parameters and scalar i32/i64 zero points are explicit. Dequantization accepts full or
+reduced signed metadata without inferring a narrower range for its stored bytes.
+
+`Check/PolicyW8A8SourceDomain.lean` checks actual initialized observations and the precise
+post-zero-point-addition non-NaN condition. `Check/PolicyW8A8Source.lean` combines the static
+adapter with Q/DQ runtime checks. Lean proves that acceptance implies successful execution
+returning typed, initialized candidate output. This is a theorem about each accepted invocation
+under the explicit floating model, not an all-input theorem for a complete model. Initialized
+dequantizer float outputs may contain NaNs; initialization is not a finiteness assertion.
+
+The test adapter binds samples to actual function-argument SSA values before fetching the
+operation operands. It cannot issue verified receipts. Tests cover both zero-point widths,
+rank-zero and empty tensors, unsupported metadata, unknown/duplicate attributes, missing SSA
+bindings, malformed runtime tensors, poison, invalid scales and exceptional intermediates.
+Compiler-verified source cases and direct malformed-JSON tests are labeled separately.
+
+The retained TinyLlama source adapter recognizes **399 operations: 310 DQ and 89 Q**, with no
+static-contract refusals. All 89 retained Q parameter sets additionally pass the new runtime
+domain checker on the existing synthetic samples; their candidate outputs equal the retained
+observations. This replays domain checks, not a fresh native run or whole-model execution.
+
+Qualification: **97 tests passed, zero skipped** (182.31 seconds); full guard **7709 theorems,
+zero violations**, with frozen files and statement pins unchanged. Ruff, whitespace and
+artifact layout pass; structure retains only the unrelated runtime size-ceiling failure.
+Evidence: `source-adapter-qualified/`, `source-adapter-qualified.xml`,
+`source-adapter-qualified-guard.log`, `source-contract-tinyllama.json`,
+`source-domain-captured-parameters/` and `source-adapter-qualification.json`.
+
+These candidates remain uninstalled pending independent review. Automatic whole-function
+domain justification, reviewed source-semantic integration and actual suffix qualification
+remain required for full W8A8 receipts.
+
+## Calibration producer facts and quantified source support
+
+`Check/PolicyW8A8SourceFacts.lean` learns exact scalar parameters from executed constants and
+rank-zero splats. Facts have explicit SSA dependencies and are invalidated at every write;
+region-entry diagnostics also forget facts shadowed by block arguments. Unsupported producers
+and declared parameter types do not supply value facts. Learning is restricted to scalar
+calibration types, avoiding evaluation of unrelated dense tensor constants.
+
+The checker proves that accepted parameter values are the actual currently bound tensors with
+initialized scalar parameters and a finite positive scale. Fact propagation is generic over
+semantics with an explicit producer-agreement proof, which the frozen semantics supplies.
+This prepares composition with reviewed source extensions without assuming their correctness.
+
+`calibrated_quantize_supported` then proves non-stuck, typed quantization for every float model
+and every typed input tensor of the recognized shape. It deliberately permits poison results:
+the activation/intermediate domain is still required for initialized outputs. This theorem
+does not install source dispatch or establish whole-function definedness.
+
+All **399 retained TinyLlama Q/DQ parameter pairs** pass the calibration check. The combined
+source regression passes **44 tests, zero skipped** (79.53 seconds). The full guard audits
+**7759 theorems, zero violations**, with frozen files and existing statement pins unchanged.
+Tests cover invalid scales, unknown producers/arguments, scalar/tensor SSA overwrites and
+changed literals; initialized nonzero zero points are not confused with symmetric reuse.
+
+Evidence: `source-facts-qualified/`, `source-facts-qualified.xml`,
+`source-facts-qualified-guard.log`, `source-facts-tinyllama.json` and
+`source-facts-qualification.json`. Independent policy/source-contract/domain review and complete
+source/suffix qualification remain open.
+
+## Provisional source-program integration and prefix calibration
+
+Jeremy authorized continuing against the current draft recipe while its TorchAO reference is
+unresolved. The [provisional contract](policy-review/provisional/README.md) records the exact
+development choices and where a later correction belongs. No policy approval, new axiom or
+frozen specification change follows from this instruction.
+
+`Check/PolicyW8A8SourcePrefix.lean` lifts calibration-fact soundness from individual operations
+to arbitrary complete successfully executed prefixes. Its segment check traverses once and
+proves that each selected quant_ext site receives the corresponding parameter check. Unknown
+source contracts refuse. All **399 retained TinyLlama sites** pass this scan; a scan does not
+establish that the complete model executes or satisfies the activation/intermediate domain.
+
+`Rules/W8A8SourceSemantics.lean` supplies an explicit provisional program interpretation for
+per-tensor Q/DQ. Actual tensor values determine runtime types; the source adapter checks the
+operation syntax and metadata. Other operations retain frozen dispatch, and regions/functions
+execute under the same extension. Its adapter-agreement and calibration-producer theorems are
+kernel checked. The new `w8a8_source_program` differential mode executes complete functions,
+including internal calls, without changing the receipt binary or frozen dispatcher.
+
+`Check/PolicyExact.lean` makes exact source-derived policy matching generic in the semantics,
+with independent source-definedness and reference-support premises for strict qualification.
+The downstream theorem keeps the same interpretation and input/context domain. This route
+requires complete AST equality, including SSA ids and module attributes. The new regression
+exposes a remaining bridge: raw actual pass exports renumber SSA values, while existing C1
+renaming proofs are tied to frozen semantics. Their successful conditional match cannot be
+reused for the provisional interpretation. Identity-path acceptance is tested and is not
+reported as coverage of changed W8A8 sites.
+
+Qualification runs in an isolated source/build snapshot containing tracked Lean sources and
+these explicit additions. A separate BF16 task was writing unfinished library files in the
+shared workspace; those files and its `Main.lean` changes were left untouched. The isolated
+full guard audits **7854 theorems with zero violations**, preserving frozen locks and existing
+statement pins. Its receipt binary has the same SHA-256 as the preexisting shared binary.
+This is not a claim that the concurrently edited shared tree passes the full guard.
+
+The combined regression passes **111 tests, zero skipped** (206.91 seconds), including 48
+native source-quantization sample executions across both zero-point widths and scalar, matrix
+and empty tensors. Complete source execution, internal calls, Q-to-DQ byte flow, invalid
+calibration, malformed SSA/type mutations, exceptional conversions and module metadata are
+covered. Ruff, whitespace and artifact layout pass; the unrelated runtime module size ceiling
+remains the structure failure.
+
+Evidence: `source-program-qualified-v3/`, `source-program-qualified-v3.xml`,
+`source-program-isolated-guard.log`, `source-program-isolation.json`,
+`source-prefix-tinyllama.json` and `source-program-qualification.json`.
+
+The remaining engineering includes the generic SSA bridge, whole-function source/domain
+qualification and actual suffix qualification. The provisional specification remains explicit.
+
+## SSA bridge for the provisional source interpretation
+
+`Check/ParametricAlpha.lean` proves SSA equivalence under explicit operation/call laws, retaining
+operand arity and region emptiness. `Rules/W8A8SourceAlpha.lean` proves those laws for the
+provisional source interpretation, including the actual source-contract recognizer. No float
+identity or certificate-supplied value is used.
+
+`Check/ParametricModule.lean` lifts this result to complete modules through a common call-fuel
+induction. It covers internal calls, declarations and missing symbols rather than assuming
+that calls name external declarations. Complete outer metadata and non-function operations
+are compared separately; every recognized function body participates. A structural guard
+refuses extra function regions and unrecognized function views before body erasure.
+
+`Check/PolicyParametric.lean` compares raw compiler output to the fixed source-derived policy
+under this interpretation. Its equality theorem quantifies over every context/input; its
+strict qualification theorem still requires independent source definedness and policy-reference
+support on the same domain. Matching an unsupported function cannot issue a verified receipt.
+
+The retained **TinyLlama boundary matches**, covering all **155 changed contractions**, under
+the new theorem and provisional semantic laws. This closes the SSA bridge recorded above.
+The source and policy numerical domains, full source qualification and actual suffix checks
+remain independent requirements. The reference remains provisional, and no frozen dispatcher,
+public receipt command or checker binary was changed.
+
+Qualification: **73 tests passed, zero skipped** (131.73 seconds), including 26 new SSA/module
+cases plus the complete source-program and existing module suites. Real-pass cases cover
+dynamic and calibrated inputs, supported layouts, empty geometry, nested captures and internal
+calls. Mutations refuse changed arithmetic/wiring, stale ids, module/function metadata, extra
+top-level operations and extra function regions. Matching an unsupported unchanged function is
+explicitly distinguished from source qualification.
+
+The isolated full guard audits **7908 theorems, zero violations**, with frozen files and
+statement pins unchanged. Ruff, whitespace and artifact layout pass; structure retains the
+same unrelated runtime size-ceiling failure. The concurrent BF16 files and Main changes remain
+excluded from this batch's source snapshot and untouched.
+
+Evidence: `parametric-policy-qualified/`, `parametric-policy-qualified.xml`,
+`parametric-policy-qualified-guard.log`, `parametric-policy-isolation.json`,
+`parametric-tinyllama-qualified.json` and `parametric-policy-qualification.json`.
+
+## Whole-function source support and strict typed policy refinement
+
+`Check/PolicyW8A8SourceProgress.lean` connects checked source contracts, exact calibration facts
+and actual SSA operand values to typed, successful Q/DQ steps under every floating model.
+`Check/PolicyW8A8Support.lean` lifts that result through complete block execution, preserving
+the typing environment and invalidating calibration facts on every write. Ordinary operations
+and regions reuse the existing typing rules under the explicit provisional interpretation.
+
+The function theorem proves `FuncNotStuck` for every input of the checked declared types.
+It does not require or infer initialized activation data. Source Q/DQ inside nested regions
+and support of internal calls currently refuse; their separate matching/execution results do
+not supply missing support proofs. Supported calibration producers remain actual scalar
+constants and rank-zero splats, with all source contract conditions recomputed.
+
+`Check/PolicyW8A8Supported.lean` checks source and expanded-reference support independently,
+then composes those proofs with the complete raw-module policy match. Acceptance establishes
+strict typed refinement of the actual output to the draft policy reference, plus source
+modelling, on the same declared input domain. Empty function rosters refuse. Unknown source
+semantics cannot acquire non-vacuity merely by matching unchanged output.
+
+Both retained **TinyLlama before/after functions pass typed support**, and the **combined
+policy refinement check passes**, covering all **155 changed contractions**. The source-derived
+reference's support is checked directly by the combined checker. This strengthens the prior
+conditional match; it is not an initialized-execution proof or independent policy approval.
+
+Support permits UB and poison. One regression executes the admissible-scale `0 * overflowing
+reciprocal` case and observes poison despite passing support; another observes the frozen
+false-assertion UB behavior despite passing support. Both remain explicitly unverified for
+initialized execution. No undefined native conversion or failing native assertion is executed.
+
+The public receipt binary, frozen source dispatcher, specification locks and statement pins
+remain unchanged. Numerical-domain/initialized-execution qualification, semantic promotion and
+actual suffix qualification remain open.
+
+Qualification: **113 tests passed, zero skipped** (177.04 seconds), plus the separately run
+UB distinction case (**1 passed**, 3.30 seconds). There are 24 new support cases; the regression
+also replays source-program, parametric-policy, module and calibration-fact checks. The isolated
+full guard audits **7948 theorems, zero violations**, preserving frozen files and statement pins.
+Ruff, whitespace and artifact layout pass; structure retains the unrelated runtime size ceiling.
+Concurrent BF16 work and Main changes were left untouched and excluded from this snapshot.
+
+Evidence: `source-support-qualified/`, `source-support-qualified.xml`,
+`source-support-ub-qualified/`, `source-support-ub-qualified.xml`,
+`source-support-qualified-guard.log`, `source-support-isolation.json`,
+`source-support-tinyllama-{before,after}.json`, `supported-policy-tinyllama-qualified.json`
+and `source-support-qualification.json`.
+
+## Universal initialized source dequantization and stronger qualification
+
+`Check/PolicyW8A8Dequant.lean` now proves successful typed execution with actual runtime
+scale/zero-point tensors, including i64 zero points. With initialized operands, outputs are
+initialized under every floating model. This removes the unnecessary constant/positive-scale
+restriction from dequantization support without changing quantization's calibration checks.
+NaN/Inf floating bits count as initialized values; this result does not assert finiteness.
+
+`Check/PolicyW8A8Defined.lean` composes source DQ with established ordinary leaf definedness
+rules. `Check/PolicyW8A8Qualified.lean` checks universal initialized execution of both source
+and source-derived reference on the same declared typed, initialized input domain, then
+combines those obligations with the full semantics-generic SSA policy match. Acceptance also
+proves initialized execution of the actual output. Support or matching cannot supply a missing
+proof, and an empty function roster refuses. The driver remains explicitly provisional.
+
+**155 tests passed, zero skipped** (257.30 seconds), including 29 new cases and 30 whole-function
+DQ samples against independently constructed native MLIR. Tests cover both widths, scalar,
+matrix and empty geometry, exceptional scale values, uninitialized temporaries, actual
+contract/wiring mutations, unsupported calls and the separation between typed and initialized
+qualification. The isolated guard audits **7976 theorems, zero violations**, with unchanged
+frozen files and statement pins. Ruff, whitespace and artifact layout pass. Structure retains
+the unrelated `zephyr_model.py` size-ceiling failure; generated package docs have no changes.
+
+Retained TinyLlama still passes typed policy refinement for its **155 selected contractions**
+with the recorded **captured** selection. It refuses initialized qualification. Requesting the
+broader `all` selection does not match that captured output; it must not silently change the
+policy denominator. Whole-model initialized execution is still unproved.
+
+The new initialized route currently refuses quantizers, internal calls and operations with
+regions. No new float law, approved recipe or full verified-pass receipt was introduced.
+Concurrent BF16 work, Main, public CLI, findings and shared ledger were left untouched.
+
+Evidence: `defined-policy-qualified/`, `defined-policy-qualified.{xml,log}`,
+`defined-policy-guard.log`, `defined-policy-isolation.json`, `defined-policy-qualification.json`,
+`defined-policy-tinyllama-captured-support.json` and `defined-policy-tinyllama-initialized.json`.
+
+## Fact-aware nested source support
+
+`Check/CalibratedProgress.lean` factors block/function progress into a reusable rulebook over
+actual typing and calibration environments. Its region checker forgets every calibration fact
+that depends on a newly bound block argument, preserving the evaluator's capture/shadowing
+behavior. Successful SSA writes continue to invalidate facts before learning new producers.
+
+`Check/PolicyW8A8Support.lean` now checks source Q/DQ within nested ordinary structured regions.
+Each enclosing level uses the preceding proved book; a structural AST depth supplies the budget.
+Captured constants and local constant/splat producers use the same proofs. Exhaustion and
+unsupported operations refuse. The original duplicate block/function proof was replaced with
+wrappers over the generic fact-aware progress theorem, preserving the public support claim.
+
+**81 regression tests passed, zero skipped** (150.63 seconds), including 28 new cases. Those
+cover nested depths 1–3, i32/i64 zero points, captured/local calibration, runtime DQ parameters,
+shadowed constants, overwritten tensor parameters, missing captures, metadata and region
+mutations. Eight independent native MLIR comparisons cover nested Q/DQ execution. These tests
+continue to distinguish typed support from initialized execution. The isolated guard audits
+**7994 theorems, zero violations**; frozen files and statement pins remain unchanged. Ruff,
+whitespace and artifact layout pass. Structure's unrelated runtime size-ceiling failure remains.
+
+Retained TinyLlama again passes typed policy refinement for all **155 captured selections**.
+Internal function calls remain unsupported by this progress checker. Numerical-domain and
+initialized quantizer proofs remain separate; no full-pass receipt or policy approval is added.
+Concurrent BF16 edits, Main, public CLI, shared findings and ledger were left untouched.
+
+Evidence: `nested-support-qualified/`, `nested-support-qualified.{xml,log}`,
+`nested-support-guard.log`, `nested-support-isolation.json`, `nested-support-qualification.json`
+and `nested-support-tinyllama.json`.
+
+## Proved interpretation bridge and initialized mixed functions
+
+`Rules/W8A8SourceFree.lean` proves exact agreement of the provisional and frozen interpreters
+when the checked operation regions or every module function body contain no source Q/DQ
+overrides. The module theorem includes internal calls at every fuel, external declarations,
+missing symbols and stuck/UB/poison outcomes, with the identical floating model and context.
+It supplies explicit support/definedness/refinement transfer theorems. Equality of executions
+is kept separate from evidence of successful initialized execution.
+
+`Check/DefinedProjection.lean` provides a reusable adapter from refined definedness books:
+unknown extra input facts start empty, and returned extra facts are erased. Region checking
+still derives its own index bounds. `PolicyW8A8Defined` uses that adapter and the local bridge
+for ordinary operations, permitting source DQ followed by initialized nested arithmetic.
+It also checks the whole-module bridge before reusing the existing full definedness analysis.
+No source calibration, bound or numerical-domain hypothesis is supplied by an output hint.
+
+The ordinary floating matmul baseline now passes universal initialized qualification; its
+actual W8A8 output still refuses initialized qualification because the policy quantizer's
+numerical domain has not been proved. This separates a defined baseline from an unsupported
+quantized reference. Mixed DQ/ordinary-region cases pass at depths 1 and 3, while out-of-bounds
+reads refuse. Source Q/DQ within regions remains typed-support-only; initialized execution of
+those source-containing regions and general internal-call support are still open.
+
+**101 regression tests passed, zero skipped** (221.08 seconds), including 20 new bridge cases.
+The isolated guard audits **8045 theorems, zero violations**, with unchanged frozen files and
+statement pins. The shared tree's lock-only check also passes. Ruff, whitespace and artifact
+layout pass; structure retains the unrelated runtime size-ceiling failure, and regenerated
+package docs have no tracked changes. Across these three checkpoints, 203 distinct regression
+cases have passed; overlapping runs are not additional coverage.
+
+The retained TinyLlama final handoff export passes the interpretation bridge; its earlier
+source-Q/DQ boundary correctly refuses it. This is interpretation agreement only, not a
+suffix-refinement, initialized-handoff or full-pass result. The prior 155-site typed policy
+refinement remains recorded separately. No frozen dispatcher, public receipt driver, compiler
+pass, other agent's active files, shared ledger or findings were edited.
+
+A development Lean interpreter process exited 139 once. The exact request, isolated test and
+final 101-case run passed afterward; no retry or exception suppression was added. The original
+failure and replay logs are retained. Earlier interrupted qualification attempts are retained
+but are not used as passing evidence.
+
+Evidence: `source-free-qualified-v3/`, `source-free-qualified-v3.{xml,log}`,
+`source-free-guard-v3.log`, `source-free-isolation-v3.json`, `source-free-qualification.json`,
+`source-free-tinyllama-{source,handoff}.json` and `source-free-{development,poison-repro}.log`.
+
+Next priorities remain universal initialized source/dynamic quantization on a justified
+numerical domain; source-containing regions and internal-call contracts; independent recipe
+review and semantic promotion; then public receipt/pipeline integration and actual suffix
+qualification. Existing MLIR/LLVM passes remain outside the Merlin-owned verification scope.
+
+## Initialized source dequantization inside generic regions
+
+`Check/DefinedGeneric.lean` generalizes the proved structured initialization rules over an
+explicit operation interpretation and arbitrary refinement-fact model. Reusing the frozen
+generic executor requires a proved agreement law on the operation head for arbitrary body
+closures. Bodies execute under the chosen interpretation. Initialized destinations and complete
+overwrites retain separate mapping, shape, body-initialization and output-coverage obligations.
+
+`PolicyW8A8Defined` now keeps refinement facts through whole-function execution and recursively
+checks generic bodies with source DQ. Captured runtime parameters, block-argument shadowing and
+local index bounds use the existing proved refined walker. This closes the previous initialized
+source-DQ region refusal and preserves bounds across top-level operations in mixed functions.
+Source quantization and internal function calls still refuse initialized qualification.
+
+**127 regression tests passed, zero skipped** (270.06 seconds), including 26 new cases. They
+cover both zero-point widths, depths 1–3, initialized source DQ against native MLIR, retained
+bounds, poison in each operand, uninitialized yielded destinations, metadata/region mutations
+and out-of-bounds reads. The isolated audit checks **8065 theorems, zero violations**, with
+unchanged frozen files and statement pins. Ruff, whitespace and artifact layout pass. Structure
+retains the unrelated runtime size-ceiling failure. Other agents' active files remain untouched.
+
+The theorems quantify over every floating model; this checkpoint adds no numerical laws or
+new policy assumption. Full W8A8 initialized execution remains unproved. Work on explicit,
+conditional quantizer numerical preconditions is being kept separate from this qualification.
+
+Evidence: `nested-defined-qualified/`, `nested-defined-qualified.{xml,log}`,
+`nested-defined-guard.log`, `nested-defined-isolation.json`, `nested-defined-qualification.json`.
+
+## Conditional numerical domain for source quantization
+
+`Rules/W8A8FiniteLaws.lean` states primitive floating-operation premises explicitly and derives
+the source quantizer's exact intermediate non-NaN obligation. Finite data and a positive normal
+f32 scale suffice; overflow of a multiplication to infinity is permitted. No axiom or model
+instance is introduced. A proved counterexample shows the current arbitrary floating-model
+interface does not imply these premises, so they cannot be silently treated as established.
+
+`PolicyW8A8FiniteDomain.check_sound` proves that a guard on actual bits suffices for initialized
+source quantization **conditional on those premises**. It performs no floating arithmetic and
+is conservative: some refused infinite-data/subnormal-scale instances still clip successfully.
+`PolicyW8A8FiniteParameters.check_sound` separately binds the scale class to actual calibration
+SSA producers. All **399 retained TinyLlama Q/DQ scales**, including **89 source quantizers**,
+pass this scale guard. Activation finiteness is a separate, unproved whole-function obligation.
+The [provisional packet](policy-review/provisional/README.md) records the premises and review
+boundary in detail. Neither driver metadata nor passing samples discharge these proof premises.
+
+**83 regression tests passed, zero skipped** (160.21 seconds), including 20 new cases and 48
+new native MLIR source-quantizer comparisons, also compared with pinned PyTorch. Cases include
+i32/i64 zero points, scalar/matrix/empty tensors, normal/subnormal scale boundaries, NaN/Inf,
+the tiny-scale/zero-input poison counterexample and actual/unknown calibration producers.
+The isolated guard audits **8100 theorems, zero violations**, with unchanged frozen files and
+statement pins. Ruff, whitespace and artifact layout pass; regenerated package docs are
+unchanged. Structure retains the unrelated runtime module size-ceiling failure.
+
+A development interpreter process again exited 139. The exact request and 20 debugger runs
+passed, followed by the clean 83-case qualification above. Its cause remains unresolved; the
+original failure and diagnostic logs are retained. Tests contain no automatic retry or failure
+suppression, and the clean run does not establish that the runtime defect has been fixed.
+
+The stronger whole-function checker still refuses source quantization. Remaining work includes
+propagating justified numerical preconditions through actual source/reference functions,
+qualifying the floating interpretation, internal-call contracts, independent policy review,
+and public receipt/pipeline integration. This checkpoint does not change the production pass,
+frozen semantics, public receipt binary or other agents' active files.
+
+Evidence: `finite-domain-qualified-v1/`, `finite-domain-qualified-v1.{xml,log}`,
+`finite-domain-guard-v1.log`, `finite-domain-isolation-v1.json`,
+`finite-domain-qualification-v1.json`, `finite-domain-tinyllama-parameters.json`,
+`finite-domain-runtime-development.log` and `finite-domain-gdb-qualified-repro.log`.
+
+## Conditional initialized functions and actual reused-byte W8A8 rewrites
+
+`Check/DefinedContext.lean` supports explicit context/call conditions and per-value refinements.
+The function theorem requires a proof of those conditions for the actual module evaluator and
+call fuel. `FiniteFacts` and `FiniteProducers` derive numerical classes from actual constant bits,
+preserve them through splats, and replace them on SSA writes. Ordinary initialized arithmetic
+does not establish a finite or positive-normal result: delegated rules erase those classes.
+
+`PolicyW8A8FiniteQuantize` proves initialization for actual recognized source quantizers from
+those operand facts. `PolicyW8A8FiniteDefined` composes it through complete functions under the
+explicit finite-f32 input domain and the primitive model laws. Both zero-point widths, normal
+scale endpoints, scalar/matrix/empty tensors and Q→DQ functions pass. The model-domain witness
+is synthetic; no concrete IEEE or host-model law instance is claimed. NaN input remains an
+excluded counterexample, tested separately rather than admitted by a misleading all-input claim.
+
+`PolicyW8A8FiniteQualified` now combines source/reference initialized execution on that same
+domain with the existing source-derived policy expansion and whole-module SSA validation.
+Actual Merlin contraction rewrites reusing both calibrated byte operands pass this route,
+including source quantization prefixes. Selected dynamic policy quantizers still refuse:
+their numerical proof is not supplied by the source quantizer theorem. The policy and floating
+interpretation remain provisional, and public verified receipts remain unavailable.
+
+The retained TinyLlama program still refuses conditional initialized qualification for both
+source and reference. Its first source refusal is an embedding `linalg.generic` after 776 prefix
+operations. The actual entry token operand is `tensor<1x8xi64>` and the gathered table is
+`tensor<32000x2048xf32>`; the type alone does not establish valid token indices. Its token-range
+contract, structured loop bounds and subsequent numerical obligations remain explicit. This
+diagnostic is not a compiler counterexample or an expansion into proving frontend/upstream passes.
+
+The [provisional packet](policy-review/provisional/README.md) records the exact context/input
+domains and boundaries. Source/source-reference proof composition now works for accepted real
+rewrites; general dynamic quantization, numerical propagation, calls, independent review and
+public receipt/suffix integration remain unfinished.
+
+**218 regression tests passed, zero skipped** (354.24 seconds), including 44 new source-function
+cases and 12 new policy cases. The function tests include 48 native MLIR comparisons. Two
+actual transformed-program executions also match an independent ordered NumPy quantize/int32
+MAC/scale recipe. Positive policy cases all run the real Merlin pass and assert one selected
+rewrite; no unchanged function is presented as changed-site coverage. Mutation tests retain
+valid matrix shapes when checking swapped contraction operands. The isolated guard audits
+**8201 theorems, zero violations**, with unchanged frozen files, pins and public receipt binary.
+Ruff, formatting, whitespace, artifact layout and the shared-tree lock check pass. Package-doc
+regeneration is unchanged; structure retains the unrelated runtime module size-ceiling failure.
+The earlier intermittent interpreter crash remains unresolved; this qualification added no retry
+and observed no process crash.
+
+Evidence: `finite-functions-qualified-v1/`, `finite-functions-qualified-v1.{xml,log}`,
+`finite-functions-guard-v1.log`, `finite-functions-isolation-v1.json`,
+`finite-functions-qualification-v1.json`, `finite-functions-tinyllama-policy.json` and
+`finite-functions-tinyllama-first-refusal-v3.json`. The accompanying diagnostic source is
+`finite-functions-first-refusal-v3.lean`; it reports checker refusals and is not a proof or receipt.
+
+## Checked internal calls and inferred numerical postconditions
+
+`DefinedContext` now has one inference engine for operation/region result facts; its existing
+Boolean checks project the inferred types. Soundness preserves the actual result refinements,
+successful execution and initialization. Existing public claim statements retain their domains.
+`FiniteImplication` checks the caller's input facts against the callee's requirements, including
+types, initialization and the direction of numerical weakening. A finite fact cannot prove a
+normal scale; a normal fact can satisfy a finite-input requirement.
+
+`DefinedCallContracts` checks actual flat callees, metadata, regions, result types and runtime
+result arity. Its contract premise is closed by `PolicyW8A8Called`: stage zero has no contracts;
+each later stage checks actual function bodies using only the preceding stage's contracts.
+The soundness theorem matches stage fuel to `evalFunc`, with final fuel taken from the actual
+module's function count. No declaration, recursion cycle or provenance annotation supplies a
+contract. Inferred finite/normal results cross the call boundary with their proofs intact.
+
+`PolicyW8A8FiniteQualified` now tries that route alongside direct initialized checking, using
+the same explicit finite-f32 input and primitive-model-law domain. This closes the previous
+top-level internal-call refusal for admitted callees. The direct checker remains a no-call
+fragment. Source Q and calls inside structured regions still require further conditional
+region proofs; the new route does not silently assume those bodies valid.
+
+**197 regression tests passed, zero skipped** (334.98 seconds), including **48 new call cases**.
+They cover both zero-point widths, scalar/matrix/empty tensors, quantize/Q→DQ call chains,
+definition order, inferred numerical returns, missing/malformed callees, invalid signatures,
+recursion, external declarations, poison, UB, nonfinite arguments and forged `prov.verified`
+annotations. Four call-chain cases include **32 native MLIR comparisons**. Two real W8A8
+rewrites inside callees, reached through three call levels, also match the independent ordered
+NumPy recipe. The isolated guard audits **8260 theorems, zero violations**. Frozen files, pins
+and the public receipt binary remain unchanged. Ruff, formatting, whitespace, artifact layout
+and the lock check pass; regenerated package docs are unchanged. Structure retains the
+unrelated runtime module size-ceiling failure. No retry or crash suppression was introduced.
+
+The retained TinyLlama source/reference pair still refuses initialized qualification. Its
+previous embedding-input contract and later numerical obligations remain unresolved; call
+support cannot establish missing index ranges. Independent recipe/context/domain review,
+dynamic quantizer proofs, conditional structured regions and public receipt/suffix integration
+remain required. No full-pass receipt, new float axiom or production-pass change is added.
+
+Evidence: `called-qualified-v1/`, `called-qualified-v1.{xml,log}`, `called-guard-v1.log`,
+`called-isolation-v1.json`, `called-qualification-v1.json` and `called-tinyllama-policy.json`.
+
+## Conditional numerical facts through actual structured regions
+
+`DefinedElementwise` proves that bounded tensor reads, writes and canonicalization preserve
+elementwise refinements. `DefinedContextLoops` carries explicit context/call premises through
+the actual loop-coordinate updates and ordered reductions. A full identity overwrite proves
+its initialized numerical postcondition from actual body execution, with an explicitly
+uninitialized old destination. `DefinedContextFill` checks the actual fill region as well.
+
+`DefinedContextGeneric` infers overwrite result facts and checks initialized reduction
+invariants through a proved weakening relation. `FiniteStructured` instantiates this for
+finite/normal facts, conservatively widening normal reduction initializers to finite. The
+direct and checked-call W8A8 books now use those conditional rules recursively. Quantizers,
+captured calibration values and closed internal-call contracts can appear in nested regions;
+SSA rebinding still replaces facts, and ordinary initialized arithmetic cannot imply finiteness.
+This closes the preceding structured-region gap without changing either existing theorem
+domain or adding verification of any upstream optimization pass.
+
+The separate `W8A8DynamicLaws` module proves abs/max finiteness, guarded-scale normality,
+reciprocal finiteness and initialized ordered byte quantization under three additional explicit
+primitive premises. Its synthetic witness proves that those premises are jointly satisfiable;
+no concrete IEEE/host model is established. These lemmas remain separate from the existing
+source-quantizer context. Connecting them to generated dynamic-policy SSA producers and complete
+rewrites is the next implementation obligation, not a completed coverage claim.
+
+**246 relevant regression tests passed, zero skipped** (427.51 seconds), including **49 new
+structured-region cases**. Eight cases contribute **64 native MLIR comparisons**, covering
+quantization after a copy, inside a parallel region, inside a nested reduction and through
+an internal call in a nested body. A real `lower_contraction_int8` rewrite after a proved finite
+copy also qualifies conditionally and matches the independent ordered NumPy recipe. Refusal
+tests cover uninitialized destination use, arithmetic that lacks finiteness evidence, bad
+calibration, maps, body types, metadata, captured NaN and actual SSA overwrites.
+
+The isolated guard audits **8357 theorems, zero violations**, over **333 snapshot source files**.
+Frozen files and statement pins are unchanged. Ruff, formatting, whitespace, artifact layout
+and the shared-tree lock check pass; package-doc regeneration is unchanged. Structure retains
+the unrelated runtime module size-ceiling failure. The isolated public binary remains the
+earlier qualified binary; concurrent shared-tree driver/binary work is excluded and its
+observed digest is recorded separately. No public receipt integration or production-pass edit
+is included here. The earlier interpreter crash remains unresolved; this qualification used
+no retry/failure suppression and observed no process crash.
+
+The retained TinyLlama source/reference pair still refuses initialized qualification; input
+token ranges and later numerical obligations remain unproved. Remaining work is generated
+dynamic SSA safety, the concrete floating interpretation and input contracts, independent
+recipe/domain review, public receipt/pipeline composition and qualification of every selected
+site. Recorded incorrect/unsupported pass cases must be resolved or refused. The policy is
+still provisional and `whole_pass_verified` remains false.
+
+Evidence: `structured-qualified-v1/`, `structured-qualified-v1.{xml,log}`,
+`structured-guard-v1.log`, `structured-isolation-v1.json`, `structured-qualification-v1.json`
+and `structured-tinyllama-policy.json`. The [provisional packet](policy-review/provisional/README.md)
+records the unchanged source domain and separate draft dynamic premises.
+
+## Initialized dynamic W8A8 policy refinement
+
+The dynamic numerical lemmas are now integrated through actual generated SSA and complete
+source/reference functions. `FloatFacts` retains finite/normal classes and exact f32 literal
+evidence, with proved projection/embedding between refinement models. Constants are learned
+from actual execution; splats preserve their elementwise facts. Capture lookup reads the
+current binding for ids used in the small scalar region, so earlier overwritten constants
+cannot supply a denominator or clamp bound.
+
+`DefinedRegions` allows a proved region contract alongside ordinary operation inference.
+`PolicyW8A8DynamicBodies` and `PolicyW8A8DynamicCaptured` apply the existing exact scalar-body
+checks and prove finite abs/max results, positive-normal scales, finite reciprocals and
+initialized byte conversions. The structured executor carries these postconditions through
+actual checked mappings, reductions and overwrites. A source-free body bridge establishes
+agreement of interpretations before reusing the frozen-semantics component proofs.
+
+`PolicyW8A8DynamicDefined.check_sound` now proves initialized complete functions containing
+the emitted dynamic sequence. `DefinedClosedCalls` generalizes the existing staged call
+proof without changing its domain; both source-only and dynamic books use it, with actual
+body-derived contracts and the evaluator's module fuel. `PolicyInitialized` provides shared
+whole-module policy composition. `PolicyW8A8DynamicQualified.check_sound` requires initialized
+source/reference execution on one domain plus the complete source-derived policy match, and
+proves strict policy refinement and initialized actual output for every admitted function.
+
+The **new route** explicitly requires the seven source laws plus the three separate dynamic
+laws for the base of `W8A8ByteModel.extend`. Its input domain remains typed, initialized
+arguments with finite f32 elements. Earlier source-only theorem domains are unchanged; those
+weaker-context checkers still refuse dynamic quantizers. No concrete IEEE/host law instance
+has been established and the synthetic witness is only a non-vacuity proof. The new route is
+conditional qualification of the draft policy, not independent policy approval or promotion
+of frozen semantics/public receipts.
+
+**298 relevant regression tests passed, zero skipped** (477.19 seconds), including **52 new
+dynamic cases**. Positive checks run the real pass and assert one selected rewrite. Cases cover
+canonical matrices and empty M/K/N, signed-byte/f32 operands in both positions and source add
+orders, per-tensor Q/DQ reuse with one dynamic operand and i32/i64 zero points, and internal
+callees through three call levels. **50 new qualified observations** compare the exact actual
+output artifact under Lean, native MLIR and the independent ordered NumPy recipe. Another
+**20** compare captured-source-plus-dynamic execution with the ordered recipe. These are
+sampled semantic-fidelity checks, not proofs of a concrete floating-model instance.
+
+Negative checks reject wrong denominators, floors, reciprocals, rounding, clamp values,
+uninitialized destination use, stale/NaN literals and malformed region/type/metadata data.
+Numerically initialized outputs with incorrect contraction wiring, scale order, reduction axes
+or accumulator values still fail policy matching. The recorded F11 square-as-product source
+discrepancy remains refused, and dynamic initialization cannot widen captured-scope selection.
+
+The isolated guard audits **8518 theorems, zero violations**, over **347 snapshot source files**.
+Frozen files and statement pins remain unchanged. Ruff, formatting, whitespace, artifact
+layout and shared-tree lock checks pass; regenerated package docs are unchanged. Structure
+retains the unrelated runtime module size-ceiling failure. Concurrent BF16/frontend and public
+driver work is excluded from this qualification; the isolated and observed shared-tree binary
+digests are recorded separately. No production pass is edited. The previous intermittent
+interpreter crash remains unresolved; this clean qualification used no retry or suppression.
+
+The retained TinyLlama source/reference pair still refuses the stronger route. Its token-index
+domain and later numerical obligations remain unproved; supporting dynamic stages cannot
+establish those facts. Remaining work includes concrete semantic/domain admission and
+independent recipe review, source numerical/index contracts, qualification of every selected
+retained-model site, and public receipt/pipeline/suffix integration. Recorded discrepancies
+must be resolved or refused without shrinking the selected denominator. Full-pass verification
+and public verified receipts remain unavailable.
+
+Evidence: `dynamic-qualified-v1/`, `dynamic-qualified-v1.{xml,log}`, `dynamic-guard-v1.log`,
+`dynamic-isolation-v1.json`, `dynamic-qualification-v1.json` and `dynamic-tinyllama-policy.json`.
+The [provisional packet](policy-review/provisional/README.md) states the new stronger context
+and its precise relation to the earlier claims.
+
+## Conditional dynamic qualification through pipeline boundaries
+
+`PolicyW8A8DynamicChain.check_sound` now composes the initialized W8A8 policy result through
+every actual downstream boundary, retaining the original source, reference, numerical context
+and finite-input domain. It proves initialized final output as well as strict refinement of
+the policy reference. Complete-module SSA equivalence uses the additive source semantics
+directly. Other existing suffix rules are reused only after both complete modules pass the
+proved source-free interpretation check; unchanged Q/DQ operations cannot hide that obligation.
+
+The existing public draft commands now include a separate `conditional_numerical` report.
+It names the new theorem and its stronger numerical/input context, records source/reference
+initialization and each downstream result, and keeps policy/model approval false. The Python
+adapter validates the exact theorem, scope, width, domain, selected function roster and suffix
+coverage, and records the actual theorem's axiom audit inside the report bound to the exact
+program exports and checker binary. Earlier draft claim identities and domains are preserved;
+no full-pass verified receipt is issued.
+
+**193 relevant regression tests passed, zero skipped** (286.86 seconds), including **36 new
+integration cases**. Real pass outputs cover ordinary/empty matrices, mixed signed-byte/f32
+operands, captured reuse with dynamic operands and internal calls. Tests compose actual Merlin
+preprocessing boundaries, accept consistent SSA renaming with/without source quantization,
+refuse missing interpretation bridges, detect first/middle/last suffix mutations, leave suffixes
+unmeasured after failed policy qualification, and reject malformed or promoted numerical
+reports. Existing timeout, byte continuity, handoff and freshness checks also pass. The run
+repeats the **50** qualified Lean/native/ordered-NumPy observations and **20** captured-source
+observations from the preceding batch; these are sampled fidelity evidence, not new IEEE proofs.
+
+The isolated guard audits **8543 theorems, zero violations**, over **349 snapshot source files**.
+The isolated public checker was rebuilt before qualification and stayed fixed throughout the
+tests. Concurrent BF16/frontend and public Main/CLI work remains excluded; the shared-tree binary
+is recorded separately. Frozen files and statement pins are unchanged. Ruff, formatting,
+whitespace, artifact layout, source access/name gates and regenerated package docs pass.
+Structure retains the unrelated `zephyr_model.py` size-ceiling failure. The earlier intermittent
+interpreter crash remains unresolved; this qualification used no retry or suppression.
+
+Still outstanding are independent policy/domain review, concrete numerical-model admission,
+source index/numerical contracts and qualification of every selected retained-model site.
+The retained TinyLlama input-bound/numerical refusal and recorded production discrepancies are
+not resolved by pipeline integration. Typed suffixes retaining Q/DQ also require an additive
+semantic proof beyond the current SSA route. Full-pass verification and frozen receipt promotion
+remain unavailable.
+
+Evidence: `dynamic-public-qualified-v1.{xml,log}`, `dynamic-public-guard-v1.log`,
+`dynamic-public-isolation-v1.json`, `dynamic-public-freeze-v1.json` and
+`dynamic-public-qualification-v1.json`. The provisional review packet records the exact new
+reporting route and its unchanged review requirements.
+
+## EL4 references and direct TorchAO qualification
+
+Agustin identified `examples/gemmini` on `feat/el4-experiment` as the numerical reference.
+The [reference intake](reference/README.md) pins commit
+`0cc289de52a10bed256f32c90cfbb54a21b3c81f`, retains eight documents/recipes, and verifies all
+three selected recipe file hashes and canonical digests. Its historical guide records torch
+2.10.0 with TorchAO 0.16.0 for ResNet50/TinyLlama and 0.15.0 for SmolVLA. The newer selected
+protocol uses grouped-16 weight scales and different epilogue arithmetic; its capture identities
+must not be inferred from the historical guide or the older retained development inputs.
+
+The new standalone oracle runs those two TorchAO releases on the existing torch 2.10.0+cpu /
+NumPy 2.4.6 reference installation, with actual package source hashes and initialization diagnostics
+retained. It imports no Merlin implementation or reference helper. CPU quantization and integer
+arithmetic are exercised; the original CUDA capture environments and optional GPU extensions are
+not qualified. No external package source is patched.
+
+TorchAO's default integer-linear dispatcher requires full-range weight metadata, whereas the
+declared two-dynamic-operand recipe uses reduced range for both. The oracle records that distinction
+and calls configured TorchAO quantization and its scaled integer-matmul primitive explicitly.
+Captured-operand reuse instead exercises actual quantized `F.linear` with the supported integer
+dispatch predicate checked. This establishes neither equality to TorchAO's default whole-Linear
+recipe nor approval of a new selected capture policy.
+
+The main regression passes **132 tests, zero skipped** (325.77 seconds). Final review then adds
+shared pre-cast validation for captured reference scales and two additional refusal cases at each
+version; the final oracle suite passes **34 tests, zero skipped** (152.41 seconds). These runs cover
+**136 unique successful test cases**. All 20 positive TorchAO result records are unchanged by that
+guard hardening. New numerical observations comprise **30** actual dynamic-output comparisons
+among Lean, native MLIR, configured TorchAO and ordered NumPy; **10** captured-source-output
+comparisons among the additive Lean interpretation, actual TorchAO linear and ordered NumPy;
+and **108 each** per-tensor quantize/dequantize comparisons against Lean and standard native MLIR.
+The latter include i32/i64 zero points, scalar/ranked tensors, saturation and odd-zero-point ties.
+The 14 final negative cases refuse unsupported bounds, invalid scales and undefined conversions.
+
+No Lean proof source, frozen file, statement pin, public checker binary or production pass changes
+in this batch. All **349** isolated sources and the prior **8543-theorem, zero-violation** audit
+remain applicable by exact digest checks. Ruff, formatting, whitespace, artifact layout, frozen
+file checks and regenerated package docs pass. Structure retains the unrelated `zephyr_model.py`
+size-ceiling failure. Concurrent BF16/frontend/Main/CLI work remains excluded.
+
+This resolves reference discovery and adds direct versioned API fidelity evidence. Independent
+policy/domain review, source index/numerical proofs, the newer selected capture binding, complete
+retained-model coverage and frozen receipt promotion remain unfinished. EL4's W8A8 implementation
+also adds promoted bf16/f16 and widening-reuse paths beyond the checked branch; those do not inherit
+qualification automatically. Full-pass verified receipts remain unavailable.
+
+Evidence: `reference/el4-0cc289de52a1/reference-intake.json`,
+`torchao-reference-qualified-v{1,2}.{xml,log}`, `torchao-reference-freeze-v{1,2}.json` and
+`torchao-reference-qualification-v1.json`.
+
+## Explicit token bounds and embedding-fed W8A8
+
+`PolicyW8A8BoundedQualified.check_sound` adds a separate initialized whole-module claim with
+**finite f32 inputs and declared integer intervals per function**. It does not change the input
+domain of the earlier dynamic checker. Source, reference and actual target use the same input
+contract. A function's bounds are identified by its name rather than just its argument types.
+Missing arguments, empty/reversed intervals, intervals on floating inputs and intervals that do
+not fit their integer type are refused. These restrictions remain provisional input policy;
+no sample, model name or provenance annotation supplies the bounds.
+
+The proof follows the actual embedding implementation:
+
+1. Structured execution supplies each body's actual, checked iteration space to region inference.
+   The loop-coordinate premise is distinct from the numerical-model laws. Old context-independent
+   rule interfaces retain their statements and remain usable through adapters.
+2. `linalg.index` receives bounds only in the corresponding structured body. Its encoded value
+   must fit the actual signed index width; a function-scope coordinate has no such premise.
+3. An elementwise integer interval travels from the token tensor to the scalar body argument.
+   Signed and unsigned integer/index casts retain the interval only after proving that every
+   value fits the signed target width, including truncation. Older singleton/unsigned-widening
+   evidence remains available when that check does not apply.
+4. `tensor.extract` checks those actual scalar bounds against the actual table shape and retains
+   the table's proved floating classification. It does not turn initialized floating arithmetic
+   into finite arithmetic. Type-aware fact transport prevents a uniform tensor interval from
+   being supplied as evidence about a scalar value.
+5. The existing source-derived W8A8 policy, numerical region contracts and semantic SSA matching
+   compose the resulting finite embedding with the complete generated dynamic sequence.
+
+The dedicated test driver includes a kernel-checked witness for a complete, nonempty bounded
+embedding input domain. Numerical-model laws remain separate, explicit premises. This route
+currently has a dedicated checker/driver and does not issue promoted public receipts.
+
+Qualification passes **357 tests, zero skipped** (746.90 seconds), including **31 new** cases
+and **six** complete output comparisons among Lean execution, native MLIR and an independent
+ordered numerical recipe. Cases cover actual Merlin rewrites at both index widths, i32/i64
+token types, empty outputs, per-function contract binding, signed representability boundaries,
+invalid input domains, altered gathers, unproved floating finiteness and adversarial exported
+SSA/loop context. The existing dynamic/finite policy, public-receipt, versioned TorchAO and
+index/extraction suites also pass. All **374** frozen source/fixture/binary records remain
+unchanged after the run, as do the 20 versioned package-source records. The isolated build
+contains **358** sources; its **8676-theorem** audit has **zero violations**, with the frozen
+semantics and statement pins unchanged. Formatting, package docs and artifact layout pass;
+structure retains the unrelated `zephyr_model.py` size-ceiling failure.
+
+Replaying the retained development TinyLlama export with the explicit token restriction
+`0 <= token < vocabulary` now passes its embedding at result **979**, previously the first
+refusal after **776** prefix operations. The vocabulary **32000** comes from the actual captured
+table argument's shape. Both source and captured-policy reference now first refuse at
+`tensor.extract_slice`, result **1003**, after **784** prefix operations. Full retained-model
+qualification remains false. This older 8-token development input is still distinct from the
+new EL4 selected capture protocol.
+
+Evidence is recorded in `bounded-inputs-isolation-v1.json`, `bounded-inputs-guard-v2.log`,
+`bounded-inputs-qualified-v1.{xml,log}`, `bounded-inputs-freeze-v1.json`,
+`bounded-inputs-tinyllama-v1.json` and `bounded-inputs-qualification-v1.json`.
+
+## Fact-preserving tensor views in W8A8 source computations
+
+The finite, dynamic and bounded W8A8 checkers now share proved rules for static slices,
+concatenation, collapse/expand reshapes and static tensor casts. These establish the value
+facts required by Merlin's W8A8 recipe on the actual source computations. They do not verify
+LLVM optimization passes. The numerical context/input domains and provisional policy review
+requirements of the existing theorems remain unchanged.
+
+`DefinedReadView` proves that an initialized input's elementwise facts survive a view whose
+every output cell reads an actual in-bounds input cell. Slice geometry and rank reduction are
+checked from the operation. Reshapes check actual reassociation and element counts; casts check
+the actual static shape and element type. This preserves floating classifications, exact
+literal facts and uniform integer intervals without inventing facts from a type or annotation.
+
+`DefinedConcat` additionally proves that the parts cover every output coordinate. A candidate
+common refinement is accepted only after checking implication from **every** input's scalar
+fact. It can choose an input's more general interval or a weakened numerical classification;
+it falls back to empty evidence when no candidate works. A later, unproved floating product
+therefore cannot inherit finiteness from the first input. `W8A8SourceBook` reuses ordinary
+operation proofs only after checking equality with the additive source interpretation for
+the operation and all nested regions.
+
+Qualification passes **410 tests, zero skipped** (847.80 seconds), including **53 new** cases,
+**27** complete Lean/native/independent-recipe comparisons and two new public-receipt checks.
+Cases cover rank reduction, non-unit strides, empty shapes, both index widths, integer bounds
+through reshapes and casts, common concat facts and adversarial geometry/metadata. All **416**
+frozen records remain unchanged after qualification. The **365-source** isolated build audits
+**8761 theorems with zero violations**. Formatting, package docs and artifact layout pass;
+structure retains the unrelated `zephyr_model.py` size-ceiling failure. Concurrent
+BF16/frontend/Main/CLI work remains excluded.
+
+The retained TinyLlama source and captured-policy reference now pass the slice at result
+**1003** and concatenation at **1012**. Their first refusal is **1113**, a gather after **837**
+prefix operations. Its coordinate producers contain integer constants, multiply/add operations
+and reshapes. Reshape bounds preservation is proved; the scalar integer arithmetic still lacks
+the range evidence needed by the gather. No extra input assumptions or model-specific coordinate
+bounds were inserted to bypass that refusal. Full retained-model qualification remains false.
+
+The native test pipeline has a separately recorded limitation: a legal concatenation with an
+empty trailing part reaches bufferization, which emits a `memref.subview` with offset 2 and
+size 0 into a dimension of size 2. MLIR's verifier rejects it with
+`offset 0 is out-of-bounds: 2 >= 2`. The regression checks that exact refusal and compares the
+Lean result to the independent numerical recipe. It records `native_compared: false`; this
+case is excluded from the successful native comparison count. No production Merlin pass or
+vendored LLVM code was changed to avoid the failure. The identical native rejection is also
+reproduced on the original source **without W8A8 applied**. Its three Lean/independent-recipe
+observations and the exact baseline/after-pass failures are retained separately.
+
+Evidence: `views-isolation-v1.json`, `views-guard-v1.log`, `views-freeze-v1.json`,
+`views-qualified-v1.{xml,log}`, `views-tinyllama-v1.json` and `views-qualification-v1.json`.
+
+## Integer coordinate producers and splats
+
+`BoundedIntegerProducers` derives nonnegative singleton intervals from the actual signed
+modular bits of integer constants. A negative or wrapped-negative constant cannot supply
+nonnegative coordinate evidence. `BoundedIntegerArithmetic` checks actual integer operand and
+result widths, independently of the context's index width. It reuses the proved singleton
+rules for addition, subtraction, multiplication and bitwise operations, the no-wrap addition
+rule, and a new general nonnegative multiplication bound in `IndexRangeMul`. Unknown or
+possibly wrapping intervals lose their bounds while unflagged integer execution stays proved
+initialized. Overflow flags and unmodelled attributes do not establish those bounds.
+
+`DefinedRefinedSplat` preserves every proved elementwise fact of its initialized scalar in
+the actual output tensor, including integer intervals. This shared rule serves the finite,
+dynamic and bounded W8A8 checkers. Complete generic overwrites retain producer-proved ranges;
+initialized reductions forget the initializer's interval before checking their body invariant.
+A sum need not remain equal to its zero initializer. `IndexRangeEmpty` additionally proves
+that an empty interval describes no scalar value, allowing arithmetic inside a zero-extent
+iteration space to preserve that evidence. Declared empty input intervals remain refused.
+
+Qualification passes **458 tests, zero failures/errors/skips**, in **515.38 seconds** with two
+test workers, including **48 new cases** and **10** complete output comparisons among Lean,
+native MLIR and the ordered independent recipe. The cases include i8/i16/i32/i64 producers,
+both index widths, signed-range endpoints, empty iterations, splat/concat coordinate chains,
+all six supported singleton arithmetic families, modular reduction results, actual out-of-bounds
+and wrapping coordinates, and adversarial attributes, operands, constants and SSA captures.
+The earlier versioned TorchAO, dynamic/finite policy, public receipt, view and index regressions
+also pass. The **370-source** isolated build audits **8888 theorems, zero violations**. All
+**427** frozen source/runtime/reference/checker records remain unchanged after qualification.
+The qualified public checker digest is
+`ac6a573922a0c60193780b6d1e5ddd77bc539de96cb8b195ed895f2178b130d8`.
+
+The retained TinyLlama source and captured-policy reference now pass the gather at result
+**1113**, with **902** prefix operations accepted. Their next refusal is per-tensor quantization
+at result **1256**, whose input is produced by RMS normalization and subsequent floating
+products. Initialization of those preceding floating operations does not establish the
+numerical facts required by the quantizer rule. This is a missing producer proof, not a
+demonstrated Merlin pass bug. No finite-result assumption was silently added. The capture
+remains the older eight-token development input, not the newer EL4 selected capture.
+
+Input domains, numerical context premises, frozen files and statement pins are unchanged;
+no production pass or foreign BF16/overrank/scalar-square/Main/CLI work was edited. Formatting,
+artifact layout and the other structure checks pass. The unrelated `zephyr_model.py` size
+ceiling remains **3557 > 3537** lines. Full-pass, policy-review and primitive-model-law flags
+remain false. Bounded-domain downstream/public receipt integration, numerical producer proofs,
+selected capture binding and independent recipe/domain review remain unfinished.
+
+Evidence: `integer-coordinates-isolation-v1.json`, `integer-coordinates-guard-v1.log`,
+`integer-coordinates-freeze-v1.json`, `integer-coordinates-qualified-v1.{xml,log}`,
+`integer-coordinates-tinyllama-v1.json` and `integer-coordinates-qualification-v1.json`.
+
+## Bounded calls and downstream composition
+
+`DefinedNamedCalls` closes contracts inferred from actual helper bodies at the evaluator's
+exact fuel. Input facts are selected by the actual callee's name, and every call must prove
+its operands imply that callee's requirements. The existing uniform-input closure delegates
+to this shared construction without changing its API or theorem domain. Bounded W8A8
+qualification now uses those named contracts; signatures and names cannot invent result
+intervals, justify external calls, or discharge recursive cycles.
+
+`PolicyFunctionChain` composes the checked W8A8 boundary with each actual downstream boundary
+on the original function's declared input domain. `PolicyW8A8BoundedChain` reuses the existing
+suffix rules through a proved implication from bounded facts to finite-input facts. Integer
+intervals remain bound to their original function names throughout the final claim; they are
+not narrowed or replaced at a downstream edge.
+
+The actual preprocessing regression exposed a missing proof across helper calls: pruning
+removes the unused empty/zero/fill initializer left behind by W8A8, changing a callee's body.
+`InferredDead` now proves exact deletion using only totality facts inferred from execution of
+the original prefix. It starts with no input facts and clears its facts after unknown
+operations. Freshness and full-tail checks prevent deletion of a live or shadowing binding.
+`ModuleBodyEquality` closes those independently proved body equalities across calls using a
+shared fuel induction. `DeadModule` preserves every execution outcome, including failures and
+poison, and compares complete headers apart from the known unit C-interface request already
+accounted for by the surrounding chain's ABI guard. An unused operation that could fail is
+not deleted merely because its result is unused.
+
+The standalone `Driver.W8A8Bounded` strictly decodes per-function interval contracts and reports
+the actual bounded boundary/chain checks. It refuses missing, extra or duplicate function
+entries and malformed intervals. Successful conditional checks still return `abstracted`
+and exit 1: policy review, primitive-model-law admission and full-pass verification remain
+false. This adapter does not modify the concurrently edited public Main/CLI, and bounded
+public receipt integration remains unfinished.
+
+Qualification passes **587 tests, zero failures/errors/skips**, in **603.73 seconds**, including
+**65 new cases**. The new cases cover actual helper depths, calls inside generic bodies,
+callee operand/result bounds, both index widths, all four real preprocessing boundaries,
+function-domain swaps, malformed protocols and adversarial exported ASTs. Six complete output
+comparisons agree among native MLIR, Lean and the ordered numerical recipe after preprocessing,
+including a called embedding computation. Two additional mutation cases compare both baseline
+and mutant executions in native MLIR and Lean: changing an unused initializer is proved and
+observed harmless, while changing the live guarded scale floor is refused and changes output.
+Ten integer identity observations compare original/pruned helper modules in both executions.
+These distinct observation categories are recorded separately in the qualification report.
+
+The isolated **378-source** build audits **8971 theorems with zero violations**. All **996**
+frozen records remain unchanged after qualification, including **364** local compiled proof
+modules, the interpreter, public checker and standalone driver sources. The qualified public
+checker digest is `05f7923c4f946e09796b67ce660b4a1ad68f755162a499ca41bd56cd22d39427`.
+Formatting and artifact layout pass; the existing unrelated `zephyr_model.py` size ceiling
+remains **3557 > 3537**. No production pass, frozen source, statement pin or foreign
+BF16/overrank/scalar-square/Main/CLI work was edited.
+
+The retained development TinyLlama source and captured-policy reference still first refuse
+at quantization result **1256** after RMS normalization and floating products. This batch
+does not invent finiteness for those producers. That numerical obligation, general contraction
+geometry, selected EL4 capture binding, independent recipe/domain review and primitive-model
+law admission remain open; the older eight-token capture is not a selected EL4 qualification.
+
+Evidence: `bounded-integration-isolation-v1.json`, `bounded-integration-guard-v3.log`,
+`bounded-integration-freeze-v1.json`, `bounded-integration-qualified-v1.{xml,log}`,
+`bounded-integration-tinyllama-v1.json` and `bounded-integration-qualification-v1.json`.
+
+## Projection contraction geometry
+
+`W8A8ProjectionTrace` proves the exact cardinality of each output cell's mapped reduction
+trace for arbitrary parallel/reduction iterator order. Filtering the actual iteration box
+for one output coordinate leaves exactly the product of the reduction extents. Parallel
+output size does not contribute to that count. The proof includes empty boxes and scalar
+outputs. It establishes exact signed i32 accumulation for every reduction prefix when that
+product is strictly below 131072, allowing the full signed-byte range, including -128.
+
+`W8A8ProjectionLayout` checks actual operand shapes, maps and iterator kinds, derives grouping
+positions from those source maps, and checks the reduction bound. The reference front end
+now admits these generic projection contractions alongside its existing canonical matmul
+path. Outputs must project all parallel dimensions in iterator order, and each input's
+dimension list must have no repeats. Compound maps and other unsupported source forms still
+refuse expansion. The recognizer retains the existing scalar-body, zero-initializer, type
+and attribute checks; neither target metadata nor provenance supplies source geometry.
+
+`PolicyW8A8Projection.check_sound` proves the entire checked mapped integer loop's result,
+including arbitrary initial i32 values and poison elements. Its separate zero-initialized
+component theorem proves the mathematical signed dot product at every actual output cell.
+Zero initialization is an explicit premise of that component theorem; the full policy match
+still checks the emitted initializer and its SSA binding. These component results do not
+admit floating-point primitive laws or approve the draft numerical policy.
+
+The **66 new cases** cover batched matmul, attention maps, two batch dimensions, interleaved
+iterators, two reduction dimensions, matrix-vector and scalar contractions, broadcast inputs,
+empty batches/reductions, mixed signed bytes and both source accumulator orders. They also
+check both index widths, the strict accumulation threshold, the product of multiple reduction
+extents, actual preprocessing suffixes, and mutations of maps, iterator kinds, grouping,
+scalar bodies and attributes. Matched source/target pairs pass after a source map change;
+both crossed pairs refuse. Numerical tests compare **42 complete output observations** among
+native MLIR, Lean and an independently calculated ordered recipe, including an observable
+source-map change and signed-byte endpoints. All 66 focused development cases pass.
+
+The **382-source** isolated build audits **9037 theorems with zero violations**. Qualification
+passes **1184 tests, zero failures/errors/skips**, in **1188.47 seconds** across all W8A8 suites
+plus the bounded-coordinate and exact dead-module checks. All **1013** frozen records remain
+unchanged after the run, including **368** compiled proof
+modules with selected source counterparts. Four stale, unimported compiled modules without
+source counterparts are excluded explicitly. The initial launch was stopped during preflight
+when that distinction was found; the final run is `projection-qualified-v2`, with its freeze
+record written before launch. No test failure was suppressed by that restart.
+The qualified public checker digest is
+`27f3286cca8cc544ac5100f704eb9b4e2eef6cee6d192a8f0e6e70962794e694`.
+Formatting and artifact layout pass; structure retains the unrelated `zephyr_model.py`
+size-ceiling failure (**3557 > 3537** lines).
+
+The retained development TinyLlama source and captured-policy reference still first refuse
+at quantization result **1256**. Floating producer obligations, bounded public receipt binding,
+selected EL4 capture binding, independent recipe/domain review and primitive-model-law
+admission remain open. Full-pass and review flags remain false. No production pass, frozen
+source, statement pin or foreign Main/CLI/rule-family work was edited.
+
+Evidence: `projection-isolation-v1.json`, `projection-guard-v1.log`, `projection-freeze-v1.json`,
+`projection-qualified-v2.{xml,log}`, `projection-tinyllama-v1.json` and
+`projection-qualification-v1.json`.
+
+## Bounded-domain draft receipts
+
+The bounded checker now has a separate public Python/command-line route through
+`merlin.verify.lean.bounded_policy` and `merlin/lean/W8A8BoundedMain.lean`. It reuses the existing
+authoritative MLIR round trips, byte-identical boundary joins and compiler-handoff checks,
+then runs the actual bounded-domain Lean chain checker on those exact exports. The older
+unrestricted-domain diagnostics are retained separately; their verdict is not a bounded
+proof premise. Concurrent Main/CLI and other rule-family files remain untouched.
+
+Input contracts must name every actual defined source function exactly once and give one
+entry per argument. `null` provides no integer range evidence. An interval uses inclusive
+`lower` and exclusive `upper`, both nonnegative integers; Lean still checks its validity and
+every use. The receipt binds the original contract file, its readonly snapshot and the actual
+per-function intervals. Duplicate JSON object keys, duplicate function names, extra fields,
+Boolean/nonnatural bounds and mismatched function rosters cannot establish a domain.
+
+`interpreted.Runtime` records the actual interpreter, auditor, standalone entry, configuration
+and a conservative inventory of local MerlinVerify proof artifacts in the resolved search
+path. It checks both bytes and inventory before and after execution. The receipt's checker
+digest is the hash of that complete runtime record, not a public executable that did not
+execute the bounded checker. Package/toolchain trust remains in the existing receipt ledger.
+The actual bounded theorem's axioms are audited freshly on the same pinned artifacts; a
+cached result keyed only by the public checker binary cannot discharge that obligation.
+
+Each receipt also binds the preflight receipt/report, every program export, every actual
+boundary and any handoff record/subject. A changed input, entry, proof artifact, inventory,
+exporter or configuration invalidates the attempt. Timeouts and malformed/forged checker
+evidence publish an unmeasured attempt without a certificate, replacing any older result.
+Successful conditional checks still publish `abstracted` and exit 1. This route does not
+approve the draft recipe, admit primitive floating-point laws, or enable reviewed production
+admission. Ordinary refinement replay must not promote a policy receipt to unconditional
+compiler correctness.
+
+Example invocation, with stage directories containing `before.mlir`, `after.mlir` and
+`meta.json`:
+
+```sh
+PYTHONPATH=src .venv/bin/python -m merlin.verify.lean.bounded_policy path/to/w8a8-stage \
+  --destination out/artifacts/verification/merlin-passes/w8a8/my-bounded-check \
+  --input-contracts path/to/input-contracts.json --m2m-python path/to/mlir-environment/bin/python \
+  --scope captured
+```
+
+Additional stage directories before the flags compose the actual downstream suffix. The
+**239-case** final qualification passed in **299.640 seconds**, with zero failures, errors or
+skips, including **53 new cases** for bounded and
+captured domains, helper calls, projection contractions, real preprocessing, compiler handoffs,
+malformed evidence, fresh axiom admission, runtime artifact changes and timeout invalidation.
+The isolated guard still audits **9037 theorems with zero violations**; this batch introduces
+no new kernel theorem or numerical premise. All **1396** frozen records remained unchanged
+after testing, including a **752-file** interpreter/runtime capsule. Full-pass, policy-review and primitive-model-law flags remain
+false. The unrelated `zephyr_model.py` size ceiling remains **3557 > 3537** lines.
+
+Evidence: `bounded-receipts-isolation-v1.json`, `bounded-receipts-guard-v1.log`,
+`bounded-receipts-runtime-v1.json`, `bounded-receipts-freeze-v1.json` and
+`bounded-receipts-qualified-v1.{xml,log}` and `bounded-receipts-qualification-v1.json`.
+
+The separate retained TinyLlama public attempt failed closed with exit 2 and an `unmeasured`
+attempt: `JSONDecodeError: Expecting value: line 1 column 1 (char 0)`. Its structural preflight
+produced draft diagnostics, but no bounded certificate was published. The failing subprocess
+output has not yet been isolated; this model attempt is not included in the passing regression
+count. Evidence is retained under `bounded-receipts-tinyllama-v1/` and in
+`bounded-receipts-tinyllama-v1.json`. The previous standalone numerical refusal at result 1256
+is a separate open obligation.
+
+Work is paused at the user's request. The latest receipt source/tests remain uncommitted;
+the projection checkpoint was pushed as `7304d8e501c090782c81e25a8471038fc8a542ac`.
+See the [resume handoff](handoff/README.md) for exact file ownership, qualification evidence,
+the retained-model reproduction and the next tasks.
+
+## 2026-10-22 read-only diagnostic replay
+
+Under the new planner's private-capsule lease, both the standalone replay and instrumented
+actual public-route replay returned valid JSON on the preserved TinyLlama inputs. No source
+or compiled artifact was changed. All 752 runtime records matched, the six qualified source
+files matched their previous hashes, and authoritative export hashes matched the earlier
+attempt. The pinned audit used only the three standard Lean axioms.
+
+The standalone bounded driver returned exit 1 with a valid numerical-refusal report. The
+actual public route finished in 67.385 seconds and published an `abstracted` bounded receipt:
+boundary qualification and source/reference initialization remained false. All 16 child
+commands have raw stdout/stderr and status records. There were no JSON decode errors in this
+new run. This demonstrates the current public route can report the retained numerical refusal;
+it does **not isolate or fix** the original JSON failure. No speculative fix or generic JSON
+regression was added, and the original failure/evidence remains unchanged.
+
+New evidence: `bounded-receipts-diagnosis-20261022T192241Z/` for direct audit/driver replay and
+`bounded-public-diagnosis-20261022T192514Z/` for the actual public-route child traces,
+`result.json`, `summary.json` and receipt/report. These runs are separate from the historical
+239-case qualification. Draft/review/model-law/full-pass flags remain false.
+
+The [bounded-product interface proposal](numerical-interface/README.md) records the actual
+result-1256 dependency and the missing magnitude/rsqrt facts. It changes no common law meaning
+or input domain. The planner coordinates frontend compatibility before any numerical adapter
+is implemented.
+
+The next numerical investigation produced stronger negative evidence: the actual retained
+RMSnorm/gain slice overflows to positive/negative infinity for finite inputs and extreme finite
+gains. A separate kernel-checked abstract countermodel satisfies all current primitive laws
+but refutes finite-product closure. Two new regressions pass, with no new axioms or changes
+to the six previously qualified source files or their runtime capsule. See the interface
+proposal's evidence section and `rmsnorm-domain-qualification-v1.json`. This refutes an attempted
+finiteness implication; it is not a W8A8 correctness counterexample or full-model qualification.
+
+The planner subsequently stopped coordination at the user's request and left this worker's
+assignment active. Shared-branch commits and pushes remain held for user coordination. No
+commit or push has been made for the bounded receipt files or this new numerical evidence.
+
+## Numerical candidate qualification, 2026-10-22
+
+The [numerical-domain report](numerical-domain/README.md) supersedes the diagnosis-only status
+above for the new additive candidate. Named-reduction and concrete arithmetic classification
+proofs now connect to source quantization, all-byte source dequantization, actual helper calls,
+complete policy/suffix checks, input-domain nonvacuity and separately certified entry prefixes.
+
+Final qualification: **292 tests passed**, including 51 new cases; full private Lean guard:
+**9,663 theorems**, zero violations, frozen lock unchanged. Thirteen curated positive case
+receipts and the actual retained TinyLlama refusal receipt replay on one frozen new runtime.
+All 1,230 new frozen records and 752 historical runtime records remain unchanged.
+
+Under the explicitly stronger finite/nonzero-f32 candidate domain, the retained source prefix
+passes quantizer **1256**, certifies 158 finite source dequantizers and next refuses quantizer
+**1533** after 1,060 operations. The original finite-only checker/domain is unchanged. A new
+actual rotary-fragment witness shows that unbounded frequency input **201** can overflow and
+produce NaNs even on the candidate restriction. This motivates source-derived frequency bounds
+or capture binding and further attention/transcendental proofs.
+
+The new arithmetic agreement excludes irrelevant exact NaN-result bits and restricts reciprocal
+conversion premises to admissible scales; native NaN sign differences are preserved. The old
+seven source and three dynamic laws, concrete-model/rsqrt fidelity, independent review and selected
+capture binding remain open. **Complete W8A8 verification is still false.** Source-only review
+patch, exact claims, raw evidence and qualification are in `numerical-domain/`. No staging,
+commit, integration or push was performed under the user-controlled hold.

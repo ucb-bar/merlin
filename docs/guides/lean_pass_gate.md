@@ -1,5 +1,5 @@
 ---
-title: Gate dead-code pruning and cse on Merlin's Lean proofs
+title: Gate compiler passes on Merlin's Lean proofs
 kind: guide
 status: current
 owner: verification
@@ -7,36 +7,31 @@ last_verified: 2026-10-28
 related: [verification, compiler_verification]
 code_refs:
   - src/merlin/verify/pass_validation.py
+  - src/merlin/verify/bf16_policy_gate.py
   - src/merlin/verify/gate_checks.py
   - src/merlin/verify/speculative_gate.py
   - src/merlin/verify/lean/check.py
-  - src/merlin/verify/lean/receipt_session.py
-  - src/merlin/verify/gate_worker.py
   - src/merlin/llvmlower/passes_xdsl.py
   - src/merlin/llvmlower/lower.py
   - src/merlin/llvmlower/leading_cse.py
-  - src/merlin/llvmlower/pipeline.py
-  - src/merlin/compile/command.py
   - merlin/lean/MerlinVerify/Check/ExactCse.lean
-  - merlin/lean/MerlinVerify/Check/AlphaFast.lean
   - merlin/lean/MerlinVerify/Rules/Dce.lean
-  - merlin/lean/LEDGER.md
+  - src/merlin/runtime/backends/zephyr_model.py
+  - src/merlin/compile/command.py
   - merlin/lean/lakefile.toml
-  - build_tools/scripts/check_lean_guard.py
-  - build_tools/scripts/verify_lean_pass_models.py
   - merlin/tests/ir/test_lean_pass_gate.py
-  - merlin/tests/ir/lean_gate_chunks.py
   - merlin/tests/ir/test_lean_pass_gate_fuzz.py
-  - merlin/tests/ir/test_lean_receipt_session.py
-  - merlin/tests/ir/test_speculative_gate.py
   - merlin/tests/rvv/test_lean_pass_gate_spike.py
+  - merlin/tests/ir/test_lean_dequant_contract.py
+  - merlin/tests/ir/test_lean_quantize_contract.py
+  - merlin/lean/MerlinVerify/Spec/Dequant.lean
+  - merlin/lean/MerlinVerify/Spec/Quantize.lean
 ---
 
-# Gate dead-code pruning and cse on Merlin's Lean proofs
+# Gate compiler passes on Merlin's Lean proofs
 
-Merlin can check two of its compile steps against the `MerlinVerify` proofs while it compiles: the
-dead-code pruning in preprocessing and the tensor-level `cse` every lowering pipeline starts with.
-Each step's exact IR before and after goes to a worker process; compilation carries on as if the
+Merlin can check selected preprocessing passes against the `MerlinVerify` proofs while it compiles.
+Each pass's exact IR before and after goes to a worker process; compilation carries on as if the
 check passes, and a check that does not accept stops the compile, prints the check, the reason and
 the paths of the input and output, and renames any `.ll`, `.so` or `.o` already produced to
 `*.rejected`.
@@ -44,12 +39,29 @@ the paths of the input and output, and renames any `.ll`, `.so` or `.o` already 
 | Validated pass | Where it runs | Hook |
 | --- | --- | --- |
 | `prune_dead_pure_tensor_ops` | `lower_model` preprocessing (xDSL route) | `passes_xdsl._preprocess_module` |
-| `cse` | every tensor-level `cse` the build's runner runs (the pipeline's leading one), on every route and with any features | `leading_cse.bind_runner`, `leading_cse.submit` |
+| `lower_quant_ext` | `lower_model` preprocessing, and every `prepare_for_lowering` | `_preprocess_module`, `zephyr_model._prepare_model_mlir` |
+| `preprocess_text_textual` | `lower_model(textual=True)`: the whole-model RVV route, including Spike | `passes_xdsl.preprocess_text_textual` |
+| `cse` | every tensor-level `cse` the build's runner runs (the pipeline's leading one), on every route | `leading_cse.bind_runner`, `leading_cse.submit` |
 
-The `cse` check is recorded inside the build's own runner, after whatever the selected features and
-source stages do before the pass manager, so it checks the `cse` the build actually ran and the
-build's output is byte-identical to an ungated build. Quantization lowering (`lower_quant_ext`, the
-textual whole-model preprocessing) is not gated here.
+The whole-model RVV route lowers textually, so in a Spike or `merlin-compile` RVV build the checked
+boundaries are `preprocess_text_textual` (Q/DQ lowering, slice repair and the C interface together)
+and `cse`; the separate xDSL prune and quantization boundaries run on the xDSL route and in preparation.
+After repairing legacy slices, the textual route uses the structural quantizer lowering when source
+quantizers are present, including multiline operations and quantizers inside generic regions.
+
+Every pipeline opens with `canonicalize,cse` on tensors, and some pre-pipeline rewrites run the same
+pair. With `cse` validated, `leading_cse.bind_runner` puts a prelude ahead of the build's own runner,
+whatever its variant or features, that wraps `torch_mlir`'s `PassManager`. Any invocation whose pass
+list opens with `canonicalize,cse` on a module with no `memref` runs as `canonicalize`, `cse` and the
+rest, in the same process and order, and the exact module before and after that `cse` is written to
+`leading-cse/`. After lowering, `leading_cse.submit` checks every recorded pair. A build that ran no
+tensor-level `cse` fails closed. `canonicalize` is not validated (its folds are outside the checker),
+nor is `cse` on bufferized or LLVM-dialect modules (recorded as skipped).
+
+Because the check reads the module the build actually ran on, it covers every route and feature,
+including rewrites the runner applies before the pass manager (for example `fuse_transpose_b`), and
+the gated build's `model.ll` is byte-identical to the ungated one on both the xDSL and the textual
+route (checked on `small_llama_int8` and `tiny_llama_fp32`).
 
 ## What is proved
 
@@ -59,46 +71,90 @@ For every validated boundary the worker requires all of:
    buffers exported by MLIR's own parser and round-tripped identically through Lean;
 2. `MerlinVerify.Check.supportCheck_sound` on every function of the input (it never gets stuck),
    which makes the refinement strict rather than conditional;
-3. `compose_chain` validating and composing both, with `refinement_verdict: verified`.
-   Only live results from the same job can avoid duplicate checker execution, as described below.
+3. `compose_chain` replaying both, with `refinement_verdict: verified`.
 
-It attempts two strengthenings and reports them without requiring them: the universal boundary
-conditional theorem (`moduleCheck_sound`, for all inputs) and source definedness on typed,
-nonpoison inputs. The strict claim
-retains the declared input types, where source support was established; a universal conditional
-boundary alone does not widen that domain. The receipt's `claim` says exactly what was established.
-Axioms: `propext`, `Classical.choice`, `Quot.sound`.
+Dead-code deletion is proved by the C1 DCE rule; dead ops are erased before alignment is
+attempted (`synthC1Live`), so a dead op is never matched with an identical live one. Common
+subexpressions are proved by `Check/ExactCse.lean`, in one forward walk as upstream `cse` makes them:
+a later effect-free op with the same head as an earlier one, operands holding the same values, and
+regions reading the same outside values computes the earlier op's value in the same run, so its uses
+are renamed to it. The facts come from the earlier op's actual execution, plus an alias fact for
+every merge, so merges cascade (an empty, then the fill of it, then a generic of that) and regions
+may read outside constants. Like upstream `cse`, which erases an op nothing reads when it reaches
+it, nothing is merged into an op nothing reads; the comparison afterwards may erase such unused ops
+(or, for pruning, whole dead cones). Both programs are normalized this way before comparison. It covers what
+upstream `cse` merges in the captured models: `tensor.empty`, `tensor.collapse_shape`/`expand_shape`,
+`linalg.fill` and generics.
 
-* Pruning is proved by the C1 DCE rule. Dead source ops are erased before alignment
-  (`synthC1Live`, and `synthC1Unused` for what upstream `cse` erases), so a dead op is never matched
-  with an identical live one.
-* `cse` is proved by `Check/ExactCse.lean`, in one forward walk as upstream `cse` makes it: a later
-  effect-free op with the same head as an earlier one, operands holding the same values and regions
-  reading the same outside values computes the earlier op's value in the same run, so its uses are
-  renamed to it. Facts come from the earlier op's actual execution plus an alias per merge, so
-  merges cascade and regions may read outside constants; nothing is merged into an op nothing reads,
-  matching `cse`'s erasure of unused ops. Both programs are normalized this way before comparison.
+It then attempts two strengthenings and reports them, never requiring them: the universal boundary
+theorem (`moduleCheck_sound`, for all inputs) and source definedness (no undefined behaviour or
+poison). The receipt's `claim` says exactly what was established, for example "strict refinement
+for all inputs; definedness not established". Axioms: `propext`, `Classical.choice`, `Quot.sound`.
+Assumptions: `merlin/lean/LEDGER.md` A1–A9 and T1–T6 (A9: the three modeled `quant_ext` Q/DQ operations are
+effect-free and may be erased when dead) (notably T2, the exporter and Python bridge,
+and T3, fidelity of the op semantics to MLIR). Only the 64-bit index width is admitted: at index32
+the model and the native pipeline disagree on a retained example (LEDGER S6).
 
-## Human review before relying on it
+`quant_ext` dequantization is proved against `MerlinVerify.Spec.Dequant`, a narrow contract written
+from PyTorch v2.10.0 (`_decomposed.py`): per-tensor converts then subtracts (line 289); per-channel
+promotes to i32, subtracts, converts once, then multiplies (lines 734–738) — the order lowering
+implements since 03a22c5fd ("match PyTorch per-channel dequantization order"). Signed i8 input and
+f32 scale; per-tensor with an i32 or i64 zero point, per-channel with i32. `quant_min`/`quant_max`
+follow PyTorch: ignored per-tensor, checked against the i8 range per-channel, never clamped. Every
+per-tensor dequantization in the tracked capsules (627 ops, i64 zero points, ranges [-128, 127] and
+[-127, 127]) is proved (`test_lean_dequant_contract.py`). f64 scales and per-channel i64 zero points are
+excluded (`LEDGER.md`). Deleting a dead Q/DQ operation relies on ledger assumption A9.
+The contract still needs human specification review and
+capture-route binding; draft policy, native and capture premises remain;
+an unexplained SmolVLA complete-output comparison failure is recorded upstream. With `int8_compute`
+the W8A8 passes do most of the quantization before `lower_quant_ext` and are not gated here.
 
-Lean checks every proof step; review establishes that what is proved is what is intended.
+`quant_ext.quantize_per_tensor` now has a source contract and a registered lowering proof for
+static f32 tensors, scalar f32 scales, scalar i32/i64 zero points and full-range signed-i8 output.
+The exact order is binary64 reciprocal, conversion to f32, multiplication, round-even, signed
+zero-point conversion/addition, lower-then-upper clamp and signed-byte conversion. All 230 retained
+quantizers (35 forms) are checked after actual lowering. A typed exact normalizer also checks
+expansions inside supported generic regions and prevents temporary values from escaping into the
+continuation. The proofs assume no floating algebra and preserve poison; they do not establish
+unrestricted conversion success or whole-model numerical definedness. Source/capture specification
+review remains required.
 
-1. **The op semantics the claims are stated over** (`merlin/lean/LEDGER.md` A1–A8, T3): the
-   `MerlinVerify` meaning of `arith`, `math`, `tensor` and `linalg` ops, which both checks rely on.
-2. **The purity scope** (`Rules/Dce.lean` `pureOp`/`erasable`, ledger A9): which ops are treated as
-   only computing their results, and so may be erased when dead and reused by `cse`. A9 extends this
-   to the three modeled `quant_ext` ops, so a dead quantization op can be pruned.
-3. **Source Q/DQ meanings where these operations remain** (`Spec/Dequant.lean`,
-   `Spec/Quantize.lean`): a boundary whose input contains modeled `quant_ext` ops needs their
-   meaning to establish source support, even when the transformation only prunes or reuses them.
-   This does not check the separate quantization-lowering boundary.
-4. **The trusted components** (ledger T1–T6): the Lean kernel and compiler, the `torch_mlir` exporter
-   and the Python bridge, and everything below the tensor stage.
-5. **The locked statements** (`merlin/lean/SPEC_LOCK`): the hashes pin the semantics files and the
-   theorem statements the gate cites; review confirms they say what the claims need.
+## Model qualification
 
-Not covered: `canonicalize`, the trailing LLVM-dialect `canonicalize,cse`, and lowering below the
-tensor stage stay trusted. Only the 64-bit index width is admitted (LEDGER S6).
+The following retained capsules have source quantizers and were exported through ordinary
+`lower_model` compilation with all selected gates enabled on both xDSL and textual routes.
+Every CSE/quantization verdict was accepted, and each returned LLVM file was byte-identical
+to a separate ungated build. These are pass-boundary claims under the ledger assumptions;
+bufferization, LLVM and model accuracy retain their existing trust status.
+
+| Capsule | Source quantizers | Routes |
+| --- | ---: | --- |
+| `SY_micro_model` | 2 | xDSL, textual |
+| `M2_microvit_gemmini` | 1 | xDSL, textual |
+| `GX0_interop_rvv_lane` | 9 | xDSL, textual |
+
+Reproduce with `build_tools/scripts/verify_lean_pass_models.py`, passing each
+`merlin/contract/capsules/model/<capsule>/capsule.interface.mlir` as `--capture`,
+plus `--sdk-bin` and `--compiler-python`. The script retains all exact before/after
+exports and receipts in a new verification product, requires a live source quantizer
+boundary and a recorded CSE check, and compares gated/ungated LLVM bytes.
+
+## bf16/f16 f32 accumulation policy gate
+
+`lower_bf16_matmul_f32acc` is registered separately as `bf16_f32acc_policy` at
+its actual preparation boundary. It requires complete-output reference matching,
+strict qualification and coverage of every actual contraction, and an independently
+attributable installed policy review bound to the current specification and proofs.
+The candidate policy is currently unapproved: selecting this gate refuses before
+checking tools. A provisional receipt or matching pins cannot grant approval.
+
+`all` includes this policy gate and therefore also refuses while its review is
+pending. To retain the previously available CSE/Q-DQ/pruning gate selection, use
+`--validate-passes cse,prune_dead_pure_tensor_ops,lower_quant_ext,preprocess_text_textual`.
+Ungated compilation is unchanged. The scope is zero-initialized same-format bf16/f16
+two-input contractions with f32 accumulation; nonzero initialization, arbitrary mixed
+fusion and bit-exact backend correspondence are outside the claim. Numerical policy
+approval and whole-model definedness are separate from checker acceptance.
 
 ## Set it up once
 
@@ -114,9 +170,6 @@ PATH=<lean-4.35.0>/bin:$PATH taskset -c 0-7 nice -n 19 lake build MerlinVerify m
 ```
 
 A checker that is out of date with `merlin/lean` (`lake build --no-build`) is refused.
-`build_tools/scripts/check_lean_guard.py` audits every theorem's axioms and the locked files.
-On Linux, workers also require util-linux `setpriv` for parent-death signals. Missing cleanup
-tooling is `unavailable`, never an accepted check.
 
 ## Turn it on
 
@@ -125,57 +178,17 @@ merlin-compile ... --validate-passes all --lean-sdk-bin <lean-4.35.0>/bin
 ```
 
 or set `MERLIN_VALIDATE_PASSES` (`all` or a comma list) and `MERLIN_LEAN_SDK_BIN`, with
-`MERLIN_COMPILER_PYTHON=<venv>/bin/python`, or pass `pass_validation=PassValidation(gate, tools)` to
-`lower_model`. It is off by default; a missing or stale tool stops the compile before it starts. A
-lowering called inside an active validation joins it, and a different explicit validation is refused.
+`MERLIN_COMPILER_PYTHON=<venv>/bin/python` (and `MERLIN_VALIDATE_WORKERS` to run that many checks at
+once; default 1, each a niced process), or pass `pass_validation=PassValidation(gate, tools)` to
+`lower_model`. It is off by default; a missing or stale tool stops the compile before it starts.
+`prepare_for_lowering` and `lower_model` each run under their own guard; a step called inside an
+active validation joins it, and a different explicit validation is refused.
 
-Checks run in owned worker process groups. A failed check rejects speculative compiler products;
-closing the gate stops its groups. On Linux, a compile killed by TERM or KILL also stops its
-workers and their checker children. A startup parent-identity check closes the interval before
-the parent-death signal was armed. Worker crashes are followed by bounded group cleanup too.
+## Cost
 
-## Cost and implemented speedups
-
-Two optimizations preserve the existing proof obligations:
-
-* `Check/AlphaFast.lean` replaces list-based correspondence lookup and image membership with
-  persistent ordered maps/sets. Lean proves equality to `alphaOps` for every correspondence and
-  pair of operation lists; `@[csimp]` selects that equal implementation in compiled callers.
-  Frozen semantics, the original checker definition and its soundness statements stay unchanged.
-* Within a gate job, `receipt_session` records results issued by actual successful checks.
-  Composition validates their schema, provenance, axioms, exports and byte bindings and reuses
-  the live result instead of executing the same checker twice. This authority exists only in
-  memory in that process/job, and is discarded on exit. Saved or edited JSON cannot declare
-  itself fresh. Ordinary external composition still reruns the checks. This is trusted host
-  orchestration under ledger T2, not a new Lean axiom.
-
-The original profiling of `SY_model_tiny_llama` (4,659 source operations) measured about 61 minutes
-in the accepting normalization plus another replay of similar cost. The indexed implementation
-reduced the measured accepting normalization to about 98 seconds; eliminating duplicate replay
-removes the second execution. These are historical component measurements from the performance
-worktree, not a bound on complete gate latency. Exact timings depend on the module and host load.
-
-## Further optimizations deferred
-
-The following ideas were identified during profiling and are deliberately not implemented here:
-
-* Order cheaper, likely accepting `TypedModule.check` alternatives first, or index the rule search
-  in `synthC1Live`. Historical failed alternatives cost about 73 seconds, including 66 seconds in
-  `synthC1Live` alone.
-* Batch `ExactCse` substitutions into one checked pass per block. It currently performs a
-  continuation rename for each merge (about 1,800 merges in the profiled module).
-* Index the scans in `FromElementsSelect` and `DenseExtract`, measured at roughly 18 and 2 seconds
-  respectively in that same profile.
-
-Each would need separate correctness and qualification work. Current rule ordering and these
-normalizers are retained.
-
-## Quantization handoff
-
-This branch gates pruning and tensor CSE only. Quantization proof progress, branches, evidence,
-review obligations and integration boundaries are recorded in the separate
-[quantization handoff](../../out/artifacts/handoff/quantization-lean-20261028/README.md).
-Its numerical lowering and proof coverage are not extended by this deliverable.
+Each check takes 14–20 s on the captured models (1,000 ops); checks run one at a time, at nice 19,
+beside the compile, so a gated `small_llama_int8` lowering takes about 48 s (xDSL route, three checks)
+or 33 s (textual route, two), against 1.4 s and 0.6 s ungated.
 
 ## Outcomes
 
@@ -186,26 +199,33 @@ Its numerical lowering and proof coverage are not extended by this deliverable.
 | `unsupported` | MLIR's parser refused the IR, or source support is not established | stops |
 | `unavailable` | a tool could not run or the check ran out of time | stops |
 
-A pass that changes nothing submits nothing.
+A pass that changes nothing submits nothing. Raw int8 captures that read a value before its
+definition are rejected by MLIR's parser and so reported `unsupported`.
+
+## Checker gaps
+
+None known. Fuzzing found two correct prune rewrites the checker did not prove (deleting a dead
+dequantization; a dead cone before live code whose `tensor.empty` matched a live one). Both are now
+proved and kept as regression tests in `test_lean_pass_gate_fuzz.py`, beside a test that deleting a
+used value is still refused. A refusal the fuzzer cannot attribute to the checker fails the test.
 
 ## Tests
 
-* `merlin/tests/ir/test_lean_pass_gate.py` — the gate's behaviour (injected prune and `cse` bugs stop
-  the compile and leave no artifact, nesting, tool and freshness refusals, features around the
-  runner's `cse`), small exact `cse` cases (cascades, captured constants, unused-op erasure, wrong
-  merges), and every representative chunk of the retained capsules (`lean_gate_chunks.py`) through
-  real lowering, live and with dead code, with byte-identical gated output.
-* `merlin/tests/ir/test_lean_pass_gate_fuzz.py` — seeded random programs through the real passes;
-  completeness against an independent reference and soundness against a numpy oracle.
-* `merlin/tests/ir/test_lean_receipt_session.py` — actual proof invocation counts, external replay,
-  forged verdicts and edited live receipts.
-* `merlin/tests/ir/test_speculative_gate.py` — worker ownership, bounded cancellation, parent/worker
-  death and cleanup-tool refusal.
+* `merlin/tests/ir/test_lean_pass_gate.py` — real lowering of captured models with each pass proved,
+  injected bugs in each pass stopping the compile, nesting, tool and freshness refusals.
 * `merlin/tests/rvv/test_lean_pass_gate_spike.py` — whole-model builds on Spike: a gated build matches
-  its golden output, and a wrong `cse` is stopped before any ELF exists.
+  its golden output; an injected dequantization bug reaches the output without the gate and is
+  stopped, before any ELF exists, with it.
+* `merlin/tests/ir/test_lean_pass_gate_fuzz.py` — seeded random programs through the real passes.
+  Completeness: each real output is accepted, or it is identical to an independently rendered expected
+  output that is refused too (a checker gap). Soundness, at every boundary: a mutated output a
+  numpy oracle can tell apart is never accepted. `MERLIN_FUZZ_SEED` and `MERLIN_FUZZ_CASES` scale it.
 
-Set `MERLIN_LEAN_REQUIRED=1` to turn a missing tool into a failure instead of a skip. Whole models
-are qualified with `build_tools/scripts/verify_lean_pass_models.py --capture <mlir> ...`, which
-compiles each with and without the gate and requires byte-identical LLVM output.
-The [integration qualification](../../out/artifacts/handoff/cse-dce-integration-20261028/README.md)
-records the qualified source points, executed checks, retained evidence and scope limits.
+Set `MERLIN_LEAN_REQUIRED=1` to turn a missing tool into a failure instead of a skip.
+
+## Add a pass
+
+A candidate's boundary must lie in the checker's typed module domain (the theorems in
+`merlin/lean/MerlinVerify/Check/`). Add it to `pass_validation.CHECKS`, report its exact before/after
+IR with `pass_validation.observe` (or `submit` for text) where it runs, and add a real-capture
+acceptance, an injected-bug test and fuzz coverage.

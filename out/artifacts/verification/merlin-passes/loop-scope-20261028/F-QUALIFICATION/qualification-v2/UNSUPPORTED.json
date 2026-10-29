@@ -1,0 +1,77 @@
+[
+  {
+    "name": "empty",
+    "outcome": "UNSUPPORTED",
+    "reason": "host transformation attribution refused: both actual loop boundaries must change"
+  },
+  {
+    "name": "inline",
+    "outcome": "UNSUPPORTED",
+    "reason": "host transformation attribution refused: both actual loop boundaries must change"
+  },
+  {
+    "name": "tail",
+    "outcome": "UNSUPPORTED",
+    "reason": "scoped loop domain refused: one top-level static changed loop and two entry arguments required"
+  },
+  {
+    "name": "negative_lower",
+    "outcome": "UNSUPPORTED",
+    "reason": "host transformation attribution refused: both actual loop boundaries must change"
+  },
+  {
+    "name": "dynamic",
+    "outcome": "UNSUPPORTED",
+    "reason": "host transformation attribution refused: both actual loop boundaries must change"
+  },
+  {
+    "name": "nested_general_tiling",
+    "outcome": "UNSUPPORTED",
+    "reason": "scoped loop domain refused: region-free original loop body required"
+  },
+  {
+    "name": "two_changed_loops",
+    "outcome": "UNSUPPORTED",
+    "reason": "exactly one changed top-level loop function required"
+  },
+  {
+    "settings": {
+      "factor": 1,
+      "tile": 3,
+      "index_bits": 64
+    },
+    "outcome": "UNSUPPORTED"
+  },
+  {
+    "settings": {
+      "factor": 5,
+      "tile": 3,
+      "index_bits": 64
+    },
+    "outcome": "UNSUPPORTED"
+  },
+  {
+    "settings": {
+      "factor": 2,
+      "tile": 1,
+      "index_bits": 64
+    },
+    "outcome": "UNSUPPORTED"
+  },
+  {
+    "settings": {
+      "factor": 2,
+      "tile": 17,
+      "index_bits": 64
+    },
+    "outcome": "UNSUPPORTED"
+  },
+  {
+    "settings": {
+      "factor": 2,
+      "tile": 3,
+      "index_bits": 32
+    },
+    "outcome": "UNSUPPORTED"
+  }
+]

@@ -1,0 +1,170 @@
+{
+  "compile_audit_roots": {},
+  "context_id": "fcbd09590acce95dbfd673e801d8a7cf16e6a37b20b1b0b7249e1b1e935531ec",
+  "controllers": [
+    {
+      "bytes": 24830,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context.py",
+      "sha256": "4366cea947377af182647a99bae6e0f42b33735a74acec395dd60eb48bb49629"
+    },
+    {
+      "bytes": 15692,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context_data.py",
+      "sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1"
+    },
+    {
+      "bytes": 7265,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/lean_graph_original_image_context_io.py",
+      "sha256": "92c8b43ec1b2d5a8e66f8d819c3079f2cdd7be12d559a67efc1505b4cec2118c"
+    },
+    {
+      "bytes": 9637,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/source/archive_selection.py",
+      "sha256": "7ffc6c0a84dc0a4099954b14d88cfe83904460f4a9d839c1027e6961ade1e191"
+    }
+  ],
+  "diagnostic_failure_capture": "first-failed-read/already-read-buffer.bin; no acceptance or hold clearance",
+  "environment": {
+    "LANG": "C",
+    "LC_ALL": "C",
+    "LD_DEBUG": "libs,files",
+    "LEAN_PATH": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_nonstandard_axiom_holds-context/compiled:/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib/lean",
+    "LEAN_SRC_PATH": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_nonstandard_axiom_holds-context/source:/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/src/lean",
+    "LEAN_SYSROOT": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk"
+  },
+  "import_policy": "trusted-closed-project-header-and-actual-object-report-v1",
+  "loader": [
+    "/usr/lib/SYNTHETIC-NEVER-OPEN-LOADER",
+    "--inhibit-cache",
+    "--glibc-hwcaps-mask",
+    "",
+    "--library-path",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib/lean:/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib:/usr/lib",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/bin/lean"
+  ],
+  "native_fidelity_proved": false,
+  "old_profile_repaired": false,
+  "project_sources": {
+    "Merlin.Baseline": {
+      "bytes": 78,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_nonstandard_axiom_holds/Baseline.lean",
+      "sha256": "f4c839595a986ac9f68515926ce5b92d845cc702196c61c567a1f4d180890850"
+    }
+  },
+  "review": {
+    "host": {
+      "bytes": 738,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_nonstandard_axiom_holds/host.json",
+      "sha256": "cdd10bca194eb3abb9d3c502d73b8898a4c28997b459e23201974298f020f0eb"
+    },
+    "manifest": {
+      "bytes": 3442,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_nonstandard_axiom_holds/manifest.json",
+      "sha256": "af4bdb3a111e58775ff6cc34faf8c3f20f244b5c9e620f2612a0a5208aa2e3c0"
+    },
+    "request": {
+      "bytes": 765,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_nonstandard_axiom_holds/request.json",
+      "sha256": "2c7579ff2006f96d5d7d88f57c98adc4a359727687d0679ce325949928f5c4ac"
+    },
+    "roster": {
+      "bytes": 1709,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_nonstandard_axiom_holds/roster.json",
+      "sha256": "8c06e10f5b3ed49890d3c8e69750f8d822ee112837e741c18c9226b6d544f818"
+    },
+    "selection": {
+      "bytes": 2481,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_nonstandard_axiom_holds/selection.json",
+      "sha256": "5796c7a64a1ec27811cbc2f5dae86948efe76750a2afc4910bd9dba37106b980"
+    },
+    "trace": {
+      "bytes": 9118,
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/original-runtime-candidate-v1/basic-kernel-probe-v1/trace_parser.py",
+      "sha256": "2aaae713ed80a46735434eca16dbb6fd2ed63e4bd8e7df50308f64ac56d0b7ba"
+    }
+  },
+  "schema": "merlin.graph.fresh-authenticated-archive-context.v1",
+  "selection": {
+    "executable": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/bin/lean",
+    "forbidden_roots": [
+      "/NEVER-OPEN-OLD-SDK"
+    ],
+    "images": [
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/bin/lean",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib/lean/Init.ilean",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib/lean/Init.ir",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib/lean/Init.ir.sig",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib/lean/Init.olean",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib/lean/Init.olean.private",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib/lean/Init.olean.server",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib/lean/libleanshared.so",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/src/lean/Init.lean",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    ],
+    "interpreter": "/usr/lib/SYNTHETIC-NEVER-OPEN-LOADER",
+    "misses": [],
+    "runtime": [
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/bin/lean",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "bytes": 1,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk/lib/lean/libleanshared.so",
+        "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      {
+        "bytes": 1,
+        "path": "/usr/lib/SYNTHETIC-NEVER-OPEN-LOADER",
+        "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+      }
+    ],
+    "success_only": [],
+    "toolchain": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/never-created-sdk/data/fake-sdk"
+  },
+  "trust": [
+    "official parent/member association and separate host-loader review",
+    "OS/kernel/vDSO",
+    "loader/module reporting",
+    "Lean kernel",
+    "Python host association and process-local authority",
+    "closed literal project-header decoder (not Lean source reporting)"
+  ],
+  "workspace": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_nonstandard_axiom_holds-context"
+}

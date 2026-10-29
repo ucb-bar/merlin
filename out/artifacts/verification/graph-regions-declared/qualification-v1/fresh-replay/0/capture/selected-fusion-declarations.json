@@ -1,0 +1,76 @@
+{
+  "elementwise": {
+    "add": {
+      "byte_orders": [
+        "little",
+        "little",
+        "little"
+      ],
+      "element_bits": [
+        8,
+        8,
+        8
+      ],
+      "elements": [
+        {
+          "argument": "n"
+        }
+      ],
+      "execution": "contiguous_read_then_write",
+      "readout": null,
+      "scalar_ir": "builtin.module {func.func @forward(%p:i8,%w:i8)->i8 {\n%r=arith.addi %p,%w:i8\nfunc.return %r:i8\n}}",
+      "stages": [
+        "add"
+      ]
+    },
+    "multiply": {
+      "byte_orders": [
+        "little",
+        "little",
+        "little"
+      ],
+      "element_bits": [
+        8,
+        8,
+        8
+      ],
+      "elements": [
+        {
+          "argument": "n"
+        }
+      ],
+      "execution": "contiguous_read_then_write",
+      "readout": null,
+      "scalar_ir": "builtin.module {func.func @forward(%p:i8,%w:i8)->i8 {\n%r=arith.muli %p,%w:i8\nfunc.return %r:i8\n}}",
+      "stages": [
+        "multiply"
+      ]
+    },
+    "produce": {
+      "byte_orders": [
+        "little",
+        "little",
+        "little",
+        "little"
+      ],
+      "element_bits": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "elements": [
+        {
+          "argument": "n"
+        }
+      ],
+      "execution": "contiguous_read_then_write",
+      "readout": null,
+      "scalar_ir": "builtin.module {func.func @forward(%x:i8,%w:i8,%s:i8)->i8 {\n%p=arith.muli %x,%w:i8\n%r=arith.addi %p,%s:i8\nfunc.return %r:i8\n}}",
+      "stages": [
+        "produce"
+      ]
+    }
+  },
+  "readouts": {}
+}

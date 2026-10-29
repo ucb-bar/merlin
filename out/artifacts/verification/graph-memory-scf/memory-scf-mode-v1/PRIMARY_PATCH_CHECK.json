@@ -1,0 +1,14 @@
+{
+  "base": "c399e441e86042752c407a4ba917d4510b16585b",
+  "command": [
+    "patch",
+    "--batch",
+    "-p1",
+    "-i",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/primary-update.patch"
+  ],
+  "returncode": 0,
+  "stdout": "patching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean\npatching file src/merlin/verify/lean_graph_loops_memory_scf.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_capture.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_cases.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_model.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_projection.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_runtime.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_selection.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_witness.py\npatching file merlin/tests/ir/test_lean_graph_loops_memory_scf.py\npatching file merlin/tests/ir/test_lean_graph_loops_memory_scf_runtime.py\npatching file merlin/tests/ir/test_lean_graph_loops_memory_scf_selection.py\n",
+  "all24_bytes_equal": true,
+  "index_untouched": true
+}

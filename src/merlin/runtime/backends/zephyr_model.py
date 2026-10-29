@@ -32,8 +32,10 @@ from merlin.common.paths import runtime_dir
 from ...llvmlower import c_runtime, toolchain
 from ...llvmlower.lower import lower_model_file
 from ...llvmlower.masked_contraction import MaskEffectContract
+from ...llvmlower.perop_blocks import PARALLEL_ARMS_FILE, parallel_arms
 from ...llvmlower.source_expression_interval import IntervalEffectContract
 from ...llvmlower.source_scalar_carrier_binding import host_admitted
+from ...verify import pass_validation as _validation
 from . import spike as _spike
 from .firesim_runner import FireSimRunner, select_runner
 
@@ -102,13 +104,6 @@ def _zephyr_base() -> Path:
     selected = _pick("ZEPHYR_BASE")
     if selected is None:
         raise ZephyrModelError("ZEPHYR_BASE is not configured")
-    return selected
-
-
-def _zephyr_sw_root() -> Path:
-    selected = _pick("MERLIN_ZEPHYR_SW")
-    if selected is None:
-        raise ZephyrModelError("MERLIN_ZEPHYR_SW is not configured")
     return selected
 
 
@@ -487,7 +482,6 @@ def _prepare_model_mlir(
     numpy interpreter applies in ``dispatch_runtime.run_model`` (collapse over-rank
     `aten.linear` matmuls; dequantize int8 weights; f32-accumulate bf16 matmuls; fix the
     sitofp(i1) bool-cast sign). Without them only clean LLMs (small_llama) lower."""
-    from ...frontends.linalg_mlir import parse_mlir_file
     from ...llvmlower.passes_xdsl import (
         collapse_overrank_matmul,
         fix_bool_fptosi,
@@ -496,6 +490,7 @@ def _prepare_model_mlir(
         lower_quant_ext,
     )
     from ...llvmlower.torchao_affine import lower_torchao_affine_quant
+    from ...verify.lean import stages as _lean_stages
     from ...xdsl_dialects._common import text as to_text
     from ..dispatch_runtime import _propagate_quant_inner
 
@@ -511,18 +506,18 @@ def _prepare_model_mlir(
     if int8_compute and respect_captured_quantization_scope:
         selected_passes = ("contraction_int8",)
 
-    module = parse_mlir_file(mlir_path)
+    module = _lean_stages.parse_recorded("prepare-parse", mlir_path)
     # Same first step as the interpreter path (dispatch_runtime.run_model): torchao's
     # choose_qparams/quantize arrive as opaque calls to externs nothing defines, and the two paths
     # diverging here is precisely how a bundle ends up interpretable but unlinkable.
-    lower_torchao_affine_quant(module)
+    _lean_stages.run("prepare-torchao-affine", lower_torchao_affine_quant, module)
     from ...llvmlower.scalar_square import canonicalize_scalar_squares
 
-    _squares = canonicalize_scalar_squares(module)
+    _squares = _lean_stages.run("prepare-scalar-squares", canonicalize_scalar_squares, module)
     if _squares:
         print(f"[canonicalize] replaced {_squares} scalar square power(s) with multiplication")
-    collapse_overrank_matmul(module)
-    _propagate_quant_inner(module)
+    _lean_stages.run("prepare-collapse-overrank-matmul", collapse_overrank_matmul, module)
+    _lean_stages.run("prepare-propagate-quant-inner", _propagate_quant_inner, module)
     # BIND the quantized-subclass inner tensors on the COMPILED path too. The interpreter binds them
     # while it walks the graph (`dispatch_runtime.execute`); a compiled binary has no such moment, so
     # each tagged `tensor.empty` is lifted here to a trailing `@forward` argument and
@@ -532,7 +527,7 @@ def _prepare_model_mlir(
     # A module with no quantized subclass is untouched, so every other bundle lowers byte-identically.
     from ...llvmlower import qinner as _qinner
 
-    _qargs = _qinner.lift(module)
+    _qargs = _lean_stages.run("prepare-qinner-lift", _qinner.lift, module)
     if _qargs:
         print(
             f"[qinner] lifted {len(_qargs)} quant-inner tensor(s) to @forward arguments "
@@ -553,9 +548,10 @@ def _prepare_model_mlir(
         if respect_captured_quantization_scope:
             from ...llvmlower.quant_scope import captured_quantized_contraction
 
-            apply_quant(
-                module,
+            _lean_stages.run(
+                "prepare-quantize-int8", apply_quant, module,
                 list(selected_passes),
+                _record_nested=False,
                 named_contraction=named_contraction,
                 prequant_gather=prequant_gather,
                 report_out=_qrep,
@@ -566,9 +562,10 @@ def _prepare_model_mlir(
                 "contraction_int8 only; conv/nonlinear integer approximation passes disabled"
             )
         else:
-            apply_quant(
-                module,
+            _lean_stages.run(
+                "prepare-quantize-int8", apply_quant, module,
                 list(selected_passes),
+                _record_nested=False,
                 named_contraction=named_contraction,
                 prequant_gather=prequant_gather,
                 report_out=_qrep,
@@ -585,13 +582,18 @@ def _prepare_model_mlir(
                     if k.startswith(("prequant_gather_mode_", "prequant_gather_refused_"))
                 )
             )
-    lower_quant_ext(module)
-    lower_bf16_matmul_f32acc(module)
-    fix_bool_sitofp(module)
+    _validation.observe(
+        "lower_quant_ext", module, lambda m: _lean_stages.run("prepare-lower-quant-ext", lower_quant_ext, m)
+    )
+    _validation.observe(
+        "lower_bf16_matmul_f32acc", module,
+        lambda m: _lean_stages.run("prepare-bf16-matmul-f32acc", lower_bf16_matmul_f32acc, m),
+    )
+    _lean_stages.run("prepare-fix-bool-sitofp", fix_bool_sitofp, module)
     # The other half of the bool-cast repair, and the one that erases models rather than skewing
     # them: a float->i1 `arith.fptosi` is POISON in LLVM for every value but 0 and -1, and the
     # poison propagates until a branch on it lets simplifycfg delete the rest of `forward`.
-    fix_bool_fptosi(module)
+    _lean_stages.run("prepare-fix-bool-fptosi", fix_bool_fptosi, module)
     # FUSE THE QUANTIZE ROUND/CLAMP/CONVERT CHAIN (default OFF -> baseline byte-identical), and do it
     # HERE, between the quant passes that build the chain and the vectorize tagging below that reads
     # the body. The order is the whole point of the placement: the tagger REFUSES any generic with a
@@ -744,7 +746,7 @@ def _prepare_model_mlir(
         )
     from ...llvmlower.splat_inputs import scalarize_splat_inputs
 
-    _splats = scalarize_splat_inputs(module)
+    _splats = _lean_stages.run("prepare-scalarize-splat-inputs", scalarize_splat_inputs, module)
     if _splats:
         print(f"[canonicalize] kept {_splats} uniform linalg input(s) scalar")
     if op_counts_out is not None:
@@ -761,7 +763,7 @@ def _prepare_model_mlir(
     # mistaken for data and no model, quantization scheme or target is named.
     _qinner.require_initialized(module, where=str(mlir_path))
     out = work / "model.prepared.mlir"
-    out.write_text(to_text(module))
+    _lean_stages.write_recorded("prepare-print", out, to_text(module), module)
     if int8_compute:
         from ...common.digest import sha256_file
         from ...common.jsonio import write_pretty_json
@@ -871,14 +873,6 @@ def load_matrix_signatures(work: Path, matrix: MatrixRouting | None) -> dict[str
     return signatures
 
 
-#: Where :func:`prepare_for_lowering` records the multicore split it derived, and where the build
-#: sites read it back. A FILE rather than a third return value because the two ends are already
-#: separated by the prepared-module handoff every backend does, and because the record is then
-#: readable after the fact -- "which contractions did this image actually split, and into how many
-#: pieces" is the first question any multicore number raises, and it must not have to be re-derived.
-PARALLEL_ARMS_FILE = "perop_parallel_arms.json"
-
-
 def _write_parallel_arms(work: Path, harts: int, table: dict, par_table: dict) -> None:
     """Record the derived split next to the build. Written on EVERY per-op-blocked prepare."""
     import json
@@ -906,22 +900,7 @@ def _write_parallel_arms(work: Path, harts: int, table: dict, par_table: dict) -
     )
 
 
-def parallel_arms(work: Path) -> list | None:
-    """The ``[(op class, tiles)]`` :func:`prepare_for_lowering` derived for ``work``, or None.
-
-    None means "this prepare derived no per-op block table", which is the packages whose block lives
-    in their schedule text -- there the multicore split stays the legacy class-wide one. An EMPTY
-    list is a different statement: a table existed and nothing in it could be split.
-    """
-    import json
-
-    path = Path(work) / PARALLEL_ARMS_FILE
-    if not path.is_file():
-        return None
-    rec = json.loads(path.read_text(encoding="utf-8"))
-    return [(op, tuple(int(t) for t in tiles)) for op, tiles in rec.get("arms", ())]
-
-
+@_validation.validated("work")
 def prepare_for_lowering(
     mlir_path: Path,
     work: Path,
@@ -1128,6 +1107,16 @@ def prepare_for_lowering(
                 f"`routing_rule`."
             )
 
+    from ...verify.lean import stages as _lean_stages
+
+    _routing_before = None
+    if device is not None and _lean_stages.enabled():
+        _routing_before = Path(prepared).read_text()
+        _lean_stages.record_boundary(
+            "prepare-routing-prefix", f"{__name__}.prepare_for_lowering",
+            _lean_stages.latest_after(), _routing_before,
+        )
+
     # DEVICE OFFLOAD, for the same reason and in the same place as the matrix routing above: a
     # contraction that has become a call is no longer on the vector path, so the register-block table
     # below must be derived from the IR that REMAINS. Inert unless a routing was supplied, and inert
@@ -1181,6 +1170,14 @@ def prepare_for_lowering(
             f"[device] routed {moved.moved} {_grain}(s) to {device.device} across "
             f"{len(moved.signatures)} signature(s)"
             + (f"; declined: {[why for _s, why in moved.skipped]}" if moved.skipped else "")
+        )
+
+    if _routing_before is not None:
+        _lean_stages.record_boundary(
+            "prepare-device-routing", "merlin.llvmlower.device_offload.rewrite_prepared_file",
+            _routing_before, Path(prepared).read_text(),
+            extra={"claim_type": "contractSeam", "trust_class": "assumed",
+                   "reason": "device routing contract is outside verified preparation"},
         )
 
     # The register-group-width REQUEST, resolved for the same reason the per-op block table is: the
@@ -1346,9 +1343,10 @@ def prepare_for_lowering(
         )
         nr_fill_vlen = None
     if _mr_named or _nr_named:
-        features = {
+        plain_features = {
             f for f in features if parse_perop_mr_sentinel(f) is None and parse_perop_nr_sentinel(f) is None
-        } | {PEROP_BLOCK_NAME}
+        }
+        features = frozenset(plain_features | {PEROP_BLOCK_NAME})
     if PEROP_BLOCK_NAME in features:
         from ...kernels.shapes import contraction_shapes as _cshapes
 

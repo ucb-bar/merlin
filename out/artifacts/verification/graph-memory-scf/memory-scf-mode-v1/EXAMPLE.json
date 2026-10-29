@@ -1,0 +1,37 @@
+{
+  "positive": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/pytest/test_actual_complete_common_me0/proof/CHECK.json",
+    "sha256": "f9ff729db75fd0021401be0d84692f4c3ef840df32ed56bec025ad73a946ccd1",
+    "bytes": 866520
+  },
+  "negative_tail_mutation": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/pytest/test_compiler_valid_mutations_4/proof/CHECK.json",
+    "sha256": "c103e874b2d4fd9394e8aeade426cdca9c4baa241df14d873a2b7cc170e3d09c",
+    "bytes": 860341
+  },
+  "inhabited": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/pytest/test_actual_whole_program_has_0/INHABITED.json",
+    "sha256": "16d592f9f0b0fb8385503c30dd3beedac70d4d0516b4d4ba14bcfaa602733830",
+    "bytes": 6893
+  },
+  "originals": [
+    {
+      "bytes": 2151,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/before.mlir",
+      "sha256": "bb5d985ac001a8c9e3b04ff889003965c798796f2b3bc351f0eabf5610190110"
+    },
+    {
+      "bytes": 3526,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-buffer-reuse/actual-cases-v3/two_epochs/after.mlir",
+      "sha256": "9e2a5e8315002c1ad00e57508729112d4a5e01871e41ced4ecca1a10bf259ff5"
+    },
+    {
+      "bytes": 4238,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-buffer-reuse/actual-neighbor-segment-v1/after.mlir",
+      "sha256": "a98bd7576316e4ad9b4ba873beb9dfe5440e9db1f37460cf52628833f3134773"
+    }
+  ],
+  "scope": "complete possible public outcomes under declared operation/allocator semantics",
+  "parser_and_projection_trusted": true,
+  "pipeline_gating_integrated": false
+}

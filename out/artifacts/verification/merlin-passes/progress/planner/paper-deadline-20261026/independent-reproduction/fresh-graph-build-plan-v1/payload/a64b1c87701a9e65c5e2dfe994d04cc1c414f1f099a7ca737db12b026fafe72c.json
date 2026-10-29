@@ -1,0 +1,746 @@
+{
+  "status": "conditional_model_relation",
+  "scope": "per-boundary scalar model correspondence",
+  "source_sha256": "f49042f26da235421dcaf6aa488b0d813dc61c1f0463ecf03e57ef28eb123a8b",
+  "transformed_ir": "\"builtin.module\"() ({\n  \"func.func\"() <{sym_name = \"observe\", function_type = (i8) -> i8, sym_visibility = \"private\"}> ({\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"main\", function_type = (i8, i8) -> i8}> ({\n  ^bb0(%a: i8, %b: i8):\n    %x = \"arith.addi\"(%a, %b) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %z = \"arith.muli\"(%x, %x) <{overflowFlags = #arith.overflow<none>}> : (i8, i8) -> i8\n    %r = \"func.call\"(%z) <{callee = @observe}> : (i8) -> i8\n    \"func.return\"(%r) : (i8) -> ()\n  }) : () -> ()\n  \"func.func\"() <{sym_name = \"other\", function_type = (i8) -> i8}> ({\n  ^bb0(%a: i8):\n    \"func.return\"(%a) : (i8) -> ()\n  }) : () -> ()\n}) : () -> ()",
+  "receipts": [
+    {
+      "schema": "merlin.live_whole_program_completion.v1",
+      "prepared_identity": "13a81427b4ad152cc0e6dfed6bdfeb5dce46e6891f8cc3508d3f31374113bff2",
+      "source": "0d53dc10d1e7c6358c74a054d08128c80f326498a905dbd2637e2c919ee9176f",
+      "target": "e1cdfe08c1cb305fea3943d9c91428324441d59d8eb207cd3cd517dd172a53f1",
+      "domain": "complete_scalar_roster_equal_outcome_v1",
+      "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+      "premises": [
+        "trusted xDSL parser and complete typed SSA/module projection",
+        "one common deterministic total state-free pure primitive interpretation",
+        "one common opaque descriptor interpretation on explicit operands and entire world",
+        "local opaque successful result arity contract; errors and terminal world observable",
+        "common finite abstract SCF iterations and index interpretation; no divergence claim",
+        "private SSA cells are not observations; raw MLIR and physical implementation correspondence reviewed separately"
+      ],
+      "query_sha256": "5791c715ba1ad0e583c60e090dc311a7ef956a6aad1fa87e69ce34251ff5b55e",
+      "roots": [
+        "Merlin.GraphState.Scalar.check_sound",
+        "Merlin.GraphState.Scalar.check_typed",
+        "Merlin.GraphState.Scalar.normalize_sound",
+        "Merlin.GraphStateScalarInstance.F1.accepted",
+        "Merlin.GraphStateScalarInstance.F1.actual",
+        "Merlin.GraphStateScalarInstance.F1.typed",
+        "Merlin.GraphStateScalarInstance.F1.initialized",
+        "Merlin.GraphStateScalarInstance.F1.operands_initialized",
+        "Merlin.GraphStateScalarInstance.F2.accepted",
+        "Merlin.GraphStateScalarInstance.F2.actual",
+        "Merlin.GraphStateScalarInstance.F2.typed",
+        "Merlin.GraphStateScalarInstance.F2.initialized",
+        "Merlin.GraphStateScalarInstance.F2.operands_initialized",
+        "Merlin.GraphState.GateEntries.entries_cons",
+        "Merlin.GraphState.GateEntries.entries_nil",
+        "Merlin.GraphPipelineGateInstance.complete",
+        "merlin_transform"
+      ],
+      "toolchain_identity": "1111111111111111111111111111111111111111111111111111111111111111",
+      "audit_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "status": "conditional_model_relation",
+      "native_fidelity": "not_established",
+      "review_approval": false,
+      "source_success_in_general": false,
+      "poison_freedom": false
+    }
+  ],
+  "compiler_tool_profile_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "hardware_conformance": "not_established",
+  "numerical_execution": "not_established",
+  "graph_profile": {
+    "schema": "merlin.graph_service_binding.v1",
+    "compiler_profile_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "context_id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "workspace": "/mock/graph-context",
+    "timeout_s": 120,
+    "domain": "complete_scalar_roster_equal_outcome_v1",
+    "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+    "premises": [
+      "trusted xDSL parser and complete typed SSA/module projection",
+      "one common deterministic total state-free pure primitive interpretation",
+      "one common opaque descriptor interpretation on explicit operands and entire world",
+      "local opaque successful result arity contract; errors and terminal world observable",
+      "common finite abstract SCF iterations and index interpretation; no divergence claim",
+      "private SSA cells are not observations; raw MLIR and physical implementation correspondence reviewed separately"
+    ],
+    "kinds": [
+      "scalar_loop_invariant_motion",
+      "scalar_redundancy_elimination"
+    ],
+    "sources": [
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/builder.py",
+        "sha256": "07edf3d0ba3af9083c22310dd98bddd37a3300b7b166466193389aa50aca395a",
+        "size": 11622
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/context.py",
+        "sha256": "398f6fe1a77cb940e30cb499f5ddd3e6d80073fb9d4e3b0ea5bc3f5fdc4b81de",
+        "size": 11751
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/__init__.py",
+        "sha256": "0ce455fc728c51ade6e19ed26ff61c625b9b5f85af77f0976cc6de9504c25556",
+        "size": 549
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/constant_materialization.py",
+        "sha256": "1d805e0a398ccea6bb05684210a22e106600146044902e431129a524eac433b3",
+        "size": 1069
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/op_asm.py",
+        "sha256": "4ce3e98d238e453d63d3f480ba06cb232e7d0a1571736c67fe784117a1664351",
+        "size": 3093
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/__init__.py",
+        "sha256": "09111f29545dac8235bb5b0cbbc63e591c43a92e9b1fa8e4e23815c2c0371afd",
+        "size": 10337
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/arith.py",
+        "sha256": "8e58a5ab3c4e7a7b4cc30653a52b8f6f7b9b35574ed88485f1dbd85866ca3b63",
+        "size": 42917
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/builtin.py",
+        "sha256": "a58c193c85430bcfb34e6e5dba23f442880f8e9593e07ca313906f4a5775a4e2",
+        "size": 114583
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/func.py",
+        "sha256": "8a0cb3d1cfb47bfea7f642decd5c4b6f742461c6fe89b283f0918e515e8b8f8e",
+        "size": 11699
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/memref.py",
+        "sha256": "216e58c59ab59abe72e12a55c2af9bf89e53569c19479bfc9a7103c387cf28ba",
+        "size": 40815
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/scf.py",
+        "sha256": "57a47001029e79e03994fe67de0ed3c95b86ab465103cbd721f1b32b31155ab6",
+        "size": 27021
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/__init__.py",
+        "sha256": "9333bca6184814c39e9eaf592f58e6ed493e9898d527ad136fe32f5f59343433",
+        "size": 440
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/bit_enum_attribute.py",
+        "sha256": "a95bd0416fc8501a6e727ca1315a94b7d8c5cb790358affc1be7c501b3c6501e",
+        "size": 4759
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dimension_list.py",
+        "sha256": "a6612af576bd0357107529dd60c4053f48dfcbf03abe6a431c29a55a2d475989",
+        "size": 1542
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dynamic_index_list.py",
+        "sha256": "38daa52c1113b0b9c7e184a812206fca75c99bf89bf2d489f9819525c040c242",
+        "size": 11826
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/enum_attribute.py",
+        "sha256": "a78ec420a097f747703642e1f27f8e41024b087a5244b4dd4709ee537d852dfe",
+        "size": 2170
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/fast_math.py",
+        "sha256": "6b5b526f36fcebd1afee8f3e8cd0e447f5240075885646edd9fbd84b79611b55",
+        "size": 684
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/format.py",
+        "sha256": "cc99781fa71fcaf702737a52e8c3c3e37754fdd13d9e7530960714dfa721acec",
+        "size": 18761
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/reshape_ops_utils.py",
+        "sha256": "20d38aaa290665a1f23c3a7781aacd1cc30e0bc1761cac25a2a4c6bcd45d8db9",
+        "size": 5041
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/folder.py",
+        "sha256": "3906e6d34b791f4d1de56bd347cb1af8a53424afaebc1c7e97dff2e70da503de",
+        "size": 3430
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/interfaces.py",
+        "sha256": "66a219f8cff8fdf8759426e3ab38f2fedfbd092b09b9daaa2d033831339dc300",
+        "size": 3803
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/__init__.py",
+        "sha256": "9b70e7a611de326f314eb7f5877f896f864519cf73404a98c0ba1448f5f91485",
+        "size": 808
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/__init__.py",
+        "sha256": "1defb1dab5f098264ce81e6318161a17100e5aeeb8c2fc966327203a5e5a26ba",
+        "size": 296
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_expr.py",
+        "sha256": "e52f3d8ffe8f36c050c9868f679e7bf254f25a64dd50e55f17e37a0c2e811061",
+        "size": 33741
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_map.py",
+        "sha256": "b7459de550eb7e16a58c54ef80f0cb799d8d4bdc125eb1aa1431265a2b20217c",
+        "size": 17632
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_set.py",
+        "sha256": "bf5fe3832e0b73c2d09280a92edb4bea307a24d8f81efdb59fbf09dc7892133b",
+        "size": 1605
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/core.py",
+        "sha256": "e4a56ec3e51f856d02ee8230739b5024c91da00260d4bce7c125ff08a6f52c08",
+        "size": 87560
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/post_order.py",
+        "sha256": "214c01e0572c013b5de698e3568726c25deb4d641e9e08fd1111b795acac6fe3",
+        "size": 1400
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/__init__.py",
+        "sha256": "5cac03e289cfd95b58f728d2fe09fd069aec7990e05801d02e6c4b20e8a7e119",
+        "size": 302
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/attributes.py",
+        "sha256": "5390db1921844923d604abee03d99d2b713b388848a9b2e0f528826fe182e473",
+        "size": 22211
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/constraints.py",
+        "sha256": "83c063f55d9b835d92c16fdd51e1ada3eb4ad84f7bc6a18698793606dcbf7e75",
+        "size": 49824
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format.py",
+        "sha256": "0634b37132aa57248a3000ec873f1664b9890e550b8a7521e0b58cd3ceeea1fb",
+        "size": 55097
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format_parser.py",
+        "sha256": "fc16909fd1530a8bb6681bd944fcae0dd7cfe7ee7ea55aa28ff140744fb508b8",
+        "size": 39149
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/operations.py",
+        "sha256": "7c5c8bf820d4f89942903794e8a1a21ce9aa5c84e451602f3a54c6cb481149d4",
+        "size": 74020
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/__init__.py",
+        "sha256": "a8c23f2dc3bad21336cca3171afa34339dfabf90298dd19ed4e92798e17e823e",
+        "size": 466
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/affine_parser.py",
+        "sha256": "77e1a321b84693db30272b42deafb3453475705c00bff128480f7857b2a5c36b",
+        "size": 11088
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/attribute_parser.py",
+        "sha256": "2390628c63b7069fd6e4d814e06fbd5da19df487d0b2af469cc0704b3355c13c",
+        "size": 62798
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/base_parser.py",
+        "sha256": "158558fb5b4fb9dc2a7438f0c6cc3cb5276b462a1adb7da44a1eaabe204b8bad",
+        "size": 12513
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/core.py",
+        "sha256": "fea4787ef90a2893e6a55bb9a7c70a3d81304b68a40a30904b330e6919ea37e7",
+        "size": 41286
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/generic_parser.py",
+        "sha256": "badaa2593ec46f77c0856d62e100fe19195357a40c444dc0b4aed8e1376d92d7",
+        "size": 11901
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/passes.py",
+        "sha256": "f6833a451a2403c8565bd7688fcd9e862948d0d918c29ecca89c37e5488767c1",
+        "size": 6428
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/pattern_rewriter.py",
+        "sha256": "759350b3ea7defd18f75161034182100b69778d9be52d47c2e63060eb80f2e38",
+        "size": 30506
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/printer.py",
+        "sha256": "44d48c3d67a1a60793434c3f92376840f764b0fa2f7a7e835173a0ba819e7765",
+        "size": 25749
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/rewriter.py",
+        "sha256": "ecb85c0cd62c5fdf04fb72291cab1c0145bce8c6cafedf7b2d7eba21121deb47",
+        "size": 11614
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/traits.py",
+        "sha256": "9a8df8a232a7d79c1836ce40136a5245559b9f6e6f9ea7e5b5f7782d5bcb7a2e",
+        "size": 29464
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/__init__.py",
+        "sha256": "38f63ce74615b1584a9e75711570637339dc91aabf0751704b75ebd6593935e4",
+        "size": 30431
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/common_subexpression_elimination.py",
+        "sha256": "9e10dbdc2cedfc0dae55f2adaf3c7fd16c02079a8dfb0bcbe5f9b18edaaab0e6",
+        "size": 8648
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/dead_code_elimination.py",
+        "sha256": "184d6afb7fe59753ef23b9a49701431323bf60fc15d00cfa67c3caa2c684daee",
+        "size": 5369
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/loop_invariant_code_motion.py",
+        "sha256": "6014e7b190213fb952a24cc5376a7f02b28cad6c372d3712b89ab37f3fefb47d",
+        "size": 3364
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/__init__.py",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/arg_spec.py",
+        "sha256": "129d04cfd40731165385cfbf36a836bb528465905c8c7fef45d26414209b714b",
+        "size": 19034
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/base_printer.py",
+        "sha256": "e481727cfc8d6f5019b3e7d0341e25607c6f64c19cabf27c029cdd7ef2c57a9b",
+        "size": 5606
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/bitwise_casts.py",
+        "sha256": "a19b2f68806f22a22c1258fd38dc2568a9a713daaa1bdbe822e9ee8c8134cfd6",
+        "size": 1903
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/classvar.py",
+        "sha256": "75817d634d44001d56dc60cf2142e0fc186c7f4c1bacac124c59380350c90627",
+        "size": 1129
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/comparisons.py",
+        "sha256": "d457aaed334bf384daa7aa70238300f39ad9c8ecc636291b5c8cb6bd07e224ac",
+        "size": 3799
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/diagnostic.py",
+        "sha256": "fdcb80084e612ae2b1b75cd7ecf1c79796e4c912c58fa3ae612fae97447fe0f3",
+        "size": 1901
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_loader.py",
+        "sha256": "fc7fbe1d9ea015f6b9caa764797a0849c9cc972efb778d258baee6b0f8bbb9ec",
+        "size": 3966
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_stub.py",
+        "sha256": "e56615befeb25b7ef8dc739ab1afaf7481045af9c13cf82902e1901358f90a43",
+        "size": 10855
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/exceptions.py",
+        "sha256": "2c5a6d5e0a8f44c998cae5a22a3922feb4d226e6de2100d3c976cb47e5a091c0",
+        "size": 3497
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/hints.py",
+        "sha256": "298718d6044b829594b43ad7e1b1226f8aa9318f73de1e4f806073d39004dacf",
+        "size": 7859
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/lexer.py",
+        "sha256": "d2d6d2f8e2bf110426e7663c28eb0626de5334ecbc27e74cec92c21af69fefef",
+        "size": 5454
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/mlir_lexer.py",
+        "sha256": "d2d2b59b9a09d18e2edde2d6ccc2fa49f4e063e19672eab4c158e35d44b32e36",
+        "size": 18808
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/runtime_final.py",
+        "sha256": "37edf56a59a7f385128f5864f07560d2e2535644260141f0f1893bf28a83e7d5",
+        "size": 812
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/str_enum.py",
+        "sha256": "3a5fa8d24f075b14a95a56146f832980d666da690e8c4eb7e5d491c3e813456e",
+        "size": 356
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/type.py",
+        "sha256": "9c4c1ac090bd0da004fd7db64e4c95e96a2803b1b078e49f669085cbbc74fbce",
+        "size": 1540
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/worklist.py",
+        "sha256": "dea6f7332e611bea48493d6ce60a478a0f484238ab4ddbe24c84e3f63764d842",
+        "size": 2081
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context.py",
+        "sha256": "bfdb1a71019dfccc335f35f560dd6e51b7b1bc2671cf033c529ad52f6473bcc6",
+        "size": 24711
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context_data.py",
+        "sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1",
+        "size": 15692
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context_io.py",
+        "sha256": "9ed416a334277acd890c95a75d45ca0366c0eb0797b71574bc467720ad1bdb09",
+        "size": 4512
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/__init__.py",
+        "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+        "size": 144
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/bundle_snapshot.py",
+        "sha256": "75ccb58526671f2ee474ce6f3290db2ea0709069d65926be927da9635cb9cc39",
+        "size": 34386
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/dense_float_ir.py",
+        "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+        "size": 4227
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/path_relations.py",
+        "sha256": "8e15c5f6b71785414fca77f9ce2ea84fe71dde328abda9d103faf94156b99f87",
+        "size": 2539
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/read_lease_digest.py",
+        "sha256": "0adb034a66058287259108de8717323eb38c9a83a3e6f810c93b0872d5c0cf4c",
+        "size": 18925
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/perf/__init__.py",
+        "sha256": "9f8e5f6b298aec3ee46e87d50887f8ff11c9aff1f4d05d9cf1b715778f3d0a8e",
+        "size": 422
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/perf/pass_observation.py",
+        "sha256": "3a58c25461a41e466e30b46a79cb377f8d9387d94a7e7ab948ca82cbf345249c",
+        "size": 5307
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/__init__.py",
+        "sha256": "7dae9fca1d8a5a860c76b424adfe208304bf12642774611599e78f7148210c70",
+        "size": 340
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/common_transforms.py",
+        "sha256": "4093df99cfb2ec1a343aa7a641f3430725364b95206c264530b271b4811466ab",
+        "size": 24474
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/tool_profile.py",
+        "sha256": "c78f181120e193c3d7a87e2d5456c14cf0c468bef9c8216a7284717dd6fb2996",
+        "size": 35005
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/tool_registry.py",
+        "sha256": "eded65c8d1f80e33213f0e1482ceab3bcc5986e3fb88a6b23a1c3f20bb3aba5e",
+        "size": 21033
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/__init__.py",
+        "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+        "size": 1017
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analyses.py",
+        "sha256": "f644bb56349d680a3228b75308f2ebf51f7491baa628e704e1617f472ad8e754",
+        "size": 1372
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analysis_liveness.py",
+        "sha256": "ee3e4b9ed35d5f888f1706eb2d540016e28eacfc8454c96d769ee76b4b7b4b5f",
+        "size": 7014
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analysis_memory.py",
+        "sha256": "042cb7a7e72db59c574a6ecb1bfe9bc0c70de88898553f5a129d469071e38fbd",
+        "size": 6597
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analysis_types.py",
+        "sha256": "63eb8ab800b446c3f50b61dd54f228db5d3c9a66457939eb16a678ff78a68b0c",
+        "size": 3166
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/certificates.py",
+        "sha256": "4b3348bd83b347b262dc6457a1827e5f0b0c2e94251e570d642afe19a18cc639",
+        "size": 9448
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/loops.py",
+        "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+        "size": 4572
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/normalization.py",
+        "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+        "size": 4097
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pipeline.py",
+        "sha256": "e665f6370c27a6d82509d42679c778b79b7983a56ebb6697bbbe96c2c183b73f",
+        "size": 8788
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pipeline_state.py",
+        "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+        "size": 12317
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/planning.py",
+        "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+        "size": 12381
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pure_scalar.py",
+        "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+        "size": 6617
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/scalar_witness.py",
+        "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31",
+        "size": 2083
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/validation.py",
+        "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+        "size": 10145
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_checker.py",
+        "sha256": "abbe47809b5fab74c65c79bd4acb4b7d311303f7fecebbf6a26c62382197dce1",
+        "size": 24066
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_contract.py",
+        "sha256": "fcb0b8a2812d41d20fa95724c8a54b50dd5763260f63f672bfeb17a8de346ab8",
+        "size": 9284
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_export.py",
+        "sha256": "73a0764df9f026c3b9e1b2643f5562119b585ffa7ea7b7d364feeb6db1c9c1e3",
+        "size": 9605
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_graph_input_admission.py",
+        "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+        "size": 7626
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_sat_runtime.py",
+        "sha256": "26a2104f7baef33ac46720c7f14c13bd1ff4163b5c5f4f385b1343ea7575f6ac",
+        "size": 5966
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate.py",
+        "sha256": "43107d4178316f361b2a5a71fce6417b68bf8212ae7d9c4abbca12ff4bb2aba6",
+        "size": 5734
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_emit.py",
+        "sha256": "8a45093f252cfcbcca0294f6c07897abab8a8004e10c1919d3b83a95d3404816",
+        "size": 8651
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_native.py",
+        "sha256": "352af415cea2a7b7f538abac0af79b15123fe0ff079c5d6a8afae44e8f5eb7da",
+        "size": 7940
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+        "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+        "size": 12573
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_provider.py",
+        "sha256": "3308c8ae184ee8a46d5ad25172ea4c49b2b9b2623ad83698265c59110f9b0290",
+        "size": 8767
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_service.py",
+        "sha256": "1db5340598add5cb9ec19995c8d44a458059b43b50718fa82bfecb2980940ff6",
+        "size": 8045
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_capture.py",
+        "sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+        "size": 20723
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean",
+        "sha256": "9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8",
+        "size": 3401
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+        "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+        "size": 4654
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+        "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+        "size": 8229
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+        "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+        "size": 11782
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+        "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+        "size": 6170
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+        "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+        "size": 9963
+      },
+      {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+        "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+        "size": 6614
+      }
+    ],
+    "native_authorization": false,
+    "saved_profile_is_authority": false
+  },
+  "compiler_pass_chain": "not_established",
+  "saved_report_is_authority": false,
+  "pass_observations": {
+    "schema": "merlin.pass_observation.v1",
+    "compiler_tool_profile_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "observer_sha256": "3a58c25461a41e466e30b46a79cb377f8d9387d94a7e7ab948ca82cbf345249c",
+    "passes": [
+      {
+        "index": 0,
+        "pass": "scalar_redundancy_elimination",
+        "parameters": {},
+        "before": {
+          "ir_sha256": "0d53dc10d1e7c6358c74a054d08128c80f326498a905dbd2637e2c919ee9176f",
+          "ir_bytes": 763,
+          "static_operations": 10,
+          "operation_counts": {
+            "arith.addi": 2,
+            "arith.muli": 1,
+            "builtin.module": 1,
+            "func.call": 1,
+            "func.func": 3,
+            "func.return": 2
+          },
+          "static_loops": 0,
+          "unknown_effect_operations": 7,
+          "known_static_allocation_bytes": 0,
+          "unknown_allocations": 0,
+          "planned_block_reservation_bytes": 0,
+          "storage_unknowns": [],
+          "dependency_edges": 9,
+          "dependency_unknowns": 4,
+          "max_block_live_values": 4,
+          "max_block_peak_known_logical_bytes": 4,
+          "unknown_logical_sizes": 0,
+          "unresolved_alias_values": 0,
+          "structural_unknown_count": 1,
+          "pressure_scope": "known whole-value logical subtotals by lexical block; not physical or runtime peak storage",
+          "physical_traffic": "UNKNOWN",
+          "dynamic_work": "UNKNOWN",
+          "cycles": "UNKNOWN"
+        },
+        "after": {
+          "ir_sha256": "e1cdfe08c1cb305fea3943d9c91428324441d59d8eb207cd3cd517dd172a53f1",
+          "ir_bytes": 674,
+          "static_operations": 9,
+          "operation_counts": {
+            "arith.addi": 1,
+            "arith.muli": 1,
+            "builtin.module": 1,
+            "func.call": 1,
+            "func.func": 3,
+            "func.return": 2
+          },
+          "static_loops": 0,
+          "unknown_effect_operations": 7,
+          "known_static_allocation_bytes": 0,
+          "unknown_allocations": 0,
+          "planned_block_reservation_bytes": 0,
+          "storage_unknowns": [],
+          "dependency_edges": 7,
+          "dependency_unknowns": 4,
+          "max_block_live_values": 3,
+          "max_block_peak_known_logical_bytes": 3,
+          "unknown_logical_sizes": 0,
+          "unresolved_alias_values": 0,
+          "structural_unknown_count": 1,
+          "pressure_scope": "known whole-value logical subtotals by lexical block; not physical or runtime peak storage",
+          "physical_traffic": "UNKNOWN",
+          "dynamic_work": "UNKNOWN",
+          "cycles": "UNKNOWN"
+        },
+        "invalidated_analyses": [
+          "ssa",
+          "dominance",
+          "shapes",
+          "effects",
+          "aliasing",
+          "liveness",
+          "storage",
+          "dependencies",
+          "cost"
+        ],
+        "recomputed_analyses": [
+          "effects",
+          "storage",
+          "dependencies",
+          "aliasing",
+          "liveness",
+          "logical_pressure"
+        ],
+        "scope": [
+          "total_scalar_integer_operations",
+          "preserved_unknown_effects",
+          "ssa_use_def_and_dominance"
+        ],
+        "static_operation_delta": -1
+      }
+    ],
+    "basis": "actual ordered before/after IR; conservatively invalidated analyses recomputed",
+    "capsule_impact": "UNKNOWN until joined to original emitted artifacts",
+    "ranking_authority": "none"
+  }
+}

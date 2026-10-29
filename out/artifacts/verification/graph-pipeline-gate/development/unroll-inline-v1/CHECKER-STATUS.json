@@ -1,0 +1,19 @@
+{
+  "sdk_free_tests": {
+    "passed": 5,
+    "log": "complete-carry-tests.txt"
+  },
+  "actual_changed_pairs": 5,
+  "retained_compiler_valid_mutations": 13,
+  "queries": "UNCOMPILED",
+  "outcomes": "UNOBSERVED",
+  "kernel_refusals_observed": 0,
+  "kernel_std3_audit": "UNOBSERVED",
+  "native_qualification": "UNQUALIFIED",
+  "replays": 0,
+  "public_route": "UNSUPPORTED/HELD",
+  "compiler_pass_chain": "not_established",
+  "owned_live_jobs": [],
+  "new_failures": [],
+  "old_failures": "preserved; shared runtime cause unknown; no reads/retries"
+}

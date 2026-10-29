@@ -1,0 +1,1886 @@
+[
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule.py",
+    "line": 29,
+    "name": "Order",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule.py",
+    "line": 41,
+    "name": "PreparedSchedule",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule.py",
+    "line": 70,
+    "name": "_admit",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule.py",
+    "line": 87,
+    "name": "_sources",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule.py",
+    "line": 97,
+    "name": "prepare",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule.py",
+    "line": 139,
+    "name": "public_check",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule.py",
+    "line": 143,
+    "name": "compiler_eligible",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule_requests.py",
+    "line": 10,
+    "name": "FutureScheduleRequest",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule_requests.py",
+    "line": 33,
+    "name": "request",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule_requests.py",
+    "line": 51,
+    "name": "matches",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule_requests.py",
+    "line": 55,
+    "name": "provider_arguments",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule_models.py",
+    "line": 7,
+    "name": "witness",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_schedule_models.py",
+    "line": 63,
+    "name": "observer_countermodel",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/merlin/tests/ir/test_lean_graph_pipeline_gate_schedule.py",
+    "line": 32,
+    "name": "capture",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/merlin/tests/ir/test_lean_graph_pipeline_gate_schedule.py",
+    "line": 42,
+    "name": "Schedule",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-schedule/source-snapshot/owned/merlin/tests/ir/test_lean_graph_pipeline_gate_schedule.py",
+    "line": 148,
+    "name": "retain",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profiles.py",
+    "line": 9,
+    "name": "Profile",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profiles.py",
+    "line": 41,
+    "name": "selected",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profiles.py",
+    "line": 49,
+    "name": "Settings",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profiles.py",
+    "line": 60,
+    "name": "public_check",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profiles.py",
+    "line": 64,
+    "name": "compiler_eligible",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+    "line": 16,
+    "name": "PreparedProfile",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+    "line": 43,
+    "name": "_sources",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+    "line": 58,
+    "name": "_admit",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+    "line": 78,
+    "name": "_recheck",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+    "line": 103,
+    "name": "_projection",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+    "line": 133,
+    "name": "_domain",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+    "line": 173,
+    "name": "_adjacent_rosters",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+    "line": 232,
+    "name": "_query",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+    "line": 298,
+    "name": "prepare",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_requests.py",
+    "line": 15,
+    "name": "ProjectSource",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_requests.py",
+    "line": 23,
+    "name": "FutureRequest",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_requests.py",
+    "line": 49,
+    "name": "request",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_requests.py",
+    "line": 79,
+    "name": "matches",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/src/merlin/verify/lean_graph_pipeline_gate_profile_requests.py",
+    "line": 83,
+    "name": "provider_arguments",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py",
+    "line": 18,
+    "name": "buffers",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py",
+    "line": 23,
+    "name": "Profiles",
+    "kind": "Python source"
+  },
+  {
+    "file": "q-larger/source-snapshot/owned/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py",
+    "line": 129,
+    "name": "retain",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 18,
+    "name": "parser",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 25,
+    "name": "actual",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 32,
+    "name": "prepare",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 36,
+    "name": "test_complete_actual_final_has_dynamic_controls_and_all_functions",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "line": 58,
+    "name": "test_valid_wrong_final_changes_actual_operational_term",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 24,
+    "name": "parser",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 31,
+    "name": "_permuted",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 45,
+    "name": "_mutate",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_boundary.py",
+    "line": 89,
+    "name": "test_complete_wrong_final_obligation",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 18,
+    "name": "_function",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 22,
+    "name": "_print",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 29,
+    "name": "_mutate",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "line": 89,
+    "name": "test_complete_roster_actual_binding",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 17,
+    "name": "parser",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 24,
+    "name": "permuted",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 38,
+    "name": "test_actual_final_matches_complete_expanded_target",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+    "line": 15,
+    "name": "parser",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_plan.py",
+    "line": 22,
+    "name": "test_actual_plan_emits_all_commands_and_computed_target",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 18,
+    "name": "parser",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/merlin/tests/ir/test_lean_graph_loops_memory_scf_after_whole.py",
+    "line": 29,
+    "name": "test_complete_common_interpretation_obligation",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 21,
+    "name": "_single",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 27,
+    "name": "initializer",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 76,
+    "name": "initializers",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 88,
+    "name": "_initializer_execution",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 117,
+    "name": "obligation",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "line": 159,
+    "name": "prepare_final",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 17,
+    "name": "_header",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 24,
+    "name": "_row",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 29,
+    "name": "_definitions",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 48,
+    "name": "_theorems",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 82,
+    "name": "_domains",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "line": 127,
+    "name": "prepare_entries",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "line": 13,
+    "name": "headers",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "line": 30,
+    "name": "actions",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "line": 40,
+    "name": "callgraph",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "line": 54,
+    "name": "reachable",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "line": 66,
+    "name": "literal_opcodes",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "line": 84,
+    "name": "roster",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+    "line": 11,
+    "name": "literal_witnesses",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 21,
+    "name": "_sequence",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 28,
+    "name": "_tiled_atoms",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 58,
+    "name": "expand",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 127,
+    "name": "materialization_obligation",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "line": 156,
+    "name": "prepare_expansion",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 19,
+    "name": "_tiled",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 26,
+    "name": "_expansion",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_plan.py",
+    "line": 44,
+    "name": "prepare_plan",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+    "line": 16,
+    "name": "FinalDecoder",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+    "line": 98,
+    "name": "decode_final",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean_graph_loops_memory_scf_after_whole.py",
+    "line": 20,
+    "name": "prepare_whole",
+    "kind": "Python source"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+    "line": 13,
+    "name": "load_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean",
+    "line": 47,
+    "name": "store_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 15,
+    "name": "retained_clear",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 24,
+    "name": "skipped_clear",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 33,
+    "name": "allocate_retained",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 52,
+    "name": "release_retained",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 69,
+    "name": "slot_address",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 77,
+    "name": "load_slot_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "line": 90,
+    "name": "store_slot_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+    "line": 12,
+    "name": "allocate_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+    "line": 43,
+    "name": "release_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+    "line": 70,
+    "name": "alias_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean",
+    "line": 107,
+    "name": "drop_release_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 14,
+    "name": "candidate_allocate_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 25,
+    "name": "candidate_release_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 36,
+    "name": "alias_allocation_fragment",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 56,
+    "name": "skipped_release_fragment",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 68,
+    "name": "retained_allocation_fragment",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "line": 101,
+    "name": "retained_release_fragment",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "line": 14,
+    "name": "EntrySlotFacts",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "line": 26,
+    "name": "entry_related",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "line": 49,
+    "name": "candidate_returned_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "line": 60,
+    "name": "expanded_block",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean",
+    "line": 108,
+    "name": "expanded_observation",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+    "line": 16,
+    "name": "final_observations",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean",
+    "line": 48,
+    "name": "checked_actual_chain",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+    "line": 16,
+    "name": "Expansion.local_checked",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+    "line": 95,
+    "name": "checked_local_list",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean",
+    "line": 119,
+    "name": "bound_local_simulations",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "line": 13,
+    "name": "Chunk",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "line": 17,
+    "name": "outer_to_segmented",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "line": 28,
+    "name": "segmented_to_outer",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "line": 40,
+    "name": "outer_source_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 14,
+    "name": "expandedMeaning",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 22,
+    "name": "ObserverBinding",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 32,
+    "name": "BoundaryFacts",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 45,
+    "name": "expanded_primitive",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 56,
+    "name": "expanded_generated",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 67,
+    "name": "expanded_call",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean",
+    "line": 77,
+    "name": "expanded_memory",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+    "line": 13,
+    "name": "KernelLiteralSupport",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+    "line": 23,
+    "name": "unchanged_entry_outcomes",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+    "line": 53,
+    "name": "checked_entry_roster",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "line": 13,
+    "name": "TargetClosed",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "line": 22,
+    "name": "ClosedEntry",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "line": 33,
+    "name": "CallClosed",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "line": 40,
+    "name": "closed_target",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "line": 49,
+    "name": "ClosedAgreement",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "line": 61,
+    "name": "closed_invoke_agreement",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "line": 86,
+    "name": "closed_complete_agreement",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "line": 95,
+    "name": "closed_invoke_extension",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "line": 124,
+    "name": "absent_entry_no_success",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 14,
+    "name": "LiteralOpcodes",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 15,
+    "name": "LiteralMeaning",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 17,
+    "name": "literalAt",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 21,
+    "name": "LiteralAction",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 25,
+    "name": "withLiterals",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 32,
+    "name": "LiteralAbsentEntry",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 42,
+    "name": "ClosedLiteralAbsent",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 50,
+    "name": "LiteralCodeFacts",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 61,
+    "name": "literalCodeDecidable",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 79,
+    "name": "LiteralModuleFacts",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 88,
+    "name": "closed_literal_extension",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 105,
+    "name": "entryMeaning",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "line": 110,
+    "name": "literal_outcomes_extension",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 13,
+    "name": "EntryHeader",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 21,
+    "name": "HeaderFits",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 31,
+    "name": "DefinedHeaders",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 40,
+    "name": "EntryRoute",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 45,
+    "name": "EntryRow",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 50,
+    "name": "EntryRow.Facts",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 60,
+    "name": "EntryRosterFacts",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 72,
+    "name": "ExternalInput",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 76,
+    "name": "EntryDomain",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 84,
+    "name": "roster_has_every_definition",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 93,
+    "name": "typed_input_arity",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "line": 99,
+    "name": "wrong_arity_no_success",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "line": 13,
+    "name": "sampleRuntime",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "line": 20,
+    "name": "sample_kind",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "line": 22,
+    "name": "sampleInputs",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "line": 25,
+    "name": "sample_typed",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "line": 33,
+    "name": "sample_external",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "line": 42,
+    "name": "sampleHeap",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "line": 44,
+    "name": "sample_cell_initialized",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "line": 50,
+    "name": "literal_binary_execution",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "line": 77,
+    "name": "literal_binary_complete",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 18,
+    "name": "physicalFinalClock",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 22,
+    "name": "LocalSimulation",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 47,
+    "name": "LocalSimulations",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 55,
+    "name": "fragments_append",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 76,
+    "name": "expansions_forward",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean",
+    "line": 112,
+    "name": "expansions_backward",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 14,
+    "name": "Fragment",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 20,
+    "name": "Fragment.code",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 25,
+    "name": "Fragment.step",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 36,
+    "name": "alias_actual_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 51,
+    "name": "Fragment.eval_suffix",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 72,
+    "name": "fragmentsCode",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 75,
+    "name": "FragmentsRun",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 87,
+    "name": "fragments_complete",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "line": 113,
+    "name": "alias_slot",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 14,
+    "name": "expanded_depth_equivalent",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 45,
+    "name": "fragments_refused",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 58,
+    "name": "observer_fragment",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 64,
+    "name": "expanded_depth_one_refused",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 92,
+    "name": "expanded_complete_equivalent",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean",
+    "line": 124,
+    "name": "actual_final_equivalent",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 13,
+    "name": "TiledInitializer",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 23,
+    "name": "TiledInitializer.inner",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 27,
+    "name": "TiledInitializer.body",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 31,
+    "name": "TiledInitializer.code",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 37,
+    "name": "eval_index_action",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "line": 64,
+    "name": "TiledInitializer.control_prefix",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+    "line": 14,
+    "name": "segmented_world_partition",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+    "line": 30,
+    "name": "target_initializer_link",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean",
+    "line": 80,
+    "name": "candidate_initialized_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+    "line": 13,
+    "name": "scoped_initializer_inputs",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean",
+    "line": 38,
+    "name": "initializer_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "line": 15,
+    "name": "candidate_retained_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "line": 36,
+    "name": "candidate_initializer_public",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "line": 48,
+    "name": "candidate_assignment",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "line": 110,
+    "name": "candidate_pins",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean",
+    "line": 128,
+    "name": "candidate_preserves",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 14,
+    "name": "IndexOpcode",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 19,
+    "name": "IndexOpcode.apply",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 27,
+    "name": "IndexAction",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 36,
+    "name": "IndexOpcodes",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 38,
+    "name": "indexOpcodeAt",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 42,
+    "name": "withIndex",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 51,
+    "name": "finalMeaning",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 56,
+    "name": "generated_action",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 63,
+    "name": "unchanged_action",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 72,
+    "name": "unchanged_regions",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "line": 79,
+    "name": "generated_controls",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "line": 14,
+    "name": "candidate_load_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "line": 51,
+    "name": "candidate_store_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "line": 84,
+    "name": "actual_load_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean",
+    "line": 118,
+    "name": "actual_store_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 13,
+    "name": "NoViewKind",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 17,
+    "name": "NoViewBindings",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 26,
+    "name": "scalar_slot_fixed",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 36,
+    "name": "scalar_values_fixed",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 49,
+    "name": "scalar_returns_fixed",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 58,
+    "name": "caller_argument_fixed",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 70,
+    "name": "retained_action_fragment",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "line": 93,
+    "name": "constant_fragment",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 15,
+    "name": "Expansion",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 22,
+    "name": "Expansion.source",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 28,
+    "name": "Expansion.fragments",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 37,
+    "name": "Expansion.nextClock",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 42,
+    "name": "Expansion.generated",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 46,
+    "name": "Expansion.Facts",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 80,
+    "name": "ExpansionsValid",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 87,
+    "name": "expansionsDecidable",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 104,
+    "name": "NoOpcodeOverrides",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 112,
+    "name": "expandedModule",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 118,
+    "name": "ExpansionBinding",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 130,
+    "name": "expansion_source_exact",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 135,
+    "name": "expanded_calls",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean",
+    "line": 142,
+    "name": "checked_materialization",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "line": 13,
+    "name": "fragments_single",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "line": 23,
+    "name": "retained_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "line": 67,
+    "name": "constant_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "line": 89,
+    "name": "binary_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean",
+    "line": 120,
+    "name": "observer_local",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 14,
+    "name": "CellWrite",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 20,
+    "name": "RowWrite",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 27,
+    "name": "nested_row_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 45,
+    "name": "rows_heap_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 64,
+    "name": "row_corresponds",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "line": 95,
+    "name": "TiledInitializer.inner_heap_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "line": 16,
+    "name": "execution_simulate_live",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "line": 33,
+    "name": "execution_live_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "line": 52,
+    "name": "LiveHeapBodyCorresponds",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "line": 63,
+    "name": "scf_live_heap_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 14,
+    "name": "RegistersRelated",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 18,
+    "name": "RegistersRelated.typed",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 25,
+    "name": "RegistersRelated.scratch",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 33,
+    "name": "RegistersRelated.define",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 45,
+    "name": "RegistersRelated.assign",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 60,
+    "name": "RegistersRelated.define_existing",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 70,
+    "name": "RegistersRelated.private_view",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 77,
+    "name": "RegistersRelated.caller_view",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 84,
+    "name": "RegistersRelated.scalar",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 90,
+    "name": "RegistersRelated.returns",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "line": 104,
+    "name": "initializer_inputs_from_related",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+    "line": 13,
+    "name": "RegistersRelated.indices",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+    "line": 28,
+    "name": "scoped_load_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean",
+    "line": 82,
+    "name": "scoped_store_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+    "line": 13,
+    "name": "scoped_alias_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+    "line": 45,
+    "name": "scoped_allocate_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+    "line": 76,
+    "name": "scoped_release_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean",
+    "line": 105,
+    "name": "scoped_drop_release_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+    "line": 14,
+    "name": "tiled_fragments_eval",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean",
+    "line": 38,
+    "name": "scoped_initializer_iff",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 15,
+    "name": "slotAllocation",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 18,
+    "name": "slotRuntime",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 24,
+    "name": "slotEnv",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 27,
+    "name": "slot_kind",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 30,
+    "name": "slot_holds",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 37,
+    "name": "slot_typed",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 41,
+    "name": "slot_put",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 47,
+    "name": "slot_assign",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 60,
+    "name": "slot_arguments",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 66,
+    "name": "slot_private_view",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 72,
+    "name": "slot_caller_view",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 79,
+    "name": "erase_slot",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 82,
+    "name": "erase_slot_env",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "line": 90,
+    "name": "alias_same_slot",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "line": 13,
+    "name": "actionKeys",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "line": 19,
+    "name": "SourceIndexAbsent",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "line": 26,
+    "name": "eval_action_agreement",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "line": 70,
+    "name": "invoke_action_agreement",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean",
+    "line": 99,
+    "name": "source_complete_extension",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 13,
+    "name": "TiledInitializer.captures",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 17,
+    "name": "TiledInitializer.Inputs",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 27,
+    "name": "TiledInitializer.Inputs.put",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 48,
+    "name": "TiledInitializer.ControlFacts",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 61,
+    "name": "TiledInitializer.live_body",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 113,
+    "name": "TiledInitializer.eval_rows",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "line": 150,
+    "name": "TiledInitializer.eval_epoch",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "line": 13,
+    "name": "action_scoped_forward",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "line": 30,
+    "name": "action_scoped_backward",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "line": 51,
+    "name": "retained_modes",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "line": 66,
+    "name": "retained_scoped_backward",
+    "kind": "Lean source UNCOMPILED"
+  },
+  {
+    "file": "w-source/source/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean",
+    "line": 92,
+    "name": "retained_scoped_forward",
+    "kind": "Lean source UNCOMPILED"
+  }
+]

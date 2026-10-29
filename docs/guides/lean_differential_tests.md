@@ -1,58 +1,690 @@
 ---
-title: Qualify the Lean tensor pass gate
+title: Run Lean semantics differential tests
 kind: guide
 status: current
 owner: verification
-last_verified: 2026-10-28
-related: [lean_pass_gate, merlin_lean_verification, compiler_verification]
+last_verified: 2026-10-18
+related: [merlin_lean_verification, compiler_verification]
 code_refs:
-  - build_tools/scripts/check_lean_guard.py
-  - build_tools/scripts/verify_lean_pass_models.py
-  - build_tools/toolchains/lean-mlir-requirements.txt
-  - merlin/lean/LEDGER.md
-  - merlin/tests/ir/test_lean_pass_gate.py
-  - merlin/tests/ir/test_lean_pass_gate_fuzz.py
-  - merlin/tests/rvv/test_lean_pass_gate_spike.py
+  - merlin/lean/Differential.lean
+  - src/merlin/verify/lean/differential.py
+  - src/merlin/verify/lean/mlir_execute.py
+  - src/merlin/verify/lean/mlir_map_contract.py
+  - merlin/tests/ir/test_lean_differential.py
+  - merlin/tests/ir/test_lean_map.py
+  - merlin/tests/ir/test_lean_typed.py
+  - merlin/tests/ir/test_lean_motion.py
+  - merlin/lean/MerlinVerify/Rules/Motion.lean
+  - merlin/lean/MerlinVerify/Rules/IntegerCastPartial.lean
+  - merlin/lean/MerlinVerify/Rules/IntegerCompareOrder.lean
+  - merlin/lean/MerlinVerify/Check/InsertExtract.lean
+  - merlin/lean/MerlinVerify/Check/RegionExact.lean
+  - src/merlin/verify/lean/check.py
+  - src/merlin/verify/lean/cli.py
+  - src/merlin/verify/lean/handoff.py
+  - merlin/tests/ir/test_lean_handoff.py
+  - merlin/tests/ir/test_lean_cli.py
+  - merlin/lean/MerlinVerify/Check/BindingFacts.lean
+  - merlin/lean/MerlinVerify/Check/UniformFacts.lean
+  - merlin/lean/MerlinVerify/Rules/CopyGeneralize.lean
+  - merlin/tests/ir/test_lean_copy_generalize.py
+  - merlin/lean/MerlinVerify/Rules/LayoutGeneralize.lean
+  - merlin/tests/ir/test_lean_layout_generalize.py
+  - merlin/tests/ir/test_lean_integer_fold.py
+  - merlin/tests/ir/test_lean_integer_fold_native.py
+  - merlin/tests/ir/test_lean_reshape_compose.py
+  - merlin/tests/ir/test_lean_reshape_differential.py
+  - merlin/tests/ir/test_lean_splat_checker.py
+  - merlin/lean/MerlinVerify/Rules/IntegerFold.lean
+  - merlin/lean/MerlinVerify/Rules/ReshapeCompose.lean
+  - merlin/lean/MerlinVerify/Check/SplatC1.lean
+  - merlin/lean/MerlinVerify/Check/DefinedRules.lean
+  - merlin/tests/ir/test_lean_float_definedness.py
+  - merlin/tests/ir/test_lean_nested_definedness.py
+  - merlin/lean/MerlinVerify/Rules/IntegerIdentity.lean
+  - merlin/lean/MerlinVerify/Rules/ReshapeMixed.lean
+  - merlin/lean/MerlinVerify/Check/SplatNormalizer.lean
+  - merlin/lean/MerlinVerify/Check/SplatNestedC1.lean
+  - merlin/tests/ir/test_lean_integer_identity.py
+  - merlin/tests/ir/test_lean_integer_identity_native.py
+  - merlin/tests/ir/test_lean_reshape_mixed.py
+  - merlin/tests/ir/test_lean_reshape_mixed_differential.py
+  - merlin/tests/ir/test_lean_splat_nested.py
+  - merlin/tests/ir/test_lean_splat_nested_differential.py
+  - merlin/lean/MerlinVerify/Check/TypedNormalizeC1.lean
+  - merlin/lean/MerlinVerify/Check/SharedNormalize.lean
+  - merlin/lean/MerlinVerify/Check/DefinedControl.lean
+  - merlin/tests/ir/test_lean_control_definedness.py
+  - merlin/tests/ir/test_lean_control_differential.py
+  - merlin/tests/ir/test_lean_integer_cast.py
+  - merlin/tests/ir/test_lean_integer_cast_native.py
+  - merlin/tests/ir/test_lean_reshape_typed.py
+  - merlin/tests/ir/test_lean_reshape_typed_differential.py
+  - merlin/tests/ir/test_lean_integer_body.py
+  - merlin/tests/ir/test_lean_integer_body_differential.py
+  - merlin/tests/ir/test_lean_shared_normalize.py
+  - merlin/tests/ir/test_lean_shared_normalize_differential.py
 ---
 
-# Qualify the Lean tensor pass gate
+# Run Lean semantics differential tests
 
-Build the checker using the pinned Lean and Mathlib versions in
-[the gate guide](lean_pass_gate.md). Set `MERLIN_LEAN_SDK_BIN` to that SDK's `bin`,
-`MERLIN_COMPILER_PYTHON` to the authoritative MLIR interpreter, and
-`MERLIN_LEAN_REQUIRED=1` so missing prerequisites fail rather than skip.
-Keep temporary directories under the project's `out/build/` root.
+The fidelity suite compares the actual Lean denotation used by the soundness theorems with
+upstream MLIR lowering and native execution. It provides empirical evidence about the model's
+agreement with MLIR. Coverage is the explicit corpus in `test_lean_differential.py`; passing it
+does not establish fidelity for every MLIR operation, attribute, input, or target.
 
-Run `python build_tools/scripts/check_lean_guard.py` with the selected SDK on
-`PATH`. It rebuilds the checker and auditor, checks frozen-file and elaborated
-statement identities, and audits every imported project theorem for unapproved
-axioms and executable substitutions. `--lock-only` checks file identities only;
-it does not replace the full audit. Specification changes require independent
-review; regenerating a hash is not approval.
+## Prerequisites and invocation
 
-Run the real gate regression files listed in `code_refs`.
-The pass-gate fuzzer executes the actual preprocessing passes and compares
-mutations with an independent NumPy oracle. Increase coverage with
-`MERLIN_FUZZ_SEED` and `MERLIN_FUZZ_CASES`. These tests exercise checker acceptance
-and refusal; they do not directly qualify every operation of Lean's evaluator
-against native MLIR.
+Use the project Python environment with pytest and the verification dependencies, the pinned
+Lean toolchain and cached dependencies, the built `merlin-lean` printer, a compiler Python
+environment providing `torch_mlir.execution_engine`, and upstream `libmlir_c_runner_utils.so`.
+The runner library comes from an LLVM/MLIR build or installation; Merlin's runtime implementation
+is deliberately not used as the execution oracle.
 
-`test_lean_pass_gate_spike.py` additionally requires a captured model, its golden
-output, and the simulator/toolchain selected by Merlin's normal backend APIs.
-It checks a successful gated build and injected compiler faults. Report missing
-simulator prerequisites separately from passed checks.
+```sh
+export PATH="$HOME/.elan/bin:$PATH"
+export MERLIN_M2M_PYTHON=/path/to/compiler-environment/bin/python
+export MERLIN_MLIR_RUNNER_UTILS=/path/to/llvm-build/lib/libmlir_c_runner_utils.so
+MERLIN_LEAN_REQUIRED=1 .venv/bin/python -m pytest \
+  merlin/tests/ir/test_lean_differential.py -q -rx
+```
 
-To retain exported model boundaries from ordinary compilation, run
-`PYTHONPATH=src python build_tools/scripts/verify_lean_pass_models.py` with
-`--sdk-bin`, `--compiler-python`, and one `--capture /absolute/path` per model.
-Each capture contains `model.mlir`. The tool compiles both xDSL and textual
-routes with and without validation, requires identical returned LLVM bytes,
-and retains the exact boundary texts, authoritative JSON exports, bound
-receipts and verdicts in a fresh verification artifact directory. This is
-pass-boundary evidence; downstream LLVM correctness remains trusted.
+Without the interpreter override, tests use `toolchain.compiler_python()`. Without the runtime
+override, they look under `toolchain.llvm_install()/lib/`. Missing prerequisites skip ordinary
+runs and fail required qualification runs. An installed tool that cannot import, compile, or
+execute fails the test. The fixture builds only the stable Lean decoder and evaluator dependencies.
+It does not change or rebuild the shared checker driver or proof rules.
 
-The broader `feat/pass-verification` delivery also retains direct Lean/native
-semantics differential tooling. It is separate from this integration checkout's
-gate regression suite. Historical model-fidelity observations and unresolved
-cases remain in [the assumption ledger](../../merlin/lean/LEDGER.md); gate
-acceptance does not discharge those assumptions.
+For retained diagnostics, give pytest `--basetemp=out/build/lean-differential/pytest` and
+`-o tmp_path_retention_policy=all`; the repository normally deletes successful tests' temporary
+directories. Completed comparisons record the original MLIR, exported JSON, round-trip text,
+runtime inputs, native LLVM-dialect IR, and both evaluators' results. Earlier failures retain the
+available inputs and intermediate files. The native result identifies its source hash, MLIR package version,
+pass pipeline, and runner-library hash. It also records an executable map capability probe and
+hashes of the compiler interpreter, MLIR binding, and aggregate C API library. A package version
+is not an exact LLVM revision; a separate source checkout does not identify the installed binary.
+The comparison evidence records the Lean adapter, semantics files, specification lock, and NaN
+comparison policy. Retain these files when reporting a mismatch.
+
+## Check recorded compiler output
+
+`merlin-verify lean` exposes the receipt checkers without a Python harness. Select the same
+authoritative compiler interpreter that the build uses. For a recorded stage directory containing
+`before.mlir`, `after.mlir`, and `meta.json`:
+
+```sh
+merlin-verify lean typed-stage out/artifacts/verification/example/stage \
+  --compiler-python "$MERLIN_M2M_PYTHON" --index-bits 64
+merlin-verify lean support out/artifacts/verification/example/stage/before.mlir \
+  --function forward --work out/artifacts/verification/example/support \
+  --compiler-python "$MERLIN_M2M_PYTHON"
+merlin-verify lean definedness out/artifacts/verification/example/stage/before.mlir \
+  --function forward --work out/artifacts/verification/example/definedness \
+  --compiler-python "$MERLIN_M2M_PYTHON"
+merlin-verify lean chain out/artifacts/verification/example/stage \
+  --function forward --support out/artifacts/verification/example/support/receipt.json \
+  --definedness out/artifacts/verification/example/definedness/receipt.json \
+  --output out/artifacts/verification/example/chain.json \
+  --compiler-python "$MERLIN_M2M_PYTHON"
+```
+
+`stage` selects the universal checker; `typed-stage` records a typed domain and index width.
+Every command prints JSON, with exit 0 only for an overall verified receipt. Exit 2 means the
+check did not establish that claim. Chain replay checks the saved proof premises and current
+artifact bytes. A chain with refinement alone, without source definedness, does not exit 0.
+Supply multiple stage directories in execution order and `--handoff` when qualifying the exact
+recorded OOT handoff. Unsupported transformations remain explicit abstentions.
+
+`merlin-verify lean differential --help` describes a separate native comparison command. It
+takes a program, an explicit function, and JSON samples shaped `[sample][argument][element]`;
+every element is an integer bit pattern, including floats. Supply the built checker, Lake,
+compiler interpreter, upstream runner library, and a new work directory. The required
+`--assume-defined-inputs` records the caller's independent defined-execution obligation; the
+Lean model alone cannot establish that native execution is safe. Completed comparisons report
+`matched_samples`, retain both evaluators' evidence, and never issue a verification receipt.
+Failed comparisons and unavailable tools exit 2. Existing comparison directories are refused
+so a failed rerun cannot reuse an earlier success.
+
+## Require verification before consuming shared-pass output
+
+The Python lowering API has an explicit mode that stops compilation unless preprocessing has
+a replayed, defined Lean chain. Select the same authoritative MLIR interpreter as the compiler
+and supply the semantic index width explicitly:
+
+```python
+from pathlib import Path
+from merlin.llvmlower.lower import lower_model
+from merlin.verify.lean.handoff import Options
+
+result = lower_model(
+    source_mlir,
+    workdir,
+    index_bits=64,
+    shared_pass_verification=Options("forward", 64, Path(compiler_python)),
+)
+```
+
+`lower_model_file` accepts the same option. For another consumer, including an OOT driver,
+`merlin.verify.lean.handoff.run(source, output_path, options, preprocess)` runs an explicitly
+supplied preprocessing function and returns its verified text, statistics and evidence path.
+Consume that returned text. The recorder uses a fresh context-local capture; each recorded
+boundary, including unchanged ones, is checked. Source support, source definedness, chain replay,
+input/output byte identity and capture completeness are all required. A failed check raises
+`VerificationError` before downstream lowering starts. Reports are retained beside the handoff
+under `lean-shared-passes/<attempt>/`.
+
+This option wraps `lower_model`'s shared preprocessing. Add `verify_native_prefix=True` to hold
+the actual ordinary native MLIR module before bufferization and require one strict chain through
+the four authored tensor phases: canonicalization, CSE, guarded elementwise fusion and named-op
+generalization. The consumer resumes on the same Module and Context after acknowledgment;
+the proof response cannot replace its IR. The optional `shared_pass_preparation` prefix described
+below extends that chain to its original captured source. Model capture, the OOT implementation,
+bufferization, LLVM and runtime remain outside these proofs.
+
+The native gate initially admits ordinary serial lowering without effective optional features,
+custom pipelines or provider callbacks. Its 32-bit domain refuses index-typed SSA and function
+ABIs because of retained discrepancy S6; 64-bit index uses still need strict semantic replay.
+Reports state the typed, initialized-input domain, exact boundaries and ledger assumptions.
+Other drivers must explicitly call the gate at their own tensor handoff; ordinary ungated
+compilation remains available. Missing tools, unsupported rewrites and undefined source results
+stop a gated build. The Python orchestration and process supervision remain trusted components.
+
+## What is exercised
+
+- Integer arithmetic, bit operations, signed/unsigned comparisons, select, division, remainder,
+  floor/ceiling division, shifts, casts, and unviolated overflow promises. Widths include 1, 4, 8,
+  13, 32 and 64 bits; the 1- and 4-bit arithmetic domains are exhaustive. Larger widths combine
+  edge values and reproducible random inputs. Scalar index casts/arithmetic run with both 32-
+  and 64-bit index lowering.
+- Static tensor reshapes, strided and rank-reduced slices, slice insertion, concat, element
+  extraction/insertion, splat, from-elements, dense constants, scalar/tensor select, elementwise
+  arithmetic, rank-zero tensors, and empty dimensions.
+- Fill, mixed-width matmul, batch matmul, quantized matmul, copy, three-dimensional transpose,
+  broadcast, reduce, and generic affine indexing with `linalg.index`. Initial accumulators are
+  populated with runtime data. Named operations are also generalized by MLIR and checked in
+  their generic form.
+- Map explicit and shorthand syntax, zero/one/two inputs, captured values, rank-zero and empty
+  tensors, integer/f32 elements, reads of initialized destinations, and complete overwrites.
+  Both map and MLIR's generalized form run through Lean and native execution.
+- Host f32/f64 arithmetic, all float comparison predicates, format and integer conversions,
+  bitcasts, sqrt, abs, rounding operations (including ties-to-even), explicit fma, signed zero,
+  subnormals, infinities, NaNs, and order-sensitive floating-point reductions.
+- Internal calls and a passing `cf.assert`.
+
+Inputs enter the JIT through runtime memrefs. Only upstream passes run on the native side; no
+Merlin preprocessing or interpreter computes the expected answer. Elementwise tensor operations
+are lowered with upstream `convert-elementwise-to-linalg`; named structured operations are
+generalized and converted to loops. Fusion, canonicalization, CSE, fast-math, and JIT optimization
+are disabled in this oracle pipeline so reduction order and individual operations remain visible.
+
+Results are observed as integer bit patterns, including tensor shape and element count. Float
+arithmetic cases explicitly allow different NaN payloads/signs when both results are NaN; finite
+results, infinities and signed zero remain exact. Data movement and bitcast cases compare NaN
+payloads bit for bit. A seeded add-to-subtract fault demonstrates that a wrong model result is
+detected.
+
+## Closed integer folding and reshape composition
+
+`test_lean_integer_fold.py` certifies actual upstream constant canonicalization through universal
+C1 rules. The checker replays closed scalar fixed-width integer definitions using the actual Lean
+semantics and compares the final value with the actual target constant. It checks flags, widths,
+operand bindings, source/target shadowing and escaping intermediates. The rule excludes floating arithmetic and index-typed definitions. Native tests in the separate
+`test_lean_integer_fold_native.py` use independent signed/unsigned/modular references, cast edges
+and a verified wrong-constant control. Undefined divisions, signed division overflow and invalid shift counts are excluded
+independently before native execution. This is closed-fragment folding, not general constant-DAG
+or input-dependent cast simplification.
+
+`Rules/IntegerIdentity.lean` separately certifies input-dependent scalar add/subtract-zero,
+multiply-one, bitwise AND-all-ones, and OR/XOR-zero rewrites. The adjacent actual scalar constant
+establishes runtime type evidence; poison is preserved. The checker removes both operations or
+retains an alpha-equivalent constant when it escapes. Reverse subtraction, flags and tensor
+identities remain refused. Actual-pass, mutation, strict-chain and native tests cover these rules;
+native inputs are exhaustive at i1/i8 and include edges and seeded samples at i13/i32/i64.
+
+`test_lean_reshape_compose.py` checks two collapses or two expansions against upstream's composed
+reshape, including group algebra, exact output shapes/types, escaping inputs, verified mutations
+and defined receipt replay. The native module compares both sides with the unchanged row-major
+input bits, including floating NaN payloads. These universal sites refuse escaping intermediate
+reshapes and bare-input cancellation; the typed provenance route below extends composition coverage. All-unit rank-zero collapse/expand with empty reassociation
+is legal upstream but currently stuck in Lean: two dedicated native tests retain that discrepancy,
+while binding tests require source support and coverage-chain abstention. A passing conditional
+boundary check alone must never be reported as coverage for these unsupported inputs.
+
+`Rules/ReshapeMixed.lean` additionally certifies expansion followed by collapse against one
+expansion or collapse. Successful expansion determines the original runtime shape from actual
+reassociation products; target legality is recomputed from that shape. This universal mixed rule
+refuses collapse-first pairs and escaping intermediates; the typed provenance route below supplies
+their runtime premises while retaining original bindings. Bare-input cancellation remains refused.
+The mixed suites require strict source-defined chains and compare row-major bits independently,
+including empty integer tensors and exact f32/f64 payloads. BF16 has binding coverage only.
+
+Native-only modules are explicitly excluded from binding-only Lean CI. Missing native tools fail
+required qualification runs; no interpreter substitutes for native execution. Checker builds and
+specification locks must be fixed before receipt tests start. Independent workers use separate
+checkouts and binaries, then the coordinator replays integration against one final checker.
+
+## Transpose, broadcast and reduction rules
+
+The typed checker also certifies actual transpose, broadcast and variadic reduction generalization.
+`Rules/LayoutGeneralize.lean` derives indexing maps and iterator kinds from the actual source
+attributes and checked SSA types, preserves the scalar body and captures, and checks the actual
+generic header. Source support and source definedness are independent obligations. Transpose and
+broadcast may fully overwrite uninitialized destinations; reductions that read accumulators need
+initialized destinations. The integer reduction definedness rule supports multiple inputs/results
+and empty iteration spaces. Floating reductions retain their order in the refinement proof.
+The definedness leaf rulebook proves totality of the nine default same-format scalar float binary
+operations on initialized inputs, under every float interpretation. This permits strict defined
+chains for supported floating reductions; it assumes no arithmetic identities or accuracy laws.
+Fast-math promises, float-to-integer range checks and arithmetic on poisoned inputs remain refused.
+The f32/f64 native reduction cases require source and target definedness and compare with the
+independent order-preserving reference. Binding-only checks also cover f16/bf16; those formats have
+no new native arithmetic qualification.
+
+Generic source-definedness also composes through nested generic bodies. The body checker is a
+proved rulebook parameter; initialized destinations select the accumulator rule, while dirty
+destinations select complete-overwrite checking. A budget derived from actual region nesting
+ensures finite checking without repeatedly exploring both strategies on a rejected subtree.
+Rank-zero `tensor.extract` is total on initialized tensors because it has no index operands.
+Positive-rank extraction still needs a separate value-dependent bounds proof and remains refused.
+These are model-relative totality proofs, separately from native lowering qualification.
+
+`test_lean_layout_generalize.py` checks both index widths, actual pass output, receipt replay,
+stale source rejection, valid MLIR mutations, poisoned inputs, captured values and composition
+through intermediate fill/broadcast/transpose/reduce results. The native suite compares both sides
+with an independent coordinate-based reference. Data movement includes f32/f64 NaN payloads,
+signed zeros, infinities and subnormals. Reduction references use modular integer accumulation or
+explicit per-add floating rounding, including cancellation-sensitive inputs. BF16 movement has
+binding/proof coverage only; no native BF16 claim is made.
+
+Two boundaries remain explicit: the upstream greedy pass folds some identity operations away,
+which requires a separate rewrite rule; the typed checker currently abstains on those outputs.
+Rank-zero transpose is not qualified: the current installed binding crashes during verification,
+and an assertion-enabled upstream `mlir-opt` reproduces the empty-permutation-map assertion in
+`TransposeOp::getIndexingMaps`. Rank-zero broadcasts and scalar reduction results are separate
+cases. Generated failure evidence belongs under `out/artifacts/verification/shared-passes/`.
+
+## Map contract and initialization
+
+LLVM [f5e175f](https://github.com/llvm/llvm-project/commit/f5e175f06dacf6751f27f7a4bd9e9a3489e95a5e)
+added the output element block argument in October 2025. Lean previously implemented the older
+inputs-only convention. The reviewed correction passes inputs followed by the output element,
+including when unused; `SPEC_LOCK` records this semantic change. The old strict expected failure
+has been replaced by passing cases. The native oracle checks the installed contract before
+lowering: explicit forms and upstream generalization must preserve the extra argument and its
+reads, legacy explicit arity must be rejected, and shorthand must add an unused destination argument.
+An unexpected convention fails; there is no automatic legacy fallback.
+
+Lean now proves map progress and initialized results using the generic-loop proofs. An initialized
+destination may be read. A dirty destination is accepted only when the body produces initialized
+elements without relying on its old contents, and the iteration box covers the whole destination.
+Malformed body signatures and unsupported attributes are refused. A negative differential test
+ensures a map returning poison never reaches native execution.
+
+The separate upstream [bufferization issue](https://github.com/llvm/llvm-project/issues/213241)
+can omit initialization when directly bufferizing a map that reads its destination. The oracle
+and production scalar/parallel defaults generalize before bufferization. A regression checks that
+order and that an observable destination read retains its initializer copy in bufferized IR.
+This regression does not prove arbitrary downstream pipelines correct.
+
+Map-to-generic **rewrite certification is available on an explicit typed domain** through
+`merlin.verify.lean.check.check_typed_stage(stage, m2m_python=compiler, index_bits=64)`.
+`Check/TypedRewrite.lean` derives runtime facts from checked source operations and carries them
+through intermediate SSA bindings. `Rules/MapGeneralize.lean` uses the justified destination rank
+to prove the map expansion. `Check/TypedC1.lean` then checks the actual target with the existing
+universal C1 rules. Export retains the original map; normalization is an internal proved step.
+The original universal `check_stage` still refuses this type-dependent rewrite.
+
+The same typed checker certifies `linalg.fill` generalization through
+`Rules/FillGeneralize.lean`. It checks the scalar broadcast map, destination identity map,
+parallel iterators and operand segments, retaining the actual source body. Fill and map families
+compose on one checked SSA domain, including intermediate reshapes. The fill regression suite
+checks both index widths, rank-zero/empty tensors, initialized and dirty destinations, integer
+and floating element types, defined chains, and independently corrupted inputs, yields and returns.
+The native differential corpus executes original and generalized fills on integer, f32 and f64
+inputs. This certifies the named-to-generic boundary; it does not prove later bufferization.
+
+`Rules/CopyGeneralize.lean` adds `linalg.copy` on static, unencoded tensor destinations. It
+checks both identity maps, parallel iterators, operand segments and supported attributes while
+retaining the actual body, casts and SSA bindings. The copy-definedness rule proves the original
+source succeeds using a separate success-transfer theorem. A fully overwritten destination may
+start uninitialized; a poisoned input still prevents a defined-source claim. The regression suite
+checks actual upstream generalization at both index widths, rank-zero/empty tensors, integer and
+floating storage types, widening integer copies, intermediate fill/reshape results, escaping inputs,
+defined receipt chains and stale output. Numerically wrong mutations first pass MLIR verification
+and must then be refused by Lean. Native tests compare before and after against Lean and an
+independent input-bit/cast reference, including f32/f64 NaN payloads and signed zero. These tests
+cover the named-to-generic boundary; downstream lowering remains outside its formal claim.
+
+`test_lean_splat_inputs.py` executes the default uniform-input compaction pass and compares both
+programs through the Lean denotation and native MLIR. It covers multiple compacted inputs, a full
+splat result that must remain live, affine indexing, empty/rank-zero tensors and f32/f64 bit copies.
+Integer cases also use an independent modular reference; a corrupted scalar payload must produce
+a different native result. `Rules/SplatInputs.lean` supplies the general semantic proof under
+checked layouts and an actual shared scalar payload. `Check/UniformFacts.lean` proves the actual
+splat-producer facts and invalidates them when either dependency is rebound. Source and target
+payloads can be coupled only through corresponding actual scalar bindings. `Check/SplatC1.lean`
+now checks the actual whole-function boundary by independently proving exact normalization of
+both checked programs. A removed producer must be dead in the canonical continuation, including
+nested captures. Escaping full tensors remain live. The bare-scalar generic normal form is internal;
+exports and the native oracle still use only actual compiler IR. The binding suite checks both index
+widths, actual pass output, defined chain replay, stale receipts, captures, repeated generic uses and
+MLIR-verified mutations. `Check/SplatNested.lean` lifts exact normalization through supported
+single-block generic bodies using checked loop arguments and source safety. Region bindings mask
+captured uniform facts before entering the body. `SplatNormalizer` supplies one shared comparison
+checker for top-level and nested normalizers; both actual programs are checked independently.
+The default nesting budget derives from actual function bodies. Every budget has the same
+soundness proof; exhaustion can only cause refusal. Nested tests cover captures, stale SSA facts,
+three/four-level bodies, mutations and native results with independently initialized destinations.
+Rank-zero extraction permits strict source-defined chains; positive-rank extraction still needs
+its separate bounds obligation. Model-scale performance remains unmeasured.
+
+The nested suite also retains S4, a native bufferization discrepancy in the checksum-pinned
+torch-mlir 20260531.828 toolchain. A minimal no-splat tensor program reuses a captured initialized
+inner destination: Lean and the independent reference return `[2,3]`, but native execution returns
+`[2,4]`. Standalone one-shot-bufferization marks that destination in-place and repeatedly writes
+the same buffer. A reduction variant also fails; an explicit `scf.for` control inserts a copy and
+gets the expected result. This conflicts with the documented
+[immutable tensor and destination-copy contract](https://mlir.llvm.org/docs/Bufferization/#destination-passing-style).
+Captured-destination examples are outside native-fidelity qualification. Dedicated known-gap
+checks retain the mismatch separately from matched cases; identical wrong native results before
+and after compaction are not fidelity evidence. Fresh per-iteration destinations supply the
+matched nested corpus. No compiler pass, oracle or Lean semantics is changed to hide this finding.
+
+Typed receipts name `MerlinVerify.Check.TypedModule.check_sound` and record their domain and
+index width. `compose_chain` replays typed and universal boundaries together, requires every
+boundary to preserve the capture's declared input types/shapes, and checks that typed widths
+match the source support/definedness receipts. The resulting typed chain names
+`chain_typed_refines` and `chain_typed_defined_refines`. An initialized source still needs its
+independent definedness proof; rewrite certification alone permits poison and UB.
+
+Qualification is in `test_lean_typed.py`: actual generalization, rank-zero/empty tensors, captures,
+intermediate reshape/splat results, escaping outputs, both index widths, mixed chains, corrupted
+rewrites, stale bytes, and tampered domains/theorem labels. The original typed expansion route handles
+top-level one-operation expansions that preserve bindings and region closures. Adjacent closed-expression
+motion has its own proof in `Rules/Motion.lean`: both expressions must be pure, operand-free,
+region-free, single-result operations with distinct source bindings and fresh target bindings.
+This permits upstream hoisting a captured constant across static `tensor.empty`. Qualification
+includes the typed defined chain, native execution before and after, an independent integer
+reference, and rejection of a changed moved constant. `test_lean_motion.py` checks escaping values,
+integer widths, floating constants without arithmetic laws, and conservative refusals. Operand-taking
+motion, non-adjacent hoisting and nested motion still require additional work.
+
+```sh
+MERLIN_LEAN_REQUIRED=1 .venv/bin/python -m pytest \
+  merlin/tests/ir/test_lean_typed.py merlin/tests/ir/test_lean_motion.py -q
+```
+
+The lower-level driver also exposes `merlin-lean check-module-typed before.json after.json 64`.
+Differential agreement remains empirical evidence about the semantics; the typed rewrite and
+chain theorems supply the formal transformation claims.
+
+`test_lean_control_definedness.py` qualifies integer comparison and selection source domains,
+including all ten integer predicates, both index widths, scalar and static tensor branches,
+initialized tensor conditions, generic bodies, and refusal of poison or unknown semantic
+attributes. Its actual canonicalization chain removes a neutral integer addition while retaining
+input-dependent comparison and selection. `test_lean_control_differential.py` compares these
+operations with native MLIR and independent signed/unsigned integer and input-bit references.
+The native corpus exhausts i1/i4 comparison pairs, samples wider widths deterministically, and
+checks bit-preserving f32/f64 selection including NaN payloads. A swapped-branch target is both
+rejected by the checker and observably wrong in native execution. These tests qualify this bounded
+corpus; they do not prove a general IEEE instance or source capture fidelity.
+
+The input-dependent cast suite (`test_lean_integer_cast.py` and its `_native` companion) checks
+four unflagged scalar integer composition families, including computed SSA operands, retained
+intermediates and longer compatible chains. Poison and malformed runtime widths are checked in
+Lean; native cases use initialized inputs and an independent modulo/sign-extension reference.
+Index/tensor casts, extension/truncation alias roundtrips and signed-then-unsigned flattening
+remain outside this family. Native widths are at most 64 bits; binding acceptance additionally
+exercises wider integer types.
+
+`test_lean_integer_cast_nested.py` applies the same four families inside parallel and reduction
+bodies, including nested generics, captured scalar inputs, escaping intermediate results and
+128-cast source chains. Dead casts require proved typed totality and alpha-checked absence of
+continuation uses. The native companion uses independent signed/modular references and observable
+operand, signedness and escaping-output corruptions. Poison remains exact in the transformation
+proof; dirty inputs/accumulators still refuse source-definedness and strict chains. Origin facts
+are local to a block, so no outer cast relationship is assumed inside a region.
+
+`test_lean_reshape_typed.py` and its `_differential` companion exercise source-provenance mixed
+reshape composition, escaping and captured intermediates, zero/unit extents, alternative legal
+unit reassociations, and invalid target headers/operands. Native f32/f64 cases preserve input bits,
+including signed zero and NaN payloads. Bare-input cancellation, S3 transitions and arbitrary
+cross-region provenance remain outside coverage. `test_lean_reshape_chain.py` extends checked
+provenance through longer local chains, including 128 source reshape operations and escaping
+intermediates. `test_lean_reshape_nested.py` applies local composition inside generic regions
+through the shared body traversal. Dead intermediate reshapes are deleted only after proving
+typed totality, fresh results and absence of all continuation uses, including captures.
+Their native companions use independent flattened-bit and modular-sum references. Facts start
+empty at each block; outer shape provenance is not assumed inside a captured region.
+
+`test_lean_integer_body.py` and its `_differential` companion qualify exact unflagged integer
+commutation through generic bodies and nested reductions with fresh destinations. Wrong captured
+constants and wrong yields have observable native controls. Internal SSA names are proposed lexically and validated by the proved alpha checker before
+operand ordering. Entry IDs stay fixed; arbitrary entry permutations can still cause refusal.
+Floating-point algebra and iteration reordering remain refused.
+
+`test_lean_shared_normalize.py` and its `_differential` companion combine these families in actual
+pass output, including Merlin splat compaction followed by upstream canonicalization. Both actual
+programs are independently type checked and exactly normalized before the C1 comparison. The
+suite checks strict source-defined chains at both index widths, zero extents, escaping tensors,
+stale bytes, and valid MLIR corruptions in each family. Native execution is compared with independent
+bit arithmetic and flattened tensor references, including the intermediate compacted program.
+
+`test_lean_integer_idempotent.py` checks scalar `andi`, `ori`, signed/unsigned min and max with
+identical operands. Actual canonicalization removes these aliases inside parallel and reduction
+bodies. SSA substitution is a proposal checked by the alpha checker across captures, shadowing
+and escaping results. Poison is preserved exactly; dirty accumulators do not gain definedness.
+The native companion exhausts i1/i8 inputs and samples wider widths with independent modular
+references and observable corruptions. Long 128/256-alias cases retain checker timing evidence.
+The current substitution and continuation checks can be quadratic; these measurements do not
+establish model-scale performance or a linear bound.
+
+`test_lean_defined_bounds.py` proves positive-rank extraction definedness from actual producer
+facts. Index constants are decoded at the claimed width and interpreted as signed values after
+wrapping. Every coordinate must have a proved nonnegative interval wholly inside the actual
+dimension, and the source tensor must be initialized. Region arguments shadow captured facts;
+rebinding replaces their evidence. Zero extents, negative/out-of-bounds coordinates, dirty data
+and unknown input indices refuse. The native companion checks row-major references, nonzero
+multidimensional captures, index32 wrapping, bit-preserving float reads and observable wrong
+coordinates/captures. Existing bounded rank-two reshape and nested-splat examples now establish
+strict defined chains. S4's captured-destination native exclusion remains unchanged.
+
+Python `check_definedness` selects `DefinedExtended.check_sound`, which composes the legacy
+definedness checker with the independently proved bounds checker on the same input domain.
+The executable retains the legacy `check-definedness` command; its new
+`check-definedness-extended` command names the broader theorem. Chain replay recognizes each
+exact checker/theorem pair, independently replays it, and refuses substituted proof labels.
+Extended receipts compose through `chain_extended_defined_refines` or its typed counterpart,
+whose hypotheses name the actual extended check. Legacy receipts retain the legacy composition
+theorems. The schema checks both the source obligation and the matching composition identity;
+bounds-only sources exercise this distinction at both index widths.
+
+`test_lean_floating_source.py` establishes scalar source totality for `arith.negf`, `math.fma`
+and the finite unary math vocabulary in `DefinedFloating.lean`, on initialized same-format
+operands without fast-math promises. Structured bodies use the same assembled leaf book.
+The proof quantifies over every existing `FloatModel`; it adds no numerical identity or float
+rewrite permission. F16/BF16 are covered by binding proofs. Its native companion qualifies only
+the existing f32/f64 interpretation of negate, abs, sqrt, rounding and FMA, with signed-zero,
+NaN-classification and independent finite references. Other unary math functions have parametric
+totality proofs here; this suite supplies no new native numerical fidelity evidence for them.
+
+`test_lean_scalar_carrier.py` qualifies actual rank-zero `tensor.from_elements`/`tensor.extract`
+folding, escaping producers, captured scalar uses, local generic bodies and chains of aliases.
+The scalar-carrier pass runs before integer cast normalization so removing a carrier can expose
+cast composition; `test_lean_shared_composition.py` requires a strict chain for that mixed case.
+The native companion compares exact integer/float bits with independent input-bit references,
+including signed zero and NaN payloads. Rank-zero splat alias targets are manually proposed:
+the pinned canonicalizer does not perform that fold. Positive-rank aliases remain refused.
+
+`test_lean_index_bounds.py` propagates exact singleton ranges through initialized, unflagged
+index add/subtract/multiply at the actual bit width, including signed wraparound. Unknown
+operands can establish initialized results without inventing bounds. The native companion checks
+independent modular arithmetic, captured tensor extraction and observable in-bounds mutations.
+This source-definedness proof does not certify the canonicalizer's index constant-fold rewrite;
+that boundary currently abstains even when both programs have matching defined execution.
+
+`test_lean_defined_conversions.py` proves scalar floating extension/truncation and fixed-width
+signed/unsigned integer-to-float source totality, including initialized generic/reduction bodies.
+The rules use arbitrary `FloatModel` conversion functions and prove no numerical identities.
+Default attributes and actual legal width directions are required. Direct index-to-float operands
+are rejected by the pinned MLIR verifier. The native companion qualifies selected f32/f64 cases
+with integer-only, single-rounding IEEE references, including integer64-to-float32 cases where an
+intermediate binary64 rounding would give a wrong answer. NaNs compare by class; f16/bf16 retain
+binding evidence only. Float-to-integer totality and explicit rounding/promises remain outside.
+
+`test_lean_index_cast_bounds.py` derives the entire unsigned range `[0, 2^w)` from actual
+initialized `iw` input bits when `w` is smaller than the claimed index width. It requires no
+input range annotation. Signed, equal-width and narrowing casts establish initialization but do
+not invent nonnegative bounds. The native companion checks high-bit inputs and captured reads;
+signed/OOB reads are never executed as fidelity evidence. `test_lean_index_range_add.py` carries
+these intervals through addition only when their entire result range fits the signed index domain.
+It tests exclusive upper bounds and the signed limit at both widths. Independent native offset
+references and a safe wrong-offset mutation distinguish definedness from rewrite correctness.
+
+`test_lean_dense_extract.py` qualifies rank-zero dense constant extraction by decoding the actual
+source constant at the claimed index width and checking the proposed scalar constant's exact bits.
+Escaping dense producers remain present; deletion requires an actual successful constant step and
+checked absence of all continuation uses. A shared recursive walker composes this stage before
+scalar carriers and integer rewrites. The native companion preserves exact integer/f32/f64 bits,
+including index32 wrapping and NaN payloads. Manually scope-preserved local materialization is
+labelled separately: hoisting a tensor-valued dense producer across a generic region still
+abstains. The separate scalar-constant family below requires a leading closed scalar literal.
+
+`test_lean_scalar_bitcast.py` adds scalar support and source-definedness for same-width integer
+and integer/float raw-bit reinterpretations already modelled by the semantics. Supported native
+cases check exact bits with independent input-bit references, including NaN payloads and valid
+wrong-operand targets. Integer identity canonicalization now requires a defined verified chain.
+Four separate native observations record a conservative model gap: legal float-to-float bitcasts,
+including f16/bf16, execute natively but are refused by the current Lean semantics. They are known-gap
+regressions and do not count as matching model/native qualification.
+
+`test_lean_index_fold.py` qualifies exact closed index arithmetic at the claimed width, with long
+chains, escaping producers, nested bodies and valid wrong-value mutations. Its native companion
+records the unresolved S6 index32 comparison discrepancy separately from matched arithmetic.
+`test_lean_index_bitwise_bounds.py` proves initialization and retains only justified singleton
+bounds, including wrapped-width and captured-read controls. `test_lean_from_elements_select.py`
+checks actual multi-element constructor selection, exact scalar aliases, empty-tensor refusal and
+signed index limits; native references select the scalar independently. Native execution never
+uses the out-of-bounds counterpart of a wrapped-width safety case.
+
+`test_lean_bounds_dispatch.py` checks deep initialized/overwrite bodies and poison failures.
+Destination facts select one recursive definedness route, avoiding duplicate retries on failed
+nested bodies. This preserves soundness; an arbitrary nonmonotone custom body book may lose
+acceptance from the old initialized-to-dirty retry. No model-scale complexity bound is claimed.
+
+The opt-in runtime gate currently wraps `lower_model` preprocessing through `model.upstream.mlir`.
+It resolves an authored immutable roster before execution and requires every ordered occurrence,
+including unchanged stages, with the exact pass identity. `test_lean_boundary_plans.py` covers
+omissions, reordered/duplicate occurrences, selection drift, retained-plan tampering and changes
+during replay, plus real strict chains at both widths. Independent roster replay requires the
+caller-supplied expected plan and is separate from semantic chain replay. Unplanned generic
+captures explicitly report recorded-boundary coverage only; gated textual preprocessing refuses.
+An explicit `preparation.capture` result can be supplied as `shared_pass_preparation` to
+`lower_model` or `lower_model_file`, together with `shared_pass_verification`. This extends the
+single strict chain to the original source through ordinary preparation. Capture is unverified;
+the consuming gate independently derives the expected roster and checks retained evidence and
+actual source/handoff bytes before and after replay. Selected optional mutations, integer
+quantization, routing and provider callbacks currently refuse before capture. Mandatory repairs
+receive no automatic semantic permission: the bool signed-to-unsigned frontend repair has a
+specific refusal regression. `test_lean_preparation_capture.py` covers actual chains at both
+widths, coherent forged denominators and evidence races. Whole-model builders remain unchanged.
+
+`test_lean_constant_alias.py` compares actual decoded scalar constants and checks complete
+continuation aliases. Raw float bits retain payloads and signed zero; no numerical identity is
+assumed. Its integration strengthens the existing cyclic128 and escaped-equal-value index cases
+from explicit abstention to strict verified chains. `test_lean_index_compare.py` separately checks
+all ten integer predicates over actual local index values and requires the S6 index32 refusal.
+`test_lean_from_elements_index.py` proves selection through closed computed indices even when
+canonicalization removes every intermediate index constant from the target.
+
+Mixed-family rules now include widening followed by truncation back to the original width and
+adjacent independent constant motion across operand-using scalar instructions. Cancellation
+preserves escaping widenings, while a final ordering-only traversal follows all aliases, including
+parent capture renames. Local neutral integer identities preserve poison and use literal values
+derived from actual successful source steps; captured numeric facts and poison-erasing absorbing
+identities remain outside this family. Motion across region-bearing operations and operation
+reordering inside generic bodies retain explicit conservative abstentions. Empirical native
+agreement does not upgrade these gaps to proved rewrites.
+
+`test_lean_native_gate_differential.py` checks the actual held ordinary prefix at both widths,
+preparation composition, emitted LLVM-byte parity, independent native references and refusal of
+a valid wrong boundary before acknowledgment. `test_lean_native_binding_api.py` separately probes
+the installed binding's type/attribute API. Process controls cover atomic bounded worker results,
+partial messages and bounded cancellation, including an unreapable-child model; pending kernel
+cleanup is retained explicitly. Ordinary filesystem/process-creation calls still depend on the host.
+Whole-model builders and OOT consumers are not automatically gated. Full shared-pass coverage
+still needs the selected model/build denominator and evidence from each actual consumer route.
+
+The differential adapter permits arbitrary positive-width internal integer bitvectors while
+keeping its observable input/output ABI at 1–64 bits. Integer-to-float host conversion separately
+checks the actual scalar or tensor element width, including region captures, and refuses widths
+above 64 before native execution. `test_lean_wide_integer_differential.py` exercises 65/128/136-bit
+products and shifts with independent references, including the highest internal bits. The unchanged
+136-bit cast-chain regressions also run. Its narrow tensor conversion controls exercise Lean only;
+they do not qualify native legalization of direct tensor arithmetic. No semantics or float law is
+changed by this test adapter extension.
+
+`test_lean_integer_cast_partial.py` extends widening/truncation cancellation to a final width
+above or below the original width. Actual typed origin facts justify replacing the chain with
+one extension or truncation; escaped widenings remain live, and poison is preserved.
+`test_lean_insert_extract.py` selects the exact stored scalar at independently decoded matching
+coordinates. Deletion requires proved-total insertion and complete continuation liveness checks.
+Source initialization additionally requires an initialized destination, except for the complete
+overwrite of a rank-zero tensor. Dynamic or unproved coordinates remain refused.
+
+Integer comparison ordering inverts the actual predicate when swapping operands and canonicalizes
+its internal header using the semantics' property/attribute lookup. All ten predicates have exact
+outcome proofs; unsupported modifiers and unknown attributes abstain. This shares one final
+all-region traversal with integer commutation after every alias stage. The traversal preserves
+actual headers, captures and block arguments, including malformed and failing region outcomes.
+`test_lean_region_exact.py` exercises the named matmul parse boundary and valid operand mutants.
+
+`test_lean_native_gate_structured_differential.py` requires actual changing matmul and transpose
+generalization, original and held native references, and ordinary LLVM-byte parity. Its separate
+repeated-input two-generic-to-one integer fusion case requires a verified chain before acknowledgment
+and native suffix execution. A separate actual captured-scalar fusion case remains refused before
+acknowledgment; matching sampled outputs do not supply its missing proof.
+
+`test_lean_scalar_constant_hoist.py` checks movement of one leading, successfully decoded closed
+scalar constant out of a generic body. The proof preserves captures, zero-iteration behavior and
+complete outcomes; it excludes index/tensor constants and adds no floating-point arithmetic law.
+`AlphaNormalize` proposes internal lexical names and validates the whole proposal with `alphaOps`
+before final operand ordering, resolving the observed hoist/SSA numbering interaction.
+
+`test_lean_bitcast_cancel.py` checks same-width integer identities and supported integer/float
+roundtrips, including escaping intermediates, poison and raw NaN payloads. Float-to-float support
+gaps remain refused. `test_lean_tensor_empty_dead.py` checks deletion only for statically decoded,
+total empty producers whose results are absent from the complete continuation and nested captures.
+
+`test_lean_parallel_fusion.py` checks adjacent identity-map, all-parallel loops over equal static
+integer tensor shapes, each with one input and one unflagged add/multiply/bitwise primitive reading
+that input twice. The proof evaluates both actual source bodies and the fused body with its fresh
+empty destination; it preserves poison and excludes producer escapes, captures and reductions.
+Its native companion covers zero extents, rank zero, modular wrap and an observable wrong target.
+These families prove accepted boundaries relative to the locked semantics, not complete pass coverage.
+
+`test_lean_identity_return.py` checks whole-function identity-loop elimination after exact
+normalization. The comparator accepts only a single identity generic followed immediately by
+return, against a return-only target, and recomputes argument/result correspondence. Its strict
+refinement proof compares valid tensor indices; it does not equate raw tensors with their canonical
+copies or substitute them into arbitrary call continuations. A retained live arithmetic prefix
+remains outside this bounded comparison. Native cases preserve returned integer bits, float payloads,
+actual index widths and repeated/unchanged results; valid wrong-return/yield/layout mutations refuse.
+The earlier pure bitcast-body identity-loop gaps now require defined verified chains.
+
+## Limits
+
+The corpus chooses defined inputs independently: divisors are nonzero, signed division overflow
+is excluded, shift counts are in range, tensor indices are in bounds, and float-to-integer inputs
+are representable. A Lean result containing poison, UB or `stuck` cannot count as a successful
+comparison and does not reach native execution. Negative qualification tests exercise this rule.
+`remsi(INT_MIN, -1)` is excluded because of the documented MLIR/LLVM discrepancy in ledger A2.
+Executing undefined native behavior cannot establish what poison or UB means.
+
+The host `FloatModel` lives in the test-only `Differential.lean` adapter, outside the verified
+namespace. It adds no axioms or changes to the soundness claims. It is not a proved IEEE instance.
+Unsupported operations, non-default rounding, fast-math, f16/bf16, and float-to-integer results
+wider than 32 bits are refused. Native memref copies with 32-bit descriptors are also refused
+because upstream CRunnerUtils uses 64-bit descriptor indices. Dynamic/encoded tensors, external
+calls, failing assertions, exhaustive floating-point testing, and non-host execution remain outside
+this corpus.

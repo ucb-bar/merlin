@@ -1,0 +1,142 @@
+{
+  "status": "EXECUTED_ON_SELECTED_Q_CUT_SOURCE_ONLY",
+  "source_fixture": {
+    "path": "service/fixtures/scalar-input.mlir",
+    "sha256": "f49042f26da235421dcaf6aa488b0d813dc61c1f0463ecf03e57ef28eb123a8b",
+    "bytes": 331
+  },
+  "cases": [
+    {
+      "id": "missing-explicit-graph-profile",
+      "expected": "Host supplies no graph binding; refuse without legacy toolchain fallback.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/missing-explicit-graph-profile/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "serialized-profile-binding",
+      "expected": "Saved/profile dict cannot replace a host-issued binding.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/serialized-profile-binding/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "request-selects-profile",
+      "expected": "Untrusted request cannot select graph profile or root/domain.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/request-selects-profile/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "request-plan-only",
+      "expected": "Top-level plan_only cannot bypass checked service schema.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/request-plan-only/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "options-plan-only",
+      "expected": "Option plan_only cannot enter frozen transform options.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/options-plan-only/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "serialized-completion-request",
+      "expected": "Untrusted request cannot submit saved receipts/results as authority.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/serialized-completion-request/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "legacy-local-completion",
+      "expected": "Actual legacy receipt class cannot authorize checked service output.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/legacy-local-completion/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "serialized-verifier-completion",
+      "expected": "Verifier returns descriptive JSON; service must reject.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/serialized-verifier-completion/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "public-gate-held",
+      "expected": "Actual public native gate remains unavailable and no legacy fallback is called.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/public-gate-held/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "mocked-explicit-profile-positive",
+      "expected": "Actual service uses explicit host binding and plan_only=False; only lower checker/context success may be mocked.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "MOCKED_LIVE_DELIVERY_ONLY",
+        "ref": "service/cases/mocked-explicit-profile-positive/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "profile-identity-mismatch",
+      "expected": "Compiler/profile association mismatch refuses before any SDK operation.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/profile-identity-mismatch/RESULT.json"
+      },
+      "reason": null
+    },
+    {
+      "id": "second-boundary-refusal",
+      "expected": "Actual two-boundary pipeline refuses a constructed second completion; no service delivery is issued. Positive case separately tests copied/serialized/mutated report eligibility.",
+      "actual_api": "CommonTransformService constructor/apply/compiler_eligible + actual graph binding/gate/pipeline APIs",
+      "result": {
+        "passed": true,
+        "outcome": "REFUSED",
+        "ref": "service/cases/second-boundary-refusal/RESULT.json"
+      },
+      "reason": null
+    }
+  ]
+}

@@ -55,6 +55,10 @@ _ORACLE_DENY = [
 # would be reported over a difference that partly does not exist. Deny wins in the sandbox binder, so
 # naming the file masks it inside the granted directory.
 _VERIFY_DENY = [{"path": p, "reason": TR.spec("verify_seam").deny_reason} for p in TR.spec("verify_seam").bundle_paths]
+_PASS_CATALOG_DENY = [
+    {"path": p, "reason": TR.spec("pass_catalog").deny_reason}
+    for p in TR.spec("pass_catalog").bundle_paths
+]
 
 
 def _tool_allow(te: TargetExperiment, tools: tuple[str, ...]) -> list[dict]:
@@ -243,7 +247,7 @@ def _arm_manifest(
             + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY]
             + deny
         )
-    elif arm == "merlin_rtlchecks":
+    elif arm in ("merlin_rtlchecks", "merlin_pass_catalog"):
         deny = _VERIFY_DENY + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny
     elif arm == "merlin_verify":
         # EL4's deny block minus the verification seam: EL4-V is EL4 plus that one grant, so its
@@ -251,6 +255,13 @@ def _arm_manifest(
         deny = [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny
     else:
         raise ValueError(f"unknown arm {arm!r}")
+    # schemas/ is a common grant, so omission alone would expose the schema.
+    if "pass_catalog" not in tools:
+        deny += _PASS_CATALOG_DENY
+    else:
+        from .contract.pass_catalog import load_catalog
+
+        load_catalog()  # fail before emitting a bundle with malformed requirements
     if add_tools or drop_tools:
         allow, deny = _apply_ablation(te, allow, deny, add_tools, drop_tools)
     numerical_inputs = []
@@ -342,7 +353,10 @@ _ARMS = {
 # the xDSL arm and the run silently gets arm-3's tool set under the verify arm's name -- the exact
 # downgrade that resolver's own docstring was written to prevent. Move the entry into ``_ARMS`` and
 # widen the resolver in the same change.
-_OPT_IN_ARMS = {"merlin_verify": "merlin_assisted_verify"}
+_OPT_IN_ARMS = {
+    "merlin_verify": "merlin_assisted_verify",
+    "merlin_pass_catalog": "merlin_assisted_pass_catalog",
+}
 _ALL_ARMS = {**_ARMS, **_OPT_IN_ARMS}
 
 
@@ -648,7 +662,7 @@ not correctness-qualified implementations and must not be promoted without an in
         _w_if_absent("STARTER_PROMPT.md", prompt)
     _w_always("allowed_files.txt", _grant_txt(manifest, "allowed"))
     _w_always("denied_files.txt", _grant_txt(manifest, "denied"))
-    if manifest.get("arm") in {"merlin_assisted", "merlin_rtlchecks", "merlin_eqsat", "merlin_verify"}:
+    if "xdsl_kit" in TR.ARM_TOOLS.get(manifest.get("arm"), ()):
         _w_always("ALLOWED_MERLIN_TOOLS.md", _allowed_merlin_tools_doc(manifest))
 
 

@@ -1,0 +1,9 @@
+Source-only W data-review first attempt raised AssertionError at line25. No native execution or semantic negative was observed. Diagnostic: expected all17 roots in statements, but F main statements cover15 gate roots while chain2 extras were added to axiom audit only. Preserve this record; successor review must distinguish the two rosters.
+{
+  "statement_count": 15,
+  "axiom_count": 17,
+  "missing_statement_roots": [
+    "MerlinVerify.Check.Bf16F32AccChain.check_sound",
+    "MerlinVerify.Check.Bf16F32AccChain.qualify_sound"
+  ]
+}

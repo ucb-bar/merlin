@@ -1,0 +1,102 @@
+{
+  "runs": [
+    {
+      "command": [
+        "/home/jeremy/Projects/merlin/.venv/bin/python",
+        "-m",
+        "pytest",
+        "merlin/tests/ir/test_lean_graph_loops_shape.py",
+        "merlin/tests/ir/test_lean_graph_loops_shape_receipts.py",
+        "merlin/tests/ir/test_lean_graph_loops_shape_runtime.py",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "shape_runtime_observer",
+        "-o",
+        "tmp_path_retention_policy=all",
+        "-o",
+        "tmp_path_retention_count=1",
+        "--basetemp=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/qualification/pytest",
+        "--junitxml=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/qualification/junit.xml"
+      ],
+      "returncode": 0,
+      "fresh_process": true,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/qualification/stdout.log",
+        "sha256": "73e1e9dc7133dcd46250b596f53b84f2d2eecba4545f82a007fefcde288b2c5a",
+        "bytes": 190
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/qualification/stderr.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "tests": 78,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "retained": {
+        "Obligation.lean": 22,
+        "CHECK.json": 22,
+        "REFUSAL.json": 21,
+        "FINITE.json": 13,
+        "COUNTEREXAMPLE.json": 2,
+        "Witness.lean": 6,
+        "WITNESS.json": 6
+      }
+    },
+    {
+      "command": [
+        "/home/jeremy/Projects/merlin/.venv/bin/python",
+        "-m",
+        "pytest",
+        "merlin/tests/ir/test_lean_graph_loops_shape.py",
+        "merlin/tests/ir/test_lean_graph_loops_shape_receipts.py",
+        "merlin/tests/ir/test_lean_graph_loops_shape_runtime.py",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "-p",
+        "shape_runtime_observer",
+        "-o",
+        "tmp_path_retention_policy=all",
+        "-o",
+        "tmp_path_retention_count=1",
+        "--basetemp=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/fresh-replay/pytest",
+        "--junitxml=/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/fresh-replay/junit.xml"
+      ],
+      "returncode": 0,
+      "fresh_process": true,
+      "stdout": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/fresh-replay/stdout.log",
+        "sha256": "94fb877a861c3ea3207a844a7e7b7cf51f4e5f6ee61fb7a916b2b1ebe518eb70",
+        "bytes": 190
+      },
+      "stderr": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/fresh-replay/stderr.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "tests": 78,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "retained": {
+        "Obligation.lean": 22,
+        "CHECK.json": 22,
+        "REFUSAL.json": 21,
+        "FINITE.json": 13,
+        "COUNTEREXAMPLE.json": 2,
+        "Witness.lean": 6,
+        "WITNESS.json": 6
+      }
+    }
+  ],
+  "same_loaded_runtime": true,
+  "postchecks_unchanged": true,
+  "standalone_shape_checked": true,
+  "epoch_adapter_proved": false,
+  "review_complete": false,
+  "pipeline_receipt_issued": false
+}

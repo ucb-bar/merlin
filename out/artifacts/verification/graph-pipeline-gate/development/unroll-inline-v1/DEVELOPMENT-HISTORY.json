@@ -1,0 +1,13 @@
+{
+  "first_tests": "first-tests.txt",
+  "pre_review_captures": "actual-examples",
+  "initial_emitter": "development-history/initial-emitter.py",
+  "initial_emitter_sha256": "397730336a62e0bd385da95244e9db0053187362af5f488ef4f277476ac67990",
+  "source_review_correction": "Run call case splits only on remaining goals after simplification (all_goals); same final statement/model/source buffers. No native result observed.",
+  "final_tests": "complete-carry-tests.txt",
+  "final_captures": "complete-carry-examples",
+  "new_failures": [],
+  "earlier_final_captures": "final-actual-examples",
+  "earlier_final_tests": "final-tests.txt",
+  "final_source_review_strengthening": "Both escaping carries are now passed to the partial final observer; add valid carry-order mutation. No equality/model law changed, no native outcome observed."
+}

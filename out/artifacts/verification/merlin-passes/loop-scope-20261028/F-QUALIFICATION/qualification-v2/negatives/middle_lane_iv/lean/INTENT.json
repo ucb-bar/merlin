@@ -1,0 +1,8 @@
+{
+  "command": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "-j1",
+    "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/negatives/middle_lane_iv/Query.lean"
+  ],
+  "timeout": 120
+}

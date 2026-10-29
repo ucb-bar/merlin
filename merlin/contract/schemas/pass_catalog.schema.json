@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Static compiler pass requirements",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "roles"],
+  "properties": {
+    "schema": {"const": "merlin.pass_catalog.v1"},
+    "roles": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "summary", "consider_when", "inputs", "unknown_policy", "output", "obligations", "strategies", "verification"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "summary": {"$ref": "#/$defs/text"},
+          "consider_when": {"$ref": "#/$defs/texts"},
+          "inputs": {
+            "type": "object", "additionalProperties": false,
+            "required": ["hardware", "software", "ir"],
+            "properties": {
+              "hardware": {"$ref": "#/$defs/texts"},
+              "software": {"$ref": "#/$defs/texts"},
+              "ir": {"$ref": "#/$defs/texts"}
+            }
+          },
+          "unknown_policy": {"$ref": "#/$defs/text"},
+          "output": {"$ref": "#/$defs/texts"},
+          "obligations": {"$ref": "#/$defs/texts"},
+          "strategies": {"$ref": "#/$defs/texts"},
+          "verification": {
+            "type": "object", "additionalProperties": false,
+            "required": ["storage_safety", "numerical_semantics", "resource_geometry"],
+            "properties": {
+              "storage_safety": {"$ref": "#/$defs/verification"},
+              "numerical_semantics": {"$ref": "#/$defs/verification"},
+              "resource_geometry": {"$ref": "#/$defs/verification"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1},
+    "texts": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/text"}},
+    "verification": {
+      "type": "object", "additionalProperties": false,
+      "required": ["method", "scope", "availability"],
+      "properties": {
+        "method": {"$ref": "#/$defs/text"},
+        "scope": {"$ref": "#/$defs/text"},
+        "availability": {"enum": ["existing_grading", "deferred"]}
+      }
+    }
+  }
+}

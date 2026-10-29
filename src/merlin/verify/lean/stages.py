@@ -1,0 +1,205 @@
+"""Record the exact before/after IR of each Merlin compilation boundary (design §8.1).
+
+Off unless ``MERLIN_LEAN_STAGES`` names a directory. Each recorded boundary becomes
+``<dir>/<seq>_<boundary>/{before.mlir,after.mlir,meta.json}`` with SHA-256s of both texts; sequence
+numbers are reserved atomically and stages are published by rename, so concurrent recorders sharing a
+directory neither collide nor expose partial stages (read them with ``completed``). Texts are
+GENERIC-form prints of the module (the form MLIR parses back without custom-printer skew). Recording
+only prints the module; it never changes it, so builds are byte-identical with recording on or off.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from pathlib import Path
+
+ENV = "MERLIN_LEAN_STAGES"
+# One id per recording process, written into every stage it records: chains recorded concurrently into
+# one directory stay distinguishable.
+RUN = uuid.uuid4().hex
+
+
+@dataclass
+class Capture:
+    """One fresh, scoped recording; only a normally exited capture is complete."""
+
+    root: Path
+    run: str
+    complete: bool = False
+
+
+_SUPPRESS: ContextVar[bool] = ContextVar("merlin_lean_suppress_nested", default=False)
+
+_ACTIVE: ContextVar[Capture | None] = ContextVar("merlin_lean_capture", default=None)
+
+
+@contextmanager
+def capture(root: Path) -> Iterator[Capture]:
+    """Record this execution without changing process-wide recording environment variables.
+
+    Nested captures refuse rather than silently removing boundaries from the outer chain.
+    Existing directories refuse, so an interrupted build cannot reuse old evidence.
+    """
+    if _ACTIVE.get() is not None:
+        raise ValueError("nested Lean captures are not supported")
+    root = root.resolve()
+    root.mkdir(parents=True, exist_ok=False)
+    recording = Capture(root, uuid.uuid4().hex)
+    token = _ACTIVE.set(recording)
+    try:
+        yield recording
+        recording.complete = True
+    finally:
+        _ACTIVE.reset(token)
+
+
+def enabled() -> bool:
+    return not _SUPPRESS.get() and (_ACTIVE.get() is not None or bool(os.environ.get(ENV)))
+
+
+def _dir() -> Path:
+    if recording := _ACTIVE.get():
+        return recording.root
+    return Path(os.environ[ENV])
+
+
+def generic_text(module) -> str:
+    from merlin.xdsl_dialects._common import text
+
+    return text(module, generic=True)
+
+
+@contextmanager
+def boundary(name: str, pass_entry: str, module) -> Iterator[None]:
+    """Record ``module`` before and after the block as boundary ``name`` when recording is on; the
+    block runs unchanged either way."""
+    before = generic_text(module) if enabled() else None
+    yield
+    if before is not None:
+        record_boundary(name, pass_entry, before, generic_text(module))
+
+
+def run(name: str, fn, module, *args, _record_nested: bool = True, **kwargs):
+    """Record the call; ``_record_nested=False`` makes a composite one boundary.
+
+    Child instrumentation is suppressed only during the call, avoiding overlapping before/after
+    links. The selected authored roster must explicitly use that composite granularity.
+    """
+    with boundary(name, f"{fn.__module__}.{fn.__qualname__}", module):
+        if _record_nested:
+            return fn(module, *args, **kwargs)
+        token = _SUPPRESS.set(True)
+        try:
+            return fn(module, *args, **kwargs)
+        finally:
+            _SUPPRESS.reset(token)
+
+
+def parse_recorded(name: str, path):
+    """Parse the MLIR file ``path`` with Merlin's reader, recording the file's text against the parsed
+    module as boundary ``name``."""
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+
+    module = parse_mlir_file(path)
+    if enabled():
+        record_boundary(
+            name, "merlin.frontends.linalg_mlir.parse_mlir_file", Path(path).read_text(), generic_text(module)
+        )
+    return module
+
+
+def write_recorded(name: str, path: Path, text: str, module) -> None:
+    """Write ``text``, a print of ``module``, to ``path``, recording the module against it."""
+    path.write_text(text)
+    if enabled():
+        record_boundary(name, "merlin.xdsl_dialects._common.text", generic_text(module), text)
+
+
+def record_handoff(path: Path) -> None:
+    """Record the file the upstream lowering reads, so a chain can be checked to end at those exact
+    bytes (``<dir>/handoff.json``)."""
+    if enabled():
+        data = Path(path).read_bytes()
+        root = _dir()
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "handoff.json").write_text(
+            json.dumps(
+                {
+                    "schema": "merlin.lean.handoff.v1",
+                    "path": str(path.resolve()),
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "bytes": len(data),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+
+
+def _reserve(root: Path) -> int:
+    """Claim the next sequence number atomically (``mkdir`` fails for every other claimant), so
+    concurrent recorders sharing a directory never write the same boundary directory."""
+    reserved = root / ".reserved"
+    reserved.mkdir(parents=True, exist_ok=True)
+    seq = sum(1 for _ in reserved.iterdir())
+    while True:
+        try:
+            (reserved / f"{seq:06d}").mkdir()
+            return seq
+        except FileExistsError:
+            seq += 1
+
+
+def record_boundary(boundary: str, pass_entry: str, before: str, after: str, *, extra: dict | None = None) -> Path:
+    """Write one boundary's before/after texts; returns the boundary directory. The directory is
+    written under a hidden name and renamed into place once complete, so a reader never sees a
+    partial stage (``completed`` lists only published ones)."""
+    root = _dir()
+    root.mkdir(parents=True, exist_ok=True)
+    seq = _reserve(root)
+    final = root / f"{seq:04d}_{boundary}"
+    tmp = root / f".writing-{seq:04d}_{boundary}"
+    tmp.mkdir()
+    (tmp / "before.mlir").write_text(before)
+    (tmp / "after.mlir").write_text(after)
+    meta = {
+        "schema": "merlin.lean.stage.v1",
+        "boundary": boundary,
+        "pass": pass_entry,
+        "run": recording.run if (recording := _ACTIVE.get()) else RUN,
+        "before_sha256": hashlib.sha256(before.encode()).hexdigest(),
+        "after_sha256": hashlib.sha256(after.encode()).hexdigest(),
+        "changed": before != after,
+        **({"extra": extra} if extra else {}),
+    }
+    (tmp / "meta.json").write_text(json.dumps(meta, indent=2, sort_keys=True))
+    tmp.rename(final)
+    return final
+
+
+def completed(root: Path) -> list[Path]:
+    """The published boundary directories under ``root``, in recording order (never a reservation or
+    a stage still being written)."""
+    return sorted(
+        p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".") and (p / "meta.json").is_file()
+    )
+
+
+def latest_after() -> str:
+    """Return the latest published output belonging to this recording run.
+
+    Concurrent writers in an environment-selected directory cannot supply another run's prefix.
+    """
+    run = recording.run if (recording := _ACTIVE.get()) else RUN
+    for path in reversed(completed(_dir())):
+        meta = json.loads((path / "meta.json").read_bytes())
+        if meta.get("run") == run:
+            return (path / "after.mlir").read_text()
+    raise ValueError("recording run has no published predecessor")

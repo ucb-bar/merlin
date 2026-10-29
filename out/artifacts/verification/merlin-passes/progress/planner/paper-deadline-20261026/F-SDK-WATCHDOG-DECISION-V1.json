@@ -1,0 +1,10 @@
+{
+  "utc": "2026-10-26T21:52:43.009813+00:00",
+  "phase": "accepted",
+  "thread": "01a15b82-8d58-75f1-9281-f529977e0bad",
+  "expected_turn": "01a17a32-5d52-7b51-afa1-74a0d4ab84ef",
+  "prompt": "Decision: use minimal own-child Python watchdog for COMPLETE intake including cleanup; retain existing inner timer for diagnostics. Parent budget1800seconds, explicit terminate/kill grace at most5seconds, bounded reap, ONLY owned child/group; unknown kernel scheduling/uninterruptible IO remains host assumption, no hard-real-time claim. Parent journals before launch, preserves partial data and first parent error; state any unavailable in-memory buffer on forced stop. No retry/resume/otherprocess signals. Write exact new request/policy/source cut and a few tiny own-child blocking-open/read/CLOSE controls plus normal completion; no actual network yet. This is the chosen remedy; do not await more preferences or add unrelated new mechanisms. v2 unused authorization suspended; v3 notes fix retained. Root will review minimal delta and authorize concrete realdata intake promptly; don't edit old cuts.\nOnce watchdog source is fixed, continue intended CONTINUOUS-F-FRESH-CONTEXT-V1 post-intake SOURCE queue: authenticated archive-member Selection, same common Context check_query/revalidate +same-live typed authority/header-object/root audits/failure-buffer semantics; additive version preserving oldFv5/Q/W cuts. Tiny fake manifests/source tests only until actualarchive and exact runtime/loader closure receive review. Minimal InitNat/List/Omega diagnostic proposal later, not launch. OriginalIR112MB batch is terminal/consumed. Userwants all5busy and no routine permission questions; send concise fixed-source readiness, keep Context source moving while root reviews. SDK execution/native/install/old runtime reads remain held; source/synthetic work allowed. Root monitors weekly16% and will explicitly trigger portable safe-stop handoffs around5%; continue until then.",
+  "result": {
+    "turnId": "01a17a32-5d52-7b51-afa1-74a0d4ab84ef"
+  }
+}

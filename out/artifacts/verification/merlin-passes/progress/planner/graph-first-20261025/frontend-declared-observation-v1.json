@@ -1,0 +1,46 @@
+{
+  "qualified_v1_sealed_files_checked": 209,
+  "qualified_and_failed_owned_sources_checked": 24,
+  "historical_v1_qualification": {
+    "engineering_qualified": true,
+    "fixed_cases": 46,
+    "fresh_process_batches": 1,
+    "full_model_verified": false,
+    "graph_contract_review": "pending",
+    "independently_reviewed": false,
+    "ordinary_compiler_gating": false,
+    "original_receipts": [
+      {
+        "bytes": 1165077,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/verified-i8/EVIDENCE.json",
+        "sha256": "4ee6584c9b835ecbb9e11319ead14524fc4bdfbe971ad3f8208596934c7b50fa"
+      },
+      {
+        "bytes": 1165810,
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1-originals/verified-i16shared/EVIDENCE.json",
+        "sha256": "b5dad045228edee79eb2efc4fa5dcec902683bbf36e42d30b3aa9991e8e1cb24"
+      }
+    ],
+    "phase": "complete",
+    "primitive_fidelity_proved": false
+  },
+  "strong_bound_qualification": {
+    "engineering_qualified": false,
+    "failure": "ValueError('new original qualification failed; first failure retained')",
+    "full_model_verified": false,
+    "independently_reviewed": false,
+    "native_execution_run": false,
+    "numerical_execution_run": false,
+    "phase": "originals",
+    "phase_failed": "originals"
+  },
+  "first_failure": "v1.oracle -> host_refs fixed mlir-full -> fresh_ref, before oracle invocation",
+  "failed_reference_identity": "UNKNOWN",
+  "root_cause": "UNKNOWN",
+  "agent_single_bounded_comparison_current_mismatches": 0,
+  "coordinator_repeated_external_file_comparison": false,
+  "failed_profile_or_oracle_rerun": false,
+  "new_native_or_Lean_execution": false,
+  "mapping_review_complete": false,
+  "all_graph_verified": false
+}

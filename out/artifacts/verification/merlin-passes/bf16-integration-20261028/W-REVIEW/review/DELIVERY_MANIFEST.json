@@ -1,0 +1,97 @@
+{
+  "kind": "source_review_not_policy_approval",
+  "files": [
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/README.md",
+      "sha256": "c5fc6ceee2fbec7e8af3b7931e73001c5cc89cf5e9d2ad6a3870dbb7bcc55759",
+      "bytes": 1404
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/REVIEW.md",
+      "sha256": "d56f28272d38b4bddab2b520a2b47e8a0d3a38f31ecb8c8d82022d0bb0868d06",
+      "bytes": 14958
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/APPROVAL_REQUEST.md",
+      "sha256": "85f4c692d5dced94d777e61e8c1a8bbfa6a5ea4c617d9f550ee0e3dc1b18f5bc",
+      "bytes": 4912
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/IR_MAPPING.md",
+      "sha256": "ec6e1087610338bf6b82e586a2a9b6638f94d613e259cea8e337f15e73bf9ebd",
+      "bytes": 5362
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/MACC_PROOF_NOTES.md",
+      "sha256": "f2ceb695a7a263fd9e40bd9a62e9860f279973894e04ce19627a2b9e71dfcdb3",
+      "bytes": 3017
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/INTEGRATION_REVIEW.md",
+      "sha256": "8a0bd493281024b74bce280f7bb246b52dbb9b077e7df8a1128e7ab083e171e2",
+      "bytes": 6419
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/ASSUMPTIONS.json",
+      "sha256": "b525ab4039ad8b7c8220d11feb6e3ee89b361d985c63cd6a8ddced407f5b81eb",
+      "bytes": 4023
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/REVIEW_STATUS.json",
+      "sha256": "99f41b343791a001799d4d43d7a7bc153eb0afb702d699423ae5c095bfd0785d",
+      "bytes": 2330
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/MACC_REVIEW_INPUTS.json",
+      "sha256": "b2d6da2deb7b97316d52257b3501eb3904b0688b506729235b7d45780ecdb67a",
+      "bytes": 3855
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/INTEGRATION_SOURCE_CUT.json",
+      "sha256": "fd26053387bbb908fa97903e00136c17f630f9d46ab2d04a1c26bc3e2fffce29",
+      "bytes": 1965
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/ACTUAL_SITE_0.json",
+      "sha256": "0f530735e04b1cc98e31676b29cc6ea121deaef8f2b67ec90456751df9e96a50",
+      "bytes": 27600
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/RETAINED_IR_INVENTORY.json",
+      "sha256": "9e7abf17f38e05b6628fee07a10ade8e22a3b4e34d64d5b3a55fe4f4bca7ce88",
+      "bytes": 233606
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/handler-controls-v1/RESULT.json",
+      "sha256": "d7a6c1d4f97ffa43368dcbbcbd3e20fd56a8588687d565dc849436acace73c23",
+      "bytes": 3864
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/SOURCE_ONLY_PROBES.json",
+      "sha256": "2e20abfaa7f2a2a5a1c471cc21b5b038f2148d247391ef7d5a463ddda78bb093",
+      "bytes": 1975
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/VALIDATOR_SOURCE_COMPARISON.json",
+      "sha256": "bbdb762824844f9c6c716a6a806e7fad1688568e4f267e413b316f326bd63ad2",
+      "bytes": 382
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/source_audit.py",
+      "sha256": "67fea676b2354590259fb9aa6734deb1961f6b4ab59005b71a8d0fae83ab875f",
+      "bytes": 9595
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/retained_inventory.py",
+      "sha256": "1600a1ab81552a2cbc6c16b7c8864b97d810f2535c2d82b88674eb8d70090580",
+      "bytes": 6600
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/W-REVIEW/review/handler_controls.py",
+      "sha256": "44a4a8d9564418e3245581d4240ac4c70c9d876ff78bf054af375eeceeaadea5",
+      "bytes": 4229
+    }
+  ],
+  "owned_live_jobs": [],
+  "source_edits_by_W": []
+}

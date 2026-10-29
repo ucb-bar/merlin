@@ -1,0 +1,140 @@
+{
+  "kind": "SDK-free actual extracted validator controls; no live gate/checker outcome",
+  "source_sha256": "b58fa90ebfe131edc6ba3a378f690fb90b2d33f01337396ea0e0314b8695ef7f",
+  "source_path": "src/merlin/verify/bf16_policy_gate.py",
+  "raw_source_export": {
+    "bytes": 32286898,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/0_before.json",
+    "sha256": "db1f5d61facdcca6025d24c78e0f8cbbbc20654beb4722ad0bbc4373502f96d2"
+  },
+  "historical_report": {
+    "bytes": 11193,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/frontend/bf16-f32acc/SY_model_smolvla/lean/e1e09bd1f4ae40629d4a28ee62606024/contract-report.json",
+    "sha256": "1145e868cdc71e751875c135f9a313da10febea966db7588e3425f84f4e6111b"
+  },
+  "controls": [
+    {
+      "control": "actual historical report data",
+      "outcome": "consistent",
+      "site_count": 24,
+      "expected": "consistent",
+      "passed": true
+    },
+    {
+      "control": "false checked",
+      "outcome": "GateRejected",
+      "site_count": null,
+      "expected": "GateRejected",
+      "passed": true
+    },
+    {
+      "control": "integer checked",
+      "outcome": "GateUnavailable",
+      "site_count": null,
+      "expected": "GateUnavailable",
+      "passed": true
+    },
+    {
+      "control": "false semantic_match",
+      "outcome": "GateRejected",
+      "site_count": null,
+      "expected": "GateRejected",
+      "passed": true
+    },
+    {
+      "control": "integer semantic_match",
+      "outcome": "GateUnavailable",
+      "site_count": null,
+      "expected": "GateUnavailable",
+      "passed": true
+    },
+    {
+      "control": "false site_qualification_passed",
+      "outcome": "GateRejected",
+      "site_count": null,
+      "expected": "GateRejected",
+      "passed": true
+    },
+    {
+      "control": "integer site_qualification_passed",
+      "outcome": "GateUnavailable",
+      "site_count": null,
+      "expected": "GateUnavailable",
+      "passed": true
+    },
+    {
+      "control": "conditional-only",
+      "outcome": "GateUnavailable",
+      "site_count": null,
+      "expected": "GateUnavailable",
+      "passed": true
+    },
+    {
+      "control": "wrong root",
+      "outcome": "GateUnavailable",
+      "site_count": null,
+      "expected": "GateUnavailable",
+      "passed": true
+    },
+    {
+      "control": "drop last site",
+      "outcome": "GateRejected",
+      "site_count": null,
+      "expected": "GateRejected",
+      "passed": true
+    },
+    {
+      "control": "duplicate first site",
+      "outcome": "GateRejected",
+      "site_count": null,
+      "expected": "GateRejected",
+      "passed": true
+    },
+    {
+      "control": "reorder sites",
+      "outcome": "GateRejected",
+      "site_count": null,
+      "expected": "GateRejected",
+      "passed": true
+    },
+    {
+      "control": "change result id",
+      "outcome": "GateRejected",
+      "site_count": null,
+      "expected": "GateRejected",
+      "passed": true
+    },
+    {
+      "control": "bool covered count",
+      "outcome": "GateRejected",
+      "site_count": null,
+      "expected": "GateRejected",
+      "passed": true
+    },
+    {
+      "control": "extra flag",
+      "outcome": "GateRejected",
+      "site_count": null,
+      "expected": "GateRejected",
+      "passed": true
+    },
+    {
+      "control": "report self approves",
+      "outcome": "GateUnavailable",
+      "site_count": null,
+      "expected": "GateUnavailable",
+      "passed": true
+    },
+    {
+      "control": "whole capture false is separate",
+      "outcome": "consistent",
+      "site_count": 24,
+      "expected": "consistent",
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "native_executed": false,
+  "approval_granted": false,
+  "semantic_negatives_observed": false
+}

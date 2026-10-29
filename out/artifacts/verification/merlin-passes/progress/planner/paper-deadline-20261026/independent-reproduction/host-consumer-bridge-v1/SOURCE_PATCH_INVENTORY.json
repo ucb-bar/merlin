@@ -1,0 +1,90 @@
+{
+  "schema": "merlin.inert-host-consumer-prototype.v1",
+  "base_HEAD": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "observed_current_HEAD": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "current_HEAD_byte_compatibility_unchecked": false,
+  "canonical_already_published_at_HEAD": true,
+  "primary_F_admission_already_present": true,
+  "consumer_trace_baseline": "0d9b2437fc3492f1f2d9162f201eb70c0cc005d7",
+  "canonical_v2_reapplied_or_modified": false,
+  "sources": [
+    {
+      "proposed_path": "src/merlin/targetgen/graph_consumer_bridge.py",
+      "source": "sources/src/merlin/targetgen/graph_consumer_bridge.py",
+      "selected": {
+        "sha256": "3babdb41aca426349ceb970854f96519eb3103dd73fe7713fb705735f55dba43",
+        "bytes": 3611
+      },
+      "qualified_exact_bytes": true,
+      "published_primary": null,
+      "actual_primary_path_exists": false,
+      "group": "01-trusted-bridge.patch"
+    },
+    {
+      "proposed_path": "merlin/tests/targetgen/test_graph_consumer_bridge.py",
+      "source": "sources/merlin/tests/targetgen/test_graph_consumer_bridge.py",
+      "selected": {
+        "sha256": "02e0d443b9bf245108f0893a945a6586600eee49bfb0b6e7c665692f2761819c",
+        "bytes": 8360
+      },
+      "qualified_exact_bytes": true,
+      "published_primary": null,
+      "actual_primary_path_exists": false,
+      "group": "02-consumer-tests-fixture.patch"
+    },
+    {
+      "proposed_path": "merlin/tests/fixtures/graph_consumer_bridge_fixture.py",
+      "source": "sources/merlin/tests/fixtures/graph_consumer_bridge_fixture.py",
+      "selected": {
+        "sha256": "9cc2720ab68949de84bdcfcf9a56ef7b4fa2141e777aa0e7e4a437630e10d488",
+        "bytes": 7133
+      },
+      "qualified_exact_bytes": true,
+      "published_primary": null,
+      "actual_primary_path_exists": false,
+      "group": "02-consumer-tests-fixture.patch"
+    }
+  ],
+  "private_checks": [
+    {
+      "patch": "01-trusted-bridge.patch",
+      "sha256": "45a60365272f274018e991fb075d216049902499f947b0b723e94fbe690fa034",
+      "bytes": 3766,
+      "returncode": 0,
+      "stderr": ""
+    },
+    {
+      "patch": "02-consumer-tests-fixture.patch",
+      "sha256": "4ef93ab501d3ce424b7d8fb2ccb4220c24e0138ab713eaa5aa8342c9723b235b",
+      "bytes": 16035,
+      "returncode": 0,
+      "stderr": ""
+    },
+    {
+      "patch": "PROTOTYPE_SOURCE_FIXTURE.patch",
+      "sha256": "2d0e22681600dce0e7a0e6f7fabe87e835d199dca06d03a1c48f7a489eac246e",
+      "bytes": 19801,
+      "returncode": 0,
+      "stderr": ""
+    }
+  ],
+  "copied_index_unchanged": true,
+  "inherited66_source_byte_associations": true,
+  "selected_original_commit": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "six_test_methods": 6,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "no_original_test_methods_run": true,
+  "original_Q_fixture": {
+    "sha256": "393647756260b9a8eb58d31158b9eb78a77605c9a96a0770ccefa3cf9c14d3de",
+    "bytes": 53073
+  },
+  "minimal_fixture_equivalence": "MINIMAL_FIXTURE_EQUIVALENCE.json",
+  "actual_apply_stage_commit_push": false,
+  "actual_primary_producer_shared_source_edits": false,
+  "native_authorization": false,
+  "qualification": false,
+  "all_Lean_candidates": "UNCOMPILED",
+  "original_profile_release_hash_refresh": false
+}

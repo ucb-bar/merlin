@@ -1,0 +1,115 @@
+{
+  "args": [
+    {
+      "access": "read",
+      "dtype": "i16",
+      "name": "input0",
+      "shape": [
+        2,
+        23
+      ]
+    },
+    {
+      "access": "read",
+      "dtype": "i16",
+      "name": "input1",
+      "shape": [
+        2,
+        23
+      ]
+    },
+    {
+      "access": "read",
+      "dtype": "i16",
+      "name": "input2",
+      "shape": [
+        2,
+        23
+      ]
+    },
+    {
+      "access": "write",
+      "dtype": "i16",
+      "name": "output0",
+      "shape": [
+        2,
+        23
+      ]
+    }
+  ],
+  "attrs": [],
+  "body": [
+    {
+      "args": [
+        [
+          "n",
+          {
+            "value": 46
+          }
+        ],
+        [
+          "a",
+          {
+            "value": 2
+          }
+        ],
+        [
+          "ao",
+          {
+            "value": 0
+          }
+        ],
+        [
+          "b",
+          {
+            "value": 3
+          }
+        ],
+        [
+          "bo",
+          {
+            "value": 0
+          }
+        ],
+        [
+          "c",
+          {
+            "value": 4
+          }
+        ],
+        [
+          "co",
+          {
+            "value": 0
+          }
+        ],
+        [
+          "dst",
+          {
+            "value": 6
+          }
+        ],
+        [
+          "out",
+          {
+            "value": 0
+          }
+        ],
+        [
+          "width",
+          {
+            "value": 2
+          }
+        ]
+      ],
+      "assumes": [],
+      "awaits": [],
+      "instr": "produce",
+      "produces": null,
+      "sets": [],
+      "stages": [],
+      "unit": null
+    }
+  ],
+  "name": "original_produce"
+}

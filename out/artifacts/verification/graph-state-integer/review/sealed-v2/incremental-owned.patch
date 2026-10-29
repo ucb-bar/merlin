@@ -1,0 +1,3384 @@
+diff --git a/merlin/tests/ir/test_lean_graph_state_integer.py b/merlin/tests/ir/test_lean_graph_state_integer.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_state_integer.py
+@@ -0,0 +1,204 @@
++"""Actual exact-integer rewrites; representation and complete graph boundaries."""
++
++from __future__ import annotations
++
++import json
++
++import pytest
++
++from merlin.common.paths import repo_root
++from merlin.verify.lean_graph_state_integer import check_boundary, intake
++from merlin.verify.lean_graph_state_integer_receipt import issue
++
++REFERENCE = repo_root().parent / "merlin-graph-proof-intake"
++
++
++def standalone_source(width=8):
++    t = f"i{width}"
++    max_signed = (1 << (width - 1)) - 1
++    # i1 has no signed literal +1; the bit-pattern -1 is the native one word.
++    one = 1 if width > 1 else -1
++    two = 2 if width > 2 else -1
++    return f"""builtin.module {{
++  func.func private @watch({t}, {t}, {t})
++  func.func @main(%x: {t}) -> {t} {{
++    %zero = arith.constant 0 : {t}
++    %one = arith.constant {one} : {t}
++    %max = arith.constant {max_signed} : {t}
++    %two = arith.constant {two} : {t}
++    %fold = arith.addi %max, %two : {t}
++    %chain = arith.subi %fold, %one : {t}
++    %product = arith.muli %chain, %two : {t}
++    %n0 = arith.addi %zero, %x : {t}
++    %n1 = arith.addi %n0, %zero : {t}
++    %n2 = arith.subi %n1, %zero : {t}
++    %n3 = arith.muli %one, %n2 : {t}
++    %n4 = arith.muli %n3, %one : {t}
++    func.call @watch(%fold, %chain, %product) : ({t}, {t}, {t}) -> ()
++    func.return %n4 : {t}
++  }}
++  func.func @untouched(%x: {t}) -> {t} {{ func.return %x : {t} }}
++}}"""
++
++
++def chain_source(width=32, *, lower=0, upper=12, stride=1):
++    t = f"i{width}"
++    return f"""builtin.module {{
++  func.func private @provider({t}, index) -> {t}
++  func.func private @watch({t}, index)
++  func.func private @final({t})
++  func.func @main(%x: {t}, %bias: {t}) -> {t} {{
++    %lb = arith.constant {lower} : index
++    %ub = arith.constant {upper} : index
++    %st = arith.constant {stride} : index
++    %zero = arith.constant 0 : {t}
++    %one = arith.constant 1 : {t}
++    %a = arith.constant -3 : {t}
++    %b = arith.constant 3 : {t}
++    %foldedzero = arith.addi %a, %b : {t}
++    %later = arith.addi %x, %foldedzero : {t}
++    %dead = arith.subi %x, %bias : {t}
++    %out = scf.for %iv = %lb to %ub step %st iter_args(%acc = %later) -> ({t}) {{
++      %invariant = arith.addi %bias, %bias : {t}
++      %duplicate = arith.addi %bias, %bias : {t}
++      %neutral = arith.muli %acc, %one : {t}
++      %sum = arith.addi %neutral, %duplicate : {t}
++      %sum2 = arith.addi %sum, %invariant : {t}
++      func.call @watch(%sum2, %iv) : ({t}, index) -> ()
++      %v = func.call @provider(%sum2, %iv) : ({t}, index) -> {t}
++      %next = arith.subi %v, %zero : {t}
++      scf.yield %next : {t}
++    }}
++    func.call @final(%out) : ({t}) -> ()
++    func.return %out : {t}
++  }}
++  func.func @untouched(%x: {t}) -> {t} {{ func.return %x : {t} }}
++}}"""
++
++
++def nested_source(width=16, *, empty=False):
++    t = f"i{width}"
++    return f"""builtin.module {{
++  func.func private @provider({t}, {t}, index) -> ({t}, {t})
++  func.func private @watch({t}, {t})
++  func.func private @other({t}, {t})
++  func.func @main(%x: {t}, %bias: {t}) -> ({t}, {t}) {{
++    %lb = arith.constant 0 : index
++    %ub = arith.constant {0 if empty else 3} : index
++    %innerub = arith.constant 2 : index
++    %st = arith.constant 1 : index
++    %zero = arith.constant 0 : {t}
++    %one = arith.constant 1 : {t}
++    %a = arith.constant -3 : {t}
++    %b = arith.constant 3 : {t}
++    %fold = arith.addi %a, %b : {t}
++    %out:2 = scf.for %iv = %lb to %ub step %st iter_args(%first = %x, %second = %bias) -> ({t}, {t}) {{
++      %neutral = arith.addi %first, %fold : {t}
++      %inner:2 = scf.for %j = %lb to %innerub step %st iter_args(%left = %neutral, %right = %second) -> ({t}, {t}) {{
++        %capture = arith.muli %bias, %one : {t}
++        %keep = arith.subi %left, %zero : {t}
++        func.call @watch(%keep, %capture) : ({t}, {t}) -> ()
++        %v:2 = func.call @provider(%keep, %right, %j) : ({t}, {t}, index) -> ({t}, {t})
++        scf.yield %v#0, %v#1 : {t}, {t}
++      }}
++      scf.yield %inner#0, %inner#1 : {t}, {t}
++    }}
++    func.call @watch(%out#0, %out#1) : ({t}, {t}) -> ()
++    func.return %out#1, %out#0 : {t}, {t}
++  }}
++  func.func @untouched(%x: {t}) -> {t} {{ func.return %x : {t} }}
++}}"""
++
++
++def produce(tmp_path, text, *, chain=False, settings=None):
++    tmp_path.mkdir(parents=True, exist_ok=True)
++    source = tmp_path / "input.mlir"
++    source.write_text(text)
++    return intake(REFERENCE, tmp_path / "producer", source=source, chain=chain, settings=settings)
++
++
++@pytest.mark.parametrize("width", [1, 8, 16, 32, 64, 128, 256])
++def test_actual_integer_rules(tmp_path, width):
++    captured = produce(tmp_path, standalone_source(width))
++    assert captured["each_stage_changed"] == [True]
++    report = check_boundary([row["path"] for row in captured["buffers"]], tmp_path / "checked", REFERENCE)
++    assert report["status"] == "conditional_graph_checked"
++    proof = json.loads(open(report["proof"]["path"]).read())
++    assert not proof["audit"]["raw"]["violations"]
++    assert report["review_approved"] is False
++    issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
++
++
++@pytest.mark.parametrize("width,factor,tile,bits", [(8, 2, 3, 32), (32, 3, 2, 64), (64, 4, 2, 64)])
++def test_actual_six_buffer_chain(tmp_path, width, factor, tile, bits):
++    settings = {"factor": factor, "tile": tile, "index_bits": bits}
++    captured = produce(tmp_path, chain_source(width), chain=True, settings=settings)
++    assert captured["each_stage_changed"] == [True] * 5
++    report = check_boundary(
++        [row["path"] for row in captured["buffers"]], tmp_path / "checked", REFERENCE, settings=settings
++    )
++    assert report["status"] == "conditional_graph_checked"
++    issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
++
++
++@pytest.mark.parametrize("empty", [False, True])
++def test_actual_nested_and_zero_trip_contexts(tmp_path, empty):
++    captured = produce(tmp_path, nested_source(empty=empty))
++    assert captured["each_stage_changed"] == [True]
++    report = check_boundary([row["path"] for row in captured["buffers"]], tmp_path / "checked", REFERENCE)
++    assert report["status"] == "conditional_graph_checked"
++    issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
++
++
++def test_initialized_symbolic_provider(tmp_path):
++    captured = produce(tmp_path, chain_source(), chain=True)
++    report = check_boundary(
++        [row["path"] for row in captured["buffers"]],
++        tmp_path / "checked",
++        REFERENCE,
++        mode="initialized-symbolic-provider-v1",
++    )
++    assert report["status"] == "conditional_graph_checked"
++    assert report["model"]["success"] == {"values": [17], "world": 32}
++    assert report["model"]["failure"] == {"error": 17, "world": 8}
++    assert report["model"]["source_success_assumed"] is False
++    issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
++
++
++def identity_source(kind):
++    if kind == "flagged":
++        text = """builtin.module {func.func @main(%x:i8)->i8 {
++          %z=arith.constant 0:i8
++          %v=arith.addi %x,%z overflow<nsw>:i8
++          func.return %v:i8
++        }}"""
++    elif kind == "index":
++        text = """builtin.module {func.func @main(%x:index)->index {
++          %z=arith.constant 0:index
++          %v=arith.addi %x,%z:index
++          func.return %v:index
++        }}"""
++    else:
++        text = """builtin.module {func.func @main(%x:f32)->f32 {
++          %z=arith.constant 0.0:f32
++          %v=arith.addf %x,%z:f32
++          func.return %v:f32
++        }}"""
++    return text
++
++
++@pytest.mark.parametrize("kind", ["flagged", "index", "floating"])
++def test_unchanged_outside_rewrite_domain_is_explicit(tmp_path, kind):
++    captured = produce(tmp_path, identity_source(kind))
++    assert captured["each_stage_changed"] == [False]
++    report = check_boundary([row["path"] for row in captured["buffers"]], tmp_path / "checked", REFERENCE)
++    assert report["status"] == "conditional_graph_checked"
++    assert report["changed"] == [False]
++    issue(tmp_path / "checked/report.json", tmp_path / "receipt.json")
++
++
++def test_changed_width257_is_outside_the_selected_pure_domain(tmp_path):
++    captured = produce(tmp_path, standalone_source(257))
++    assert captured["each_stage_changed"] == [True]
++    report = check_boundary([row["path"] for row in captured["buffers"]], tmp_path / "checked", REFERENCE)
++    assert report["status"] == "unsupported"
+diff --git a/merlin/tests/ir/test_lean_graph_state_integer_host.py b/merlin/tests/ir/test_lean_graph_state_integer_host.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_state_integer_host.py
+@@ -0,0 +1,90 @@
++"""Mocked process classifications, without creating native crashes or SDK holds."""
++
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++from test_lean_graph_state_integer import REFERENCE
++
++from merlin.verify import lean_graph_state_integer as integer
++
++
++@pytest.mark.parametrize(
++    "kind",
++    [
++        "signal",
++        "exit2",
++        "setup",
++        "unknown-marker",
++        "bool-marker",
++        "invalid-json",
++        "success-missing",
++        "success-invalid-json",
++    ],
++)
++def test_unconfirmed_process_failure_is_unavailable(tmp_path, monkeypatch, kind):
++    source = tmp_path / "input.mlir"
++    source.write_text("builtin.module {}")
++    observed = []
++
++    def unavailable(destination, reason):
++        observed.append((destination, reason))
++        raise RuntimeError("mocked unavailable; no real blocker file written")
++
++    def run(command, **_):
++        destination = Path(command[command.index("--destination") + 1])
++        destination.mkdir(parents=True)
++        marker = {
++            "schema": "merlin.graph-state-integer.host-domain-refusal.v1",
++            "status": "unsupported",
++            "reason": "deliberate mock",
++            "kind": "ValueError",
++            "qualified": False,
++        }
++        if kind == "unknown-marker":
++            marker["kind"] = "ImportError"
++        if kind == "bool-marker":
++            marker["qualified"] = 0
++        if kind in ("unknown-marker", "bool-marker", "exit2"):
++            (destination / "REJECTION.json").write_text(json.dumps(marker))
++        elif kind == "invalid-json":
++            (destination / "REJECTION.json").write_text("not json")
++        elif kind == "success-invalid-json":
++            (destination / "CAPTURE.json").write_text("not json")
++        return SimpleNamespace(
++            returncode=-11 if kind == "signal" else 2 if kind == "exit2" else 0 if kind.startswith("success-") else 1
++        )
++
++    monkeypatch.setattr(integer, "run_owned", run)
++    monkeypatch.setattr(integer, "_unavailable", unavailable)
++    with pytest.raises(RuntimeError, match="mocked unavailable"):
++        integer.intake(REFERENCE, tmp_path / "intake", source=source)
++    assert len(observed) == 1
++
++
++def test_only_structured_known_domain_refusal_is_value_error(tmp_path, monkeypatch):
++    source = tmp_path / "input.mlir"
++    source.write_text("builtin.module {}")
++
++    def run(command, **_):
++        destination = Path(command[command.index("--destination") + 1])
++        destination.mkdir(parents=True)
++        (destination / "REJECTION.json").write_text(
++            json.dumps(
++                {
++                    "schema": "merlin.graph-state-integer.host-domain-refusal.v1",
++                    "status": "unsupported",
++                    "reason": "explicit supported-domain refusal",
++                    "kind": "ValueError",
++                    "qualified": False,
++                }
++            )
++        )
++        return SimpleNamespace(returncode=1)
++
++    monkeypatch.setattr(integer, "run_owned", run)
++    with pytest.raises(ValueError, match="structured actual-IR"):
++        integer.intake(REFERENCE, tmp_path / "intake", source=source)
+diff --git a/merlin/tests/ir/test_lean_graph_state_integer_mutations.py b/merlin/tests/ir/test_lean_graph_state_integer_mutations.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_state_integer_mutations.py
+@@ -0,0 +1,120 @@
++"""Complete actual-IR mutations; malformed inputs are a separate denominator."""
++
++from __future__ import annotations
++
++import json
++import os
++import sys
++
++import pytest
++from test_lean_graph_state_integer import REFERENCE, chain_source, nested_source, produce, standalone_source
++
++from merlin.common.owned_process import run_owned
++from merlin.common.paths import repo_root
++from merlin.verify.lean_graph_state_integer import check_boundary, configuration
++from merlin.verify.lean_graph_state_integer_proof import check_query
++
++VALID = (
++    "constant",
++    "exposed-site",
++    "operand",
++    "operand-order",
++    "opcode",
++    "flags",
++    "carry-init",
++    "yield-order",
++    "capture",
++    "step",
++    "bound",
++    "callee",
++    "drop-observer",
++    "observer-arguments",
++    "return-order",
++    "return-value",
++    "function-context",
++    "signature-width",
++    "function-header",
++    "module-header",
++)
++
++
++def mutated(tmp_path, kind):
++    text = (
++        standalone_source()
++        if kind in ("constant", "exposed-site")
++        else chain_source()
++        if kind in ("flags", "opcode")
++        else nested_source()
++    )
++    capture = produce(tmp_path, text)
++    buffers = [row["path"] for row in capture["buffers"]]
++    target = tmp_path / "mutated.mlir"
++    script = repo_root() / "src/merlin/verify/lean_graph_state_integer_mutate.py"
++    with (tmp_path / "mutation.stdout").open("x") as out, (tmp_path / "mutation.stderr").open("x") as err:
++        run = run_owned(
++            [sys.executable, str(script), buffers[1], str(target), kind],
++            cwd=REFERENCE,
++            env={**os.environ, "PYTHONPATH": str(REFERENCE / "src"), "PYTHONDONTWRITEBYTECODE": "1"},
++            stdout=out,
++            stderr=err,
++            timeout=60,
++            check=False,
++        )
++    assert run.returncode == 0, (tmp_path / "mutation.stderr").read_text()
++    return [buffers[0], target], json.loads((tmp_path / "mutation.stdout").read_text())
++
++
++@pytest.mark.parametrize("kind", VALID)
++def test_valid_adverse_mutations(tmp_path, kind):
++    buffers, measurement = mutated(tmp_path, kind)
++    assert measurement["compiler_valid"] and measurement["changed"]
++    report = check_boundary(buffers, tmp_path / "checked", REFERENCE)
++    assert report["status"] in ("unsupported", "refused"), report
++    (tmp_path / "REFUSAL.json").write_text(
++        json.dumps(
++            {
++                "mutation": measurement,
++                "classification": report["status"],
++                "native_failure_counted": False,
++            },
++            indent=2,
++        )
++        + "\n"
++    )
++
++
++@pytest.mark.parametrize("kind", ["malformed-operand", "malformed-result", "malformed-region", "malformed-call"])
++def test_malformed_types_regions_and_calls(tmp_path, kind):
++    buffers, measurement = mutated(tmp_path, kind)
++    assert measurement["malformed"] and not measurement["compiler_valid"]
++    report = check_boundary(buffers, tmp_path / "checked", REFERENCE)
++    assert report["status"] == "unsupported"
++
++
++def test_actual_wrong_middle(tmp_path):
++    first = produce(tmp_path / "first", chain_source(), chain=True)
++    second = produce(tmp_path / "second", chain_source(upper=24), chain=True)
++    buffers = [row["path"] for row in first["buffers"]]
++    buffers[2] = second["buffers"][2]["path"]
++    report = check_boundary(buffers, tmp_path / "checked", REFERENCE)
++    assert report["status"] in ("unsupported", "refused")
++
++
++@pytest.mark.parametrize("field,value", [("factor", True), ("tile", 2.5), ("index_bits", "32"), ("index_bits", 16)])
++def test_invalid_configurations(field, value):
++    settings = {"factor": 2, "tile": 3, "index_bits": 32}
++    settings[field] = value
++    with pytest.raises(ValueError):
++        configuration(**settings)
++
++
++def test_wrong_constant_bit_certificate_is_kernel_refused(tmp_path):
++    text = """import Merlin.GraphStateIntegerProgram
++namespace Merlin.GraphStateIntegerInstance
++open Merlin.GraphState.Integer
++theorem forged : word 8 0 = word 8 1 := by decide
++end Merlin.GraphStateIntegerInstance
++"""
++    report = check_query(text, tmp_path / "lean", ["Merlin.GraphStateIntegerInstance.forged"])
++    assert report["status"] == "refused" and report["returncode"] > 0
++    assert report["audit"]["status"] == "not_run"
+diff --git a/merlin/tests/ir/test_lean_graph_state_integer_receipts.py b/merlin/tests/ir/test_lean_graph_state_integer_receipts.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_state_integer_receipts.py
+@@ -0,0 +1,234 @@
++"""Coherent forgery probes reuse one original proof without rerunning originals.
++
++Each candidate owns copied mutable IR/report/object bytes and exact before
++snapshots. Immutable baseline query/object references remain READONLY unless
++replaced by a newly owned candidate copy. No protected file is mutated.
++"""
++
++from __future__ import annotations
++
++import copy
++import json
++import os
++import shutil
++import sys
++from pathlib import Path
++
++import pytest
++from test_lean_graph_state_integer import REFERENCE, produce, standalone_source
++
++from merlin.common.owned_process import run_owned
++from merlin.common.paths import repo_root
++from merlin.verify import lean_graph_state as stable
++from merlin.verify.lean_graph_state_integer import check_boundary
++from merlin.verify.lean_graph_state_integer_receipt import CLAIMS, issue, load, replay, valid_claims, validate
++from merlin.verify.lean_graph_state_pipeline_receipt import reference_row
++
++
++def save(path, value):
++    Path(path).write_text(json.dumps(value, indent=2) + "\n")
++
++
++@pytest.fixture(scope="module")
++def protocol_candidate(tmp_path_factory):
++    root = tmp_path_factory.mktemp("integer-receipt-protocol")
++    capture = produce(root, standalone_source())
++    report = check_boundary([row["path"] for row in capture["buffers"]], root / "checked", REFERENCE)
++    assert report["status"] == "conditional_graph_checked"
++    receipt = issue(root / "checked/report.json", root / "receipt.json")
++    validate(receipt)
++    return root, receipt
++
++
++def refresh(value):
++    if type(value) is dict:
++        if set(value) == {"path", "sha256", "bytes"}:
++            return stable.file_ref(value["path"])
++        return {key: refresh(child) for key, child in value.items()}
++    if type(value) is list:
++        return [refresh(child) for child in value]
++    return value
++
++
++def coherent(root, receipt):
++    for relative in ("intake/actual/CAPTURE.json", "lean/report.json", "report.json"):
++        path = root / "checked" / relative
++        save(path, refresh(load(path)))
++    receipt = refresh(receipt)
++    receipt["files"] = [stable.file_ref(p) for p in sorted((root / "checked").rglob("*")) if p.is_file()]
++    save(root / "receipt.json", receipt)
++    return receipt
++
++
++def candidate(tmp_path, baseline):
++    original, receipt = baseline
++    root = tmp_path / "candidate"
++    shutil.copytree(original, root)
++    protected = {receipt["query"]["path"], receipt["object"]["path"]}
++
++    def relocate(value):
++        if type(value) is str and value.startswith(str(original) + "/") and value not in protected:
++            return str(root) + value[len(str(original)) :]
++        if type(value) is dict:
++            return {key: relocate(child) for key, child in value.items()}
++        if type(value) is list:
++            return [relocate(child) for child in value]
++        return value
++
++    for path in sorted(root.rglob("*.json")):
++        save(path, relocate(load(path)))
++    current = coherent(root, relocate(receipt))
++    # Same authentic query/object at its exact original path; no duplicate
++    # original compilation/audit is necessary merely to create attack input.
++    validate(current)
++    snapshot = tmp_path / "before-attack"
++    shutil.copytree(root, snapshot)
++    save(
++        tmp_path / "BEFORE_ATTACK.json",
++        {
++            "files": [
++                {"original": stable.file_ref(p), "copy": stable.file_ref(snapshot / p.relative_to(root))}
++                for p in sorted(root.rglob("*"))
++                if p.is_file()
++            ],
++            "baseline_query_object_readonly": sorted(protected),
++            "qualified": False,
++        },
++    )
++    return root, current
++
++
++def test_one_development_replay(protocol_candidate, tmp_path):
++    root, receipt = protocol_candidate
++    result = replay(
++        root / "receipt.json", tmp_path / "replay", reference=REFERENCE, expected_originals=receipt["originals"]
++    )
++    assert result["retained_object_reproduced"] and result["exact_original_query_path_reproduced"]
++    assert result["qualified"] is False
++
++
++ATTACKS = ("query", "object", "header", "projection", "model", "audit", "import", "statements", "profile", "original")
++
++
++@pytest.mark.parametrize("kind", ATTACKS)
++def test_coherently_rehashed_forgeries(tmp_path, kind, protocol_candidate):
++    root, receipt = candidate(tmp_path, protocol_candidate)
++    report = load(root / "checked/report.json")
++    proof_path = Path(report["proof"]["path"])
++    proof = load(proof_path)
++    capture_path = Path(report["capture"]["path"])
++    capture = load(capture_path)
++    if kind == "query":
++        query = root / "checked/lean/GraphStateIntegerInstance.lean"
++        query.write_text(query.read_text() + "\n-- fresh-rehash unauthorized query\n")
++        receipt["query"] = proof["source"] = stable.file_ref(query)
++        save(proof_path, proof)
++    elif kind == "object":
++        obj = root / "checked/lean/GraphStateIntegerInstance.olean"
++        data = bytearray(obj.read_bytes())
++        data[-1] ^= 1
++        obj.write_bytes(data)
++        receipt["object"] = proof["object"] = stable.file_ref(obj)
++        save(proof_path, proof)
++    elif kind == "header":
++        next(f for f in capture["prefix"]["functions"] if f["name"] == "main")["header"]["attributes"] = [
++            "dictionary",
++            [["forged", ["bool", True]]],
++        ]
++        save(capture_path, capture)
++    elif kind == "projection":
++        capture["prefix"]["registry"][0]["inputs"] = []
++        save(capture_path, capture)
++    elif kind == "model":
++        receipt["model"] = report["model"] = {"canonical_entry_required": False, "source_success_assumed": True}
++        save(root / "checked/report.json", report)
++    elif kind in ("audit", "import", "statements"):
++        if kind == "audit":
++            proof["audit"]["raw"]["theorems_audited"] += 1
++        elif kind == "import":
++            proof["audit"]["raw"]["imports"][0]["module"] += ".__forged"
++        else:
++            proof["audit"]["statements"][receipt["roots"][0]] += " → False"
++        buffers = {Path(row["path"]).name: row["path"] for row in proof["audit"]["buffers"]}
++        save(buffers["audit.stdout"], proof["audit"]["raw"])
++        save(buffers["statements.stdout"], {"statements": proof["audit"]["statements"]})
++        save(proof_path, proof)
++    elif kind == "profile":
++        fake = root / "forged-profile.json"
++        altered = load(receipt["profile"]["path"])
++        altered["selection"]["arguments"] = ["-j2"]
++        save(fake, altered)
++        previous = receipt["profile"]
++        receipt["profile"] = proof["profile"] = stable.file_ref(fake)
++        receipt["dependencies"] = [receipt["profile"] if row == previous else row for row in receipt["dependencies"]]
++        save(proof_path, proof)
++    else:
++        original = Path(receipt["originals"][1]["path"])
++        changed = root / "changed-original.mlir"
++        script = repo_root() / "src/merlin/verify/lean_graph_state_integer_mutate.py"
++        run = run_owned(
++            [sys.executable, str(script), str(original), str(changed), "drop-observer"],
++            cwd=REFERENCE,
++            env={**os.environ, "PYTHONPATH": str(REFERENCE / "src"), "PYTHONDONTWRITEBYTECODE": "1"},
++            capture_output=True,
++            text=True,
++            timeout=60,
++            check=False,
++        )
++        assert run.returncode == 0, run.stderr
++        original.write_bytes(changed.read_bytes())
++        Path(receipt["snapshots"][1]["path"]).write_bytes(changed.read_bytes())
++    coherent(root, receipt)
++    # RuntimeError/native holds are deliberately NOT counted as a refusal.
++    with pytest.raises(ValueError):
++        replay(root / "receipt.json", tmp_path / "forgery-replay", reference=REFERENCE)
++    save(
++        tmp_path / "FORGERY_REFUSED.json",
++        {
++            "kind": kind,
++            "fresh_rehash_consistent": True,
++            "baseline_not_modified": True,
++            "source_or_toolchain_mutated": False,
++            "native_failure_counted": False,
++        },
++    )
++
++
++@pytest.mark.parametrize("kind", ["legacy", "extra", "missing", "mode", "approval", "bool-version", "bool-bytes"])
++def test_closed_schema(kind, protocol_candidate):
++    _, receipt = protocol_candidate
++    altered = copy.deepcopy(receipt)
++    if kind == "legacy":
++        altered["version"] = 0
++    elif kind == "extra":
++        altered["foreign"] = True
++    elif kind == "missing":
++        altered["originals"] = altered["originals"][:-1]
++    elif kind == "mode":
++        altered["mode"] = "approved"
++    elif kind == "approval":
++        altered["claims"]["review_approved"] = True
++    elif kind == "bool-version":
++        altered["version"] = True
++    else:
++        altered["originals"][0]["bytes"] = True
++    with pytest.raises(ValueError):
++        validate(altered)
++
++
++def test_claim_flags_types_and_immutability():
++    with pytest.raises(ValueError):
++        reference_row({"path": "/tmp/x", "sha256": "0" * 64, "bytes": False})
++    altered = copy.deepcopy(dict(CLAIMS))
++    altered["review_approved"] = 0
++    assert not valid_claims(altered)
++    with pytest.raises(TypeError):
++        CLAIMS["review_approved"] = True
++
++
++def test_strict_json_rejects_duplicate_and_float(tmp_path):
++    for number, value in enumerate(('{"version":1,"version":1}', '{"version":1.0}', '{"version":NaN}')):
++        path = tmp_path / f"malformed{number}.json"
++        path.write_text(value)
++        with pytest.raises(ValueError):
++            load(path)
+diff --git a/src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean b/src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean
+@@ -0,0 +1,143 @@
++/- Complete contextual correspondence on the EXISTING Scalar.Code evaluator.
++The relation is a checked local rewrite sequence: it fixes every retained call,
++loop and observation while proving every changed expression by local identities.
++No whole-program equality or successful execution is an input premise. -/
++import Merlin.GraphStateIntegerExpressions
++
++namespace Merlin.GraphState.Integer
++set_option autoImplicit false
++open Scalar
++
++inductive Relation (registry : List Signature) : List Ty → List Ty → Code → Code → Prop where
++  | ret {environment results : List Ty} {first second : List Expr}
++      (typed : ExprsTyped environment first results) (same : Sames environment first second) :
++      Relation registry environment results (.ret first) (.ret second)
++  | effect {environment results outputs : List Ty} {identity : Nat} {first second : List Expr}
++      {next later : Code} (known : identity < registry.length)
++      (outputTypes : outputs = (signature registry identity).outputs)
++      (typed : ExprsTyped environment first (signature registry identity).inputs)
++      (same : Sames environment first second)
++      (rest : Relation registry (outputs++environment) results next later) :
++      Relation registry environment results (.opaque identity first outputs next) (.opaque identity second outputs later)
++  | loop {environment results carries : List Ty} {lower upper stride lb ub step : Expr}
++      {first second : List Expr} {body other next later : Code}
++      (lowerTyped : ExprTyped environment lower .index) (upperTyped : ExprTyped environment upper .index)
++      (strideTyped : ExprTyped environment stride .index)
++      (initialTyped : ExprsTyped environment first carries)
++      (lowerSame : Same environment lower lb) (upperSame : Same environment upper ub)
++      (strideSame : Same environment stride step) (initialSame : Sames environment first second)
++      (inside : Relation registry (.index::carries++environment) carries body other)
++      (rest : Relation registry (carries++environment) results next later) :
++      Relation registry environment results (.loop lower upper stride first carries body next)
++        (.loop lb ub step second carries other later)
++
++theorem loops_sound {World Error : Type} (types : List Ty)
++    (first second : Int → List Int → World → Outcome Int World Error)
++    (body : ∀ index values world, Values Canonical types values →
++      ResultTyped Canonical types (first index values world) ∧ first index values world = second index values world)
++    (iterations : List Int) (values : List Int) (world : World) (typed : Values Canonical types values) :
++    ResultTyped Canonical types (loopEval types.length first iterations values world) ∧
++      loopEval types.length first iterations values world = loopEval types.length second iterations values world := by
++  refine ⟨loop_result_typed types first (fun index values world h => (body index values world h).1)
++    iterations values world typed,?_⟩
++  induction iterations generalizing values world with
++  | nil => rfl
++  | cons index rest ih =>
++    simp only [loopEval,typed.length,↓reduceIte]
++    have current := body index values world typed
++    rw [← current.2]
++    cases step : first index values world with
++    | error failure => rfl
++    | ok result =>
++      exact ih result.1 result.2 (by simpa only [step,ResultTyped] using current.1)
++
++theorem Relation.sound {World Error : Type} {registry : List Signature}
++    (model : Model Int World Error registry) (exact : ExactModel model)
++    (laws : LocalTyping model Canonical) {environment results : List Ty} {first second : Code}
++    (related : Relation registry environment results first second)
++    (values : List Int) (world : World) (entry : Values Canonical environment values) :
++    ResultTyped Canonical results (evalCode model first values world) ∧
++      evalCode model first values world = evalCode model second values world := by
++  induction related generalizing values world with
++  | ret typed same =>
++    constructor
++    · simpa only [evalCode,ResultTyped,exact.1,exact.2] using typed.canonical values entry
++    · simp only [evalCode,exact.1,exact.2,same values entry]
++  | @effect environment results outputs identity first second next later known outputTypes typed same rest ih =>
++    have argumentsTyped : Values Canonical (signature registry identity).inputs
++        (first.map (evalExpr model.default model.primitive values)) := by
++      simpa only [exact.1,exact.2] using typed.canonical values entry
++    have argumentsSame : first.map (evalExpr model.default model.primitive values) =
++        second.map (evalExpr model.default model.primitive values) := by
++      simpa only [exact.1,exact.2] using same values entry
++    simp only [evalCode]
++    rw [← argumentsSame]
++    cases step : model.effect identity (first.map (evalExpr model.default model.primitive values)) world with
++    | error failure =>
++      rcases failure with ⟨error,final⟩
++      simp only [opaqueStep,step,Except.bind,ResultTyped]
++      constructor <;> trivial
++    | ok result =>
++      have resultTyped := laws.effect _ _ _ _ _ argumentsTyped step
++      rw [← outputTypes] at resultTyped
++      simpa only [opaqueStep,step,Except.bind] using ih _ result.2 (resultTyped.append entry)
++  | @loop environment results carries lower upper stride lb ub step first second body other next later
++      lowerTyped upperTyped strideTyped initialTyped lowerSame upperSame strideSame initialSame inside rest ihBody ihNext =>
++    have initial : Values Canonical carries (first.map (evalExpr model.default model.primitive values)) := by
++      simpa only [exact.1,exact.2] using initialTyped.canonical values entry
++    have initialEqual : first.map (evalExpr model.default model.primitive values) =
++        second.map (evalExpr model.default model.primitive values) := by
++      simpa only [exact.1,exact.2] using initialSame values entry
++    have loop := loops_sound carries
++      (fun index carry current => evalCode model body (model.index index::carry++values) current)
++      (fun index carry current => evalCode model other (model.index index::carry++values) current)
++      (fun index carry current carryTyped => ihBody _ current
++        (.cons (laws.index index) (carryTyped.append entry)))
++      (model.iterations (evalExpr model.default model.primitive values lower)
++        (evalExpr model.default model.primitive values upper) (evalExpr model.default model.primitive values stride))
++      (first.map (evalExpr model.default model.primitive values)) world initial
++    simp only [evalCode]
++    rw [← lowerSame.model model exact values entry,← upperSame.model model exact values entry,
++      ← strideSame.model model exact values entry,← initialEqual,← loop.2]
++    cases outcome : loopEval carries.length
++        (fun index carry current => evalCode model body (model.index index::carry++values) current)
++        (model.iterations (evalExpr model.default model.primitive values lower)
++          (evalExpr model.default model.primitive values upper) (evalExpr model.default model.primitive values stride))
++        (first.map (evalExpr model.default model.primitive values)) world with
++    | error failure =>
++      rcases failure with ⟨error,final⟩
++      cases error with
++      | external error => exact ⟨True.intro,rfl⟩
++      | arity =>
++        have impossible : False := by simpa only [outcome,ResultTyped] using loop.1
++        exact impossible.elim
++    | ok result =>
++      have resultTyped : Values Canonical carries result.1 := by
++        simpa only [outcome,ResultTyped] using loop.1
++      exact ihNext _ result.2 (resultTyped.append entry)
++
++/-- The submitted complete programs are independently normalized by the old
++proved SSA normalizer. The local relation supplies the new integer proof; it
++does not compare independently numbered private SSA environments. -/
++theorem programs_sound {World Error : Type} {registry : List Signature}
++    (model : Model Int World Error registry) (exact : ExactModel model) (laws : LocalTyping model Canonical)
++    {inputs outputs : List Ty} {before after : Program} {first second : Code}
++    (left : normalize registry (vars inputs.length) before = some first)
++    (right : normalize registry (vars inputs.length) after = some second)
++    (related : Relation registry inputs outputs first second)
++    (values : List Int) (world : World) (entry : Values Canonical inputs values) :
++    ResultTyped Canonical outputs (evalProgram model before values world) ∧
++      evalProgram model before values world = evalProgram model after values world := by
++  have binding := eval_vars model.default model.primitive values []
++  simp only [List.append_nil] at binding
++  rw [entry.length] at binding
++  have source := normalize_sound model before _ _ left values world
++  have target := normalize_sound model after _ _ right values world
++  rw [binding] at source target
++  have proof := related.sound model exact laws values world entry
++  rw [source,target]
++  exact proof
++
++#print axioms Relation.sound
++#print axioms programs_sound
++end Merlin.GraphState.Integer
+diff --git a/src/merlin/verify/lean/Merlin/GraphStateIntegerCountermodels.lean b/src/merlin/verify/lean/Merlin/GraphStateIntegerCountermodels.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStateIntegerCountermodels.lean
+@@ -0,0 +1,77 @@
++/- Preserved countermodels for omitting entry/value-result/pure-primitive
++contracts. These are limitations of the theorem domain, not a pass refutation
++on initialized canonical words with the disclosed exact local interpretation. -/
++import Merlin.GraphStateIntegerOperations
++
++namespace Merlin.GraphState.Integer.Countermodels
++set_option autoImplicit false
++open Scalar
++
++def base : Model Int Nat Int [] where
++  default := 0
++  primitive := Integer.primitive
++  index := id
++  iterations := fun _ _ _ => []
++  effect := fun _ _ world => .ok ([],world)
++  arity := by intro identity arguments world values final success; cases success; simp [signature]
++
++def addZero : Program := .pure (.constant 8 0) [] (.pure (.add 8) [1,0] (.ret [0]))
++def unchanged : Program := .ret [0]
++
++theorem noncanonical_entry_refutes_neutral_deletion :
++    evalProgram base addZero [256] 7 ≠ evalProgram base unchanged [256] 7 := by
++  intro same
++  have outputs : (([0],7) : List Int × Nat) = ([256],7) := Except.ok.inj same
++  have impossible : (0 : Int) = 256 := congrArg (fun result => result.1.headD 0) outputs
++  omega
++
++theorem entry_really_noncanonical : ¬ Canonical (.bits 8) 256 := by
++  change (0 : Int) ≠ 256
++  decide
++
++def wrongPrimitive : Model Int Nat Int [] := {base with primitive := fun _ _ => 7}
++
++theorem missing_primitive_contract_refutes_deletion :
++    evalProgram wrongPrimitive addZero [5] 7 ≠ evalProgram wrongPrimitive unchanged [5] 7 := by
++  intro same
++  have outputs : (([7],7) : List Int × Nat) = ([5],7) := Except.ok.inj same
++  have impossible : (7 : Int) = 5 := congrArg (fun result => result.1.headD 0) outputs
++  omega
++
++def registry : List Signature := [{inputs := [],outputs := [.bits 8]}]
++def noncanonicalProvider : Model Int Nat Int registry where
++  default := 0
++  primitive := Integer.primitive
++  index := id
++  iterations := fun _ _ _ => []
++  effect := fun identity _ world => .ok ((signature registry identity).outputs.map (fun _ => 256),world+1)
++  arity := by intro identity arguments world values final success; cases success; simp only [List.length_map]
++
++def withProvider : Program := .opaque 0 [] [.bits 8] addZero
++def liftedProvider : Program := .opaque 0 [] [.bits 8] unchanged
++
++theorem provider_programs_statically_typed :
++    checkTypes registry [] [.bits 8] withProvider = true ∧
++    checkTypes registry [] [.bits 8] liftedProvider = true := by decide
++
++theorem missing_local_result_contract_refutes_deletion :
++    evalProgram noncanonicalProvider withProvider [] 7 ≠ evalProgram noncanonicalProvider liftedProvider [] 7 := by
++  intro same
++  have outputs : (([0],8) : List Int × Nat) = ([256],8) := Except.ok.inj same
++  have impossible : (0 : Int) = 256 := congrArg (fun result => result.1.headD 0) outputs
++  omega
++
++/-- A physical arithmetic instruction with a hidden world update cannot be
++represented by the total STATE-FREE Scalar primitive field. Removing it would
++change the observed world even when its word result is correct. -/
++theorem hidden_effect_countermodel :
++    (Except.ok ([5],8) : Outcome Int Nat Int) ≠ .ok ([5],7) := by
++  intro same
++  have impossible : (8 : Nat) = 7 := congrArg Prod.snd (Except.ok.inj same)
++  omega
++
++#print axioms noncanonical_entry_refutes_neutral_deletion
++#print axioms missing_local_result_contract_refutes_deletion
++#print axioms missing_primitive_contract_refutes_deletion
++#print axioms hidden_effect_countermodel
++end Merlin.GraphState.Integer.Countermodels
+diff --git a/src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean b/src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean
+@@ -0,0 +1,158 @@
++/- Kernel-checked local integer rewrite sequences over the existing Scalar.Expr.
++Every neutral deletion requires the actual retained expression's runtime word
++type. Python may propose a sequence; only the following proved rules accept it. -/
++import Merlin.GraphStateIntegerOperations
++
++namespace Merlin.GraphState.Integer
++set_option autoImplicit false
++open Scalar
++
++inductive ExprTyped (environment : List Ty) : Expr → Ty → Prop where
++  | var {index : Nat} {type : Ty} (found : environment[index]? = some type) :
++      ExprTyped environment (.var index) type
++  | zero {op : Prim} (valid : op.valid = true) (arity : op.inputs = []) :
++      ExprTyped environment (.zero op) op.output
++  | one {op : Prim} {argument : Expr} {type : Ty}
++      (valid : op.valid = true) (arity : op.inputs = [type])
++      (operand : ExprTyped environment argument type) :
++      ExprTyped environment (.one op argument) op.output
++  | two {op : Prim} {left right : Expr} {first second : Ty}
++      (valid : op.valid = true) (arity : op.inputs = [first,second])
++      (lhs : ExprTyped environment left first) (rhs : ExprTyped environment right second) :
++      ExprTyped environment (.two op left right) op.output
++
++theorem ExprTyped.canonical {environment : List Ty} {expression : Expr} {type : Ty}
++    (typed : ExprTyped environment expression type) (values : List Int)
++    (entry : Values Canonical environment values) :
++    Canonical type (evalExpr 0 primitive values expression) := by
++  cases typed with
++  | var found => exact entry.lookup found 0
++  | zero valid arity => exact primitive_canonical _ _
++  | one valid arity operand => exact primitive_canonical _ _
++  | two valid arity lhs rhs => exact primitive_canonical _ _
++
++inductive ExprsTyped (environment : List Ty) : List Expr → List Ty → Prop where
++  | nil : ExprsTyped environment [] []
++  | cons {head : Expr} {tail : List Expr} {type : Ty} {types : List Ty}
++      (first : ExprTyped environment head type) (rest : ExprsTyped environment tail types) :
++      ExprsTyped environment (head::tail) (type::types)
++
++theorem ExprsTyped.canonical {environment types : List Ty} {expressions : List Expr}
++    (typed : ExprsTyped environment expressions types) (values : List Int)
++    (entry : Values Canonical environment values) :
++    Values Canonical types (expressions.map (evalExpr 0 primitive values)) := by
++  induction typed with
++  | nil => exact .nil
++  | cons first rest ih => exact .cons (first.canonical values entry) ih
++
++def Same (environment : List Ty) (first second : Expr) : Prop :=
++  ∀ values, Values Canonical environment values →
++    evalExpr 0 primitive values first = evalExpr 0 primitive values second
++
++theorem Same.refl (environment : List Ty) (expression : Expr) : Same environment expression expression :=
++  fun _ _ => rfl
++
++theorem Same.symm {environment : List Ty} {first second : Expr} (same : Same environment first second) :
++    Same environment second first := fun values entry => (same values entry).symm
++
++theorem Same.trans {environment : List Ty} {first middle last : Expr}
++    (left : Same environment first middle) (right : Same environment middle last) :
++    Same environment first last := fun values entry => (left values entry).trans (right values entry)
++
++theorem Same.one {environment : List Ty} {first second : Expr} (op : Prim)
++    (same : Same environment first second) : Same environment (.one op first) (.one op second) := by
++  intro values entry
++  simp only [evalExpr,same values entry]
++
++theorem Same.two {environment : List Ty} {first second left right : Expr} (op : Prim)
++    (lhs : Same environment first second) (rhs : Same environment left right) :
++    Same environment (.two op first left) (.two op second right) := by
++  intro values entry
++  simp only [evalExpr,lhs values entry,rhs values entry]
++
++theorem Same.constant (environment : List Ty) (width : Nat) (first second : Int)
++    (bits : word width first = word width second) :
++    Same environment (.zero (.constant width first)) (.zero (.constant width second)) := by
++  intro values entry
++  exact bits
++
++theorem Same.fold_add (environment : List Ty) (width : Nat) (first second result : Int)
++    (bits : word width (first+second) = word width result) :
++    Same environment (.two (.add width) (.zero (.constant width first)) (.zero (.constant width second)))
++      (.zero (.constant width result)) := by
++  intro values entry
++  exact (word_add width first second).trans bits
++
++theorem Same.fold_sub (environment : List Ty) (width : Nat) (first second result : Int)
++    (bits : word width (first-second) = word width result) :
++    Same environment (.two (.sub width) (.zero (.constant width first)) (.zero (.constant width second)))
++      (.zero (.constant width result)) := by
++  intro values entry
++  exact (word_sub width first second).trans bits
++
++theorem Same.fold_mul (environment : List Ty) (width : Nat) (first second result : Int)
++    (bits : word width (first*second) = word width result) :
++    Same environment (.two (.mul width) (.zero (.constant width first)) (.zero (.constant width second)))
++      (.zero (.constant width result)) := by
++  intro values entry
++  exact (word_mul width first second).trans bits
++
++theorem Same.add_zero {environment : List Ty} {value : Expr} (width : Nat)
++    (typed : ExprTyped environment value (.bits width)) :
++    Same environment (.two (.add width) value (.zero (.constant width 0))) value := by
++  intro values entry
++  exact Integer.add_zero width _ (typed.canonical values entry)
++
++theorem Same.zero_add {environment : List Ty} {value : Expr} (width : Nat)
++    (typed : ExprTyped environment value (.bits width)) :
++    Same environment (.two (.add width) (.zero (.constant width 0)) value) value := by
++  intro values entry
++  exact Integer.zero_add width _ (typed.canonical values entry)
++
++theorem Same.sub_zero {environment : List Ty} {value : Expr} (width : Nat)
++    (typed : ExprTyped environment value (.bits width)) :
++    Same environment (.two (.sub width) value (.zero (.constant width 0))) value := by
++  intro values entry
++  exact Integer.sub_zero width _ (typed.canonical values entry)
++
++theorem Same.mul_one {environment : List Ty} {value : Expr} (width : Nat)
++    (typed : ExprTyped environment value (.bits width)) :
++    Same environment (.two (.mul width) value (.zero (.constant width 1))) value := by
++  intro values entry
++  exact Integer.mul_one width _ (typed.canonical values entry)
++
++theorem Same.one_mul {environment : List Ty} {value : Expr} (width : Nat)
++    (typed : ExprTyped environment value (.bits width)) :
++    Same environment (.two (.mul width) (.zero (.constant width 1)) value) value := by
++  intro values entry
++  exact Integer.one_mul width _ (typed.canonical values entry)
++
++def Sames (environment : List Ty) (first second : List Expr) : Prop :=
++  ∀ values, Values Canonical environment values →
++    first.map (evalExpr 0 primitive values) = second.map (evalExpr 0 primitive values)
++
++theorem Sames.nil (environment : List Ty) : Sames environment [] [] := fun _ _ => rfl
++
++theorem Sames.cons {environment : List Ty} {first second : Expr} {left right : List Expr}
++    (head : Same environment first second) (tail : Sames environment left right) :
++    Sames environment (first::left) (second::right) := by
++  intro values entry
++  simp only [List.map_cons,head values entry,tail values entry]
++
++def ExactModel {World Error : Type} {registry : List Signature} (model : Model Int World Error registry) : Prop :=
++  model.default = 0 ∧ model.primitive = primitive
++
++theorem Same.model {World Error : Type} {registry : List Signature}
++    {environment : List Ty} {first second : Expr} (same : Same environment first second)
++    (model : Model Int World Error registry) (exact : ExactModel model)
++    (values : List Int) (entry : Values Canonical environment values) :
++    evalExpr model.default model.primitive values first = evalExpr model.default model.primitive values second := by
++  rw [exact.1,exact.2]
++  exact same values entry
++
++#print axioms Same.fold_add
++#print axioms Same.fold_sub
++#print axioms Same.fold_mul
++#print axioms Same.add_zero
++#print axioms ExprTyped.canonical
++end Merlin.GraphState.Integer
+diff --git a/src/merlin/verify/lean/Merlin/GraphStateIntegerModels.lean b/src/merlin/verify/lean/Merlin/GraphStateIntegerModels.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStateIntegerModels.lean
+@@ -0,0 +1,118 @@
++/- Inhabited initialized mathematical models. Success is DERIVED from typed
++syntax and local total-on-typed call behavior, not supplied as a source premise.
++An optional faulty provider remains explicitly partial with a terminal world. -/
++import Merlin.GraphStateIntegerProgram
++import Merlin.GraphStateIntegerTrace
++
++namespace Merlin.GraphState.Integer
++set_option autoImplicit false
++open Scalar Pipeline
++
++def TotalOnTyped {World Error : Type} {registry : List Signature}
++    (model : Model Int World Error registry) (rep : Ty → Int → Prop) : Prop :=
++  ∀ identity arguments world, Values rep (signature registry identity).inputs arguments →
++    ∃ values final, model.effect identity arguments world = .ok (values,final)
++
++theorem loop_success {World Error : Type} {rep : Ty → Int → Prop} (types : List Ty)
++    (body : Int → List Int → World → Outcome Int World Error)
++    (total : ∀ index values world, Values rep types values →
++      ∃ outputs final, body index values world = .ok (outputs,final) ∧ Values rep types outputs)
++    (iterations : List Int) (values : List Int) (world : World) (typed : Values rep types values) :
++    ∃ outputs final, loopEval types.length body iterations values world = .ok (outputs,final) ∧
++      Values rep types outputs := by
++  induction iterations generalizing values world with
++  | nil => exact ⟨values,world,by simp only [loopEval,typed.length,↓reduceIte],typed⟩
++  | cons index later ih =>
++    obtain ⟨next,current,step,nextTyped⟩ := total index values world typed
++    obtain ⟨outputs,final,rest,outputTyped⟩ := ih next current nextTyped
++    exact ⟨outputs,final,by simp only [loopEval,typed.length,↓reduceIte,step,Except.bind,rest],outputTyped⟩
++
++theorem typed_success {World Error : Type} {registry : List Signature} {rep : Ty → Int → Prop}
++    (model : Model Int World Error registry) (laws : LocalTyping model rep) (total : TotalOnTyped model rep)
++    {types results : List Ty} {program : Program} (typed : Typed registry types results program)
++    (values : List Int) (world : World) (entry : Values rep types values) :
++    ∃ outputs final, evalProgram model program values world = .ok (outputs,final) ∧ Values rep results outputs := by
++  induction typed generalizing values world with
++  | ret operands => exact ⟨_,world,rfl,entry.reads operands model.default⟩
++  | pure eligible operands later ih =>
++    exact ih _ world (.cons (laws.primitive _ _ eligible (entry.reads operands model.default)) entry)
++  | @effect types results outputs identity arguments selected next known equal operands later ih =>
++    have inputs : Values rep (signature registry identity).inputs (reads model.default values arguments) := by
++      simpa only [signature,known,Option.getD_some] using entry.reads operands model.default
++    obtain ⟨returned,current,step⟩ := total identity _ world inputs
++    have typedOutputs := laws.effect _ _ _ _ _ inputs step
++    have same : (signature registry identity).outputs = outputs := by simp [signature,known,equal]
++    rw [same] at typedOutputs
++    obtain ⟨result,final,success,resultTyped⟩ := ih _ current (typedOutputs.append entry)
++    exact ⟨result,final,by simp only [evalProgram,opaqueStep,step,Except.bind,success],resultTyped⟩
++  | @loop types results carries lower upper stride initial body next bounds operands inside later ihBody ihNext =>
++    obtain ⟨returned,current,step,typedOutputs⟩ := loop_success carries
++      (fun index carry current => evalProgram model body (model.index index::carry++values) current)
++      (fun index carry current carryTyped => ihBody _ current
++        (.cons (laws.index index) (carryTyped.append entry)))
++      (model.iterations (values[lower]?.getD model.default) (values[upper]?.getD model.default)
++        (values[stride]?.getD model.default)) (reads model.default values initial) world
++      (entry.reads operands model.default)
++    obtain ⟨result,final,success,resultTyped⟩ := ihNext _ current (typedOutputs.append entry)
++    exact ⟨result,final,by simp only [evalProgram,step,Except.bind,success],resultTyped⟩
++
++def inhabit : Ty → Int
++  | .bits width => word width 17
++  | .index | .opaque _ => 17
++
++theorem inhabit_typed (type : Ty) : Canonical type (inhabit type) := by
++  cases type <;> simp only [inhabit,Canonical,word_word] <;> trivial
++
++theorem inhabitants (types : List Ty) : Values Canonical types (types.map inhabit) := by
++  induction types with
++  | nil => exact .nil
++  | cons type later ih => exact .cons (inhabit_typed type) ih
++
++def provider (registry : List Signature) (failure : Option Nat) : External Nat Int registry where
++  run := fun identity _ world =>
++    if failure = some identity then .error (17,world+1)
++    else .ok ((signature registry identity).outputs.map inhabit,world+1)
++  arity := by
++    intro identity arguments world values final success
++    split at success
++    · cases success
++    · cases success; simp only [List.length_map]
++
++theorem provider_typed (registry : List Signature) (failure : Option Nat)
++    (identity : Nat) (arguments : List Int) (world : Nat) (values : List Int) (final : Nat)
++    (_inputs : Values Canonical (signature registry identity).inputs arguments)
++    (success : (provider registry failure).run identity arguments world = .ok (values,final)) :
++    Values Canonical (signature registry identity).outputs values := by
++  simp only [provider] at success
++  split at success
++  · cases success
++  · cases success; exact inhabitants _
++
++theorem provider_total {registry : List Signature} {controls : Controls} (valid : ControlValid registry controls) :
++    TotalOnTyped (indexModel valid primitive (provider registry none)) Canonical := by
++  intro identity arguments world inputs
++  cases found : controlAt controls identity with
++  | none => exact ⟨(signature registry identity).outputs.map inhabit,world+1,
++      by simp [indexModel,indexEffect,found,provider]⟩
++  | some op => exact ⟨[op.eval arguments],world,by simp only [indexModel,indexEffect,found]⟩
++
++/-- Constant-result/effect-count loop witnesses do not expand a dynamic trace. -/
++theorem loop_constant (value : Int) (increment : Nat)
++    (body : Int → List Int → Nat → Outcome Int Nat Int)
++    (bodyExact : ∀ index carry world, carry.length = 1 → body index carry world = .ok ([value],world+increment))
++    (first : Int) (later : List Int) (carry : List Int) (world : Nat) (arity : carry.length = 1) :
++    loopEval 1 body (first::later) carry world = .ok ([value],world+increment*(later.length+1)) := by
++  induction later generalizing first carry world with
++  | nil => simp [loopEval,arity,bodyExact first carry world arity,Except.bind]
++  | cons index rest ih =>
++    rw [loopEval,ite_eq_left arity,bodyExact first carry world arity]
++    change loopEval 1 body (index::rest) [value] (world+increment) = _
++    rw [ih index [value] (world+increment) rfl]
++    congr 2
++    simp only [List.length_cons,Nat.mul_add,Nat.mul_one]
++    omega
++
++#print axioms typed_success
++#print axioms provider_typed
++#print axioms loop_constant
++end Merlin.GraphState.Integer
+diff --git a/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean b/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean
+@@ -0,0 +1,111 @@
++/- Exact word representation, using existing core BitVec facts. No new axiom
++or native numerical agreement is asserted. This explicitly chooses unsigned
++canonical Int representatives for signless finite words. -/
++import Merlin.GraphStateIntegerRepresentation
++
++namespace Merlin.GraphState.Integer
++set_option autoImplicit false
++open Scalar
++
++@[simp] theorem ofInt_word (width : Nat) (value : Int) :
++    BitVec.ofInt width (word width value) = BitVec.ofInt width value := by
++  change BitVec.ofNat width (BitVec.ofInt width value).toNat = BitVec.ofInt width value
++  simpa only [BitVec.setWidth_eq] using BitVec.ofNat_toNat width (BitVec.ofInt width value)
++
++@[simp] theorem word_word (width : Nat) (value : Int) :
++    word width (word width value) = word width value := by
++  change ((BitVec.ofInt width (word width value)).toNat : Int) = _
++  rw [ofInt_word]
++  rfl
++
++theorem word_bounds (width : Nat) (value : Int) :
++    0 ≤ word width value ∧ word width value < (2^width : Nat) := by
++  have bound := (BitVec.ofInt width value).isLt
++  constructor
++  · exact Int.natCast_nonneg _
++  · exact Int.ofNat_lt.mpr bound
++
++theorem canonical_iff (width : Nat) (value : Int) :
++    Canonical (.bits width) value ↔ 0 ≤ value ∧ value < (2^width : Nat) := by
++  constructor
++  · intro canonical
++    have bounds := word_bounds width value
++    change word width value = value at canonical
++    rw [canonical] at bounds
++    exact bounds
++  · intro bounds
++    simp only [Canonical,word,BitVec.toNat_ofInt]
++    rw [Int.emod_eq_of_lt bounds.1 bounds.2,Int.toNat_of_nonneg bounds.1]
++
++theorem word_add (width : Nat) (left right : Int) :
++    word width (word width left + word width right) = word width (left+right) := by
++  change ((BitVec.ofInt width (word width left + word width right)).toNat : Int) = _
++  simp only [BitVec.ofInt_add,ofInt_word]
++  rw [← BitVec.ofInt_add]
++  rfl
++
++theorem word_sub (width : Nat) (left right : Int) :
++    word width (word width left - word width right) = word width (left-right) := by
++  change ((BitVec.ofInt width (word width left - word width right)).toNat : Int) = _
++  simp only [Int.sub_eq_add_neg,BitVec.ofInt_add,BitVec.ofInt_neg,ofInt_word]
++  rw [← BitVec.ofInt_neg,← BitVec.ofInt_add]
++  rfl
++
++theorem word_mul (width : Nat) (left right : Int) :
++    word width (word width left * word width right) = word width (left*right) := by
++  change ((BitVec.ofInt width (word width left * word width right)).toNat : Int) = _
++  simp only [BitVec.ofInt_mul,ofInt_word]
++  rw [← BitVec.ofInt_mul]
++  rfl
++
++def primitive (op : Prim) (arguments : List Int) : Int :=
++  let first := arguments[0]?.getD 0
++  let second := arguments[1]?.getD 0
++  match op with
++  | .constant width value => word width value
++  | .add width => word width (first+second)
++  | .sub width => word width (first-second)
++  | .mul width => word width (first*second)
++  | .zext _ target | .trunc _ target => word target first
++  | .sext source target =>
++    let unsigned := word source first
++    word target (if unsigned < (2^(source-1) : Int) then unsigned else unsigned-(2^source : Int))
++
++theorem primitive_canonical (op : Prim) (arguments : List Int) :
++    Canonical op.output (primitive op arguments) := by
++  cases op <;> simp only [Prim.output,Canonical,primitive,word_word]
++
++theorem add_zero (width : Nat) (value : Int) (canonical : Canonical (.bits width) value) :
++    primitive (.add width) [value,word width 0] = value := by
++  simpa [primitive,word,Canonical] using canonical
++
++theorem zero_add (width : Nat) (value : Int) (canonical : Canonical (.bits width) value) :
++    primitive (.add width) [word width 0,value] = value := by
++  simpa [primitive,word,Canonical] using canonical
++
++theorem sub_zero (width : Nat) (value : Int) (canonical : Canonical (.bits width) value) :
++    primitive (.sub width) [value,word width 0] = value := by
++  simpa [primitive,word,Canonical] using canonical
++
++theorem mul_one (width : Nat) (value : Int) (canonical : Canonical (.bits width) value) :
++    primitive (.mul width) [value,word width 1] = value := by
++  simp only [primitive,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some]
++  change ((BitVec.ofInt width (value * word width 1)).toNat : Int) = value
++  rw [BitVec.ofInt_mul,ofInt_word]
++  simp only [BitVec.ofInt_ofNat,BitVec.mul_one]
++  exact canonical
++
++theorem one_mul (width : Nat) (value : Int) (canonical : Canonical (.bits width) value) :
++    primitive (.mul width) [word width 1,value] = value := by
++  simp only [primitive,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some]
++  change ((BitVec.ofInt width (word width 1 * value)).toNat : Int) = value
++  rw [BitVec.ofInt_mul,ofInt_word]
++  simp only [BitVec.ofInt_ofNat,BitVec.one_mul]
++  exact canonical
++
++#print axioms canonical_iff
++#print axioms word_add
++#print axioms word_sub
++#print axioms word_mul
++#print axioms mul_one
++end Merlin.GraphState.Integer
+diff --git a/src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean b/src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean
+@@ -0,0 +1,79 @@
++/- Complete entry-roster correspondence on a canonical entry domain, using the
++UNCHANGED pipeline dispatcher. Wrong arity and missing entries remain visible.
++The suffix may be the sealed four-pass theorem in the SAME actual registry. -/
++import Merlin.GraphStateIntegerCode
++import Merlin.GraphStatePipelineProgram
++
++namespace Merlin.GraphState.Integer
++set_option autoImplicit false
++open Scalar Pipeline
++
++def EntryDomain (entries : List Entry) (identity : Nat) (arguments : List Int) : Prop :=
++  match entries[identity]? with
++  | none => True
++  | some entry => arguments.length ≠ entry.inputs.length ∨ Values Canonical entry.inputs arguments
++
++def PreservesEntriesCanonical {World Error : Type} {registry : List Signature}
++    (model : Model Int World Error registry) (before after : List Entry) : Prop :=
++  ∀ identity arguments world, EntryDomain before identity arguments →
++    evalEntry model before identity arguments world = evalEntry model after identity arguments world
++
++theorem entries_nil {World Error : Type} {registry : List Signature}
++    (model : Model Int World Error registry) : PreservesEntriesCanonical model [] [] := by
++  intro identity arguments world entry
++  rfl
++
++theorem entries_cons {World Error : Type} {registry : List Signature}
++    (model : Model Int World Error registry) {first second : Entry} {before after : List Entry}
++    (inputs : first.inputs = second.inputs) (_outputs : first.outputs = second.outputs)
++    (body : ∀ arguments world, Values Canonical first.inputs arguments →
++      evalProgram model first.body arguments world = evalProgram model second.body arguments world)
++    (rest : PreservesEntriesCanonical model before after) :
++    PreservesEntriesCanonical model (first::before) (second::after) := by
++  intro identity arguments world entry
++  cases identity with
++  | zero =>
++    simp only [evalEntry,List.getElem?_cons_zero]
++    rw [← inputs]
++    by_cases arity : arguments.length = first.inputs.length
++    · have canonical : Values Canonical first.inputs arguments := by
++        change arguments.length ≠ first.inputs.length ∨ Values Canonical first.inputs arguments at entry
++        exact entry.resolve_left (fun wrong => wrong arity)
++      simp only [arity,↓reduceIte,body arguments world canonical]
++    · simp only [arity,↓reduceIte]
++  | succ identity =>
++    exact rest identity arguments world (by simpa only [EntryDomain,List.getElem?_cons_succ] using entry)
++
++theorem compose_suffix {World Error : Type} {registry : List Signature}
++    (model : Model Int World Error registry) {before middle after : List Entry}
++    (earlier : PreservesEntriesCanonical model before middle)
++    (suffix : PreservesEntries model middle after) : PreservesEntriesCanonical model before after := by
++  intro identity arguments world entry
++  exact (earlier identity arguments world entry).trans (suffix identity arguments world)
++
++/-- Opaque successful results require their LOCAL representation contract.
++Index operations return the concrete index carrier and impose no word premise. -/
++theorem index_model_typing {World Error : Type} {registry : List Signature} {controls : Controls}
++    (valid : ControlValid registry controls) (external : External World Error registry)
++    (typed : ∀ identity arguments world values final,
++      Values Canonical (signature registry identity).inputs arguments →
++      external.run identity arguments world = .ok (values,final) →
++      Values Canonical (signature registry identity).outputs values) :
++    LocalTyping (indexModel valid primitive external) Canonical where
++  primitive := fun op arguments _ _ => primitive_canonical op arguments
++  index := fun _ => True.intro
++  effect := by
++    intro identity arguments world values final inputs success
++    cases found : controlAt controls identity with
++    | none => exact typed _ _ _ _ _ inputs (by simpa only [indexModel,indexEffect,found] using success)
++    | some op =>
++      have same : ([op.eval arguments],world) = (values,final) := by
++        simpa only [indexModel,indexEffect,found,Except.ok.injEq] using success
++      cases same
++      rw [(valid.2 identity op found).2.2]
++      exact .cons True.intro .nil
++
++#print axioms compose_suffix
++#print axioms entries_cons
++#print axioms index_model_typing
++end Merlin.GraphState.Integer
+diff --git a/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean b/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean
+@@ -0,0 +1,139 @@
++/- Runtime value typing for the EXISTING Scalar operational evaluator.
++Local result contracts plus typed canonical entries derive every successful
++result/carry representation. They do not assume source success or no poison
++for a physical execution; the admitted carrier contains initialized Ints. -/
++import Merlin.GraphStateScalar
++
++namespace Merlin.GraphState.Integer
++set_option autoImplicit false
++open Scalar
++
++def word (width : Nat) (value : Int) : Int := (BitVec.ofInt width value).toNat
++
++def Canonical : Ty → Int → Prop
++  | .bits width,value => word width value = value
++  | .index,_ | .opaque _,_ => True
++
++inductive Values (rep : Ty → Int → Prop) : List Ty → List Int → Prop where
++  | nil : Values rep [] []
++  | cons {type : Ty} {types : List Ty} {value : Int} {values : List Int}
++      (head : rep type value) (tail : Values rep types values) :
++      Values rep (type::types) (value::values)
++
++theorem Values.length {rep : Ty → Int → Prop} {types : List Ty} {values : List Int}
++    (typed : Values rep types values) : values.length = types.length := by
++  induction typed with
++  | nil => rfl
++  | cons _ _ ih => simpa using congrArg Nat.succ ih
++
++theorem Values.append {rep : Ty → Int → Prop} {first second : List Ty} {xs ys : List Int}
++    (left : Values rep first xs) (right : Values rep second ys) :
++    Values rep (first++second) (xs++ys) := by
++  induction left with
++  | nil => exact right
++  | cons head tail ih => exact .cons head ih
++
++theorem Values.lookup {rep : Ty → Int → Prop} {types : List Ty} {values : List Int}
++    (typed : Values rep types values) {index : Nat} {type : Ty}
++    (found : types[index]? = some type) (default : Int) :
++    rep type (values[index]?.getD default) := by
++  induction typed generalizing index with
++  | nil => cases found
++  | cons head tail ih =>
++    cases index with
++    | zero => cases found; exact head
++    | succ index => exact ih found
++
++theorem Values.reads {rep : Ty → Int → Prop} {types selected : List Ty} {values : List Int}
++    {indices : List Nat} (typed : Values rep types values)
++    (operands : HasReads types indices selected) (default : Int) :
++    Values rep selected (reads default values indices) := by
++  induction operands with
++  | nil => exact .nil
++  | cons found rest ih => exact .cons (typed.lookup found default) ih
++
++/-- These laws are LOCAL to individual admitted operations. An opaque failure
++has no result-representation obligation and retains its entire error/world. -/
++structure LocalTyping {World Error : Type} {registry : List Signature}
++    (model : Model Int World Error registry) (rep : Ty → Int → Prop) : Prop where
++  primitive : ∀ op arguments, op.valid = true → Values rep op.inputs arguments →
++    rep op.output (model.primitive op arguments)
++  index : ∀ index, rep .index (model.index index)
++  effect : ∀ identity arguments world values final,
++    Values rep (signature registry identity).inputs arguments →
++    model.effect identity arguments world = .ok (values,final) →
++    Values rep (signature registry identity).outputs values
++
++def ResultTyped {World Error : Type} (rep : Ty → Int → Prop) (types : List Ty) :
++    Outcome Int World Error → Prop
++  | .ok (values,_) => Values rep types values
++  | .error (.external _,_) => True
++  | .error (.arity,_) => False
++
++theorem loop_result_typed {World Error : Type} {rep : Ty → Int → Prop} (types : List Ty)
++    (body : Int → List Int → World → Outcome Int World Error)
++    (bodyTyped : ∀ index values world, Values rep types values → ResultTyped rep types (body index values world))
++    (iterations : List Int) (values : List Int) (world : World) (typed : Values rep types values) :
++    ResultTyped rep types (loopEval types.length body iterations values world) := by
++  induction iterations generalizing values world with
++  | nil => simpa only [loopEval,typed.length,↓reduceIte,ResultTyped] using typed
++  | cons index rest ih =>
++    simp only [loopEval,typed.length,↓reduceIte]
++    have current := bodyTyped index values world typed
++    cases step : body index values world with
++    | error failure =>
++      rcases failure with ⟨error,final⟩
++      cases error with
++      | external error => trivial
++      | arity => simp only [step,ResultTyped] at current
++    | ok next =>
++      exact ih next.1 next.2 (by simpa only [step,ResultTyped] using current)
++
++/-- Runtime result representations, including recursively carried values, are
++derived from static syntax and LOCAL contracts. This is conditional on canonical
++entries, not a global intermediate-typing or successful-execution hypothesis. -/
++theorem typed_result {World Error : Type} {registry : List Signature}
++    {rep : Ty → Int → Prop} (model : Model Int World Error registry) (laws : LocalTyping model rep)
++    {types results : List Ty} {program : Program} (typed : Typed registry types results program)
++    (values : List Int) (world : World) (entry : Values rep types values) :
++    ResultTyped rep results (evalProgram model program values world) := by
++  induction typed generalizing values world with
++  | ret operands => exact entry.reads operands model.default
++  | pure eligible operands later ih =>
++    exact ih _ world (.cons (laws.primitive _ _ eligible (entry.reads operands model.default)) entry)
++  | @effect types results outputs identity arguments selected next known equal operands later ih =>
++    simp only [evalProgram,opaqueStep]
++    cases step : model.effect identity (reads model.default values arguments) world with
++    | error failure => trivial
++    | ok result =>
++      apply ih
++      apply Values.append _ entry
++      have inputs : (signature registry identity).inputs = selected.inputs := by simp [signature,known]
++      have outputs : (signature registry identity).outputs = outputs := by simp [signature,known, equal]
++      rw [← outputs]
++      exact laws.effect _ _ _ _ _ (by rw [inputs]; exact entry.reads operands model.default) step
++  | @loop types results carries lower upper stride initial body next bounds operands inside later ihBody ihNext =>
++    simp only [evalProgram]
++    have shape := loop_result_typed carries
++      (fun index carry current => evalProgram model body (model.index index::carry++values) current)
++      (fun index carry current carryTyped => ihBody _ current
++        (.cons (laws.index index) (carryTyped.append entry)))
++      (model.iterations (values[lower]?.getD model.default) (values[upper]?.getD model.default)
++        (values[stride]?.getD model.default)) (reads model.default values initial) world
++      (entry.reads operands model.default)
++    cases outcome : loopEval carries.length
++        (fun index carry current => evalProgram model body (model.index index::carry++values) current)
++        (model.iterations (values[lower]?.getD model.default) (values[upper]?.getD model.default)
++          (values[stride]?.getD model.default)) (reads model.default values initial) world with
++    | error failure =>
++      rcases failure with ⟨error,final⟩
++      cases error with
++      | external error => trivial
++      | arity => simp only [outcome,ResultTyped] at shape
++    | ok result =>
++      apply ihNext
++      exact (show Values rep carries result.1 from by simpa only [outcome,ResultTyped] using shape).append entry
++
++#print axioms typed_result
++#print axioms loop_result_typed
++end Merlin.GraphState.Integer
+diff --git a/src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean b/src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean
+@@ -0,0 +1,111 @@
++/- Every actually reached operand's RUNTIME representation, separately from
++the old slot/initialization theorem. Errors stop the trace; success is not assumed.
++This uses the unchanged Scalar evaluator, including nested loops/captures/carries. -/
++import Merlin.GraphStateIntegerRepresentation
++
++namespace Merlin.GraphState.Integer
++set_option autoImplicit false
++open Scalar
++
++def loopReached {World Error : Type} (rep : Ty → Int → Prop) (types : List Ty)
++    (safe : Int → List Int → World → Prop) (body : Int → List Int → World → Outcome Int World Error) :
++    List Int → List Int → World → Prop
++  | [],values,_ => Values rep types values
++  | index::later,values,world => Values rep types values ∧ safe index values world ∧
++    match body index values world with
++    | .error _ => True
++    | .ok (next,final) => loopReached rep types safe body later next final
++
++def Reached {World Error : Type} {registry : List Signature}
++    (model : Model Int World Error registry) (rep : Ty → Int → Prop) :
++    Program → List Int → World → Prop
++  | .ret _,_,_ => True
++  | .pure op arguments next,environment,world =>
++    Values rep op.inputs (reads model.default environment arguments) ∧
++    rep op.output (model.primitive op (reads model.default environment arguments)) ∧
++    Reached model rep next (model.primitive op (reads model.default environment arguments)::environment) world
++  | .opaque identity arguments _ next,environment,world =>
++    Values rep (signature registry identity).inputs (reads model.default environment arguments) ∧
++    match opaqueStep model identity (reads model.default environment arguments) world with
++    | .error _ => True
++    | .ok (values,final) =>
++      Values rep (signature registry identity).outputs values ∧ Reached model rep next (values++environment) final
++  | .loop lower upper stride initial carries body next,environment,world =>
++    Values rep [.index,.index,.index] (reads model.default environment [lower,upper,stride]) ∧
++    loopReached rep carries
++      (fun index carry current => Reached model rep body (model.index index::carry++environment) current)
++      (fun index carry current => evalProgram model body (model.index index::carry++environment) current)
++      (model.iterations (environment[lower]?.getD model.default) (environment[upper]?.getD model.default)
++        (environment[stride]?.getD model.default)) (reads model.default environment initial) world ∧
++    match loopEval carries.length
++      (fun index carry current => evalProgram model body (model.index index::carry++environment) current)
++      (model.iterations (environment[lower]?.getD model.default) (environment[upper]?.getD model.default)
++        (environment[stride]?.getD model.default)) (reads model.default environment initial) world with
++    | .error _ => True
++    | .ok (values,final) => Values rep carries values ∧ Reached model rep next (values++environment) final
++
++theorem loop_reached {World Error : Type} {rep : Ty → Int → Prop} (types : List Ty)
++    (safe : Int → List Int → World → Prop) (body : Int → List Int → World → Outcome Int World Error)
++    (bodySafe : ∀ index values world, Values rep types values → safe index values world)
++    (bodyTyped : ∀ index values world, Values rep types values → ResultTyped rep types (body index values world))
++    (iterations : List Int) (values : List Int) (world : World) (typed : Values rep types values) :
++    loopReached rep types safe body iterations values world := by
++  induction iterations generalizing values world with
++  | nil => exact typed
++  | cons index later ih =>
++    refine ⟨typed,bodySafe index values world typed,?_⟩
++    have shape := bodyTyped index values world typed
++    cases outcome : body index values world with
++    | error failure => trivial
++    | ok result => exact ih result.1 result.2 (by simpa only [outcome,ResultTyped] using shape)
++
++theorem typed_reached {World Error : Type} {registry : List Signature} {rep : Ty → Int → Prop}
++    (model : Model Int World Error registry) (laws : LocalTyping model rep)
++    {types results : List Ty} {program : Program} (typed : Typed registry types results program)
++    (values : List Int) (world : World) (entry : Values rep types values) : Reached model rep program values world := by
++  induction typed generalizing values world with
++  | ret operands => trivial
++  | pure eligible operands later ih =>
++    have inputs := entry.reads operands model.default
++    have output := laws.primitive _ _ eligible inputs
++    exact ⟨inputs,output,ih _ world (.cons output entry)⟩
++  | @effect types results outputs identity arguments selected next known equal operands later ih =>
++    have inputs : Values rep (signature registry identity).inputs (reads model.default values arguments) := by
++      simpa only [signature,known,Option.getD_some] using entry.reads operands model.default
++    refine ⟨inputs,?_⟩
++    cases step : model.effect identity (reads model.default values arguments) world with
++    | error failure => simp only [opaqueStep,step]
++    | ok result =>
++      simp only [opaqueStep,step]
++      have outputsTyped := laws.effect _ _ _ _ _ inputs step
++      refine ⟨outputsTyped,?_⟩
++      apply ih
++      have same : (signature registry identity).outputs = outputs := by simp [signature,known,equal]
++      rw [same] at outputsTyped
++      exact outputsTyped.append entry
++  | @loop types results carries lower upper stride initial body next bounds operands inside later ihBody ihNext =>
++    refine ⟨entry.reads bounds model.default,?_,?_⟩
++    · apply loop_reached
++      · intro index carry current carryTyped
++        exact ihBody _ current (.cons (laws.index index) (carryTyped.append entry))
++      · intro index carry current carryTyped
++        exact typed_result model laws inside _ current (.cons (laws.index index) (carryTyped.append entry))
++      · exact entry.reads operands model.default
++    · have shape := loop_result_typed carries
++        (fun index carry current => evalProgram model body (model.index index::carry++values) current)
++        (fun index carry current carryTyped => typed_result model laws inside _ current
++          (.cons (laws.index index) (carryTyped.append entry)))
++        (model.iterations (values[lower]?.getD model.default) (values[upper]?.getD model.default)
++          (values[stride]?.getD model.default)) (reads model.default values initial) world
++        (entry.reads operands model.default)
++      cases outcome : loopEval carries.length
++          (fun index carry current => evalProgram model body (model.index index::carry++values) current)
++          (model.iterations (values[lower]?.getD model.default) (values[upper]?.getD model.default)
++            (values[stride]?.getD model.default)) (reads model.default values initial) world with
++      | error failure => trivial
++      | ok result =>
++        have carryTyped : Values rep carries result.1 := by simpa only [outcome,ResultTyped] using shape
++        exact ⟨carryTyped,ihNext _ result.2 (carryTyped.append entry)⟩
++
++#print axioms typed_reached
++end Merlin.GraphState.Integer
+diff --git a/src/merlin/verify/lean_graph_state_integer.py b/src/merlin/verify/lean_graph_state_integer.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_integer.py
+@@ -0,0 +1,202 @@
++"""Standalone exact-integer graph boundary validation; no shared broker edits.
++
++Kernel acceptance has the disclosed canonical-entry/operation-contract meaning.
++Neither capture diagnostics nor host tests supply native or review approval.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++from merlin.common.owned_process import run_owned
++from merlin.common.paths import build_dir, repo_root
++
++from . import lean_graph_state as stable
++from .lean_graph_state_integer_emit import emit
++from .lean_graph_state_integer_kernel import BUILD, guard
++from .lean_graph_state_integer_proof import check_query, sources
++from .lean_graph_state_pipeline_kernel import write
++
++
++def configuration(*, factor=2, tile=3, index_bits=32):
++    if any(type(v) is not int for v in (factor, tile, index_bits)):
++        raise ValueError("actual integer configuration required; bool refused")
++    if not 2 <= factor <= 4 or not 2 <= tile <= 16 or index_bits not in (32, 64):
++        raise ValueError("supported factor2..4/tile2..16/index32|64 profile required")
++    return {"factor": factor, "tile": tile, "index_bits": index_bits}
++
++
++def _unavailable(destination, reason):
++    record = {
++        "status": "UNAVAILABLE_PRODUCER",
++        "reason": reason,
++        "cause": "UNKNOWN",
++        "retry_permitted": False,
++        "stdout": stable.file_ref(destination / "producer.stdout")
++        if (destination / "producer.stdout").is_file()
++        else None,
++        "stderr": stable.file_ref(destination / "producer.stderr")
++        if (destination / "producer.stderr").is_file()
++        else None,
++        "native_or_setup_failure_counted_as_refusal": False,
++    }
++    write(destination / "UNAVAILABLE.json", record)
++    blocker = build_dir() / BUILD / "PRODUCER_BLOCKER.json"
++    if not blocker.exists():
++        write(blocker, record)
++    raise RuntimeError("producer unavailable; context held, no retry: " + str(destination))
++
++
++def intake(reference, destination, *, source=None, buffers=None, chain=False, settings=None):
++    guard()
++    settings = configuration(**(settings or {}))
++    if (source is None) == (buffers is None):
++        raise ValueError("select producer input OR independent buffers")
++    if buffers is not None and len(buffers) not in (2, 6):
++        raise ValueError("two standalone or six composed original buffers required")
++    destination = Path(destination).resolve()
++    destination.mkdir(parents=True, exist_ok=False)
++    script = repo_root() / "src/merlin/verify/lean_graph_state_integer_capture.py"
++    command = [
++        sys.executable,
++        str(script),
++        "--reference",
++        str(reference),
++        "--destination",
++        str(destination / "actual"),
++        "--factor",
++        str(settings["factor"]),
++        "--tile",
++        str(settings["tile"]),
++        "--bits",
++        str(settings["index_bits"]),
++    ]
++    if source is not None:
++        command += ["--source", str(source)]
++        if chain:
++            command += ["--chain"]
++    else:
++        command += ["--buffers", *map(str, buffers)]
++    try:
++        with (destination / "producer.stdout").open("x") as out, (destination / "producer.stderr").open("x") as err:
++            result = run_owned(
++                command,
++                cwd=reference,
++                env={**os.environ, "PYTHONPATH": str(Path(reference) / "src"), "PYTHONDONTWRITEBYTECODE": "1"},
++                stdout=out,
++                stderr=err,
++                timeout=60,
++                check=False,
++            )
++    except (subprocess.TimeoutExpired, OSError) as error:
++        return _unavailable(destination, str(error) + str(getattr(error, "__notes__", [])))
++    if result.returncode:
++        rejection = destination / "actual/REJECTION.json"
++        if result.returncode != 1 or not rejection.is_file():
++            return _unavailable(destination, "signal/setup/unknown producer exit " + str(result.returncode))
++        try:
++            refused = json.loads(rejection.read_text())
++        except json.JSONDecodeError:
++            return _unavailable(destination, "malformed producer refusal record")
++        if (
++            type(refused) is not dict
++            or set(refused) != {"schema", "status", "reason", "kind", "qualified"}
++            or refused["schema"] != "merlin.graph-state-integer.host-domain-refusal.v1"
++            or refused["status"] != "unsupported"
++            or type(refused["qualified"]) is not bool
++            or refused["qualified"] is not False
++            or type(refused["reason"]) is not str
++            or refused["kind"] not in ("ValueError", "ParseError", "VerifyException")
++        ):
++            return _unavailable(destination, "unconfirmed producer failure record")
++        raise ValueError("structured actual-IR domain refusal; retained logs: " + str(destination))
++    captured = destination / "actual/CAPTURE.json"
++    if not captured.is_file():
++        return _unavailable(destination, "successful exit without actual capture")
++    try:
++        return json.loads(captured.read_text())
++    except json.JSONDecodeError:
++        return _unavailable(destination, "successful exit with malformed capture")
++
++
++def roots(capture):
++    base = "Merlin.GraphStateIntegerInstance."
++    names = [base + "prefix_actual"]
++    if capture["pipeline"]:
++        names += [base + "complete", base + "exactMiddle", base + "Suffix.complete"]
++    names += [
++        "Merlin.GraphState.Integer.programs_sound",
++        "Merlin.GraphState.Integer.Relation.sound",
++        "Merlin.GraphState.Integer.typed_result",
++        "Merlin.GraphState.Integer.typed_reached",
++        "Merlin.GraphState.Integer.canonical_iff",
++    ]
++    for index, function in enumerate(capture["prefix"]["functions"]):
++        if not function["declaration"]:
++            names += [base + f"F{index}." + suffix for suffix in ("actual", "reached", "localRewrites")]
++    return names
++
++
++def author(capture, mode="graph"):
++    selected = roots(capture)
++    if mode == "graph":
++        return emit(capture["prefix"], pipeline_capture=capture["pipeline"]), selected, None
++    if mode == "initialized-symbolic-provider-v1":
++        from .lean_graph_state_integer_models import witness
++
++        text, added, model = witness(capture)
++        return text, [*selected, *added], model
++    raise ValueError("unknown exact integer checker/model mode")
++
++
++def check_boundary(buffers, destination, reference, *, settings=None, mode="graph"):
++    settings = configuration(**(settings or {}))
++    destination = Path(destination).resolve()
++    destination.mkdir(parents=True, exist_ok=False)
++    original = [stable.file_ref(path) for path in buffers]
++    code = sources()
++    try:
++        capture = intake(reference, destination / "intake", buffers=buffers, settings=settings)
++        text, selected_roots, model = author(capture, mode)
++    except ValueError as error:
++        report = {
++            "schema": "merlin.graph-state-integer.boundary.v1",
++            "status": "unsupported",
++            "reason": str(error),
++            "originals": original,
++            "sources": code,
++            "settings": settings,
++            "mode": mode,
++            "qualified": False,
++            "review_approved": False,
++            "native_failure_counted_as_refusal": False,
++        }
++        write(destination / "report.json", report)
++        return report
++    proof = check_query(text, destination / "lean", selected_roots)
++    if any(stable.file_ref(row["path"]) != row for row in [*original, *code]):
++        raise ValueError("original or validator source changed during boundary proof")
++    report = {
++        "schema": "merlin.graph-state-integer.boundary.v1",
++        "status": proof["status"],
++        "originals": original,
++        "capture": stable.file_ref(destination / "intake/actual/CAPTURE.json"),
++        "settings": settings,
++        "reference": str(Path(reference).resolve()),
++        "sources": code,
++        "mode": mode,
++        "model": model,
++        "proof": stable.file_ref(destination / "lean/report.json"),
++        "changed": capture["each_stage_changed"],
++        "qualified": False,
++        "review_approved": False,
++        "native_fidelity_proved": False,
++        "poison_freedom_proved": False,
++        "claim": "canonical-entry complete returned/error/world correspondence under local operation contracts",
++    }
++    write(destination / "report.json", report)
++    return report
+diff --git a/src/merlin/verify/lean_graph_state_integer_capture.py b/src/merlin/verify/lean_graph_state_integer_capture.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_integer_capture.py
+@@ -0,0 +1,194 @@
++"""Actual pinned exact-integer producer and independent complete buffer intake.
++
++Runs with the selected read-only producer as the only Merlin import owner.
++Diagnostic witnesses never authorize equality. All new code belongs to primary.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++from dataclasses import asdict
++from pathlib import Path
++
++if __package__:
++    from .lean_graph_state_pipeline_capture import loaded_sources, project_modules, selected_source
++    from .lean_graph_state_scalar_capture import file_ref, project
++else:
++    from lean_graph_state_pipeline_capture import loaded_sources, project_modules, selected_source
++    from lean_graph_state_scalar_capture import file_ref, project
++
++
++def validate_calls(modules):
++    from xdsl.dialects import func
++
++    for module in modules:
++        module.verify()
++        declarations = {
++            op.sym_name.data: op for op in module.body.block.ops if type(op) is func.FuncOp and not op.body.blocks
++        }
++        for op in module.walk():
++            if type(op) is not func.CallOp:
++                continue
++            selected = declarations.get(op.callee.root_reference.data)
++            if selected is None or op.callee.nested_references:
++                raise ValueError("explicit nonnested external declaration required")
++            if tuple(v.type for v in op.operands) != tuple(selected.function_type.inputs) or tuple(
++                v.type for v in op.results
++            ) != tuple(selected.function_type.outputs):
++                raise ValueError("actual call signature differs from declaration")
++
++
++def projection(reference, buffers, destination, *, factor, tile, bits, mode, diagnostics=()):
++    from merlin.transforms.certificates import parse_ir
++
++    revision = selected_source(reference)
++    if len(buffers) not in (2, 6):
++        raise ValueError("two standalone or six composed exact buffers required")
++    modules = [parse_ir(data.decode()) for data in buffers]
++    validate_calls(modules)
++    prefix = project(modules[0], modules[1], context=tuple(modules[2:]))
++    pipeline = None
++    if len(buffers) == 6:
++        stages, controls = project_modules(modules[1:])
++        if any(s["registry"] != prefix["registry"] or s["types"] != prefix["types"] for s in stages):
++            raise ValueError("one exact six-buffer common registry/type projection required")
++        pipeline = {
++            "stages": stages,
++            "index_operations": controls,
++            "factor": factor,
++            "tile": tile,
++            "index_bits": bits,
++        }
++    producer, runtime = loaded_sources(reference)
++    result = {
++        "schema": "merlin.graph-state-integer.actual-boundary.v1",
++        "revision": revision,
++        "prefix": prefix,
++        "pipeline": pipeline,
++        "buffers": [file_ref(destination / f"stage{i}.mlir") for i in range(len(buffers))],
++        "each_stage_changed": [first != second for first, second in zip(buffers, buffers[1:])],
++        "mode": mode,
++        "diagnostic_only": list(diagnostics),
++        "producer_sources": producer,
++        "python_runtime": runtime,
++        "owned_projection": file_ref(__file__),
++        "projection_trusted": True,
++        "lean_checked": False,
++        "qualified": False,
++        "native_fidelity_proved": False,
++        "poison_freedom_proved": False,
++        "review_approved": False,
++    }
++    if any((destination / f"stage{i}.mlir").read_bytes() != data for i, data in enumerate(buffers)):
++        raise ValueError("submitted buffers changed during intake")
++    if loaded_sources(reference) != (producer, runtime):
++        raise ValueError("producer/runtime identity changed during intake")
++    (destination / "CAPTURE.json").write_text(json.dumps(result, indent=2) + "\n")
++    return result
++
++
++def capture(reference, source, destination, *, chain=False, factor=2, tile=3, bits=32):
++    from merlin.transforms.certificates import ir_text, parse_ir
++    from merlin.transforms.normalization import simplify_integers
++
++    reference, source, destination = reference.resolve(), source.resolve(), destination.resolve()
++    selected_source(reference)
++    destination.mkdir(parents=True, exist_ok=False)
++    original = source.read_bytes()
++    (destination / "input.mlir").write_bytes(original)
++    module = parse_ir(original.decode())
++    module.verify()
++    buffers, diagnostics = [ir_text(module).encode()], []
++    runs = [("exact-integer", lambda: simplify_integers(module))]
++    if chain:
++        from merlin.transforms.loops import segment_loops
++        from merlin.transforms.pure_scalar import eliminate_scalar_redundancy, hoist_scalar_invariants
++        from merlin.transforms.unrolling import unroll_ordered_loops
++
++        runs += [
++            ("cse-dce", lambda: eliminate_scalar_redundancy(module)),
++            ("licm", lambda: hoist_scalar_invariants(module)),
++            ("unroll", lambda: unroll_ordered_loops(module, (factor,), index_bits=bits)),
++            ("segment", lambda: segment_loops(module, (tile,), index_bits=bits)),
++        ]
++    for name, run in runs:
++        witnesses = run()
++        module.verify()
++        diagnostics.append({"stage": name, "witnesses": [asdict(w) for w in witnesses]})
++        buffers.append(ir_text(module).encode())
++    for index, data in enumerate(buffers):
++        (destination / f"stage{index}.mlir").write_bytes(data)
++    result = projection(
++        reference,
++        buffers,
++        destination,
++        factor=factor,
++        tile=tile,
++        bits=bits,
++        mode="actual-producer",
++        diagnostics=diagnostics,
++    )
++    if source.read_bytes() != original:
++        raise ValueError("producer input changed")
++    return result
++
++
++def reopen(reference, paths, destination, *, factor=2, tile=3, bits=32):
++    destination.mkdir(parents=True, exist_ok=False)
++    buffers = [p.read_bytes() for p in paths]
++    for index, data in enumerate(buffers):
++        (destination / f"stage{index}.mlir").write_bytes(data)
++    result = projection(
++        reference, buffers, destination, factor=factor, tile=tile, bits=bits, mode="independent-reprojection"
++    )
++    if any(path.read_bytes() != data for path, data in zip(paths, buffers, strict=True)):
++        raise ValueError("submitted original changed during reprojection")
++    return result
++
++
++def main():
++    from xdsl.utils.exceptions import ParseError, VerifyException
++
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--reference", type=Path, required=True)
++    parser.add_argument("--destination", type=Path, required=True)
++    parser.add_argument("--source", type=Path)
++    parser.add_argument("--buffers", type=Path, nargs="+")
++    parser.add_argument("--chain", action="store_true")
++    parser.add_argument("--factor", type=int, default=2)
++    parser.add_argument("--tile", type=int, default=3)
++    parser.add_argument("--bits", type=int, default=32)
++    args = vars(parser.parse_args())
++    source, paths = args.pop("source"), args.pop("buffers")
++    if (source is None) == (paths is None):
++        parser.error("select actual source OR original buffers")
++    try:
++        if source is not None:
++            result = capture(source=source, **args)
++        else:
++            args.pop("chain")
++            result = reopen(paths=paths, **args)
++    except (ValueError, ParseError, VerifyException) as error:
++        args["destination"].mkdir(parents=True, exist_ok=True)
++        (args["destination"] / "REJECTION.json").write_text(
++            json.dumps(
++                {
++                    "schema": "merlin.graph-state-integer.host-domain-refusal.v1",
++                    "status": "unsupported",
++                    "reason": str(error),
++                    "kind": type(error).__name__,
++                    "qualified": False,
++                },
++                indent=2,
++            )
++            + "\n"
++        )
++        raise SystemExit(1) from error
++    print(json.dumps({"each_stage_changed": result["each_stage_changed"], "lean_checked": False}))
++
++
++if __name__ == "__main__":
++    sys.dont_write_bytecode = True
++    main()
+diff --git a/src/merlin/verify/lean_graph_state_integer_emit.py b/src/merlin/verify/lean_graph_state_integer_emit.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_integer_emit.py
+@@ -0,0 +1,353 @@
++# ruff: noqa: E501
++# Keep literal kernel statement/proof equations readable and byte-bound.
++"""Propose local rewrite proof terms for complete actual Scalar programs.
++
++The Python normal forms are never proof authority: old SSA normalization,
++every local identity, typed binder and whole-context relation is kernel checked.
++"""
++
++from __future__ import annotations
++
++from .lean_graph_state_scalar import budget, integer, primitive, program, type_code, types
++
++
++def var(index):
++    return {"var": index}
++
++
++def zero(width, value):
++    return {"zero": {"kind": "constant", "width": width, "value": value}}
++
++
++def shift(amount, expression):
++    if "var" in expression:
++        return var(amount + expression["var"])
++    if "zero" in expression:
++        return expression
++    if "one" in expression:
++        op, value = expression["one"]
++        return {"one": [op, shift(amount, value)]}
++    op, left, right = expression["two"]
++    return {"two": [op, shift(amount, left), shift(amount, right)]}
++
++
++def lift(count, symbols):
++    return [var(i) for i in range(count)] + [shift(count, value) for value in symbols]
++
++
++def normalize(records, symbols):
++    symbols = list(symbols)
++    for position, row in enumerate(records):
++        if "ret" in row:
++            if position != len(records) - 1:
++                raise ValueError("unexpected early terminator")
++            return {"ret": [symbols[i] for i in row["ret"]]}
++        if "pure" in row:
++            op = row["pure"]
++            args = [symbols[i] for i in row["arguments"]]
++            if len(args) > 2:
++                raise ValueError("unsupported primitive arity")
++            expression = {"zero": op} if not args else {"one" if len(args) == 1 else "two": [op, *args]}
++            symbols.insert(0, expression)
++        elif "effect" in row:
++            count = len(row["outputs"])
++            return {
++                "effect": row["effect"],
++                "arguments": [symbols[i] for i in row["arguments"]],
++                "outputs": row["outputs"],
++                "next": normalize(records[position + 1 :], lift(count, symbols)),
++            }
++        else:
++            loop = row["loop"]
++            return {
++                "loop": {
++                    "bounds": [symbols[i] for i in loop["bounds"]],
++                    "initial": [symbols[i] for i in loop["initial"]],
++                    "carries": loop["carries"],
++                    "body": normalize(loop["body"], lift(len(loop["carries"]) + 1, symbols)),
++                    "next": normalize(records[position + 1 :], lift(len(loop["carries"]), symbols)),
++                }
++            }
++    raise ValueError("complete scalar code needs a final observation")
++
++
++def expr(value):
++    if "var" in value:
++        return "(.var " + integer(value["var"], natural=True) + ")"
++    if "zero" in value:
++        return "(.zero " + primitive(value["zero"]) + ")"
++    key = "one" if "one" in value else "two"
++    op, *args = value[key]
++    return "(." + key + " " + primitive(op) + " " + " ".join(expr(v) for v in args) + ")"
++
++
++def exprs(values):
++    return "[" + ",".join(expr(value) for value in values) + "]"
++
++
++def code(value):
++    if "ret" in value:
++        return "(.ret " + exprs(value["ret"]) + ")"
++    if "effect" in value:
++        return (
++            "(.opaque "
++            + str(value["effect"])
++            + " "
++            + exprs(value["arguments"])
++            + " "
++            + types(value["outputs"])
++            + " "
++            + code(value["next"])
++            + ")"
++        )
++    loop = value["loop"]
++    return (
++        "(.loop "
++        + " ".join(expr(v) for v in loop["bounds"])
++        + " "
++        + exprs(loop["initial"])
++        + " "
++        + types(loop["carries"])
++        + " "
++        + code(loop["body"])
++        + " "
++        + code(loop["next"])
++        + ")"
++    )
++
++
++def expr_type(value, environment):
++    if "var" in value:
++        return environment[value["var"]]
++    op = value["zero"] if "zero" in value else value["one" if "one" in value else "two"][0]
++    return {"bits": op.get("target", op.get("width"))}
++
++
++def typed_expr(value, environment, expected):
++    if expr_type(value, environment) != expected:
++        raise ValueError("runtime representation proof has wrong static expression width/type")
++    if "var" in value:
++        return "(ExprTyped.var (type := " + type_code(expected) + ") (by decide))"
++    if "zero" in value:
++        return "(ExprTyped.zero (by decide) (by decide))"
++    key = "one" if "one" in value else "two"
++    op, *arguments = value[key]
++    inputs = [{"bits": op["source"]}] if key == "one" else [{"bits": op["width"]}] * 2
++    children = [
++        typed_expr(argument, environment, declared) for argument, declared in zip(arguments, inputs, strict=True)
++    ]
++    binders = (
++        " (type := " + type_code(inputs[0]) + ")"
++        if key == "one"
++        else " (first := " + type_code(inputs[0]) + ") (second := " + type_code(inputs[1]) + ")"
++    )
++    return "(ExprTyped." + key + binders + " (by decide) (by decide) " + " ".join(children) + ")"
++
++
++def typed_exprs(values, environment, expected):
++    if len(values) != len(expected):
++        raise ValueError("wrong complete typed expression vector arity")
++    result = "ExprsTyped.nil"
++    for value, declared in reversed(list(zip(values, expected, strict=True))):
++        result = "(ExprsTyped.cons " + typed_expr(value, environment, declared) + " " + result + ")"
++    return result
++
++
++def const(value):
++    if "zero" in value and value["zero"]["kind"] == "constant":
++        return value["zero"]
++    return None
++
++
++def simplify(value, environment):
++    if "var" in value:
++        return value, "(Same.refl _ _)"
++    if "zero" in value:
++        op = value["zero"]
++        folded = op["value"] % (1 << op["width"])
++        return zero(op["width"], folded), (
++            f"(Same.constant _ {op['width']} {integer(op['value'])} {integer(folded)} (by decide))"
++        )
++    key = "one" if "one" in value else "two"
++    op, *children = value[key]
++    reduced = [simplify(child, environment) for child in children]
++    current = {key: [op, *[r[0] for r in reduced]]}
++    congruence = "(Same." + key + " " + primitive(op) + " " + " ".join(r[1] for r in reduced) + ")"
++    if key == "one":
++        return current, congruence
++    left, right = [r[0] for r in reduced]
++    lhs, rhs = const(left), const(right)
++    width, kind = op["width"], op["kind"]
++    if kind not in ("add", "sub", "mul"):
++        raise ValueError("unsupported exact integer rewrite primitive")
++    if lhs and rhs and lhs["width"] == rhs["width"] == width:
++        a, b = lhs["value"], rhs["value"]
++        result = {"add": lambda: a + b, "sub": lambda: a - b, "mul": lambda: a * b}[kind]() % (1 << width)
++        reduced_value = zero(width, result)
++        proof = f"(Same.fold_{kind} _ {width} {integer(a)} {integer(b)} {integer(result)} (by decide))"
++    elif kind == "add" and lhs and lhs["width"] == width and lhs["value"] == 0:
++        reduced_value = right
++        proof = f"(Same.zero_add {width} " + typed_expr(right, environment, {"bits": width}) + ")"
++    elif kind in ("add", "sub") and rhs and rhs["width"] == width and rhs["value"] == 0:
++        reduced_value = left
++        proof = f"(Same.{kind}_zero {width} " + typed_expr(left, environment, {"bits": width}) + ")"
++    elif kind == "mul" and lhs and lhs["width"] == width and lhs["value"] == 1:
++        reduced_value = right
++        proof = f"(Same.one_mul {width} " + typed_expr(right, environment, {"bits": width}) + ")"
++    elif kind == "mul" and rhs and rhs["width"] == width and rhs["value"] == 1:
++        reduced_value = left
++        proof = f"(Same.mul_one {width} " + typed_expr(left, environment, {"bits": width}) + ")"
++    else:
++        return current, congruence
++    return reduced_value, "(Same.trans " + congruence + " " + proof + ")"
++
++
++def same_expr(first, second, environment):
++    left, proof = simplify(first, environment)
++    right, other = simplify(second, environment)
++    if left != right:
++        raise ValueError("actual ordered expression lacks a supported exact local rewrite proof")
++    return "(Same.trans " + proof + " (Same.symm " + other + "))"
++
++
++def same_exprs(first, second, environment):
++    if len(first) != len(second):
++        raise ValueError("complete observation/operand vector arity differs")
++    result = "(Sames.nil _)"
++    for left, right in reversed(list(zip(first, second, strict=True))):
++        result = "(Sames.cons " + same_expr(left, right, environment) + " " + result + ")"
++    return result
++
++
++def relation(first, second, environment, results, registry):
++    if set(first) != set(second):
++        raise ValueError("complete retained call/loop/observation skeleton differs")
++    if "ret" in first:
++        return (
++            "(Relation.ret "
++            + typed_exprs(first["ret"], environment, results)
++            + " "
++            + same_exprs(first["ret"], second["ret"], environment)
++            + ")"
++        )
++    if "effect" in first:
++        if first["effect"] != second["effect"] or first["outputs"] != second["outputs"]:
++            raise ValueError("retained effect descriptor/result order differs")
++        identity = first["effect"]
++        selected = registry[identity]
++        args = typed_exprs(first["arguments"], environment, selected["inputs"])
++        same = same_exprs(first["arguments"], second["arguments"], environment)
++        rest = relation(first["next"], second["next"], first["outputs"] + environment, results, registry)
++        return f"(Relation.effect (by decide) (by decide) {args} {same} {rest})"
++    left, right = first["loop"], second["loop"]
++    if left["carries"] != right["carries"]:
++        raise ValueError("ordered loop carried types differ")
++    carries = left["carries"]
++    typed = [typed_expr(value, environment, {"index": True}) for value in left["bounds"]]
++    initial = typed_exprs(left["initial"], environment, carries)
++    bounds = [same_expr(a, b, environment) for a, b in zip(left["bounds"], right["bounds"], strict=True)]
++    same = same_exprs(left["initial"], right["initial"], environment)
++    body = relation(left["body"], right["body"], [{"index": True}, *carries, *environment], carries, registry)
++    rest = relation(left["next"], right["next"], [*carries, *environment], results, registry)
++    return "(Relation.loop " + " ".join([*typed, initial, *bounds, same, body, rest]) + ")"
++
++
++def emit(projection, *, pipeline_capture=None):
++    suffix = ""
++    if pipeline_capture is not None:
++        from .lean_graph_state_pipeline_emit import emit as emit_pipeline
++
++        if (
++            projection["registry"] != pipeline_capture["stages"][0]["registry"]
++            or projection["types"] != pipeline_capture["stages"][0]["types"]
++        ):
++            raise ValueError("exact prefix/suffix registry and type join required")
++        suffix = emit_pipeline(pipeline_capture).replace(
++            "Merlin.GraphStatePipelineInstance", "Merlin.GraphStateIntegerInstance.Suffix"
++        )
++        suffix = "import Merlin.GraphStateIntegerProgram\nimport Merlin.GraphStateIntegerTrace\n" + suffix
++    registry = (
++        "["
++        + ",".join(
++            "{inputs := " + types(row["inputs"]) + ",outputs := " + types(row["outputs"]) + "}"
++            for row in projection["registry"]
++        )
++        + "]"
++    )
++    text = suffix or "import Merlin.GraphStateIntegerProgram\nimport Merlin.GraphStateIntegerTrace\n"
++    text += (
++        "set_option maxRecDepth 4096\nset_option maxHeartbeats 2000000\n"
++        "namespace Merlin.GraphStateIntegerInstance\n"
++        "open Merlin.GraphState.Scalar Merlin.GraphState.Integer\n"
++        + (
++            "abbrev registry := Suffix.registry\ntheorem originalRegistry : registry = " + registry + " := by decide\n"
++            if suffix
++            else "def registry : List Signature := " + registry + "\n"
++        )
++    )
++    defined = []
++    for index, function in enumerate(projection["functions"]):
++        if function["declaration"]:
++            continue
++        defined.append(index)
++        for key in ("before", "after"):
++            budget(function[key], len(function["inputs"]), [0])
++        symbols = [var(i) for i in range(len(function["inputs"]))]
++        first, second = [normalize(function[key], symbols) for key in ("before", "after")]
++        proof = relation(first, second, function["inputs"], function["outputs"], projection["registry"])
++        text += f"namespace F{index}\n"
++        text += "def inputs : List Ty := " + types(function["inputs"]) + "\n"
++        text += "def outputs : List Ty := " + types(function["outputs"]) + "\n"
++        for key in ("before", "after"):
++            text += f"def {key} : Program := " + program(function[key]) + "\n"
++            text += f"theorem {key}Typed : checkTypes registry inputs outputs {key} = true := by decide\n"
++        for key, value, raw in (("first", first, "before"), ("second", second, "after")):
++            text += f"def {key} : Code := " + code(value) + "\n"
++            text += (
++                f"theorem {key}Normalized : normalize registry (vars inputs.length) {raw} = some {key} := by decide\n"
++            )
++        text += "theorem localRewrites : Relation registry inputs outputs first second :=\n  " + proof + "\n"
++        text += "theorem actual {World Error : Type} (model : Model Int World Error registry)\n"
++        text += "    (exact : ExactModel model) (laws : LocalTyping model Canonical)\n"
++        text += "    (values : List Int) (world : World) (entry : Values Canonical inputs values) :\n"
++        text += "    evalProgram model before values world = evalProgram model after values world :=\n"
++        text += (
++            "  (programs_sound model exact laws firstNormalized secondNormalized localRewrites values world entry).2\n"
++        )
++        text += "theorem reached {World Error : Type} (model : Model Int World Error registry)\n"
++        text += "    (laws : LocalTyping model Canonical) (values : List Int) (world : World)\n"
++        text += "    (entry : Values Canonical inputs values) :\n"
++        text += "    Reached model Canonical before values world ∧ Reached model Canonical after values world :=\n"
++        text += "  ⟨typed_reached model laws (checkTypes_sound _ _ _ beforeTyped) values world entry,\n"
++        text += "   typed_reached model laws (checkTypes_sound _ _ _ afterTyped) values world entry⟩\n"
++        text += f"end F{index}\n"
++    if not defined:
++        raise ValueError("no defined entry; declarations alone cannot demonstrate a rewrite")
++    for name, stage in (("originalEntries", "before"), ("middleEntries", "after")):
++        text += (
++            "def "
++            + name
++            + " : List Merlin.GraphState.Pipeline.Entry := ["
++            + ",".join(f"{{inputs := F{i}.inputs, outputs := F{i}.outputs, body := F{i}.{stage}}}" for i in defined)
++            + "]\n"
++        )
++    proof = "(Merlin.GraphState.Integer.entries_nil model)"
++    for index in reversed(defined):
++        proof = f"(Merlin.GraphState.Integer.entries_cons model rfl rfl (F{index}.actual model exact laws) {proof})"
++    text += "theorem prefix_actual {World Error : Type} (model : Model Int World Error registry)\n"
++    text += "    (exact : ExactModel model) (laws : LocalTyping model Canonical) :\n"
++    text += "    PreservesEntriesCanonical model originalEntries middleEntries :=\n  " + proof + "\n"
++    if suffix:
++        text += "theorem exactMiddle : middleEntries = Suffix.originalEntries := by decide\n"
++        text += "theorem complete {World Error : Type} (external : Merlin.GraphState.Pipeline.External World Error registry)\n"
++        text += "    (typed : ∀ identity arguments world values final,\n"
++        text += "      Values Canonical (signature registry identity).inputs arguments →\n"
++        text += "      external.run identity arguments world = .ok (values,final) →\n"
++        text += "      Values Canonical (signature registry identity).outputs values) :\n"
++        text += (
++            "    PreservesEntriesCanonical (Suffix.M primitive external) originalEntries Suffix.finalEntries := by\n"
++        )
++        text += "  apply compose_suffix (Suffix.M primitive external) (prefix_actual _ ⟨rfl,rfl⟩\n"
++        text += "    (index_model_typing (Merlin.GraphState.Pipeline.checkControl_sound Suffix.controlAccepted) external typed))\n"
++        text += "  rw [exactMiddle]\n  exact Suffix.complete primitive external\n"
++    return text + "end Merlin.GraphStateIntegerInstance\n"
+diff --git a/src/merlin/verify/lean_graph_state_integer_kernel.py b/src/merlin/verify/lean_graph_state_integer_kernel.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_integer_kernel.py
+@@ -0,0 +1,157 @@
++"""Private exact-integer proof development on the sealed pure-core bindings.
++
++All old sources, objects, profiles and failures are read-only. A new unknown
++native fault or binding mismatch holds this context; no refresh or retry.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++import shutil
++import subprocess
++from pathlib import Path
++
++from merlin.common.owned_process import run_owned
++from merlin.common.paths import artifacts_dir, build_dir
++
++from . import lean_graph_state as stable
++from . import lean_graph_state_pipeline_proof as pipeline
++from .lean_graph_state_pipeline_kernel import exact, write
++
++ARTIFACT = "verification/graph-state-integer"
++BUILD = "graph-verification/state-integer"
++PRIOR = (
++    "graph-state/review/sealed-v2",
++    "graph-state-chain/review/sealed-packed-v1",
++    "graph-state-elision/review/sealed-diagnostic-v1",
++    "graph-state-scalar/review/sealed-v1",
++    "graph-state-pipeline/review/sealed-v1",
++)
++
++
++def guard():
++    base = build_dir() / BUILD
++    if any(base.glob("*BLOCKER*.json")):
++        raise RuntimeError("integer development context held; inspect immutable first failure")
++
++
++def context():
++    guard()
++    path = artifacts_dir() / ARTIFACT / "active/dependency-check-once.json"
++    if path.exists():
++        value = json.loads(path.read_text())
++        if not value["exact"]:
++            raise RuntimeError("integer fixed context affected/unconfirmed")
++    else:
++        old = pipeline.fixed_context()
++        prior, receipts = [], []
++        for name in PRIOR:
++            packet = artifacts_dir() / "verification" / name / "delivery.json"
++            receipts.append(stable.file_ref(packet))
++            prior += [row["original"] for row in json.loads(packet.read_text())["owned_sources"]]
++        own = pipeline.own_objects()
++        rows = [*old["bindings"], *prior, *receipts]
++        rows += [row[key] for row in own for key in ("source", "object", "development_record")]
++        indexed = {}
++        for row in rows:
++            if row["path"] in indexed and indexed[row["path"]] != row:
++                raise ValueError("conflicting original dependency provenance")
++            indexed[row["path"]] = row
++        mismatches = []
++        for row in indexed.values():
++            try:
++                exact(row)
++            except (OSError, ValueError) as error:
++                mismatches.append(str(error))
++        value = {
++            "schema": "merlin.graph-state-integer.fixed-context.v1",
++            "exact": not mismatches,
++            "mismatches": mismatches,
++            "bindings": list(indexed.values()),
++            "prior_owned_sources": prior,
++            "old_context": stable.file_ref(
++                artifacts_dir() / "verification/graph-state-pipeline/active/dependency-check-once.json"
++            ),
++            "objects": [*old["foreign_objects"]]
++            + [row for row in old["bindings"] if row["path"].startswith(old["scalar_library"] + "/")]
++            + [row["object"] for row in own],
++            "incident_target_in_closure": old["target_in_selected_closure"],
++            "sdk_written": False,
++            "new_expected_hashes_adopted": False,
++            "qualified": False,
++        }
++        write(path, value)
++    try:
++        for row in value["bindings"]:
++            exact(row)
++    except (OSError, ValueError) as error:
++        write(build_dir() / BUILD / "BINDING_BLOCKER.json", {"reason": str(error), "retry": False})
++        raise
++    if not value["exact"]:
++        raise RuntimeError("integer fixed context mismatch; source-only work continues")
++    return value
++
++
++def environment():
++    selected = context()
++    lib = build_dir() / BUILD / "development/lib"
++    (lib / "Merlin").mkdir(parents=True, exist_ok=True)
++    for row in selected["objects"]:
++        target = lib / "Merlin" / Path(row["path"]).name
++        if not target.exists():
++            shutil.copyfile(row["path"], target)
++        exact({**row, "path": str(target)})
++    return {**os.environ, "LEAN_PATH": str(lib), "LEAN_NUM_THREADS": "1"}
++
++
++def invoke(source):
++    source = Path(source).resolve()
++    if not source.name.startswith("GraphStateInteger") or source.suffix != ".lean":
++        raise ValueError("owned integer proof source required")
++    env = environment()
++    content = source.read_bytes()
++    imports = []
++    for line in content.decode().splitlines():
++        if line.startswith("import Merlin.GraphStateInteger"):
++            name = line.removeprefix("import Merlin.")
++            imports.append(stable.file_ref(build_dir() / BUILD / "development/lib/Merlin" / (name + ".olean")))
++    selection = {"source_sha256": hashlib.sha256(content).hexdigest(), "owned_imports": imports}
++    key = hashlib.sha256(json.dumps(selection, sort_keys=True).encode()).hexdigest()
++    directory = build_dir() / BUILD / "development/attempts" / source.stem / key
++    directory.mkdir(parents=True, exist_ok=False)
++    copy = directory / source.name
++    copy.write_bytes(content)
++    write(directory / "selection.json", selection)
++    target = build_dir() / BUILD / "development/lib/Merlin" / (source.stem + ".olean")
++    try:
++        with (directory / "stdout").open("x") as out, (directory / "stderr").open("x") as err:
++            result = run_owned(
++                [str(stable.LEAN), "-j1", str(copy), "-o", str(target)],
++                cwd=directory,
++                env=env,
++                stdout=out,
++                stderr=err,
++                timeout=60,
++                check=False,
++            )
++    except subprocess.TimeoutExpired as error:
++        write(
++            build_dir() / BUILD / "LIMIT_BLOCKER.json",
++            {"source": stable.file_ref(copy), "cleanup": str(error.__notes__), "retry": False},
++        )
++        raise
++    record = {
++        "returncode": result.returncode,
++        "source": stable.file_ref(copy),
++        "stdout": stable.file_ref(directory / "stdout"),
++        "stderr": stable.file_ref(directory / "stderr"),
++        "object": stable.file_ref(target) if result.returncode == 0 else None,
++        "qualified": False,
++    }
++    write(directory / "result.json", record)
++    if result.returncode < 0:
++        write(build_dir() / BUILD / "NATIVE_BLOCKER.json", {**record, "cause": "UNKNOWN", "retry": False})
++    context()
++    return record
+diff --git a/src/merlin/verify/lean_graph_state_integer_models.py b/src/merlin/verify/lean_graph_state_integer_models.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_integer_models.py
+@@ -0,0 +1,172 @@
++# ruff: noqa: E501
++"""Actual six-buffer symbolic-loop provider witness, separate from native fidelity.
++
++The loop proof uses a structural constant-result theorem and the derived finite
++range, never a literal dynamic execution trace or a source-success premise.
++"""
++
++from __future__ import annotations
++
++from .lean_graph_state_integer_emit import emit
++from .lean_graph_state_scalar import integer
++
++
++def witness(capture):
++    if capture["pipeline"] is None:
++        raise ValueError("initialized provider witness requires the actual six-buffer chain")
++    functions = capture["prefix"]["functions"]
++    defined = [i for i, f in enumerate(functions) if not f["declaration"]]
++    changed = [i for i in defined if functions[i]["before"] != functions[i]["after"]]
++    if len(changed) != 1:
++        raise ValueError("one actual changed main entry required in provider witness mode")
++    index = changed[0]
++    function = functions[index]
++    inputs = function["inputs"]
++    if len(inputs) != 2 or inputs[0] != inputs[1] or set(inputs[0]) != {"bits"} or inputs[0]["bits"] < 5:
++        raise ValueError("two equal canonical words capable of nonzero provider17 required")
++    suffix = capture["pipeline"]
++    controls = {r["identity"]: r for r in suffix["index_operations"]}
++    records = suffix["stages"][1]["functions"][index]["after"]
++    loops = [r["loop"] for r in records if "loop" in r]
++    if len(loops) != 1 or loops[0]["carries"] != [inputs[0]]:
++        raise ValueError("single actual word-carry witness submode required")
++    effects = [r for r in loops[0]["body"] if "effect" in r and r["effect"] not in controls]
++    if len(effects) != 2 or effects[0]["outputs"] or effects[1]["outputs"] != [inputs[0]]:
++        raise ValueError("one observer then one provider in actual loop body required")
++    watch = effects[0]["effect"]
++    from .lean_graph_state_pipeline_emit import static_controls
++
++    lower, upper, stride = static_controls(records, suffix)
++    count = (upper - lower + stride - 1) // stride
++    if count < 1:
++        raise ValueError("nonempty actual execution witness required")
++    iterations = "[" + ",".join(integer(lower + stride * i) for i in range(count)) + "]"
++    if count > 64:
++        raise ValueError("witness range syntax budget64; graph preservation still supports huge counts")
++    text = emit(capture["prefix"], pipeline_capture=suffix)
++    text = "import Merlin.GraphStateIntegerModels\nimport Merlin.GraphStateIntegerCountermodels\n" + text
++    text = text.removesuffix("end Merlin.GraphStateIntegerInstance\n")
++    text += f"""namespace IntegerProvider
++open Merlin.GraphState.Pipeline
++abbrev ex (fail : Bool) : External Nat Int registry :=
++  provider registry (if fail then some {watch} else none)
++abbrev chosen (fail : Bool) : Model Int Nat Int registry := Suffix.M primitive (ex fail)
++theorem laws (fail : Bool) : LocalTyping (chosen fail) Canonical :=
++  index_model_typing (checkControl_sound Suffix.controlAccepted) (ex fail)
++    (provider_typed registry (if fail then some {watch} else none))
++def arguments : List Int := [3,5]
++theorem entriesCanonical : Values Canonical F{index}.inputs arguments := by
++  apply Values.cons (by decide : word {inputs[0]["bits"]} 3 = 3)
++  apply Values.cons (by decide : word {inputs[0]["bits"]} 5 = 5)
++  exact Values.nil
++theorem nonzero : arguments.all (fun value => decide (value ≠ 0)) = true := by decide
++theorem range : indexIterations {lower} {upper} {stride} = {iterations} :=
++  indexIterations_count (lower := {lower}) (upper := {upper}) (step := {stride}) (count := {count}) (by decide) (by decide)
++def body (fail : Bool) (index : Int) (carry : List Int) (world : Nat) : Outcome Int Nat Int :=
++  evalProgram (chosen fail) Suffix.F{index}.B2 (index::carry++Suffix.F{index}.E2 primitive 3 5) world
++theorem body_success (index : Int) (carry : List Int) (world : Nat) (arity : carry.length = 1) :
++    body false index carry world = .ok ([17],world+2) := by
++  obtain ⟨value,rfl⟩ := List.length_eq_one_iff.mp arity
++  simp [body,chosen,Suffix.F{index}.B2,Suffix.F{index}.E2,Suffix.M,indexModel,indexEffect,
++    Suffix.controls,Merlin.GraphState.Pipeline.controlAt,opaqueStep,evalProgram,reads,ex,provider,registry,Suffix.registry,
++    signature,inhabit,primitive,word,Except.bind,Nat.add_assoc]
++theorem body_failure (index : Int) (carry : List Int) (world : Nat) (arity : carry.length = 1) :
++    body true index carry world = .error (.external 17,world+1) := by
++  obtain ⟨value,rfl⟩ := List.length_eq_one_iff.mp arity
++  simp [body,chosen,Suffix.F{index}.B2,Suffix.F{index}.E2,Suffix.M,indexModel,indexEffect,
++    Suffix.controls,Merlin.GraphState.Pipeline.controlAt,opaqueStep,evalProgram,reads,ex,provider,registry,Suffix.registry,
++    signature,inhabit,primitive,word,Except.bind,Nat.add_assoc]
++theorem loop_success (world : Nat) :
++    loopEval 1 (body false) (indexIterations {lower} {upper} {stride}) [3] world = .ok ([17],world+{2 * count}) := by
++  rw [range]
++  exact loop_constant 17 2 (body false) body_success _ _ [3] world rfl
++theorem loop_failure (world : Nat) :
++    loopEval 1 (body true) (indexIterations {lower} {upper} {stride}) [3] world = .error (.external 17,world+1) := by
++  rw [range,loopEval]
++  simp only [List.length_cons,List.length_nil,↓reduceIte,body_failure _ [3] world rfl,Except.bind]
++theorem source_success (world : Nat) :
++    evalProgram (chosen false) F{index}.before arguments world = .ok ([17],world+{2 * count + 1}) := by
++  rw [F{index}.actual (chosen false) ⟨rfl,rfl⟩ (laws false) arguments world entriesCanonical]
++  change evalProgram (Suffix.M primitive (ex false)) Suffix.F{index}.S0 [3,5] world = _
++  rw [Suffix.F{index}.firstTwo Int Nat Int (chosen false) [3,5] world rfl]
++  rw [Suffix.F{index}.form2]
++  change (loopEval 1 (body false) (indexIterations {lower} {upper} {stride}) [3] world).bind _ = _
++  rw [loop_success]
++  simp [Suffix.F{index}.N2,Suffix.F{index}.E2,chosen,Suffix.M,indexModel,indexEffect,
++    Suffix.controls,Merlin.GraphState.Pipeline.controlAt,opaqueStep,evalProgram,reads,ex,provider,registry,Suffix.registry,
++    signature,inhabit,primitive,word,Except.bind,Nat.add_assoc]
++theorem source_failure (world : Nat) :
++    evalProgram (chosen true) F{index}.before arguments world = .error (.external 17,world+1) := by
++  rw [F{index}.actual (chosen true) ⟨rfl,rfl⟩ (laws true) arguments world entriesCanonical]
++  change evalProgram (Suffix.M primitive (ex true)) Suffix.F{index}.S0 [3,5] world = _
++  rw [Suffix.F{index}.firstTwo Int Nat Int (chosen true) [3,5] world rfl]
++  rw [Suffix.F{index}.form2]
++  change (loopEval 1 (body true) (indexIterations {lower} {upper} {stride}) [3] world).bind _ = _
++  rw [loop_failure]
++  rfl
++theorem actual_source_success : evalProgram (chosen false) F{index}.before arguments 7 = .ok ([17],{8 + 2 * count}) :=
++  source_success 7
++theorem actual_final_success : evalProgram (chosen false) Suffix.F{index}.S4 arguments 7 = .ok ([17],{8 + 2 * count}) := by
++  change evalProgram (Suffix.M primitive (ex false)) Suffix.F{index}.S4 arguments 7 = _
++  rw [← Suffix.F{index}.actual primitive (ex false) arguments 7 rfl]
++  change evalProgram (chosen false) F{index}.after arguments 7 = _
++  rw [← F{index}.actual (chosen false) ⟨rfl,rfl⟩ (laws false) arguments 7 entriesCanonical]
++  exact actual_source_success
++theorem actual_source_failure : evalProgram (chosen true) F{index}.before arguments 7 = .error (.external 17,8) :=
++  source_failure 7
++theorem actual_final_failure : evalProgram (chosen true) Suffix.F{index}.S4 arguments 7 = .error (.external 17,8) := by
++  change evalProgram (Suffix.M primitive (ex true)) Suffix.F{index}.S4 arguments 7 = _
++  rw [← Suffix.F{index}.actual primitive (ex true) arguments 7 rfl]
++  change evalProgram (chosen true) F{index}.after arguments 7 = _
++  rw [← F{index}.actual (chosen true) ⟨rfl,rfl⟩ (laws true) arguments 7 entriesCanonical]
++  exact actual_source_failure
++theorem source_values_reached : Reached (chosen false) Canonical F{index}.before arguments 7 :=
++  (F{index}.reached (chosen false) (laws false) arguments 7 entriesCanonical).1
++end IntegerProvider
++end Merlin.GraphStateIntegerInstance
++"""
++    model_roots = [
++        "Merlin.GraphStateIntegerInstance.IntegerProvider." + name
++        for name in (
++            "entriesCanonical",
++            "nonzero",
++            "body_success",
++            "body_failure",
++            "source_success",
++            "source_failure",
++            "actual_source_success",
++            "actual_final_success",
++            "actual_source_failure",
++            "actual_final_failure",
++            "source_values_reached",
++        )
++    ]
++    model_roots += [
++        "Merlin.GraphState.Integer.Countermodels." + name
++        for name in (
++            "noncanonical_entry_refutes_neutral_deletion",
++            "entry_really_noncanonical",
++            "missing_primitive_contract_refutes_deletion",
++            "provider_programs_statically_typed",
++            "missing_local_result_contract_refutes_deletion",
++            "hidden_effect_countermodel",
++        )
++    ]
++    return (
++        text,
++        model_roots,
++        {
++            "mode": "initialized-symbolic-provider-v1",
++            "inputs": [3, 5],
++            "initial_world": 7,
++            "success": {"values": [17], "world": 8 + 2 * count},
++            "failure": {"error": 17, "world": 8},
++            "source_success_assumed": False,
++            "domain": "initialized canonical Int words; no physical poison constructor",
++            "external": "explicit typed constant-word17 provider; world increment1; optional first observer fault",
++            "primitive_fidelity_proved": False,
++            "native_fidelity_proved": False,
++            "review_approved": False,
++            "old_literal_trace_promoted": False,
++        },
++    )
+diff --git a/src/merlin/verify/lean_graph_state_integer_mutate.py b/src/merlin/verify/lean_graph_state_integer_mutate.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_integer_mutate.py
+@@ -0,0 +1,120 @@
++"""Independent actual-IR adverse edits, with compiler-validity evidence.
++
++Malformed cases are distinctly labeled; no native failure is a semantic refusal.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++
++
++def mutate(source, destination, kind):
++    from xdsl.dialects import arith, builtin, func, scf
++    from xdsl.rewriter import Rewriter
++
++    from merlin.transforms.certificates import ir_text, parse_ir
++    from merlin.transforms.normalization import signed_wrap
++
++    module = parse_ir(source.read_text())
++    module.verify()
++    main = next(op for op in module.body.block.ops if type(op) is func.FuncOp and op.sym_name.data == "main")
++    operations = list(main.walk())
++    calls = [op for op in operations if type(op) is func.CallOp]
++    loops = [op for op in operations if type(op) is scf.ForOp]
++    malformed = False
++    if kind in ("constant", "exposed-site"):
++        call = next(op for op in calls if op.callee.root_reference.data == "watch")
++        argument = call.operands[1 if kind == "exposed-site" else 0]
++        op = argument.owner
++        if type(op) is not arith.ConstantOp:
++            raise ValueError("live actual folded constant expected")
++        value = signed_wrap(op.value.value.data + 1, op.result.type.width.data)
++        Rewriter.replace_op(op, arith.ConstantOp.from_int_and_width(value, op.result.type))
++    elif kind == "operand":
++        call = next(op for op in calls if op.callee.root_reference.data == "watch")
++        call.operands = (main.body.block.args[0], *call.operands[1:])
++    elif kind in ("operand-order", "observer-arguments"):
++        call = next(op for op in reversed(calls) if op.callee.root_reference.data == "watch")
++        call.operands = tuple(reversed(call.operands))
++    elif kind == "opcode":
++        op = next(op for op in operations if type(op) is arith.AddiOp)
++        Rewriter.replace_op(op, arith.SubiOp(*op.operands))
++    elif kind == "flags":
++        op = next(op for op in operations if type(op) in (arith.AddiOp, arith.SubiOp, arith.MuliOp))
++        op.properties["overflowFlags"] = arith.IntegerOverflowAttr((arith.IntegerOverflowFlag.NSW,))
++    elif kind in ("carry-init", "yield-order", "capture", "step", "bound"):
++        if kind == "carry-init":
++            op = loops[0]
++            op.operands = (*op.operands[:3], *tuple(reversed(op.iter_args)))
++        elif kind == "yield-order":
++            op = next(op for op in operations if type(op) is scf.YieldOp and len(op.operands) > 1)
++            op.operands = tuple(reversed(op.operands))
++        elif kind == "capture":
++            call = next(op for op in calls if op.callee.root_reference.data == "watch")
++            call.operands = (call.operands[0], main.body.block.args[0])
++        else:
++            argument = loops[0].step if kind == "step" else loops[0].ub
++            op = argument.owner
++            Rewriter.replace_op(op, arith.ConstantOp.from_int_and_width(op.value.value.data + 1, op.result.type))
++    elif kind == "callee":
++        call = next(op for op in calls if op.callee.root_reference.data == "watch")
++        call.properties["callee"] = builtin.SymbolRefAttr("other")
++    elif kind == "drop-observer":
++        call = next(op for op in calls if op.callee.root_reference.data == "watch")
++        call.parent_block().erase_op(call)
++    elif kind == "return-order":
++        op = next(op for op in operations if type(op) is func.ReturnOp)
++        op.operands = tuple(reversed(op.operands))
++    elif kind == "return-value":
++        op = next(op for op in operations if type(op) is func.ReturnOp)
++        constant = arith.ConstantOp.from_int_and_width(1, op.operands[0].type)
++        op.parent_block().insert_op_before(constant, op)
++        op.operands = (constant.result, *op.operands[1:])
++    elif kind in ("function-context", "signature-width"):
++        op = next(op for op in module.body.block.ops if type(op) is func.FuncOp and op.sym_name.data == "untouched")
++        if kind == "signature-width":
++            replacement = parse_ir("builtin.module {func.func @untouched(%x:i32)->i32{func.return %x:i32}}")
++            function = replacement.body.block.first_op
++            replacement.body.block.detach_op(function)
++            Rewriter.replace_op(op, function)
++        else:
++            ret = op.body.block.last_op
++            constant = arith.ConstantOp.from_int_and_width(1, op.body.block.args[0].type)
++            op.body.block.insert_op_before(constant, ret)
++            ret.operands = (constant.result,)
++    elif kind in ("function-header", "module-header"):
++        (main if kind == "function-header" else module).attributes["unmodeled"] = builtin.UnitAttr()
++    elif kind in ("malformed-operand", "malformed-result", "malformed-region", "malformed-call"):
++        malformed = True
++        call = next(op for op in calls if op.callee.root_reference.data == "provider")
++        if kind == "malformed-operand":
++            call.operands = (*call.operands[:-1], main.body.block.args[0])
++        elif kind == "malformed-result":
++            call.results[0]._type = builtin.i64
++        elif kind == "malformed-region":
++            loops[0].body.block.args[0]._type = builtin.i8
++        else:
++            call.operands = tuple(call.operands[:-1])
++    else:
++        raise ValueError("unknown owned integer mutation")
++    if not malformed:
++        module.verify()
++    text = ir_text(module)
++    if text == ir_text(parse_ir(source.read_text())):
++        raise ValueError("requested mutation made no actual change")
++    destination.write_text(text)
++    return {"kind": kind, "compiler_valid": not malformed, "malformed": malformed, "changed": True}
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("source", type=Path)
++    parser.add_argument("destination", type=Path)
++    parser.add_argument("kind")
++    print(json.dumps(mutate(**vars(parser.parse_args()))))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/src/merlin/verify/lean_graph_state_integer_proof.py b/src/merlin/verify/lean_graph_state_integer_proof.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_integer_proof.py
+@@ -0,0 +1,215 @@
++"""Exact-root standard-three audits for the private integer proof-producing checker.
++
++Copies byte-identical project objects; never rebuilds old proofs or the SDK.
++Fresh replay must reproduce both theorem statements and actual imported objects.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++import shutil
++import subprocess
++from pathlib import Path
++
++from merlin.common.owned_process import run_owned
++from merlin.common.paths import build_dir, repo_root
++
++from . import lean_graph_state as stable
++from . import lean_graph_state_integer_kernel as kernel
++from .lean_graph_state_pipeline_kernel import exact, write
++from .lean_graph_state_pipeline_proof import auditor_ref
++
++MODULES = (
++    "GraphStateIntegerRepresentation",
++    "GraphStateIntegerOperations",
++    "GraphStateIntegerExpressions",
++    "GraphStateIntegerCode",
++    "GraphStateIntegerProgram",
++    "GraphStateIntegerTrace",
++    "GraphStateIntegerModels",
++    "GraphStateIntegerCountermodels",
++)
++
++
++def own_objects():
++    rows = []
++    for name in MODULES:
++        source = stable.file_ref(repo_root() / f"src/merlin/verify/lean/Merlin/{name}.lean")
++        selected = []
++        for path in (build_dir() / kernel.BUILD / "development/attempts" / name).glob("*/result.json"):
++            value = json.loads(path.read_text())
++            if value["returncode"] == 0 and value["source"]["sha256"] == source["sha256"]:
++                selected.append((path, value))
++        if len({value["object"]["sha256"] for _, value in selected}) != 1:
++            raise ValueError("exact successful integer object selection required: " + name)
++        path, value = selected[-1]
++        exact(value["object"])
++        rows.append({"source": source, "object": value["object"], "record": stable.file_ref(path)})
++    return rows
++
++
++def sources():
++    root = repo_root()
++    paths = [*root.glob("src/merlin/verify/lean_graph_state_integer*.py")]
++    paths += list(root.glob("src/merlin/verify/lean/Merlin/GraphStateInteger*.lean"))
++    paths += list(root.glob("merlin/tests/ir/test_lean_graph_state_integer*.py"))
++    return [stable.file_ref(path) for path in sorted(paths)]
++
++
++def prepare():
++    fixed = kernel.context()
++    own = own_objects()
++    selection = {"own": own, "sources": sources(), "auditor": auditor_ref(), "arguments": ["-j1"]}
++    key = hashlib.sha256(json.dumps(selection, sort_keys=True).encode()).hexdigest()
++    directory = build_dir() / kernel.BUILD / "profiles" / key
++    lib = directory / "lib"
++    originals = [*fixed["objects"], *[row["object"] for row in own]]
++    copies = [
++        {"original": row, "copy": {**row, "path": str(lib / "Merlin" / Path(row["path"]).name)}} for row in originals
++    ]
++    ready = directory / "ready.json"
++    data = {"schema": "merlin.graph-state-integer.profile.v1", "selection": selection, "copies": copies}
++    if not ready.exists():
++        (lib / "Merlin").mkdir(parents=True, exist_ok=True)
++        for row in copies:
++            exact(row["original"])
++            if not Path(row["copy"]["path"]).exists():
++                shutil.copyfile(row["original"]["path"], row["copy"]["path"])
++            exact(row["copy"])
++        write(ready, data)
++    if json.loads(ready.read_text()) != data:
++        raise ValueError("integer profile copy roster/selection differs")
++    for row in copies:
++        exact(row["original"])
++        exact(row["copy"])
++    return {**data, "manifest": stable.file_ref(ready), "fixed": fixed, "lib": lib}
++
++
++def execute(arguments, directory, environment, stdout, stderr):
++    kernel.guard()
++    try:
++        with stdout.open("x") as out, stderr.open("x") as err:
++            result = run_owned(
++                [str(stable.LEAN), "-j1", *map(str, arguments)],
++                cwd=directory,
++                env=environment,
++                stdout=out,
++                stderr=err,
++                timeout=60,
++                check=False,
++            )
++    except subprocess.TimeoutExpired as error:
++        write(
++            build_dir() / kernel.BUILD / "LIMIT_BLOCKER.json",
++            {"arguments": list(map(str, arguments)), "cleanup": str(error.__notes__), "retry": False},
++        )
++        raise
++    if result.returncode < 0:
++        write(
++            build_dir() / kernel.BUILD / "NATIVE_BLOCKER.json",
++            {
++                "arguments": list(map(str, arguments)),
++                "returncode": result.returncode,
++                "stdout": stable.file_ref(stdout),
++                "stderr": stable.file_ref(stderr),
++                "cause": "UNKNOWN",
++                "retry": False,
++            },
++        )
++    return result
++
++
++def imported_bindings(raw, profile, target):
++    allowed = {row["path"]: row for row in profile["fixed"]["bindings"]}
++    allowed.update({row["copy"]["path"]: row["copy"] for row in profile["copies"]})
++    allowed[target["path"]] = target
++    selected = []
++    for item in raw["imports"]:
++        path = str(Path(item["olean"]).resolve())
++        if path not in allowed:
++            write(
++                build_dir() / kernel.BUILD / "IMPORT_BLOCKER.json",
++                {"path": path, "reason": "outside original selected binding closure", "retry": False},
++            )
++            raise ValueError("new import has no original fixed provenance: " + path)
++        exact(allowed[path])
++        selected.append(allowed[path])
++    return selected
++
++
++def check_query(text, destination, roots):
++    profile = prepare()
++    destination = Path(destination).resolve()
++    destination.mkdir(parents=True, exist_ok=False)
++    module = "GraphStateIntegerInstance"
++    source = destination / (module + ".lean")
++    source.write_text(text)
++    target = source.with_suffix(".olean")
++    environment = {
++        **os.environ,
++        "LEAN_PATH": os.pathsep.join((str(destination), str(profile["lib"]))),
++        "LEAN_SYSROOT": str(stable.LEAN.parent.parent),
++        "LEAN_NUM_THREADS": "1",
++        "PATH": str(stable.LEAN.parent) + os.pathsep + os.environ.get("PATH", ""),
++    }
++    checked = execute(
++        [source, "-o", target], destination, environment, destination / "kernel.stdout", destination / "kernel.stderr"
++    )
++    report = {
++        "schema": "merlin.graph-state-integer.kernel.v1",
++        "status": "refused" if checked.returncode > 0 else "unavailable",
++        "returncode": checked.returncode,
++        "source": stable.file_ref(source),
++        "roots": roots,
++        "stdout": stable.file_ref(destination / "kernel.stdout"),
++        "stderr": stable.file_ref(destination / "kernel.stderr"),
++        "profile": profile["manifest"],
++        "qualified": False,
++        "audit": {"status": "not_run"},
++    }
++    if checked.returncode == 0:
++        report["object"] = stable.file_ref(target)
++        measured = {}
++        for name, args in (("audit", [module]), ("statements", ["--statements", ",".join(roots), module])):
++            run = execute(
++                ["--run", profile["selection"]["auditor"]["path"], *args],
++                destination,
++                environment,
++                destination / (name + ".stdout"),
++                destination / (name + ".stderr"),
++            )
++            if run.returncode:
++                report.update(status="unavailable", phase=name, phase_returncode=run.returncode)
++                write(destination / "report.json", report)
++                return report
++            measured[name] = json.loads((destination / (name + ".stdout")).read_text())
++        raw = measured["audit"]
++        if raw["violations"] or set(raw["axioms_used"]) - {"propext", "Classical.choice", "Quot.sound"}:
++            raise ValueError("integer query violates standard-three policy")
++        if set(measured["statements"]["statements"]) != set(roots):
++            raise ValueError("exact selected integer theorem statement roster differs")
++        report["audit"] = {
++            "status": "checked",
++            "raw": raw,
++            "statements": measured["statements"]["statements"],
++            "imported_objects": imported_bindings(raw, profile, report["object"]),
++            "auditor": profile["selection"]["auditor"],
++            "buffers": [
++                stable.file_ref(destination / (name + "." + extension))
++                for name in ("audit", "statements")
++                for extension in ("stdout", "stderr")
++            ],
++        }
++        report["status"] = "conditional_graph_checked"
++    kernel.context()
++    for row in profile["copies"]:
++        exact(row["copy"])
++    for row in profile["selection"]["sources"]:
++        exact(row)
++    exact(report["source"])
++    if report.get("object"):
++        exact(report["object"])
++    write(destination / "report.json", report)
++    return report
+diff --git a/src/merlin/verify/lean_graph_state_integer_receipt.py b/src/merlin/verify/lean_graph_state_integer_receipt.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_state_integer_receipt.py
+@@ -0,0 +1,287 @@
++"""Closed live receipts: complete originals, canonical model, query/object/audit.
++
++Replay reprojects originals and reconstructs the proof before accepting retained
++evidence. Hashes bind bytes, not issuer authenticity or physical runtime delivery.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++from pathlib import Path
++from types import MappingProxyType
++
++from . import lean_graph_state as stable
++from .lean_graph_state_integer import author, configuration, intake
++from .lean_graph_state_integer_kernel import context
++from .lean_graph_state_integer_proof import check_query, execute, prepare, sources
++from .lean_graph_state_pipeline_kernel import exact, write
++from .lean_graph_state_pipeline_receipt import closed, collect_refs, reference_row
++
++SCHEMA = "merlin.graph-state-integer.live-receipt.v1"
++CLAIMS = MappingProxyType(
++    {
++        "relation": "canonical-entry complete return/error/terminal-world correspondence",
++        "runtime_intermediate_typing_derived": True,
++        "local_result_contracts_required": True,
++        "canonical_entries_required": True,
++        "python_projection_proved": False,
++        "review_approved": False,
++        "public_acceptance_issued": False,
++        "native_fidelity_proved": False,
++        "poison_freedom_proved": False,
++        "source_success_for_all_models": False,
++        "all_graph_passes_verified": False,
++        "full_model_claim": False,
++        "broker_integration": False,
++        "old_failure_promoted": False,
++    }
++)
++KEYS = {
++    "schema",
++    "version",
++    "root",
++    "settings",
++    "mode",
++    "model",
++    "originals",
++    "snapshots",
++    "report",
++    "capture",
++    "profile",
++    "query",
++    "object",
++    "sources",
++    "files",
++    "dependencies",
++    "claims",
++    "roots",
++}
++
++
++def valid_claims(value):
++    return (
++        type(value) is dict
++        and set(value) == set(CLAIMS)
++        and all(type(value[key]) is type(expected) and value[key] == expected for key, expected in CLAIMS.items())
++    )
++
++
++def load(path):
++    def pairs(rows):
++        result = {}
++        for key, value in rows:
++            if key in result:
++                raise ValueError("duplicate receipt key")
++            result[key] = value
++        return result
++
++    def noninteger(_):
++        raise ValueError("noninteger JSON numeric encoding refused")
++
++    return json.loads(
++        Path(path).read_text(), object_pairs_hook=pairs, parse_float=noninteger, parse_constant=noninteger
++    )
++
++
++def dependencies(profile, capture):
++    return [
++        *profile["fixed"]["bindings"],
++        profile["manifest"],
++        *[row["copy"] for row in profile["copies"]],
++        *capture["producer_sources"],
++        capture["python_runtime"]["executable"],
++        *capture["python_runtime"]["loaded"],
++    ]
++
++
++def files(root):
++    return [stable.file_ref(path) for path in sorted(Path(root).rglob("*")) if path.is_file()]
++
++
++def issue(report_path, destination):
++    report_path = Path(report_path).resolve()
++    report = load(report_path)
++    if report["status"] != "conditional_graph_checked" or report["qualified"] is not False:
++        raise ValueError("actual conditional kernel check required before issuing a receipt")
++    proof = load(report["proof"]["path"])
++    capture = load(report["capture"]["path"])
++    profile = prepare()
++    query, roots, model = author(capture, report["mode"])
++    if (
++        proof["status"] != "conditional_graph_checked"
++        or proof["audit"]["status"] != "checked"
++        or proof["profile"] != profile["manifest"]
++        or proof["roots"] != roots
++        or Path(proof["source"]["path"]).read_text() != query
++        or report["sources"] != sources()
++        or report["model"] != model
++    ):
++        raise ValueError("exact complete projection/query/model/profile/root binding differs")
++    receipt = {
++        "schema": SCHEMA,
++        "version": 1,
++        "root": str(report_path.parent),
++        "settings": report["settings"],
++        "mode": report["mode"],
++        "model": model,
++        "originals": report["originals"],
++        "snapshots": capture["buffers"],
++        "report": stable.file_ref(report_path),
++        "capture": report["capture"],
++        "profile": profile["manifest"],
++        "query": proof["source"],
++        "object": proof["object"],
++        "sources": sources(),
++        "files": files(report_path.parent),
++        "dependencies": dependencies(profile, capture),
++        "claims": dict(CLAIMS),
++        "roots": roots,
++    }
++    validate(receipt)
++    write(Path(destination), receipt)
++    return receipt
++
++
++def validate(receipt):
++    closed(receipt, KEYS)
++    if receipt["schema"] != SCHEMA or type(receipt["version"]) is not int or receipt["version"] != 1:
++        raise ValueError("unknown integer receipt version")
++    closed(receipt["settings"], {"factor", "tile", "index_bits"})
++    configuration(**receipt["settings"])
++    if receipt["mode"] not in ("graph", "initialized-symbolic-provider-v1"):
++        raise ValueError("unapproved/unknown checker model mode")
++    if type(receipt["root"]) is not str or not Path(receipt["root"]).is_absolute():
++        raise ValueError("exact original live root required; laptop path edits do not qualify it")
++    if not valid_claims(receipt["claims"]):
++        raise ValueError("conditional claim flags/types differ")
++    if len(receipt["originals"]) not in (2, 6) or len(receipt["originals"]) != len(receipt["snapshots"]):
++        raise ValueError("complete original/snapshot pair or six-buffer chain required")
++    for row in collect_refs(receipt):
++        reference_row(row)
++        exact(row)
++    profile = prepare()
++    if receipt["profile"] != profile["manifest"] or receipt["sources"] != sources():
++        raise ValueError("current source/fixed profile binding differs")
++    if receipt["files"] != files(receipt["root"]):
++        raise ValueError("closed retained artifact roster differs")
++    report = load(receipt["report"]["path"])
++    if (
++        report["schema"] != "merlin.graph-state-integer.boundary.v1"
++        or report["status"] != "conditional_graph_checked"
++        or report["qualified"] is not False
++        or report["originals"] != receipt["originals"]
++        or report["sources"] != receipt["sources"]
++        or report["capture"] != receipt["capture"]
++        or report["settings"] != receipt["settings"]
++        or report["mode"] != receipt["mode"]
++        or report["model"] != receipt["model"]
++        or report["review_approved"] is not False
++        or report["native_fidelity_proved"] is not False
++        or report["poison_freedom_proved"] is not False
++    ):
++        raise ValueError("source/report/model/claim binding differs")
++    capture = load(receipt["capture"]["path"])
++    proof = load(report["proof"]["path"])
++    query, roots, model = author(capture, receipt["mode"])
++    if (
++        proof["schema"] != "merlin.graph-state-integer.kernel.v1"
++        or proof["status"] != "conditional_graph_checked"
++        or proof["returncode"] != 0
++        or proof["qualified"] is not False
++        or proof["audit"]["status"] != "checked"
++        or proof["profile"] != receipt["profile"]
++        or proof["source"] != receipt["query"]
++        or proof["object"] != receipt["object"]
++        or proof["roots"] != receipt["roots"]
++        or roots != receipt["roots"]
++        or query != Path(receipt["query"]["path"]).read_text()
++        or model != receipt["model"]
++        or capture["buffers"] != receipt["snapshots"]
++        or dependencies(profile, capture) != receipt["dependencies"]
++    ):
++        raise ValueError("exact proof/query/object/projection/root/model roster differs")
++    buffers = {Path(row["path"]).name: row for row in proof["audit"]["buffers"]}
++    if (
++        proof["audit"]["raw"] != load(buffers["audit.stdout"]["path"])
++        or proof["audit"]["statements"] != load(buffers["statements.stdout"]["path"])["statements"]
++        or set(proof["audit"]["statements"]) != set(roots)
++        or proof["audit"]["raw"]["violations"]
++        or set(proof["audit"]["raw"]["axioms_used"]) - {"propext", "Classical.choice", "Quot.sound"}
++        or proof["audit"]["auditor"] != profile["selection"]["auditor"]
++    ):
++        raise ValueError("retained exact-root/transitive audit differs")
++    return report, capture, proof, profile
++
++
++def replay(receipt_path, destination, *, reference, expected_originals=None):
++    receipt_path = Path(receipt_path).resolve()
++    receipt = load(receipt_path)
++    report, capture, old, profile = validate(receipt)
++    if expected_originals is not None and receipt["originals"] != expected_originals:
++        raise ValueError("externally pinned original roster differs; receipt hashes are not authenticity")
++    destination = Path(destination).resolve()
++    destination.mkdir(parents=True, exist_ok=False)
++    paths = [Path(row["path"]) for row in receipt["originals"]]
++    fresh = intake(reference, destination / "reproject", buffers=paths, settings=receipt["settings"])
++    for keys in (
++        ("schema", "revision", "prefix", "pipeline", "each_stage_changed"),
++        ("producer_sources", "python_runtime", "owned_projection"),
++    ):
++        if {k: fresh[k] for k in keys} != {k: capture[k] for k in keys}:
++            raise ValueError("fresh actual complete projection/source/runtime differs")
++    query, roots, model = author(fresh, receipt["mode"])
++    if query != Path(receipt["query"]["path"]).read_text() or roots != receipt["roots"] or model != receipt["model"]:
++        raise ValueError("actual originals do not reproduce retained query/roots/model")
++    source = Path(receipt["query"]["path"])
++    target = destination / "retained-reproduction.olean"
++    environment = {
++        **os.environ,
++        "LEAN_PATH": os.pathsep.join((str(source.parent), str(profile["lib"]))),
++        "LEAN_SYSROOT": str(stable.LEAN.parent.parent),
++        "LEAN_NUM_THREADS": "1",
++    }
++    rebuilt = execute(
++        [source, "-o", target],
++        source.parent,
++        environment,
++        destination / "reproduce.stdout",
++        destination / "reproduce.stderr",
++    )
++    if rebuilt.returncode or stable.file_ref(target)["sha256"] != receipt["object"]["sha256"]:
++        raise ValueError("retained object does not reproduce at its exact original query path")
++    checked = check_query(query, destination / "fresh", roots)
++    if checked["status"] != "conditional_graph_checked" or checked["audit"]["statements"] != old["audit"]["statements"]:
++        raise ValueError("fresh complete exact-root proof differs")
++
++    def normalized(raw, obj):
++        return {
++            **raw,
++            "imports": [
++                {**row, "olean": "$QUERY" if Path(row["olean"]).resolve() == Path(obj).resolve() else row["olean"]}
++                for row in raw["imports"]
++            ],
++        }
++
++    if normalized(checked["audit"]["raw"], checked["object"]["path"]) != normalized(
++        old["audit"]["raw"], receipt["object"]["path"]
++    ):
++        raise ValueError("fresh transitive theorem/import/axiom roster differs")
++    for row in collect_refs(receipt):
++        exact(row)
++    context()
++    result = {
++        "schema": "merlin.graph-state-integer.fresh-replay.v1",
++        "status": "conditional_graph_checked",
++        "receipt": stable.file_ref(receipt_path),
++        "fresh_report": stable.file_ref(destination / "fresh/report.json"),
++        "retained_object_reproduced": True,
++        "exact_original_query_path_reproduced": True,
++        "claims": dict(CLAIMS),
++        "model": model,
++        "qualified": False,
++        "original_authenticity_external": True,
++        "host_transport_proved_in_Lean": False,
++    }
++    write(destination / "report.json", result)
++    return result

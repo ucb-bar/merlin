@@ -1,0 +1,78 @@
+--- a/src/merlin/common/invocation_record.py
++++ b/src/merlin/common/invocation_record.py
+@@ -15,9 +15,75 @@
+ import subprocess
+ import time
+ import uuid
++from contextvars import ContextVar
+ from pathlib import Path
+ 
+ SCHEMA = "merlin.invocation_record.v1"
++_TIMING_LISTENERS = ContextVar("merlin_invocation_timing_listeners", default=())
++TIMING_SCHEMA = "merlin.invocation_wall_timing.v1"
++
++
++@contextlib.contextmanager
++def observe_timings():
++    """Collect same-context host wall intervals, without interpreting hardware costs."""
++    events = []
++    token = _TIMING_LISTENERS.set((*_TIMING_LISTENERS.get(), events))
++    try:
++        yield events
++    finally:
++        _TIMING_LISTENERS.reset(token)
++
++
++@contextlib.contextmanager
++def timed_event(kind: str, label: str):
++    """Observe one original boundary; nested intervals must not be summed blindly."""
++    listeners = _TIMING_LISTENERS.get()
++    if not listeners:
++        yield
++        return
++    event = {"kind": kind, "label": label, "pid": os.getpid(), "started_ns": time.monotonic_ns(),
++             "status": "returned"}
++    try:
++        yield
++    except BaseException:
++        event["status"] = "failed"
++        raise
++    finally:
++        event["finished_ns"] = time.monotonic_ns()
++        for events in listeners:
++            events.append(dict(event))
++
++
++def timing_document(events):
++    """No cycle, CPU-time, complete-wait or transitive-child coverage follows."""
++    return {"schema": TIMING_SCHEMA, "clock": "same-process monotonic_ns", "events": list(events)}
++
++
++def verify_timing_document(document, *, root_label=None):
++    """Validate optional diagnostic intervals; file pins still own artifact custody."""
++    if (not isinstance(document, dict) or set(document) != {"schema", "clock", "events"}
++            or document["schema"] != TIMING_SCHEMA or document["clock"] != "same-process monotonic_ns"
++            or type(document["events"]) is not list):
++        raise ValueError("invocation timing has no versioned host-wall observation")
++    for event in document["events"]:
++        if (not isinstance(event, dict)
++                or set(event) != {"kind", "label", "pid", "started_ns", "finished_ns", "status"}
++                or event["kind"] not in {"phase", "process", "compute_acquire"}
++                or not isinstance(event["label"], str) or not event["label"]
++                or event["status"] not in {"returned", "failed"}
++                or any(type(event[k]) is not int for k in ("pid", "started_ns", "finished_ns"))
++                or event["pid"] < 1 or not 0 <= event["started_ns"] <= event["finished_ns"]):
++            raise ValueError("invocation timing has a malformed or negative host-wall interval")
++    if root_label is not None:
++        events = document["events"]
++        if not events or events[-1]["kind"] != "phase" or events[-1]["label"] != root_label:
++            raise ValueError("invocation timing has no enclosing original phase")
++        root = events[-1]
++        if any(event["pid"] != root["pid"] or event["started_ns"] < root["started_ns"]
++               or event["finished_ns"] > root["finished_ns"] for event in events):
++            raise ValueError("invocation timing escapes its same-process phase interval")
++    return document
++
+ 
+ 
+ def _pin(path: Path) -> dict:

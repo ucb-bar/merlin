@@ -1,0 +1,22 @@
+[
+  {
+    "packet": "larger-profiles-v1",
+    "path": "historical-text-evidence/integer/3-kernel.stdout",
+    "reason": "non-source/data extension excluded without read"
+  },
+  {
+    "packet": "larger-profiles-v1",
+    "path": "historical-text-evidence/integer/4-kernel.stderr",
+    "reason": "non-source/data extension excluded without read"
+  },
+  {
+    "packet": "larger-profiles-v1",
+    "path": "historical-text-evidence/pipeline/3-kernel.stdout",
+    "reason": "non-source/data extension excluded without read"
+  },
+  {
+    "packet": "larger-profiles-v1",
+    "path": "historical-text-evidence/pipeline/4-kernel.stderr",
+    "reason": "non-source/data extension excluded without read"
+  }
+]

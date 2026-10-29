@@ -1,0 +1,38 @@
+[
+  {
+    "priority": 1,
+    "owner": "runtime investigator/root",
+    "obligation": "Justified new private context; all old profiles held; do not retry/rehash/repair",
+    "status": "EXTERNAL_HOLD"
+  },
+  {
+    "priority": 2,
+    "owner": "W after explicit native authorization",
+    "obligation": "Compile exact111-source closure, inspect root types and std3 transitive axioms, fix diagnostics in successor cuts",
+    "status": "UNCOMPILED"
+  },
+  {
+    "priority": 3,
+    "owner": "W after authorized source checks",
+    "obligation": "Actual positive and binding mutations; classify finite rejection separately from environment and semantic counterexamples",
+    "status": "UNOBSERVED"
+  },
+  {
+    "priority": 4,
+    "owner": "coordinator/reviewer",
+    "obligation": "New frozen qualification and one fresh replay; review Python/raw/SSA/descriptor/call/primitive/allocator binding",
+    "status": "UNQUALIFIED"
+  },
+  {
+    "priority": 5,
+    "owner": "future scoped graph task",
+    "obligation": "Wrappers reaching changed kernel need contextual private-clock/heap/call proof; external declarations need explicit model",
+    "status": "PRECISE_REFUSAL"
+  },
+  {
+    "priority": 6,
+    "owner": "paper authors/Graham",
+    "obligation": "Keep possible-success, literal effect-freedom, native/model/numeric assumptions explicit; do not claim all compiler/pass inputs",
+    "status": "REVIEW_OUTSTANDING"
+  }
+]

@@ -1,0 +1,318 @@
+{
+  "queries": [
+    {
+      "profile": "Q-service-CSE",
+      "case": "Q-service-CSE",
+      "query": {
+        "file": "payload/5791c715ba1ad0e583c60e090dc311a7ef956a6aad1fa87e69ce34251ff5b55e.lean",
+        "sha256": "5791c715ba1ad0e583c60e090dc311a7ef956a6aad1fa87e69ce34251ff5b55e",
+        "bytes": 4432
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "Q-chain-endpoint",
+      "case": "Q-chain-endpoint",
+      "query": {
+        "file": "payload/b94241ec1ab6188cab8530757e1beb298f1c6fb175a07519ff047c59084e4905.lean",
+        "sha256": "b94241ec1ab6188cab8530757e1beb298f1c6fb175a07519ff047c59084e4905",
+        "bytes": 16603
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "Q-four-transform",
+      "case": "Q-four-transform",
+      "query": {
+        "file": "payload/fc08b9e2eecf2450b8647bea4b246ed34946ccb72c596203e9915aba87e79299.lean",
+        "sha256": "fc08b9e2eecf2450b8647bea4b246ed34946ccb72c596203e9915aba87e79299",
+        "bytes": 31048
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "Q-integer-five-transform",
+      "case": "Q-integer-five-transform",
+      "query": {
+        "file": "payload/8ce64d562770b087f356d8eadeffd7981e6c417c8751bb2d45dc899e140e83ae.lean",
+        "sha256": "8ce64d562770b087f356d8eadeffd7981e6c417c8751bb2d45dc899e140e83ae",
+        "bytes": 52280
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "positive",
+      "query": {
+        "file": "payload/3caef8e6b79350bdd7da770b0c425a0e3b7322b602f9d808ab76c989359cd22d.lean",
+        "sha256": "3caef8e6b79350bdd7da770b0c425a0e3b7322b602f9d808ab76c989359cd22d",
+        "bytes": 242678
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "source_return",
+      "query": {
+        "file": "payload/dae16bf8810980e1b011ccb856ea96701deb504d105f0e0b02d98b2e17d242e1.lean",
+        "sha256": "dae16bf8810980e1b011ccb856ea96701deb504d105f0e0b02d98b2e17d242e1",
+        "bytes": 242677
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "buffer",
+      "query": {
+        "file": "payload/5470c68f47330e4e06279ea2f162895aecacf93b13ce4cf7ff10f58dd4e6b557.lean",
+        "sha256": "5470c68f47330e4e06279ea2f162895aecacf93b13ce4cf7ff10f58dd4e6b557",
+        "bytes": 243006
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "address",
+      "query": {
+        "file": "payload/309dda348d584e80372c43a93be61fa517debf416bebf8497bc49d6a52fd9323.lean",
+        "sha256": "309dda348d584e80372c43a93be61fa517debf416bebf8497bc49d6a52fd9323",
+        "bytes": 242678
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "initializer",
+      "query": {
+        "file": "payload/44f7f7d63d6407aa881f8f878c7d81c9b6d875248f8e958983e83ec4bdd8a5c1.lean",
+        "sha256": "44f7f7d63d6407aa881f8f878c7d81c9b6d875248f8e958983e83ec4bdd8a5c1",
+        "bytes": 242678
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "initializer_address",
+      "query": {
+        "file": "payload/5c1f80260de0e81ed65ff20b83dc3fbf68a8b4af23f500d3cc8ac16dadde92a1.lean",
+        "sha256": "5c1f80260de0e81ed65ff20b83dc3fbf68a8b4af23f500d3cc8ac16dadde92a1",
+        "bytes": 242681
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "control",
+      "query": {
+        "file": "payload/694166b0f12fbaa419e5be6a5414bf84ee08e87861a4575f190500747af7a8e9.lean",
+        "sha256": "694166b0f12fbaa419e5be6a5414bf84ee08e87861a4575f190500747af7a8e9",
+        "bytes": 242681
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "return",
+      "query": {
+        "file": "payload/9a92431dce9a29ca2c83c96291aca5c15c04b3938d17c17090a9d57fbccfcc40.lean",
+        "sha256": "9a92431dce9a29ca2c83c96291aca5c15c04b3938d17c17090a9d57fbccfcc40",
+        "bytes": 242677
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "free",
+      "query": {
+        "file": "payload/1fbc5afcd9d891994ac2b8dfd1e239fc494f82786ac39b992b77d636c6ef7695.lean",
+        "sha256": "1fbc5afcd9d891994ac2b8dfd1e239fc494f82786ac39b992b77d636c6ef7695",
+        "bytes": 242678
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-whole-v1",
+      "case": "observer",
+      "query": {
+        "file": "payload/215792c6288db41f08d6367ad435f58f977d0f979e3ac1e2409914c127fb626f.lean",
+        "sha256": "215792c6288db41f08d6367ad435f58f977d0f979e3ac1e2409914c127fb626f",
+        "bytes": 242678
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "positive",
+      "query": {
+        "file": "payload/e7da67fce8324e21090a9fd8321e382a1b9ae7f755a5fbc2a3b6523802cd7947.lean",
+        "sha256": "e7da67fce8324e21090a9fd8321e382a1b9ae7f755a5fbc2a3b6523802cd7947",
+        "bytes": 265387
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "untouched_return",
+      "query": {
+        "file": "payload/d0cb1b778fd1c34ef8e46075beb37e2286846eade2020c0ca72c0bf7efaf2b1a.lean",
+        "sha256": "d0cb1b778fd1c34ef8e46075beb37e2286846eade2020c0ca72c0bf7efaf2b1a",
+        "bytes": 265387
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "wrapper",
+      "query": {
+        "file": "payload/e9f21d1176d1d1b510bd9d2a92cb5d36bfc80658056bd354159e69894af95495.lean",
+        "sha256": "e9f21d1176d1d1b510bd9d2a92cb5d36bfc80658056bd354159e69894af95495",
+        "bytes": 270803
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "arity",
+      "query": {
+        "file": "payload/59a0db8c2ed3ed8493a2fe6fd3e3ea2ee896c2f182a6557a690b33929b475463.lean",
+        "sha256": "59a0db8c2ed3ed8493a2fe6fd3e3ea2ee896c2f182a6557a690b33929b475463",
+        "bytes": 265485
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "literal",
+      "query": {
+        "file": "payload/9804b797521f068f4a88d054f7a64c7ff9f0ae551ac34878f0865d6b61bc1e1c.lean",
+        "sha256": "9804b797521f068f4a88d054f7a64c7ff9f0ae551ac34878f0865d6b61bc1e1c",
+        "bytes": 265589
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "callee",
+      "query": {
+        "file": "payload/ce94be54784122cdd010233f94ce3d8c61a9103980887c4215ed1d03c87ac988.lean",
+        "sha256": "ce94be54784122cdd010233f94ce3d8c61a9103980887c4215ed1d03c87ac988",
+        "bytes": 265293
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "caller_buffer",
+      "query": {
+        "file": "payload/d243f6e1a9f2ea0162f7dccc55181996b27cd81d444eb2c9e67dac3d1940c3ae.lean",
+        "sha256": "d243f6e1a9f2ea0162f7dccc55181996b27cd81d444eb2c9e67dac3d1940c3ae",
+        "bytes": 265677
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "interface",
+      "query": {
+        "file": "payload/fe4c9e737a50584b12f6aeb1dec4f3e7f12fad1225b3436a7b383a7f28ae9acc.lean",
+        "sha256": "fe4c9e737a50584b12f6aeb1dec4f3e7f12fad1225b3436a7b383a7f28ae9acc",
+        "bytes": 265423
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "observer",
+      "query": {
+        "file": "payload/c213fc7895007398e4fbcf8cef2e021f84663ca0b8e55d3886623e7bafd299ef.lean",
+        "sha256": "c213fc7895007398e4fbcf8cef2e021f84663ca0b8e55d3886623e7bafd299ef",
+        "bytes": 265387
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "kernel_return",
+      "query": {
+        "file": "payload/b8209d749b6fea0c7750be602fcebe95adfd11443a752cbe6bb5e8c0d0769c88.lean",
+        "sha256": "b8209d749b6fea0c7750be602fcebe95adfd11443a752cbe6bb5e8c0d0769c88",
+        "bytes": 265386
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "missing_entry",
+      "query": {
+        "file": "payload/60227b5b5438d675361cd0dd4dfe09a70278efb6b8eb4d15f5105970eb732a4e.lean",
+        "sha256": "60227b5b5438d675361cd0dd4dfe09a70278efb6b8eb4d15f5105970eb732a4e",
+        "bytes": 264210
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "declaration",
+      "query": {
+        "file": "payload/25260efd62c7cd0e0711b869df261f4e32fee7a86f6bd7dfc97366145eed5925.lean",
+        "sha256": "25260efd62c7cd0e0711b869df261f4e32fee7a86f6bd7dfc97366145eed5925",
+        "bytes": 264713
+      },
+      "source_line_diagnostic_directives": [],
+      "separate_kernel_name_type_axiom_audit": "UNEXECUTED",
+      "kernel_stdout_contract": "not tested; selected queries contain no source-line diagnostic directives"
+    }
+  ],
+  "source_text_observation_only": true,
+  "provider_or_Lean_execution": false
+}

@@ -1,0 +1,24 @@
+{
+  "authority": {
+    "execute": false,
+    "graph_verified": false,
+    "install": false,
+    "old_holds_cleared": false
+  },
+  "environment_identity": {
+    "synthetic": true
+  },
+  "extract": {
+    "expected_top_directory": "fake-sdk",
+    "member_count_max": 30,
+    "per_member_bytes_max": 100,
+    "total_uncompressed_bytes_max": 1000
+  },
+  "fetch": {
+    "exact_bytes": 100,
+    "expected_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "url": "https://example.invalid/fake.zip"
+  },
+  "new_root": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-new-binding-controls-v1/never-created-sdk",
+  "schema": "merlin.fresh-sdk-data-intake.v1"
+}

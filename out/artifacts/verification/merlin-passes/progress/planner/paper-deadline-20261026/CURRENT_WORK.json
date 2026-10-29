@@ -1,0 +1,86 @@
+{
+  "schema": "merlin.coordinator.current-work.v1",
+  "observed_utc": "2026-10-26T21:31:54.009320+00:00",
+  "user_direction": "USER STOP at weekly5% on2026-10-26. All five workers told to finish portable handoffs and stop. Do not resume from old keep-working prompts; wait for a new explicit resume.",
+  "primary_branch": "feat/pass-verification",
+  "published_head": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "recent_publication": [
+    {
+      "commit": "0d9b2437f",
+      "scope": "two-file DATA bundle verifier;24 synthetic tests"
+    },
+    {
+      "commit": "9d7fe0846",
+      "scope": "primary25 F admission hooks/tests/fixtures;81 SDK-free tests"
+    }
+  ],
+  "publication_does_not_qualify_lean": true,
+  "workers": [
+    {
+      "role": "W / final memory + entries",
+      "thread": "01a141ba-7640-7d21-bb41-b65635302b71",
+      "queue": "CONTINUOUS-W-CALLER-CONTEXT-V1.json",
+      "fixed_cut": "graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/source-whole-v1",
+      "state": "STOP REQUESTED; latest portable status in account-handoffs-20261026/W.md"
+    },
+    {
+      "role": "Q / graph gate and existing pass coverage",
+      "thread": "01a16018-1974-7b53-ade5-e42d3d020739",
+      "queue": "CONTINUOUS-Q-UNROLL-TAIL-V1.json",
+      "fixed_cuts": [
+        "graph-pipeline-gate/development/service-route-review-v1",
+        "graph-pipeline-gate/development/chain-endpoint-v1",
+        "graph-pipeline-gate/development/larger-profiles-v1"
+      ],
+      "state": "STOP REQUESTED; latest portable status in account-handoffs-20261026/Q.md"
+    },
+    {
+      "role": "F / SOLE runtime investigator",
+      "thread": "01a15b82-8d58-75f1-9281-f529977e0bad",
+      "queue": "CONTINUOUS-F-FRESH-SDK-INTAKE-V1.json",
+      "fixed_cuts": [
+        "graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1",
+        "graph-regions-declared/runtime-forensics-v1/ir-transport-candidate-v1",
+        "graph-regions-declared/runtime-forensics-v1/fresh-sdk-metadata-v1"
+      ],
+      "state": "STOP REQUESTED; latest portable status in account-handoffs-20261026/F.md"
+    },
+    {
+      "role": "Prepare / cheaper independent reviewer",
+      "thread": "01a17973-5716-7a02-bab9-138a67ca2750",
+      "queue": "CONTINUOUS-PREPARE-GRAPH-SUCCESSORS-V1.json",
+      "state": "STOP REQUESTED; latest portable status in account-handoffs-20261026/Prepare.md"
+    },
+    {
+      "role": "Assign / cheaper host integration/reproduction",
+      "thread": "01a17973-63bc-75c0-bb3d-969450f68052",
+      "queue": "CONTINUOUS-ASSIGN-FRESH-BUILD-PLAN-V1.json",
+      "state": "STOP REQUESTED; latest portable status in account-handoffs-20261026/Assign.md"
+    }
+  ],
+  "runtime": {
+    "incident": "Private libleanshared expectedefef27df... vs observedc8929745... with stable size/inode/timestamps; original failed-read bytes lost. Later captures match; no cause established.",
+    "all_old_native_permissions": "suspended/consumed; no retry",
+    "only_current_F_permissions": "No real SDK acquisition or native work authorized now; previous original IR DATA intake completed2144files112308680bytes. Watchdog and Context remain source-only. All native holds remain.",
+    "other_four": "no SDK/runtime/archive images/guards/native",
+    "next_root_review": "After explicit resume: review fixed watchdog+child request, select fresh authenticated SDK/context, independently compile source candidates then qualify. Never promote old contexts."
+  },
+  "claims": {
+    "all_graph_verified": false,
+    "whole_pass_verified": false,
+    "native_fidelity_verified": false,
+    "policy_reviewed": false,
+    "new_proof_candidates": "UNCOMPILED, not inherited historical qualification",
+    "historical_packets": "retain exact source/environment/domains/relations; test totals are not receipts/passes"
+  },
+  "coordination": "External TUI threads, not collaboration children. Use fresh read_thread status/currentturn then journal normal appserver turn/start or steer. Import Connection helper only; never run its stale main/PROMPT; no full large thread history. Root alone stages/commits/integrates/pushes; preserve dirty worker sources.",
+  "stop_requested": true,
+  "latest_source_commits": [
+    "6f99a8bb5",
+    "bf67da6f7",
+    "1483336b0"
+  ],
+  "all_five_checkpointed": true,
+  "root_handoff": "VERIFICATION_HANDOFF.md",
+  "publication_delivery": "Fixed code, selected source/query packets and portable handoffs; no SDK or object transfer"
+}

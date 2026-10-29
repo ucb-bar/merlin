@@ -1,0 +1,722 @@
+{
+  "schema": "merlin.graph_larger_profile_prepared.v1",
+  "profile": "scalar_scf_four_transform_source_v1",
+  "settings": {
+    "factor": 2,
+    "tile": 3,
+    "index_bits": 32
+  },
+  "kinds": [
+    "scalar_redundancy_elimination",
+    "scalar_loop_invariant_motion",
+    "ordered_loop_unrolling",
+    "ordered_loop_segmentation"
+  ],
+  "domain": "complete_scalar_scf_static_no_tail_entries_v1",
+  "relation": "equal_all_entry_returns_errors_terminal_world",
+  "premises": [
+    "trusted complete xDSL parsing, actual source projection and host source binding",
+    "same Scalar.Program/evalProgram, concrete mathematical Int index control and complete terminal world",
+    "external calls explicitly declared; same possibly failing descriptor interpretation with local successful arity",
+    "no internal call bridge, native ABI/alias/allocator/completion fidelity or hidden private-SSA observers",
+    "one static nonnegative changed top-level loop per changed function, positive stride, no-tail bulk count>factor",
+    "factor2..4, tile2..16, signed32|64 control bounds, one..four word carries, two-input changed functions",
+    "region-free original loop body, at most16 lane external calls, bounded syntax, no broader control modes",
+    "one total deterministic state-free primitive interpretation; no source-success premise"
+  ],
+  "python_version": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]",
+  "buffers": [
+    "328d85463dffccf6a45028f20f135eef925c9aeb99893a62f89b26cf33145fcd",
+    "7cf34f3aee94df21289e10ff69d4255cafb98745ffd6ccc3f5677e732a15f74d",
+    "b1194992659257e7eb381ef6f754ace4a7a24fa1c23f7ac8cb5fa91fef21e738",
+    "7cd49e2b0d87fdef6b64c0b098d9395d8e3bcc538a5ca48fef3901bc7e653d41",
+    "973b4c4c4e30d6318033f39dde9e5eb1786dbf946c77c5b6bdc4c3c7e751b690"
+  ],
+  "attribution": "[{\"after\":\"7cf34f3aee94df21289e10ff69d4255cafb98745ffd6ccc3f5677e732a15f74d\",\"before\":\"328d85463dffccf6a45028f20f135eef925c9aeb99893a62f89b26cf33145fcd\",\"kind\":\"scalar_redundancy_elimination\",\"rechecked_witnesses_diagnostic_only\":[{\"loop_index\":null,\"operation\":\"arith.addi\",\"operation_index\":8,\"operation_sha256\":\"867409fdabb803704569c6aadf2064a1b1b4093f3e120b967d171b8c5c3b80c0\",\"representative_index\":null,\"rule\":\"dce\",\"width\":32},{\"loop_index\":null,\"operation\":\"arith.addi\",\"operation_index\":11,\"operation_sha256\":\"0b47f56220b8ace41675baee06fc4fc8c13c91591c4467aefab49f25e4020c30\",\"representative_index\":10,\"rule\":\"cse\",\"width\":32}],\"scope\":[\"total_scalar_integer_operations\",\"preserved_unknown_effects\",\"ssa_use_def_and_dominance\"],\"semantic_proof\":false},{\"after\":\"b1194992659257e7eb381ef6f754ace4a7a24fa1c23f7ac8cb5fa91fef21e738\",\"before\":\"7cf34f3aee94df21289e10ff69d4255cafb98745ffd6ccc3f5677e732a15f74d\",\"kind\":\"scalar_loop_invariant_motion\",\"rechecked_witnesses_diagnostic_only\":[{\"loop_index\":8,\"operation\":\"arith.addi\",\"operation_index\":9,\"operation_sha256\":\"bba4fca169bff5db401ada2b4d532251bb5de9b76cfbf97cbc818a6b1afc0d03\",\"representative_index\":null,\"rule\":\"licm\",\"width\":32}],\"scope\":[\"total_scalar_integer_operations\",\"total_speculation\",\"loop_external_operands\",\"unchanged_effect_order\"],\"semantic_proof\":false},{\"after\":\"7cd49e2b0d87fdef6b64c0b098d9395d8e3bcc538a5ca48fef3901bc7e653d41\",\"before\":\"b1194992659257e7eb381ef6f754ace4a7a24fa1c23f7ac8cb5fa91fef21e738\",\"kind\":\"ordered_loop_unrolling\",\"rechecked_witnesses_diagnostic_only\":[{\"carried_types\":[\"i32\"],\"factor\":2,\"full_groups\":12,\"index_bits\":32,\"iterations\":24,\"lower\":0,\"operation_index\":9,\"remainder\":0,\"source_sha256\":\"e9581fbec9c27f0279940bd382374ab96f3dd27cf0ce5866992b2eaf53e97454\",\"step\":1,\"upper\":24}],\"scope\":[\"static_nonnegative_index_bounds\",\"positive_step\",\"exact_iteration_order\",\"forwarded_loop_carried_state\",\"bounded_operation_growth\"],\"semantic_proof\":false},{\"after\":\"973b4c4c4e30d6318033f39dde9e5eb1786dbf946c77c5b6bdc4c3c7e751b690\",\"before\":\"7cd49e2b0d87fdef6b64c0b098d9395d8e3bcc538a5ca48fef3901bc7e653d41\",\"kind\":\"ordered_loop_segmentation\",\"rechecked_witnesses_diagnostic_only\":[{\"body_sha256\":\"b8655bee1e9f80772f6f8d1f50552eaee33e315fb377c0390d6917eab1123e36\",\"carried_types\":[\"i32\"],\"index_bits\":32,\"lower\":0,\"operation_index\":11,\"step\":2,\"tile_iterations\":3,\"upper\":24}],\"scope\":[\"static_nonnegative_index_bounds\",\"positive_step\",\"exact_iteration_order\",\"forwarded_loop_carried_state\"],\"semantic_proof\":false}]",
+  "capture": "{\"pipeline\":{\"factor\":2,\"index_bits\":32,\"index_operations\":[{\"identity\":0,\"kind\":\"index-add\"},{\"identity\":1,\"kind\":\"index-constant\",\"value\":0},{\"identity\":2,\"kind\":\"index-constant\",\"value\":1},{\"identity\":3,\"kind\":\"index-constant\",\"value\":24},{\"identity\":4,\"kind\":\"index-constant\",\"value\":2},{\"identity\":5,\"kind\":\"index-constant\",\"value\":6},{\"identity\":6,\"kind\":\"index-minui\"}],\"stages\":[{\"functions\":[{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"partial\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"index\":true}],\"name\":\"partial\",\"outputs\":[{\"bits\":32}]},{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"other\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"index\":true}],\"name\":\"other\",\"outputs\":[{\"bits\":32}]},{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"final_observe\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32}],\"name\":\"final_observe\",\"outputs\":[]},{\"after\":[{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"loop\":{\"body\":[{\"arguments\":[6,6],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[2,0],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,1],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,3],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"ret\":[0]}],\"bounds\":[2,1,0],\"carries\":[{\"bits\":32}],\"initial\":[3]}},{\"arguments\":[0],\"effect\":8,\"outputs\":[]},{\"ret\":[0]}],\"before\":[{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"arguments\":[3,3],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"loop\":{\"body\":[{\"arguments\":[7,7],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[8,8],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[3,0],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,2],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,4],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"ret\":[0]}],\"bounds\":[3,2,1],\"carries\":[{\"bits\":32}],\"initial\":[4]}},{\"arguments\":[0],\"effect\":8,\"outputs\":[]},{\"ret\":[0]}],\"declaration\":false,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"main\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"bits\":32}],\"name\":\"main\",\"outputs\":[{\"bits\":32}]},{\"after\":[{\"ret\":[0]}],\"before\":[{\"ret\":[0]}],\"declaration\":false,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"untouched\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32}],\"name\":\"untouched\",\"outputs\":[{\"bits\":32}]}],\"module_header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.builtin.ModuleOp\",\"name\":\"builtin.module\",\"operand_types\":[],\"properties\":[\"dictionary\",[]],\"result_types\":[]},\"operation_budget_used\":26,\"registry\":[{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.AddiOp\",\"name\":\"arith.addi\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[[\"overflowFlags\",[\"data-attribute\",\"xdsl.dialects.arith.IntegerOverflowAttr\",\"arith.overflow\",[\"frozenset\",[]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":null,\"inputs\":[{\"index\":true},{\"index\":true}],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",0]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":0,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",1]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":1,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",24]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":24,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",2]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":2,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",6]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":6,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.MinUIOp\",\"name\":\"arith.minui\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":null,\"inputs\":[{\"index\":true},{\"index\":true}],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.CallOp\",\"name\":\"func.call\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[[\"callee\",[\"attribute\",\"xdsl.dialects.builtin.SymbolRefAttr\",\"symbol_ref\",[[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"partial\"]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]},\"index_constant\":null,\"inputs\":[{\"bits\":32},{\"index\":true}],\"outputs\":[{\"bits\":32}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.CallOp\",\"name\":\"func.call\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]],\"properties\":[\"dictionary\",[[\"callee\",[\"attribute\",\"xdsl.dialects.builtin.SymbolRefAttr\",\"symbol_ref\",[[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"final_observe\"]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]]]],\"result_types\":[]},\"index_constant\":null,\"inputs\":[{\"bits\":32}],\"outputs\":[]}],\"types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]},{\"functions\":[{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"partial\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"index\":true}],\"name\":\"partial\",\"outputs\":[{\"bits\":32}]},{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"other\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"index\":true}],\"name\":\"other\",\"outputs\":[{\"bits\":32}]},{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"final_observe\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32}],\"name\":\"final_observe\",\"outputs\":[]},{\"after\":[{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"arguments\":[4,4],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"loop\":{\"body\":[{\"arguments\":[1,2],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,3],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,2],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"ret\":[0]}],\"bounds\":[3,2,1],\"carries\":[{\"bits\":32}],\"initial\":[4]}},{\"arguments\":[0],\"effect\":8,\"outputs\":[]},{\"ret\":[0]}],\"before\":[{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"loop\":{\"body\":[{\"arguments\":[6,6],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[2,0],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,1],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,3],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"ret\":[0]}],\"bounds\":[2,1,0],\"carries\":[{\"bits\":32}],\"initial\":[3]}},{\"arguments\":[0],\"effect\":8,\"outputs\":[]},{\"ret\":[0]}],\"declaration\":false,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"main\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"bits\":32}],\"name\":\"main\",\"outputs\":[{\"bits\":32}]},{\"after\":[{\"ret\":[0]}],\"before\":[{\"ret\":[0]}],\"declaration\":false,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"untouched\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32}],\"name\":\"untouched\",\"outputs\":[{\"bits\":32}]}],\"module_header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.builtin.ModuleOp\",\"name\":\"builtin.module\",\"operand_types\":[],\"properties\":[\"dictionary\",[]],\"result_types\":[]},\"operation_budget_used\":24,\"registry\":[{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.AddiOp\",\"name\":\"arith.addi\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[[\"overflowFlags\",[\"data-attribute\",\"xdsl.dialects.arith.IntegerOverflowAttr\",\"arith.overflow\",[\"frozenset\",[]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":null,\"inputs\":[{\"index\":true},{\"index\":true}],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",0]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":0,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",1]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":1,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",24]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":24,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",2]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":2,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",6]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":6,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.MinUIOp\",\"name\":\"arith.minui\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":null,\"inputs\":[{\"index\":true},{\"index\":true}],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.CallOp\",\"name\":\"func.call\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[[\"callee\",[\"attribute\",\"xdsl.dialects.builtin.SymbolRefAttr\",\"symbol_ref\",[[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"partial\"]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]},\"index_constant\":null,\"inputs\":[{\"bits\":32},{\"index\":true}],\"outputs\":[{\"bits\":32}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.CallOp\",\"name\":\"func.call\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]],\"properties\":[\"dictionary\",[[\"callee\",[\"attribute\",\"xdsl.dialects.builtin.SymbolRefAttr\",\"symbol_ref\",[[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"final_observe\"]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]]]],\"result_types\":[]},\"index_constant\":null,\"inputs\":[{\"bits\":32}],\"outputs\":[]}],\"types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]},{\"functions\":[{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"partial\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"index\":true}],\"name\":\"partial\",\"outputs\":[{\"bits\":32}]},{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"other\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"index\":true}],\"name\":\"other\",\"outputs\":[{\"bits\":32}]},{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"final_observe\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32}],\"name\":\"final_observe\",\"outputs\":[]},{\"after\":[{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"arguments\":[4,4],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[],\"effect\":4,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"loop\":{\"body\":[{\"arguments\":[1,4],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,5],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,2],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"arguments\":[4,0],\"effect\":0,\"outputs\":[{\"index\":true}]},{\"arguments\":[2,9],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,10],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,2],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"ret\":[0]}],\"bounds\":[5,0,1],\"carries\":[{\"bits\":32}],\"initial\":[6]}},{\"arguments\":[0],\"effect\":8,\"outputs\":[]},{\"ret\":[0]}],\"before\":[{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"arguments\":[4,4],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"loop\":{\"body\":[{\"arguments\":[1,2],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,3],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,2],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"ret\":[0]}],\"bounds\":[3,2,1],\"carries\":[{\"bits\":32}],\"initial\":[4]}},{\"arguments\":[0],\"effect\":8,\"outputs\":[]},{\"ret\":[0]}],\"declaration\":false,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"main\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"bits\":32}],\"name\":\"main\",\"outputs\":[{\"bits\":32}]},{\"after\":[{\"ret\":[0]}],\"before\":[{\"ret\":[0]}],\"declaration\":false,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"untouched\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32}],\"name\":\"untouched\",\"outputs\":[{\"bits\":32}]}],\"module_header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.builtin.ModuleOp\",\"name\":\"builtin.module\",\"operand_types\":[],\"properties\":[\"dictionary\",[]],\"result_types\":[]},\"operation_budget_used\":31,\"registry\":[{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.AddiOp\",\"name\":\"arith.addi\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[[\"overflowFlags\",[\"data-attribute\",\"xdsl.dialects.arith.IntegerOverflowAttr\",\"arith.overflow\",[\"frozenset\",[]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":null,\"inputs\":[{\"index\":true},{\"index\":true}],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",0]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":0,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",1]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":1,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",24]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":24,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",2]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":2,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",6]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":6,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.MinUIOp\",\"name\":\"arith.minui\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":null,\"inputs\":[{\"index\":true},{\"index\":true}],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.CallOp\",\"name\":\"func.call\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[[\"callee\",[\"attribute\",\"xdsl.dialects.builtin.SymbolRefAttr\",\"symbol_ref\",[[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"partial\"]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]},\"index_constant\":null,\"inputs\":[{\"bits\":32},{\"index\":true}],\"outputs\":[{\"bits\":32}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.CallOp\",\"name\":\"func.call\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]],\"properties\":[\"dictionary\",[[\"callee\",[\"attribute\",\"xdsl.dialects.builtin.SymbolRefAttr\",\"symbol_ref\",[[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"final_observe\"]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]]]],\"result_types\":[]},\"index_constant\":null,\"inputs\":[{\"bits\":32}],\"outputs\":[]}],\"types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]},{\"functions\":[{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"partial\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"index\":true}],\"name\":\"partial\",\"outputs\":[{\"bits\":32}]},{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"other\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"index\":true}],\"name\":\"other\",\"outputs\":[{\"bits\":32}]},{\"after\":null,\"before\":null,\"declaration\":true,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"final_observe\"]]],[\"sym_visibility\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"private\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32}],\"name\":\"final_observe\",\"outputs\":[]},{\"after\":[{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"arguments\":[4,4],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[],\"effect\":4,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":5,\"outputs\":[{\"index\":true}]},{\"loop\":{\"body\":[{\"arguments\":[0,2],\"effect\":0,\"outputs\":[{\"index\":true}]},{\"arguments\":[0,4],\"effect\":6,\"outputs\":[{\"index\":true}]},{\"loop\":{\"body\":[{\"arguments\":[1,9],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,10],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,2],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"arguments\":[4,0],\"effect\":0,\"outputs\":[{\"index\":true}]},{\"arguments\":[2,14],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,15],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,2],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"ret\":[0]}],\"bounds\":[2,0,6],\"carries\":[{\"bits\":32}],\"initial\":[3]}},{\"ret\":[0]}],\"bounds\":[6,1,0],\"carries\":[{\"bits\":32}],\"initial\":[7]}},{\"arguments\":[0],\"effect\":8,\"outputs\":[]},{\"ret\":[0]}],\"before\":[{\"arguments\":[],\"effect\":1,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"arguments\":[4,4],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[],\"effect\":4,\"outputs\":[{\"index\":true}]},{\"arguments\":[],\"effect\":3,\"outputs\":[{\"index\":true}]},{\"loop\":{\"body\":[{\"arguments\":[1,4],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,5],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,2],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"arguments\":[],\"effect\":2,\"outputs\":[{\"index\":true}]},{\"arguments\":[4,0],\"effect\":0,\"outputs\":[{\"index\":true}]},{\"arguments\":[2,9],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,10],\"pure\":{\"kind\":\"add\",\"width\":32}},{\"arguments\":[0,2],\"effect\":7,\"outputs\":[{\"bits\":32}]},{\"ret\":[0]}],\"bounds\":[5,0,1],\"carries\":[{\"bits\":32}],\"initial\":[6]}},{\"arguments\":[0],\"effect\":8,\"outputs\":[]},{\"ret\":[0]}],\"declaration\":false,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"main\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32},{\"bits\":32}],\"name\":\"main\",\"outputs\":[{\"bits\":32}]},{\"after\":[{\"ret\":[0]}],\"before\":[{\"ret\":[0]}],\"declaration\":false,\"header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.FuncOp\",\"name\":\"func.func\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"function_type\",[\"attribute\",\"xdsl.dialects.builtin.FunctionType\",\"fun\",[[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]]]]]],[\"sym_name\",[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"untouched\"]]]]],\"result_types\":[]},\"inputs\":[{\"bits\":32}],\"name\":\"untouched\",\"outputs\":[{\"bits\":32}]}],\"module_header\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.builtin.ModuleOp\",\"name\":\"builtin.module\",\"operand_types\":[],\"properties\":[\"dictionary\",[]],\"result_types\":[]},\"operation_budget_used\":43,\"registry\":[{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.AddiOp\",\"name\":\"arith.addi\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[[\"overflowFlags\",[\"data-attribute\",\"xdsl.dialects.arith.IntegerOverflowAttr\",\"arith.overflow\",[\"frozenset\",[]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":null,\"inputs\":[{\"index\":true},{\"index\":true}],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",0]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":0,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",1]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":1,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",24]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":24,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",2]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":2,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.ConstantOp\",\"name\":\"arith.constant\",\"operand_types\":[],\"properties\":[\"dictionary\",[[\"value\",[\"attribute\",\"xdsl.dialects.builtin.IntegerAttr\",\"integer\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",6]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":6,\"inputs\":[],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.arith.MinUIOp\",\"name\":\"arith.minui\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]]},\"index_constant\":null,\"inputs\":[{\"index\":true},{\"index\":true}],\"outputs\":[{\"index\":true}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.CallOp\",\"name\":\"func.call\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]],[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]]],\"properties\":[\"dictionary\",[[\"callee\",[\"attribute\",\"xdsl.dialects.builtin.SymbolRefAttr\",\"symbol_ref\",[[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"partial\"]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]]]],\"result_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]},\"index_constant\":null,\"inputs\":[{\"bits\":32},{\"index\":true}],\"outputs\":[{\"bits\":32}]},{\"descriptor\":{\"attributes\":[\"dictionary\",[]],\"class\":\"xdsl.dialects.func.CallOp\",\"name\":\"func.call\",\"operand_types\":[[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]],\"properties\":[\"dictionary\",[[\"callee\",[\"attribute\",\"xdsl.dialects.builtin.SymbolRefAttr\",\"symbol_ref\",[[\"data-attribute\",\"xdsl.dialects.builtin.StringAttr\",\"string\",[\"str\",\"final_observe\"]],[\"data-attribute\",\"xdsl.dialects.builtin.ArrayAttr\",\"array\",[\"tuple\",[]]]]]]]],\"result_types\":[]},\"index_constant\":null,\"inputs\":[{\"bits\":32}],\"outputs\":[]}],\"types\":[[\"attribute\",\"xdsl.dialects.builtin.IndexType\",\"index\",[]],[\"attribute\",\"xdsl.dialects.builtin.IntegerType\",\"integer_type\",[[\"data-attribute\",\"xdsl.dialects.builtin.IntAttr\",\"builtin.int\",[\"int\",32]],[\"data-attribute\",\"xdsl.dialects.builtin.SignednessAttr\",\"builtin.signedness\",[\"xdsl.dialects.builtin.Signedness\",\"SIGNLESS\",[\"int\",0]]]]]]}],\"tile\":3},\"prefix\":null}",
+  "query": "import Merlin.GraphStatePipelineIndex\nimport Merlin.GraphStatePipelineLiterals\nimport Merlin.GraphStatePipelineScope\nimport Merlin.GraphStatePipelineLoops\nimport Merlin.GraphStatePipelineProgram\nimport Merlin.GraphStateScalar\nset_option maxRecDepth 4096\nset_option maxHeartbeats 2000000\nset_option linter.unusedSimpArgs false\nnamespace Merlin.GraphStatePipelineInstance\nopen Merlin.GraphState.Scalar Merlin.GraphState.Pipeline\ndef registry : List Signature := [{inputs := [.index,.index],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [.index,.index],outputs := [.index]},{inputs := [(.bits 32),.index],outputs := [(.bits 32)]},{inputs := [(.bits 32)],outputs := []}]\ndef controls : Controls := [(some .add),(some (.constant (0))),(some (.constant (1))),(some (.constant (24))),(some (.constant (2))),(some (.constant (6))),(some .minui),none,none]\ntheorem controlAccepted : checkControl registry controls = true := by decide\ndef profileBits : Nat := 32\ntheorem literalsAccepted : checkLiterals profileBits controls = true := by decide\ntheorem literalsFit (identity : Nat) (value : Int) (found : Merlin.GraphState.Pipeline.controlAt controls identity = some (.constant value)) :\n    signedRepresentative profileBits value := checkLiterals_sound literalsAccepted found\ndef M {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) : Model Int World Error registry :=\n  indexModel (checkControl_sound controlAccepted) primitive external\ntheorem naturalRange (lower upper step : Nat) (positive : 0 < step) :\n  indexIterations (Int.ofNat lower) (Int.ofNat upper) (Int.ofNat step) =\n    (scfRange lower upper step).map Int.ofNat := by\n  change indexIterations (lower : Int) (upper : Int) (step : Int) = _\n  have pos : (0 : Int) < (step : Int) := by omega\n  simp only [indexIterations,Int.natCast_nonneg,pos,and_self,\u2193reduceIte,Int.toNat_natCast]\nnamespace F3\ndef inputs : List Ty := [(.bits 32),(.bits 32)]\ndef outputs : List Ty := [(.bits 32)]\ndef S0 : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 32) [3,3] (.loop 3 2 1 [4] [(.bits 32)] (.pure (.add 32) [7,7] (.pure (.add 32) [8,8] (.pure (.add 32) [3,0] (.pure (.add 32) [0,2] (.opaque 7 [0,4] [(.bits 32)] (.ret [0])))))) (.opaque 8 [0] [] (.ret [0])))))))\ntheorem typed0 : checkTypes registry inputs outputs S0 = true := by decide\ndef S1 : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 32)] (.pure (.add 32) [6,6] (.pure (.add 32) [2,0] (.pure (.add 32) [0,1] (.opaque 7 [0,3] [(.bits 32)] (.ret [0]))))) (.opaque 8 [0] [] (.ret [0]))))))\ntheorem typed1 : checkTypes registry inputs outputs S1 = true := by decide\ndef S2 : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 32) [4,4] (.loop 3 2 1 [4] [(.bits 32)] (.pure (.add 32) [1,2] (.pure (.add 32) [0,3] (.opaque 7 [0,2] [(.bits 32)] (.ret [0])))) (.opaque 8 [0] [] (.ret [0])))))))\ntheorem typed2 : checkTypes registry inputs outputs S2 = true := by decide\ndef S3 : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 32) [4,4] (.opaque 4 [] [.index] (.opaque 3 [] [.index] (.loop 5 0 1 [6] [(.bits 32)] (.pure (.add 32) [1,4] (.pure (.add 32) [0,5] (.opaque 7 [0,2] [(.bits 32)] (.opaque 2 [] [.index] (.opaque 0 [4,0] [.index] (.pure (.add 32) [2,9] (.pure (.add 32) [0,10] (.opaque 7 [0,2] [(.bits 32)] (.ret [0]))))))))) (.opaque 8 [0] [] (.ret [0])))))))))\ntheorem typed3 : checkTypes registry inputs outputs S3 = true := by decide\ndef S4 : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 32) [4,4] (.opaque 4 [] [.index] (.opaque 3 [] [.index] (.opaque 5 [] [.index] (.loop 6 1 0 [7] [(.bits 32)] (.opaque 0 [0,2] [.index] (.opaque 6 [0,4] [.index] (.loop 2 0 6 [3] [(.bits 32)] (.pure (.add 32) [1,9] (.pure (.add 32) [0,10] (.opaque 7 [0,2] [(.bits 32)] (.opaque 2 [] [.index] (.opaque 0 [4,0] [.index] (.pure (.add 32) [2,14] (.pure (.add 32) [0,15] (.opaque 7 [0,2] [(.bits 32)] (.ret [0]))))))))) (.ret [0])))) (.opaque 8 [0] [] (.ret [0]))))))))))\ntheorem typed4 : checkTypes registry inputs outputs S4 = true := by decide\ntheorem firstAccepted : check registry inputs outputs S0 S1 = true := by decide\ntheorem secondAccepted : check registry inputs outputs S1 S2 = true := by decide\ntheorem firstTwo : Preserves registry inputs.length S0 S2 := check_composes firstAccepted secondAccepted\ndef E2 (primitive : Prim \u2192 List Int \u2192 Int) (x0 x1 : Int) : List Int := [(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1]\ndef B2 : Program := (.pure (.add 32) [1,2] (.pure (.add 32) [0,3] (.opaque 7 [0,2] [(.bits 32)] (.ret [0]))))\ndef N2 : Program := (.opaque 8 [0] [] (.ret [0]))\ndef E3 (primitive : Prim \u2192 List Int \u2192 Int) (x0 x1 : Int) : List Int := [(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1]\ndef B3 : Program := (.pure (.add 32) [1,4] (.pure (.add 32) [0,5] (.opaque 7 [0,2] [(.bits 32)] (.opaque 2 [] [.index] (.opaque 0 [4,0] [.index] (.pure (.add 32) [2,9] (.pure (.add 32) [0,10] (.opaque 7 [0,2] [(.bits 32)] (.ret [0])))))))))\ndef N3 : Program := (.opaque 8 [0] [] (.ret [0]))\ndef E4 (primitive : Prim \u2192 List Int \u2192 Int) (x0 x1 : Int) : List Int := [(6 : Int),(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1]\ndef B4 : Program := (.opaque 0 [0,2] [.index] (.opaque 6 [0,4] [.index] (.loop 2 0 6 [3] [(.bits 32)] (.pure (.add 32) [1,9] (.pure (.add 32) [0,10] (.opaque 7 [0,2] [(.bits 32)] (.opaque 2 [] [.index] (.opaque 0 [4,0] [.index] (.pure (.add 32) [2,14] (.pure (.add 32) [0,15] (.opaque 7 [0,2] [(.bits 32)] (.ret [0]))))))))) (.ret [0]))))\ndef N4 : Program := (.opaque 8 [0] [] (.ret [0]))\nvariable {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (x0 x1 : Int)\ntheorem form2 (world : World) : evalProgram (M primitive external) S2 [x0,x1] world =\n  (loopEval 1 (fun i carry w => evalProgram (M primitive external) B2 (i::carry++E2 primitive x0 x1) w)\n    (indexIterations (0 : Int) (24 : Int) (1 : Int)) [x0] world).bind\n      (fun result => evalProgram (M primitive external) N2 (result.1++E2 primitive x0 x1) result.2) := by rfl\ntheorem form3 (world : World) : evalProgram (M primitive external) S3 [x0,x1] world =\n  (loopEval 1 (fun i carry w => evalProgram (M primitive external) B3 (i::carry++E3 primitive x0 x1) w)\n    (indexIterations (0 : Int) (24 : Int) (2 : Int)) [x0] world).bind\n      (fun result => evalProgram (M primitive external) N3 (result.1++E3 primitive x0 x1) result.2) := by rfl\ntheorem form4 (world : World) : evalProgram (M primitive external) S4 [x0,x1] world =\n  (loopEval 1 (fun i carry w => evalProgram (M primitive external) B4 (i::carry++E4 primitive x0 x1) w)\n    (indexIterations (0 : Int) (24 : Int) (6 : Int)) [x0] world).bind\n      (fun result => evalProgram (M primitive external) N4 (result.1++E4 primitive x0 x1) result.2) := by rfl\ntheorem body_group (base : Int) (carry : List Int) (world : World) (arity : carry.length = 1) :\n  evalProgram (M primitive external) B3 (base::carry++E3 primitive x0 x1) world =\n  loopEval 1 (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)\n    [base,(base+1)] carry world := by\n  obtain \u27e8c0,rfl\u27e9 := List.length_eq_one_iff.mp arity\n  simp only [B2,B3,E2,E3,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\n  cases step0 : external.run 7 [(primitive (.add 32) [(primitive (.add 32) [c0,(primitive (.add 32) [x1,x1])]),(primitive (.add 32) [x1,x1])]),base] world with\n  | error failure =>\n    rcases failure with \u27e8error,terminal\u27e9\n    simp only [step0,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\n  | ok result =>\n    rcases result with \u27e8values,w0\u27e9\n    have size : values.length = 1 := by\n      have localArity := external.arity 7 [(primitive (.add 32) [(primitive (.add 32) [c0,(primitive (.add 32) [x1,x1])]),(primitive (.add 32) [x1,x1])]),base] world values w0 step0\n      simpa only [registry,signature,List.getElem?_cons_succ,List.getElem?_cons_zero,Option.getD_some,List.length_cons,List.length_nil] using localArity\n    obtain \u27e8v0_0,rfl\u27e9 := List.length_eq_one_iff.mp size\n    simp only [step0,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\n    cases step1 : external.run 7 [(primitive (.add 32) [(primitive (.add 32) [v0_0,(primitive (.add 32) [x1,x1])]),(primitive (.add 32) [x1,x1])]),(base+1)] w0 with\n    | error failure =>\n      rcases failure with \u27e8error,terminal\u27e9\n      simp only [step1,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\n    | ok result =>\n      rcases result with \u27e8values,w1\u27e9\n      have size : values.length = 1 := by\n        have localArity := external.arity 7 [(primitive (.add 32) [(primitive (.add 32) [v0_0,(primitive (.add 32) [x1,x1])]),(primitive (.add 32) [x1,x1])]),(base+1)] w0 values w1 step1\n        simpa only [registry,signature,List.getElem?_cons_succ,List.getElem?_cons_zero,Option.getD_some,List.length_cons,List.length_nil] using localArity\n      obtain \u27e8v1_0,rfl\u27e9 := List.length_eq_one_iff.mp size\n      simp only [step1,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\ndef I4 : Program := (.pure (.add 32) [1,9] (.pure (.add 32) [0,10] (.opaque 7 [0,2] [(.bits 32)] (.opaque 2 [] [.index] (.opaque 0 [4,0] [.index] (.pure (.add 32) [2,14] (.pure (.add 32) [0,15] (.opaque 7 [0,2] [(.bits 32)] (.ret [0])))))))))\ndef LS : List Expr := [(.var 0),(.var 1),(.var 7),(.var 8),(.var 9),(.var 10),(.var 7),(.var 12),(.var 13),(.var 14)]\ndef RS : List Expr := [(.var 0),(.var 1),(.var 2),(.var 3),(.var 4),(.var 5),(.var 6),(.var 7),(.var 8),(.var 9),(.var 10),(.var 11),(.var 12),(.var 13),(.var 14)]\ntheorem innerAccepted : Scope.check registry LS RS B3 I4 = true := by decide\ntheorem inner_same (iv outer outerCarry0 : Int) (carry : List Int) (world : World) (arity : carry.length = 1) :\n  evalProgram (M primitive external) I4 (iv::carry++[(min (outer + (6 : Int)) (24 : Int)),(outer + (6 : Int)),outer,outerCarry0,(6 : Int),(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1]) world =\n  evalProgram (M primitive external) B3 (iv::carry++E3 primitive x0 x1) world := by\n  obtain \u27e8c0,rfl\u27e9 := List.length_eq_one_iff.mp arity\n  have checked := Scope.check_sound innerAccepted (M primitive external) [iv,c0,(min (outer + (6 : Int)) (24 : Int)),(outer + (6 : Int)),outer,outerCarry0,(6 : Int),(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1] world\n  simpa only [LS,RS,E3,evalExpr,List.cons_append,List.nil_append,List.map_cons,List.map_nil,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some] using checked.symm\ndef CL23 : List Expr := [(.var 0),(.var 3),(.var 4),(.var 1),(.var 6),(.var 7),(.var 8)]\ndef CR23 : List Expr := [(.var 0),(.var 1),(.var 2),(.var 3),(.var 4),(.var 5),(.var 6),(.var 7),(.var 8)]\ntheorem suffixAccepted23 : Scope.check registry CL23 CR23 N2 N3 = true := by decide\ntheorem suffix_same23 (carry : List Int) (world : World) (arity : carry.length = 1) :\n  evalProgram (M primitive external) N2 (carry++E2 primitive x0 x1) world =\n  evalProgram (M primitive external) N3 (carry++E3 primitive x0 x1) world := by\n  obtain \u27e8c0,rfl\u27e9 := List.length_eq_one_iff.mp arity\n  have checked := Scope.check_sound suffixAccepted23 (M primitive external) [c0,(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1] world\n  simpa only [CL23,CR23,E2,E3,evalExpr,List.cons_append,List.nil_append,List.map_cons,List.map_nil,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some] using checked\ndef CL34 : List Expr := [(.var 0),(.var 2),(.var 3),(.var 4),(.var 5),(.var 2),(.var 7),(.var 8),(.var 9)]\ndef CR34 : List Expr := [(.var 0),(.var 1),(.var 2),(.var 3),(.var 4),(.var 5),(.var 6),(.var 7),(.var 8),(.var 9)]\ntheorem suffixAccepted34 : Scope.check registry CL34 CR34 N3 N4 = true := by decide\ntheorem suffix_same34 (carry : List Int) (world : World) (arity : carry.length = 1) :\n  evalProgram (M primitive external) N3 (carry++E3 primitive x0 x1) world =\n  evalProgram (M primitive external) N4 (carry++E4 primitive x0 x1) world := by\n  obtain \u27e8c0,rfl\u27e9 := List.length_eq_one_iff.mp arity\n  have checked := Scope.check_sound suffixAccepted34 (M primitive external) [c0,(6 : Int),(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1] world\n  simpa only [CL34,CR34,E3,E4,evalExpr,List.cons_append,List.nil_append,List.map_cons,List.map_nil,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some] using checked\ntheorem outer_form (base c0 : Int) (world : World) :\n  evalProgram (M primitive external) B4 (base::[c0]++E4 primitive x0 x1) world =\n  (loopEval 1 (fun i cs w => evalProgram (M primitive external) I4\n    (i::cs++[min (base+6) 24,base+6,base,c0]++E4 primitive x0 x1) w)\n      (indexIterations base (min (base+6) 24) 2) [c0] world).bind\n        (fun result => evalProgram (M primitive external) (.ret [0])\n          (result.1++[min (base+6) 24,base+6,base,c0]++E4 primitive x0 x1) result.2) := by\n  simp only [List.append_assoc]\n  rfl\ntheorem outer_same (base : Nat) (carry : List Int) (world : World) (arity : carry.length = 1) :\n  evalProgram (M primitive external) B4 (Int.ofNat base::carry++E4 primitive x0 x1) world =\n  loopEval 1 (fun i cs w => evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w)\n    ((scfRange base (min (base+2*3) 24) 2).map Int.ofNat) carry world := by\n  obtain \u27e8c0,rfl\u27e9 := List.length_eq_one_iff.mp arity\n  rw [outer_form]\n  have bodies : \u2200 i cs w, cs.length = 1 \u2192\n      evalProgram (M primitive external) I4 (i::cs++[min (Int.ofNat base+6) 24,Int.ofNat base+6,Int.ofNat base,c0]++E4 primitive x0 x1) w =\n      evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w := by\n    intro i cs w size\n    simpa only [E4,List.append_assoc,List.cons_append,List.nil_append] using\n      inner_same primitive external x0 x1 i (Int.ofNat base) c0 cs w size\n  rw [loopEval_congr 1 _ _ bodies]\n  have minimum : min (Int.ofNat base+6) 24 = Int.ofNat (min (base+6) 24) := minui_natural (base+6) 24\n  have ranges : indexIterations (Int.ofNat base) (Int.ofNat (min (base+6) 24)) 2 =\n      (scfRange base (min (base+6) 24) 2).map Int.ofNat := naturalRange base (min (base+6) 24) 2 (by decide)\n  rw [minimum,ranges]\n  cases run : loopEval 1 (fun i cs w => evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w)\n      ((scfRange base (min (base+6) 24) 2).map Int.ofNat) [c0] world with\n  | error failure => rfl\n  | ok result =>\n    have size := loopEval_arity 1 _ _ _ _ run\n    rcases result with \u27e8values,final\u27e9\n    obtain \u27e8returned0,rfl\u27e9 := List.length_eq_one_iff.mp size\n    rfl\ndef unrollBounds : Merlin.GraphLoopsUnroll.Bounds :=\n  { bits := 32, lower := 0, upper := 24, step := 1, factor := 2, count := 24, groups := 12, remainder := 0 }\ndef segmentBounds : Merlin.GraphLoopsSegment.Bounds :=\n  { bits := 32, lower := 0, upper := 24, step := 2, tile := 3 }\ntheorem unrollBoundsChecked : unrollBounds.Valid := by decide\ntheorem segmentBoundsChecked : segmentBounds.Valid := by decide\ntheorem unroll_actual (world : World) :\n    evalProgram (M primitive external) S2 [x0,x1] world = evalProgram (M primitive external) S3 [x0,x1] world := by\n  have bodies : \u2200 index values w, values.length = 1 \u2192\n      evalProgram (M primitive external) B3 (Int.ofNat index::values++E3 primitive x0 x1) w =\n      loopEval 1 (fun i c current => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) current)\n        ((progression index 1 2).map Int.ofNat) values w := by\n    intro index values w size\n    simpa [progression,Int.ofNat_eq_natCast,Int.add_assoc] using body_group primitive external x0 x1 (Int.ofNat index) values w size\n  have loops : loopEval 1 (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)\n      (indexIterations 0 24 1) [x0] world =\n    loopEval 1 (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)\n      (indexIterations 0 24 2) [x0] world :=\n    unroll_loop 1 _ _ 0 24 1 2 12 (by decide) (by decide) (by decide) bodies [x0] world\n  rw [form2,form3,loops]\n  cases run : loopEval 1 (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)\n      (indexIterations 0 24 2) [x0] world with\n  | error failure => rfl\n  | ok result => exact suffix_same23 primitive external x0 x1 result.1 result.2 (loopEval_arity 1 _ _ _ _ run)\ntheorem segment_actual (world : World) :\n    evalProgram (M primitive external) S3 [x0,x1] world = evalProgram (M primitive external) S4 [x0,x1] world := by\n  have r2 : indexIterations 0 24 2 = (scfRange 0 24 2).map Int.ofNat := naturalRange 0 24 2 (by decide)\n  have r6 : indexIterations 0 24 6 = (scfRange 0 24 6).map Int.ofNat := naturalRange 0 24 6 (by decide)\n  have loops : loopEval 1 (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)\n      (indexIterations 0 24 2) [x0] world =\n    loopEval 1 (fun i c w => evalProgram (M primitive external) B4 (i::c++E4 primitive x0 x1) w)\n      (indexIterations 0 24 6) [x0] world := by\n    rw [r2,r6]\n    exact segment_loop 1 _ _ 0 24 2 3 (by decide) (by decide) (outer_same primitive external x0 x1) [x0] world\n  rw [form3,form4,loops]\n  cases run : loopEval 1 (fun i c w => evalProgram (M primitive external) B4 (i::c++E4 primitive x0 x1) w)\n      (indexIterations 0 24 6) [x0] world with\n  | error failure => rfl\n  | ok result => exact suffix_same34 primitive external x0 x1 result.1 result.2 (loopEval_arity 1 _ _ _ _ run)\ntheorem actual_inputs (world : World) :\n    evalProgram (M primitive external) S0 [x0,x1] world = evalProgram (M primitive external) S4 [x0,x1] world :=\n  (firstTwo Int World Error (M primitive external) [x0,x1] world rfl).trans\n    ((unroll_actual primitive external x0 x1 world).trans (segment_actual primitive external x0 x1 world))\ntheorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S4 arguments world := by\n  cases arguments with\n  | nil => simp only [inputs,List.length_nil,List.length_cons] at arity; contradiction\n  | cons first rest =>\n    cases rest with\n    | nil => simp only [inputs,List.length_nil,List.length_cons] at arity; contradiction\n    | cons second later =>\n      have empty : later = [] := List.length_eq_zero_iff.mp (by\n        simp only [inputs,List.length_nil,List.length_cons] at arity\n        omega)\n      subst later\n      exact actual_inputs primitive external first second world\nend F3\nnamespace F4\ndef inputs : List Ty := [(.bits 32)]\ndef outputs : List Ty := [(.bits 32)]\ndef S0 : Program := (.ret [0])\ntheorem typed0 : checkTypes registry inputs outputs S0 = true := by decide\ndef S1 : Program := (.ret [0])\ntheorem typed1 : checkTypes registry inputs outputs S1 = true := by decide\ndef S2 : Program := (.ret [0])\ntheorem typed2 : checkTypes registry inputs outputs S2 = true := by decide\ndef S3 : Program := (.ret [0])\ntheorem typed3 : checkTypes registry inputs outputs S3 = true := by decide\ndef S4 : Program := (.ret [0])\ntheorem typed4 : checkTypes registry inputs outputs S4 = true := by decide\ntheorem firstAccepted : check registry inputs outputs S0 S1 = true := by decide\ntheorem secondAccepted : check registry inputs outputs S1 S2 = true := by decide\ntheorem firstTwo : Preserves registry inputs.length S0 S2 := check_composes firstAccepted secondAccepted\ntheorem actual {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int) (external : External World Error registry)\n    (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S4 arguments world :=\n  firstTwo Int World Error (M primitive external) arguments world arity\nend F4\ndef originalEntries : List Entry := [{inputs := F3.inputs, outputs := F3.outputs, body := F3.S0},{inputs := F4.inputs, outputs := F4.outputs, body := F4.S0}]\ndef finalEntries : List Entry := [{inputs := F3.inputs, outputs := F3.outputs, body := F3.S4},{inputs := F4.inputs, outputs := F4.outputs, body := F4.S4}]\ntheorem originalEntriesChecked : checkEntries registry originalEntries = true := by decide\ntheorem finalEntriesChecked : checkEntries registry finalEntries = true := by decide\ntheorem complete {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) : PreservesEntries (M primitive external) originalEntries finalEntries :=\n  entries_cons (M primitive external) rfl rfl (F3.actual primitive external) (entries_cons (M primitive external) rfl rfl (F4.actual primitive external) (entries_nil (M primitive external)))\nend Merlin.GraphStatePipelineInstance\nnamespace Merlin.GraphGateProfileAdjacent\nopen Merlin.GraphState.Scalar Merlin.GraphState.Pipeline\nabbrev registry := Merlin.GraphStatePipelineInstance.registry\ndef entries0 : List Entry := [{inputs := Merlin.GraphStatePipelineInstance.F3.inputs, outputs := Merlin.GraphStatePipelineInstance.F3.outputs, body := Merlin.GraphStatePipelineInstance.F3.S0},{inputs := Merlin.GraphStatePipelineInstance.F4.inputs, outputs := Merlin.GraphStatePipelineInstance.F4.outputs, body := Merlin.GraphStatePipelineInstance.F4.S0}]\ndef entries1 : List Entry := [{inputs := Merlin.GraphStatePipelineInstance.F3.inputs, outputs := Merlin.GraphStatePipelineInstance.F3.outputs, body := Merlin.GraphStatePipelineInstance.F3.S1},{inputs := Merlin.GraphStatePipelineInstance.F4.inputs, outputs := Merlin.GraphStatePipelineInstance.F4.outputs, body := Merlin.GraphStatePipelineInstance.F4.S1}]\ndef entries2 : List Entry := [{inputs := Merlin.GraphStatePipelineInstance.F3.inputs, outputs := Merlin.GraphStatePipelineInstance.F3.outputs, body := Merlin.GraphStatePipelineInstance.F3.S2},{inputs := Merlin.GraphStatePipelineInstance.F4.inputs, outputs := Merlin.GraphStatePipelineInstance.F4.outputs, body := Merlin.GraphStatePipelineInstance.F4.S2}]\ndef entries3 : List Entry := [{inputs := Merlin.GraphStatePipelineInstance.F3.inputs, outputs := Merlin.GraphStatePipelineInstance.F3.outputs, body := Merlin.GraphStatePipelineInstance.F3.S3},{inputs := Merlin.GraphStatePipelineInstance.F4.inputs, outputs := Merlin.GraphStatePipelineInstance.F4.outputs, body := Merlin.GraphStatePipelineInstance.F4.S3}]\ndef entries4 : List Entry := [{inputs := Merlin.GraphStatePipelineInstance.F3.inputs, outputs := Merlin.GraphStatePipelineInstance.F3.outputs, body := Merlin.GraphStatePipelineInstance.F3.S4},{inputs := Merlin.GraphStatePipelineInstance.F4.inputs, outputs := Merlin.GraphStatePipelineInstance.F4.outputs, body := Merlin.GraphStatePipelineInstance.F4.S4}]\ntheorem step2F3 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (arguments : List Int) (world : World)\n    (arity : arguments.length = Merlin.GraphStatePipelineInstance.F3.inputs.length) :\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F3.S2 arguments world =\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F3.S3 arguments world := by\n  cases arguments with\n  | nil => simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity; contradiction\n  | cons first rest =>\n    cases rest with\n    | nil => simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity; contradiction\n    | cons second later =>\n      have empty : later = [] := List.length_eq_zero_iff.mp (by\n        simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity\n        omega)\n      subst later\n      exact Merlin.GraphStatePipelineInstance.F3.unroll_actual primitive external first second world\ntheorem step3F3 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (arguments : List Int) (world : World)\n    (arity : arguments.length = Merlin.GraphStatePipelineInstance.F3.inputs.length) :\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F3.S3 arguments world =\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F3.S4 arguments world := by\n  cases arguments with\n  | nil => simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity; contradiction\n  | cons first rest =>\n    cases rest with\n    | nil => simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity; contradiction\n    | cons second later =>\n      have empty : later = [] := List.length_eq_zero_iff.mp (by\n        simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity\n        omega)\n      subst later\n      exact Merlin.GraphStatePipelineInstance.F3.segment_actual primitive external first second world\ntheorem step2F4 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (arguments : List Int) (world : World)\n    (arity : arguments.length = Merlin.GraphStatePipelineInstance.F4.inputs.length) :\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F4.S2 arguments world =\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F4.S3 arguments world := by\n  revert arity\n  intro _\n  rfl\ntheorem step3F4 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (arguments : List Int) (world : World)\n    (arity : arguments.length = Merlin.GraphStatePipelineInstance.F4.inputs.length) :\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F4.S3 arguments world =\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F4.S4 arguments world := by\n  revert arity\n  intro _\n  rfl\ntheorem complete0 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) :\n    PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external) entries0 entries1 :=\n  entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (check_sound Merlin.GraphStatePipelineInstance.F3.firstAccepted Int World Error (Merlin.GraphStatePipelineInstance.M primitive external)) (entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (check_sound Merlin.GraphStatePipelineInstance.F4.firstAccepted Int World Error (Merlin.GraphStatePipelineInstance.M primitive external)) (entries_nil (Merlin.GraphStatePipelineInstance.M primitive external)))\ntheorem complete1 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) :\n    PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external) entries1 entries2 :=\n  entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (check_sound Merlin.GraphStatePipelineInstance.F3.secondAccepted Int World Error (Merlin.GraphStatePipelineInstance.M primitive external)) (entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (check_sound Merlin.GraphStatePipelineInstance.F4.secondAccepted Int World Error (Merlin.GraphStatePipelineInstance.M primitive external)) (entries_nil (Merlin.GraphStatePipelineInstance.M primitive external)))\ntheorem complete2 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) :\n    PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external) entries2 entries3 :=\n  entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (step2F3 primitive external) (entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (step2F4 primitive external) (entries_nil (Merlin.GraphStatePipelineInstance.M primitive external)))\ntheorem complete3 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) :\n    PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external) entries3 entries4 :=\n  entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (step3F3 primitive external) (entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (step3F4 primitive external) (entries_nil (Merlin.GraphStatePipelineInstance.M primitive external)))\ntheorem original_join : entries0 = Merlin.GraphStatePipelineInstance.originalEntries := rfl\ntheorem final_join : entries4 = Merlin.GraphStatePipelineInstance.finalEntries := rfl\nend Merlin.GraphGateProfileAdjacent\ntheorem merlin_profile_transform {World Error : Type}\n    (primitive : Merlin.GraphState.Scalar.Prim \u2192 List Int \u2192 Int)\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry) :\n    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external)\n      Merlin.GraphStatePipelineInstance.originalEntries Merlin.GraphStatePipelineInstance.finalEntries :=\n  Merlin.GraphStatePipelineInstance.complete primitive external\n",
+  "roots": [
+    "Merlin.GraphStatePipelineInstance.complete",
+    "Merlin.GraphStatePipelineInstance.controlAccepted",
+    "Merlin.GraphStatePipelineInstance.literalsAccepted",
+    "Merlin.GraphStatePipelineInstance.literalsFit",
+    "Merlin.GraphStatePipelineInstance.originalEntriesChecked",
+    "Merlin.GraphStatePipelineInstance.finalEntriesChecked",
+    "Merlin.GraphStatePipelineInstance.F3.actual",
+    "Merlin.GraphStatePipelineInstance.F3.firstAccepted",
+    "Merlin.GraphStatePipelineInstance.F3.secondAccepted",
+    "Merlin.GraphStatePipelineInstance.F3.firstTwo",
+    "Merlin.GraphStatePipelineInstance.F3.typed0",
+    "Merlin.GraphStatePipelineInstance.F3.typed1",
+    "Merlin.GraphStatePipelineInstance.F3.typed2",
+    "Merlin.GraphStatePipelineInstance.F3.typed3",
+    "Merlin.GraphStatePipelineInstance.F3.typed4",
+    "Merlin.GraphStatePipelineInstance.F3.body_group",
+    "Merlin.GraphStatePipelineInstance.F3.innerAccepted",
+    "Merlin.GraphStatePipelineInstance.F3.inner_same",
+    "Merlin.GraphStatePipelineInstance.F3.outer_same",
+    "Merlin.GraphStatePipelineInstance.F3.suffixAccepted23",
+    "Merlin.GraphStatePipelineInstance.F3.suffixAccepted34",
+    "Merlin.GraphStatePipelineInstance.F3.suffix_same23",
+    "Merlin.GraphStatePipelineInstance.F3.suffix_same34",
+    "Merlin.GraphStatePipelineInstance.F3.unrollBoundsChecked",
+    "Merlin.GraphStatePipelineInstance.F3.segmentBoundsChecked",
+    "Merlin.GraphStatePipelineInstance.F3.form2",
+    "Merlin.GraphStatePipelineInstance.F3.form3",
+    "Merlin.GraphStatePipelineInstance.F3.form4",
+    "Merlin.GraphStatePipelineInstance.F3.unroll_actual",
+    "Merlin.GraphStatePipelineInstance.F3.segment_actual",
+    "Merlin.GraphStatePipelineInstance.F4.actual",
+    "Merlin.GraphStatePipelineInstance.F4.firstAccepted",
+    "Merlin.GraphStatePipelineInstance.F4.secondAccepted",
+    "Merlin.GraphStatePipelineInstance.F4.firstTwo",
+    "Merlin.GraphStatePipelineInstance.F4.typed0",
+    "Merlin.GraphStatePipelineInstance.F4.typed1",
+    "Merlin.GraphStatePipelineInstance.F4.typed2",
+    "Merlin.GraphStatePipelineInstance.F4.typed3",
+    "Merlin.GraphStatePipelineInstance.F4.typed4",
+    "Merlin.GraphGateProfileAdjacent.step2F3",
+    "Merlin.GraphGateProfileAdjacent.step3F3",
+    "Merlin.GraphGateProfileAdjacent.step2F4",
+    "Merlin.GraphGateProfileAdjacent.step3F4",
+    "Merlin.GraphGateProfileAdjacent.complete0",
+    "Merlin.GraphGateProfileAdjacent.complete1",
+    "Merlin.GraphGateProfileAdjacent.complete2",
+    "Merlin.GraphGateProfileAdjacent.complete3",
+    "Merlin.GraphGateProfileAdjacent.original_join",
+    "Merlin.GraphGateProfileAdjacent.final_join",
+    "Merlin.GraphState.Scalar.check_sound",
+    "Merlin.GraphState.Pipeline.entries_cons",
+    "Merlin.GraphState.Pipeline.unroll_loop",
+    "Merlin.GraphState.Pipeline.segment_loop",
+    "Merlin.GraphState.Pipeline.Scope.check_sound",
+    "Merlin.GraphState.Pipeline.checkControl_sound",
+    "Merlin.GraphState.Pipeline.checkLiterals_sound",
+    "merlin_profile_transform"
+  ],
+  "boundary_roots": [
+    [
+      "scalar_redundancy_elimination",
+      [
+        "Merlin.GraphGateProfileAdjacent.complete0",
+        "Merlin.GraphStatePipelineInstance.F3.firstAccepted",
+        "Merlin.GraphStatePipelineInstance.F4.firstAccepted"
+      ]
+    ],
+    [
+      "scalar_loop_invariant_motion",
+      [
+        "Merlin.GraphGateProfileAdjacent.complete1",
+        "Merlin.GraphStatePipelineInstance.F3.secondAccepted",
+        "Merlin.GraphStatePipelineInstance.F4.secondAccepted"
+      ]
+    ],
+    [
+      "ordered_loop_unrolling",
+      [
+        "Merlin.GraphGateProfileAdjacent.complete2",
+        "Merlin.GraphStatePipelineInstance.F3.unroll_actual"
+      ]
+    ],
+    [
+      "ordered_loop_segmentation",
+      [
+        "Merlin.GraphGateProfileAdjacent.complete3",
+        "Merlin.GraphStatePipelineInstance.F3.segment_actual"
+      ]
+    ]
+  ],
+  "sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/builder.py",
+      "sha256": "07edf3d0ba3af9083c22310dd98bddd37a3300b7b166466193389aa50aca395a",
+      "size": 11622
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/context.py",
+      "sha256": "398f6fe1a77cb940e30cb499f5ddd3e6d80073fb9d4e3b0ea5bc3f5fdc4b81de",
+      "size": 11751
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/__init__.py",
+      "sha256": "0ce455fc728c51ade6e19ed26ff61c625b9b5f85af77f0976cc6de9504c25556",
+      "size": 549
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/constant_materialization.py",
+      "sha256": "1d805e0a398ccea6bb05684210a22e106600146044902e431129a524eac433b3",
+      "size": 1069
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/op_asm.py",
+      "sha256": "4ce3e98d238e453d63d3f480ba06cb232e7d0a1571736c67fe784117a1664351",
+      "size": 3093
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/__init__.py",
+      "sha256": "09111f29545dac8235bb5b0cbbc63e591c43a92e9b1fa8e4e23815c2c0371afd",
+      "size": 10337
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/arith.py",
+      "sha256": "8e58a5ab3c4e7a7b4cc30653a52b8f6f7b9b35574ed88485f1dbd85866ca3b63",
+      "size": 42917
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/builtin.py",
+      "sha256": "a58c193c85430bcfb34e6e5dba23f442880f8e9593e07ca313906f4a5775a4e2",
+      "size": 114583
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/func.py",
+      "sha256": "8a0cb3d1cfb47bfea7f642decd5c4b6f742461c6fe89b283f0918e515e8b8f8e",
+      "size": 11699
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/memref.py",
+      "sha256": "216e58c59ab59abe72e12a55c2af9bf89e53569c19479bfc9a7103c387cf28ba",
+      "size": 40815
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/scf.py",
+      "sha256": "57a47001029e79e03994fe67de0ed3c95b86ab465103cbd721f1b32b31155ab6",
+      "size": 27021
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/__init__.py",
+      "sha256": "9333bca6184814c39e9eaf592f58e6ed493e9898d527ad136fe32f5f59343433",
+      "size": 440
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/bit_enum_attribute.py",
+      "sha256": "a95bd0416fc8501a6e727ca1315a94b7d8c5cb790358affc1be7c501b3c6501e",
+      "size": 4759
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dimension_list.py",
+      "sha256": "a6612af576bd0357107529dd60c4053f48dfcbf03abe6a431c29a55a2d475989",
+      "size": 1542
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dynamic_index_list.py",
+      "sha256": "38daa52c1113b0b9c7e184a812206fca75c99bf89bf2d489f9819525c040c242",
+      "size": 11826
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/enum_attribute.py",
+      "sha256": "a78ec420a097f747703642e1f27f8e41024b087a5244b4dd4709ee537d852dfe",
+      "size": 2170
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/fast_math.py",
+      "sha256": "6b5b526f36fcebd1afee8f3e8cd0e447f5240075885646edd9fbd84b79611b55",
+      "size": 684
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/format.py",
+      "sha256": "cc99781fa71fcaf702737a52e8c3c3e37754fdd13d9e7530960714dfa721acec",
+      "size": 18761
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/reshape_ops_utils.py",
+      "sha256": "20d38aaa290665a1f23c3a7781aacd1cc30e0bc1761cac25a2a4c6bcd45d8db9",
+      "size": 5041
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/folder.py",
+      "sha256": "3906e6d34b791f4d1de56bd347cb1af8a53424afaebc1c7e97dff2e70da503de",
+      "size": 3430
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/interfaces.py",
+      "sha256": "66a219f8cff8fdf8759426e3ab38f2fedfbd092b09b9daaa2d033831339dc300",
+      "size": 3803
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/__init__.py",
+      "sha256": "9b70e7a611de326f314eb7f5877f896f864519cf73404a98c0ba1448f5f91485",
+      "size": 808
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/__init__.py",
+      "sha256": "1defb1dab5f098264ce81e6318161a17100e5aeeb8c2fc966327203a5e5a26ba",
+      "size": 296
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_expr.py",
+      "sha256": "e52f3d8ffe8f36c050c9868f679e7bf254f25a64dd50e55f17e37a0c2e811061",
+      "size": 33741
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_map.py",
+      "sha256": "b7459de550eb7e16a58c54ef80f0cb799d8d4bdc125eb1aa1431265a2b20217c",
+      "size": 17632
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_set.py",
+      "sha256": "bf5fe3832e0b73c2d09280a92edb4bea307a24d8f81efdb59fbf09dc7892133b",
+      "size": 1605
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/core.py",
+      "sha256": "e4a56ec3e51f856d02ee8230739b5024c91da00260d4bce7c125ff08a6f52c08",
+      "size": 87560
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/post_order.py",
+      "sha256": "214c01e0572c013b5de698e3568726c25deb4d641e9e08fd1111b795acac6fe3",
+      "size": 1400
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/__init__.py",
+      "sha256": "5cac03e289cfd95b58f728d2fe09fd069aec7990e05801d02e6c4b20e8a7e119",
+      "size": 302
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/attributes.py",
+      "sha256": "5390db1921844923d604abee03d99d2b713b388848a9b2e0f528826fe182e473",
+      "size": 22211
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/constraints.py",
+      "sha256": "83c063f55d9b835d92c16fdd51e1ada3eb4ad84f7bc6a18698793606dcbf7e75",
+      "size": 49824
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format.py",
+      "sha256": "0634b37132aa57248a3000ec873f1664b9890e550b8a7521e0b58cd3ceeea1fb",
+      "size": 55097
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format_parser.py",
+      "sha256": "fc16909fd1530a8bb6681bd944fcae0dd7cfe7ee7ea55aa28ff140744fb508b8",
+      "size": 39149
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/operations.py",
+      "sha256": "7c5c8bf820d4f89942903794e8a1a21ce9aa5c84e451602f3a54c6cb481149d4",
+      "size": 74020
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/__init__.py",
+      "sha256": "a8c23f2dc3bad21336cca3171afa34339dfabf90298dd19ed4e92798e17e823e",
+      "size": 466
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/affine_parser.py",
+      "sha256": "77e1a321b84693db30272b42deafb3453475705c00bff128480f7857b2a5c36b",
+      "size": 11088
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/attribute_parser.py",
+      "sha256": "2390628c63b7069fd6e4d814e06fbd5da19df487d0b2af469cc0704b3355c13c",
+      "size": 62798
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/base_parser.py",
+      "sha256": "158558fb5b4fb9dc2a7438f0c6cc3cb5276b462a1adb7da44a1eaabe204b8bad",
+      "size": 12513
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/core.py",
+      "sha256": "fea4787ef90a2893e6a55bb9a7c70a3d81304b68a40a30904b330e6919ea37e7",
+      "size": 41286
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/generic_parser.py",
+      "sha256": "badaa2593ec46f77c0856d62e100fe19195357a40c444dc0b4aed8e1376d92d7",
+      "size": 11901
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/passes.py",
+      "sha256": "f6833a451a2403c8565bd7688fcd9e862948d0d918c29ecca89c37e5488767c1",
+      "size": 6428
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/pattern_rewriter.py",
+      "sha256": "759350b3ea7defd18f75161034182100b69778d9be52d47c2e63060eb80f2e38",
+      "size": 30506
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/printer.py",
+      "sha256": "44d48c3d67a1a60793434c3f92376840f764b0fa2f7a7e835173a0ba819e7765",
+      "size": 25749
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/rewriter.py",
+      "sha256": "ecb85c0cd62c5fdf04fb72291cab1c0145bce8c6cafedf7b2d7eba21121deb47",
+      "size": 11614
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/traits.py",
+      "sha256": "9a8df8a232a7d79c1836ce40136a5245559b9f6e6f9ea7e5b5f7782d5bcb7a2e",
+      "size": 29464
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/__init__.py",
+      "sha256": "38f63ce74615b1584a9e75711570637339dc91aabf0751704b75ebd6593935e4",
+      "size": 30431
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/common_subexpression_elimination.py",
+      "sha256": "9e10dbdc2cedfc0dae55f2adaf3c7fd16c02079a8dfb0bcbe5f9b18edaaab0e6",
+      "size": 8648
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/dead_code_elimination.py",
+      "sha256": "184d6afb7fe59753ef23b9a49701431323bf60fc15d00cfa67c3caa2c684daee",
+      "size": 5369
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/loop_invariant_code_motion.py",
+      "sha256": "6014e7b190213fb952a24cc5376a7f02b28cad6c372d3712b89ab37f3fefb47d",
+      "size": 3364
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/arg_spec.py",
+      "sha256": "129d04cfd40731165385cfbf36a836bb528465905c8c7fef45d26414209b714b",
+      "size": 19034
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/base_printer.py",
+      "sha256": "e481727cfc8d6f5019b3e7d0341e25607c6f64c19cabf27c029cdd7ef2c57a9b",
+      "size": 5606
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/bitwise_casts.py",
+      "sha256": "a19b2f68806f22a22c1258fd38dc2568a9a713daaa1bdbe822e9ee8c8134cfd6",
+      "size": 1903
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/classvar.py",
+      "sha256": "75817d634d44001d56dc60cf2142e0fc186c7f4c1bacac124c59380350c90627",
+      "size": 1129
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/comparisons.py",
+      "sha256": "d457aaed334bf384daa7aa70238300f39ad9c8ecc636291b5c8cb6bd07e224ac",
+      "size": 3799
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/diagnostic.py",
+      "sha256": "fdcb80084e612ae2b1b75cd7ecf1c79796e4c912c58fa3ae612fae97447fe0f3",
+      "size": 1901
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_loader.py",
+      "sha256": "fc7fbe1d9ea015f6b9caa764797a0849c9cc972efb778d258baee6b0f8bbb9ec",
+      "size": 3966
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_stub.py",
+      "sha256": "e56615befeb25b7ef8dc739ab1afaf7481045af9c13cf82902e1901358f90a43",
+      "size": 10855
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/exceptions.py",
+      "sha256": "2c5a6d5e0a8f44c998cae5a22a3922feb4d226e6de2100d3c976cb47e5a091c0",
+      "size": 3497
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/hints.py",
+      "sha256": "298718d6044b829594b43ad7e1b1226f8aa9318f73de1e4f806073d39004dacf",
+      "size": 7859
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/lexer.py",
+      "sha256": "d2d6d2f8e2bf110426e7663c28eb0626de5334ecbc27e74cec92c21af69fefef",
+      "size": 5454
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/mlir_lexer.py",
+      "sha256": "d2d2b59b9a09d18e2edde2d6ccc2fa49f4e063e19672eab4c158e35d44b32e36",
+      "size": 18808
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/runtime_final.py",
+      "sha256": "37edf56a59a7f385128f5864f07560d2e2535644260141f0f1893bf28a83e7d5",
+      "size": 812
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/str_enum.py",
+      "sha256": "3a5fa8d24f075b14a95a56146f832980d666da690e8c4eb7e5d491c3e813456e",
+      "size": 356
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/type.py",
+      "sha256": "9c4c1ac090bd0da004fd7db64e4c95e96a2803b1b078e49f669085cbbc74fbce",
+      "size": 1540
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/worklist.py",
+      "sha256": "dea6f7332e611bea48493d6ce60a478a0f484238ab4ddbe24c84e3f63764d842",
+      "size": 2081
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "size": 4227
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "size": 1017
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/certificates.py",
+      "sha256": "4b3348bd83b347b262dc6457a1827e5f0b0c2e94251e570d642afe19a18cc639",
+      "size": 9448
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "size": 4572
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "size": 4097
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pipeline.py",
+      "sha256": "e665f6370c27a6d82509d42679c778b79b7983a56ebb6697bbbe96c2c183b73f",
+      "size": 8788
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "size": 12317
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "size": 12381
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pure_scalar.py",
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+      "size": 6617
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/scalar_witness.py",
+      "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31",
+      "size": 2083
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/unrolling.py",
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f",
+      "size": 7588
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "size": 10145
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_graph_input_admission.py",
+      "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "size": 7626
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/common/owned_process.py",
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910",
+      "size": 5515
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/common/paths.py",
+      "sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "size": 17204
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+      "sha256": "c165b6da5fee9f084dd6c2ad1da29020f55af0566e2cb809c39632af7d955cc2",
+      "size": 18641
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_profile_requests.py",
+      "sha256": "ae5974092cc874a6649fb6b86b6853c0801e60fe9a1a7ba3a8911b2d98a72abd",
+      "size": 4296
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_profiles.py",
+      "sha256": "cb4fd7c0801734aa180d786425b773be62c1056be5c0be71d1bb12508f3d6db2",
+      "size": 3114
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "size": 12573
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state.py",
+      "sha256": "8568b83e5c6bb92b927136e90f18412b8c6912a35b23aa5d27d9c6ede073f1c1",
+      "size": 15961
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_emit.py",
+      "sha256": "0d41bf9e18ff5204d4c0052308e4e6a27c8b3de2707680c0c593aed96eaaba80",
+      "size": 16467
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline.py",
+      "sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f",
+      "size": 3144
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_capture.py",
+      "sha256": "94af83c9de73aa64ac534ae2d5371e3acbfad3377002bd0a3ee2405795226970",
+      "size": 12106
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "sha256": "f4b60597ecfb8f18bec2fc61b7c59c41293e4673af1a22321e6d52de3cdc0a4a",
+      "size": 26257
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar.py",
+      "sha256": "61d351b2b6d31fc172a20931142e5a5096416ac3264901efc322086a410e5fc5",
+      "size": 15252
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "size": 20723
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_kernel.py",
+      "sha256": "2a170583ecdab74f9690cbe071e6ef4c4d459daa07c42c07c351e201dfc405e0",
+      "size": 10303
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+      "size": 9653
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+      "size": 3962
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "size": 7091
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+      "size": 2118
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+      "size": 5730
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+      "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+      "size": 5106
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+      "size": 9854
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+      "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+      "size": 5747
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+      "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+      "size": 4641
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean",
+      "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+      "size": 7412
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+      "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+      "size": 7569
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+      "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+      "size": 1400
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean",
+      "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+      "size": 8734
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+      "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+      "size": 3197
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean",
+      "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+      "size": 2509
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean",
+      "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+      "size": 4541
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "size": 4654
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "size": 8229
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "size": 11782
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "size": 6170
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "size": 9963
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "size": 6614
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+      "size": 3246
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+      "size": 4537
+    }
+  ],
+  "identity": "cb4876e17df027d777d9c3878fd76e164983678b8ecfaaf181ff0e40ef6cf8ac",
+  "query_status": "UNCOMPILED",
+  "outcome": "UNOBSERVED",
+  "qualification": "UNQUALIFIED",
+  "compiler_pass_chain": "not_established",
+  "public_route": "UNSUPPORTED/HELD"
+}

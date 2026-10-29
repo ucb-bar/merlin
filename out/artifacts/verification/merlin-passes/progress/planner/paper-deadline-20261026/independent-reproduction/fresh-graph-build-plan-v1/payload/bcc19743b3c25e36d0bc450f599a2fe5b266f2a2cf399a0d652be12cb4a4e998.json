@@ -1,0 +1,14 @@
+{
+  "native_activation": false,
+  "profile_schema_changes": false,
+  "required_host_constructor_argument": "graph_binding: same-live GraphServiceBinding",
+  "required_source_cut": "../source-checkpoint-v9/INVENTORY.json",
+  "new_primary_leaf": "src/merlin/verify/lean_graph_pipeline_gate_service.py",
+  "new_corrective_owned_leaf": "src/merlin/targetgen/common_transforms.py",
+  "shared_import_and_snapshot_policy": "unchanged; coordinator must select exact new sources in new admitted release",
+  "legacy_toolchain_fallback": false,
+  "public_native_hold": true,
+  "saved_json_authority": false,
+  "whole_chain_semantics_proved": false,
+  "runtime_investigation_owner": "root/F"
+}

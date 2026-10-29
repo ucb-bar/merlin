@@ -1,0 +1,30 @@
+{
+  "schema": "merlin.registered-coverage.result.v1",
+  "status": "ORDERED_QUEUE_COMPLETE_SOURCE_DATA_AND_MOCK_SERVICE",
+  "registry_keys": 8,
+  "actual_AST_dispatch_kinds": 8,
+  "Graham_registered_variant_rows": 34,
+  "Graham_broader_mechanism_rows": 57,
+  "inventory_rows_are_not_pass_count": true,
+  "coverage_percentage": null,
+  "coverage_percentage_reason": "No proved-pass denominator defined.",
+  "owner_test_obligations": 15,
+  "fixed_service_cases": 12,
+  "service_passed": 12,
+  "service_run_count": 1,
+  "service_actual_APIs": true,
+  "kernel_context_and_profile_custody": "EXPLICITLY_MOCKED",
+  "Q_whole_suites_rerun": 0,
+  "remaining_queue": [],
+  "native_invocations": 0,
+  "SDK_runtime_reads": 0,
+  "approval_flags": {
+    "all_graph": false,
+    "native": false,
+    "model": false,
+    "policy": false,
+    "human": false
+  },
+  "final_validation_checks": 1970,
+  "validation_status": "PASS"
+}

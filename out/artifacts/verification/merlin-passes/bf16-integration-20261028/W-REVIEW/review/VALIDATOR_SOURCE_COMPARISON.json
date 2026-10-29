@@ -1,0 +1,13 @@
+{
+  "controlled_nodes_ast_identical": true,
+  "checked_functions": [
+    "_attr",
+    "_children",
+    "_half_contraction",
+    "source_sites",
+    "validate_report"
+  ],
+  "old_sha256": "b58fa90ebfe131edc6ba3a378f690fb90b2d33f01337396ea0e0314b8695ef7f",
+  "current_sha256": "6eaed8c3fad6a6fa031f79a53adfaa8797942e09cba5b9d445e67d2b1d986341",
+  "not_a_runtime_or_Lean_test": true
+}

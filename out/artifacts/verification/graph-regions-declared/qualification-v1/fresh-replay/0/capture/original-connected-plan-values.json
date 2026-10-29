@@ -1,0 +1,44 @@
+[
+  {
+    "index": 2,
+    "kind": "argument",
+    "owner_ordinal": 1,
+    "type": "tensor<3x47xi8>"
+  },
+  {
+    "index": 0,
+    "kind": "argument",
+    "owner_ordinal": 1,
+    "type": "tensor<3x47xi8>"
+  },
+  {
+    "index": 3,
+    "kind": "argument",
+    "owner_ordinal": 1,
+    "type": "tensor<3x47xi8>"
+  },
+  {
+    "index": 0,
+    "kind": "result",
+    "owner_ordinal": 6,
+    "type": "tensor<3x47xi8>"
+  },
+  {
+    "index": 1,
+    "kind": "argument",
+    "owner_ordinal": 1,
+    "type": "tensor<3x47xi8>"
+  },
+  {
+    "index": 0,
+    "kind": "result",
+    "owner_ordinal": 10,
+    "type": "tensor<3x47xi8>"
+  },
+  {
+    "index": 0,
+    "kind": "result",
+    "owner_ordinal": 13,
+    "type": "tensor<3x47xi8>"
+  }
+]

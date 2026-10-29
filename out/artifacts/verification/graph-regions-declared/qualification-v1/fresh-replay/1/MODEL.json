@@ -1,0 +1,34 @@
+{
+  "addresses": {
+    "0": "\u27e82,0,92\u27e9",
+    "1": "\u27e84,0,92\u27e9",
+    "16": "\u27e85,0,92\u27e9",
+    "2": "\u27e81,0,92\u27e9",
+    "21": "\u27e86,0,92\u27e9",
+    "3": "\u27e83,0,92\u27e9",
+    "9": "\u27e80,0,92\u27e9"
+  },
+  "backings": {
+    "input0": 1,
+    "input1": 2,
+    "input2": 3,
+    "input3": 4,
+    "output0": 5,
+    "output1": 6,
+    "private0": 0,
+    "private1": 0
+  },
+  "elements": 46,
+  "known": [
+    2,
+    0,
+    3,
+    1
+  ],
+  "source_generic_indices": [
+    4,
+    5,
+    6
+  ],
+  "source_operational_bridge_qualified": false
+}

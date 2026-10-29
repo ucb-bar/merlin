@@ -1,0 +1,70 @@
+[
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_memory_scf_after.py",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_expansion.py",
+    "unchanged": true
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_projection.py",
+    "unchanged": true
+  },
+  {
+    "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after.py",
+    "unchanged": true
+  },
+  {
+    "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_expansion.py",
+    "unchanged": true
+  }
+]

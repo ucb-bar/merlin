@@ -1,0 +1,5 @@
+# Current source publication inventory for coordinator
+
+MANIFEST.json lists exact current owned canonical sources and small review entrypoints. No binary, SDK image, archive, proof object or foreign source is included. This inventory is not a qualification or permission to overwrite earlier seals. Coordinator alone stages and publishes. All canonical sources were read only; new implementation remains in the additive runtime source packets.
+
+Historical status is in today-handoff-20261025 and paper-evidence (current paragraph followed by explicit chronology). Do not treat old stop blocks as current authorization. Current ACTIVE controls resumption; old seals and raw failures remain immutable. New watchdog cut is source/synthetic tested, both request files PROPOSED. New archive Context cut is source/fake-data/mocked only; actual archive and host closure unavailable, new diagnostics not runnable. All UNKNOWN runtime incidents and native holds remain intact. Newly listed files are not covered by old qualification just because a Lean lemma was compiled historically.

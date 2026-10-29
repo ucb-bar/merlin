@@ -1,0 +1,1096 @@
+--- /dev/null
++++ b/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/materialize_plan.py
+@@ -0,0 +1,339 @@
++"""Materialize ONLY bound Lean source/query/root sidecars into an exclusive NEW tree.
++
++Stdlib and reviewed closed-header source parser only. No provider, controller,
++SDK, compiler, object, archive, installation or native action. A completed copy
++is DATA preparation and grants no semantic, native, human or graph authority.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import os
++import stat
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from plan_core import PlanError, closure, decode, header, identifier, pin, relative, require, topo
++
++
++def component(value):
++    require(
++        type(value) is str and value and value.isascii() and all(c.isalnum() or c in "_-" for c in value),
++        "safe profile/case component required",
++    )
++    return value
++
++
++def read_bound(packet, reference, suffix):
++    require(
++        type(reference) is dict and set(reference) == {"file", "sha256", "bytes"}, "closed pinned reference required"
++    )
++    require(
++        type(reference["bytes"]) is int and 0 <= reference["bytes"] <= 32 * 1024 * 1024, "bounded byte pin required"
++    )
++    path = packet / str(relative(reference["file"]))
++    require(path.suffix == suffix, "only the selected source/query/JSON role is allowed")
++    require(not path.is_symlink() and path.resolve().is_relative_to(packet), "source reference escaped packet")
++    require(all(not p.is_symlink() for p in path.parents if p.is_relative_to(packet)), "linked input parent refused")
++    require(stat.S_ISREG(path.stat().st_mode), "regular source/data file required")
++    raw = path.read_bytes()
++    require(
++        pin(raw) == {k: reference[k] for k in ("sha256", "bytes")}, "missing/changed pinned input: " + reference["file"]
++    )
++    return raw
++
++
++def file_names(root):
++    found = set()
++    for directory, dirs, files in os.walk(root, followlinks=False):
++        parent = Path(directory)
++        require(all(not (parent / d).is_symlink() for d in dirs), "linked directory refused")
++        for name in files:
++            path = parent / name
++            require(not path.is_symlink(), "linked file refused")
++            found.add(path.relative_to(root).as_posix())
++    return found
++
++
++def validate_spec(packet, spec):
++    require(set(spec) == {"schema", "primary_baseline", "profiles"}, "closed staging specification required")
++    require(spec["schema"] == "merlin.graph-staging-spec.v1", "unknown staging schema")
++    require(type(spec["profiles"]) is list and bool(spec["profiles"]), "nonempty profile list required")
++    profiles, expected_files, profile_ids = [], {"STAGING_SPEC.json"}, set()
++    for profile in spec["profiles"]:
++        require(
++            set(profile) == {"id", "project_prefixes", "sources", "dependency_order", "cases", "provenance"},
++            "closed profile record required",
++        )
++        name = component(profile["id"])
++        require(name not in profile_ids, "duplicate profile id")
++        profile_ids.add(name)
++        prefixes = tuple(profile["project_prefixes"])
++        require(
++            prefixes and all(type(p) is str and p.endswith(".") for p in prefixes), "explicit project prefixes required"
++        )
++        sources, graph, externals = {}, {}, {}
++        for source in profile["sources"]:
++            require(set(source) == {"module", "ref"}, "closed source record required")
++            module = identifier(source["module"])
++            require(module.startswith(prefixes), "nonproject source namespace refused")
++            require(module not in sources, "duplicate/conflicting module ID: " + module)
++            raw = read_bound(packet, source["ref"], ".lean")
++            parsed = header(raw)
++            graph[module] = sorted(n for n in parsed["imports"] if n.startswith(prefixes))
++            externals[module] = sorted(
++                set(n for n in parsed["imports"] if not n.startswith(prefixes))
++                | ({"Init"} if parsed["implicit_Init"] else set())
++            )
++            sources[module] = source["ref"]
++            expected_files.add(source["ref"]["file"])
++        order = topo(graph)
++        require(order == profile["dependency_order"], "dependency order differs from deterministic source DAG")
++        cases, case_ids = [], set()
++        for case in profile["cases"]:
++            require(set(case) == {"id", "module", "query", "roots"}, "closed query record required")
++            case_id = component(case["id"])
++            require(case_id not in case_ids, "duplicate case ID")
++            case_ids.add(case_id)
++            module = identifier(case["module"])
++            query = read_bound(packet, case["query"], ".lean")
++            query_header = header(query)
++            require(
++                not any(line.lstrip().startswith("#") for line in query.decode("utf-8").splitlines()),
++                "query contains source-line diagnostic/evaluation directive",
++            )
++            needed = closure([n for n in query_header["imports"] if n.startswith(prefixes)], graph)
++            roots_raw = read_bound(packet, case["roots"], ".json")
++            roots = decode(roots_raw)
++            require(roots["schema"] == "merlin.graph-staging-roots.v1", "root sidecar schema differs")
++            require(
++                (roots["profile"], roots["case"], roots["module"]) == (name, case_id, module),
++                "query/root identity mismatch",
++            )
++            require(roots["query_pin"] == {k: case["query"][k] for k in ("sha256", "bytes")}, "query/root pin mismatch")
++            final, support = identifier(roots["final_root"]), roots["support_roots"]
++            require(type(support) is list and all(identifier(r) for r in support), "exact support list required")
++            require(len(set(support)) == len(support) and final not in support, "duplicate final/support roots")
++            require(
++                roots["exact_final_declaration"] in query.decode("utf-8"), "final declaration/query association differs"
++            )
++            require(
++                roots["native_context_request"] == "UNSELECTED"
++                and roots["compile"] == roots["audit"] == roots["qualification"] == "UNEXECUTED",
++                "staging cannot select context or executed status",
++            )
++            require(
++                roots["native_authorization"] is False
++                and roots["graph_approval"] is False
++                and roots["human_review"] is False,
++                "staging cannot carry approval authority",
++            )
++            expected_files.update((case["query"]["file"], case["roots"]["file"]))
++            cases.append(
++                {
++                    "id": case_id,
++                    "module": module,
++                    "query": case["query"],
++                    "roots": case["roots"],
++                    "project_order": [n for n in order if n in needed],
++                    "sidecar": roots,
++                }
++            )
++        profiles.append(
++            {
++                "id": name,
++                "sources": sources,
++                "DAG": graph,
++                "order": order,
++                "external_names_only": externals,
++                "cases": cases,
++                "provenance": profile["provenance"],
++            }
++        )
++    require(
++        file_names(packet) == expected_files, "extra or missing capsule payload; no object/SDK/other files admitted"
++    )
++    return profiles
++
++
++def write_new(destination, relative_name, raw, inventory):
++    path = destination / str(relative(relative_name))
++    require(path.suffix in (".lean", ".json"), "only Lean source or pure JSON sidecars may be materialized")
++    path.parent.mkdir(parents=True, exist_ok=True)
++    with path.open("xb") as stream:
++        stream.write(raw)
++    require(path.read_bytes() == raw, "copied bytes differ")
++    inventory[relative_name] = pin(raw)
++
++
++def verify_materialized(destination):
++    destination = Path(destination).absolute()
++    require(not destination.is_symlink() and destination.resolve() == destination, "canonical staging root required")
++    manifest = decode((destination / "MATERIALIZATION.json").read_bytes())
++    require(manifest["schema"] == "merlin.graph-source-materialization.v1", "materialization schema differs")
++    require(
++        manifest["data_only"] is True
++        and manifest["native_context_request"] == "UNSELECTED"
++        and manifest["native_authorization"] is False
++        and manifest["graph_approval"] is False
++        and manifest["human_review"] is False
++        and manifest["compile_audit_qualification"] == "UNEXECUTED",
++        "no authority from staging",
++    )
++    expected = set(manifest["files"]) | {"MATERIALIZATION.json"}
++    require(file_names(destination) == expected, "extra/missing staged payload")
++    for name, expected_pin in manifest["files"].items():
++        path = destination / str(relative(name))
++        require(path.suffix in (".lean", ".json"), "staged object/SDK/non-source file refused")
++        require(pin(path.read_bytes()) == expected_pin, "staged source/query/sidecar changed: " + name)
++    return {
++        "status": "MATERIALIZED_DATA_INTEGRITY_MATCHED",
++        "files": len(expected),
++        "data_only": True,
++        "native_authorization": False,
++        "graph_approval": False,
++        "compile_audit_qualification": "UNEXECUTED",
++    }
++
++
++def materialize(packet, destination):
++    packet, destination = Path(packet).absolute(), Path(destination).absolute()
++    require(not packet.is_symlink() and packet.resolve() == packet, "canonical packet root required")
++    require(
++        destination.parent.is_dir() and destination.parent.resolve() == destination.parent,
++        "existing canonical parent required",
++    )
++    require(
++        not destination.is_relative_to(packet) and not packet.is_relative_to(destination),
++        "input/output tree overlap refused",
++    )
++    # Never touch an existing original/main/private context, even on an error.
++    destination.mkdir(mode=0o700, parents=False, exist_ok=False)
++    inventory = {}
++    try:
++        spec_path = packet / "STAGING_SPEC.json"
++        require(not spec_path.is_symlink() and stat.S_ISREG(spec_path.stat().st_mode), "regular staging spec required")
++        raw_spec = spec_path.read_bytes()
++        write_new(
++            destination,
++            "INTENT.json",
++            (
++                json.dumps(
++                    {
++                        "schema": "merlin.graph-staging-intent.v1",
++                        "specification": pin(raw_spec),
++                        "data_only": True,
++                        "native_context_request": "UNSELECTED",
++                        "compile_audit_qualification": "UNEXECUTED",
++                    },
++                    indent=2,
++                )
++                + "\n"
++            ).encode(),
++            inventory,
++        )
++        profiles = validate_spec(packet, decode(raw_spec))
++        for profile in profiles:
++            prefix = "profiles/" + profile["id"]
++            for module in profile["order"]:
++                # Re-read/re-hash immediately before each copy, not a cached preflight result.
++                raw = read_bound(packet, profile["sources"][module], ".lean")
++                write_new(destination, prefix + "/project/" + module.replace(".", "/") + ".lean", raw, inventory)
++            order = {
++                "schema": "merlin.graph-staged-dependency-order.v1",
++                "profile": profile["id"],
++                "dependency_order": profile["order"],
++                "DAG": profile["DAG"],
++                "external_names_only": profile["external_names_only"],
++                "build": "UNEXECUTED",
++            }
++            write_new(
++                destination, prefix + "/BUILD_ORDER.json", (json.dumps(order, indent=2) + "\n").encode(), inventory
++            )
++            sidecar = {
++                "schema": "merlin.graph-staged-profile.v1",
++                "profile": profile["id"],
++                "provenance": profile["provenance"],
++                "native_context_request": "UNSELECTED",
++                "compile_audit_qualification": "UNEXECUTED",
++                "source_union_is_semantic_theorem": False,
++            }
++            write_new(destination, prefix + "/PROFILE.json", (json.dumps(sidecar, indent=2) + "\n").encode(), inventory)
++            for case in profile["cases"]:
++                sub = prefix + "/queries/" + case["id"]
++                write_new(
++                    destination,
++                    sub + "/" + case["module"].replace(".", "/") + ".lean",
++                    read_bound(packet, case["query"], ".lean"),
++                    inventory,
++                )
++                write_new(destination, sub + "/roots.json", read_bound(packet, case["roots"], ".json"), inventory)
++        manifest = {
++            "schema": "merlin.graph-source-materialization.v1",
++            "specification": pin(raw_spec),
++            "files": inventory,
++            "profiles": [p["id"] for p in profiles],
++            "data_only": True,
++            "native_context_request": "UNSELECTED",
++            "compile_audit_qualification": "UNEXECUTED",
++            "native_authorization": False,
++            "graph_approval": False,
++            "human_review": False,
++        }
++        with (destination / "MATERIALIZATION.json").open("x") as stream:
++            stream.write(json.dumps(manifest, indent=2) + "\n")
++        return verify_materialized(destination)
++    except BaseException as error:
++        # Preserve exactly the partial first failure; no rollback, cleanup or retry
++        # into this now-existing tree. An existing destination never reaches here.
++        with (destination / "FIRST_FAILURE.json").open("x") as stream:
++            stream.write(
++                json.dumps(
++                    {
++                        "status": "SOURCE_STAGING_REFUSED_OR_UNAVAILABLE",
++                        "error_type": type(error).__name__,
++                        "reason": str(error),
++                        "completed_files": inventory,
++                        "partial_tree_preserved": True,
++                        "native_context_request": "UNSELECTED",
++                        "native_authorization": False,
++                        "graph_approval": False,
++                    },
++                    indent=2,
++                )
++                + "\n"
++            )
++        raise
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--packet", type=Path)
++    parser.add_argument("--destination", type=Path)
++    parser.add_argument("--verify-staged", type=Path)
++    args = parser.parse_args(argv)
++    try:
++        if args.verify_staged is not None:
++            require(args.packet is None and args.destination is None, "verify mode is read-only")
++            result = verify_materialized(args.verify_staged)
++        else:
++            require(args.packet is not None and args.destination is not None, "packet and NEW destination required")
++            result = materialize(args.packet, args.destination)
++    except (PlanError, OSError, KeyError, TypeError, UnicodeError) as error:
++        result = {
++            "status": "STAGING_UNAVAILABLE" if isinstance(error, OSError) else "STAGING_REFUSED",
++            "error": str(error),
++            "data_only": True,
++            "native_authorization": False,
++            "graph_approval": False,
++        }
++        print(json.dumps(result, indent=2))
++        return 1
++    print(json.dumps(result, indent=2))
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+--- /dev/null
++++ b/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/plan_core.py
+@@ -0,0 +1,509 @@
++"""Stdlib-only SOURCE/DATA DAG planning. Never run Lean, providers or toolchains.
++
++Paths in original metadata are provenance only. Read only caller-selected packet
++relative refs. A source/header plan proves neither elaboration nor root meaning.
++"""
++
++from __future__ import annotations
++
++import argparse
++import hashlib
++import heapq
++import json
++import stat
++from pathlib import Path, PurePosixPath
++
++
++class PlanError(ValueError):
++    pass
++
++
++def require(value, message):
++    if not value:
++        raise PlanError(message)
++
++
++def pin(raw):
++    return {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
++
++
++def canonical(value):
++    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
++
++
++def _pairs(rows):
++    result = {}
++    for key, value in rows:
++        require(key not in result, "duplicate JSON key: " + key)
++        result[key] = value
++    return result
++
++
++def decode(raw):
++    try:
++        return json.loads(
++            raw, object_pairs_hook=_pairs, parse_constant=lambda _: (_ for _ in ()).throw(PlanError("nonfinite JSON"))
++        )
++    except (ValueError, UnicodeError) as error:
++        raise PlanError(str(error)) from error
++
++
++def relative(value):
++    require(type(value) is str and value and "\\" not in value, "relative path text required")
++    path = PurePosixPath(value)
++    require(
++        not path.is_absolute() and str(path) == value and all(x not in (".", "..") for x in path.parts),
++        "noncanonical relative path",
++    )
++    return path
++
++
++def identifier(value):
++    require(type(value) is str and bool(value), "module/root identifier required")
++    for part in value.split("."):
++        require(
++            part
++            and part.isascii()
++            and (part[0].isalpha() or part[0] == "_")
++            and all(c.isalnum() or c in "_'" for c in part),
++            "unsupported module/root name: " + value,
++        )
++    return value
++
++
++class Reader:
++    def __init__(self, directory):
++        self.root = Path(directory).resolve()
++        self.cache = {}
++
++    def read(self, reference):
++        require(type(reference) is dict, "pinned ref required")
++        path = self.root / str(relative(reference.get("file")))
++        require(
++            path.suffix in (".lean", ".py", ".json", ".mlir", ".md", ".txt", ".xml", ".patch"),
++            "only source/query/metadata refs may be read",
++        )
++        require(
++            type(reference.get("bytes")) is int and 0 <= reference["bytes"] <= 32 * 1024 * 1024,
++            "bounded exact source/data size required",
++        )
++        require(type(reference.get("sha256")) is str and len(reference["sha256"]) == 64, "source/data SHA256 required")
++        key = reference["file"]
++        if key not in self.cache:
++            require(not path.is_symlink() and path.resolve().is_relative_to(self.root), "packet ref escaped root")
++            require(stat.S_ISREG(path.stat().st_mode), "source/data must be a regular file")
++            raw = path.read_bytes()
++            self.cache[key] = raw
++        raw = self.cache[key]
++        require(pin(raw) == {k: reference[k] for k in ("sha256", "bytes")}, "source/data mutation: " + key)
++        return raw
++
++    def document(self, reference):
++        return decode(self.read(reference))
++
++
++# Independent closed header decoder. Nested/line comments are recognized; source
++# imports are ASCII literal dotted identifiers, one per line. No Lean code runs.
++_BODY = {
++    "namespace",
++    "section",
++    "end",
++    "open",
++    "set_option",
++    "def",
++    "theorem",
++    "lemma",
++    "inductive",
++    "structure",
++    "class",
++    "instance",
++    "abbrev",
++    "variable",
++    "variables",
++    "universe",
++    "universes",
++    "noncomputable",
++    "private",
++    "protected",
++    "attribute",
++    "example",
++    "export",
++    "opaque",
++    "axiom",
++    "syntax",
++    "macro",
++    "notation",
++    "infix",
++    "infixl",
++    "infixr",
++    "prefix",
++    "postfix",
++}
++
++
++def header(raw):
++    try:
++        text = raw.decode("utf-8", errors="strict")
++    except UnicodeError as error:
++        raise PlanError("invalid source UTF8") from error
++    require("\x00" not in text and not text.startswith("\ufeff"), "unsupported source prefix/control")
++    position, imports, prelude = 0, [], False
++
++    def skip():
++        nonlocal position
++        newline = False
++        while position < len(text):
++            if text[position].isspace():
++                newline |= text[position] in "\r\n"
++                position += 1
++            elif text.startswith("--", position):
++                end = text.find("\n", position)
++                position = len(text) if end < 0 else end
++            elif text.startswith("/-", position):
++                position += 2
++                depth = 1
++                while depth and position < len(text):
++                    if text.startswith("/-", position):
++                        depth += 1
++                        position += 2
++                    elif text.startswith("-/", position):
++                        depth -= 1
++                        position += 2
++                    else:
++                        newline |= text[position] in "\r\n"
++                        position += 1
++                require(depth == 0, "unterminated header comment")
++            else:
++                break
++        return newline
++
++    def token():
++        nonlocal position
++        start = position
++        while position < len(text) and (text[position].isalnum() or text[position] in "_.'"):
++            position += 1
++        return text[start:position]
++
++    skip()
++    while position < len(text):
++        word = token()
++        if word == "prelude":
++            require(not prelude and not imports, "prelude must be first and unique")
++            prelude = True
++            require(skip() or position == len(text), "prelude must end its header line")
++        elif word == "import":
++            # A newline between import and its name is deliberately unsupported.
++            require(not skip(), "import must have a literal module on the same line")
++            name = identifier(token())
++            require(name not in imports, "duplicate literal import")
++            imports.append(name)
++            require(skip() or position == len(text), "one literal import per line required")
++        else:
++            require(
++                word in _BODY or (not word and text.startswith("@[", position)),
++                "unknown/unsupported header command: " + repr(word),
++            )
++            return {
++                "imports": imports,
++                "prelude": prelude,
++                "implicit_Init": not prelude,
++                "body_start": position - len(word),
++                "decoder": "closed-literal-source-header-v1",
++            }
++    require(bool(imports) or prelude, "source lacks a recognized header/body")
++    return {
++        "imports": imports,
++        "prelude": prelude,
++        "implicit_Init": not prelude,
++        "body_start": position,
++        "decoder": "closed-literal-source-header-v1",
++    }
++
++
++def module_from_path(path):
++    require(type(path) is str, "logical original source path required")
++    marker = "/lean/"
++    if marker not in "/" + path or not path.endswith(".lean"):
++        return None
++    tail = ("/" + path).split(marker, 1)[1]
++    if not tail.startswith(("Merlin/", "MerlinVerify/")):
++        return None
++    return identifier(tail[:-5].replace("/", "."))
++
++
++def project_records(rows):
++    require(type(rows) is list, "bound source rows must be a list")
++    result = {}
++    for row in rows:
++        if type(row) is list:
++            require(len(row) == 4, "project source tuple must have4 fields")
++            name, path, digest, size = row
++        else:
++            require(type(row) is dict, "source record required")
++            path = row.get("path")
++            name = row.get("module") or module_from_path(path)
++            if name is None:
++                continue
++            digest, size = row.get("sha256"), row.get("bytes", row.get("size"))
++        identifier(name)
++        value = {"sha256": digest, "bytes": size}
++        require(name not in result or result[name] == value, "conflicting bound project source: " + name)
++        result[name] = value
++    return result
++
++
++def bound(document, descriptor):
++    for key in descriptor["path"]:
++        document = document[key]
++    if descriptor.get("last"):
++        return document[-1]
++    if descriptor.get("all_but_last"):
++        return document[:-1]
++    return document
++
++
++def topo(graph):
++    degree = {name: len(dependencies) for name, dependencies in graph.items()}
++    dependents = {name: [] for name in graph}
++    for name, dependencies in graph.items():
++        for dependency in dependencies:
++            require(dependency in graph, "missing project source: " + dependency)
++            dependents[dependency].append(name)
++    ready = sorted(name for name, count in degree.items() if not count)
++    heapq.heapify(ready)
++    result = []
++    while ready:
++        name = heapq.heappop(ready)
++        result.append(name)
++        for dependent in sorted(dependents[name]):
++            degree[dependent] -= 1
++            if degree[dependent] == 0:
++                heapq.heappush(ready, dependent)
++    require(len(result) == len(graph), "cyclic project sources: " + ",".join(sorted(n for n, d in degree.items() if d)))
++    return result
++
++
++def closure(roots, graph):
++    found, todo = set(), list(roots)
++    while todo:
++        name = todo.pop()
++        require(name in graph, "missing project source: " + name)
++        if name not in found:
++            found.add(name)
++            todo.extend(graph[name])
++    return found
++
++
++def profile_plan(profile, reader, future_root):
++    name = profile["id"]
++    selection = hashlib.sha256(canonical(profile)).hexdigest()
++    output_prefix = future_root + "/" + name + "/" + selection
++    require(len({c["id"] for c in profile["cases"]}) == len(profile["cases"]), "duplicate case id")
++    relative(name)
++    prefixes = tuple(profile["project_prefixes"])
++    require(all(type(p) is str and p.endswith(".") for p in prefixes), "explicit project prefixes required")
++    sources, headers, graph, external = {}, {}, {}, {}
++    for row in profile["catalog"]:
++        module = identifier(row["module"])
++        require(module.startswith(prefixes), "project source outside selected namespace")
++        ref = row["source"]
++        reader.read(ref)
++        if module in sources:
++            require(sources[module]["source"]["sha256"] == ref["sha256"], "conflicting duplicate module: " + module)
++            sources[module]["provenance"].append(row["provenance"])
++        else:
++            sources[module] = {"source": ref, "provenance": [row["provenance"]]}
++    if profile.get("project_inventory"):
++        declared = project_records(reader.document(profile["project_inventory"]))
++        require(
++            declared == {n: {k: r["source"][k] for k in ("sha256", "bytes")} for n, r in sources.items()},
++            "project inventory differs from catalog pins",
++        )
++    for module, row in sorted(sources.items()):
++        parsed = header(reader.read(row["source"]))
++        headers[module] = parsed
++        graph[module] = sorted(n for n in parsed["imports"] if n.startswith(prefixes))
++        external[module] = sorted(
++            set(n for n in parsed["imports"] if not n.startswith(prefixes))
++            | ({"Init"} if parsed["implicit_Init"] else set())
++        )
++    order = topo(graph)
++    cases = []
++    for case in profile["cases"]:
++        if case.get("status") == "UNAVAILABLE":
++            cases.append(case)
++            continue
++        try:
++            query = reader.read(case["query"])
++            request = reader.document(case["request_metadata"])
++            prepared = reader.document(case["prepared_metadata"])
++            prepared = prepared.get("prepared", prepared)
++            for original_key, case_key in (("domain", "domain"), ("relation", "relation"), ("premises", "assumptions")):
++                if original_key in prepared:
++                    require(
++                        prepared[original_key] == case[case_key], "semantic metadata association differs: " + case_key
++                    )
++            if "query" in prepared:
++                require(prepared["query"] == query.decode("utf-8"), "prepared/query bytes differ")
++            if "query_sha256" in prepared:
++                require(prepared["query_sha256"] == pin(query)["sha256"], "prepared query pin differs")
++            if "roots" in prepared:
++                require(
++                    prepared["roots"] == case["support_roots"] + [case["final_root"]],
++                    "prepared/request root roster differs",
++                )
++            for role, descriptor in case["bindings"].items():
++                observed = bound(request, descriptor)
++                expected = query.decode("utf-8") if role == "query" else case[role]
++                require(observed == expected, "query/root binding mismatch: " + case["id"] + ":" + role)
++            declared = case.get("project_sources_binding")
++            if declared:
++                expected = project_records(bound(request, declared))
++                actual = {n: {k: r["source"][k] for k in ("sha256", "bytes")} for n, r in sources.items()}
++                require(expected == actual, "request project source selection differs from profile")
++            final = identifier(case["final_root"])
++            support = case["support_roots"]
++            require(type(support) is list and all(identifier(r) for r in support), "root list required")
++            require(len(set(support)) == len(support) and final not in support, "duplicate/final support root")
++            parsed = header(query)
++            roots = [n for n in parsed["imports"] if n.startswith(prefixes)]
++            needed = closure(roots, graph)
++            for row in case["buffers"]:
++                reader.read(row["ref"])
++            if case.get("exact_final_declaration"):
++                require(case["exact_final_declaration"] in query.decode("utf-8"), "final declaration/query mismatch")
++            prefix = output_prefix + "/" + case["id"]
++            relative(prefix)
++            cases.append(
++                {
++                    **case,
++                    "status": "SOURCE_QUERY_DAG_PREPARED_NOT_CHECKED",
++                    "query_header": parsed,
++                    "query_project_imports": roots,
++                    "query_external_names_only": sorted(
++                        set(n for n in parsed["imports"] if not n.startswith(prefixes))
++                        | ({"Init"} if parsed["implicit_Init"] else set())
++                    ),
++                    "main_project_compile_order": [n for n in order if n in needed],
++                    "source_build_roles_in_dependency_order": [
++                        {"module": n, "role": "direct_query_import" if n in roots else "transitive_support"}
++                        for n in order
++                        if n in needed
++                    ],
++                    "output_directory_request": {
++                        "source": prefix + "/source",
++                        "objects": prefix + "/objects",
++                        "query": prefix + "/query",
++                        "audits": prefix + "/audits",
++                    },
++                    "future_steps": {
++                        k: "UNEXECUTED"
++                        for k in (
++                            "source_build",
++                            "query_kernel_compilation",
++                            "exact_root_axiom_type_audit",
++                            "qualification",
++                            "fresh_replay",
++                        )
++                    },
++                    "root_resolution": (
++                        "exact metadata/query pin association only; "
++                        "kernel name/type/axiom audit UNEXECUTED"
++                    ),
++                }
++            )
++        except (PlanError, OSError, KeyError, UnicodeError) as error:
++            cases.append({"id": case["id"], "status": "UNAVAILABLE", "reason": str(error), "query": case.get("query")})
++    identity = hashlib.sha256(canonical({"profile": name, "sources": sources, "cases": cases})).hexdigest()
++    return {
++        "id": name,
++        "successor_of": profile.get("successor_of"),
++        "source_plan_identity": identity,
++        "status": "SOURCE_DAG_PREPARED_NOT_COMPILED",
++        "sources": sources,
++        "headers": headers,
++        "project_DAG": graph,
++        "external_module_names_only": external,
++        "support_library_build_order": order,
++        "support_library_output_request": output_prefix + "/library",
++        "cases": cases,
++        "runtime_context": "MISSING_NEW_INDEPENDENT_F_OFFICIAL_SDK_INTAKE",
++        "compiling_source_union_proves_combined_semantics": False,
++    }
++
++
++def build(inputs, reader):
++    require(inputs.get("schema") == "merlin.fresh-graph-plan-inputs.v1", "unknown input schema")
++    for ref in inputs.get("packet_data_refs", []):
++        reader.read(ref)
++    require(len({p["id"] for p in inputs["profiles"]}) == len(inputs["profiles"]), "duplicate profile id")
++    profiles = []
++    for profile in inputs["profiles"]:
++        try:
++            profiles.append(profile_plan(profile, reader, str(relative(inputs["future_root"]))))
++        except (PlanError, OSError, KeyError, UnicodeError) as error:
++            profiles.append(
++                {
++                    "id": profile["id"],
++                    "status": "UNAVAILABLE",
++                    "reason": str(error),
++                    "successor_of": profile.get("successor_of"),
++                    "compile": "UNEXECUTED",
++                }
++            )
++    shared = {}
++    for p in profiles:
++        for name, row in p.get("sources", {}).items():
++            shared.setdefault(name, {}).setdefault(row["source"]["sha256"], []).append(p["id"])
++    return {
++        "schema": "merlin.fresh-graph-source-build-plan.v1",
++        "input_identity": hashlib.sha256(canonical(inputs)).hexdigest(),
++        "primary_baseline": inputs["primary_baseline"],
++        "profiles": profiles,
++        "shared_source_conflicts": [
++            {"module": n, "variants": rows} for n, rows in sorted(shared.items()) if len(rows) > 1
++        ],
++        "runtime_or_native_qualification": False,
++        "historical_authority_transferred": False,
++        "implicit_Init_and_external_names": "names only; no Std/SDK/source/object files opened",
++        "all_compile_audit_qualification_replay_steps": "UNEXECUTED",
++    }
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--packet", type=Path, required=True)
++    parser.add_argument("--inputs", default="INPUTS.json")
++    parser.add_argument("--output", default="PLAN.json")
++    args = parser.parse_args(argv)
++    reader = Reader(args.packet)
++    inputs_path = reader.root / str(relative(args.inputs))
++    output = reader.root / str(relative(args.output))
++    inputs = decode(inputs_path.read_bytes())
++    require(not output.is_symlink() and output.resolve().is_relative_to(reader.root), "output escaped packet")
++    protected = [inputs_path, *(reader.root / str(relative(r["file"])) for r in inputs.get("packet_data_refs", []))]
++    require(
++        all(
++            output.resolve() != path.resolve() and not (output.exists() and path.exists() and output.samefile(path))
++            for path in protected
++        ),
++        "output may not overwrite source/query/metadata inputs",
++    )
++    result = build(inputs, reader)
++    output.write_text(json.dumps(result, indent=2) + "\n")
++    print(
++        json.dumps(
++            {
++                "status": "SOURCE_PLAN_WRITTEN",
++                "profiles": len(result["profiles"]),
++                "unavailable_profiles": [p["id"] for p in result["profiles"] if p["status"] == "UNAVAILABLE"],
++                "integrity_only": True,
++                "proof_or_native_qualification": False,
++            }
++        )
++    )
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+--- /dev/null
++++ b/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/validate_staging.py
+@@ -0,0 +1,73 @@
++"""One actual staging batch; tiny refusal controls; one same-file relocation."""
++import contextlib,copy,io,json,os,runpy,sys
++from pathlib import Path
++OUT=Path(__file__).resolve().parent;ROOT=Path.cwd();SCRATCH=ROOT/'out/build/graph-paper-deadline/fresh-graph-staging-v1';sys.path.insert(0,str(OUT))
++from materialize_plan import materialize,verify_materialized
++from plan_core import decode,pin
++
++def audit(event,args):
++ if event.startswith(('subprocess.','socket.','ctypes.')) or event in ('os.system','os.exec','os.posix_spawn','os.fork'):raise PermissionError('source staging forbids native/process action')
++ if event=='exec' and ('/payload/' in args[0].co_filename or args[0].co_filename.endswith('.lean')):raise PermissionError('payload is DATA only')
++ if event=='open' and isinstance(args[0],(str,bytes)):
++  name=os.fsdecode(args[0]);p=Path(name).absolute();mode=args[1] or '';flags=args[2];write=any(c in mode for c in 'wax+') or bool(flags&(os.O_WRONLY|os.O_RDWR|os.O_CREAT|os.O_TRUNC))
++  allowed=p.is_relative_to(OUT) or p.is_relative_to(SCRATCH) or name.startswith('/usr/lib/python3.14/')
++  if write:allowed=p.is_relative_to(OUT) or p.is_relative_to(SCRATCH)
++  if not allowed:raise PermissionError('outside source staging allowlist: '+name)
++sys.addaudithook(audit)
++actual=SCRATCH/'actual-staged';result=materialize(OUT/'capsule',actual);(OUT/'ACTUAL_STAGING.json').write_text(json.dumps(result,indent=2)+'\n')
++controls=SCRATCH/'controls';controls.mkdir();results=[]
++def tiny(label):
++ parent=controls/label;parent.mkdir();packet=parent/'packet';packet.mkdir();(packet/'payload').mkdir()
++ def add(name,raw):
++  (packet/'payload'/name).write_bytes(raw);return {'file':'payload/'+name,**pin(raw)}
++ source=add('Base.lean',b'theorem base : True := by trivial\n');query=add('Query.lean',b'import Merlin.Base\ntheorem final : True := by trivial\n')
++ root={'schema':'merlin.graph-staging-roots.v1','profile':'Tiny','case':'case1','module':'Query','query_pin':{k:query[k] for k in ('sha256','bytes')},'final_root':'final','support_roots':['Merlin.Base.base'],'exact_final_declaration':'theorem final : True','domain':'tiny DATA','relation':None,'assumptions':None,'native_context_request':'UNSELECTED','compile':'UNEXECUTED','audit':'UNEXECUTED','qualification':'UNEXECUTED','native_authorization':False,'graph_approval':False,'human_review':False}
++ roots=add('roots.json',(json.dumps(root)+'\n').encode());spec={'schema':'merlin.graph-staging-spec.v1','primary_baseline':'tiny_DATA','profiles':[{'id':'Tiny','project_prefixes':['Merlin.'],'sources':[{'module':'Merlin.Base','ref':source}],'dependency_order':['Merlin.Base'],'cases':[{'id':'case1','module':'Query','query':query,'roots':roots}],'provenance':{}}]}
++ return parent,packet,spec,add
++for label in ('valid','missing','mutated','conflict','duplicate','path','extra','cycle','existing_destination','extra_output'):
++ parent,packet,spec,add=tiny(label);profile=spec['profiles'][0]
++ if label=='missing':profile['sources'][0]['ref']['file']='payload/missing.lean'
++ elif label=='mutated':(packet/profile['sources'][0]['ref']['file']).write_bytes(b'-- changed DATA\n')
++ elif label=='conflict':profile['sources'].append({'module':'Merlin.Base','ref':add('Other.lean',b'theorem other : True := by trivial\n')})
++ elif label=='duplicate':profile['sources'].append(copy.deepcopy(profile['sources'][0]))
++ elif label=='path':profile['sources'][0]['ref']['file']='../outside.lean'
++ elif label=='extra':(packet/'payload/Extra.lean').write_text('-- extra DATA\n')
++ elif label=='cycle':profile['sources'][0]['ref']=add('Cycle.lean',b'import Merlin.Base\ntheorem base : True := by trivial\n')
++ (packet/'STAGING_SPEC.json').write_text(json.dumps(spec,indent=2)+'\n');target=parent/'staged'
++ try:
++  observed=materialize(packet,target)
++  assert label in ('valid','existing_destination','extra_output'),label
++  if label=='existing_destination':
++   before=(target/'MATERIALIZATION.json').read_bytes()
++   try:materialize(packet,target);raise AssertionError('overwrote existing destination')
++   except FileExistsError:pass
++   assert (target/'MATERIALIZATION.json').read_bytes()==before
++   observed={'status':'EXPECTED_EXISTING_DESTINATION_REFUSAL','original_unchanged':True}
++  elif label=='extra_output':
++   (target/'Extra.lean').write_text('-- unlisted staged DATA\n')
++   try:verify_materialized(target);raise AssertionError('extra staged payload accepted')
++   except ValueError as error:observed={'status':'EXPECTED_EXTRA_OUTPUT_REFUSAL','reason':str(error)}
++ except (ValueError,OSError) as error:
++  assert label not in ('valid','existing_destination','extra_output'),(label,str(error))
++  assert (target/'FIRST_FAILURE.json').is_file()
++  observed={'status':'EXPECTED_SOURCE_DATA_REFUSAL','reason':str(error),'partial_first_failure_preserved':True}
++ results.append({'control':label,'observed':observed,'proof_or_native_case':False})
++(OUT/'BOUNDED_CONTROLS.json').write_text(json.dumps(results,indent=2)+'\n')
++# Relocate the already staged exact files via hard links; do NOT materialize the
++# actual profiles twice. Execute only our copied own utility, never payload code.
++relocated=SCRATCH/'relocated-staged';relocated.mkdir();count=0
++for path in actual.rglob('*'):
++ if path.is_file():
++  target=relocated/path.relative_to(actual);target.parent.mkdir(parents=True,exist_ok=True);os.link(path,target);assert os.path.samefile(path,target);count+=1
++tools=SCRATCH/'relocation-tools';tools.mkdir()
++for name in ('materialize_plan.py','plan_core.py'):(tools/name).write_bytes((OUT/name).read_bytes())
++unrelated=SCRATCH/'unrelated-cwd';unrelated.mkdir();oldcwd=Path.cwd();oldargv=sys.argv[:];oldpath=sys.path[:];saved=sys.modules.pop('plan_core')
++try:
++ os.chdir(unrelated);sys.argv=['materialize_plan.py','--verify-staged',str(relocated)]
++ with contextlib.redirect_stdout(io.StringIO()) as stdout:
++  try:runpy.run_path(str(tools/'materialize_plan.py'),run_name='__main__')
++  except SystemExit as stopped:assert stopped.code==0
++ observed=decode(stdout.getvalue());assert observed==result
++finally:os.chdir(oldcwd);sys.argv=oldargv;sys.path=oldpath;sys.modules['plan_core']=saved
++relocation={'status':'PASSED_UNRELATED_CWD_SAME_FILE_RELOCATION','same_file_associations':count,'result':observed,'actual_materialization_runs':1,'native_execution':False};(OUT/'RELOCATION_CHECK.json').write_text(json.dumps(relocation,indent=2)+'\n')
++summary={'status':'PASSED_SOURCE_STAGING_DATA_BATCH','actual_materialization_runs':1,'profiles':4,'query_cases':33,'files':result['files'],'tiny_controls':len(results),'all_tiny_controls_expected':True,'relocation_associations':count,'SDK_provider_controller_Lean_native_execution':False,'compile_audit_qualification':'UNEXECUTED','materializer_source':pin((OUT/'materialize_plan.py').read_bytes()),'plan_core_source':pin((OUT/'plan_core.py').read_bytes()),'spec':pin((OUT/'capsule/STAGING_SPEC.json').read_bytes())};(OUT/'VALIDATION_BATCH.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps(summary,indent=2))
+--- /dev/null
++++ b/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/assemble_successors.py
+@@ -0,0 +1,102 @@
++"""Fixed successor source/query/metadata snapshots, never provider/source execution."""
++import copy,json,sys
++from pathlib import Path
++sys.path.insert(0,str(Path(__file__).resolve().parent))
++from plan_core import pin,decode,module_from_path,project_records,Reader,build
++ROOT=Path.cwd();OUT=Path(__file__).resolve().parent;OLD=OUT.parent/'fresh-graph-build-plan-v1';Q=ROOT/'out/artifacts/verification/graph-pipeline-gate/development';W=ROOT/'out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1'
++records=[];payload=OUT/'payload';payload.mkdir();allowed={'.lean','.py','.json','.mlir','.md','.txt','.patch','.xml'}
++def store(raw,suffix,origin,expected=None):
++ observed=pin(raw)
++ if expected:
++  assert observed['sha256']==expected['sha256'],origin
++  if 'bytes' in expected:assert observed['bytes']==expected['bytes'],origin
++ path='payload/'+observed['sha256']+suffix;target=OUT/path
++ if target.exists():assert target.read_bytes()==raw
++ else:target.write_bytes(raw)
++ ref={'file':path,**observed};records.append({'origin':origin,'original_pin':expected,'current':observed,'ref':ref});return ref
++
++def read(path,expected=None):
++ assert path.suffix in allowed and not path.is_symlink(),str(path)
++ return store(path.read_bytes(),path.suffix,str(path),expected)
++
++def load(ref):return decode((OUT/ref['file']).read_bytes())
++def stmt(query,final):
++ text=query.decode();start=text.rfind('theorem '+final.rsplit('.',1)[-1]);end=text.find(':=',start);assert start>=0 and end>start;return text[start:end].rstrip()
++
++packets={};profiles=[]
++for packet,folderprefix,profileid,successor in [('schedule-profile-v1','actual-examples','Q-schedule-successor-v1','Q-service-CSE'),('unroll-tail-v1','final-actual-examples','Q-unroll-tail-successor-v1','Q-four-transform')]:
++ base=Q/packet;manifest=read(base/'MANIFEST.json');files={};catalog=[]
++ for row in load(manifest)['rows']:
++  path=Path(row['path']);assert not path.is_absolute() and '..' not in path.parts
++  if path.suffix not in allowed:continue
++  ref=read(base/path,row);files[row['path']]=ref;module=module_from_path(row['path'])
++  if module:catalog.append({'module':module,'source':ref,'provenance':{'fixed_packet':packet,'snapshot':row['path'],'original_pin':{k:row[k] for k in ('sha256','bytes')}}})
++ cases=[];declared=None
++ for relative,request in sorted(files.items()):
++  if not relative.startswith(folderprefix+'/') or not relative.endswith('/REQUEST.json'):continue
++  folder=relative.rsplit('/',1)[0];caseid=folder.rsplit('/',1)[1];req=load(request);prepared=files[folder+'/PREPARED.json'];prep=load(prepared);query=req['query'].encode();queryref=files[folder+'/Query.lean'];assert (OUT/queryref['file']).read_bytes()==query and prep['query']==req['query'];selected=project_records(req['project_sources']);assert declared is None or declared==selected;declared=selected
++  final=req['final_root'];support=req['support_roots'];assert prep['roots']==support+[final]
++  label='IDENTITY_SOURCE_CANDIDATE_NOT_CHANGED_OPTIMIZATION' if prep.get('changed') is False else 'POSITIVE_SOURCE_CANDIDATE_UNOBSERVED'
++  cases.append({'id':caseid,'module':'Query','query':queryref,'request_metadata':request,'prepared_metadata':prepared,
++    'bindings':{'query':{'path':['query']},'final_root':{'path':['final_root']},'support_roots':{'path':['support_roots']}},
++    'project_sources_binding':{'path':['project_sources']},'final_root':final,'support_roots':support,
++    'domain':prep.get('domain'),'relation':prep.get('relation'),'assumptions':prep.get('premises'),
++    'exact_final_declaration':stmt(query,final),'declaration_status':'SOURCE_TEXT_NOT_KERNEL_TYPE',
++    'buffers':[{'label':Path(n).name,'ref':r} for n,r in files.items() if n.startswith(folder+'/') and n.endswith('.mlir')],
++    'expected_protocol':label,'query_status':'UNCOMPILED','model_metadata':{'profile':prep.get('profile'),'changed':prep.get('changed'),
++        'kind':prep.get('kind'),'query_contract':req.get('query_contract'),'exact_statement':req.get('exact_statement'),
++        'compiler_pass_chain':prep.get('compiler_pass_chain'),'selection':prep.get('selection'),'boundary_label':prep.get('boundary_label')}})
++ profiles.append({'id':profileid,'packet':packet,'packet_manifest':manifest,'project_prefixes':['Merlin.','MerlinVerify.'],
++    'catalog':[r for r in catalog if r['module'] in declared],'cases':cases,'successor_of':successor})
++ packets[packet]={'manifest':manifest,'files':files}
++
++# Reuse the exact W entries normalized plan/data, without changing old packet.
++original_inputs=decode((OLD/'INPUTS.json').read_bytes());entries=copy.deepcopy(next(p for p in original_inputs['profiles'] if p['id']=='W-entries-successor-v1'))
++def copy_refs(value):
++ if isinstance(value,dict):
++  if all(k in value for k in ('file','sha256','bytes')) and value['file'].startswith('payload/'):
++   raw=(OLD/value['file']).read_bytes();ref=store(raw,Path(value['file']).suffix,'immutable previous packet/'+value['file'],value);assert ref==value
++  for v in value.values():copy_refs(v)
++ elif isinstance(value,list):
++  for v in value:copy_refs(v)
++copy_refs(entries);profiles.append(entries)
++
++# Caller-context is now fixed/sealed. Add it as a named successor, not a mutation.
++base=W/'source-context-v1';seal=read(base/'SOURCE-SEAL.json');files={};catalog=[]
++for row in load(seal)['files']:
++ path=Path(row['path']);assert not path.is_absolute() and '..' not in path.parts
++ if path.suffix not in allowed:continue
++ ref=read(base/path,row);files[row['path']]=ref;module=module_from_path(row['path'])
++ if module:catalog.append({'module':module,'source':ref,'provenance':{'fixed_packet':'source-context-v1','snapshot':row['path'],'original_pin':row['sha256']}})
++cases=[]
++for row in load(files['QUERIES.json']):
++ refs={}
++ for role in ('query','report','raw_source','raw_final'):
++  expected=row.get(role)
++  if expected is None:continue
++  matches=[ref for ref in files.values() if ref['sha256']==expected['sha256']]
++  assert matches,('fixed context evidence missing',row['case'],role)
++  refs[role]=matches[0]
++ report=load(refs['report']);prep=report['prepared'];final=row['final_root'];support=row['support_roots'];assert prep['final_root']==final and prep['support_roots']==support
++ query=(OUT/refs['query']['file']).read_bytes();statement=stmt(query,final)
++ cases.append({'id':row['case'],'module':'Context','query':refs['query'],'request_metadata':refs['report'],'prepared_metadata':refs['report'],
++   'bindings':{'final_root':{'path':['prepared','final_root']},'support_roots':{'path':['prepared','support_roots']}},
++   'final_root':final,'support_roots':support,'buffers':[{'label':k,'ref':v} for k,v in refs.items() if k.startswith('raw_')],
++   'exact_final_declaration':statement,'declaration_status':'SOURCE_TEXT_NOT_KERNEL_TYPE','domain':{'exact_statement':statement,'status':'SOURCE_BINDERS_UNCHECKED'},
++   'relation':{'source_form':'caller-context EntryDomain graphOutcomes iff','status':'SOURCE_DESCRIPTION_NOT_KERNEL_TYPE'},
++   'assumptions':{'exact_binders_and_relation':statement,'status':'HUMAN_AND_KERNEL_REVIEW_REQUIRED'},
++   'expected_protocol':'POSITIVE_SOURCE_CANDIDATE_UNOBSERVED' if row['expected_finite_binding_acceptance'] else 'EXPECTED_BINDING_REFUSAL_UNOBSERVED',
++   'query_status':'UNCOMPILED','source_case_record':row,'model_metadata':{k:prep.get(k) for k in ('entry_roster','execution_witness_roots','execution_witness_refusals','scalar_literal_model','caller_context','all_entries_proved','whole_run_equality_is_premise','local_simulation_is_premise','native_failure_preservation_claimed','divergence_preservation_claimed')}})
++profiles.append({'id':'W-caller-context-successor-v1','packet':'source-context-v1','packet_manifest':seal,'project_inventory':files['PROJECT-LEAN-SOURCES.json'],
++ 'project_prefixes':['Merlin.','MerlinVerify.'],'catalog':catalog,'cases':cases,'successor_of':'W-entries-successor-v1'})
++packets['source-context-v1']={'manifest':seal,'files':files}
++refs={r['ref']['file']:r['ref'] for r in records}
++inputs={'schema':'merlin.fresh-graph-plan-inputs.v1','primary_baseline':'9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e','future_root':'fresh-build',
++ 'profiles':profiles,'packet_data_refs':[refs[k] for k in sorted(refs)],'new_runtime_context':'UNSELECTED_NEW_F_INTAKE','native_or_graph_approval':False}
++(OUT/'INPUTS.json').write_text(json.dumps(inputs,indent=2)+'\n');plan=build(inputs,Reader(OUT));(OUT/'PLAN.json').write_text(json.dumps(plan,indent=2)+'\n')
++(OUT/'SOURCE_DATA_INVENTORY.json').write_text(json.dumps({'fixed_packets':packets,'source_data_associations':records,
++ 'preserved_old_INPUTS':pin((OLD/'INPUTS.json').read_bytes()),'preserved_old_PLAN':pin((OLD/'PLAN.json').read_bytes()),
++ 'all_old_six_plans_unchanged':True,'source_only_no_provider_execution':True},indent=2)+'\n')
++print(json.dumps({'profiles':[(p['id'],len(p.get('sources',{})),len(p.get('cases',[])),p.get('reason')) for p in plan['profiles']],
++ 'distinct_query_bytes':len({c['query']['sha256'] for p in plan['profiles'] for c in p.get('cases',[])}),'source_data_payloads':len(refs)}))
++assert all(p['status']=='SOURCE_DAG_PREPARED_NOT_COMPILED' and all(c['status']=='SOURCE_QUERY_DAG_PREPARED_NOT_CHECKED' for c in p['cases']) for p in plan['profiles'])
+--- /dev/null
++++ b/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/make_staging_spec.py
+@@ -0,0 +1,58 @@
++"""Make a SMALL closed materialization capsule, sources/query/roots ONLY."""
++import json,sys
++from pathlib import Path
++sys.path.insert(0,str(Path(__file__).resolve().parent))
++from plan_core import pin,decode
++OUT=Path(__file__).resolve().parent;plan=decode((OUT/'PLAN.json').read_bytes());packet=OUT/'capsule';packet.mkdir();(packet/'payload').mkdir();old=OUT.parent/'fresh-graph-build-plan-v1'
++
++def add(raw,suffix):
++ identity=pin(raw);file='payload/'+identity['sha256']+suffix;path=packet/file
++ if path.exists():assert path.read_bytes()==raw
++ else:path.write_bytes(raw)
++ return {'file':file,**identity}
++
++profiles=[];raw_bindings=[];shared={};plans_dir=OUT/'plans';plans_dir.mkdir()
++for profile in plan['profiles']:
++ (plans_dir/(profile['id']+'.json')).write_text(json.dumps(profile,indent=2)+'\n')
++ sources=[]
++ for module,row in sorted(profile['sources'].items()):
++  ref=add((OUT/row['source']['file']).read_bytes(),'.lean');assert pin((packet/ref['file']).read_bytes())=={k:row['source'][k] for k in ('sha256','bytes')}
++  sources.append({'module':module,'ref':ref});shared.setdefault(module,{}).setdefault(ref['sha256'],[]).append(profile['id'])
++ cases=[]
++ for case in profile['cases']:
++  query=add((OUT/case['query']['file']).read_bytes(),'.lean');assert query==case['query'];buffer_refs=[]
++  source_record=case.get('source_case_record',{})
++  for buffer in case['buffers']:
++   raw=(OUT/buffer['ref']['file']).read_bytes();assert pin(raw)=={k:buffer['ref'][k] for k in ('sha256','bytes')}
++   original=source_record.get(buffer['label'],{})
++   original_path=original.get('path')
++   original_absolute=original_path if original_path and Path(original_path).is_absolute() else None
++   association={'profile':profile['id'],'case':case['id'],'label':buffer['label'],'exact_snapshot_ref':buffer['ref'],
++      'original_recorded_path':original_path,'original_absolute_execution_receipt':original_absolute,
++      'absolute_receipt_status':'RETAINED_PATH_STRING_ONLY_NOT_AUTHORITY' if original_absolute else 'NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated',
++      'snapshot_hash_matched':True,'materialized_in_Lean_tree':False}
++   raw_bindings.append(association);buffer_refs.append({'label':buffer['label'],'source_packet_ref':buffer['ref'],'materialized':False})
++  sidecar={'schema':'merlin.graph-staging-roots.v1','profile':profile['id'],'case':case['id'],'module':case['module'],
++    'query_pin':{k:query[k] for k in ('sha256','bytes')},'final_root':case['final_root'],'support_roots':case['support_roots'],
++    'exact_final_declaration':case['exact_final_declaration'],'domain':case['domain'],'relation':case['relation'],'assumptions':case['assumptions'],
++    'expected_protocol':case['expected_protocol'],'model_metadata':case.get('model_metadata'),'buffers_external_to_capsule':buffer_refs,
++    'source_plan_identity':profile['source_plan_identity'],'original_source_data_provenance':{'request_metadata':case['request_metadata'],
++        'prepared_metadata':case['prepared_metadata'],'refs_base':'source-data handoff packet, NOT the closed materialization capsule'},
++    'native_context_request':'UNSELECTED','compile':'UNEXECUTED','audit':'UNEXECUTED','qualification':'UNEXECUTED',
++    'query_status':'UNCOMPILED','native_authorization':False,'graph_approval':False,'human_review':False}
++  roots=add((json.dumps(sidecar,indent=2)+'\n').encode(),'.json');cases.append({'id':case['id'],'module':case['module'],'query':query,'roots':roots})
++ profiles.append({'id':profile['id'],'project_prefixes':['Merlin.','MerlinVerify.'],'sources':sources,
++    'dependency_order':profile['support_library_build_order'],'cases':cases,'provenance':{'source_plan_identity':profile['source_plan_identity'],
++        'successor_of':profile['successor_of'],'source_plan_ref':{'file':'plans/'+profile['id']+'.json',**pin((plans_dir/(profile['id']+'.json')).read_bytes())},
++        'native_context_request':'UNSELECTED','build_qualification':'UNEXECUTED','source_union_is_semantic_theorem':False}})
++spec={'schema':'merlin.graph-staging-spec.v1','primary_baseline':plan['primary_baseline'],'profiles':profiles}
++(packet/'STAGING_SPEC.json').write_text(json.dumps(spec,indent=2)+'\n')
++(OUT/'RAW_BINDINGS.json').write_text(json.dumps({'bindings':raw_bindings,'no_original_absolute_associations_invented':True,
++    'all_actual_snapshot_bytes_available':True,'all_raw_IR_is_external_to_closed_Lean_capsule':True},indent=2)+'\n')
++(OUT/'SHARED_SOURCE_CONFLICTS.json').write_text(json.dumps({'variants':[{'module':n,'variants':v} for n,v in sorted(shared.items()) if len(v)>1],
++    'no_model_or_object_merging':True,'shared_identical_bytes_do_not_merge_profiles':True},indent=2)+'\n')
++old_entries=next(p for p in decode((old/'PLAN.json').read_bytes())['profiles'] if p['id']=='W-entries-successor-v1');new_entries=next(p for p in plan['profiles'] if p['id']=='W-entries-successor-v1');assert old_entries==new_entries
++(OUT/'PRESERVED_PLANS.json').write_text(json.dumps({'old_six_plan':{'path':'../fresh-graph-build-plan-v1/PLAN.json',**pin((old/'PLAN.json').read_bytes())},
++   'old_entries_plan_reused_byte_equal_in_normalized_profile':True,'old_six_plan_mutated':False,'new_context_and_Q_profiles_are_separate_successors':True},indent=2)+'\n')
++print(json.dumps({'profiles':len(profiles),'cases':sum(len(p['cases']) for p in profiles),'unique_capsule_payloads':len(list((packet/'payload').iterdir())),
++ 'capsule_payload_bytes':sum(p.stat().st_size for p in (packet/'payload').iterdir()),'raw_bindings':len(raw_bindings),'shared_conflicts':sum(len(v)>1 for v in shared.values())}))

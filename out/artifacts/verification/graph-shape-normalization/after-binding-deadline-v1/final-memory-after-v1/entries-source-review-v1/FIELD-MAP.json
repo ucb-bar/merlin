@@ -1,0 +1,62 @@
+[
+  {
+    "actual_field": "Raw UTF-8 source/final buffers",
+    "representation": "parse_admitted \u2192 export \u2192 independent ordinary/dynamic-final decode",
+    "binding": "raw_source_sha256/raw_final_sha256; copied raw files in every query case",
+    "trust_or_limit": "Parser/admission/export/serialization fidelity remains reviewed Python trust"
+  },
+  {
+    "actual_field": "Every top-level definition/declaration",
+    "representation": "EntryHeader.name/declaration; Module.functions; DefinedHeaders",
+    "binding": "roster_facts and every_definition",
+    "trust_or_limit": "Declarations are explicit refused domain; not silently dropped"
+  },
+  {
+    "actual_field": "Function arguments/result types and visibility",
+    "representation": "EntryHeader.parameters/returned/visibility; Function.parameters/returned",
+    "binding": "HeaderFits, complete ordered header equality, complete metadata frames",
+    "trust_or_limit": "Visibility metadata binding is not runtime linkage/access control"
+  },
+  {
+    "actual_field": "Every scoped definition/use, operation operand and return",
+    "representation": "Binding/Code, independentSource and actualFinal; finite SSA swaps",
+    "binding": "source_term_exact, all_source_commands, expanded_to_actual, actual_materialized",
+    "trust_or_limit": "No copied-final body or Python pair matcher as semantic proof"
+  },
+  {
+    "actual_field": "Actual call keys/targets, every nested callsite",
+    "representation": "Module.calls; actionKeys recursively visits regions; CallClosed",
+    "binding": "closed_target, closed_invoke_agreement, KernelLiteralSupport",
+    "trust_or_limit": "Finite-depth success derivations; unsupported changed-kernel caller context explicitly refused"
+  },
+  {
+    "actual_field": "Scalar literal metadata including value spelling and output type",
+    "representation": "LiteralOpcodes key; LiteralAction shared partial relation",
+    "binding": "LiteralModuleFacts, closed_literal_extension; actual literal/binary witness",
+    "trust_or_limit": "Effect-free literal model; no numerical value/fidelity law"
+  },
+  {
+    "actual_field": "Descriptor identity/base/offset/shape/stride/element/space",
+    "representation": "Runtime.view, ViewType/Conforms, ExternalInput; original epoch/slot relation",
+    "binding": "ValuesHold, EntryDomain, sample_typed/sample_external, existing complete boundary facts",
+    "trust_or_limit": "Canonical kernel caller views; full descriptor interpretation/native fidelity explicit"
+  },
+  {
+    "actual_field": "All allocations/frees/loads/stores/initializers",
+    "representation": "Original Command/Kernel\u2192checked expansions\u2192ordinary actual Code",
+    "binding": "Existing checked_actual_chain via derived local simulations; complete returned/public heap",
+    "trust_or_limit": "Total private unobservable allocator and partial initialized reads; no allocator failure preservation"
+  },
+  {
+    "actual_field": "Real add/min and dynamic inner/tail controls",
+    "representation": "Existing finalMeaning/IndexAction plus actual operand identities/SCF terms",
+    "binding": "ExpansionBinding, Tiled bounds/row/initializer roots; no literal override in kernel closure",
+    "trust_or_limit": "Actual selected signed-index width 64; no native index/SCF evaluator bridge"
+  },
+  {
+    "actual_field": "Complete caller/public heap and returns",
+    "representation": "Epoch.graphOutcomes / observeWorld",
+    "binding": "checked_entry_roster, every_definition; unchanged entries use stronger full-world equality",
+    "trust_or_limit": "Possible successful outcomes; private objects masked, public caller effects retained"
+  }
+]

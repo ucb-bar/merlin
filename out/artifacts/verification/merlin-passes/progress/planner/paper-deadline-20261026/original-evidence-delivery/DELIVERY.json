@@ -1,0 +1,112 @@
+{
+  "status": "ORIGINAL_REPOSITORY_PACKETS_DELIVERED",
+  "families": [
+    {
+      "family": "shape",
+      "original_index": {
+        "path": "out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/EVIDENCE_SEAL.json",
+        "sha256": "eb494e743231fa2e25df27d96914d2bfd1c654ac827aa004cd46f6ca0802e69a",
+        "bytes": 304681
+      },
+      "original_indexed_files": 1001,
+      "archive_members": 1002,
+      "original_indexed_bytes": 53089968,
+      "archive": {
+        "path": "out/build/graph-paper-deadline/original-review-packets-v1/shape-originals.tar.gz",
+        "bytes": 10762591,
+        "sha256": "3a55ea1fbb4056f98b41ac5eb9062527053661e54d199ad8a468754fcbd68da9"
+      },
+      "all_original_pins_matched": true,
+      "archive_readback_exact": true,
+      "native_commands": 0,
+      "qualification_rerun": false
+    },
+    {
+      "family": "integer",
+      "original_index": {
+        "path": "out/artifacts/verification/graph-state-integer/review/sealed-v2/MANIFEST.json",
+        "sha256": "5a2552cd32bba11b06acc43c2218abed0f8ace4639d99deb814623eb947194fa",
+        "bytes": 625906
+      },
+      "original_indexed_files": 2250,
+      "archive_members": 2251,
+      "original_indexed_bytes": 131876802,
+      "archive": {
+        "path": "out/build/graph-paper-deadline/original-review-packets-v1/integer-originals.tar.gz",
+        "bytes": 29782540,
+        "sha256": "fac21e51ce68b905d0f422a3802374608cb1834308a5ce205d9d555c764b03e0"
+      },
+      "all_original_pins_matched": true,
+      "archive_readback_exact": true,
+      "native_commands": 0,
+      "qualification_rerun": false
+    },
+    {
+      "family": "pipeline",
+      "original_index": {
+        "path": "out/artifacts/verification/graph-state-pipeline/review/sealed-v1/MANIFEST.json",
+        "sha256": "55600dbe207fed3446a99d79003f7cf2b50b0c520b71eda44dc0bcf636035b10",
+        "bytes": 1036636
+      },
+      "original_indexed_files": 4001,
+      "archive_members": 4002,
+      "original_indexed_bytes": 339691587,
+      "archive": {
+        "path": "out/build/graph-paper-deadline/original-review-packets-v1/pipeline-originals.tar.gz",
+        "bytes": 82556434,
+        "sha256": "78cd6787f36d052215dad37466da52bd9f83d417dc2c8b7371990f39ec0e8dbd"
+      },
+      "all_original_pins_matched": true,
+      "archive_readback_exact": true,
+      "native_commands": 0,
+      "qualification_rerun": false
+    },
+    {
+      "family": "memory",
+      "original_index": {
+        "path": "out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/EVIDENCE_INDEX.json",
+        "sha256": "b20607f60d9ffa2361e23d26a535d3d814e46399dfc4e8c369774fc106c9fc4e",
+        "bytes": 303016
+      },
+      "original_indexed_files": 1061,
+      "archive_members": 1062,
+      "original_indexed_bytes": 72169505,
+      "archive": {
+        "path": "out/build/graph-paper-deadline/original-review-packets-v1/memory-originals.tar.gz",
+        "bytes": 12836842,
+        "sha256": "71935e60d7e7c36bc59ab89ab29c748743dcc49ff3f2f589339dcc06013c6e78"
+      },
+      "all_original_pins_matched": true,
+      "archive_readback_exact": true,
+      "native_commands": 0,
+      "qualification_rerun": false
+    },
+    {
+      "family": "declared",
+      "original_index": {
+        "path": "out/artifacts/verification/graph-regions-declared/qualification-v1/SEAL.json",
+        "sha256": "a9773e5a40806706762fb21d0971d471ee1772e0cbe90747da339ba047bd1122",
+        "bytes": 70320
+      },
+      "original_indexed_files": 209,
+      "archive_members": 210,
+      "original_indexed_bytes": 5436148,
+      "archive": {
+        "path": "out/build/graph-paper-deadline/original-review-packets-v1/declared-originals.tar.gz",
+        "bytes": 1331955,
+        "sha256": "9ef6553de69366276ec015882d17605bc0658505a0706317bf3699ca1b00952c"
+      },
+      "all_original_pins_matched": true,
+      "archive_readback_exact": true,
+      "native_commands": 0,
+      "qualification_rerun": false
+    }
+  ],
+  "SDK_reads": 0,
+  "native_commands": 0,
+  "originals_modified": false,
+  "independent_reviewer_received": false,
+  "absolute_path_receipts_relocated": false,
+  "external_dependencies_delivered": false,
+  "claims_extended": false
+}

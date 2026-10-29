@@ -1,0 +1,20 @@
+{
+  "status": "SOURCE_ONLY_NO_NATIVE_AUTHORITY",
+  "source_refs": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/source/lean_graph_original_image_context.py",
+      "bytes": 24917,
+      "sha256": "5a347febb25d0627a9a89dc245fc41e078118d402c50555ff7de11e4aaa9ea50"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/source/lean_graph_original_image_context_data.py",
+      "bytes": 15692,
+      "sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/source/lean_graph_original_image_context_io.py",
+      "bytes": 7265,
+      "sha256": "92c8b43ec1b2d5a8e66f8d819c3079f2cdd7be12d559a67efc1505b4cec2118c"
+    }
+  ]
+}

@@ -30,7 +30,7 @@ xdsl = ["xdsl>=0.68"]
 # layer needs only the in-tree LLVM build, but the formal layer solves with z3. z3 previously
 # arrived only as a TRANSITIVE dep of exo-lang -- an undeclared dependency whose absence turns a
 # verification into a silent skip, which is the one thing this layer must never do.
-verify = ["xdsl>=0.68", "z3-solver"]
+verify = ["xdsl>=0.68", "z3-solver", "jsonschema"]
 # targetgen contract validation (fail-closed JSON-Schema checks in targetgen.contract).
 targetgen = ["jsonschema"]
 # Semantic selection reads MLIR with xDSL, validates OOT descriptions against

@@ -1,0 +1,18 @@
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/body-group-successor/ExactFactor4Carry3.lean:44:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/body-group-successor/ExactFactor4Carry3.lean:47:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/body-group-successor/ExactFactor4Carry3.lean:50:8: warning: Variable name `primitive` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _primitive
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`

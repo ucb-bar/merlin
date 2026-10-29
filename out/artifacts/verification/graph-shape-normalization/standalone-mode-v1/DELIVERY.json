@@ -1,0 +1,135 @@
+{
+  "schema": "merlin.graph.shape.standalone.delivery.v1",
+  "checkout": "/home/jeremy/Projects/merlin",
+  "branch": "feat/pass-verification",
+  "head_at_freeze": "53ca756243419ff8d9d07d3766f5ce79485bf2bf",
+  "new_owned_sources": 22,
+  "total_owned_with_prior": 94,
+  "source_only_patch": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/source-only.patch",
+    "sha256": "ecfab2fd20495de35517e9d60a0f3457c97c1fa5d2269c66ec119aed69d84c57",
+    "bytes": 149957
+  },
+  "primary_update_patch": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/primary-update.patch",
+    "sha256": "ecfab2fd20495de35517e9d60a0f3457c97c1fa5d2269c66ec119aed69d84c57",
+    "bytes": 149957
+  },
+  "primary_update_base": "53ca756243419ff8d9d07d3766f5ce79485bf2bf",
+  "prior_required_patches": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-loops/owned-delivery-v1/owned.patch",
+      "sha256": "724510de637949fe7b1613d2ee5d5225420734a1473fd6d93fa50518a1267570",
+      "bytes": 123630
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-loops/large-batch-delivery-v1/new-owned.patch",
+      "sha256": "79e517480970b381d875671c372c2d176a27081f18a8428070cf0f722b1179a9",
+      "bytes": 114167
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-loops-unroll/unroll-mode-v1/source-only.patch",
+      "sha256": "3b58da79ce9fbc41b96a4801f3fa2fee98c56817a220fe2cff33e0edb8245081",
+      "bytes": 104086
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-buffer-reuse/reuse-mode-v1/source-only.patch",
+      "sha256": "12a109bd29169874f3a7c3c8944f60a53aafa6eec5826559a6267e3616678839",
+      "bytes": 133316
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/source-only.patch",
+      "sha256": "74c81a83afebad0e0a0569c85c614dad8009a060806f578ef37606e1f95499d2",
+      "bytes": 170437
+    }
+  ],
+  "source_dependencies": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/SOURCE_DEPENDENCIES.json",
+    "sha256": "f823c97ee335d9403159295770a70e558aa395d77b2548311350117ad6b523fc",
+    "bytes": 135803
+  },
+  "empty_tree_commands": [
+    {
+      "command": [
+        "patch",
+        "--batch",
+        "-p1",
+        "-i",
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-loops/owned-delivery-v1/owned.patch"
+      ],
+      "returncode": 0,
+      "stdout": "patching file src/merlin/verify/lean/Merlin/GraphLoops.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsBounds.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsStorage.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsBound.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsEpochs.lean\npatching file src/merlin/verify/lean_graph_loops.py\npatching file src/merlin/verify/lean_graph_loops_capture.py\npatching file src/merlin/verify/lean_graph_loops_effects.py\npatching file src/merlin/verify/lean_graph_loops_storage.py\npatching file merlin/tests/ir/test_lean_graph_loops.py\npatching file merlin/tests/ir/test_lean_graph_loops_storage.py\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "patch",
+        "--batch",
+        "-p1",
+        "-i",
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-loops/large-batch-delivery-v1/new-owned.patch"
+      ],
+      "returncode": 0,
+      "stdout": "patching file src/merlin/verify/lean/Merlin/GraphLoopsCapacity.lean\npatching file src/merlin/verify/lean_graph_loops_capacity.py\npatching file src/merlin/verify/lean_graph_loops_capacity_capture.py\npatching file merlin/tests/ir/test_lean_graph_loops_capacity.py\npatching file src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean\npatching file src/merlin/verify/lean_graph_loops_segment.py\npatching file src/merlin/verify/lean_graph_loops_segment_capture.py\npatching file src/merlin/verify/lean_graph_loops_segment_project.py\npatching file src/merlin/verify/lean_graph_loops_segment_projection.py\npatching file merlin/tests/ir/test_lean_graph_loops_segment.py\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "patch",
+        "--batch",
+        "-p1",
+        "-i",
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-loops-unroll/unroll-mode-v1/source-only.patch"
+      ],
+      "returncode": 0,
+      "stdout": "patching file src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsUnrollModel.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsUnrollComposition.lean\npatching file src/merlin/verify/lean_graph_loops_unroll.py\npatching file src/merlin/verify/lean_graph_loops_unroll_capture.py\npatching file src/merlin/verify/lean_graph_loops_unroll_cases.py\npatching file src/merlin/verify/lean_graph_loops_unroll_composition.py\npatching file src/merlin/verify/lean_graph_loops_unroll_projection.py\npatching file merlin/tests/ir/test_lean_graph_loops_unroll.py\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "patch",
+        "--batch",
+        "-p1",
+        "-i",
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-buffer-reuse/reuse-mode-v1/source-only.patch"
+      ],
+      "returncode": 0,
+      "stdout": "patching file src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsReuseSemantics.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsReuseGeometry.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsReuseLifetime.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsReuseModel.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsReuseCountermodels.lean\npatching file src/merlin/verify/lean_graph_loops_reuse.py\npatching file src/merlin/verify/lean_graph_loops_reuse_capture.py\npatching file src/merlin/verify/lean_graph_loops_reuse_cases.py\npatching file src/merlin/verify/lean_graph_loops_reuse_projection.py\npatching file src/merlin/verify/lean_graph_loops_reuse_runtime.py\npatching file merlin/tests/ir/test_lean_graph_loops_reuse.py\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "patch",
+        "--batch",
+        "-p1",
+        "-i",
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/source-only.patch"
+      ],
+      "returncode": 0,
+      "stdout": "patching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean\npatching file src/merlin/verify/lean_graph_loops_memory_scf.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_capture.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_cases.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_model.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_projection.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_runtime.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_selection.py\npatching file src/merlin/verify/lean_graph_loops_memory_scf_witness.py\npatching file merlin/tests/ir/test_lean_graph_loops_memory_scf.py\npatching file merlin/tests/ir/test_lean_graph_loops_memory_scf_runtime.py\npatching file merlin/tests/ir/test_lean_graph_loops_memory_scf_selection.py\n",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "patch",
+        "--batch",
+        "-p1",
+        "-i",
+        "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-shape-normalization/standalone-mode-v1/source-only.patch"
+      ],
+      "returncode": 0,
+      "stdout": "patching file src/merlin/verify/lean/Merlin/GraphLoopsShape.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsShapeBindings.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsShapeCode.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsShapeCountermodels.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsShapeMemory.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsShapeModule.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsShapeSSA.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsShapeSound.lean\npatching file src/merlin/verify/lean/Merlin/GraphLoopsShapeWitness.lean\npatching file src/merlin/verify/lean_graph_loops_shape.py\npatching file src/merlin/verify/lean_graph_loops_shape_capture.py\npatching file src/merlin/verify/lean_graph_loops_shape_cases.py\npatching file src/merlin/verify/lean_graph_loops_shape_model.py\npatching file src/merlin/verify/lean_graph_loops_shape_projection.py\npatching file src/merlin/verify/lean_graph_loops_shape_runtime.py\npatching file src/merlin/verify/lean_graph_loops_shape_selection.py\npatching file src/merlin/verify/lean_graph_loops_shape_types.py\npatching file src/merlin/verify/lean_graph_loops_shape_witness.py\npatching file merlin/tests/ir/test_lean_graph_loops_shape.py\npatching file merlin/tests/ir/test_lean_graph_loops_shape_receipts.py\npatching file merlin/tests/ir/test_lean_graph_loops_shape_runtime.py\n",
+      "stderr": ""
+    }
+  ],
+  "all94_source_bytes_equal": true,
+  "old72_bytes_preserved": true,
+  "standalone_qualified": true,
+  "adapter_excluded": "GraphLoopsShapeEpochViews.lean and future adapter leaves",
+  "same_interpretation_composition_proved": false,
+  "source_and_qualification_separate": true,
+  "review_and_integration_pending": true,
+  "staged": false,
+  "committed_by_worker": false,
+  "pushed_by_worker": false
+}

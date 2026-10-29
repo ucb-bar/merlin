@@ -1,0 +1,110 @@
+{
+  "status": "PROPOSED_REVIEW_AND_ACCEPTANCE_LIST_NOT_IMPLEMENTATION_AUTHORIZATION",
+  "items": [
+    {
+      "id": "runtime-prerequisite",
+      "scope": "all registered kinds",
+      "owner": "F / coordinator",
+      "missing_obligation": "Native permissions globally held; infrastructure UNKNOWN.",
+      "required_test_or_review": "Separately authorized exact new context: real changed positive, valid negative and evidence revalidation; this worker performs none."
+    },
+    {
+      "id": "live-gate-release",
+      "scope": "scalar redundancy and LICM",
+      "owner": "Q / coordinator",
+      "missing_obligation": "Current new gate source supports only these two kinds and is held/unqualified.",
+      "required_test_or_review": "Use existing independent matrix; obtain real complete-program positive/negative and fixed-source qualification before live-enforcement wording."
+    },
+    {
+      "id": "remaining-live-kinds",
+      "scope": "shape, integer, unroll, segment, reuse, schedule",
+      "owner": "Q / coordinator",
+      "missing_obligation": "No new complete graph-gate route for these six kind keys.",
+      "required_test_or_review": "Require explicit unsupported/fail-closed service behavior; do not allow legacy/local completions to substitute."
+    },
+    {
+      "id": "raw-admission",
+      "scope": "all selected capture paths",
+      "owner": "F / human reviewer",
+      "missing_obligation": "New resource/function-reference guards are trusted source fixes without inherited historical qualification.",
+      "required_test_or_review": "Review raw/supplied-buffer entry hooks; preserve resource/indirect counterexamples and new source identities."
+    },
+    {
+      "id": "scalar-specification",
+      "scope": "scalar redundancy and LICM",
+      "owner": "Q / human reviewer",
+      "missing_obligation": "Total pure/common retained-effect and abstract finite iteration/index assumptions remain.",
+      "required_test_or_review": "Review exact Model and Preserves types; native/poison/divergence fidelity is not discharged."
+    },
+    {
+      "id": "integer-domain",
+      "scope": "exact integer simplification",
+      "owner": "Q / human reviewer",
+      "missing_obligation": "Canonical words and local successful-result typing restrict the theorem.",
+      "required_test_or_review": "Keep noncanonical/flagged/numerical exclusions; retain wrong-bit and unsupported-domain distinctions."
+    },
+    {
+      "id": "shape-target",
+      "scope": "shape normalization",
+      "owner": "W / coordinator",
+      "missing_obligation": "Historical target binding is host-side; new actual-after bridge unqualified.",
+      "required_test_or_review": "Kernel-check exact separate before/after terms only in an authorized new context, then qualify independently."
+    },
+    {
+      "id": "shape-descriptor",
+      "scope": "shape normalization",
+      "owner": "W / human reviewer",
+      "missing_obligation": "Descriptor conformance and silent/nontrapping cast assumptions.",
+      "required_test_or_review": "Review retained descriptor/cast countermodels; do not imply arbitrary descriptor or failure/divergence equivalence."
+    },
+    {
+      "id": "unroll-variants",
+      "scope": "ordered unrolling",
+      "owner": "Q / W",
+      "missing_obligation": "The selected composed ledger covers static no-tail bulk, not all producer inline/tail/nested forms.",
+      "required_test_or_review": "Retain each broader Graham variant as outside/narrowed until it has its own complete composition bridge."
+    },
+    {
+      "id": "segment-variants",
+      "scope": "ordered segmentation",
+      "owner": "W / human reviewer",
+      "missing_obligation": "Qualified chain and memory subdomains do not cover arbitrary SCF/control.",
+      "required_test_or_review": "Review exact bound/stride/carry/context roots and preserve outside-domain refusals."
+    },
+    {
+      "id": "reuse-allocation",
+      "scope": "buffer reuse",
+      "owner": "W / human reviewer",
+      "missing_obligation": "Total private unobservable allocation excludes finite capacity/fault preservation.",
+      "required_test_or_review": "Keep the8\u219216-byte counterexample and explicit narrowed wording; no new allocator proof requested."
+    },
+    {
+      "id": "raw-final-memory",
+      "scope": "reuse then segmentation",
+      "owner": "W",
+      "missing_obligation": "Final independently decoded raw memory-SCF target bridge remains open.",
+      "required_test_or_review": "Require exact target semantic bridge; host matching alone remains labeled trusted."
+    },
+    {
+      "id": "scheduling-ledger",
+      "scope": "dependency schedule",
+      "owner": "Q / coordinator",
+      "missing_obligation": "No selected claim-ledger family; development registered route must remain open.",
+      "required_test_or_review": "Bind a complete effect/frame relation and actual changed schedule before adding a qualified paper row; do not borrow local-return roots."
+    },
+    {
+      "id": "broader-denominator",
+      "scope": "57 broader mechanism rows",
+      "owner": "coordinator / human reviewer",
+      "missing_obligation": "Outside this fixed-eight registry join; no91-pass interpretation.",
+      "required_test_or_review": "Keep each mechanism\u2019s local/whole-boundary/evidence status; do not infer coverage percentage or qualify aliases/helpers."
+    },
+    {
+      "id": "human-claim-review",
+      "scope": "all paper rows",
+      "owner": "Jeremy / Graham / Agustin",
+      "missing_obligation": "Agent source/data validation does not approve the operational specification.",
+      "required_test_or_review": "Approve per-row exact sentence, observation relation, assumptions, mapping and delivered evidence."
+    }
+  ]
+}

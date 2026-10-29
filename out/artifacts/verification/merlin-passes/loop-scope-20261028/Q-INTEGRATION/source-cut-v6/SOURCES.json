@@ -1,0 +1,61 @@
+{
+  "schema": "merlin.loop-transform.q-source.v6",
+  "base": "65e44afbf4dbb6c7270e8936c4ef76b579a78492",
+  "sources": [
+    {
+      "path": "src/merlin/verify/loop_transform_bridge.py",
+      "sha256": "89bc991c604dd5ba259d7fd531de7b93d6fd29d90d577bb3a4e9ecbc0dda9e9e",
+      "bytes": 4195,
+      "snapshot": "sources/src/merlin/verify/loop_transform_bridge.py"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_intake.py",
+      "sha256": "c1f76873f9ed4e580cf1b1e5d5495209c601e4120c386e0b1278208e3866f94a",
+      "bytes": 7782,
+      "snapshot": "sources/src/merlin/verify/loop_transform_intake.py"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_gate.py",
+      "sha256": "0571bca2efe4c5957e6cb540e7c870c1b4e227cfd465488f4f45ffdad210546c",
+      "bytes": 12089,
+      "snapshot": "sources/src/merlin/verify/loop_transform_gate.py"
+    },
+    {
+      "path": "src/merlin/verify/loop_transform_cli.py",
+      "sha256": "bbdd0966e831daf55866392dbb8514174aa7e3097178d173ea83c8f9e1306fed",
+      "bytes": 2520,
+      "snapshot": "sources/src/merlin/verify/loop_transform_cli.py"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "sha256": "b7db1592f1e3692fa8d0e783532dcb5f0170a329d7ebfadc57012b1bd71d9eb9",
+      "bytes": 28278,
+      "snapshot": "sources/src/merlin/verify/lean_graph_state_pipeline_emit.py"
+    },
+    {
+      "path": "merlin/tests/ir/test_loop_transform_integration_unit.py",
+      "sha256": "527004f4d5eb5219806615dfd92de295e4e17b3ae574148a68993c146b1db697",
+      "bytes": 6838,
+      "snapshot": "sources/merlin/tests/ir/test_loop_transform_integration_unit.py"
+    },
+    {
+      "path": "merlin/tests/ir/test_loop_body_group_emitter_unit.py",
+      "sha256": "166df76f00f4b19557383839ec433646cade8a56d615dbb5635a3c4a2c997481",
+      "bytes": 5531,
+      "snapshot": "sources/merlin/tests/ir/test_loop_body_group_emitter_unit.py"
+    }
+  ],
+  "change": "only exact suffix factoring in body_group proof; explicit existing sixteen-call domain refusal",
+  "qualification": "F fresh gate/CLI/replay/adversary batch pending; W exact repaired query compiled/std3 only",
+  "native_query_sha256": "a3d6b056d8566e44c4b666c4cc1d3945881651547040c764ef77739610f820fe",
+  "root_count": 44,
+  "relation": "all defined entries equal returned/error/terminal-world outcomes under same explicit model",
+  "domain": "static-nonnegative-index64-no-tail-unroll-ordered1d-segment-v1",
+  "external_calls_across_unrolled_body_maximum": 16,
+  "heartbeat_limit": 2000000,
+  "proof_source_dependencies": 50,
+  "old_failures_preserved": [
+    "qualification/final-v1 factor4_carry3_short fixed2M exhaustion",
+    "earlier protocol middle_wrong_call rc-11 unavailable"
+  ]
+}

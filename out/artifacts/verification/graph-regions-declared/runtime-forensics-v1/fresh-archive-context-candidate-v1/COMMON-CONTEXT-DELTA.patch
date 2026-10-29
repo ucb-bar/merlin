@@ -1,0 +1,100 @@
+--- baseline/lean_graph_original_image_context.py
++++ candidate/lean_graph_original_image_context.py
+@@ -1,4 +1,4 @@
+-"""NEW private-original-image proof controller candidate; review before launch.
++"""NEW authenticated-archive common proof controller candidate; review before launch.
+ 
+ No old Pure controller, installed SDK, archive, Lake, MLIR or cached proof is
+ used. Construction reads only bound metadata/project/controller sources. Native
+@@ -15,9 +15,11 @@
+ if __package__:
+     from . import lean_graph_original_image_context_data as data
+     from . import lean_graph_original_image_context_io as io
++    from . import archive_selection as archive
+ else:
+     import lean_graph_original_image_context_data as data
+     import lean_graph_original_image_context_io as io
++    import archive_selection as archive
+ 
+ 
+ class ProofRefused(ValueError):
+@@ -37,33 +39,27 @@
+     def from_review(cls, *, review, project_sources, controller_sources, workspace, compile_audit_roots=None):
+         """Prepare source copies only. Each input ref is independently pinned.
+ 
+-        review keys: metadata, copy, probe, trace (FileRef instances).
++        review keys: request, manifest, roster, selection, host, trace (FileRef instances).
+         project_sources: exact dotted module -> original .lean FileRef mapping.
+-        controller_sources: the THREE current controller/data/IO source refs.
++        controller_sources: the FOUR current controller/data/IO/archive-selection source refs.
+         compile_audit_roots: reviewed exact roots printed by named frozen project
+         dependencies only. Generated queries are disjoint and must print nothing.
+         Caller/source/context review is an explicit host premise, not a JSON
+         boolean granting launch permission or a whole-program proof receipt.
+         """
+-        if set(review) != {"metadata", "copy", "probe", "trace"}:
+-            raise data.ContextRefusal("closed reviewed input roles required")
++        if set(review) != {"request", "manifest", "roster", "selection", "host", "trace"}:
++            raise data.ContextRefusal("closed authenticated-archive review roles required")
+         if any(type(ref) is not data.FileRef for ref in [*review.values(), *controller_sources]):
+             raise data.ContextRefusal("typed exact references required")
+         review = dict(review)
+         documents = {name: io.read_bound(ref) for name, ref in review.items()}
+-        inputs = [io.strict_json(documents[name]) for name in ("metadata", "copy", "probe")]
+-        provenance = {}
+-        if inputs[2].get("schema") == "merlin.original-image.reviewed-runtime-intent.v2":
+-            for name, argument in (("base_intent", "base_probe"), ("finite_review", "finite_review")):
+-                review[name] = data.FileRef.parse(inputs[2][name])
+-                documents[name] = io.read_bound(review[name])
+-                provenance[argument] = io.strict_json(documents[name])
+-        selection = data.select(*inputs, **provenance)
+-        expected_controls = {str(Path(module.__file__).absolute()) for module in (data, io)} | {
++        inputs = {name: io.strict_json(documents[name]) for name in review if name != "trace"}
++        selection = archive.select(inputs, review)
++        expected_controls = {str(Path(module.__file__).absolute()) for module in (data, io, archive)} | {
+             str(Path(__file__).absolute())
+         }
+-        if {ref.path for ref in controller_sources} != expected_controls or len(controller_sources) != 3:
+-            raise data.ContextRefusal("full current controller/data/IO source identity required")
++        if {ref.path for ref in controller_sources} != expected_controls or len(controller_sources) != 4:
++            raise data.ContextRefusal("full current controller/data/IO/archive-selection source identity required")
+         for ref in controller_sources:
+             io.read_bound(ref, selection.forbidden_roots)
+         trace = {"__name__": "_reviewed_original_image_trace"}
+@@ -112,7 +108,7 @@
+             selection.executable,
+         ]
+         result.definition = {
+-            "schema": "merlin.graph.original-image-context.v2",
++            "schema": "merlin.graph.fresh-authenticated-archive-context.v1",
+             "diagnostic_failure_capture": "first-failed-read/already-read-buffer.bin; no acceptance or hold clearance",
+             "import_policy": "trusted-closed-project-header-and-actual-object-report-v1",
+             "selection": selection.record(),
+@@ -126,7 +122,7 @@
+             "old_profile_repaired": False,
+             "native_fidelity_proved": False,
+             "trust": [
+-                "original metadata and source review",
++                "official parent/member association and separate host-loader review",
+                 "OS/kernel/vDSO",
+                 "loader/module reporting",
+                 "Lean kernel",
+@@ -213,7 +209,7 @@
+                               failure_directory=self.workspace / "first-failed-read")
+             return {
+                 "context_id": self.context_id,
+-                "private_original_images": len(self.selection.images),
++                "authenticated_archive_images": len(self.selection.images),
+                 "runtime_images": len(self.selection.runtime),
+                 "bound_files": len(set(references)),
+                 "installed_sdk_reads": 0,
+@@ -496,7 +492,8 @@
+         self._guard()
+         try:
+             for ref in (result.query, result.object, result.audit, result.types, result.imports, *result.records):
+-                io.read_bound(ref, self.selection.forbidden_roots)
++                io.read_bound(ref, self.selection.forbidden_roots,
++                              failure_directory=self.workspace / "first-failed-read")
+         except Exception as error:
+             self._stop(error)
+         return result

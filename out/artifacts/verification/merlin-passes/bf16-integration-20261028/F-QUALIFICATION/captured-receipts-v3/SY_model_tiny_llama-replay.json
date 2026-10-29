@@ -1,0 +1,49 @@
+{
+  "receipt": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_tiny_llama/receipt.json",
+  "fresh": true,
+  "stale": [],
+  "rechecked": {
+    "conditional_match": true,
+    "qualification_passed": false,
+    "candidates": 0,
+    "sites": [],
+    "function_obligations": [
+      {
+        "conditional_match": true,
+        "first_refusal": "",
+        "function": "forward",
+        "reference_supported": true,
+        "source_defined": false
+      }
+    ],
+    "reason": "f32-accumulation contract is a review candidate: independent specification review is required; @forward: source definedness has not been established",
+    "pass_boundary": {
+      "checked": true,
+      "covered_sites": 0,
+      "expected_sites": 0,
+      "scope": "bf16 pass boundary; universal local operand domain; complete output equality under SSA-invariant semantics",
+      "semantic_match": true,
+      "semantic_match_theorem": "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+      "site_obligations": [],
+      "site_qualification_passed": true,
+      "site_qualification_theorem": "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+      "whole_capture_claim": "separate; see function_obligations"
+    },
+    "segment_match": true,
+    "segment_qualified": false,
+    "suffix_boundaries": [
+      {
+        "conditional_match": true,
+        "index": 0,
+        "reason": ""
+      },
+      {
+        "conditional_match": true,
+        "index": 1,
+        "reason": ""
+      }
+    ]
+  },
+  "matches_recorded": true,
+  "differences": []
+}

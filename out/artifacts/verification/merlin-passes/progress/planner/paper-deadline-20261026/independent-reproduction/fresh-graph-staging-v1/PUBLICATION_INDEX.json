@@ -1,0 +1,2729 @@
+{
+  "schema": "merlin.assign-publication-index.v1",
+  "role": "Assign",
+  "state": "STOPPED_EXPLICIT_USER_5_PERCENT",
+  "branch": "feat/pass-verification",
+  "base": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "finished_code_and_reports": [
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/materialize_plan.py",
+      "sha256": "3d5a36d660153fa656b7d5c16044399326b54089d2d6774ff0f9ddbbfaee1e24",
+      "bytes": 15540,
+      "status": "FROZEN_SDK_FREE_DATA_VALIDATED",
+      "native_qualification": false,
+      "role": "latest owned SDK-free staging code"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/plan_core.py",
+      "sha256": "98ddc01714c539289503ef7befc3eea14b219727ab10ec5525301e4c44d23685",
+      "bytes": 20024,
+      "status": "FROZEN_SDK_FREE_DATA_VALIDATED",
+      "native_qualification": false,
+      "role": "latest owned SDK-free staging code"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/validate_staging.py",
+      "sha256": "69cfcc7bb4a76297de9f8c6e0e3fc0fc0fa478f7122b66581f137cd47d33f774",
+      "bytes": 6978,
+      "status": "FROZEN_SDK_FREE_DATA_VALIDATED",
+      "native_qualification": false,
+      "role": "latest owned SDK-free staging code"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/assemble_successors.py",
+      "sha256": "b15fe2d8ca26cf91bc06be17c49fb0cc18a6f37e2e8714a8d2e113a8986547c8",
+      "bytes": 9203,
+      "status": "FROZEN_SOURCE_DATA_ASSEMBLY_EXECUTED",
+      "native_qualification": false,
+      "role": "latest owned SDK-free staging code"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/make_staging_spec.py",
+      "sha256": "c184d0b5b35b6bd58a7b89d7abc55a27d8b63bd82d61a03358af4a882dae068d",
+      "bytes": 5604,
+      "status": "FROZEN_SOURCE_DATA_ASSEMBLY_EXECUTED",
+      "native_qualification": false,
+      "role": "latest owned SDK-free staging code"
+    },
+    {
+      "path": "src/merlin/verify/graph_artifact_bundle.py",
+      "sha256": "ba17ed57463649f676e646a31bdd16ee047ac4e591c7ba08ba5caa44617d8551",
+      "bytes": 14556,
+      "role": "canonical verifier",
+      "status": "ALREADY_PUBLISHED_CANONICAL_V2_0d9b2437f"
+    },
+    {
+      "path": "merlin/tests/infra/test_graph_artifact_bundle.py",
+      "sha256": "55a1d3f5865f80cd778b9302a97a95a90e334a988451054a305b3e9664c2b1ce",
+      "bytes": 19820,
+      "role": "canonical tests",
+      "status": "ALREADY_PUBLISHED_CANONICAL_V2_0d9b2437f"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/host-consumer-bridge-v1/sources/src/merlin/targetgen/graph_consumer_bridge.py",
+      "sha256": "3babdb41aca426349ceb970854f96519eb3103dd73fe7713fb705735f55dba43",
+      "bytes": 3611,
+      "role": "inert chosen-consumer prototype/review",
+      "status": "FROZEN_SDK_FREE_MOCKED_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/host-consumer-bridge-v1/sources/merlin/tests/targetgen/test_graph_consumer_bridge.py",
+      "sha256": "02e0d443b9bf245108f0893a945a6586600eee49bfb0b6e7c665692f2761819c",
+      "bytes": 8360,
+      "role": "inert chosen-consumer prototype/review",
+      "status": "FROZEN_SDK_FREE_MOCKED_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/host-consumer-bridge-v1/sources/merlin/tests/fixtures/graph_consumer_bridge_fixture.py",
+      "sha256": "9cc2720ab68949de84bdcfcf9a56ef7b4fa2141e777aa0e7e4a437630e10d488",
+      "bytes": 7133,
+      "role": "inert chosen-consumer prototype/review",
+      "status": "FROZEN_SDK_FREE_MOCKED_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/host-consumer-bridge-v1/PROTOTYPE_SOURCE_FIXTURE.patch",
+      "sha256": "2d0e22681600dce0e7a0e6f7fabe87e835d199dca06d03a1c48f7a489eac246e",
+      "bytes": 19801,
+      "role": "inert chosen-consumer prototype/review",
+      "status": "FROZEN_SDK_FREE_MOCKED_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/host-consumer-bridge-v1/SOURCE_PATCH_INVENTORY.json",
+      "sha256": "04bd7b6a15c450d3bc0cacc983a5ba8af18796b967bab651d09f4b9a8a9777fc",
+      "bytes": 3234,
+      "role": "inert chosen-consumer prototype/review",
+      "status": "FROZEN_SDK_FREE_MOCKED_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/host-consumer-bridge-v1/HANDOFF.md",
+      "sha256": "7a29256826067f9f8efb87010a92245984e049b8af706fcdfe3a691b9cfa65bc",
+      "bytes": 3122,
+      "role": "inert chosen-consumer prototype/review",
+      "status": "FROZEN_SDK_FREE_MOCKED_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/host-consumer-bridge-v1/RUNBOOK.md",
+      "sha256": "315e9fc5a0cae190f0252cca5e1d1c41d2611df84d5dcae94bdeb17a5c8c0d7c",
+      "bytes": 3506,
+      "role": "inert chosen-consumer prototype/review",
+      "status": "FROZEN_SDK_FREE_MOCKED_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/build_plan.py",
+      "sha256": "98ddc01714c539289503ef7befc3eea14b219727ab10ec5525301e4c44d23685",
+      "bytes": 20024,
+      "role": "preserved six-DAG26-query source plan/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/verify_plan.py",
+      "sha256": "3e51276b28fcd6ac419a928bc6732aab23f5198cb7a05d52c2ce61eff6d2b265",
+      "bytes": 2587,
+      "role": "preserved six-DAG26-query source plan/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/SOURCE_TOOL_INVENTORY.json",
+      "sha256": "a39a5d804e268b4fc73c83aa882545db055480e80e0e10b6754d5ccbaecb1dc9",
+      "bytes": 3777,
+      "role": "preserved six-DAG26-query source plan/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/PROFILE_INDEX.json",
+      "sha256": "6e012f1ad27d8d1f5d1dafaa4b5e40d96cd0aa705e3b13533369b76b9153287c",
+      "bytes": 4283,
+      "role": "preserved six-DAG26-query source plan/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/FRESH_QUALIFICATION_ROSTER.json",
+      "sha256": "3ac60fd6f5c14fa9adc87b45f9dad009a0e455506f03a28f95d7bcb064f88b3d",
+      "bytes": 781488,
+      "role": "preserved six-DAG26-query source plan/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/BUILD_AND_AUDIT_ROSTER.md",
+      "sha256": "201b004702222cc0c2a710b63d5b71a2626e764d770fd99ce8e887f3f75fecbf",
+      "bytes": 4002,
+      "role": "preserved six-DAG26-query source plan/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/OWNER_INTERFACE_TASKS.md",
+      "sha256": "1ecb27a5e070e8a4ed0e767f0d3cbfe961c207e0f84e3149e96503c987f3fcf9",
+      "bytes": 3360,
+      "role": "preserved six-DAG26-query source plan/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/HANDOFF.md",
+      "sha256": "dfbf4e4a265eecf58b37319fe9175214e3c1575898dc615b408249d08f475aa9",
+      "bytes": 2921,
+      "role": "preserved six-DAG26-query source plan/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-build-plan-v1/RUNBOOK.md",
+      "sha256": "2b22321f3cd0f3cca56deb9e4fc18fb0b0dc485ccea263cd98d540d754a6973f",
+      "bytes": 3752,
+      "role": "preserved six-DAG26-query source plan/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/SOURCES.json",
+      "sha256": "ccd8bd6b2f90b50f0bd2fb92bd74f82867844515d737072455ed1bb434637d8c",
+      "bytes": 3451,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/OWNED_CODE.patch",
+      "sha256": "d7eb18bd50eded1fc2b190b09323f9c3e36ce5fb5a49ebbe77be57f4ae9be9cf",
+      "bytes": 59365,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/capsule/STAGING_SPEC.json",
+      "sha256": "74463f68ec13f631d70d7da02857ccc577c64709e0710b6d2f71fb8f93e514bb",
+      "bytes": 120006,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/PLAN.json",
+      "sha256": "d2f7f1eb85fc789ad54ad0dc4ee4beafacf4773fdc0920267507a1e6a088fd88",
+      "bytes": 2613468,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/PRESERVED_PLANS.json",
+      "sha256": "5324d840eb652c15010c7f5ac60515fba5e738e5d3f171b2d886572ee8756ecd",
+      "bytes": 348,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/RAW_BINDINGS.json",
+      "sha256": "4beef614128d9b15fd832d6d878001a5c67beef8fc3faaad56a7659d8b2ce380",
+      "bytes": 53204,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/SHARED_SOURCE_CONFLICTS.json",
+      "sha256": "b40694d5a603c059b2bc15ea6acc9047bebfa5b06fa8a3ccbb25c00669c2b687",
+      "bytes": 115,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/ACTUAL_STAGING.json",
+      "sha256": "c26c4a58666b041e949530e820093c75c49083aeb527bb8633cf4cf8fa5ee9c5",
+      "bytes": 198,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/VALIDATION_BATCH.json",
+      "sha256": "9e57a378e69c1aff5b29e2aa82b1d6aae9c9ad38b579717e401462d3fc18a847",
+      "bytes": 723,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/BOUNDED_CONTROLS.json",
+      "sha256": "f5eb959e7e8fb82301b68a50ad3091daca97f601a42642d08868ecbbb30cdc86",
+      "bytes": 2585,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/RELOCATION_CHECK.json",
+      "sha256": "5f2016f1c9ff47922f6e9e636ed45e0e81a28c6c909cb44ff8eb0d3dc657d52a",
+      "bytes": 383,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/lint.txt",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19,
+      "role": "new fixed successor staging/review",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/RAW_IR_PUBLICATION_INDEX.json",
+      "sha256": "3ffe26ce1e97398dd38a8b4e072a62755c25436ace08514ac9b1ede0c4564336",
+      "bytes": 9881,
+      "role": "small actual raw IR review manifest",
+      "status": "FROZEN_SOURCE_DATA_ONLY"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/HANDOFF.md",
+      "sha256": "bb65a28c3b1a98ff8565c092d7f59d951b7e48d02830a9e2baa387ff34e9e13b",
+      "bytes": 4775,
+      "role": "portable STOP handoff",
+      "status": "FROZEN_STOP_CHECKPOINT"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/ACCOUNT_HANDOFF_DRAFT.md",
+      "sha256": "bb65a28c3b1a98ff8565c092d7f59d951b7e48d02830a9e2baa387ff34e9e13b",
+      "bytes": 4775,
+      "role": "quota-stop handoff",
+      "status": "FROZEN_STOP_CHECKPOINT"
+    },
+    {
+      "path": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/account-handoffs-20261026/Assign.md",
+      "sha256": "87f282516e567ec7675562e8e9abedbbdebf00abe43028f5b141da51688af263",
+      "bytes": 607,
+      "role": "easy account pointer",
+      "status": "FROZEN_STOP_CHECKPOINT"
+    }
+  ],
+  "latest_closed_capsule": {
+    "root": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/fresh-graph-staging-v1/capsule",
+    "specification": {
+      "sha256": "74463f68ec13f631d70d7da02857ccc577c64709e0710b6d2f71fb8f93e514bb",
+      "bytes": 120006
+    },
+    "payloads": [
+      {
+        "path": "capsule/payload/9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8.lean",
+        "sha256": "9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8",
+        "bytes": 3401,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-schedule-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02.lean",
+        "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+        "bytes": 4654,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-schedule-successor-v1",
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStateScalar.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9.lean",
+        "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+        "bytes": 8229,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-schedule-successor-v1",
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a.lean",
+        "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+        "bytes": 11782,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-schedule-successor-v1",
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114.lean",
+        "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+        "bytes": 6170,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-schedule-successor-v1",
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d.lean",
+        "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+        "bytes": 9963,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-schedule-successor-v1",
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d.lean",
+        "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+        "bytes": 6614,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-schedule-successor-v1",
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/31781ae345d4acf4fcbf7b98f6f56ae5ad5828adeb5f64645fbf9e679f98e31e.lean",
+        "sha256": "31781ae345d4acf4fcbf7b98f6f56ae5ad5828adeb5f64645fbf9e679f98e31e",
+        "bytes": 4659,
+        "role": "pure_generated_query",
+        "profiles": [
+          "Q-schedule-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/dc5ee90d94580cd12a8a1f9f16dc5deb7872d235ace4c651e0a12de4bb6704fd.json",
+        "sha256": "dc5ee90d94580cd12a8a1f9f16dc5deb7872d235ace4c651e0a12de4bb6704fd",
+        "bytes": 4762,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "Q-schedule-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/8b3036ce9e5b23d5e1bc095d5eb15963b7e257cb7a6af6c3813c689fe83de6d4.lean",
+        "sha256": "8b3036ce9e5b23d5e1bc095d5eb15963b7e257cb7a6af6c3813c689fe83de6d4",
+        "bytes": 4659,
+        "role": "pure_generated_query",
+        "profiles": [
+          "Q-schedule-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/5a42899c78eb58b77cd979ce35bf13f184871f972d9681f3b7c8cc04db16f618.json",
+        "sha256": "5a42899c78eb58b77cd979ce35bf13f184871f972d9681f3b7c8cc04db16f618",
+        "bytes": 4742,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "Q-schedule-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/1a4600d2fbd1571a811cb5655b529df1dc879a72ad2e806b100409058e180b3c.lean",
+        "sha256": "1a4600d2fbd1571a811cb5655b529df1dc879a72ad2e806b100409058e180b3c",
+        "bytes": 4659,
+        "role": "pure_generated_query",
+        "profiles": [
+          "Q-schedule-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/262ff533a5430da88ef509194acc27892c288fd6b4ee29285576e317fceef353.json",
+        "sha256": "262ff533a5430da88ef509194acc27892c288fd6b4ee29285576e317fceef353",
+        "bytes": 4761,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "Q-schedule-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68.lean",
+        "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+        "bytes": 9653,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1",
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22.lean",
+        "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+        "bytes": 3962,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1",
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a.lean",
+        "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+        "bytes": 7091,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1",
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2.lean",
+        "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+        "bytes": 2118,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1",
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab.lean",
+        "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+        "bytes": 5730,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1",
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa.lean",
+        "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+        "bytes": 5106,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac.lean",
+        "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+        "bytes": 9854,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1",
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035.lean",
+        "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+        "bytes": 5747,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215.lean",
+        "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+        "bytes": 4641,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b.lean",
+        "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+        "bytes": 7412,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604.lean",
+        "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+        "bytes": 7569,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751.lean",
+        "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+        "bytes": 1400,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb.lean",
+        "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+        "bytes": 8734,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453.lean",
+        "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+        "bytes": 3197,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9.lean",
+        "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+        "bytes": 2509,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124.lean",
+        "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+        "bytes": 4541,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/602ad3f1802105037fb4a0cd042ced628e71709d66b2bfd3a8e42d6fb7b99996.lean",
+        "sha256": "602ad3f1802105037fb4a0cd042ced628e71709d66b2bfd3a8e42d6fb7b99996",
+        "bytes": 4857,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphStatePipelineTail.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf.lean",
+        "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+        "bytes": 3246,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1",
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/ResourceGeometry.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176.lean",
+        "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+        "bytes": 4537,
+        "role": "project_lean_source",
+        "profiles": [
+          "Q-unroll-tail-successor-v1",
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/StateEffects.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/4a238e76c052593f6d83fbf37145251099e6151989b079103a4f2b6309df9c46.lean",
+        "sha256": "4a238e76c052593f6d83fbf37145251099e6151989b079103a4f2b6309df9c46",
+        "bytes": 17616,
+        "role": "pure_generated_query",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/dac05ca310334c69c9b5cbf21b5d83ed50a8f815685c704e0353ec24dca9fb0a.json",
+        "sha256": "dac05ca310334c69c9b5cbf21b5d83ed50a8f815685c704e0353ec24dca9fb0a",
+        "bytes": 6149,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/7cfacba2da5adcffcf89523d189915767ad3fd37c18b816b28568a43f9d6a35b.lean",
+        "sha256": "7cfacba2da5adcffcf89523d189915767ad3fd37c18b816b28568a43f9d6a35b",
+        "bytes": 17961,
+        "role": "pure_generated_query",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/b1ff279e5465b93e828657b01623fbbbb9f77b78a5fcd35806637938c6dbdbd8.json",
+        "sha256": "b1ff279e5465b93e828657b01623fbbbb9f77b78a5fcd35806637938c6dbdbd8",
+        "bytes": 6143,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/77db4895989d25e2e5f88a5df7ac7bb9f865c9093a9aae358d40cf35ad54b60c.lean",
+        "sha256": "77db4895989d25e2e5f88a5df7ac7bb9f865c9093a9aae358d40cf35ad54b60c",
+        "bytes": 16473,
+        "role": "pure_generated_query",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/6dd30f85866d19dd32426152e4aebb073b2394338f7958d1a3e796494b14b32f.json",
+        "sha256": "6dd30f85866d19dd32426152e4aebb073b2394338f7958d1a3e796494b14b32f",
+        "bytes": 6143,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/8daa2c837f1e3817401a99bf1e53b13cdfcbece3d4e11da868696b73c9c28779.lean",
+        "sha256": "8daa2c837f1e3817401a99bf1e53b13cdfcbece3d4e11da868696b73c9c28779",
+        "bytes": 17924,
+        "role": "pure_generated_query",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/1afb3fdb8e54ce73b56449bf291fa1b87972f38faca34d3b2f2c650a561bfb53.json",
+        "sha256": "1afb3fdb8e54ce73b56449bf291fa1b87972f38faca34d3b2f2c650a561bfb53",
+        "bytes": 6140,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "Q-unroll-tail-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/b7c665843732da433c765da7d8045d4a7463fb7b450c70570e3efe1640ad08f0.lean",
+        "sha256": "b7c665843732da433c765da7d8045d4a7463fb7b450c70570e3efe1640ad08f0",
+        "bytes": 4861,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCF.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/ac5f18053282e6e12d816146a7cb1e71c663fb3e8580eea786896dcbc5574247.lean",
+        "sha256": "ac5f18053282e6e12d816146a7cb1e71c663fb3e8580eea786896dcbc5574247",
+        "bytes": 5980,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAccessLocal.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/05502dbe0083bf14ce2ea1b3a165ebd42cc0cf7e34e6a3340fc41a53bc6c592b.lean",
+        "sha256": "05502dbe0083bf14ce2ea1b3a165ebd42cc0cf7e34e6a3340fc41a53bc6c592b",
+        "bytes": 5883,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocation.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/db2ff24827279ded18bcfd9659bd99983aa195b62d1512a16244e8fbde30bf1a.lean",
+        "sha256": "db2ff24827279ded18bcfd9659bd99983aa195b62d1512a16244e8fbde30bf1a",
+        "bytes": 8783,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationLocal.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/115ecb5e1386e28c8ccec29bef745cecdf7b31a9bf537c50182b28a5673c42b7.lean",
+        "sha256": "115ecb5e1386e28c8ccec29bef745cecdf7b31a9bf537c50182b28a5673c42b7",
+        "bytes": 8587,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterAllocationSteps.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/0e4f2e2b60ca02cf50845235299ead547edc55ae9eb384d90a18b9abe0f78c6c.lean",
+        "sha256": "0e4f2e2b60ca02cf50845235299ead547edc55ae9eb384d90a18b9abe0f78c6c",
+        "bytes": 7349,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterBoundary.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/6d13e391848a453a0a52a3bc20c217c311fa846048a645001a5cccd4590adf4e.lean",
+        "sha256": "6d13e391848a453a0a52a3bc20c217c311fa846048a645001a5cccd4590adf4e",
+        "bytes": 5721,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChain.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/246ab2b3b63c771aeb41b73ca8b5cb934f16a9b6e700caad7438505e7fa50c3c.lean",
+        "sha256": "246ab2b3b63c771aeb41b73ca8b5cb934f16a9b6e700caad7438505e7fa50c3c",
+        "bytes": 9032,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChecked.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/9c92b1fedea928d04c7fc5fc5941f8f83c915335679a580e3cfb9cfaac7e5b9b.lean",
+        "sha256": "9c92b1fedea928d04c7fc5fc5941f8f83c915335679a580e3cfb9cfaac7e5b9b",
+        "bytes": 2983,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterChunks.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/b00e037024e9cb0cef6fc087abaf2f03e631c2137d3a8acd80ddf2773e0335f3.lean",
+        "sha256": "b00e037024e9cb0cef6fc087abaf2f03e631c2137d3a8acd80ddf2773e0335f3",
+        "bytes": 5522,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterDispatch.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/ec4e7bddea5bd4e1b13359dca6bea0f36dbf1f05939b1b51a12cfdfbcadeb7fe.lean",
+        "sha256": "ec4e7bddea5bd4e1b13359dca6bea0f36dbf1f05939b1b51a12cfdfbcadeb7fe",
+        "bytes": 7084,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/44478ab6e3b2bbe636943fe369209fa96c58ea679c8bd22d435eb252dbf89366.lean",
+        "sha256": "44478ab6e3b2bbe636943fe369209fa96c58ea679c8bd22d435eb252dbf89366",
+        "bytes": 6254,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/478311e1d64352a42cd8e71012a001f0276820f9b5f3ba268d30a018fbc18469.lean",
+        "sha256": "478311e1d64352a42cd8e71012a001f0276820f9b5f3ba268d30a018fbc18469",
+        "bytes": 6624,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/b1a40d49a7d095429e82bf0e053e53707b557996c01c308c4a5bdc0524e86e07.lean",
+        "sha256": "b1a40d49a7d095429e82bf0e053e53707b557996c01c308c4a5bdc0524e86e07",
+        "bytes": 5337,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/a8a8ead22ebbf08b26cea5e9ff901463d97d8a31403032baf2e07fa1f7dd9744.lean",
+        "sha256": "a8a8ead22ebbf08b26cea5e9ff901463d97d8a31403032baf2e07fa1f7dd9744",
+        "bytes": 5522,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/b8e4442e6d2a90ea9ae7b0d6204ff96c39a4aeef8e3a6babe102ff5f95342c62.lean",
+        "sha256": "b8e4442e6d2a90ea9ae7b0d6204ff96c39a4aeef8e3a6babe102ff5f95342c62",
+        "bytes": 10015,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterExecution.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/8c3244e49b74bdd4592941bc1bdfd06e3dc5ad30a8dfbef04fc739f25a9f3b45.lean",
+        "sha256": "8c3244e49b74bdd4592941bc1bdfd06e3dc5ad30a8dfbef04fc739f25a9f3b45",
+        "bytes": 7471,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFragments.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/a0d4e5ef523b2cf64542589047047423038f09ffd225b8f16fe381d05039cc3f.lean",
+        "sha256": "a0d4e5ef523b2cf64542589047047423038f09ffd225b8f16fe381d05039cc3f",
+        "bytes": 10284,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterFunction.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/323a82673fd07e86e8d68fb071302a8372f5ef3f751c7cfc68c7e6acaa7bb7e2.lean",
+        "sha256": "323a82673fd07e86e8d68fb071302a8372f5ef3f751c7cfc68c7e6acaa7bb7e2",
+        "bytes": 5749,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializer.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/fa5f46ef94f79a50a2aa850a0bec0f484276eebb0e883921f8edbfccfbdfa5db.lean",
+        "sha256": "fa5f46ef94f79a50a2aa850a0bec0f484276eebb0e883921f8edbfccfbdfa5db",
+        "bytes": 6799,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLink.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/ee7c3aaed050d0101d76bc2c585542a8a7ed0747a65b613b2ff9f1c6e8eb8e4b.lean",
+        "sha256": "ee7c3aaed050d0101d76bc2c585542a8a7ed0747a65b613b2ff9f1c6e8eb8e4b",
+        "bytes": 6252,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInitializerLocal.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/d3e392af113e85e115584d3e8533e5f99fa8bb14379cc41c971233cdbb2f7185.lean",
+        "sha256": "d3e392af113e85e115584d3e8533e5f99fa8bb14379cc41c971233cdbb2f7185",
+        "bytes": 8872,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterInvariant.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/12284514b35a27200d94f52d6f602b7bbb9d7ae7624a8aa88d229ca378c9c33f.lean",
+        "sha256": "12284514b35a27200d94f52d6f602b7bbb9d7ae7624a8aa88d229ca378c9c33f",
+        "bytes": 4878,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMeaning.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/d587cbe0e1265b052cc607c08325bc6134adf776d06d54b576a2e17e1c345795.lean",
+        "sha256": "d587cbe0e1265b052cc607c08325bc6134adf776d06d54b576a2e17e1c345795",
+        "bytes": 9702,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterMemorySteps.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/64dc0c518b2b7ef3d489c1b4aa0df349e2a2dc4f8df0c378be7e72602cb3ea1e.lean",
+        "sha256": "64dc0c518b2b7ef3d489c1b4aa0df349e2a2dc4f8df0c378be7e72602cb3ea1e",
+        "bytes": 5562,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterObservers.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/a32e89ad3b494224ab0b92f8423b765b30ad53be22b43c794893d1ee21ddbbed.lean",
+        "sha256": "a32e89ad3b494224ab0b92f8423b765b30ad53be22b43c794893d1ee21ddbbed",
+        "bytes": 8494,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterPlan.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/60d318a0983eb04623023eb70f8f944fda0020db50c10a49c2a86363710438d5.lean",
+        "sha256": "60d318a0983eb04623023eb70f8f944fda0020db50c10a49c2a86363710438d5",
+        "bytes": 11740,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRetained.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/743fd49545efc94ecfc609fb6a131355931e91e8dedb736868345905372d9231.lean",
+        "sha256": "743fd49545efc94ecfc609fb6a131355931e91e8dedb736868345905372d9231",
+        "bytes": 7629,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterRows.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/bb52da64c94041f36aae5a5455ee50b66a287b170c4a4c8f8fbca6c121eafbc9.lean",
+        "sha256": "bb52da64c94041f36aae5a5455ee50b66a287b170c4a4c8f8fbca6c121eafbc9",
+        "bytes": 5962,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSCF.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/84cd8ac53d96f90c0255929bc44d4e5e2dce3173baeed4caa604d6d59af0b7c6.lean",
+        "sha256": "84cd8ac53d96f90c0255929bc44d4e5e2dce3173baeed4caa604d6d59af0b7c6",
+        "bytes": 8781,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScope.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/4dab99a0824e89346226ad04e774369fee6fde5cf6ed420cf8e55a213c62f87c.lean",
+        "sha256": "4dab99a0824e89346226ad04e774369fee6fde5cf6ed420cf8e55a213c62f87c",
+        "bytes": 9169,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAccess.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/a480ba07dcf62de7829680f93178f85535ef9f19b39f37eac30a8cd51ca09098.lean",
+        "sha256": "a480ba07dcf62de7829680f93178f85535ef9f19b39f37eac30a8cd51ca09098",
+        "bytes": 8449,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedAllocation.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/60d6a9aca373bd9c4b61fa31726961f30468a582831aab7f3a49611b7b01e7a1.lean",
+        "sha256": "60d6a9aca373bd9c4b61fa31726961f30468a582831aab7f3a49611b7b01e7a1",
+        "bytes": 4931,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterScopedInitializer.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/5cff2c32042ca2ccfa8db8c1157b576cba7fb4390837d193cdf64373d7e7a89b.lean",
+        "sha256": "5cff2c32042ca2ccfa8db8c1157b576cba7fb4390837d193cdf64373d7e7a89b",
+        "bytes": 5376,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSlots.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/cee17c1e1cc166bd4951664ecf2fb8588e07cbe0dbbec9be9bca37b3b58f07cb.lean",
+        "sha256": "cee17c1e1cc166bd4951664ecf2fb8588e07cbe0dbbec9be9bca37b3b58f07cb",
+        "bytes": 5948,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterSupport.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/2437a5f3be741e6912f3568dcff5b08f0c15187547b7d02f5bb28bc928c8e82c.lean",
+        "sha256": "2437a5f3be741e6912f3568dcff5b08f0c15187547b7d02f5bb28bc928c8e82c",
+        "bytes": 11951,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTiled.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/2dc0625cca4f37c016ab96389f18075f86a2cea4d74d51a70f1c625770bbbc1a.lean",
+        "sha256": "2dc0625cca4f37c016ab96389f18075f86a2cea4d74d51a70f1c625770bbbc1a",
+        "bytes": 8422,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterTransport.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/39517f78dd2987b0527f50e5aedae00a07d5638d1a444def9baa0dcf62800ab2.lean",
+        "sha256": "39517f78dd2987b0527f50e5aedae00a07d5638d1a444def9baa0dcf62800ab2",
+        "bytes": 2768,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/26b341f8f6e90187c0dd301c022cdcac5e6037caa26d0a207beaff08441ca7a2.lean",
+        "sha256": "26b341f8f6e90187c0dd301c022cdcac5e6037caa26d0a207beaff08441ca7a2",
+        "bytes": 13452,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFComposition.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/e0dd846bf321516099232b2ba8603cdde9efbb19073058594cb1d9c94eb373bf.lean",
+        "sha256": "e0dd846bf321516099232b2ba8603cdde9efbb19073058594cb1d9c94eb373bf",
+        "bytes": 5846,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFCoverage.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/17d2fb5c242ad2cbf52859893b6adfdc1e9cf6d97ab3770de53d426ce3e854e1.lean",
+        "sha256": "17d2fb5c242ad2cbf52859893b6adfdc1e9cf6d97ab3770de53d426ce3e854e1",
+        "bytes": 6157,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFEffects.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/3d3c97dd9593855f2d9962d407eee4714c229765efaf873074750b50605d9ab4.lean",
+        "sha256": "3d3c97dd9593855f2d9962d407eee4714c229765efaf873074750b50605d9ab4",
+        "bytes": 4269,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFLoops.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/35c8428218b8ae776fb073fd431182ea979e6e9185e0d867253808caf9921a7a.lean",
+        "sha256": "35c8428218b8ae776fb073fd431182ea979e6e9185e0d867253808caf9921a7a",
+        "bytes": 6316,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/53d1674540fae8aff754f740e369d29de0bd9a68facacbba0c6154aa981ef37b.lean",
+        "sha256": "53d1674540fae8aff754f740e369d29de0bd9a68facacbba0c6154aa981ef37b",
+        "bytes": 5453,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModes.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/ee7ad6757ea921243d03b3458534af11b8e5d6775b10164a70c606ee2dc23670.lean",
+        "sha256": "ee7ad6757ea921243d03b3458534af11b8e5d6775b10164a70c606ee2dc23670",
+        "bytes": 10841,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFOperational.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/5f7977123358e7a3de53704f2fa2956d1b89bd7a60c6957a6e8676795c0ce562.lean",
+        "sha256": "5f7977123358e7a3de53704f2fa2956d1b89bd7a60c6957a6e8676795c0ce562",
+        "bytes": 6094,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFRect.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/86c8d7319914a96934964ed8c9b45fdfc80aeb8fdd37f1a94d3f2b026dd7cbc3.lean",
+        "sha256": "86c8d7319914a96934964ed8c9b45fdfc80aeb8fdd37f1a94d3f2b026dd7cbc3",
+        "bytes": 3210,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFScope.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/5a9e204faa5375435683b2c15a1344210980979c636862749c9585cf00751e01.lean",
+        "sha256": "5a9e204faa5375435683b2c15a1344210980979c636862749c9585cf00751e01",
+        "bytes": 4589,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFSimulation.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/414a5c25490fc099815eed9b491cb99e0c7e114435a7ac498f8e35428ed57cd3.lean",
+        "sha256": "414a5c25490fc099815eed9b491cb99e0c7e114435a7ac498f8e35428ed57cd3",
+        "bytes": 9874,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/51b46ae3c0e1bb64ca47ec1ec1a2bb36fe96f706d229d8ca4f6302f6e38a5c2c.lean",
+        "sha256": "51b46ae3c0e1bb64ca47ec1ec1a2bb36fe96f706d229d8ca4f6302f6e38a5c2c",
+        "bytes": 7525,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsReuse.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/ff170131b35e0c972c02573437da450ebfb3595efcd47f07f55d54b657483f98.lean",
+        "sha256": "ff170131b35e0c972c02573437da450ebfb3595efcd47f07f55d54b657483f98",
+        "bytes": 4299,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsReuseCountermodels.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/9c2553f3fa45cbdeb03c9f084aa6f84f247a574f98c7a543010c8ffa65018e1a.lean",
+        "sha256": "9c2553f3fa45cbdeb03c9f084aa6f84f247a574f98c7a543010c8ffa65018e1a",
+        "bytes": 6933,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsReuseGeometry.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/cb3d7cd2553443fb204209cb369bdad79a31d340619e57efd12106b3f51c6c4a.lean",
+        "sha256": "cb3d7cd2553443fb204209cb369bdad79a31d340619e57efd12106b3f51c6c4a",
+        "bytes": 3194,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsReuseLifetime.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/0011d490dffb9d36ab3d7f1c4b3e944c91ce6a30ae84155367c39b3090b54626.lean",
+        "sha256": "0011d490dffb9d36ab3d7f1c4b3e944c91ce6a30ae84155367c39b3090b54626",
+        "bytes": 7878,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsReuseModel.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/538c4066cb1dca7a8911f5bf99d3cae5e449c475871f2ba0e49b60386b8384f0.lean",
+        "sha256": "538c4066cb1dca7a8911f5bf99d3cae5e449c475871f2ba0e49b60386b8384f0",
+        "bytes": 6086,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsReuseProtocol.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/8b5f9d5a71a7aab8559286e5bdb36dfc02e2abeb24a76ad5710434a20bf3da6f.lean",
+        "sha256": "8b5f9d5a71a7aab8559286e5bdb36dfc02e2abeb24a76ad5710434a20bf3da6f",
+        "bytes": 13700,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsReuseSemantics.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/7d4314ce5f13378e3f807be57a39da4c064b16e2fe569b685cddd4a22a9beb4e.lean",
+        "sha256": "7d4314ce5f13378e3f807be57a39da4c064b16e2fe569b685cddd4a22a9beb4e",
+        "bytes": 4332,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShape.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/41e9825fad8b832e7d63471d03b0e35a04b891411aab17bced45735b528feab1.lean",
+        "sha256": "41e9825fad8b832e7d63471d03b0e35a04b891411aab17bced45735b528feab1",
+        "bytes": 3721,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfter.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/32bca20f3f2aa8ed0fbfd6b38142db3b3c140677213f5b676bdde80a564ca775.lean",
+        "sha256": "32bca20f3f2aa8ed0fbfd6b38142db3b3c140677213f5b676bdde80a564ca775",
+        "bytes": 12242,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeAfterRename.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/0022f37c8c015cd51d4b571592fb01e4723f55152b80240e47d566508f35ebab.lean",
+        "sha256": "0022f37c8c015cd51d4b571592fb01e4723f55152b80240e47d566508f35ebab",
+        "bytes": 4966,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeBindings.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/57784b3dae571bcc1a9d228605ae1a3fd4b40a2b784afd2d3eb4a0bbc22b1432.lean",
+        "sha256": "57784b3dae571bcc1a9d228605ae1a3fd4b40a2b784afd2d3eb4a0bbc22b1432",
+        "bytes": 8871,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeCode.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/d855ed8506c22cd01a4843afa64a259880ba8c43c8eb8c8b7e5e7c4e868095ea.lean",
+        "sha256": "d855ed8506c22cd01a4843afa64a259880ba8c43c8eb8c8b7e5e7c4e868095ea",
+        "bytes": 2131,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeCountermodels.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/f1f410710384eaa7cd4aa0def577262f1f53c05611b19c7b8b5fb213d792f768.lean",
+        "sha256": "f1f410710384eaa7cd4aa0def577262f1f53c05611b19c7b8b5fb213d792f768",
+        "bytes": 5761,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAccess.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/0edc7b495eb1d144333c46a1dbc1329e959c8b6b11062aef8daa89f15f26b067.lean",
+        "sha256": "0edc7b495eb1d144333c46a1dbc1329e959c8b6b11062aef8daa89f15f26b067",
+        "bytes": 5148,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocation.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/0459c81d8a59512f0bc9e4857ef4a0971368db3595eaffcf6aa90076cd019618.lean",
+        "sha256": "0459c81d8a59512f0bc9e4857ef4a0971368db3595eaffcf6aa90076cd019618",
+        "bytes": 5819,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAllocationSteps.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/49dfd218309960377abf0ff2c8dbd6dbbe7fbb3085a9be1023da720cc5eb4bd0.lean",
+        "sha256": "49dfd218309960377abf0ff2c8dbd6dbbe7fbb3085a9be1023da720cc5eb4bd0",
+        "bytes": 4726,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochAlpha.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/6be387cd2aaa0a1f29bc9208d9e6dd52ae2aab3920060fe502627386e4200700.lean",
+        "sha256": "6be387cd2aaa0a1f29bc9208d9e6dd52ae2aab3920060fe502627386e4200700",
+        "bytes": 3550,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCallers.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/0b8e9cb3720e9b4d14064edead3cbe8227bd1e16c7ebfd9128a2758cc37be9fa.lean",
+        "sha256": "0b8e9cb3720e9b4d14064edead3cbe8227bd1e16c7ebfd9128a2758cc37be9fa",
+        "bytes": 5096,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCells.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/87cb50172d2ae8b89194a8c3b1c11a00eb05bd04c8d21bb7fa28e05b26ceeb62.lean",
+        "sha256": "87cb50172d2ae8b89194a8c3b1c11a00eb05bd04c8d21bb7fa28e05b26ceeb62",
+        "bytes": 4579,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochChain.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/b813fb95d6f72a9db64f67b85f28b6da167cca275623301d336bbee6cf32a166.lean",
+        "sha256": "b813fb95d6f72a9db64f67b85f28b6da167cca275623301d336bbee6cf32a166",
+        "bytes": 7954,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochCommand.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/fbb11b4a2790a6d4112e478cb48949175561b90be325fd15f63721433c8106a6.lean",
+        "sha256": "fbb11b4a2790a6d4112e478cb48949175561b90be325fd15f63721433c8106a6",
+        "bytes": 7267,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochEntry.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/a5fc4a526ee2a8d9c1191484b884b9407d1e05753977550de71dbf885a2bcec9.lean",
+        "sha256": "a5fc4a526ee2a8d9c1191484b884b9407d1e05753977550de71dbf885a2bcec9",
+        "bytes": 6260,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochExecution.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/3e2ca99074f4bdd0f425667f335f66f68363e8a55ae49e177ec0f1ddf4dba2bb.lean",
+        "sha256": "3e2ca99074f4bdd0f425667f335f66f68363e8a55ae49e177ec0f1ddf4dba2bb",
+        "bytes": 4019,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFrame.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/d090ca0de54891e03ce752dfbb8924e3036f3669c6d064380e1949417795acb5.lean",
+        "sha256": "d090ca0de54891e03ce752dfbb8924e3036f3669c6d064380e1949417795acb5",
+        "bytes": 7530,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochFunction.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/b2290d23f41cb072f6cb87c1848ecd855393b269f6870df70ed88bda69ef5a4e.lean",
+        "sha256": "b2290d23f41cb072f6cb87c1848ecd855393b269f6870df70ed88bda69ef5a4e",
+        "bytes": 14216,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializer.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/6ad862c33a3989dcd1381c2204efad70736b89727ab67a4bdb3bf67835196986.lean",
+        "sha256": "6ad862c33a3989dcd1381c2204efad70736b89727ab67a4bdb3bf67835196986",
+        "bytes": 5238,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInitializerSteps.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/d48b28611e26e0d33d7a3b929d26922509a1936016b4309235d9fd8b475b5cea.lean",
+        "sha256": "d48b28611e26e0d33d7a3b929d26922509a1936016b4309235d9fd8b475b5cea",
+        "bytes": 4743,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochInvariant.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/313a13396fee90c55a322936f5976e2b64c19494345c182a6d2e52615fb544af.lean",
+        "sha256": "313a13396fee90c55a322936f5976e2b64c19494345c182a6d2e52615fb544af",
+        "bytes": 5324,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochLink.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/d66312808776742f3233b97c25acc2202ee9a3f616032cfc80512aca8657265d.lean",
+        "sha256": "d66312808776742f3233b97c25acc2202ee9a3f616032cfc80512aca8657265d",
+        "bytes": 5298,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMeaning.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/7e7b0ddcde788a162559ee5c7e13c8f6845016ec5cab403bed71ea8cc1529414.lean",
+        "sha256": "7e7b0ddcde788a162559ee5c7e13c8f6845016ec5cab403bed71ea8cc1529414",
+        "bytes": 7069,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochMemorySteps.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/6cd1969490912288c4393e47a08ac5fdf240c7f8a5a258e44f87965a1f52a9be.lean",
+        "sha256": "6cd1969490912288c4393e47a08ac5fdf240c7f8a5a258e44f87965a1f52a9be",
+        "bytes": 4046,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochModel.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/0e23fdf6bb90cf53057aa133dee22ff2a8c14db045b13ffc2768a94c91e199d5.lean",
+        "sha256": "0e23fdf6bb90cf53057aa133dee22ff2a8c14db045b13ffc2768a94c91e199d5",
+        "bytes": 7580,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochNormalize.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/179aee1f802b503c4a2bcd0b813da80c5f5f993d2b00c899b567109c9d726671.lean",
+        "sha256": "179aee1f802b503c4a2bcd0b813da80c5f5f993d2b00c899b567109c9d726671",
+        "bytes": 13796,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserver.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/87039b241d2af2e902d8f9e8b230da637e87c33d83a313076df975ac7068cca7.lean",
+        "sha256": "87039b241d2af2e902d8f9e8b230da637e87c33d83a313076df975ac7068cca7",
+        "bytes": 6478,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochObserverSteps.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/606d9b366e046b99f83080b341e3655c4821a7a8e28736321a6b9c937f959ddc.lean",
+        "sha256": "606d9b366e046b99f83080b341e3655c4821a7a8e28736321a6b9c937f959ddc",
+        "bytes": 4276,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochOutcomes.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/715ca2a51b85011a28ba54d4aa600696f65d81f13746356a504d9011094c1eb2.lean",
+        "sha256": "715ca2a51b85011a28ba54d4aa600696f65d81f13746356a504d9011094c1eb2",
+        "bytes": 9344,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlan.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/fcb791b786dd64ad8a0a9e07f612fe31caef262c792fd55d467322d7d57cf7fb.lean",
+        "sha256": "fcb791b786dd64ad8a0a9e07f612fe31caef262c792fd55d467322d7d57cf7fb",
+        "bytes": 4399,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPlanMeaning.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/05a914ed6fce840db6d6ace89c02022ec546a4f1d1e4bb016b262c898992de58.lean",
+        "sha256": "05a914ed6fce840db6d6ace89c02022ec546a4f1d1e4bb016b262c898992de58",
+        "bytes": 7623,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrimitives.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/fc839734d4fa92cbfa5c1b94a13a9aa17b32ada6a61cceef8987aaa04f7d0ea9.lean",
+        "sha256": "fc839734d4fa92cbfa5c1b94a13a9aa17b32ada6a61cceef8987aaa04f7d0ea9",
+        "bytes": 4619,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPrivate.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/021c98a5f64f1698f995df889242baec59bad916e288d67a54b526eb75b26dc9.lean",
+        "sha256": "021c98a5f64f1698f995df889242baec59bad916e288d67a54b526eb75b26dc9",
+        "bytes": 5231,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochPublic.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/9ee400ce401fc5a569b033bb9bb747c808df007a87ebc4817045646bebfe3ee7.lean",
+        "sha256": "9ee400ce401fc5a569b033bb9bb747c808df007a87ebc4817045646bebfe3ee7",
+        "bytes": 5675,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochReturn.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/2a43ac06b57f69b4ab3dca774c92fa03ed5ba8ced1afaf3fbc8a6245bc492cda.lean",
+        "sha256": "2a43ac06b57f69b4ab3dca774c92fa03ed5ba8ced1afaf3fbc8a6245bc492cda",
+        "bytes": 5448,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSCF.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/7c3cde93cdcc6c74c6ebdbb1a3a7fc7fce0d7b02948c62b01b758a3a4bbe37fb.lean",
+        "sha256": "7c3cde93cdcc6c74c6ebdbb1a3a7fc7fce0d7b02948c62b01b758a3a4bbe37fb",
+        "bytes": 6136,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScalarSteps.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/925351b9343b271eb9834a47a73d037bc4b3006c91e991bf730dc80181c16f4b.lean",
+        "sha256": "925351b9343b271eb9834a47a73d037bc4b3006c91e991bf730dc80181c16f4b",
+        "bytes": 7669,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochScope.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/75bede10e21af0ab799aa97569d0ff348e66663ac5b014a70c18451a7f6f2bd2.lean",
+        "sha256": "75bede10e21af0ab799aa97569d0ff348e66663ac5b014a70c18451a7f6f2bd2",
+        "bytes": 8067,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochSequence.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/864a0e489cd7e6974fe21749556d42f11c9a6456c3b58a522920145bcb88af9a.lean",
+        "sha256": "864a0e489cd7e6974fe21749556d42f11c9a6456c3b58a522920145bcb88af9a",
+        "bytes": 9338,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochState.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/4b1618a73d1cdce364a03dc79a8407a60f8d071355ba82ff2510ab7902bb608d.lean",
+        "sha256": "4b1618a73d1cdce364a03dc79a8407a60f8d071355ba82ff2510ab7902bb608d",
+        "bytes": 9696,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeEpochViews.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/5c53cfb1b3ae15a2aeec82f9acbd3939e32dbd56a0097da8d0aa04c9a8ad3f65.lean",
+        "sha256": "5c53cfb1b3ae15a2aeec82f9acbd3939e32dbd56a0097da8d0aa04c9a8ad3f65",
+        "bytes": 4855,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeMemory.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/38952ca358eebd28a5a8103a18f002c86ecbcc76b3e82b2642e8f5a4245f6371.lean",
+        "sha256": "38952ca358eebd28a5a8103a18f002c86ecbcc76b3e82b2642e8f5a4245f6371",
+        "bytes": 3342,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeModel.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/17ccc635a1718ad775304b5f9daa0715f6a84c249668f8defaa33cb17a98a823.lean",
+        "sha256": "17ccc635a1718ad775304b5f9daa0715f6a84c249668f8defaa33cb17a98a823",
+        "bytes": 5961,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeModule.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/daa129e43fc43806eaa54560abfe3541f1ebbd1d93b36a97e28ce0df5c552594.lean",
+        "sha256": "daa129e43fc43806eaa54560abfe3541f1ebbd1d93b36a97e28ce0df5c552594",
+        "bytes": 7075,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeSSA.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/93c7be67db0a1eb04ea62bc27adf3ea7b038aa87d01e95ce533a143a30780626.lean",
+        "sha256": "93c7be67db0a1eb04ea62bc27adf3ea7b038aa87d01e95ce533a143a30780626",
+        "bytes": 7170,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeSound.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/766b552e3edec6b89b0111c0cb18e37743f2351827944fd47b487a75aa84eaf8.lean",
+        "sha256": "766b552e3edec6b89b0111c0cb18e37743f2351827944fd47b487a75aa84eaf8",
+        "bytes": 5646,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-entries-successor-v1",
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsShapeWitness.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/e7da67fce8324e21090a9fd8321e382a1b9ae7f755a5fbc2a3b6523802cd7947.lean",
+        "sha256": "e7da67fce8324e21090a9fd8321e382a1b9ae7f755a5fbc2a3b6523802cd7947",
+        "bytes": 265387,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/8ab3fff9f7f36b7860896cb704989b9487ab92e962fdc163b76be68f59ab2eb3.json",
+        "sha256": "8ab3fff9f7f36b7860896cb704989b9487ab92e962fdc163b76be68f59ab2eb3",
+        "bytes": 24819,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/d0cb1b778fd1c34ef8e46075beb37e2286846eade2020c0ca72c0bf7efaf2b1a.lean",
+        "sha256": "d0cb1b778fd1c34ef8e46075beb37e2286846eade2020c0ca72c0bf7efaf2b1a",
+        "bytes": 265387,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/17b25e4b385f185cbcd8cc26650713a3155438f19732c3ea9168cbc7fbd10e20.json",
+        "sha256": "17b25e4b385f185cbcd8cc26650713a3155438f19732c3ea9168cbc7fbd10e20",
+        "bytes": 24833,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/e9f21d1176d1d1b510bd9d2a92cb5d36bfc80658056bd354159e69894af95495.lean",
+        "sha256": "e9f21d1176d1d1b510bd9d2a92cb5d36bfc80658056bd354159e69894af95495",
+        "bytes": 270803,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/015be4909c38d46dc524c5d807d8de792386604d43954460074665f731d72734.json",
+        "sha256": "015be4909c38d46dc524c5d807d8de792386604d43954460074665f731d72734",
+        "bytes": 27824,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/59a0db8c2ed3ed8493a2fe6fd3e3ea2ee896c2f182a6557a690b33929b475463.lean",
+        "sha256": "59a0db8c2ed3ed8493a2fe6fd3e3ea2ee896c2f182a6557a690b33929b475463",
+        "bytes": 265485,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/17f32e83586fd4164cbb1e27d385e71950fa67745460aa11acbc488ba65e6982.json",
+        "sha256": "17f32e83586fd4164cbb1e27d385e71950fa67745460aa11acbc488ba65e6982",
+        "bytes": 25031,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/9804b797521f068f4a88d054f7a64c7ff9f0ae551ac34878f0865d6b61bc1e1c.lean",
+        "sha256": "9804b797521f068f4a88d054f7a64c7ff9f0ae551ac34878f0865d6b61bc1e1c",
+        "bytes": 265589,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/847ee2e2ff0dbd85f999d87ea1b0b8dc2863beedb1c7bd546282101dae20ecb1.json",
+        "sha256": "847ee2e2ff0dbd85f999d87ea1b0b8dc2863beedb1c7bd546282101dae20ecb1",
+        "bytes": 25064,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/ce94be54784122cdd010233f94ce3d8c61a9103980887c4215ed1d03c87ac988.lean",
+        "sha256": "ce94be54784122cdd010233f94ce3d8c61a9103980887c4215ed1d03c87ac988",
+        "bytes": 265293,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/d9ee0eab116cad93df649eb2dcf08d9f1f56f1e1151571448d9653b655f9ed8d.json",
+        "sha256": "d9ee0eab116cad93df649eb2dcf08d9f1f56f1e1151571448d9653b655f9ed8d",
+        "bytes": 25101,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/d243f6e1a9f2ea0162f7dccc55181996b27cd81d444eb2c9e67dac3d1940c3ae.lean",
+        "sha256": "d243f6e1a9f2ea0162f7dccc55181996b27cd81d444eb2c9e67dac3d1940c3ae",
+        "bytes": 265677,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/51a33276b9f8e1e4eb430789707dd1ebf0548f8a5d786206e636dbd3f1242c91.json",
+        "sha256": "51a33276b9f8e1e4eb430789707dd1ebf0548f8a5d786206e636dbd3f1242c91",
+        "bytes": 24830,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/fe4c9e737a50584b12f6aeb1dec4f3e7f12fad1225b3436a7b383a7f28ae9acc.lean",
+        "sha256": "fe4c9e737a50584b12f6aeb1dec4f3e7f12fad1225b3436a7b383a7f28ae9acc",
+        "bytes": 265423,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/a5d2f124e07a55eabf108a428d448d26fc76059ad43685e57d771b8f7aba0b12.json",
+        "sha256": "a5d2f124e07a55eabf108a428d448d26fc76059ad43685e57d771b8f7aba0b12",
+        "bytes": 24942,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/c213fc7895007398e4fbcf8cef2e021f84663ca0b8e55d3886623e7bafd299ef.lean",
+        "sha256": "c213fc7895007398e4fbcf8cef2e021f84663ca0b8e55d3886623e7bafd299ef",
+        "bytes": 265387,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/c4f38a59c3c3ec56bb57d0a3886c70f31a6481de26b96b52d367867f6419a3c0.json",
+        "sha256": "c4f38a59c3c3ec56bb57d0a3886c70f31a6481de26b96b52d367867f6419a3c0",
+        "bytes": 24825,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/b8209d749b6fea0c7750be602fcebe95adfd11443a752cbe6bb5e8c0d0769c88.lean",
+        "sha256": "b8209d749b6fea0c7750be602fcebe95adfd11443a752cbe6bb5e8c0d0769c88",
+        "bytes": 265386,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/b1bf58cf3a29ba412f6e6656b09654d43be7657d923293a477dd2713f8302de6.json",
+        "sha256": "b1bf58cf3a29ba412f6e6656b09654d43be7657d923293a477dd2713f8302de6",
+        "bytes": 24830,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/60227b5b5438d675361cd0dd4dfe09a70278efb6b8eb4d15f5105970eb732a4e.lean",
+        "sha256": "60227b5b5438d675361cd0dd4dfe09a70278efb6b8eb4d15f5105970eb732a4e",
+        "bytes": 264210,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/299a831a8ff34f839380c9f0e4af02e778bdf6f2b9240a49662eb4badb2ee518.json",
+        "sha256": "299a831a8ff34f839380c9f0e4af02e778bdf6f2b9240a49662eb4badb2ee518",
+        "bytes": 24549,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/25260efd62c7cd0e0711b869df261f4e32fee7a86f6bd7dfc97366145eed5925.lean",
+        "sha256": "25260efd62c7cd0e0711b869df261f4e32fee7a86f6bd7dfc97366145eed5925",
+        "bytes": 264713,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/12c5c3d28a13655fa403ce0ed12a8a96d5fa94f73213bb3a965a6c4c451f4ba3.json",
+        "sha256": "12c5c3d28a13655fa403ce0ed12a8a96d5fa94f73213bb3a965a6c4c451f4ba3",
+        "bytes": 25017,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-entries-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/d2726226da4f5eeb42a6cdb6d272ee1b6393731d833e9e313874d2799f79a7e1.lean",
+        "sha256": "d2726226da4f5eeb42a6cdb6d272ee1b6393731d833e9e313874d2799f79a7e1",
+        "bytes": 5517,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextActions.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/67b7939e556f67b15bec8de56eda1d3df87e1b874f4258544e91ec2a501199c9.lean",
+        "sha256": "67b7939e556f67b15bec8de56eda1d3df87e1b874f4258544e91ec2a501199c9",
+        "bytes": 6401,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextBoundary.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/42c410006a4dfa505a57fa8599aa3d877e48dd8ddd6fe5f83cfe42a7b327c9c2.lean",
+        "sha256": "42c410006a4dfa505a57fa8599aa3d877e48dd8ddd6fe5f83cfe42a7b327c9c2",
+        "bytes": 6384,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextCall.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/e073d9318841fdb2b3db2abebdce38aa85956cf42cfe80a7cf849c287ec2cd0e.lean",
+        "sha256": "e073d9318841fdb2b3db2abebdce38aa85956cf42cfe80a7cf849c287ec2cd0e",
+        "bytes": 8657,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextChain.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/a5e2bcab4eb4c17a94fda543e175d8d0f6e79036232f8a33261095184a421f0f.lean",
+        "sha256": "a5e2bcab4eb4c17a94fda543e175d8d0f6e79036232f8a33261095184a421f0f",
+        "bytes": 6830,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextFrame.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/acfe7eecf1ff22e9c9c6d4e28e47a42cb82676fc35cb6d36c28134a2db4e6644.lean",
+        "sha256": "acfe7eecf1ff22e9c9c6d4e28e47a42cb82676fc35cb6d36c28134a2db4e6644",
+        "bytes": 5221,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextRoster.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/e2d459fae17d6184961fdbaf210c3ce5b8b3d4586b1fd35db8350cde33e5fcbe.lean",
+        "sha256": "e2d459fae17d6184961fdbaf210c3ce5b8b3d4586b1fd35db8350cde33e5fcbe",
+        "bytes": 6484,
+        "role": "project_lean_source",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": [
+          "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterContextSuffix.lean"
+        ]
+      },
+      {
+        "path": "capsule/payload/3a45048598c9e78234b9c980963a3b4028f16d4345169751c56691638bd4c48d.lean",
+        "sha256": "3a45048598c9e78234b9c980963a3b4028f16d4345169751c56691638bd4c48d",
+        "bytes": 281058,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/e2b4f0e72318e58f851e53e4b760bd6375e4a50d75d5d00df55be8b196c5f6ae.json",
+        "sha256": "e2b4f0e72318e58f851e53e4b760bd6375e4a50d75d5d00df55be8b196c5f6ae",
+        "bytes": 17341,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/2981aa230ef48e692391c18a45f1c3fa87cf25f0144363c70ef711db0ca3bcae.lean",
+        "sha256": "2981aa230ef48e692391c18a45f1c3fa87cf25f0144363c70ef711db0ca3bcae",
+        "bytes": 245217,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/f108e97590ce4e7c9bc15ee96fe315fed1c534c3104c46060c9a5d870f46837b.json",
+        "sha256": "f108e97590ce4e7c9bc15ee96fe315fed1c534c3104c46060c9a5d870f46837b",
+        "bytes": 16443,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/8c4228b39c28f656978bb23d119200241200ed5532486ab67e8901aec8d509f8.lean",
+        "sha256": "8c4228b39c28f656978bb23d119200241200ed5532486ab67e8901aec8d509f8",
+        "bytes": 281348,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/a20535c6b6da869bf2c2952edfd1f75715e43ad1b39867c53f5351f70129e40c.json",
+        "sha256": "a20535c6b6da869bf2c2952edfd1f75715e43ad1b39867c53f5351f70129e40c",
+        "bytes": 17346,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/02281e23971ce52172a21517d90121ef83851f61c1cd7102ac8bb5596600afdf.lean",
+        "sha256": "02281e23971ce52172a21517d90121ef83851f61c1cd7102ac8bb5596600afdf",
+        "bytes": 281057,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/880f997fd9c7b12f2db71fd5275258cb021c39464349e5dffb29de0af7f134b0.json",
+        "sha256": "880f997fd9c7b12f2db71fd5275258cb021c39464349e5dffb29de0af7f134b0",
+        "bytes": 17347,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/45a30ffcadd61b34d5561fdc32dd8d845d17c28e33fc3c2dae3196914201487f.lean",
+        "sha256": "45a30ffcadd61b34d5561fdc32dd8d845d17c28e33fc3c2dae3196914201487f",
+        "bytes": 245553,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/5bc57df25780dccb79ed40966e6cbabbd89598eeafed3060bf8d177bd822957a.json",
+        "sha256": "5bc57df25780dccb79ed40966e6cbabbd89598eeafed3060bf8d177bd822957a",
+        "bytes": 16445,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/64fb4af9fcad0881f2f32a665639a716950831c678544505da3c67b19cad2596.lean",
+        "sha256": "64fb4af9fcad0881f2f32a665639a716950831c678544505da3c67b19cad2596",
+        "bytes": 281058,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/673f1dcfc2c8fc176b8335c79c057c85e087220cd9012883868d3a4864cf09f0.json",
+        "sha256": "673f1dcfc2c8fc176b8335c79c057c85e087220cd9012883868d3a4864cf09f0",
+        "bytes": 17341,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/de093293da5303db0075043049c12dc35a31dca9f14a1378a45020dca90b4d5d.lean",
+        "sha256": "de093293da5303db0075043049c12dc35a31dca9f14a1378a45020dca90b4d5d",
+        "bytes": 281346,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/8ad52002c66e821f903171d194fd9520fba027519a78c550e248be3d3348cda2.json",
+        "sha256": "8ad52002c66e821f903171d194fd9520fba027519a78c550e248be3d3348cda2",
+        "bytes": 17338,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/cf9f9a424db4bcfb177c4c5d81358892cd5980a0ce0a4fe6c21ec64f730a30a1.lean",
+        "sha256": "cf9f9a424db4bcfb177c4c5d81358892cd5980a0ce0a4fe6c21ec64f730a30a1",
+        "bytes": 281058,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/c2942434d394d56c4907b94c91182a31b21e03832a6988031b55792dcaeb7570.json",
+        "sha256": "c2942434d394d56c4907b94c91182a31b21e03832a6988031b55792dcaeb7570",
+        "bytes": 17342,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/608001d025e7f170f8d076f2af4ea2a77546941a955a4798b266d445b985c8da.lean",
+        "sha256": "608001d025e7f170f8d076f2af4ea2a77546941a955a4798b266d445b985c8da",
+        "bytes": 241605,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/7bf7837bbdc831e75fb1962592bdd3f48bda31cb5dc75b9a2f4bdd45e17022e5.json",
+        "sha256": "7bf7837bbdc831e75fb1962592bdd3f48bda31cb5dc75b9a2f4bdd45e17022e5",
+        "bytes": 16241,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/fcc000c134ebe747b2b9f7cf7e788e6c5c214f0ca1b12ea12f76fd6b19134ee8.lean",
+        "sha256": "fcc000c134ebe747b2b9f7cf7e788e6c5c214f0ca1b12ea12f76fd6b19134ee8",
+        "bytes": 247781,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/36bd9a3f9d7296d60f3c47a1a5b9a4964f76214d57e295e8877add6b221c0ff7.json",
+        "sha256": "36bd9a3f9d7296d60f3c47a1a5b9a4964f76214d57e295e8877add6b221c0ff7",
+        "bytes": 16442,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/d098a9bac14dfea5ad184c12478bb09073da5478ea699c8a2f6b8b2e1c1835a4.lean",
+        "sha256": "d098a9bac14dfea5ad184c12478bb09073da5478ea699c8a2f6b8b2e1c1835a4",
+        "bytes": 281058,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/fa5e06928b765f433e695a5097d02193b05ab6a4c55fcc29235b8cb9b5d07d69.json",
+        "sha256": "fa5e06928b765f433e695a5097d02193b05ab6a4c55fcc29235b8cb9b5d07d69",
+        "bytes": 17339,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/c02b9292eb67bc00d8e76d6c88eaa6254755beb1e89261b15c1ed8e2f3843bbc.lean",
+        "sha256": "c02b9292eb67bc00d8e76d6c88eaa6254755beb1e89261b15c1ed8e2f3843bbc",
+        "bytes": 248994,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/88390e58231161908e33c822aad5c98f64e30cfa7345fdb47ee30dd29f8bae2d.json",
+        "sha256": "88390e58231161908e33c822aad5c98f64e30cfa7345fdb47ee30dd29f8bae2d",
+        "bytes": 16436,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/616825c0637628108fdcb6b71684c810eb4837a4926d946eb2387e1e7f17dc87.lean",
+        "sha256": "616825c0637628108fdcb6b71684c810eb4837a4926d946eb2387e1e7f17dc87",
+        "bytes": 252469,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/da12d21b53003c539548aef9ce163026f93e2391c83ad7e0c3fe18e60602e54d.json",
+        "sha256": "da12d21b53003c539548aef9ce163026f93e2391c83ad7e0c3fe18e60602e54d",
+        "bytes": 16438,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/f21d37389fb6e27e8b5dd45659b17eb620c1e93f40ab9076e0aef20d48bc4d90.lean",
+        "sha256": "f21d37389fb6e27e8b5dd45659b17eb620c1e93f40ab9076e0aef20d48bc4d90",
+        "bytes": 242753,
+        "role": "pure_generated_query",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      },
+      {
+        "path": "capsule/payload/54a4413d1004d14fc846ff4ee2939a5cea54321fc1b403301e1657ee3fdaa0a6.json",
+        "sha256": "54a4413d1004d14fc846ff4ee2939a5cea54321fc1b403301e1657ee3fdaa0a6",
+        "bytes": 16238,
+        "role": "exact_query_root_domain_sidecar",
+        "profiles": [
+          "W-caller-context-successor-v1"
+        ],
+        "canonical_candidates": []
+      }
+    ],
+    "payload_bytes": 8435611,
+    "source_reconstruction_rule": "Use canonical candidates ONLY if exact supplied digest/size match; do not choose by module name or refresh expected pins. Copy each unique content once. Matching canonical files need not be duplicated in Git; reconstruct payload mapping for materializer.",
+    "canonical_match_checks": "NOT_PERFORMED_DURING_STOP",
+    "compiled_or_SDK_files": false
+  },
+  "exclude_from_git": [
+    "out/build staging/relocation/control trees",
+    "fresh-graph-build-plan-v1/relocated duplicate491 files",
+    "raw historical archive/runtime/SDK/object images",
+    "unneeded all-packet payload464 metadata/source copies"
+  ],
+  "unfinished": [
+    "final polished staging/qualification narrative and additional owner-interface fixes stopped; current exact PLAN/root sidecars and stop HANDOFF suffice for review"
+  ],
+  "native_context": "UNSELECTED",
+  "compile_audit_qualification": "UNEXECUTED",
+  "live_jobs": []
+}

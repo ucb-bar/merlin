@@ -1,0 +1,8 @@
+{
+  "returncode": 0,
+  "original_query": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/checked/kernel/GraphStateScalarInstance.lean",
+    "sha256": "544b1dfd1230805af931d3a32f0b7923acd78a404cd0918fcb162b1ae0ddbabc",
+    "bytes": 4039
+  }
+}

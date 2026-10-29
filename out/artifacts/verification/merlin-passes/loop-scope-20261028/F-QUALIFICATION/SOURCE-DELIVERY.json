@@ -1,0 +1,918 @@
+{
+  "schema": "merlin.loop-transform.source-delivery.v1",
+  "status": "CURRENT_CHECKED_SOURCE_CLOSURE",
+  "submission_branch": "feat/loop-transform-verification",
+  "observed_HEAD": "65e44afbf4dbb6c7270e8936c4ef76b579a78492",
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "notes": [
+    "Exact selected transitive Lean source closure and gate-bound Python/producer sources, plus owned qualification/reproduction sources.",
+    "Third-party Python, stdlib, compiler/Lean executable, OS/host and native semantic fidelity are separate trust.",
+    "No binaries are included in this source list. Absolute historical receipts are not laptop qualification."
+  ],
+  "sources": [
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086",
+      "bytes": 742,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+      "bytes": 144,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "bytes": 4227,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "bytes": 1017,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b",
+      "bytes": 9294,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "bytes": 4572,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "bytes": 4097,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0",
+      "bytes": 8634,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "bytes": 12317,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "bytes": 12381,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/transforms/unrolling.py",
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f",
+      "bytes": 7588,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "pinned_producer",
+      "path": "src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "bytes": 10145,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/loop_transform_qualification.py",
+      "sha256": "c07c6faedf05bfa0e541d4b7a46bce3ec63a2a75fc469e823f30b043f1cafd84",
+      "bytes": 17255,
+      "roles": [
+        "F_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/loop_transform_qualification_cases.py",
+      "sha256": "02e03ebf897389d0589f93cf2841d13c8531a16c05f262c4977f26dcee653aee",
+      "bytes": 7845,
+      "roles": [
+        "F_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/loop_transform_qualification_classifier.py",
+      "sha256": "0d9e5f5c97dd38527a458975b8cf3fa360e261a8b1459f6e829681d540c9f0a0",
+      "bytes": 3686,
+      "roles": [
+        "F_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/loop_transform_qualification_worker.py",
+      "sha256": "cc029b14c36278c898a9c53bb7b23758477aacdd08e8ea3c201923c8d6d646e6",
+      "bytes": 2885,
+      "roles": [
+        "F_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/test_loop_body_group_emitter_unit.py",
+      "sha256": "166df76f00f4b19557383839ec433646cade8a56d615dbb5635a3c4a2c997481",
+      "bytes": 5531,
+      "roles": [
+        "Q_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/test_loop_transform_integration_unit.py",
+      "sha256": "527004f4d5eb5219806615dfd92de295e4e17b3ae574148a68993c146b1db697",
+      "bytes": 6838,
+      "roles": [
+        "Q_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "merlin/tests/ir/test_loop_transform_qualification_classifier.py",
+      "sha256": "ac5858ca6ea3f495c0e4347cb2bf01ce65f8de63e0d606af3a6e29f3870bcf24",
+      "bytes": 1966,
+      "roles": [
+        "F_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/fresh-process-replay-v1/run.py",
+      "sha256": "c45eaaa764fdd4e402b17cc6694fc51ebb12b988a57e6119c8436ecf921b6939",
+      "bytes": 2024,
+      "roles": [
+        "F_supplemental_reproduction_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/witness-v2/CurrentWitness.lean",
+      "sha256": "6dcfce8c349790bab1fea126d7ee7f793d09af37ea7bc83fe55f754633da5184",
+      "bytes": 6375,
+      "roles": [
+        "F_supplemental_reproduction_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/witness-v2/bind-retained.py",
+      "sha256": "bd4afd129228c1aaef70f1b2feffcf0640af0405dd1ac203da83ff6357b2d525",
+      "bytes": 1726,
+      "roles": [
+        "F_supplemental_reproduction_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/witness-v2/run.py",
+      "sha256": "82d4d8d4fd6bfe7d2c51b8c5c865d7b69170f6e7e3ab0427e77b14463abef516",
+      "bytes": 2629,
+      "roles": [
+        "F_supplemental_reproduction_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/common/owned_process.py",
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910",
+      "bytes": 5515,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+      "bytes": 9653,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+      "bytes": 3962,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "bytes": 7091,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+      "bytes": 2118,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+      "bytes": 5730,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+      "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+      "bytes": 5106,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+      "bytes": 9854,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+      "sha256": "377eb83eafd6c8d5a625c59f6dbe59d762b4aff003894efcc51df4944580bf99",
+      "bytes": 3451,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+      "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+      "bytes": 5747,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+      "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+      "bytes": 4641,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean",
+      "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+      "bytes": 7412,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+      "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+      "bytes": 7569,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+      "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+      "bytes": 1400,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean",
+      "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+      "bytes": 8734,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+      "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+      "bytes": 3197,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean",
+      "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+      "bytes": 2509,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean",
+      "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+      "bytes": 4541,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "bytes": 4654,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "bytes": 8229,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "bytes": 11782,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "bytes": 6170,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "bytes": 9963,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "bytes": 6614,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+      "bytes": 3246,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+      "bytes": 4537,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_input_admission.py",
+      "sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "bytes": 7626,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+      "sha256": "c165b6da5fee9f084dd6c2ad1da29020f55af0566e2cb809c39632af7d955cc2",
+      "bytes": 18641,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "bytes": 12573,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_state_pipeline.py",
+      "sha256": "9f93469b2e97191eb48cfa3761c81f304e53ee99f4d0a2d979a4f10dc2211f6f",
+      "bytes": 3144,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_state_pipeline_capture.py",
+      "sha256": "94af83c9de73aa64ac534ae2d5371e3acbfad3377002bd0a3ee2405795226970",
+      "bytes": 12106,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_state_pipeline_emit.py",
+      "sha256": "b7db1592f1e3692fa8d0e783532dcb5f0170a329d7ebfadc57012b1bd71d9eb9",
+      "bytes": 28278,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "Q_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_state_scalar.py",
+      "sha256": "61d351b2b6d31fc172a20931142e5a5096416ac3264901efc322086a410e5fc5",
+      "bytes": 15252,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "bytes": 20723,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/loop_transform_bridge.py",
+      "sha256": "89bc991c604dd5ba259d7fd531de7b93d6fd29d90d577bb3a4e9ecbc0dda9e9e",
+      "bytes": 4195,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "Q_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/loop_transform_cli.py",
+      "sha256": "bbdd0966e831daf55866392dbb8514174aa7e3097178d173ea83c8f9e1306fed",
+      "bytes": 2520,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "Q_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/loop_transform_gate.py",
+      "sha256": "0571bca2efe4c5957e6cb540e7c870c1b4e227cfd465488f4f45ffdad210546c",
+      "bytes": 12089,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "Q_owned"
+      ]
+    },
+    {
+      "root": "submission",
+      "path": "src/merlin/verify/loop_transform_intake.py",
+      "sha256": "c1f76873f9ed4e580cf1b1e5d5495209c601e4120c386e0b1278208e3866f94a",
+      "bytes": 7782,
+      "roles": [
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "actual_gate_bound_source",
+        "Q_owned"
+      ]
+    }
+  ]
+}

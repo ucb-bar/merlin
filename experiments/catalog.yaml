@@ -2,6 +2,7 @@ schema_version: 1
 experiments:
   baseline-functional-template: definitions/baseline-functional-template.yaml
   gemmini-functional: ../examples/gemmini/experiment.yaml
+  gemmini-pass-catalog: ../examples/gemmini/experiment-pass-catalog.yaml
   gemmini-universal-functional: ../examples/gemmini_universal/experiment.yaml
   atlas-functional: ../examples/atlas/experiment.yaml
   radiance-functional: ../examples/radiance/experiment.yaml

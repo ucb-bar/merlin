@@ -1,0 +1,27 @@
+{
+  "schema": "merlin.graph-state-scalar.live-replay.v1",
+  "status": "conditional_graph_checked",
+  "receipt": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/receipt.json",
+    "sha256": "9b28960c31534232dd39e1ae516c5a84c0b5d7c769719696b7451094536792b6",
+    "bytes": 220088
+  },
+  "fresh_report": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/chain/fresh/report.json",
+    "sha256": "2aeef5aa20be6c753eb1135023e6ba64e5d57441e621f6546b64bc8b2ee30fc9",
+    "bytes": 382059
+  },
+  "retained_object_reproduced": true,
+  "host_transport_proved_in_Lean": false,
+  "claims": {
+    "status": "conditional_graph_checked",
+    "public_acceptance_issued": false,
+    "review_approved": false,
+    "native_fidelity_proved": false,
+    "primitive_fidelity_proved": false,
+    "source_success_proved": false,
+    "poison_freedom_proved": false,
+    "numerical_gates_discharged": false,
+    "full_model_claim": false
+  }
+}

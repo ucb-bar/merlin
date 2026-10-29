@@ -1,0 +1,817 @@
+[
+  {
+    "file": "source/merlin/tests/ir/test_verify_linalg_generic.py",
+    "line": 51,
+    "name": "_source"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_verify_linalg_generic.py",
+    "line": 63,
+    "name": "_target"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_verify_linalg_generic.py",
+    "line": 71,
+    "name": "_oot_text"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_verify_linalg_generic.py",
+    "line": 77,
+    "name": "test_signed_generic_matmul_matches_independent_interface"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_verify_linalg_generic.py",
+    "line": 95,
+    "name": "test_generic_mutations_cannot_receive_false_proof"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_verify_linalg_generic.py",
+    "line": 102,
+    "name": "test_provenance_does_not_drive_generic_semantics"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_verify_linalg_generic.py",
+    "line": 119,
+    "name": "test_captured_oot_interface_text_has_replayable_16x16_receipt"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_verify_linalg_generic.py",
+    "line": 157,
+    "name": "test_captured_oot_interface_mutations_never_receive_false_proof"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 27,
+    "name": "explicit_test_target"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 72,
+    "name": "_tool"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 77,
+    "name": "_source_pair"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 98,
+    "name": "_backend_pair"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 113,
+    "name": "test_real_transform_receipt_proves_and_replays_exact_artifacts"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 133,
+    "name": "test_source_mutation_invalidates_an_old_receipt_and_yields_counterexample"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 155,
+    "name": "test_bare_tensor_empty_never_produces_a_qualified_receipt"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 174,
+    "name": "test_returning_wrong_commit_order_abstains"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 189,
+    "name": "test_backend_mutation_refutes_and_changed_digest_cannot_qualify"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 210,
+    "name": "test_wrong_tool_pin_and_solver_unknown_never_qualify"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 229,
+    "name": "test_float_source_is_explicitly_unsupported"
+  },
+  {
+    "file": "source/merlin/tests/ir/test_transform_receipts.py",
+    "line": 249,
+    "name": "test_compile_receipt_cli_reports_verified_refuted_and_abstained"
+  },
+  {
+    "file": "source/src/merlin/verify/linalg_semantics.py",
+    "line": 59,
+    "name": "_const_int"
+  },
+  {
+    "file": "source/src/merlin/verify/linalg_semantics.py",
+    "line": 75,
+    "name": "_Uninitialized"
+  },
+  {
+    "file": "source/src/merlin/verify/linalg_semantics.py",
+    "line": 84,
+    "name": "_sub_const"
+  },
+  {
+    "file": "source/src/merlin/verify/linalg_semantics.py",
+    "line": 96,
+    "name": "_contract"
+  },
+  {
+    "file": "source/src/merlin/verify/linalg_semantics.py",
+    "line": 136,
+    "name": "_add_init"
+  },
+  {
+    "file": "source/src/merlin/verify/linalg_semantics.py",
+    "line": 154,
+    "name": "_generic_matmul"
+  },
+  {
+    "file": "source/src/merlin/verify/linalg_semantics.py",
+    "line": 166,
+    "name": "encode_linalg"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_semantics.py",
+    "line": 37,
+    "name": "UnsupportedSemantics"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_semantics.py",
+    "line": 42,
+    "name": "Tensor"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_semantics.py",
+    "line": 54,
+    "name": "_elem_width"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_semantics.py",
+    "line": 68,
+    "name": "_shape"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_semantics.py",
+    "line": 77,
+    "name": "Encoder"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_semantics.py",
+    "line": 333,
+    "name": "Encoded"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_semantics.py",
+    "line": 345,
+    "name": "encode_interface"
+  },
+  {
+    "file": "source/src/merlin/verify/receipts.py",
+    "line": 34,
+    "name": "_sha"
+  },
+  {
+    "file": "source/src/merlin/verify/receipts.py",
+    "line": 38,
+    "name": "_identity"
+  },
+  {
+    "file": "source/src/merlin/verify/receipts.py",
+    "line": 51,
+    "name": "_ir_signature"
+  },
+  {
+    "file": "source/src/merlin/verify/receipts.py",
+    "line": 72,
+    "name": "_cb_signature"
+  },
+  {
+    "file": "source/src/merlin/verify/receipts.py",
+    "line": 82,
+    "name": "_verifier_digest"
+  },
+  {
+    "file": "source/src/merlin/verify/receipts.py",
+    "line": 90,
+    "name": "_package_version"
+  },
+  {
+    "file": "source/src/merlin/verify/receipts.py",
+    "line": 97,
+    "name": "_toolchain"
+  },
+  {
+    "file": "source/src/merlin/verify/receipts.py",
+    "line": 124,
+    "name": "TransformReceipt"
+  },
+  {
+    "file": "source/src/merlin/verify/receipts.py",
+    "line": 155,
+    "name": "verify_transformation"
+  },
+  {
+    "file": "source/src/merlin/verify/receipts.py",
+    "line": 254,
+    "name": "qualify_receipt"
+  },
+  {
+    "file": "source/src/merlin/verify/refine.py",
+    "line": 47,
+    "name": "RefinementResult"
+  },
+  {
+    "file": "source/src/merlin/verify/refine.py",
+    "line": 69,
+    "name": "validate_interface_module"
+  },
+  {
+    "file": "source/src/merlin/verify/refine.py",
+    "line": 113,
+    "name": "validate_pass"
+  },
+  {
+    "file": "source/src/merlin/verify/refine.py",
+    "line": 211,
+    "name": "validate_compilation"
+  },
+  {
+    "file": "source/src/merlin/verify/refine.py",
+    "line": 271,
+    "name": "_bind_outputs"
+  },
+  {
+    "file": "source/src/merlin/verify/refine.py",
+    "line": 299,
+    "name": "_bind_leaves"
+  },
+  {
+    "file": "source/src/merlin/verify/refine.py",
+    "line": 334,
+    "name": "validate_workload"
+  },
+  {
+    "file": "source/src/merlin/verify/refine.py",
+    "line": 358,
+    "name": "_record"
+  },
+  {
+    "file": "source/src/merlin/verify/refine.py",
+    "line": 388,
+    "name": "OutputContractViolation"
+  },
+  {
+    "file": "source/src/merlin/verify/refine.py",
+    "line": 406,
+    "name": "validate_equivalence"
+  },
+  {
+    "file": "source/src/merlin/verify/merlin_iface_semantics.py",
+    "line": 20,
+    "name": "parse_merlin_iface"
+  },
+  {
+    "file": "source/src/merlin/verify/merlin_iface_semantics.py",
+    "line": 38,
+    "name": "_string_attr"
+  },
+  {
+    "file": "source/src/merlin/verify/merlin_iface_semantics.py",
+    "line": 47,
+    "name": "_kind"
+  },
+  {
+    "file": "source/src/merlin/verify/merlin_iface_semantics.py",
+    "line": 51,
+    "name": "_only_attrs"
+  },
+  {
+    "file": "source/src/merlin/verify/merlin_iface_semantics.py",
+    "line": 59,
+    "name": "merlin_iface_signature"
+  },
+  {
+    "file": "source/src/merlin/verify/merlin_iface_semantics.py",
+    "line": 73,
+    "name": "encode_merlin_iface"
+  },
+  {
+    "file": "source/src/merlin/verify/cb_semantics.py",
+    "line": 107,
+    "name": "safe_k_bound"
+  },
+  {
+    "file": "source/src/merlin/verify/cb_semantics.py",
+    "line": 126,
+    "name": "CommandBufferEncoder"
+  },
+  {
+    "file": "source/src/merlin/verify/cb_semantics.py",
+    "line": 500,
+    "name": "_why_not_encodable"
+  },
+  {
+    "file": "source/src/merlin/verify/cb_semantics.py",
+    "line": 526,
+    "name": "_narrow_range"
+  },
+  {
+    "file": "source/src/merlin/verify/cb_semantics.py",
+    "line": 545,
+    "name": "_width_of"
+  },
+  {
+    "file": "source/src/merlin/verify/cb_semantics.py",
+    "line": 558,
+    "name": "encode_command_buffer"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_export.py",
+    "line": 32,
+    "name": "SmtUnavailable"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_export.py",
+    "line": 37,
+    "name": "Verdict"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_export.py",
+    "line": 64,
+    "name": "module_text"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_export.py",
+    "line": 77,
+    "name": "bounded_tool_output"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_export.py",
+    "line": 115,
+    "name": "to_smtlib"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_export.py",
+    "line": 127,
+    "name": "strip_reset"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_export.py",
+    "line": 132,
+    "name": "solve"
+  },
+  {
+    "file": "source/src/merlin/verify/smt_export.py",
+    "line": 164,
+    "name": "check_module"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 46,
+    "name": "Detection"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 67,
+    "name": "_lower_to_interface"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 80,
+    "name": "_finish_lowering"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 97,
+    "name": "_static"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 115,
+    "name": "_formal"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 140,
+    "name": "_dynamic"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 154,
+    "name": "_compilation"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 174,
+    "name": "_dynamic_cb"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 187,
+    "name": "run_cb_matrix"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 267,
+    "name": "run_matrix"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 321,
+    "name": "render"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 366,
+    "name": "main"
+  },
+  {
+    "file": "source/src/merlin/verify/evaluate.py",
+    "line": 392,
+    "name": "_write_product"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 24,
+    "name": "Fault"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 34,
+    "name": "_func_ops"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 39,
+    "name": "_block"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 46,
+    "name": "_miswired_commit"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 52,
+    "name": "_swapped_operands"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 58,
+    "name": "_dropped_activation"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 66,
+    "name": "_dropped_evict"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 73,
+    "name": "_evict_before_last_use"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 84,
+    "name": "_duplicate_pack"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 93,
+    "name": "_duplicate_commit"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 108,
+    "name": "_commit_after_reuse"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 176,
+    "name": "_cb_swap_matmul_operands"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 182,
+    "name": "_cb_crosswire_commit"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 188,
+    "name": "_cb_narrow_output"
+  },
+  {
+    "file": "source/src/merlin/verify/faults.py",
+    "line": 198,
+    "name": "_cb_drop_requant"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 15,
+    "name": "InvalidLinalgPattern"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 20,
+    "name": "StaticPointwisePattern"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 30,
+    "name": "StaticPointwiseSource"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 39,
+    "name": "StaticProjectedPointwisePattern"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 51,
+    "name": "StaticProjectedPointwiseSource"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 60,
+    "name": "_StaticLinalgShell"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 69,
+    "name": "_StaticIndexedLinalgShell"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 82,
+    "name": "_checked_static_indexed_linalg_shell"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 203,
+    "name": "static_pointwise_ordered_types"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 210,
+    "name": "static_projected_pointwise_ordered_types"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 217,
+    "name": "validate_static_pointwise_source_body"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 235,
+    "name": "validate_static_projected_pointwise_source_body"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 244,
+    "name": "validate_serialized_static_projected_pointwise_pattern"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 293,
+    "name": "validate_singleton_projection_map"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 314,
+    "name": "_checked_static_linalg_shell"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 385,
+    "name": "recognize_static_pointwise"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 395,
+    "name": "recognize_static_projected_pointwise"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 409,
+    "name": "_recognize_static_scalar_pointwise"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 477,
+    "name": "_screen_static_linalg_source"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 511,
+    "name": "screen_static_pointwise_source"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 517,
+    "name": "screen_static_projected_pointwise_source"
+  },
+  {
+    "file": "source/src/merlin/frontends/linalg_patterns.py",
+    "line": 523,
+    "name": "recognize_signed_i8_i32_matmul"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/pipeline.py",
+    "line": 41,
+    "name": "load_curated_contract"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/pipeline.py",
+    "line": 68,
+    "name": "LoweringResult"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/pipeline.py",
+    "line": 90,
+    "name": "lower_module"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/pipeline.py",
+    "line": 185,
+    "name": "lower_repeated_rhs_matmul"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/pipeline.py",
+    "line": 211,
+    "name": "execute"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+    "line": 15,
+    "name": "build_input_module"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+    "line": 50,
+    "name": "build_matmul_chain"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+    "line": 87,
+    "name": "build_vector_block"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+    "line": 140,
+    "name": "find_matmuls"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+    "line": 151,
+    "name": "matmul_lhs_rhs"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+    "line": 161,
+    "name": "find_elementwise"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/input_workload.py",
+    "line": 166,
+    "name": "elementwise_operands"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py",
+    "line": 18,
+    "name": "_attr_to_py"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py",
+    "line": 32,
+    "name": "_parse_shape"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py",
+    "line": 37,
+    "name": "emit_command_buffers"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py",
+    "line": 64,
+    "name": "emit_command_buffer"
+  },
+  {
+    "file": "source/src/merlin/xdsl_dialects/lowering/emit_command_buffer.py",
+    "line": 79,
+    "name": "_emit_one"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 30,
+    "name": "InterfaceGrammarError"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 105,
+    "name": "_tensor_type"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 115,
+    "name": "_acc_dtype"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 128,
+    "name": "_fmt_attrs"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 153,
+    "name": "emit_interface_mlir"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 223,
+    "name": "_commit_out_shape"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 274,
+    "name": "_braced"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 294,
+    "name": "_split_operands"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 306,
+    "name": "_op_line"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 347,
+    "name": "_module_attrs"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 372,
+    "name": "_last_type"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 378,
+    "name": "_parse_attr_block"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 407,
+    "name": "_parse_value"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 430,
+    "name": "_shape_dtype"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 469,
+    "name": "defined_mnemonics"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 479,
+    "name": "op_mnemonics"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 509,
+    "name": "declared_result_elements"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 566,
+    "name": "undefined_op_mnemonics"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 572,
+    "name": "parse_interface_mlir"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 698,
+    "name": "to_generic_form"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 741,
+    "name": "_functional_type"
+  },
+  {
+    "file": "source/src/merlin/targetgen/contract/interface_emit.py",
+    "line": 762,
+    "name": "_is_op_statement"
+  }
+]

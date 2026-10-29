@@ -1,0 +1,26 @@
+{
+  "status": "SOURCE_ONLY_UNCOMPILED_UNQUALIFIED",
+  "head_observed": "e501e823fdce2ffd804674eb8673730fff40da22",
+  "branch": "feat/pass-verification",
+  "owned_files": 41,
+  "lean_project_sources": 106,
+  "python_project_sources": 42,
+  "query_cases": 10,
+  "source_data_tests": {
+    "boundary": 8,
+    "whole": 10
+  },
+  "native_launches": 0,
+  "kernel_audit": "UNOBSERVED",
+  "complete_memory_bridge_proved": false,
+  "qualified": false,
+  "pipeline_receipt_issued": false,
+  "all_prior_expansion_sources_unchanged": true,
+  "known_remaining": [
+    "Lean elaboration/compilation corrections may be needed; no kernel acceptance observed",
+    "exact-root types/std3 transitive audit under newly authorized unaffected context",
+    "actual positive acceptance and valid negative refusal; fixed qualification and one replay",
+    "primitive/descriptor/allocator/Python projection/native/review obligations remain"
+  ],
+  "python_ast_parse": "all owned Python candidates parsed"
+}

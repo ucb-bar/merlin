@@ -1,0 +1,47 @@
+[
+  {
+    "id": "LOW01",
+    "priority": "P0",
+    "state": "CHECKER_EVIDENCE_UNAVAILABLE",
+    "source": "EVIDENCE_SEARCH.json; selected tests/docs",
+    "finding": "No matching existing SMT receipt/query/tool/verdict located in bounded exact cited/known verification output search. Test definitions and skipped conditions do not prove execution.",
+    "design": "Retain actual source generic text, target text/interface/CB, emitted SMT2 and exact translator/solver/report identities in a fresh separately authorized check; no replay now.",
+    "observed_solver_or_native_failure": false
+  },
+  {
+    "id": "LOW02",
+    "priority": "P1",
+    "state": "SHARED_CB_TYPE_ADMISSION_GAP_SOURCE",
+    "source": "refine._bind_leaves; cb_semantics.CommandBufferEncoder.declare_leaves",
+    "finding": "_bind_leaves validates shape/count but never CB dtype; declare_leaves sees shared name and continues before _width_of. Thus documented shared-leaf width/float refusal is not enforced on this path.",
+    "design": "Same2\u00d72 named input/weight tensors and commands, change declared leaf dtype i8\u2192i16 or f32. Source terms are still reused at8 bits by static control flow; require explicit metadata type equality before reuse. No solver/validator execution observed.",
+    "observed_solver_or_native_failure": false
+  },
+  {
+    "id": "LOW03",
+    "priority": "P1",
+    "state": "ORDER_BINDING_GAP_OUTSIDE_TINY_EXAMPLE",
+    "source": "refine._bind_outputs/_bind_leaves",
+    "finding": "sorted commit/input labels are lexical: commit10 precedes commit2, and A10 precedes A2. This differs from promised commit/argument order at11+ entries. Saved1/2-output examples do not exercise it.",
+    "design": "Eleven ordered distinct outputs; a CB permuted to lexical spec order could be compared against wrong positional contract. Preserve insertion order or explicit producer index mapping. Source design only; no new result/SMT proof manufactured.",
+    "observed_solver_or_native_failure": false
+  },
+  {
+    "id": "LOW04",
+    "priority": "P1",
+    "state": "VERIFIER_SOURCE_CLOSURE_INCOMPLETE",
+    "source": "receipts._SEMANTIC_FILES/_verifier_digest; linalg_semantics._generic_matmul",
+    "finding": "Receipt verifier SHA covers eight verify files and interface_emit bridge but not imported frontends.linalg_patterns recognizer that decides generic meaning/admission.",
+    "design": "Change recognizer admission policy without changing listed files; verifier digest does not record that source change. Replay query may catch changed encoded terms, but cannot substitute for complete implementation provenance. Include exact helper closure in future receipt cut.",
+    "observed_solver_or_native_failure": false
+  },
+  {
+    "id": "LOW05",
+    "priority": "P1",
+    "state": "NO_RETAINED_COMMON_CHAIN",
+    "source": "test_verify_linalg_generic._target/_oot_text; test_transform_receipts._source_pair/_backend_pair; refine.validate_compilation",
+    "finding": "OOT saved text, separately generated in-tree target and independently constructed backend pair are distinct artifacts. A composed linalg\u2192interface\u2192CB example has no retained common interface/CB identity here.",
+    "design": "Capture one actual invocation before/interface/CB and join exact intermediate hashes; do not splice tests or use signature-derived validate_interface_module as source proof.",
+    "observed_solver_or_native_failure": false
+  }
+]

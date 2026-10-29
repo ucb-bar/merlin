@@ -13,7 +13,9 @@ module under the instrumented packages to have a PRODUCTION importer: code under
 experiments, the targets (``merlin/targets`` and the target workflows under ``examples/``) or the
 build tools, excluding the test suite and the module itself. A declared console script or an
 executable ``python -m`` command in the shared runtime-rendered task prompt counts as wired. Tests
-do not: a test proves a module works, not that anything uses it.
+do not: a test proves a module works, not that anything uses it. Explicit sibling-script launches
+through subprocess count too: workers run under separate interpreters and cannot be imported by
+their callers. Literal path constants alone do not establish a launch.
 
 TWO GRANULARITIES, BECAUSE MODULE GRANULARITY HAS A BLIND SPOT THE SIZE OF A MODULE. An imported
 module is "wired" whatever is inside it, so a function nobody calls hides inside one perfectly:
@@ -60,6 +62,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _source_layout  # noqa: E402
+import _worker_calls  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = _source_layout.core_package(ROOT).parent
@@ -133,7 +136,7 @@ def _tree(path: Path) -> ast.AST | None:
 
 
 def _imports(path: Path) -> set[str]:
-    """Every dotted module name ``path`` imports, with relative imports resolved."""
+    """Every imported or explicitly launched module, with relative identities resolved."""
     tree = _tree(path)
     if tree is None:
         return set()
@@ -166,6 +169,7 @@ def _imports(path: Path) -> set[str]:
                 # Only a real adjacent source file establishes that package ownership.
                 if not node.level and package and "." not in base and (path.parent / f"{base}.py").is_file():
                     found.add(f"{package}.{base}")
+    found.update(name for script in _worker_calls.script_calls(path, tree) if (name := _module_name(script)))
     return found
 
 

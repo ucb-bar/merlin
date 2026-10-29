@@ -1,0 +1,34 @@
+{
+  "schema": "merlin.graph-state-pipeline.fresh-replay.v1",
+  "status": "conditional_graph_checked",
+  "receipt": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/receipt.json",
+    "sha256": "be6ea9b9052864732a6b592aa2a02a0392f9110851b38f41a249dfdd46c48005",
+    "bytes": 845042
+  },
+  "fresh_report": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/fresh-replay/i32/fresh/report.json",
+    "sha256": "3d317a456e994ca3e7ae350a5f7ef1873fae48814ece85c1d020fde65077bf92",
+    "bytes": 492420
+  },
+  "retained_object_reproduced": true,
+  "exact_original_query_path_reproduced": true,
+  "claims": {
+    "relation": "same ordered returns/full persistent outcome including error/terminal world; private SSA excluded",
+    "supported_defined_entry_roster_preserved": true,
+    "public_acceptance_issued": false,
+    "review_approved": false,
+    "source_success_for_all_models": false,
+    "poison_freedom_proved": false,
+    "native_fidelity_proved": false,
+    "primitive_fidelity_proved": false,
+    "numerical_gates_discharged": false,
+    "all_graph_passes_verified": false,
+    "full_model_claim": false,
+    "broker_integration": false,
+    "python_projection_proved": false,
+    "limited_literal_trace_promoted": false
+  },
+  "qualified": false,
+  "host_transport_proved_in_Lean": false
+}

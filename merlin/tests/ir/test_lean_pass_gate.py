@@ -37,7 +37,7 @@ def tools(pass_gate_tools):
 @pytest.fixture
 def validation(tmp_path, tools):
     gate = SpeculativeGate(tmp_path / "gate", interrupt=True, job_timeout=900)
-    yield pass_validation.PassValidation(gate, tools)
+    yield pass_validation.PassValidation(gate, tools, frozenset({"prune_dead_pure_tensor_ops", "cse"}))
     gate.close()
 
 
@@ -158,7 +158,7 @@ def test_missing_tools_fail_closed(tmp_path):
 
 
 def test_requesting_validation_without_an_sdk_is_an_error(tmp_path, monkeypatch):
-    monkeypatch.setenv(pass_validation.ENV_PASSES, "all")
+    monkeypatch.setenv(pass_validation.ENV_PASSES, "prune_dead_pure_tensor_ops,cse")
     monkeypatch.delenv(pass_validation.ENV_SDK_BIN, raising=False)
     with pytest.raises(ValueError, match="SDK"):
         lower.lower_model(LIVE, tmp_path / "lower", targets=())
@@ -218,7 +218,7 @@ def test_a_32_bit_index_width_is_refused(tmp_path, tools):
 @pytest.mark.parametrize("nested", [False, True])
 def test_explicit_lowering_width_must_match_its_validation(tmp_path, tools, nested):
     gate = SpeculativeGate(tmp_path / "gate", job_timeout=30)
-    validation = pass_validation.PassValidation(gate, tools)
+    validation = pass_validation.PassValidation(gate, tools, frozenset({"prune_dead_pure_tensor_ops", "cse"}))
     try:
         if nested:
             with pass_validation.validating(validation), pytest.raises(ValueError, match="index width differs"):
@@ -254,7 +254,7 @@ def test_a_failed_check_leaves_no_usable_artifact(tmp_path, tools, monkeypatch):
                 kernel("pruned"),
                 work,
                 targets=(),
-                pass_validation=pass_validation.PassValidation(gate, tools),
+                pass_validation=pass_validation.PassValidation(gate, tools, frozenset({"prune_dead_pure_tensor_ops", "cse"})),
             )
     finally:
         gate.close()
@@ -472,7 +472,7 @@ def test_representative_kernels_lower_identically_under_the_gate(tmp_path, tools
     assert not (tmp_path / "ungated" / "pass-validation").exists()
     assert not (tmp_path / "ungated" / leading_cse.DIRECTORY).exists()
     gate = SpeculativeGate(tmp_path / "gate", job_timeout=900)
-    validation = pass_validation.PassValidation(gate, tools)
+    validation = pass_validation.PassValidation(gate, tools, frozenset({"prune_dead_pure_tensor_ops", "cse"}))
     try:
         if isinstance(ungated, Exception):
             with pytest.raises(type(ungated)):
@@ -503,3 +503,99 @@ def test_the_chunks_cover_every_family_the_capsules_use():
         chunks = lean_gate_chunks.chunks(capsule)
         covered = {f for chunk in chunks for f in families if f'prov.family = "{f}"' in chunk.text}
         assert covered == families, (capsule, families - covered)
+
+
+@pytest.fixture
+def quant_validation(tmp_path, tools):
+    """Inherited upstream Q/DQ checks, separate from the DCE/CSE-only fixtures."""
+    gate = SpeculativeGate(tmp_path / "quant-gate", job_timeout=900)
+    passes = frozenset({"prune_dead_pure_tensor_ops", "lower_quant_ext", "preprocess_text_textual", "cse"})
+    try:
+        yield pass_validation.PassValidation(gate, tools, passes)
+    finally:
+        gate.close()
+
+
+def _captures() -> Path:
+    from merlin.common.artifacts import recaptures_dir
+
+    return Path(os.environ.get("MERLIN_RECAPTURES") or recaptures_dir())
+
+
+def capture(name: str) -> str:
+    path = _captures() / name / "model.mlir"
+    if not path.is_file():
+        if os.environ.get("MERLIN_LEAN_REQUIRED"):
+            pytest.fail(f"captured model {name} is not present")
+        pytest.skip(f"captured model {name} is not present")
+    return path.read_text()
+
+
+def test_real_lowering_proves_preprocessing_and_cse(tmp_path, quant_validation):
+    result = lower.lower_model(
+        capture("small_llama_int8_consistent"), tmp_path / "lower", targets=(), pass_validation=quant_validation
+    )
+    assert result.ll_path.is_file() and result.stats["dead_tensor_ops_pruned"] > 0
+    assert result.stats["quant_ext_lowered"] > 0
+    verdicts = {v["label"]: v for v in quant_validation.gate.verdicts}
+    assert {label: v["verdict"] for label, v in verdicts.items()} == {
+        "prune_dead_pure_tensor_ops": "accepted",
+        "lower_quant_ext": "accepted",
+        "cse": "accepted",
+    }
+    # The pipeline's own leading canonicalize,cse then changed nothing (no second cse check).
+    assert [v["label"] for v in quant_validation.gate.verdicts].count("cse") == 1
+    verdict = verdicts["prune_dead_pure_tensor_ops"]
+    assert verdict["detail"]["theorems"] == list(gate_checks.THEOREMS)
+    assert set(verdict["detail"]["axioms"]) <= {"propext", "Classical.choice", "Quot.sound"}
+    chain = json.loads(Path(verdict["detail"]["chains"]["forward"]).read_text())
+    assert chain["refinement_verdict"] == "verified"
+    # The claim says exactly which optional strengthenings were established.
+    assert verdict["detail"]["claim"].startswith("strict refinement")
+    assert set(verdict["detail"]["established"]) == {"universal_boundary", "definedness"} & set(
+        k for k, v in verdict["detail"]["strengthenings"].items() if v == "verified"
+    )
+
+
+def test_an_injected_dequantization_bug_stops_real_lowering(tmp_path, quant_validation, monkeypatch):
+    from xdsl.dialects import arith
+    from xdsl.rewriter import Rewriter
+
+    real = passes_xdsl.lower_quant_ext
+
+    def buggy(module, **kwargs):
+        count = real(module, **kwargs)
+        for op in module.walk():
+            if isinstance(op, arith.SubiOp):  # (w - zp) becomes (w + zp) in one dequantization body
+                Rewriter.replace_op(op, arith.AddiOp(op.lhs, op.rhs))
+                break
+        return count
+
+    monkeypatch.setattr(passes_xdsl, "lower_quant_ext", buggy)
+    with pytest.raises(GateFailure) as raised:
+        lower.lower_model(
+            capture("small_llama_int8_consistent"), tmp_path / "lower", targets=(), pass_validation=quant_validation
+        )
+    assert raised.value.report["label"] == "lower_quant_ext"
+    assert raised.value.report["verdict"] == "not_established"
+
+
+def test_the_textual_whole_model_route_is_proved(tmp_path, quant_validation):
+    lower.lower_model(
+        capture("small_consistent"), tmp_path / "lower", targets=(), textual=True, pass_validation=quant_validation
+    )
+    assert [(v["label"], v["verdict"]) for v in quant_validation.gate.verdicts] == [
+        ("preprocess_text_textual", "accepted"),
+        ("cse", "accepted"),
+    ]
+
+
+def test_a_textual_dequantization_bug_stops_lowering(tmp_path, quant_validation, monkeypatch):
+    real = passes_xdsl._dequant_to_generic
+    monkeypatch.setattr(passes_xdsl, "_dequant_to_generic", lambda op: real(op).replace("arith.mulf", "arith.addf", 1))
+    with pytest.raises(GateFailure) as raised:
+        lower.lower_model(
+            capture("small_consistent"), tmp_path / "lower", targets=(), textual=True, pass_validation=quant_validation
+        )
+    assert raised.value.report["label"] == "preprocess_text_textual"
+

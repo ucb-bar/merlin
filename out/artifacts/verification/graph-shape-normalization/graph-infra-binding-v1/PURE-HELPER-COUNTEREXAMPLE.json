@@ -1,0 +1,25 @@
+{
+  "scope": "actual helper AST only; not a solver or whole encoder result",
+  "cases": [
+    {
+      "dtype": "i8",
+      "shared_tensor_width": 8,
+      "outcome": "accepted_same_shared_tensor"
+    },
+    {
+      "dtype": "i16",
+      "shared_tensor_width": 8,
+      "outcome": "accepted_same_shared_tensor"
+    },
+    {
+      "dtype": "f32",
+      "shared_tensor_width": 8,
+      "outcome": "accepted_same_shared_tensor"
+    },
+    {
+      "dtype": "bogus",
+      "shared_tensor_width": 8,
+      "outcome": "accepted_same_shared_tensor"
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "candidates": 1,
+  "checker": "MerlinVerify.Check.Bf16F32Acc.check",
+  "claim_type": "policy",
+  "conditional_match": false,
+  "contract_theorems": [
+    "MerlinVerify.Rules.Bf16F32AccTensor.accumulate_sound",
+    "MerlinVerify.Rules.Bf16F32AccTensor.truncate_sound",
+    "MerlinVerify.Rules.Bf16F32AccTensor.zero_fill_sound",
+    "MerlinVerify.Rules.Bf16F32AccContract.accumulate_cell"
+  ],
+  "function_obligations": [],
+  "fusion_premises": {
+    "site_formats": [
+      "bf16"
+    ],
+    "source_licensed_operations": 0,
+    "theorem": "MerlinVerify.Rules.Bf16F32AccFusion.fused_step"
+  },
+  "index_bits": 64,
+  "pass_boundary": {
+    "checked": false,
+    "covered_sites": 1,
+    "expected_sites": 1,
+    "scope": "bf16 pass boundary; universal local operand domain; complete output equality under SSA-invariant semantics",
+    "semantic_match": false,
+    "semantic_match_theorem": "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+    "site_obligations": [
+      {
+        "function": "subject",
+        "qualification_passed": false,
+        "source_operation": 2,
+        "source_results": [
+          4
+        ]
+      }
+    ],
+    "site_qualification_passed": false,
+    "site_qualification_theorem": "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+    "whole_capture_claim": "separate; see function_obligations"
+  },
+  "policy": "bf16-f32acc-contract",
+  "policy_reviewed": false,
+  "qualification_passed": false,
+  "qualification_theorem": "MerlinVerify.Check.Bf16F32Acc.qualify_sound",
+  "reason": "f32-accumulation contract is a review candidate: independent specification review is required; @subject: site 0: multiply fastmath<contract> / add fastmath<reassoc,contract>; permitted flags are none and contract",
+  "sites": [],
+  "theorem": "MerlinVerify.Check.Bf16F32Acc.check_sound",
+  "unverified_changes": [
+    "f32-accumulation contract is a review candidate: independent specification review is required",
+    "@subject: site 0: multiply fastmath<contract> / add fastmath<reassoc,contract>; permitted flags are none and contract"
+  ],
+  "verdict": "abstracted"
+}

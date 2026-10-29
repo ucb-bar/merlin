@@ -1,0 +1,1 @@
+{"reports": "written", "profiles": 6, "query_contract_rows": 26, "native_authority": false}

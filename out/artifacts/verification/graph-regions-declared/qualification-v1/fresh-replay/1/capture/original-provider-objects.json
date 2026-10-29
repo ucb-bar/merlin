@@ -1,0 +1,9 @@
+[
+  {
+    "alignment": 2,
+    "bank": "private0",
+    "name": "p",
+    "size": 92,
+    "source_base": 1024
+  }
+]

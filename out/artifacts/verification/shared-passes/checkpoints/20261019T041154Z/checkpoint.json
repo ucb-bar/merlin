@@ -1,0 +1,93 @@
+{
+  "status": "paused_at_user_request",
+  "at_utc": "2026-10-19T04:11:54.363297+00:00",
+  "published_head": "2ceacd3096258a3e09deb760d80f351a6c61447d",
+  "published_branch": "feat/pass-verification",
+  "root_worktree_status": [],
+  "agents": {
+    "integer_rules": {
+      "status": "stopped_no_active_jobs_reported",
+      "path": "out/build/agent-workspaces/lean-rules-20261017T231743Z/integer",
+      "head": "edecf1dd703a54c356bf03873a57898213cb98ca",
+      "worktree_status": []
+    },
+    "reshape_rules": {
+      "status": "stopped_no_active_jobs_reported",
+      "path": "out/build/agent-workspaces/lean-rules-20261017T231743Z/reshape",
+      "head": "adebd7b881c482a58974dea3768eaac865e35987",
+      "worktree_status": []
+    },
+    "splat_rules": {
+      "status": "stopped_no_active_jobs_reported",
+      "path": "out/build/agent-workspaces/lean-rules-20261017T231743Z/splat",
+      "head": "9f104bcc74269461c782203b1055f2680ebe575b",
+      "worktree_status": [
+        "?? merlin/lean/MerlinVerify/Rules/CseOperands.lean"
+      ]
+    }
+  },
+  "pending_cohorts": {
+    "phase13": {
+      "head": "2b311f28ffeaef92cf63d840d79a8ba05d9498b2",
+      "path": "out/build/lean-shared-passes/phase13-worktree",
+      "audit": {
+        "theorems": 6573,
+        "violations": 0
+      },
+      "completed_tests": {
+        "binding": {
+          "tests": 484,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "native": {
+          "tests": 198,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      "remaining_regression": {
+        "status": "interrupted_at_user_request_unqualified",
+        "exit_code": 130,
+        "head": "2b311f28ffeaef92cf63d840d79a8ba05d9498b2",
+        "changed_frozen_files": [],
+        "log": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/qualification/regression.log",
+        "note": "Remaining regression run stopped at user request; incomplete run is not counted as passed."
+      },
+      "qualification": "incomplete_not_published",
+      "frozen_files": 9949
+    },
+    "phase14": {
+      "head": "3f340725e3efbacfc148aa7a4126660e6f41cd81",
+      "path": "out/build/lean-shared-passes/phase14-worktree",
+      "audit": {
+        "theorems": 6788,
+        "violations": 0
+      },
+      "composition_preflight": {
+        "binding": 20,
+        "native": 10,
+        "failures": 0,
+        "frozen_files_changed": 0
+      },
+      "raw_consumer_probes": 4,
+      "qualification": "full_integrated_receipt_suites_not_started_not_published",
+      "worktree_status": []
+    }
+  },
+  "worker_deliveries": {
+    "integer_constant_combine": "Build and6248/0 audit green;31raw guards and49MLIR probes;72binding+48native drafts unexecuted. Transitive probes/plan only.",
+    "full_slice": "62binding+24native passed privately;366frozen hashes unchanged. Original60pass/2fixturefail retained unqualified. Forwarding not implemented.",
+    "consumer_fusion": "48binding+13native/gate passed privately;230frozen hashes unchanged. CseOperands uncommitted draft build failed; unqualified."
+  },
+  "retained_environment_issue": "out/artifacts/verification/shared-passes/discrepancies/python-collection-segfault/review.json",
+  "resume_next": [
+    "Review/correct unqualified CseOperands WIP before any integration; no approval for this draft was given before its creation.",
+    "Complete fresh remaining phase13 regression qualification against unchanged frozen checker/source before publication.",
+    "Review and qualify final phase14 tests/commit history, then publish only after all checks pass.",
+    "Integrate/review integer constant-combine helpers and draft tests in a fresh next cohort; forwarding/transitive/CSE work requires explicit resume."
+  ],
+  "archive_note": "Portable copy: repository-root prefixes removed. Private code commits, logs and binaries are not published with these documents."
+}

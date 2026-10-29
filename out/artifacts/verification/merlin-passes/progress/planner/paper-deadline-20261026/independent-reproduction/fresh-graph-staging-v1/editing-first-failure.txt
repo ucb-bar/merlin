@@ -1,0 +1,1 @@
+First scripted style edit stopped on AssertionError before writing materialize_plan.py; multiline Ruff formatting changed the match string. The original F401 output is preserved in lint-initial.txt. No staging/input/source tree was touched.

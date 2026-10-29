@@ -307,6 +307,8 @@ def _bind_leaves(spec_inputs: list, cb: dict) -> dict:
     A shape or width mismatch is an abstention: it means the two artifacts are not about the same
     program, and comparing them anyway would produce a meaningless verdict.
     """
+    from .cb_semantics import _width_of
+
     tensors = cb.get("tensors") or {}
     leaves = [(n, t) for n, t in tensors.items() if str(t.get("role")) in ("input", "weight")]
     # Weights last, mirroring the interface convention that the trailing argument is the reused
@@ -326,6 +328,13 @@ def _bind_leaves(spec_inputs: list, cb: dict) -> dict:
         if cb_shape != spec_shape:
             raise UnsupportedSemantics(
                 f"leaf {name!r} is {cb_shape} in the command buffer but {spec_shape} in the interface program"
+            )
+        dtype = str(tensors[name].get("dtype") or "")
+        width = _width_of(dtype, name)
+        if width != tensor.width:
+            raise UnsupportedSemantics(
+                f"leaf {name!r} has dtype {dtype!r} (width {width}) in the command buffer "
+                f"but width {tensor.width} in the interface program"
             )
         bound[name] = tensor
     return bound

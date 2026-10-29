@@ -117,6 +117,7 @@ def apply_quant(
     ops it rewrote, and for the two passes that can find nothing to do, WHY. A pass reporting only
     "0" cannot be told apart from a pass that cannot fire at all.
     """
+    from ..verify.lean import stages as _lean_stages
     from .optional_passes import selected_quant_passes
 
     reg = registry()
@@ -140,5 +141,5 @@ def apply_quant(
             kw["prequant_gather"] = True
         if report_out is not None and n in ("contraction_int8", "conv_int8"):
             kw["report_out"] = report_out.setdefault(n, {})
-        out[n] = fn(module, **kw)
+        out[n] = _lean_stages.run(f"quant-{n}", fn, module, **kw)
     return out

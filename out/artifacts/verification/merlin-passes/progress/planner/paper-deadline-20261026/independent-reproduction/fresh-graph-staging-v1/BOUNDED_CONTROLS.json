@@ -1,0 +1,93 @@
+[
+  {
+    "control": "valid",
+    "observed": {
+      "status": "MATERIALIZED_DATA_INTEGRITY_MATCHED",
+      "files": 7,
+      "data_only": true,
+      "native_authorization": false,
+      "graph_approval": false,
+      "compile_audit_qualification": "UNEXECUTED"
+    },
+    "proof_or_native_case": false
+  },
+  {
+    "control": "missing",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_REFUSAL",
+      "reason": "[Errno 2] No such file or directory: '/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/fresh-graph-staging-v1/controls/missing/packet/payload/missing.lean'",
+      "partial_first_failure_preserved": true
+    },
+    "proof_or_native_case": false
+  },
+  {
+    "control": "mutated",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_REFUSAL",
+      "reason": "missing/changed pinned input: payload/Base.lean",
+      "partial_first_failure_preserved": true
+    },
+    "proof_or_native_case": false
+  },
+  {
+    "control": "conflict",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_REFUSAL",
+      "reason": "duplicate/conflicting module ID: Merlin.Base",
+      "partial_first_failure_preserved": true
+    },
+    "proof_or_native_case": false
+  },
+  {
+    "control": "duplicate",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_REFUSAL",
+      "reason": "duplicate/conflicting module ID: Merlin.Base",
+      "partial_first_failure_preserved": true
+    },
+    "proof_or_native_case": false
+  },
+  {
+    "control": "path",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_REFUSAL",
+      "reason": "noncanonical relative path",
+      "partial_first_failure_preserved": true
+    },
+    "proof_or_native_case": false
+  },
+  {
+    "control": "extra",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_REFUSAL",
+      "reason": "extra or missing capsule payload; no object/SDK/other files admitted",
+      "partial_first_failure_preserved": true
+    },
+    "proof_or_native_case": false
+  },
+  {
+    "control": "cycle",
+    "observed": {
+      "status": "EXPECTED_SOURCE_DATA_REFUSAL",
+      "reason": "cyclic project sources: Merlin.Base",
+      "partial_first_failure_preserved": true
+    },
+    "proof_or_native_case": false
+  },
+  {
+    "control": "existing_destination",
+    "observed": {
+      "status": "EXPECTED_EXISTING_DESTINATION_REFUSAL",
+      "original_unchanged": true
+    },
+    "proof_or_native_case": false
+  },
+  {
+    "control": "extra_output",
+    "observed": {
+      "status": "EXPECTED_EXTRA_OUTPUT_REFUSAL",
+      "reason": "extra/missing staged payload"
+    },
+    "proof_or_native_case": false
+  }
+]

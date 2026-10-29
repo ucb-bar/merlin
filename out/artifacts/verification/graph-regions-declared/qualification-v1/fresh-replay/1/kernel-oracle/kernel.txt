@@ -1,0 +1,4 @@
+kernel retained_producer(input0: i16[2,23] read, input1: i16[2,23] read, input2: i16[2,23] read, input3: i16[2,23] read, output0: i16[2,23] write, output1: i16[2,23] write)
+  produce(n=46, a=2, ao=0, b=3, bo=0, c=4, co=0, dst=0, out=0, width=2)
+  add(n=46, a=0, ao=0, b=5, bo=0, c=0, co=0, dst=6, out=0, width=2)
+  multiply(n=46, a=1, ao=0, b=5, bo=0, c=0, co=0, dst=7, out=0, width=2)

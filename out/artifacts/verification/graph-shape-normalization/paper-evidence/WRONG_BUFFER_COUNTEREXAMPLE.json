@@ -1,0 +1,246 @@
+[
+  {
+    "outputs": [
+      3,
+      2,
+      17
+    ],
+    "trace": [
+      {
+        "phase": "before",
+        "operation": "memref.load",
+        "values": [
+          {
+            "view": "input0",
+            "shape": [
+              2,
+              3
+            ],
+            "cells": [
+              17,
+              17,
+              17,
+              17,
+              17,
+              17
+            ]
+          },
+          0,
+          0
+        ]
+      },
+      {
+        "phase": "after",
+        "operation": "memref.load",
+        "values": [
+          17
+        ]
+      },
+      {
+        "phase": "before",
+        "operation": "memref.store",
+        "values": [
+          17,
+          {
+            "view": "input2",
+            "shape": [
+              1
+            ],
+            "cells": [
+              91
+            ]
+          },
+          0
+        ]
+      },
+      {
+        "phase": "after",
+        "operation": "memref.store",
+        "values": []
+      },
+      {
+        "phase": "before",
+        "operation": "func.return",
+        "values": [
+          3,
+          2,
+          17
+        ]
+      },
+      {
+        "phase": "after",
+        "operation": "func.return",
+        "values": []
+      }
+    ],
+    "input_memories": [
+      {
+        "view": "input0",
+        "shape": [
+          2,
+          3
+        ],
+        "cells": [
+          17,
+          17,
+          17,
+          17,
+          17,
+          17
+        ]
+      },
+      {
+        "view": "input1",
+        "shape": [
+          2,
+          3
+        ],
+        "cells": [
+          29,
+          29,
+          29,
+          29,
+          29,
+          29
+        ]
+      },
+      {
+        "view": "input2",
+        "shape": [
+          1
+        ],
+        "cells": [
+          17
+        ]
+      }
+    ],
+    "initialized_private_reads": true,
+    "valid_private_frees": true,
+    "descriptor_conformance_checked_on_finite_entries": true,
+    "actual_native_execution": false,
+    "native_or_abi_fidelity_proved": false,
+    "python_interpreter_and_trace_projection_trusted": true
+  },
+  {
+    "outputs": [
+      3,
+      2,
+      29
+    ],
+    "trace": [
+      {
+        "phase": "before",
+        "operation": "memref.load",
+        "values": [
+          {
+            "view": "input1",
+            "shape": [
+              2,
+              3
+            ],
+            "cells": [
+              29,
+              29,
+              29,
+              29,
+              29,
+              29
+            ]
+          },
+          0,
+          0
+        ]
+      },
+      {
+        "phase": "after",
+        "operation": "memref.load",
+        "values": [
+          29
+        ]
+      },
+      {
+        "phase": "before",
+        "operation": "memref.store",
+        "values": [
+          29,
+          {
+            "view": "input2",
+            "shape": [
+              1
+            ],
+            "cells": [
+              91
+            ]
+          },
+          0
+        ]
+      },
+      {
+        "phase": "after",
+        "operation": "memref.store",
+        "values": []
+      },
+      {
+        "phase": "before",
+        "operation": "func.return",
+        "values": [
+          3,
+          2,
+          29
+        ]
+      },
+      {
+        "phase": "after",
+        "operation": "func.return",
+        "values": []
+      }
+    ],
+    "input_memories": [
+      {
+        "view": "input0",
+        "shape": [
+          2,
+          3
+        ],
+        "cells": [
+          17,
+          17,
+          17,
+          17,
+          17,
+          17
+        ]
+      },
+      {
+        "view": "input1",
+        "shape": [
+          2,
+          3
+        ],
+        "cells": [
+          29,
+          29,
+          29,
+          29,
+          29,
+          29
+        ]
+      },
+      {
+        "view": "input2",
+        "shape": [
+          1
+        ],
+        "cells": [
+          29
+        ]
+      }
+    ],
+    "initialized_private_reads": true,
+    "valid_private_frees": true,
+    "descriptor_conformance_checked_on_finite_entries": true,
+    "actual_native_execution": false,
+    "native_or_abi_fidelity_proved": false,
+    "python_interpreter_and_trace_projection_trusted": true
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "axioms_stdout": {
+    "bytes": 44,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_same_live_typed_authority_with_mocked_execution-context/commands/root-audit/stdout.txt",
+    "sha256": "007d81e10b40f84d70b83cc50d0284b978aecf2da7c3c9c409fc9f2b54655d44"
+  },
+  "context_id": "7634ae72ab6aadd52e1ea312ed423d4a37dcf711c174db027049c994d6347fa2",
+  "query": {
+    "bytes": 75,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/synthetic-context-v1/test_same_live_typed_authority_with_mocked_execution-context/source/Merlin/Query.lean",
+    "sha256": "97245201a2a0718d56d548987ef8f511229f1ae1b7a6fe794c2ac767926955f5"
+  },
+  "roots": {
+    "Merlin.query": [
+      "propext"
+    ]
+  }
+}

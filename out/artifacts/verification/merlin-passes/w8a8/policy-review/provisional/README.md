@@ -1,0 +1,320 @@
+# Provisional W8A8 contract for continued integration
+
+On 2026-10-21 Jeremy authorized continuing with an assumed recipe while the external
+TorchAO reference is unresolved. The existing draft below is the development specification.
+This does not establish TorchAO fidelity, independent review, or a full verified-pass receipt.
+No approved specification, frozen dispatcher, statement pin or axiom is changed.
+
+## Recipe used by the current proofs
+
+- Reach and eligibility come from the actual source IR. The supported contraction domain is
+  static canonical matrices with zero initialization and reduction extent K < 131072.
+  Unsupported geometry, body wiring or calibrated-reuse conditions refuse.
+- Dynamically quantized operands use one scale per parallel-coordinate group: ordered
+  absolute maximum over reduction coordinates; the explicit zero-row scale 0.00001;
+  otherwise f32 `max(amax / 127, 0.00001)`; f32 reciprocal; multiply, nearest-even round,
+  clipping to -127/127 and signed-byte conversion.
+- Calibrated reuse retains captured signed bytes and their source scale only when the
+  source-derived zero-point, granularity and layout conditions hold.
+- Integer accumulation starts at zero, sign-extends bytes, and uses i32 multiplication and
+  addition. The checked full-range bound makes every accumulator prefix exact.
+- Requantization converts the accumulated integer once, then multiplies by the left scale
+  followed by the right scale when those scales are present.
+- Captured per-tensor source quantization requires scalar finite positive f32 scale and
+  scalar i32/i64 zero point. Its provisional sequence uses a binary64 reciprocal, conversion
+  to f32, multiply, nearest-even round, converted zero-point addition, lower-then-upper
+  clipping to -128/127, and signed-byte conversion.
+- Captured per-tensor dequantization uses the existing additive width candidate, including
+  scalar i32/i64 zero points and the actual operation's checked metadata. This is distinct
+  from repairing the separately documented per-channel production discrepancy.
+
+## Floating interpretation and domains
+
+Ordered execution proofs remain parametric in the floating model. The concrete byte candidate
+`W8A8ByteModel.extend base` supplies binary32 clipping and signed-byte conversion using integer
+fields. Other floating operations retain the explicit base interpretation. The test adapter's
+host Float/Float32 model remains test infrastructure, not a proved IEEE instance.
+
+Initialized quantizer output still requires the stated non-NaN intermediate condition.
+Calibration facts establish actual parameter bindings and source support; they do not establish
+that condition for arbitrary activations. We do not assume that initialization, a finite
+original input, or a positive scale alone implies it under every abstract floating model.
+
+Whole-function qualification must carry a justified input/context domain and prove source
+definedness and policy-reference support on that same domain. Finite tests and exact AST
+matching cannot supply those proofs.
+
+## Where later corrections belong
+
+| Decision to revisit | Current implementation boundary |
+|---|---|
+| W8A8 recipe, selection and reuse | `Rules/W8A8Reference.lean`, `Rules/W8A8Emission.lean` and component rules |
+| Captured source Q/DQ order and metadata | `Rules/W8A8SourceQuantize.lean`, `W8A8DequantWidth.lean`, `W8A8SourceContract.lean` |
+| Program-level source dispatch | `Rules/W8A8SourceSemantics.lean`, an explicit provisional extension |
+| Floating behavior and numerical domain | `W8A8ByteFloat.lean`, `W8A8ByteModel.lean` and source-domain checks |
+| Strict whole-function claim | `Check/PolicyExact.lean` and `PolicyParametric.lean`; source-definedness and reference-support proofs remain separate |
+
+`PolicyExact.check_sound` is generic in the semantics, so changing the source interpretation
+does not require a new equality theorem. It does require replaying qualification under that
+interpretation. Existing frozen-semantics suffix proofs cannot silently be reused under a
+different source interpretation.
+
+`PolicyParametric.check_sound` also accepts checked SSA renaming. Its generic program theorem
+requires operation/call laws, proved for the provisional source interpretation by
+`Rules/W8A8SourceAlpha.lean`. It preserves whole-module metadata and covers internal calls;
+it does not establish the separately required numerical domain or source definedness.
+
+`PolicyW8A8Supported.check_sound` now adds independently checked source/reference support
+and strict typed refinement under the provisional interpretation. Its current support fragment
+requires calibration facts from supported producers for quantization and checks source operations
+within nested structured regions. Runtime-parameter dequantization does not need constant facts.
+Internal-call support refuses; the interpretation executes calls and the SSA matcher compares them. Support permits UB and
+poison, so this result does not replace the initialized-execution/numerical-domain obligation.
+
+Agustin's eventual review should correct or approve the intended contract from independent
+references. The public draft commands retain their review refusal in the meantime.
+
+## Universal initialized-execution route
+
+`Check/PolicyW8A8Dequant.lean` proves typed successful execution of source per-tensor
+DQ with actual runtime scale/zero-point parameters at either admitted width. Initialized
+operands produce initialized results for every floating model; positive constant calibration
+is not required for this operation. NaN/Inf floating bits count as initialized values, and
+this theorem does not establish concrete IEEE fidelity or finiteness.
+
+`Check/PolicyW8A8Defined.lean` composes that rule with ordinary definedness rules after proving
+that each reused operation and all its regions have identical meanings under both interpretations.
+`Check/PolicyW8A8Qualified.lean` requires universal initialized execution of both the actual
+source and the source-derived reference on the same declared typed, initialized input domain.
+It combines those obligations with the semantics-generic SSA match and also proves initialized
+execution of the actual output. Matching, typed support or successful samples cannot supply a
+missing initialized-execution proof. The roster must be nonempty.
+
+This route currently refuses source quantization and internal calls. Source dequantization
+inside generic regions now has initialized-execution proofs, alongside ordinary regions and
+function-wide index-bound propagation.
+It is deliberately incomplete for dynamic W8A8: no new floating law or implicit activation
+range assumption has been introduced. Provisional qualification is not independent approval
+of the recipe, a frozen-semantics promotion or a public verified-pass receipt.
+
+## Nested typed support
+
+The current support route includes source Q/DQ in nested structured regions. It carries actual
+captured typing/calibration facts, invalidates them at writes and block-argument bindings, and
+recomputes its recursion budget from the AST. This supersedes the earlier nested-region support
+refusal. Internal calls remain unsupported by the progress checker, and the initialized route's
+quantizer/internal-call restrictions above remain in force.
+
+## Checked interpretation bridge
+
+`Rules/W8A8SourceFree.lean` proves exact agreement with frozen dispatch for ordinary operation
+regions and for modules whose every function body contains no source Q/DQ override. It includes
+internal calls at every fuel, external declarations, and stuck/UB/poison outcomes. The same
+floating model, context and input domain appear on both sides. This supplies a checked bridge
+for reusing frozen support, definedness and refinement proofs; it does not approve source
+contracts or turn equality of unsupported executions into qualification.
+
+`Check/DefinedProjection.lean` adapts an existing refined definedness book by supplying empty
+extra input evidence and erasing extra output evidence. Regional rules still recompute their
+own index bounds. No missing bound is invented, and no bounds on an enclosing value survive
+merely because that value has an initialized type. This lets mixed source-DQ/ordinary-region
+functions use existing proved bounds without changing their domain or frozen semantics.
+
+## Initialized source regions
+
+`Check/DefinedGeneric.lean` supplies generic operation rules parameterized by the actual
+interpretation and a refinement-fact model. The provisional source interpretation proves the
+required operation-head agreement; its source DQ body rule proves initialized outputs for
+initialized operands. Recursive checking retains current captured facts and index bounds.
+Uninitialized destinations require complete overwrite. This supersedes the initialized
+source-DQ region restriction; source Q and internal-call initialized execution remain open.
+
+## Conditional finite-data source quantization
+
+`Rules/W8A8FiniteLaws.lean` now states seven primitive floating-model obligations explicitly:
+widening a positive normal f32 scale to the declared f64 interval; bounding its f64 reciprocal;
+narrowing that reciprocal to finite f32; finite signed i32/i64 conversion; and non-NaN
+preservation through finite multiplication, round-to-even, and addition of a finite zero point.
+The product may overflow to infinity; the proof only needs the pre-clamp value to avoid NaN.
+No whole-quantizer correctness assumption replaces these primitive obligations.
+
+`PolicyW8A8FiniteDomain.check_sound` derives initialized source-quantizer execution from those
+obligations, actual finite input elements, initialized parameters and a **positive normal**
+f32 scale. The bit guard performs no floating arithmetic. It is sufficient rather than
+necessary: it conservatively refuses subnormal scales and infinite input values even when
+particular executions would clip safely. A smallest-subnormal scale with zero input retains
+the poison counterexample, so positive finite scale alone is not promoted to a totality proof.
+
+These model obligations are theorem premises, with no global axiom or proved model instance.
+An explicit counterexample proves that the existing arbitrary `FloatModel` interface does not
+imply them. Neither the host test interpreter nor a concrete IEEE implementation has been
+proved to satisfy them. The theorem is conditional; passing tests do not discharge its premises.
+The default MLIR arithmetic execution environment also needs review: its documentation permits
+backend-dependent runtime rounding when an operation has no explicit rounding mode.
+See the [MLIR arithmetic semantics](https://mlir.llvm.org/docs/Dialects/ArithOps/) and
+[LLVM conversion and round-even semantics](https://llvm.org/docs/LangRef.html).
+
+`PolicyW8A8FiniteParameters.check_sound` binds the normal-scale condition to the actual checked
+SSA calibration producers, alongside the existing source contract, type and zero-point checks.
+All 399 retained TinyLlama Q/DQ calibration scales, including all 89 source quantizers, meet
+this bit guard. This establishes a scale precondition, not finiteness of their activation data.
+The inventory exposes it separately as `normal_scale_checked`.
+
+The differential driver exposes `finite_preconditions` separately from actual-instance
+`domain_checks`, with `primitive_model_laws_verified: false` and `whole_pass_verified: false`.
+Whole-function qualification still requires a justified input/context domain and proofs that
+the actual computation preserves each numerical precondition. The stronger checker continues
+to refuse source quantizers until those obligations are integrated; these additions do not
+change the frozen semantics, approve the policy, or issue a verified-pass receipt.
+
+## Conditional initialized source functions and policy composition
+
+`Check/DefinedContext.lean` adds a context/call-aware initialized-execution walker over explicit
+value refinements. Its function theorem requires the stated conditions for the evaluator's
+actual module call closure and fuel. It cannot qualify an arbitrary caller-supplied call oracle.
+Existing unconditional books lift without gaining new numerical evidence.
+
+`FiniteFacts` states finite or positive-normal f32 classes over actual scalar/tensor elements.
+`FiniteProducers` proves their acquisition at constant producers and preservation through
+splats. SSA rebinding replaces the old facts. Ordinary arithmetic and other delegated rules
+erase numerical classes even when they prove initialized results; this prevents a successful
+floating computation from being treated as a proof of finiteness or scale positivity.
+
+`PolicyW8A8FiniteQuantize` connects those facts to the actual source operation, its metadata,
+runtime shapes/types and the provisional source interpreter. `PolicyW8A8FiniteDefined` composes
+that rule through whole functions. The exact input domain is `Domain`: declared typed,
+initialized arguments, with finite f32 scalar/tensor elements. Rank-zero f32 input parameters
+are not assumed normal. The context must be a `W8A8ByteModel.extend base` with proofs of the
+seven primitive laws for `base`. The synthetic model witness in the test fixture shows this
+model class is inhabited; it makes no claim about IEEE arithmetic or the host interpreter.
+
+`PolicyW8A8FiniteQualified` requires initialized source and source-derived reference execution
+on that identical domain, then composes the checked whole-module SSA match into strict policy
+refinement and initialized actual output. Real `lower_contraction_int8` rewrites that reuse
+both calibrated byte operands now pass this conditional route, including source Q/DQ prefixes.
+This supersedes a blanket refusal of initialized source quantization only for the new declared
+domain. The unconditional checker still refuses source Q, and existing claim statements remain
+unchanged. Generated dynamic policy quantizers and internal calls still refuse this route.
+
+The retained TinyLlama model remains unqualified on this domain. Its first source refusal is
+the embedding gather after 776 prefix operations: entry token values have type `tensor<1x8xi64>`
+and index a `tensor<32000x2048xf32>` table, but no token-range fact follows from that type.
+`0 <= token < 32000` is a needed source-input contract for this artifact, derived from its table
+shape; it has not been silently added to the reviewed policy or input assumptions. Loop-coordinate
+bounds and later numerical propagation also need proofs. This is separate from verification
+of any frontend or upstream optimization, which this work does not add to its scope.
+
+## Internal-call contracts on the same numerical domain
+
+`PolicyW8A8Called.check_sound` now proves conditional initialized execution through admitted
+internal calls. Contracts retain the numerical facts inferred from actual function results,
+not only their types. Caller facts must satisfy the callee's explicit finite-input requirements.
+An identity callee retains a finite value; a constant-producing callee can return a normal scale.
+Initialized NaN results do not become finite, and finite results do not become normal merely
+because a later caller needs a scale.
+
+The stage construction begins with no call contracts and proves each subsequent stage against
+the actual module evaluator at the corresponding fuel. Final fuel is `module.funcs.length + 1`,
+the frozen evaluator's own choice. No termination assertion, trusted callee list or successful
+runtime sample is an assumption of `check_sound`. Recursive cycles, external declarations,
+unknown calls and unmet input/result requirements refuse.
+
+The finite-input policy qualifier composes this route without changing its context/input
+domain or replacing the independent source/reference obligations. Real reused-byte W8A8
+rewrites inside callees now qualify conditionally. This supersedes the earlier blanket
+internal-call refusal only for the new checked call path. Calls/source Q inside structured
+regions, generated dynamic policy quantizers, the concrete floating-model instance and the
+retained TinyLlama source-domain gap remain unresolved. The recipe, numerical laws and input
+domain still need independent review before frozen promotion or a full verified-pass claim.
+
+## Separate draft laws for generated dynamic quantization
+
+`Rules/W8A8DynamicLaws.lean` keeps the earlier source-quantizer domain unchanged and declares
+three additional primitive premises for a separate dynamic route: f32 absolute value preserves
+finiteness, division of a finite f32 by the literal 127 stays finite, and the f32 reciprocal of
+a positive-normal scale stays finite. These premises extend the seven source laws explicitly;
+they are neither global axioms nor an established IEEE/host-model instance.
+
+Under those premises, Lean proves that an abs/max step preserves finiteness, the implemented
+guarded scale is positive-normal, the generated reciprocal is finite, and the ordered
+multiply/nearest-even/min/max/signed-byte conversion produces an initialized byte. The scale
+proof includes the user-approved zero-row floor rule. It requires no floating reassociation.
+The model-domain witness in `Tests/W8A8DynamicLaws.lean` proves joint satisfiability using a
+synthetic model only. Connecting these numerical facts to the actual generated SSA producers
+and qualifying complete dynamic-policy rewrites remain engineering work; these lemmas alone
+do not enable full-pass qualification or public receipts.
+
+## Conditional numerical facts through structured regions
+
+The direct finite-input and checked-call routes now inspect generic/fill bodies recursively
+under the same context/call premises as their enclosing function. `DefinedElementwise` and
+`DefinedContextLoops` prove preservation of elementwise facts through bounded reads, writes,
+ordered reductions and tensor canonicalization. A complete identity overwrite derives its
+postcondition from the actual initialized body result; its old destination is explicitly
+uninitialized and carries no invented numerical information. Fill uses its actual scalar body.
+
+`DefinedContextGeneric` checks reduction invariants with a proved weakening relation.
+`FiniteStructured` preserves finite data and conservatively widens positive-normal reduction
+initializers to finite. Actual source quantizers and closed internal-call contracts are now
+available inside nested regions, including their captured bindings. Neither type correctness
+nor initialized ordinary arithmetic can supply missing finiteness or a normal-scale fact.
+
+This closes the earlier structured-region refusal for admitted bodies without changing the
+existing finite-input/model-law domain or proving any upstream optimization pass. Generated
+dynamic-policy SSA facts, a concrete floating-model law instance, valid source input ranges,
+independent review and public receipt/pipeline integration remain separate obligations.
+
+## Initialized dynamic functions and policy qualification
+
+The separate dynamic route now connects the preceding numerical lemmas to actual emitted
+regions, current captured literals, tensor geometry and complete function execution.
+`FloatFacts` adds exact f32 literal evidence alongside finite/normal classes. Projection to
+the earlier class model and embedding back both have soundness proofs; delegated rules cannot
+invent literal facts. Capture lookup uses the current SSA binding and only the small region's
+operand ids, so an overwritten earlier constant cannot justify a denominator or clamp bound.
+
+`DefinedRegions` lets a proved whole-region contract complement ordinary operation inference.
+`PolicyW8A8DynamicBodies` and `PolicyW8A8DynamicCaptured` prove numerical postconditions for the
+actual abs/max, scale, reciprocal and byte-conversion bodies. The existing structured executor
+proofs carry those facts through checked loops. Source-extension/frozen body agreement is
+proved before a template proof is reused. `PolicyW8A8DynamicDefined.check_sound` establishes
+initialized function execution; `PolicyW8A8DynamicCalled` closes internal calls using the same
+generic staged construction as the earlier source-only path, at the actual module fuel.
+
+`PolicyW8A8DynamicQualified.check_sound` composes independently checked source/reference
+initialization with the complete source-derived policy match, yielding strict policy
+refinement and initialized actual output. It covers actual canonical matrix rewrites, mixed
+signed-byte/f32 operands, captured per-tensor reuse with one dynamic operand, and rewrites
+inside checked internal callees. Every selected change must still match the declared policy.
+Safe initialization alone does not justify changed wiring, reduction groups or scale order;
+the recorded square-as-product source discrepancy remains refused.
+
+The input domain is still typed, initialized arguments with finite f32 scalar/tensor elements.
+The **new theorem's context** is explicitly stronger: `W8A8ByteModel.extend base`, with proofs
+of the seven source laws and the three separate dynamic laws. Earlier source-only theorem
+domains are unchanged and still do not qualify arbitrary dynamic quantization. Neither the
+synthetic witness nor the new whole-function proofs establishes those laws for a concrete
+IEEE/host model. The retained TinyLlama source/reference pair still refuses this route because
+source input ranges and later numerical obligations remain unproved. Independent review,
+semantic/domain admission and public receipt/pipeline promotion remain required; this section
+does not approve a frozen specification or issue a full verified-pass claim.
+
+## Conditional numerical evidence in pipeline reports
+
+The existing draft W8A8 commands now report the stronger initialized result separately under
+`conditional_numerical`. Its theorem, index width, selected scope, finite-input domain, seven
+source laws and three additional dynamic laws remain explicit. The Python adapter checks this
+protocol and records the actual theorem's axiom audit in the report bound to the exact program
+exports and checker binary. Earlier draft receipt identities and domains retain their meaning;
+the new diagnostic cannot approve the numerical premises or produce a verified whole-pass receipt.
+
+`PolicyW8A8DynamicChain.check_sound` carries the initialized policy result through each actual
+downstream boundary on the same interpretation and domain. SSA equivalence is proved directly
+under the additive source semantics. Existing frozen-semantics suffix rules require both complete
+modules to pass `W8A8SourceFree.moduleCheck` before reuse. Thus an unchanged source Q/DQ prefix
+does not silently justify an unrelated frozen-semantics proof. A typed suffix needing that bridge
+is refused until it is proved, while source-semantic SSA renaming remains available.
+
+This completes conditional diagnostic integration, not independent specification review,
+concrete numerical-model admission, complete retained-model qualification or frozen receipt
+promotion. The full TinyLlama input bounds and later numerical obligations remain open.

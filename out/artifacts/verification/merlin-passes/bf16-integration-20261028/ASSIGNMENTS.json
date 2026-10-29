@@ -1,0 +1,54 @@
+{
+  "branch": "feat/bf16-f32acc-verification",
+  "base": "65e44afbf4dbb6c7270e8936c4ef76b579a78492",
+  "worktree": "/home/jeremy/Projects/merlin-bf16-verification",
+  "primary_checkout": "/home/jeremy/Projects/merlin",
+  "primary_is_read_only": true,
+  "workers": {
+    "Q-INTEGRATION": "01a16018-1974-7b53-ade5-e42d3d020739",
+    "F-QUALIFICATION": "01a15b82-8d58-75f1-9281-f529977e0bad",
+    "W-REVIEW": "01a141ba-7640-7d21-bb41-b65635302b71"
+  },
+  "status": "ALL_THREE_ACTIVE_WORKTREE_CONFIRMED",
+  "new_lean_native_permission": false,
+  "human_policy_reviewed": false,
+  "coordinator": "01a1650a-b70b-7cb3-adb6-6f2f50bff524",
+  "start_results": [
+    {
+      "role": "Q-INTEGRATION",
+      "thread": "01a16018-1974-7b53-ade5-e42d3d020739",
+      "status": "START_ACCEPTED"
+    },
+    {
+      "role": "F-QUALIFICATION",
+      "thread": "01a15b82-8d58-75f1-9281-f529977e0bad",
+      "status": "START_ACCEPTED"
+    },
+    {
+      "role": "W-REVIEW",
+      "thread": "01a141ba-7640-7d21-bb41-b65635302b71",
+      "status": "START_ACCEPTED"
+    }
+  ],
+  "latest_scope": "MACC_ONLY.md",
+  "custom_environment_approval_queue": "SUPERSEDED_BY_USER",
+  "ordinary_repository_builds_allowed": true,
+  "communication": "Large bounded batches; no routine acknowledgments or status pings. Report actionable blocker, material correctness issue, or completed batch only. Use current scoped docs; avoid rereading historical context or repeating unchanged tests.",
+  "models": {
+    "Q-INTEGRATION": {
+      "model": "gpt-6.1-sol",
+      "effort": "xhigh",
+      "state": "active"
+    },
+    "F-QUALIFICATION": {
+      "model": "gpt-6.1-sol",
+      "effort": "xhigh",
+      "state": "active"
+    },
+    "W-REVIEW": {
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "state": "active"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "command": [
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lake",
+    "env",
+    "/home/jeremy/Projects/merlin-bf16-verification/out/build/lean/build/bin/merlin-lean-audit",
+    "--axioms",
+    "MerlinVerify.Check.Bf16F32AccChain.check_sound",
+    "MerlinVerify.Check.Bf16F32AccChain"
+  ],
+  "timeout_seconds": 300,
+  "cwd": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean"
+}

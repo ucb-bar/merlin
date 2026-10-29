@@ -1,0 +1,425 @@
+{
+  "as_of_utc": "2026-10-19T04:11:54.363297+00:00",
+  "claim_scope": "Targeted translation validation relative to the locked Lean semantics. Cohorts overlap; counts must not be summed as unique whole-pass coverage.",
+  "xml_suite_counts": {
+    "binding13": {
+      "tests": 484,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "native13": {
+      "tests": 198,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "composition_binding14": {
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "composition_native14": {
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "audits": {
+    "cohort13": {
+      "theorems": 6573,
+      "violations": 0
+    },
+    "cohort14": {
+      "theorems": 6788,
+      "violations": 0
+    }
+  },
+  "lock14": {
+    "prior_entries": 260,
+    "prior_entries_changed": [],
+    "entries": 284,
+    "statement_pins": 257
+  },
+  "summaries": {
+    "published": {
+      "status": "published_targeted_qualification_complete",
+      "published_head": "2ceacd3096258a3e09deb760d80f351a6c61447d",
+      "base": "3b63d4be94f4b5905366aa60508e461396fa6a6d",
+      "commits": 46,
+      "combined_qualification": "out/build/lean-shared-passes/phase11-worktree/out/build/integrated-ssa-fusion/review.json",
+      "identity_qualification": "out/build/lean-shared-passes/phase12-worktree/out/build/identity-return-integration/review.json",
+      "history_review": "out/build/lean-shared-passes/phase12-worktree/out/build/identity-return-integration/review/manifest.json",
+      "cases": {
+        "combined": 1284,
+        "identity": 400,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "audits": [
+        {
+          "theorems": 6294,
+          "violations": 0
+        },
+        {
+          "theorems": 6368,
+          "violations": 0
+        }
+      ],
+      "frozen_files_unchanged": [
+        2873,
+        2882
+      ],
+      "all_201_previous_published_lock_entries_unchanged": true,
+      "new_lock_entries": 244,
+      "quality": [
+        "source and independent reviews",
+        "Ruffcheck/format24changedPythonfiles",
+        "structure",
+        "docs",
+        "artifact-layout",
+        "range diffcheck"
+      ],
+      "limits": [
+        "targeted suites, not entire branch binding/native denominator",
+        "PI model/build denominator pending",
+        "whole-model and OOT consumers not automatically gated",
+        "captured fusion and repeated factors remain private nextcohort"
+      ]
+    },
+    "binding13": {
+      "returncode": 0,
+      "seconds": 820.5744159221649,
+      "changed_frozen_files": [],
+      "head": "2b311f28ffeaef92cf63d840d79a8ba05d9498b2"
+    },
+    "native13": {
+      "returncode": 0,
+      "seconds": 986.2507135868073,
+      "changed_frozen_files": [],
+      "head": "2b311f28ffeaef92cf63d840d79a8ba05d9498b2"
+    },
+    "interrupted13": {
+      "status": "interrupted_at_user_request_unqualified",
+      "exit_code": 130,
+      "head": "2b311f28ffeaef92cf63d840d79a8ba05d9498b2",
+      "changed_frozen_files": [],
+      "log": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/qualification/regression.log",
+      "note": "Remaining regression run stopped at user request; incomplete run is not counted as passed."
+    },
+    "composition_binding14": {
+      "returncode": 0,
+      "seconds": 71.32270908355713,
+      "changed_frozen_files": [],
+      "head": "a7590d2557f40dd515b92ed7542541e0cbc3f208"
+    },
+    "composition_native14": {
+      "returncode": 0,
+      "seconds": 98.51252865791321,
+      "changed_frozen_files": [],
+      "head": "a7590d2557f40dd515b92ed7542541e0cbc3f208"
+    },
+    "consumer_probes14": {
+      "head": "a7590d2557f40dd515b92ed7542541e0cbc3f208",
+      "checker_sha256": "2331cd4a09ffb5e7e7b65c902195099a9ef3edb5e76d32facf62389ac7f845aa",
+      "cases": [
+        {
+          "consumer_reverse": false,
+          "index_bits": 32,
+          "stage": "out/build/lean-shared-passes/phase14-worktree/out/build/slice-addsub-selected-integration/consumer-actual/consumer-False-32/stage",
+          "status": "verified_with_defined_chain"
+        },
+        {
+          "consumer_reverse": true,
+          "index_bits": 32,
+          "stage": "out/build/lean-shared-passes/phase14-worktree/out/build/slice-addsub-selected-integration/consumer-actual/consumer-True-32/stage",
+          "status": "verified_with_defined_chain"
+        },
+        {
+          "consumer_reverse": false,
+          "index_bits": 64,
+          "stage": "out/build/lean-shared-passes/phase14-worktree/out/build/slice-addsub-selected-integration/consumer-actual/consumer-False-64/stage",
+          "status": "verified_with_defined_chain"
+        },
+        {
+          "consumer_reverse": true,
+          "index_bits": 64,
+          "stage": "out/build/lean-shared-passes/phase14-worktree/out/build/slice-addsub-selected-integration/consumer-actual/consumer-True-64/stage",
+          "status": "verified_with_defined_chain"
+        }
+      ]
+    },
+    "integer_combine": {
+      "scope": "two-node, actual-current initialized fixed-integer constants, poison-exact root",
+      "new_modules": {
+        "Rules/IntegerConstantCombine.lean": "d305b9e7f52632e1a9339f80fbc00f8c0a64b380185e5087ba3d3de18bb41600",
+        "Check/IntegerConstantCombine.lean": "8cd7bd6591490182ee6985b26a4ca0e54a50f139c8d9a7bad599834c1d735b5c",
+        "Tests/IntegerConstantCombine.lean": "0208e69ebdfd37d5ef449cb75193ee8c72ade1723f0793903e948b65cc02219f"
+      },
+      "standard_build": {
+        "pid": 9,
+        "elapsed_seconds": 6.006217940999704,
+        "returncode": 0
+      },
+      "raw_guards": 31,
+      "exhaustive_i8_source_target_pairs": 4096,
+      "actual_mlir_probes": 49,
+      "draft_binding_cases": 72,
+      "draft_native_cases": 48,
+      "registered_boundary_qualification": "not executed; requires coordinator SharedNormalize registration",
+      "native_qualification": "not executed",
+      "explicit_limits": [
+        "fixed integers only; no index or float arithmetic",
+        "both masks require initialized closed local current constant facts",
+        "two-node origin relationship; no general transitive constant folding",
+        "generic escaping-first result requires unsupported constant motion; remains abstracted",
+        "128-bit ABI binding-only; native ABI at most64 bits"
+      ],
+      "public_api": "Check.IntegerConstantCombine.base replaces IntegerAddSub.base in existing arithmetic stage before Hoist",
+      "proposed_pins": [
+        "Rules.IntegerConstantCombine.combine",
+        "Check.IntegerConstantCombine.normalize_sound"
+      ],
+      "setup_failures_retained_note": "Initial raw-test abbreviations needed explicit argument binders; one fresh guard needed an explicit Fact rather than missing Inhabited. First build and an audit launched before successful build failed at that missing test object; corrected test compiles with unchanged guards/semantics. Final successful build result is authoritative.",
+      "all_module_audit": {
+        "pid": 9,
+        "elapsed_seconds": 186.11904286299978,
+        "returncode": 0,
+        "theorems_audited": 6248,
+        "violations": []
+      }
+    },
+    "slice": {
+      "head": "adebd7b881c482a58974dea3768eaac865e35987",
+      "commits": [
+        "bb2a11d6437eff7035037e077b02ccf410092504",
+        "ddfdd5611a7c01129de0eb4284464a8f1b28765c",
+        "9a9835f6aff5cdb29fdc2631a6c2eb6caca0c6d8",
+        "5f4a1a90e94e0df0f993c27fdc6ec76fb43c019d",
+        "adebd7b881c482a58974dea3768eaac865e35987"
+      ],
+      "results": {
+        "binding-replay": [
+          {
+            "tests": "62",
+            "failures": "0",
+            "errors": "0",
+            "skipped": "0",
+            "time": "419.604"
+          }
+        ],
+        "native": [
+          {
+            "tests": "24",
+            "failures": "0",
+            "errors": "0",
+            "skipped": "0",
+            "time": "353.770"
+          }
+        ]
+      },
+      "frozen_files": 366,
+      "changed": [],
+      "standard_build_jobs": 1315,
+      "full_guard": {
+        "theorems": 5811,
+        "violations": 0,
+        "lock": "ok"
+      },
+      "raw_guards": 55,
+      "scoped_audit_theorems": 3571,
+      "scoped_audit_violations": 0,
+      "statement_pins": "statements.json",
+      "registration_patch": "private-registration.patch",
+      "new_binding_cases": 32,
+      "prior_cast_binding_regressions": 30,
+      "new_native_cases": 24,
+      "unqualified_original_run": {
+        "passed": 60,
+        "failed": 2,
+        "xml": "binding.xml",
+        "reason": "Invalid fixture assumption: actual unit-stride2 source retained slice; two tests failed before checker invocation. Corrected fixture construction only, no proof/checker/oracle or expected abstraction change."
+      },
+      "limits": [
+        "Full static non-reducing identity slices of actual local splat-produced tensors only. No arbitrary raw tensor alias or annotation-only canonicality.",
+        "Zero-extent slices are modeled mathematically but rejected by pinned MLIR verifier; raw zero controls model-only, actual invalid-input refusal retained.",
+        "No positive-rank unknown/dynamic indices/strides or dimensional reduction.",
+        "Native nested destinations are fresh per iteration; S4 remains unqualified."
+      ],
+      "native_binding_ci_exclusion": "test_lean_canonical_tensor_slice_native.py",
+      "integration": "Replace cast-only local base with CanonicalTensorSlice.base in existing recursive walker; add DefinedFullSlice.book and DefinedTensorCast.book only if absent."
+    },
+    "consumer": {
+      "status": "Qualified private coherent source/checker assembly; central registration/pins/replay pending",
+      "commits": {
+        "selector_kernel": "b1bc8e40b1d3fde81c77d9e9e4c5b5890b3a50f4",
+        "selected_checker": "68b118ab5f33513f966f61b896c8f4ff805077af",
+        "legacy_proof_delegation": "250eee9c5892026bccf93322b7287408e8f35847",
+        "qualification_tests": "9f104bcc74269461c782203b1055f2680ebe575b"
+      },
+      "full_guard": "6084 theorems/0 violations, lockOK; existing private pins unchanged",
+      "checker_sha256": "05b52cb2da4227cb212b81bffc05d9b9f30103d8ddfa0c9b19454e2ed57cc679",
+      "retained_checker": "merlin-lean.frozen",
+      "all_230_frozen_source_checker_test_hashes_unchanged_through_receipts": true,
+      "binding": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "48",
+        "time": "280.862",
+        "timestamp": "2026-10-18T20:54:14.916053-07:00",
+        "hostname": "arch"
+      },
+      "native_and_gate": {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "13",
+        "time": "235.577",
+        "timestamp": "2026-10-18T21:04:17.161793-07:00",
+        "hostname": "arch"
+      },
+      "binding_detail": "18 new consumer cases plus15 captured-producer and15 repeated-input regressions;2 obsolete gap assertions deselected, unchanged old files retained for coordinator strengthening after central acceptance",
+      "native_detail": "10 actual-stage source support/definedness/strict-chain + independent original/fused native positives;1 independent corrupted consumer-capture witness;1 exact retained consumer fullgate positive with full strict chain,9 boundaries,ordinary LLVM byte parity,original/held native;1 real multi-input fusion gap failing before ack/native suffix with independent original/held samples",
+      "raw_guards": {
+        "selector": 23,
+        "symbolic_selector_examples": 2,
+        "matcher_full_outcomes": 30
+      },
+      "scoped_audit": {
+        "theorems": 3412,
+        "violations": 0
+      },
+      "statements": "statements.json (9 exported elaborated statements)",
+      "axioms": "axioms.json: attempt_sound uses only propext/Classical.choice/Quot.sound",
+      "old_compatibility": "legacy-compatibility.json and legacy-statements-{before,after}.json: all11 legacy elaborated statements identical; old repeated matcher/syntax and captured guard/policy chunks byte-identical; repeated record wrapper rfl to original constructor",
+      "source_review": "Coordinator independently read-reviewed selector/body/checker and proof-only delegation; no blocker",
+      "integration": "registration.patch temporary PRIVATE selected normalizer prefix before captured/repeated/shared aliases; final region ordering once. No shared registration or pin committed.",
+      "actual_pass_evidence": "probes/results.json: all positive cases and multi-input gap real2-generics-to1;all4 target mutants independently MLIR-verified and refused",
+      "limits": [
+        "One input tensor and one output per source generic;static equal unencoded tensor shape,all-identity maps,all-parallel,full overwrite,positive fixed integer width",
+        "Each primitive operands repeat its input or combine that input with one actual typed captured scalar;both orders,same/different capture IDs supported with actual lookup/freshness/shadowing proof",
+        "Five unflagged integer primitive kinds formally covered; actual native matrix add/mul,widths8/13/32/64;65 binding-only",
+        "Poison,rank-zero,zero extents,recursive escaping producer captures and continuation bindings remain explicit;no float algebra,numeric annotations or assumed capture facts",
+        "Additional tensor inputs/multiple consumer positions/reductions/float/index/dynamic/encoded/memref/calls/nested primitive bodies remain outside family",
+        "Old gap evidence retained; independent native matching alone does not certify the refused multi-input case",
+        "Native fixtures use independent initialized destinations;S4 unsafe captured-buffer pattern excluded",
+        "Native LLVM suffix remains trusted;not blanket pass/compiler verification or paper/model-bundle coverage",
+        "No linear checker runtime claim;freshness and tail-alpha scans may be quadratic",
+        "Private new claims provisional until coordinator central audit/pins/replay"
+      ],
+      "new_native_ci_exclusion": "merlin/tests/ir/test_lean_parallel_fusion_consumer_differential.py"
+    },
+    "interpreter_issue": {
+      "status": "retained_environment_issue_root_cause_unknown",
+      "observation": "One separate native pytest --collect-only process segfaulted during Python3.14 garbage collection; no fixture executed in that process. Subsequent identical read-only native collection completed198 and regression collection448. Binding collection484 completed before the crash.",
+      "qualification": "Collection crash retained unqualified. Active fixture runs are independently retained and must finish cleanly against immutable sources/checker.",
+      "source": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/qualification",
+      "compiler_checker_semantics_changed": false,
+      "crash_log_sha256": "6e4327402cfaeaad499c08c5b54cd142640ed2a40c114fca3e507c9c9b39e4d3"
+    }
+  },
+  "source_evidence": {
+    "published": {
+      "path": "out/artifacts/verification/shared-passes/published-2ceacd309/review.json",
+      "sha256": "bc51acd8aafd1c915970cd4b3a3067b35700f72f506ca17a85bd4d5b39f149d1",
+      "size_bytes": 1486
+    },
+    "binding13": {
+      "path": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/qualification/binding-status.json",
+      "sha256": "14d5472cc99592b06fcaa83368bee48259a2be64c684a8a2663b0c263aa09382",
+      "size_bytes": 138
+    },
+    "native13": {
+      "path": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/qualification/native-status.json",
+      "sha256": "de0d52475cac888ed0579390f852b9a5347c81b23b98619dafb2b9d9e093fe47",
+      "size_bytes": 138
+    },
+    "interrupted13": {
+      "path": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/qualification/regression-interrupted-status.json",
+      "sha256": "d0a6bfe2a6e703c9dd1bd1efa2b463e0145a85cadc17eaafa1d2c2e892d4414c",
+      "size_bytes": 430
+    },
+    "history13": {
+      "path": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/qualification/review/manifest.json",
+      "sha256": "84e37ee251e67583c82ae7e761c04470cebc8a74ae04feb4cc2ecc6a8774d5b1",
+      "size_bytes": 7730
+    },
+    "frozen13": {
+      "path": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/qualification/frozen.json",
+      "sha256": "3001502ab025db030b048c1572a51f6d16b2b92a62e076de554518736cd7c4a5",
+      "size_bytes": 1367715
+    },
+    "guard13": {
+      "path": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/full-guard.log",
+      "sha256": "35141ea593620de59442c5eeffd407fc93545ee4c869c5537c9a2115adbcada9",
+      "size_bytes": 50
+    },
+    "guard14": {
+      "path": "out/build/lean-shared-passes/phase14-worktree/out/build/slice-addsub-selected-integration/full-guard.log",
+      "sha256": "8d750d58ad076b6c1ab29fab643c02e845b085940427a2da884a46a480e329e6",
+      "size_bytes": 50
+    },
+    "composition_binding14": {
+      "path": "out/build/lean-shared-passes/phase14-worktree/out/build/slice-addsub-selected-integration/composition-preflight/binding-status.json",
+      "sha256": "cc8fce2f94da0aa88c7417faa712add34f7fa50cac193c9f919ebde52b6091d9",
+      "size_bytes": 138
+    },
+    "composition_native14": {
+      "path": "out/build/lean-shared-passes/phase14-worktree/out/build/slice-addsub-selected-integration/composition-preflight/native-status.json",
+      "sha256": "65ba04c284b29c6b28f2e2c94560d44afa03424b61b63ad847096727589fc59a",
+      "size_bytes": 138
+    },
+    "consumer_probes14": {
+      "path": "out/build/lean-shared-passes/phase14-worktree/out/build/slice-addsub-selected-integration/consumer-actual/review.json",
+      "sha256": "90269bf22e31cc9dfd8818b35dd094ff7b2cfb3b11fbfc5f0a1da9a6df7e0888",
+      "size_bytes": 1330
+    },
+    "integer_combine": {
+      "path": "out/build/agent-workspaces/lean-rules-20261017T231743Z/integer/out/build/integer-constant-combine/review.json",
+      "sha256": "c28ec23244c1cdd5326fa253e23d57cfc7fbf3b9eea7ea4be871b3e4ed0f0420",
+      "size_bytes": 2008
+    },
+    "slice": {
+      "path": "out/build/agent-workspaces/lean-rules-20261017T231743Z/reshape/out/build/full-slice/delivery.json",
+      "sha256": "611b6ca1ce200a94be6e3934296ec6a8e3533f32e23a2e2d1ea067dad575afd7",
+      "size_bytes": 2167
+    },
+    "consumer": {
+      "path": "out/build/agent-workspaces/lean-rules-20261017T231743Z/splat/out/build/parallel-fusion-consumer/review.json",
+      "sha256": "e1f59d6604fd2e8b0accf55bc1162468c34c35e12f701e760b79ac1d302b08e3",
+      "size_bytes": 4328
+    },
+    "interpreter_issue": {
+      "path": "out/artifacts/verification/shared-passes/discrepancies/python-collection-segfault/review.json",
+      "sha256": "c96c0705c215c3bb59a05c5ae8939268a78b33e366e2a7f05f761fd42ae13aba",
+      "size_bytes": 818
+    },
+    "binding13_xml": {
+      "path": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/qualification/binding.xml",
+      "sha256": "7a51a69a545fa9b309a2c43a9ae118388bce405954dd1e749d5513e1977968d5",
+      "size_bytes": 76666
+    },
+    "native13_xml": {
+      "path": "out/build/lean-shared-passes/phase13-worktree/out/build/captured-factor-canonical-integration/qualification/native.xml",
+      "sha256": "ee95444a60ea1c3346429a38e73c8b633f38af60e9e9cbf2db42ae097ef00efb",
+      "size_bytes": 34725
+    },
+    "composition_binding14_xml": {
+      "path": "out/build/lean-shared-passes/phase14-worktree/out/build/slice-addsub-selected-integration/composition-preflight/binding.xml",
+      "sha256": "3971bd39566f4f0f459ad741f3dafd1ba9cc52de2977bf6c780534b673bcf819",
+      "size_bytes": 3486
+    },
+    "composition_native14_xml": {
+      "path": "out/build/lean-shared-passes/phase14-worktree/out/build/slice-addsub-selected-integration/composition-preflight/native.xml",
+      "sha256": "fb22f67fcbbb7e4b9df0c0657e1318f1c957d4f424146681a3ed3bbdf20e9486",
+      "size_bytes": 1999
+    }
+  },
+  "retention_note": "Source evidence and private implementations remain local. These hashes are attribution, not committed raw evidence or executable qualification. Final cohort14 preflight predates final Python fixture/doc changes; full integrated qualification remains required."
+}

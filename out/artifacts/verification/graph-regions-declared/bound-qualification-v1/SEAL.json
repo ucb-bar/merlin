@@ -1,0 +1,90 @@
+{
+  "files": {
+    "PROFILE.json": {
+      "bytes": 3856,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/PROFILE.json",
+      "sha256": "854730b8988cecc86b0a891c24b4fb301c6742e5e97672c3810cfbffab5baecb"
+    },
+    "ROSTER.json": {
+      "bytes": 2208,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/ROSTER.json",
+      "sha256": "48e7373d08d1ac23aaf31736bacc0df99d710984d1aa6ef9acecb7021f71e951"
+    },
+    "STATUS.json": {
+      "bytes": 316,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/STATUS.json",
+      "sha256": "5d5dab84e934f7f4eed20347338971e0ffebc320c9fbf48a7ad32d28d49b2584"
+    },
+    "collection.json": {
+      "bytes": 228,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/collection.json",
+      "sha256": "e19e98cd292e2aae9dc0dda804264c03e570eeeec5740ac7028fa1fd3aa875a7"
+    },
+    "collection.stderr": {
+      "bytes": 0,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/collection.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "collection.stdout": {
+      "bytes": 2134,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/collection.stdout",
+      "sha256": "79bd9f08c831efcc879c4235af5c283c46da379ff137cf7ca175c2aaa09a31bb"
+    },
+    "originals.json": {
+      "bytes": 224,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/originals.json",
+      "sha256": "30a2cf66a66ae1f9973599c4ff24c84f20c7b55919da46ce51eef6c92699424f"
+    },
+    "originals.stderr": {
+      "bytes": 0,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/originals.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "originals.stdout": {
+      "bytes": 14456,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/originals.stdout",
+      "sha256": "a675ca82516020f00441f2d2632705c15613ca8ce319df0bba26691dff526143"
+    },
+    "owned-additive-partial.patch": {
+      "bytes": 42817,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/owned-additive-partial.patch",
+      "sha256": "e65bbfc7760e89c5affc79a1001877c556eaefe5a0b4b719e3a02f2ecc3dad15"
+    },
+    "source-snapshot/merlin/tests/infra/test_lean_graph_regions_declared_bound.py": {
+      "bytes": 8579,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/source-snapshot/merlin/tests/infra/test_lean_graph_regions_declared_bound.py",
+      "sha256": "84d9d52e0a487869aca425d96d2269a1c45c751abe99214e05571f934236911d"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBindings.lean": {
+      "bytes": 3166,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredBindings.lean",
+      "sha256": "9a7ec4e0d2c15bd74d421422cce72f491720d4d8bc0db250117d4941ed82b952"
+    },
+    "source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEffects.lean": {
+      "bytes": 3350,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/source-snapshot/src/merlin/verify/lean/Merlin/GraphRegionsDeclaredEffects.lean",
+      "sha256": "682b9dc0d95499fe68e30138edb11494acac0818fb73f26ee7c676e18d6ff3bb"
+    },
+    "source-snapshot/src/merlin/verify/lean_graph_regions_declared_bound.py": {
+      "bytes": 18041,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_bound.py",
+      "sha256": "8a130251c5961b7e31c54b76f41283b7409df8d194a7a0fd26789b79d8c1cbe0"
+    },
+    "source-snapshot/src/merlin/verify/lean_graph_regions_declared_bound_qualify.py": {
+      "bytes": 7434,
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/bound-qualification-v1/source-snapshot/src/merlin/verify/lean_graph_regions_declared_bound_qualify.py",
+      "sha256": "803952b9dea1e0e3fd6a27b3a58f3bb56c023806071699be07f5089774d27784"
+    }
+  },
+  "retention_policy": "all",
+  "status": {
+    "engineering_qualified": false,
+    "failure": "ValueError('new original qualification failed; first failure retained')",
+    "full_model_verified": false,
+    "independently_reviewed": false,
+    "native_execution_run": false,
+    "numerical_execution_run": false,
+    "phase": "originals",
+    "phase_failed": "originals"
+  }
+}

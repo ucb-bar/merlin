@@ -1,0 +1,137 @@
+{
+  "state": "UNCOMPILED",
+  "native": "UNQUALIFIED",
+  "model_approved": false,
+  "source_success_assumed": false,
+  "finite_control": "range(ceil((upper-lower)/positive-stride)), empty otherwise",
+  "input": [
+    3,
+    5
+  ],
+  "success_proposal": {
+    "values": [
+      195
+    ],
+    "world": 11
+  },
+  "second_input": [
+    4,
+    5
+  ],
+  "second_proposal": {
+    "values": [
+      247
+    ],
+    "world": 11
+  },
+  "failure_proposal": {
+    "external_error": 17,
+    "world": 8
+  },
+  "observer": "every external unary i8 call echoes its operand or fails; world increments once per call",
+  "initialization": "candidate existing Scalar initialized theorem; not poison freedom or numerical fidelity",
+  "additional_sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+      "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+      "size": 4850
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+      "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+      "size": 7321
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "size": 4654
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "size": 8229
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "size": 11782
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "size": 6170
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "size": 9963
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "size": 6614
+    }
+  ],
+  "roots": [
+    "Merlin.GraphState.Scalar.check_sound",
+    "Merlin.GraphState.Scalar.check_typed",
+    "Merlin.GraphState.Scalar.normalize_sound",
+    "Merlin.GraphGateChain.Boundary0.Scalar.F1.accepted",
+    "Merlin.GraphGateChain.Boundary0.Scalar.F1.actual",
+    "Merlin.GraphGateChain.Boundary0.Scalar.F1.typed",
+    "Merlin.GraphGateChain.Boundary0.Scalar.F1.initialized",
+    "Merlin.GraphGateChain.Boundary0.Scalar.F1.operands_initialized",
+    "Merlin.GraphGateChain.Boundary0.Scalar.F2.accepted",
+    "Merlin.GraphGateChain.Boundary0.Scalar.F2.actual",
+    "Merlin.GraphGateChain.Boundary0.Scalar.F2.typed",
+    "Merlin.GraphGateChain.Boundary0.Scalar.F2.initialized",
+    "Merlin.GraphGateChain.Boundary0.Scalar.F2.operands_initialized",
+    "Merlin.GraphState.GateEntries.entries_cons",
+    "Merlin.GraphState.GateEntries.entries_nil",
+    "Merlin.GraphGateChain.Boundary0.Entries.complete",
+    "merlin_chain_boundary0",
+    "Merlin.GraphGateChain.Boundary1.Scalar.F1.accepted",
+    "Merlin.GraphGateChain.Boundary1.Scalar.F1.actual",
+    "Merlin.GraphGateChain.Boundary1.Scalar.F1.typed",
+    "Merlin.GraphGateChain.Boundary1.Scalar.F1.initialized",
+    "Merlin.GraphGateChain.Boundary1.Scalar.F1.operands_initialized",
+    "Merlin.GraphGateChain.Boundary1.Scalar.F2.accepted",
+    "Merlin.GraphGateChain.Boundary1.Scalar.F2.actual",
+    "Merlin.GraphGateChain.Boundary1.Scalar.F2.typed",
+    "Merlin.GraphGateChain.Boundary1.Scalar.F2.initialized",
+    "Merlin.GraphGateChain.Boundary1.Scalar.F2.operands_initialized",
+    "Merlin.GraphGateChain.Boundary1.Entries.complete",
+    "merlin_chain_boundary1",
+    "Merlin.GraphGateChain.Endpoint.Scalar.F1.accepted",
+    "Merlin.GraphGateChain.Endpoint.Scalar.F1.actual",
+    "Merlin.GraphGateChain.Endpoint.Scalar.F1.typed",
+    "Merlin.GraphGateChain.Endpoint.Scalar.F1.initialized",
+    "Merlin.GraphGateChain.Endpoint.Scalar.F1.operands_initialized",
+    "Merlin.GraphGateChain.Endpoint.Scalar.F2.accepted",
+    "Merlin.GraphGateChain.Endpoint.Scalar.F2.actual",
+    "Merlin.GraphGateChain.Endpoint.Scalar.F2.typed",
+    "Merlin.GraphGateChain.Endpoint.Scalar.F2.initialized",
+    "Merlin.GraphGateChain.Endpoint.Scalar.F2.operands_initialized",
+    "Merlin.GraphGateChain.Endpoint.Entries.complete",
+    "merlin_chain_endpoint",
+    "merlin_chain_registry_join",
+    "merlin_chain_endpoint_registry",
+    "merlin_chain_middle_join",
+    "merlin_chain_original_join",
+    "merlin_chain_final_join",
+    "merlin_chain_composed",
+    "merlin_chain_transform",
+    "Merlin.GraphGateChain.Witness.source_success",
+    "Merlin.GraphGateChain.Witness.final_success",
+    "Merlin.GraphGateChain.Witness.source_success_initialized",
+    "Merlin.GraphGateChain.Witness.final_success_initialized",
+    "Merlin.GraphGateChain.Witness.source_success_other",
+    "Merlin.GraphGateChain.Witness.final_success_other",
+    "Merlin.GraphGateChain.Witness.source_success_other_initialized",
+    "Merlin.GraphGateChain.Witness.final_success_other_initialized",
+    "Merlin.GraphGateChain.Witness.source_error",
+    "Merlin.GraphGateChain.Witness.final_error",
+    "Merlin.GraphGateChain.Witness.source_error_initialized",
+    "Merlin.GraphGateChain.Witness.final_error_initialized"
+  ]
+}

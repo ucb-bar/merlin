@@ -1,0 +1,38 @@
+{
+  "status": "ACTIVE_CAPTURE_RECEIPTS_AND_REPLAY",
+  "compiled_synthetic": {
+    "authoritative_valid_pairs": 38,
+    "raw_policy_matches": 17,
+    "lean_policy_refusals": 19,
+    "outside_domain_gate_refusals": 2
+  },
+  "smolvla_fresh_export_and_compiled_check": {
+    "expected_sites": 24,
+    "covered_sites": 24,
+    "complete_output_match": true,
+    "site_qualification_passed": true,
+    "whole_capture_qualification": false,
+    "policy_reviewed": false
+  },
+  "audit": {
+    "theorems_audited": 9749,
+    "violations": [],
+    "boundary_roots_std3": 15,
+    "segment_roots_std3": 2
+  },
+  "engineering": {
+    "own_handler_hook_tests": 56,
+    "structure": "pass",
+    "lean_lock_guard": "pass; --lock-only does not check pinned theorem statements",
+    "full_library_build": "failed PolicyW8A8Source code139; retained",
+    "checker_and_auditor_freshness": "passed ordinary lake --no-build"
+  },
+  "live_owned_jobs": [
+    {
+      "session": 72936,
+      "purpose": "fresh candidate receipts/replay; exact current checker/auditor"
+    }
+  ],
+  "human_policy_reviewed": false,
+  "full_shared_pipeline_verified": false
+}

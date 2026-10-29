@@ -1,0 +1,778 @@
+{
+  "id": "Q-schedule-successor-v1",
+  "successor_of": "Q-service-CSE",
+  "source_plan_identity": "029e99406077ff9c5455a14b1d4f019870d5162561ff22f63d0560cfa3c34552",
+  "status": "SOURCE_DAG_PREPARED_NOT_COMPILED",
+  "sources": {
+    "Merlin.GraphStateGateEntries": {
+      "source": {
+        "file": "payload/9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8.lean",
+        "sha256": "9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8",
+        "bytes": 3401
+      },
+      "provenance": [
+        {
+          "fixed_packet": "schedule-profile-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean",
+          "original_pin": {
+            "sha256": "9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8",
+            "bytes": 3401
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalar": {
+      "source": {
+        "file": "payload/d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02.lean",
+        "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+        "bytes": 4654
+      },
+      "provenance": [
+        {
+          "fixed_packet": "schedule-profile-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+          "original_pin": {
+            "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+            "bytes": 4654
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalarContract": {
+      "source": {
+        "file": "payload/c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9.lean",
+        "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+        "bytes": 8229
+      },
+      "provenance": [
+        {
+          "fixed_packet": "schedule-profile-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+          "original_pin": {
+            "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+            "bytes": 8229
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalarInitialized": {
+      "source": {
+        "file": "payload/265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a.lean",
+        "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+        "bytes": 11782
+      },
+      "provenance": [
+        {
+          "fixed_packet": "schedule-profile-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+          "original_pin": {
+            "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+            "bytes": 11782
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalarNormalize": {
+      "source": {
+        "file": "payload/a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114.lean",
+        "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+        "bytes": 6170
+      },
+      "provenance": [
+        {
+          "fixed_packet": "schedule-profile-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+          "original_pin": {
+            "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+            "bytes": 6170
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalarSound": {
+      "source": {
+        "file": "payload/14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d.lean",
+        "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+        "bytes": 9963
+      },
+      "provenance": [
+        {
+          "fixed_packet": "schedule-profile-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+          "original_pin": {
+            "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+            "bytes": 9963
+          }
+        }
+      ]
+    },
+    "Merlin.GraphStateScalarTyping": {
+      "source": {
+        "file": "payload/d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d.lean",
+        "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+        "bytes": 6614
+      },
+      "provenance": [
+        {
+          "fixed_packet": "schedule-profile-v1",
+          "snapshot": "source-snapshot/dependencies/primary/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+          "original_pin": {
+            "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+            "bytes": 6614
+          }
+        }
+      ]
+    }
+  },
+  "headers": {
+    "Merlin.GraphStateGateEntries": {
+      "imports": [
+        "Merlin.GraphStateScalar"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 636,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalar": {
+      "imports": [
+        "Merlin.GraphStateScalarSound",
+        "Merlin.GraphStateScalarTyping",
+        "Merlin.GraphStateScalarInitialized"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 332,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalarContract": {
+      "imports": [
+        "Init"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 323,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalarInitialized": {
+      "imports": [
+        "Merlin.GraphStateScalarSound",
+        "Merlin.GraphStateScalarTyping"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 310,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalarNormalize": {
+      "imports": [
+        "Merlin.GraphStateScalarContract"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 280,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalarSound": {
+      "imports": [
+        "Merlin.GraphStateScalarNormalize"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 195,
+      "decoder": "closed-literal-source-header-v1"
+    },
+    "Merlin.GraphStateScalarTyping": {
+      "imports": [
+        "Merlin.GraphStateScalarNormalize"
+      ],
+      "prelude": false,
+      "implicit_Init": true,
+      "body_start": 281,
+      "decoder": "closed-literal-source-header-v1"
+    }
+  },
+  "project_DAG": {
+    "Merlin.GraphStateGateEntries": [
+      "Merlin.GraphStateScalar"
+    ],
+    "Merlin.GraphStateScalar": [
+      "Merlin.GraphStateScalarInitialized",
+      "Merlin.GraphStateScalarSound",
+      "Merlin.GraphStateScalarTyping"
+    ],
+    "Merlin.GraphStateScalarContract": [],
+    "Merlin.GraphStateScalarInitialized": [
+      "Merlin.GraphStateScalarSound",
+      "Merlin.GraphStateScalarTyping"
+    ],
+    "Merlin.GraphStateScalarNormalize": [
+      "Merlin.GraphStateScalarContract"
+    ],
+    "Merlin.GraphStateScalarSound": [
+      "Merlin.GraphStateScalarNormalize"
+    ],
+    "Merlin.GraphStateScalarTyping": [
+      "Merlin.GraphStateScalarNormalize"
+    ]
+  },
+  "external_module_names_only": {
+    "Merlin.GraphStateGateEntries": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalar": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalarContract": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalarInitialized": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalarNormalize": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalarSound": [
+      "Init"
+    ],
+    "Merlin.GraphStateScalarTyping": [
+      "Init"
+    ]
+  },
+  "support_library_build_order": [
+    "Merlin.GraphStateScalarContract",
+    "Merlin.GraphStateScalarNormalize",
+    "Merlin.GraphStateScalarSound",
+    "Merlin.GraphStateScalarTyping",
+    "Merlin.GraphStateScalarInitialized",
+    "Merlin.GraphStateScalar",
+    "Merlin.GraphStateGateEntries"
+  ],
+  "support_library_output_request": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/library",
+  "cases": [
+    {
+      "id": "cross_observer_keep_effect_order",
+      "module": "Query",
+      "query": {
+        "file": "payload/31781ae345d4acf4fcbf7b98f6f56ae5ad5828adeb5f64645fbf9e679f98e31e.lean",
+        "sha256": "31781ae345d4acf4fcbf7b98f6f56ae5ad5828adeb5f64645fbf9e679f98e31e",
+        "bytes": 4659
+      },
+      "request_metadata": {
+        "file": "payload/2e03831ed342b46e0dd9140bae020db11ee098ecab9b7964701d51b3af88f046.json",
+        "sha256": "2e03831ed342b46e0dd9140bae020db11ee098ecab9b7964701d51b3af88f046",
+        "bytes": 9752
+      },
+      "prepared_metadata": {
+        "file": "payload/2c2b9c99ebf9cbf783206fdfdadab3f4abe65eea3ee285dbdba6dca2ab596a3e.json",
+        "sha256": "2c2b9c99ebf9cbf783206fdfdadab3f4abe65eea3ee285dbdba6dca2ab596a3e",
+        "bytes": 239424
+      },
+      "bindings": {
+        "query": {
+          "path": [
+            "query"
+          ]
+        },
+        "final_root": {
+          "path": [
+            "final_root"
+          ]
+        },
+        "support_roots": {
+          "path": [
+            "support_roots"
+          ]
+        }
+      },
+      "project_sources_binding": {
+        "path": [
+          "project_sources"
+        ]
+      },
+      "final_root": "merlin_schedule_transform",
+      "support_roots": [
+        "Merlin.GraphState.Scalar.check_sound",
+        "Merlin.GraphState.Scalar.check_typed",
+        "Merlin.GraphState.Scalar.normalize_sound",
+        "Merlin.GraphStateScalarInstance.F2.accepted",
+        "Merlin.GraphStateScalarInstance.F2.actual",
+        "Merlin.GraphStateScalarInstance.F2.typed",
+        "Merlin.GraphStateScalarInstance.F2.initialized",
+        "Merlin.GraphStateScalarInstance.F2.operands_initialized",
+        "Merlin.GraphStateScalarInstance.F3.accepted",
+        "Merlin.GraphStateScalarInstance.F3.actual",
+        "Merlin.GraphStateScalarInstance.F3.typed",
+        "Merlin.GraphStateScalarInstance.F3.initialized",
+        "Merlin.GraphStateScalarInstance.F3.operands_initialized",
+        "Merlin.GraphState.GateEntries.entries_cons",
+        "Merlin.GraphState.GateEntries.entries_nil",
+        "Merlin.GraphPipelineGateInstance.complete"
+      ],
+      "domain": "complete_regionfree_scalar_order_equal_outcome_v1",
+      "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+      "assumptions": [
+        "trusted complete xDSL parsing, projection, exact source and host binding",
+        "same frozen Scalar.Program/Model/evalProgram and complete-entry dispatcher",
+        "closed total deterministic state-free primitive interpretation; not inferred from dependency hints",
+        "same ordered opaque descriptor interpretation on explicit operands and entire persistent world",
+        "opaque calls may fail; local successful result arity only; no source-success premise",
+        "region-free scalar word bodies, explicit external declarations; no internal-call/CFG/region bridge",
+        "private SSA stacks unobserved; native, alias/allocator/completion/poison/numerical fidelity separate"
+      ],
+      "exact_final_declaration": "theorem merlin_schedule_transform {Value World Error : Type}\n    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n    Merlin.GraphState.GateEntries.PreservesEntries model\n      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries",
+      "declaration_status": "SOURCE_TEXT_NOT_KERNEL_TYPE",
+      "buffers": [
+        {
+          "label": "after.mlir",
+          "ref": {
+            "file": "payload/8c9a9be2b82e1ae629628cefcd06c21c75269677a9f297296db319bda62ece69.mlir",
+            "sha256": "8c9a9be2b82e1ae629628cefcd06c21c75269677a9f297296db319bda62ece69",
+            "bytes": 1139
+          }
+        },
+        {
+          "label": "before.mlir",
+          "ref": {
+            "file": "payload/65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38.mlir",
+            "sha256": "65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38",
+            "bytes": 1139
+          }
+        }
+      ],
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "query_status": "UNCOMPILED",
+      "model_metadata": {
+        "profile": "sequential_scalar_schedule_source_v1",
+        "changed": true,
+        "kind": "sequential_dependency_schedule",
+        "query_contract": "pure_declarations_separate_root_audit_v1",
+        "exact_statement": "theorem merlin_schedule_transform {Value World Error : Type}\n    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n    Merlin.GraphState.GateEntries.PreservesEntries model\n      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries :=\n  Merlin.GraphPipelineGateInstance.complete model\n",
+        "compiler_pass_chain": "not_established",
+        "selection": null,
+        "boundary_label": "actual_changed_schedule"
+      },
+      "status": "SOURCE_QUERY_DAG_PREPARED_NOT_CHECKED",
+      "query_header": {
+        "imports": [
+          "Merlin.GraphStateGateEntries",
+          "Merlin.GraphStateScalar"
+        ],
+        "prelude": false,
+        "implicit_Init": true,
+        "body_start": 67,
+        "decoder": "closed-literal-source-header-v1"
+      },
+      "query_project_imports": [
+        "Merlin.GraphStateGateEntries",
+        "Merlin.GraphStateScalar"
+      ],
+      "query_external_names_only": [
+        "Init"
+      ],
+      "main_project_compile_order": [
+        "Merlin.GraphStateScalarContract",
+        "Merlin.GraphStateScalarNormalize",
+        "Merlin.GraphStateScalarSound",
+        "Merlin.GraphStateScalarTyping",
+        "Merlin.GraphStateScalarInitialized",
+        "Merlin.GraphStateScalar",
+        "Merlin.GraphStateGateEntries"
+      ],
+      "source_build_roles_in_dependency_order": [
+        {
+          "module": "Merlin.GraphStateScalarContract",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarNormalize",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarSound",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarTyping",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarInitialized",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalar",
+          "role": "direct_query_import"
+        },
+        {
+          "module": "Merlin.GraphStateGateEntries",
+          "role": "direct_query_import"
+        }
+      ],
+      "output_directory_request": {
+        "source": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/cross_observer_keep_effect_order/source",
+        "objects": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/cross_observer_keep_effect_order/objects",
+        "query": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/cross_observer_keep_effect_order/query",
+        "audits": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/cross_observer_keep_effect_order/audits"
+      },
+      "future_steps": {
+        "source_build": "UNEXECUTED",
+        "query_kernel_compilation": "UNEXECUTED",
+        "exact_root_axiom_type_audit": "UNEXECUTED",
+        "qualification": "UNEXECUTED",
+        "fresh_replay": "UNEXECUTED"
+      },
+      "root_resolution": "exact metadata/query pin association only; kernel name/type/axiom audit UNEXECUTED"
+    },
+    {
+      "id": "pure_reorder",
+      "module": "Query",
+      "query": {
+        "file": "payload/8b3036ce9e5b23d5e1bc095d5eb15963b7e257cb7a6af6c3813c689fe83de6d4.lean",
+        "sha256": "8b3036ce9e5b23d5e1bc095d5eb15963b7e257cb7a6af6c3813c689fe83de6d4",
+        "bytes": 4659
+      },
+      "request_metadata": {
+        "file": "payload/3f3c6b9b72a04f16f657d1222afbb54569f9a771e06ab62002383393b9c0dc4e.json",
+        "sha256": "3f3c6b9b72a04f16f657d1222afbb54569f9a771e06ab62002383393b9c0dc4e",
+        "bytes": 9752
+      },
+      "prepared_metadata": {
+        "file": "payload/d838762dde9ba6a845d1d18954d77c780e8e58491a593a710b706bb13d929105.json",
+        "sha256": "d838762dde9ba6a845d1d18954d77c780e8e58491a593a710b706bb13d929105",
+        "bytes": 239424
+      },
+      "bindings": {
+        "query": {
+          "path": [
+            "query"
+          ]
+        },
+        "final_root": {
+          "path": [
+            "final_root"
+          ]
+        },
+        "support_roots": {
+          "path": [
+            "support_roots"
+          ]
+        }
+      },
+      "project_sources_binding": {
+        "path": [
+          "project_sources"
+        ]
+      },
+      "final_root": "merlin_schedule_transform",
+      "support_roots": [
+        "Merlin.GraphState.Scalar.check_sound",
+        "Merlin.GraphState.Scalar.check_typed",
+        "Merlin.GraphState.Scalar.normalize_sound",
+        "Merlin.GraphStateScalarInstance.F2.accepted",
+        "Merlin.GraphStateScalarInstance.F2.actual",
+        "Merlin.GraphStateScalarInstance.F2.typed",
+        "Merlin.GraphStateScalarInstance.F2.initialized",
+        "Merlin.GraphStateScalarInstance.F2.operands_initialized",
+        "Merlin.GraphStateScalarInstance.F3.accepted",
+        "Merlin.GraphStateScalarInstance.F3.actual",
+        "Merlin.GraphStateScalarInstance.F3.typed",
+        "Merlin.GraphStateScalarInstance.F3.initialized",
+        "Merlin.GraphStateScalarInstance.F3.operands_initialized",
+        "Merlin.GraphState.GateEntries.entries_cons",
+        "Merlin.GraphState.GateEntries.entries_nil",
+        "Merlin.GraphPipelineGateInstance.complete"
+      ],
+      "domain": "complete_regionfree_scalar_order_equal_outcome_v1",
+      "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+      "assumptions": [
+        "trusted complete xDSL parsing, projection, exact source and host binding",
+        "same frozen Scalar.Program/Model/evalProgram and complete-entry dispatcher",
+        "closed total deterministic state-free primitive interpretation; not inferred from dependency hints",
+        "same ordered opaque descriptor interpretation on explicit operands and entire persistent world",
+        "opaque calls may fail; local successful result arity only; no source-success premise",
+        "region-free scalar word bodies, explicit external declarations; no internal-call/CFG/region bridge",
+        "private SSA stacks unobserved; native, alias/allocator/completion/poison/numerical fidelity separate"
+      ],
+      "exact_final_declaration": "theorem merlin_schedule_transform {Value World Error : Type}\n    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n    Merlin.GraphState.GateEntries.PreservesEntries model\n      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries",
+      "declaration_status": "SOURCE_TEXT_NOT_KERNEL_TYPE",
+      "buffers": [
+        {
+          "label": "after.mlir",
+          "ref": {
+            "file": "payload/da6153afdd46f1c7ee031fb295215cca356e4e89ad482ed5befa353aa89bb63c.mlir",
+            "sha256": "da6153afdd46f1c7ee031fb295215cca356e4e89ad482ed5befa353aa89bb63c",
+            "bytes": 1139
+          }
+        },
+        {
+          "label": "before.mlir",
+          "ref": {
+            "file": "payload/65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38.mlir",
+            "sha256": "65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38",
+            "bytes": 1139
+          }
+        }
+      ],
+      "expected_protocol": "POSITIVE_SOURCE_CANDIDATE_UNOBSERVED",
+      "query_status": "UNCOMPILED",
+      "model_metadata": {
+        "profile": "sequential_scalar_schedule_source_v1",
+        "changed": true,
+        "kind": "sequential_dependency_schedule",
+        "query_contract": "pure_declarations_separate_root_audit_v1",
+        "exact_statement": "theorem merlin_schedule_transform {Value World Error : Type}\n    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n    Merlin.GraphState.GateEntries.PreservesEntries model\n      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries :=\n  Merlin.GraphPipelineGateInstance.complete model\n",
+        "compiler_pass_chain": "not_established",
+        "selection": null,
+        "boundary_label": "actual_changed_schedule"
+      },
+      "status": "SOURCE_QUERY_DAG_PREPARED_NOT_CHECKED",
+      "query_header": {
+        "imports": [
+          "Merlin.GraphStateGateEntries",
+          "Merlin.GraphStateScalar"
+        ],
+        "prelude": false,
+        "implicit_Init": true,
+        "body_start": 67,
+        "decoder": "closed-literal-source-header-v1"
+      },
+      "query_project_imports": [
+        "Merlin.GraphStateGateEntries",
+        "Merlin.GraphStateScalar"
+      ],
+      "query_external_names_only": [
+        "Init"
+      ],
+      "main_project_compile_order": [
+        "Merlin.GraphStateScalarContract",
+        "Merlin.GraphStateScalarNormalize",
+        "Merlin.GraphStateScalarSound",
+        "Merlin.GraphStateScalarTyping",
+        "Merlin.GraphStateScalarInitialized",
+        "Merlin.GraphStateScalar",
+        "Merlin.GraphStateGateEntries"
+      ],
+      "source_build_roles_in_dependency_order": [
+        {
+          "module": "Merlin.GraphStateScalarContract",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarNormalize",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarSound",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarTyping",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarInitialized",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalar",
+          "role": "direct_query_import"
+        },
+        {
+          "module": "Merlin.GraphStateGateEntries",
+          "role": "direct_query_import"
+        }
+      ],
+      "output_directory_request": {
+        "source": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/pure_reorder/source",
+        "objects": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/pure_reorder/objects",
+        "query": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/pure_reorder/query",
+        "audits": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/pure_reorder/audits"
+      },
+      "future_steps": {
+        "source_build": "UNEXECUTED",
+        "query_kernel_compilation": "UNEXECUTED",
+        "exact_root_axiom_type_audit": "UNEXECUTED",
+        "qualification": "UNEXECUTED",
+        "fresh_replay": "UNEXECUTED"
+      },
+      "root_resolution": "exact metadata/query pin association only; kernel name/type/axiom audit UNEXECUTED"
+    },
+    {
+      "id": "unchanged_order",
+      "module": "Query",
+      "query": {
+        "file": "payload/1a4600d2fbd1571a811cb5655b529df1dc879a72ad2e806b100409058e180b3c.lean",
+        "sha256": "1a4600d2fbd1571a811cb5655b529df1dc879a72ad2e806b100409058e180b3c",
+        "bytes": 4659
+      },
+      "request_metadata": {
+        "file": "payload/9cf7f0cf7849102b04d2848d27897b9696cbe3ddb9a68ebd1b6b05df17bf6888.json",
+        "sha256": "9cf7f0cf7849102b04d2848d27897b9696cbe3ddb9a68ebd1b6b05df17bf6888",
+        "bytes": 9752
+      },
+      "prepared_metadata": {
+        "file": "payload/79696c3e290f4fbf51060bf24faf171e59d0e97638bd7b4aea9a2faced4e7386.json",
+        "sha256": "79696c3e290f4fbf51060bf24faf171e59d0e97638bd7b4aea9a2faced4e7386",
+        "bytes": 239426
+      },
+      "bindings": {
+        "query": {
+          "path": [
+            "query"
+          ]
+        },
+        "final_root": {
+          "path": [
+            "final_root"
+          ]
+        },
+        "support_roots": {
+          "path": [
+            "support_roots"
+          ]
+        }
+      },
+      "project_sources_binding": {
+        "path": [
+          "project_sources"
+        ]
+      },
+      "final_root": "merlin_schedule_transform",
+      "support_roots": [
+        "Merlin.GraphState.Scalar.check_sound",
+        "Merlin.GraphState.Scalar.check_typed",
+        "Merlin.GraphState.Scalar.normalize_sound",
+        "Merlin.GraphStateScalarInstance.F2.accepted",
+        "Merlin.GraphStateScalarInstance.F2.actual",
+        "Merlin.GraphStateScalarInstance.F2.typed",
+        "Merlin.GraphStateScalarInstance.F2.initialized",
+        "Merlin.GraphStateScalarInstance.F2.operands_initialized",
+        "Merlin.GraphStateScalarInstance.F3.accepted",
+        "Merlin.GraphStateScalarInstance.F3.actual",
+        "Merlin.GraphStateScalarInstance.F3.typed",
+        "Merlin.GraphStateScalarInstance.F3.initialized",
+        "Merlin.GraphStateScalarInstance.F3.operands_initialized",
+        "Merlin.GraphState.GateEntries.entries_cons",
+        "Merlin.GraphState.GateEntries.entries_nil",
+        "Merlin.GraphPipelineGateInstance.complete"
+      ],
+      "domain": "complete_regionfree_scalar_order_equal_outcome_v1",
+      "relation": "all_defined_entries_equal_returns_errors_terminal_world",
+      "assumptions": [
+        "trusted complete xDSL parsing, projection, exact source and host binding",
+        "same frozen Scalar.Program/Model/evalProgram and complete-entry dispatcher",
+        "closed total deterministic state-free primitive interpretation; not inferred from dependency hints",
+        "same ordered opaque descriptor interpretation on explicit operands and entire persistent world",
+        "opaque calls may fail; local successful result arity only; no source-success premise",
+        "region-free scalar word bodies, explicit external declarations; no internal-call/CFG/region bridge",
+        "private SSA stacks unobserved; native, alias/allocator/completion/poison/numerical fidelity separate"
+      ],
+      "exact_final_declaration": "theorem merlin_schedule_transform {Value World Error : Type}\n    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n    Merlin.GraphState.GateEntries.PreservesEntries model\n      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries",
+      "declaration_status": "SOURCE_TEXT_NOT_KERNEL_TYPE",
+      "buffers": [
+        {
+          "label": "after.mlir",
+          "ref": {
+            "file": "payload/65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38.mlir",
+            "sha256": "65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38",
+            "bytes": 1139
+          }
+        },
+        {
+          "label": "before.mlir",
+          "ref": {
+            "file": "payload/65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38.mlir",
+            "sha256": "65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38",
+            "bytes": 1139
+          }
+        }
+      ],
+      "expected_protocol": "IDENTITY_SOURCE_CANDIDATE_NOT_CHANGED_OPTIMIZATION",
+      "query_status": "UNCOMPILED",
+      "model_metadata": {
+        "profile": "sequential_scalar_schedule_source_v1",
+        "changed": false,
+        "kind": "sequential_dependency_schedule",
+        "query_contract": "pure_declarations_separate_root_audit_v1",
+        "exact_statement": "theorem merlin_schedule_transform {Value World Error : Type}\n    (model : Merlin.GraphState.Scalar.Model Value World Error Merlin.GraphPipelineGateInstance.registry) :\n    Merlin.GraphState.GateEntries.PreservesEntries model\n      Merlin.GraphPipelineGateInstance.beforeEntries Merlin.GraphPipelineGateInstance.afterEntries :=\n  Merlin.GraphPipelineGateInstance.complete model\n",
+        "compiler_pass_chain": "not_established",
+        "selection": null,
+        "boundary_label": "unchanged_order_identity"
+      },
+      "status": "SOURCE_QUERY_DAG_PREPARED_NOT_CHECKED",
+      "query_header": {
+        "imports": [
+          "Merlin.GraphStateGateEntries",
+          "Merlin.GraphStateScalar"
+        ],
+        "prelude": false,
+        "implicit_Init": true,
+        "body_start": 67,
+        "decoder": "closed-literal-source-header-v1"
+      },
+      "query_project_imports": [
+        "Merlin.GraphStateGateEntries",
+        "Merlin.GraphStateScalar"
+      ],
+      "query_external_names_only": [
+        "Init"
+      ],
+      "main_project_compile_order": [
+        "Merlin.GraphStateScalarContract",
+        "Merlin.GraphStateScalarNormalize",
+        "Merlin.GraphStateScalarSound",
+        "Merlin.GraphStateScalarTyping",
+        "Merlin.GraphStateScalarInitialized",
+        "Merlin.GraphStateScalar",
+        "Merlin.GraphStateGateEntries"
+      ],
+      "source_build_roles_in_dependency_order": [
+        {
+          "module": "Merlin.GraphStateScalarContract",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarNormalize",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarSound",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarTyping",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalarInitialized",
+          "role": "transitive_support"
+        },
+        {
+          "module": "Merlin.GraphStateScalar",
+          "role": "direct_query_import"
+        },
+        {
+          "module": "Merlin.GraphStateGateEntries",
+          "role": "direct_query_import"
+        }
+      ],
+      "output_directory_request": {
+        "source": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/unchanged_order/source",
+        "objects": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/unchanged_order/objects",
+        "query": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/unchanged_order/query",
+        "audits": "fresh-build/Q-schedule-successor-v1/b54ccca040bbea9124c53b5b04191e2439c1b1e5c9aa99470c1e548fe9d881dd/unchanged_order/audits"
+      },
+      "future_steps": {
+        "source_build": "UNEXECUTED",
+        "query_kernel_compilation": "UNEXECUTED",
+        "exact_root_axiom_type_audit": "UNEXECUTED",
+        "qualification": "UNEXECUTED",
+        "fresh_replay": "UNEXECUTED"
+      },
+      "root_resolution": "exact metadata/query pin association only; kernel name/type/axiom audit UNEXECUTED"
+    }
+  ],
+  "runtime_context": "MISSING_NEW_INDEPENDENT_F_OFFICIAL_SDK_INTAKE",
+  "compiling_source_union_proves_combined_semantics": false
+}

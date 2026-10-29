@@ -1,0 +1,1064 @@
+--- /dev/null
++++ b/src/merlin/verify/loop_transform_bridge.py
+@@ -0,0 +1,100 @@
++"""Isolated pinned-producer bridge; no authority from optimizer diagnostics."""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++REVISION = "4499eebb959c0f92cefd92cc6d80646ba66474ed"
++
++
++class AttributionRefusal(ValueError):
++    """Valid parsed boundary does not match selected actual transformation."""
++
++
++def run(request):
++    # Script-directory imports deliberately select the submission projection code,
++    # while all merlin.* producer imports above belong to pinned reference/src.
++    from lean_graph_input_admission import parse_admitted
++    from lean_graph_state_pipeline_capture import project_modules
++
++    from merlin.transforms.certificates import ir_text, parse_ir
++    from merlin.transforms.loops import segment_loops
++    from merlin.transforms.unrolling import unroll_ordered_loops
++
++    reference = Path(request["reference"]).resolve()
++    revision = subprocess.run(
++        ["git", "-C", str(reference), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
++    ).stdout.strip()
++    if revision != REVISION:
++        raise ValueError("producer revision differs from pinned4499")
++    buffers = request["buffers"]
++    producing = request.get("produce", False)
++    if producing and len(buffers) == 1:
++        first = parse_admitted(buffers[0], parse_ir)
++        first.verify()
++        generated = [ir_text(first)]
++        unroll_ordered_loops(first, (request["factor"],), index_bits=64)
++        generated.append(ir_text(first))
++        segment_loops(first, (request["tile"],), index_bits=64)
++        generated.append(ir_text(first))
++        buffers = generated
++    if len(buffers) != 3:
++        raise ValueError("three actual buffers required")
++    modules = [parse_admitted(text, parse_ir) for text in buffers]
++    for module in modules:
++        module.verify()
++    produced = parse_admitted(buffers[0], parse_ir)
++    unroll_ordered_loops(produced, (request["factor"],), index_bits=64)
++    produced.verify()
++    middle = ir_text(produced)
++    segment_loops(produced, (request["tile"],), index_bits=64)
++    produced.verify()
++    final = ir_text(produced)
++    if middle != ir_text(modules[1]) or final != ir_text(modules[2]):
++        raise AttributionRefusal("submitted middle/final differ from actual pinned producer output")
++    if buffers[0] == buffers[1] or buffers[1] == buffers[2]:
++        raise AttributionRefusal("both actual loop boundaries must change")
++    stages, controls = project_modules([modules[0], modules[0], modules[0], modules[1], modules[2]])
++    sources = []
++    for name, loaded in sorted(tuple(sys.modules.items())):
++        if name != "merlin" and not name.startswith("merlin."):
++            continue
++        path = Path(loaded.__file__).resolve()
++        if not path.is_relative_to(reference / "src"):
++            raise RuntimeError("producer import escaped selected reference")
++        data = path.read_bytes()
++        relative = str(path.relative_to(reference))
++        original = subprocess.run(
++            ["git", "-C", str(reference), "show", REVISION + ":" + relative], capture_output=True, check=True
++        ).stdout
++        if data != original:
++            raise RuntimeError("pinned producer source bytes changed")
++        sources.append({"path": str(path), "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)})
++    return {
++        "actual_buffers": buffers,
++        "stages": stages,
++        "index_operations": controls,
++        "factor": request["factor"],
++        "tile": request["tile"],
++        "index_bits": 64,
++        "producer_revision": revision,
++        "producer_sources": sources,
++        "identity_prefix": 2,
++    }
++
++
++if __name__ == "__main__":
++    try:
++        answer = run(json.loads(sys.stdin.read()))
++        print(json.dumps({"status": "prepared", "capture": answer}))
++    except AttributionRefusal as exc:
++        print(json.dumps({"status": "unsupported", "reason": str(exc)}))
++        raise SystemExit(1)
++    except Exception as exc:
++        # Host/parser errors never become successful proof refusals.
++        print(json.dumps({"status": "unavailable", "error": type(exc).__name__, "reason": str(exc)}))
++        raise SystemExit(1)
+--- /dev/null
++++ b/src/merlin/verify/loop_transform_intake.py
+@@ -0,0 +1,201 @@
++"""Fresh full-module three-buffer projection/query preparation for scoped loops.
++
++Python parsing/projection is trusted. Only a later actual Lean check may establish
++its complete operational theorem. This module launches no Lean or SDK operation.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++import subprocess
++import sys
++from dataclasses import asdict, dataclass
++from pathlib import Path
++
++from merlin.common.owned_process import run_owned
++
++from .lean_graph_pipeline_gate_profile_prepare import _domain
++from .lean_graph_pipeline_gate_projection import project_lean_sources
++from .lean_graph_state_pipeline_emit import emit
++
++DOMAIN = "static-nonnegative-index64-no-tail-unroll-ordered1d-segment-v1"
++ROOT = "Merlin.GraphStatePipelineInstance.complete"
++
++
++class Unsupported(ValueError):
++    """Explicit domain/actual-producer mismatch; not a Lean refusal."""
++
++
++class Unavailable(RuntimeError):
++    """Host/parser/execution failure; not a successful refusal."""
++
++
++def canonical(value):
++    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
++
++
++def digest(data):
++    return hashlib.sha256(data.encode() if isinstance(data, str) else data).hexdigest()
++
++
++def file_ref(path):
++    path = Path(path).resolve()
++    data = path.read_bytes()
++    return {"path": str(path), "sha256": digest(data), "bytes": len(data)}
++
++
++@dataclass(frozen=True)
++class Settings:
++    factor: int = 2
++    tile: int = 3
++    index_bits: int = 64
++
++    def validate(self):
++        if (
++            type(self.factor) is not int
++            or not 2 <= self.factor <= 4
++            or type(self.tile) is not int
++            or not 2 <= self.tile <= 16
++            or type(self.index_bits) is not int
++            or self.index_bits != 64
++        ):
++            raise Unsupported("factor2..4/tile2..16/index64 required")
++
++
++@dataclass(frozen=True)
++class PreparedLoop:
++    buffers: tuple[str, str, str]
++    settings: Settings
++    capture_json: str
++    query: str
++    roots: tuple[str, ...]
++    sources_json: str
++    reference: str
++    domain: str = DOMAIN
++
++    @property
++    def identity(self):
++        return digest(canonical(asdict(self)))
++
++    def describe(self):
++        return {
++            "schema": "merlin.loop-transform.prepared.v1",
++            "identity": self.identity,
++            "domain": self.domain,
++            "buffers": [digest(x) for x in self.buffers],
++            "settings": asdict(self.settings),
++            "query_sha256": digest(self.query),
++            "roots": list(self.roots),
++            "authority": False,
++        }
++
++
++def _project(buffers, settings, reference, *, produce=False):
++    bridge = Path(__file__).with_name("loop_transform_bridge.py")
++    request = {"reference": str(reference), "buffers": buffers, "produce": produce, **asdict(settings)}
++    environment = {**os.environ, "PYTHONPATH": str(reference / "src"), "PYTHONDONTWRITEBYTECODE": "1"}
++    try:
++        result = run_owned(
++            [sys.executable, str(bridge)],
++            input=canonical(request),
++            env=environment,
++            capture_output=True,
++            text=True,
++            timeout=120,
++            check=False,
++        )
++    except (OSError, subprocess.SubprocessError) as exc:
++        raise Unavailable("producer bridge execution unavailable: " + str(exc)) from exc
++    try:
++        report = json.loads(result.stdout)
++    except (ValueError, TypeError) as exc:
++        raise Unavailable("producer bridge did not return a complete result: " + result.stderr[-500:]) from exc
++    if report.get("status") == "unsupported":
++        raise Unsupported("host transformation attribution refused: " + report["reason"])
++    if result.returncode or report.get("status") != "prepared":
++        raise Unavailable("producer/projection failed: " + report.get("reason", result.stderr[-500:]))
++    return report["capture"]
++
++
++def prepare(buffers, *, reference, settings=Settings()):
++    if type(settings) is not Settings:
++        raise Unsupported("typed explicit settings required")
++    settings.validate()
++    if (
++        type(buffers) is not tuple
++        or len(buffers) != 3
++        or any(type(x) is not str or len(x.encode()) > 4 * 1024 * 1024 for x in buffers)
++    ):
++        raise Unsupported("exact bounded3 complete buffer strings required")
++    if buffers[0] == buffers[1] or buffers[1] == buffers[2]:
++        raise Unsupported("unroll and segmentation must both actually change")
++    reference = Path(reference).resolve()
++    capture = _project(buffers, settings, reference)
++    try:
++        changed = _domain({"pipeline": capture})
++    except ValueError as exc:
++        raise Unsupported("scoped loop domain refused: " + str(exc)) from exc
++    if len(changed) != 1:
++        raise Unsupported("exactly one changed top-level loop function required")
++    original = capture["stages"][0]["functions"][changed[0]]["before"]
++    body = next(row["loop"]["body"] for row in original if "loop" in row)
++    controls = {row["identity"] for row in capture["index_operations"]}
++    external_calls = sum("effect" in row and row["effect"] not in controls for row in body)
++    if settings.factor * external_calls > 16:
++        raise Unsupported("at most sixteen retained external calls across the unrolled body required")
++    query = emit(capture)
++    # Every emitted theorem, including local body/carry/control/context obligations,
++    # is audited; no caller-supplied root roster or local-only acceptance.
++    roots = []
++    namespace = []
++    for line in query.splitlines():
++        words = line.split()
++        if not words:
++            continue
++        if words[0] == "namespace":
++            namespace.append(words[1])
++        elif words[0] == "end":
++            namespace.pop()
++        elif words[0] == "theorem":
++            roots.append(".".join([*namespace, words[1]]))
++    if not roots or roots[-1] != ROOT or len(query.encode()) > 4 * 1024 * 1024:
++        raise Unavailable("complete bounded operational root missing")
++    imports = [w for line in query.splitlines() if line.startswith("import ") for w in line.split()[1:]]
++    sources = [asdict(row) for row in project_lean_sources(imports)]
++    for name in (
++        "loop_transform_intake.py",
++        "loop_transform_bridge.py",
++        "lean_graph_state_pipeline_emit.py",
++        "lean_graph_state_pipeline.py",
++        "lean_graph_state_pipeline_capture.py",
++        "lean_graph_state_scalar_capture.py",
++        "lean_graph_input_admission.py",
++        "lean_graph_state_scalar.py",
++        "lean_graph_pipeline_gate_profile_prepare.py",
++        "lean_graph_pipeline_gate_projection.py",
++        "loop_transform_gate.py",
++        "loop_transform_cli.py",
++    ):
++        sources.append(file_ref(Path(__file__).with_name(name)))
++    sources.append(file_ref(Path(__file__).parent / "lean/Merlin/GraphStateAudit.lean"))
++    sources.append(file_ref(Path(__file__).parent.parent / "common/owned_process.py"))
++    sources.extend(capture["producer_sources"])
++    return PreparedLoop(buffers, settings, canonical(capture), query, tuple(roots), canonical(sources), str(reference))
++
++
++def revalidate(prepared):
++    if type(prepared) is not PreparedLoop or prepared.domain != DOMAIN:
++        raise Unavailable("exact PreparedLoop required")
++    for ref in json.loads(prepared.sources_json):
++        actual = file_ref(ref["path"])
++        if actual["sha256"] != ref["sha256"] or actual["bytes"] != ref.get("bytes", ref.get("size")):
++            raise Unavailable("bound loop proof/host/producer source changed")
++
++
++def produce(source, *, reference, settings=Settings()):
++    """Run actual pinned producer without compiler-wide enforcement claims."""
++    settings.validate()
++    capture = _project((source,), settings, Path(reference).resolve(), produce=True)
++    return tuple(capture["actual_buffers"])
+--- /dev/null
++++ b/src/merlin/verify/loop_transform_gate.py
+@@ -0,0 +1,298 @@
++"""Direct scoped loop consumer: fresh kernel proof before final IR delivery.
++
++Ordinary selected Lean execution only. Python projection/process/host transport
++and fidelity of the explicit operational interpretation remain trusted premises.
++A serialized report is never a live completion and cannot authorize delivery.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import subprocess
++import weakref
++from dataclasses import dataclass
++from pathlib import Path
++
++from merlin.common.owned_process import run_owned
++
++from .loop_transform_intake import (
++    ROOT,
++    PreparedLoop,
++    Settings,
++    Unavailable,
++    canonical,
++    file_ref,
++    prepare,
++    produce,
++    revalidate,
++)
++
++STD3 = {"propext", "Classical.choice", "Quot.sound"}
++_LIVE = weakref.WeakKeyDictionary()
++
++
++class NotEstablished(RuntimeError):
++    """Lean ran and rejected the generated proof; no consumer delivery."""
++
++
++@dataclass(frozen=True, eq=False)
++class Completion:
++    identity: str
++    report: str
++
++
++def _run(command, cwd, env, directory, label, timeout):
++    try:
++        proc = run_owned(command, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
++    except (OSError, subprocess.SubprocessError) as exc:
++        (directory / (label + ".failure")).write_text(str(exc))
++        for suffix, value in (("stdout", getattr(exc, "stdout", "")), ("stderr", getattr(exc, "stderr", ""))):
++            if isinstance(value, bytes):
++                value = value.decode(errors="replace")
++            (directory / (label + "." + suffix)).write_text(value or "")
++        raise Unavailable(f"{label} execution unavailable: {exc}") from exc
++    (directory / (label + ".stdout")).write_text(proc.stdout)
++    (directory / (label + ".stderr")).write_text(proc.stderr)
++    (directory / (label + ".process.json")).write_text(canonical({"command": command, "returncode": proc.returncode}))
++    if proc.returncode < 0:
++        raise Unavailable(f"{label} terminated by signal {-proc.returncode}")
++    return proc
++
++
++def _closure(prepared):
++    root = Path(__file__).parent / "lean"
++    ordered, seen = [], set()
++    sources = {row["path"] for row in json.loads(prepared.sources_json) if row["path"].endswith(".lean")}
++
++    def visit(name):
++        if name in seen:
++            return
++        seen.add(name)
++        path = root / (name.replace(".", "/") + ".lean")
++        if str(path.resolve()) not in sources:
++            raise Unavailable("unbound project proof import")
++        for line in path.read_text().splitlines():
++            fields = line.split()
++            if fields and fields[0] == "import":
++                for dep in fields[1:]:
++                    if dep.startswith("Merlin."):
++                        visit(dep)
++        ordered.append((name, path))
++
++    for line in prepared.query.splitlines():
++        if line.startswith("import "):
++            for name in line.split()[1:]:
++                if name.startswith("Merlin."):
++                    visit(name)
++    return ordered
++
++
++def validate_audits(audit, statements, roots, expected_modules):
++    """Pure schema/roster consistency, never authority without an actual process."""
++    if (
++        type(audit) is not dict
++        or audit.get("violations") != []
++        or audit.get("assurance") != "lean_kernel_std3_no_native_reflection"
++        or type(audit.get("theorems_audited")) is not int
++        or audit["theorems_audited"] <= 0
++        or type(audit.get("axioms_used")) is not list
++        or any(type(a) is not str for a in audit["axioms_used"])
++        or not set(audit["axioms_used"]) <= STD3
++    ):
++        raise Unavailable("transitive std3 audit failed")
++    if (
++        type(statements) is not dict
++        or set(statements) != set(roots)
++        or ROOT not in statements
++        or any(type(value) is not str or not value.strip() for value in statements.values())
++    ):
++        raise Unavailable("complete exact root/type roster missing")
++    rows = audit.get("imports")
++    if type(rows) is not list or any(
++        type(row) is not dict
++        or set(row) != {"module", "olean"}
++        or any(type(value) is not str or not value for value in row.values())
++        for row in rows
++    ):
++        raise Unavailable("malformed actual import roster")
++    names = [row["module"] for row in rows]
++    if (
++        len(set(names)) != len(names)
++        or {n for n in names if n.startswith("Merlin.") or n == "LoopTransformQuery"} != expected_modules
++    ):
++        raise Unavailable("actual project imports differ from complete compiled closure")
++
++
++def require_query_success(process):
++    if not process.returncode:
++        return
++    diagnostic = process.stdout + process.stderr
++    if (
++        "maximum number of heartbeats (" in diagnostic
++        and ") has been reached" in diagnostic
++        or "maximum recursion depth has been reached" in diagnostic
++    ):
++        raise Unavailable("Lean proof-resource exhaustion; original limit/output retained")
++    raise NotEstablished("complete loop query did not typecheck")
++
++
++def check(prepared, *, lean, destination, timeout=120):
++    """Compile exact selected project closure/query, audit roots, issue live handle.
++
++    destination must be NEW. No historical object/receipt/caller callback supplies
++    authority. F qualifies this same code path in a separate private output tree.
++    """
++    if type(prepared) is not PreparedLoop:
++        raise Unavailable("exact prepared request required")
++    fresh = prepare(prepared.buffers, reference=prepared.reference, settings=prepared.settings)
++    if fresh != prepared:
++        raise Unavailable("stale or forged preparation/query/roots/domain")
++    directory = Path(destination).resolve()
++    directory.mkdir(parents=True, exist_ok=False)
++    library = directory / "lib"
++    library.mkdir()
++    lean = Path(lean).resolve()
++    tool = file_ref(lean)
++    audit_source = Path(__file__).parent / "lean/Merlin/GraphStateAudit.lean"
++    auditor = file_ref(audit_source)
++    env = {
++        **os.environ,
++        "LEAN_PATH": str(library),
++        "LEAN_NUM_THREADS": "1",
++        "PATH": str(lean.parent) + os.pathsep + os.environ.get("PATH", ""),
++    }
++    snapshots = []
++    for i, text in enumerate(prepared.buffers):
++        path = directory / f"stage{i}.mlir"
++        path.write_text(text)
++        snapshots.append(file_ref(path))
++    query = directory / "LoopTransformQuery.lean"
++    query.write_text(prepared.query)
++    query_ref = file_ref(query)
++    for i, (module, source) in enumerate(_closure(prepared)):
++        target = library / (module.replace(".", "/") + ".olean")
++        target.parent.mkdir(parents=True, exist_ok=True)
++        process = _run(
++            [str(lean), "-j1", "-o", str(target), str(source)],
++            source.parent.parent,
++            env,
++            directory,
++            f"import-{i}",
++            timeout,
++        )
++        if process.returncode:
++            raise Unavailable(f"project proof dependency failed: {module}")
++    obj = library / "LoopTransformQuery.olean"
++    process = _run([str(lean), "-j1", "-o", str(obj), str(query)], directory, env, directory, "query", timeout)
++    require_query_success(process)
++    # The canonical existing auditor checks all imported project theorems and
++    # forbids unsafe/extern/axiom/reflection overrides; no synthetic Boolean test.
++    audits = {}
++    for label, args in (
++        ("audit", ["LoopTransformQuery"]),
++        ("types", ["--statements", ",".join(prepared.roots), "LoopTransformQuery"]),
++    ):
++        process = _run([str(lean), "--run", str(audit_source), *args], directory, env, directory, label, timeout)
++        if process.returncode:
++            raise Unavailable(f"{label} could not establish exact audit output")
++        try:
++            audits[label] = json.loads(process.stdout.strip().splitlines()[-1])
++        except (ValueError, IndexError) as exc:
++            raise Unavailable("malformed root audit") from exc
++    audit, statements = audits["audit"], audits["types"].get("statements")
++    expected_modules = {module for module, _ in _closure(prepared)} | {"LoopTransformQuery"}
++    validate_audits(audit, statements, prepared.roots, expected_modules)
++    imports = []
++    for row in audit["imports"]:
++        if row["module"].startswith("Merlin.") or row["module"] == "LoopTransformQuery":
++            path = Path(row["olean"]).resolve()
++            if not path.is_relative_to(library):
++                raise Unavailable("project proof object escaped fresh private build")
++            imports.append(file_ref(path))
++    revalidate(prepared)
++    if file_ref(lean) != tool or file_ref(audit_source) != auditor or file_ref(query) != query_ref:
++        raise Unavailable("tool/source/query changed during proof")
++    report = {
++        "schema": "merlin.loop-transform.checked.v1",
++        "status": "checked",
++        "prepared": prepared.describe(),
++        "sources": json.loads(prepared.sources_json),
++        "buffers": snapshots,
++        "query": query_ref,
++        "object": file_ref(obj),
++        "lean": tool,
++        "auditor": auditor,
++        "imports": imports,
++        "built_artifacts": [file_ref(p) for p in sorted(library.rglob("*")) if p.is_file()],
++        "audit": audit,
++        "statements": statements,
++        "scope": "scoped direct loop consumer; not compiler-wide enforcement",
++        "relation": "all defined entries equal returned values/errors/terminal world",
++        "premises": (
++            "trusted full-IR Python projection; common total pure primitives; "
++            "local opaque result arity; explicit index model"
++        ),
++        "general_tiling": False,
++        "native_fidelity": False,
++        "human_approved": False,
++    }
++    report_path = directory / "REPORT.json"
++    report_path.write_text(canonical(report))
++    token = Completion(prepared.identity, str(report_path))
++    _LIVE[token] = (prepared, file_ref(report_path), report)
++    return token
++
++
++def validate_completion(completion, prepared):
++    if type(completion) is not Completion or completion not in _LIVE:
++        raise Unavailable("missing/forged/saved completion has no live authority")
++    original, report_ref, report = _LIVE[completion]
++    if (
++        original is not prepared
++        or completion.identity != prepared.identity
++        or file_ref(completion.report) != report_ref
++    ):
++        raise Unavailable("live completion/request/report changed")
++    revalidate(prepared)
++    for ref in [
++        *report["buffers"],
++        report["query"],
++        report["object"],
++        report["lean"],
++        report["auditor"],
++        *report["imports"],
++        *report["built_artifacts"],
++    ]:
++        if file_ref(ref["path"]) != ref:
++            raise Unavailable("checked artifact changed before delivery")
++    return True
++
++
++def deliver(completion, prepared, consumer):
++    validate_completion(completion, prepared)
++    return consumer(prepared.buffers[-1])
++
++
++def transform(source, *, reference, lean, destination, consumer, settings=Settings()):
++    """Actual pinned producer + fresh checker + guarded direct consumer."""
++    buffers = produce(source, reference=reference, settings=settings)
++    prepared = prepare(buffers, reference=reference, settings=settings)
++    completion = check(prepared, lean=lean, destination=destination)
++    return deliver(completion, prepared, consumer)
++
++
++def replay(report_path, *, reference, lean, destination):
++    """Reconstruct and recheck original3 snapshots; saved status grants no authority."""
++    recorded = json.loads(Path(report_path).read_text())
++    refs = recorded["buffers"]
++    for ref in refs:
++        if file_ref(ref["path"]) != ref:
++            raise Unavailable("replay input snapshot changed")
++    settings = Settings(**recorded["prepared"]["settings"])
++    prepared = prepare(tuple(Path(r["path"]).read_text() for r in refs), reference=reference, settings=settings)
++    if prepared.describe() != recorded["prepared"]:
++        raise Unavailable("reconstructed replay identity differs")
++    completion = check(prepared, lean=lean, destination=destination)
++    validate_completion(completion, prepared)
++    return completion
+--- /dev/null
++++ b/src/merlin/verify/loop_transform_cli.py
+@@ -0,0 +1,60 @@
++"""Scoped ordered unroll/1D segmentation checker and guarded output consumer."""
++
++import argparse
++import json
++from pathlib import Path
++
++from .loop_transform_gate import NotEstablished, check, deliver, replay
++from .loop_transform_intake import Settings, Unavailable, Unsupported, prepare, produce
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description=__doc__)
++    inputs = parser.add_mutually_exclusive_group(required=True)
++    inputs.add_argument("--source", type=Path)
++    inputs.add_argument("--buffers", type=Path, nargs=3)
++    inputs.add_argument("--replay", type=Path)
++    parser.add_argument("--reference", required=True, type=Path)
++    parser.add_argument("--lean", required=True, type=Path)
++    parser.add_argument("--destination", required=True, type=Path)
++    parser.add_argument("--output", type=Path)
++    parser.add_argument("--factor", type=int, default=2)
++    parser.add_argument("--tile", type=int, default=3)
++    args = parser.parse_args(argv)
++    try:
++        if args.replay:
++            if args.output:
++                raise Unsupported("replay is evidence; output delivery requires a fresh actual request")
++            result = replay(args.replay, reference=args.reference, lean=args.lean, destination=args.destination)
++        else:
++            settings = Settings(args.factor, args.tile)
++            buffers = (
++                tuple(p.read_text() for p in args.buffers)
++                if args.buffers
++                else produce(args.source.read_text(), reference=args.reference, settings=settings)
++            )
++            prepared = prepare(buffers, reference=args.reference, settings=settings)
++            result = check(prepared, lean=args.lean, destination=args.destination)
++            if args.output:
++
++                def consume(text):
++                    with args.output.open("x") as handle:
++                        handle.write(text)
++
++                deliver(result, prepared, consume)
++        print(json.dumps({"status": "checked", "report": result.report, "general_tiling": False}))
++        return 0
++    except (Unsupported, NotEstablished, Unavailable, OSError, ValueError) as error:
++        status = (
++            "unsupported"
++            if isinstance(error, Unsupported)
++            else "not_established"
++            if isinstance(error, NotEstablished)
++            else "unavailable"
++        )
++        print(json.dumps({"status": status, "reason": str(error), "delivered": False}))
++        return 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+--- a/src/merlin/verify/lean_graph_state_pipeline_emit.py
++++ b/src/merlin/verify/lean_graph_state_pipeline_emit.py
+@@ -128,25 +128,55 @@
+ 
+ 
+ def body_group_text(capture, loops, envs, count, factor, step):
+-    result = f"""theorem body_group (base : Int) (carry : List Int) (world : World) (arity : carry.length = {count}) :
++    # Exact actual Program suffixes, not a replacement body/evaluator.
++    control_map = {r["identity"]: r for r in capture["index_operations"]}
++    result, groups = "", {}
++    for stage in (2, 3):
++        records = loops[stage]["body"]
++        # Validate full terms through the unchanged serializer first.
++        program(records)
++        pieces, pending = [], []
++        for i, row in enumerate(records):
++            name = f"Piece{stage}_{i}"
++            pending.append(name)
++            external = "effect" in row and row["effect"] not in control_map
++            if external or "ret" in row:
++                pieces.append(pending)
++                pending = []
++        if pending or len(pieces) < 1:
++            raise ValueError("complete actual suffix/call partition required")
++        groups[stage] = pieces
++        for i in reversed(range(len(records))):
++            row = records[i]
++            if "ret" in row:
++                term = program([row])
++            else:
++                if "loop" in row:
++                    raise ValueError("region-free actual unrolled body required")
++                term = program([row, {"ret": []}])
++                if term.count("(.ret [])") != 1:
++                    raise ValueError("unique structural suffix continuation required")
++                term = term.replace("(.ret [])", f"Piece{stage}_{i+1}", 1)
++            result += f"@[irreducible] def Piece{stage}_{i} : Program := {term}\n"
++        result += f"theorem B{stage}_factored : B{stage} = Piece{stage}_0 := by\n"
++        result += "  unfold B" + str(stage) + " " + " ".join(f"Piece{stage}_{i}" for i in range(len(records))) + "\n  rfl\n"
++    source_calls = len(groups[2]) - 1
++    if len(groups[3]) - 1 != factor * source_calls:
++        raise ValueError("actual target external prefix count differs from source lanes")
++    result += f"""theorem body_group (base : Int) (carry : List Int) (world : World) (arity : carry.length = {count}) :
+   evalProgram (M primitive external) B3 (base::carry++E3 primitive x0 x1) world =
+   loopEval {count} (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)
+     {lean_list(["base" if lane == 0 else f"(base+{step * lane})" for lane in range(factor)])} carry world := by
+ """
+     result += unpack("carry", "arity", count, "c")
+-    result += f"  simp only [B2,B3,E2,E3,{SIMPS},loopEval]\n"
++    initial = ",".join(groups[2][0] + groups[3][0])
++    result += f"  simp only [B2_factored,B3_factored,{initial},E2,E3,{SIMPS},loopEval]\n"
+     values = [f"c{i}" for i in range(count)]
+-    control_map = {r["identity"]: r for r in capture["index_operations"]}
+     calls = []
+     for lane in range(factor):
+         iv = "base" if lane == 0 else f"(base+{step * lane})"
+-        values, more = symbolic_body(
+-            loops[2]["body"],
+-            [iv, *values, *envs[2]],
+-            control_map,
+-            len(calls),
+-            "world" if not calls else f"w{len(calls) - 1}",
+-        )
++        values, more = symbolic_body(loops[2]["body"], [iv,*values,*envs[2]], control_map,
++                                     len(calls), "world" if not calls else f"w{len(calls)-1}")
+         calls += more
+     if len(calls) > 16:
+         raise ValueError("bounded lane proof supports at most sixteen retained calls")
+@@ -154,15 +184,19 @@
+         pad = "  " + "  " * depth
+         index, identity = call["index"], call["identity"]
+         args, world = lean_list(call["arguments"]), call["world"]
++        next_defs = groups[3][index+1] + groups[2][(index+1) % source_calls]
++        if (index+1) % source_calls == 0:
++            next_defs += groups[2][-1]
++        definitions = ",".join(next_defs)
+         result += f"{pad}cases step{index} : external.run {identity} {args} {world} with\n"
+         result += f"{pad}| error failure =>\n{pad}  rcases failure with ⟨error,terminal⟩\n"
+-        result += f"{pad}  simp only [step{index},{SIMPS},loopEval]\n"
++        result += f"{pad}  simp only [step{index},{definitions},{SIMPS},loopEval]\n"
+         result += f"{pad}| ok result =>\n{pad}  rcases result with ⟨values,w{index}⟩\n"
+         result += f"{pad}  have size : values.length = {call['outputs']} := by\n"
+         result += f"{pad}    have localArity := external.arity {identity} {args} {world} values w{index} step{index}\n"
+         result += f"{pad}    simpa only [registry,signature,List.getElem?_cons_succ,List.getElem?_cons_zero,Option.getD_some,List.length_cons,List.length_nil] using localArity\n"
+         result += unpack("values", "size", call["outputs"], f"v{index}_", pad + "  ")
+-        result += f"{pad}  simp only [step{index},{SIMPS},loopEval]\n"
++        result += f"{pad}  simp only [step{index},{definitions},{SIMPS},loopEval]\n"
+     return result
+ 
+ 
+--- /dev/null
++++ b/merlin/tests/ir/test_loop_transform_integration_unit.py
+@@ -0,0 +1,179 @@
++"""Host-only scoped loop controls; no claim of Lean acceptance from these tests."""
++
++import copy
++from dataclasses import replace
++from pathlib import Path
++
++import pytest
++
++from merlin.common.paths import repo_root
++from merlin.verify import loop_transform_gate as gate
++from merlin.verify.loop_transform_intake import ROOT, Settings, Unavailable, Unsupported, prepare, produce
++
++SOURCE = """builtin.module {
++func.func private @step(i32, index) -> i32
++func.func private @other(i32, index) -> i32
++func.func private @other_watch(i32)
++func.func private @watch(i32)
++func.func @main(%x:i32, %y:i32) -> i32 {
++%lb = arith.constant 3 : index
++%ub = arith.constant 27 : index
++%st = arith.constant 2 : index
++%r = scf.for %i = %lb to %ub step %st iter_args(%c = %x) -> (i32) {
++%a = arith.addi %c, %y : i32
++%b = func.call @step(%a,%i) : (i32,index) -> i32
++scf.yield %b : i32
++}
++func.call @watch(%r) : (i32) -> ()
++func.return %r : i32
++}
++func.func @untouched(%x:i32) -> i32 { func.return %x : i32 }
++}"""
++REFERENCE = repo_root().parent / "merlin-graph-proof-intake"
++
++
++@pytest.fixture(scope="module")
++def actual():
++    buffers = produce(SOURCE, reference=REFERENCE)
++    return buffers, prepare(buffers, reference=REFERENCE)
++
++
++def test_actual_three_buffers_preserve_complete_roster_and_obligations(actual):
++    buffers, prepared = actual
++    assert all(a != b for a, b in zip(buffers, buffers[1:]))
++    assert prepared.roots[-1] == ROOT
++    assert any(r.endswith(".unroll_actual") for r in prepared.roots)
++    assert any(r.endswith(".segment_actual") for r in prepared.roots)
++    assert len([r for r in prepared.roots if r.endswith(".actual")]) == 2  # complete surrounding entry
++    assert prepared.describe()["authority"] is False
++    assert prepare(buffers, reference=REFERENCE) == prepared
++
++
++@pytest.mark.parametrize(
++    "settings",
++    [Settings(1), Settings(5), Settings(tile=1), Settings(tile=17), Settings(index_bits=32), Settings(factor=True)],
++)
++def test_explicit_domain_refusal(settings):
++    with pytest.raises(Unsupported):
++        prepare(("a", "b", "c"), reference=REFERENCE, settings=settings)
++
++
++@pytest.mark.parametrize(
++    "stage,old,new",
++    [
++        (0, "27", "29"),
++        (1, "callee = @step", "callee = @other"),
++        (2, "callee = @watch", "callee = @other_watch"),
++        (2, "arith.addi", "arith.subi"),
++    ],
++)
++def test_changed_actual_source_middle_body_observer_refuses(actual, stage, old, new):
++    buffers, _ = actual
++    changed = list(buffers)
++    changed[stage] = changed[stage].replace(old, new)
++    assert changed[stage] != buffers[stage]
++    with pytest.raises((Unsupported, Unavailable)):
++        prepare(tuple(changed), reference=REFERENCE)
++
++
++def test_wrong_factor_tile_require_actual_producer_bindings(actual):
++    buffers, _ = actual
++    for settings in (Settings(factor=3), Settings(tile=4)):
++        with pytest.raises(Unsupported):
++            prepare(buffers, reference=REFERENCE, settings=settings)
++
++
++def test_identity_boundaries_are_not_claimed(actual):
++    buffers, _ = actual
++    with pytest.raises(Unsupported):
++        prepare((buffers[0], buffers[0], buffers[2]), reference=REFERENCE)
++
++
++@pytest.mark.parametrize("mutation", ["query", "roots", "domain"])
++def test_prepared_forgery_refused_before_lean(actual, tmp_path, monkeypatch, mutation):
++    _, p = actual
++    forged = replace(
++        p,
++        **{"query": {"query": p.query + "\n"}, "roots": {"roots": (ROOT,)}, "domain": {"domain": "broader"}}[mutation],
++    )
++    monkeypatch.setattr(gate, "_run", lambda *a: pytest.fail("launched Lean for forged request"))
++    with pytest.raises(Unavailable):
++        gate.check(forged, lean=Path("/unused"), destination=tmp_path / "check")
++
++
++@pytest.mark.parametrize("kind", ["none", "dict", "constructed", "copied"])
++def test_only_live_completion_may_deliver(actual, kind):
++    _, p = actual
++    c = gate.Completion(p.identity, "/saved/report")
++    candidate = {"none": None, "dict": {"status": "checked"}, "constructed": c, "copied": copy.copy(c)}[kind]
++    with pytest.raises(Unavailable, match="live authority"):
++        gate.deliver(candidate, p, lambda text: pytest.fail("unauthorized delivery"))
++
++
++@pytest.mark.parametrize(
++    "mutation", ["statement", "missing_import", "duplicate_import", "unknown_import", "missing_axioms", "bad_axioms"]
++)
++def test_malformed_native_audit_never_grants_authority(mutation):
++    audit = {
++        "violations": [],
++        "assurance": "lean_kernel_std3_no_native_reflection",
++        "theorems_audited": 1,
++        "axioms_used": ["propext"],
++        "imports": [{"module": "LoopTransformQuery", "olean": "/test/object"}],
++    }
++    statements = {ROOT: "TEST-ONLY TYPE; NOT KERNEL EVIDENCE"}
++    if mutation == "statement":
++        statements[ROOT] = True
++    elif mutation == "missing_import":
++        audit["imports"] = []
++    elif mutation == "duplicate_import":
++        audit["imports"] *= 2
++    elif mutation == "unknown_import":
++        audit["imports"].append({"module": "Merlin.Unknown", "olean": "/test/extra"})
++    elif mutation == "missing_axioms":
++        del audit["axioms_used"]
++    else:
++        audit["axioms_used"] = ["sorryAx"]
++    with pytest.raises(Unavailable):
++        gate.validate_audits(audit, statements, (ROOT,), {"LoopTransformQuery"})
++
++
++def test_timeout_retains_partial_output_and_never_delivers(tmp_path, monkeypatch):
++    import subprocess
++
++    def timeout(*args, **kwargs):
++        raise subprocess.TimeoutExpired(args[0], 1, output=b"partial proof output", stderr=b"first diagnostic")
++
++    monkeypatch.setattr(gate, "run_owned", timeout)
++    with pytest.raises(Unavailable, match="unavailable"):
++        gate._run(["/test/lean"], tmp_path, {}, tmp_path, "proof", 1)
++    assert (tmp_path / "proof.stdout").read_text() == "partial proof output"
++    assert (tmp_path / "proof.stderr").read_text() == "first diagnostic"
++
++
++@pytest.mark.parametrize("upper", [3, 5])
++def test_known_no_segmentation_output_is_unsupported_not_infrastructure(upper):
++    raw = SOURCE.replace("constant 27", "constant " + str(upper))
++    with pytest.raises(Unsupported, match="both actual loop boundaries"):
++        produce(raw, reference=REFERENCE)
++
++
++@pytest.mark.parametrize(
++    "diagnostic",
++    [
++        "(deterministic) timeout at `isDefEq`, maximum number of heartbeats (2000000) has been reached",
++        "maximum recursion depth has been reached",
++    ],
++)
++def test_proof_resource_exhaustion_is_unavailable(diagnostic):
++    import subprocess
++
++    with pytest.raises(Unavailable, match="proof-resource"):
++        gate.require_query_success(subprocess.CompletedProcess(["/test/lean"], 1, diagnostic, ""))
++
++
++def test_ordinary_checked_obligation_refusal_stays_not_established():
++    import subprocess
++
++    with pytest.raises(gate.NotEstablished):
++        gate.require_query_success(subprocess.CompletedProcess(["/test/lean"], 1, "unsolved goals", ""))
+--- /dev/null
++++ b/merlin/tests/ir/test_loop_body_group_emitter_unit.py
+@@ -0,0 +1,118 @@
++"""SDK-free proof-emission/binding controls; these never establish Lean acceptance."""
++
++import json
++from dataclasses import replace
++
++import pytest
++
++from merlin.common.paths import repo_root
++from merlin.verify import loop_transform_gate as gate
++from merlin.verify import loop_transform_intake as intake
++from merlin.verify.lean_graph_state_scalar import program
++
++SOURCE = """builtin.module {
++func.func private @step(i32,index,i32) -> i32
++func.func private @observe(i32)
++func.func private @watch(i32)
++func.func @main(%x:i32,%y:i32) -> i32 {
++%lb = arith.constant 5 : index
++%ub = arith.constant 28 : index
++%st = arith.constant 2 : index
++%r = scf.for %iv = %lb to %ub step %st iter_args(%c = %x) -> (i32) {
++%a = func.call @step(%c,%iv,%y) : (i32,index,i32) -> i32
++func.call @observe(%a) : (i32) -> ()
++%b = arith.addi %a,%y : i32
++scf.yield %b : i32
++}
++func.call @watch(%r) : (i32) -> ()
++func.return %r : i32
++}
++func.func @untouched(%x:i32) -> i32 { func.return %x : i32 }
++}"""
++REFERENCE = repo_root().parent / "merlin-graph-proof-intake"
++
++
++@pytest.fixture(scope="module")
++def actual():
++    settings = intake.Settings(factor=4, tile=2)
++    buffers = intake.produce(SOURCE, reference=REFERENCE, settings=settings)
++    return intake.prepare(buffers, reference=REFERENCE, settings=settings)
++
++
++def test_factoring_preserves_every_actual_program_and_complete_root(actual):
++    capture = json.loads(actual.capture_json)
++    # Complete original/intermediate/final data are still serialized independently.
++    for index, function in enumerate(capture["stages"][0]["functions"]):
++        if function["declaration"]:
++            continue
++        records = [function["before"], *[stage["functions"][index]["after"] for stage in capture["stages"]]]
++        for stage, body in enumerate(records):
++            assert f"def S{stage} : Program := {program(body)}\n" in actual.query
++    assert actual.roots[-1] == intake.ROOT
++    assert sum(name.endswith(".actual") for name in actual.roots) == 2
++    assert sum(name.endswith((".B2_factored", ".B3_factored")) for name in actual.roots) == 2
++    assert "set_option maxHeartbeats 2000000\n" in actual.query
++    assert "external : External World Error registry" in actual.query
++    assert "PreservesEntries (M primitive external) originalEntries finalEntries" in actual.query
++    assert "source_success" not in actual.query
++
++
++def test_factored_suffixes_are_exact_data_and_errors_keep_terminal_world(actual):
++    assert "theorem B2_factored : B2 = Piece2_0 := by\n  unfold B2 " in actual.query
++    assert "theorem B3_factored : B3 = Piece3_0 := by\n  unfold B3 " in actual.query
++    assert actual.query.count("cases step") == 8  # two ordered partial calls in each of four lanes
++    assert actual.query.count("rcases failure with ⟨error,terminal⟩") == 8
++    assert actual.query.count("have localArity := external.arity") == 8
++    assert "@[irreducible] def Piece2_" in actual.query
++    assert "@[irreducible] def Piece3_" in actual.query
++    assert "simp only [B2_factored,B3_factored," in actual.query
++
++
++def test_changed_bound_emitter_is_refused_before_any_native_launch(actual, monkeypatch, tmp_path):
++    original = intake.file_ref
++    bound = [
++        row for row in json.loads(actual.sources_json) if row["path"].endswith("/lean_graph_state_pipeline_emit.py")
++    ]
++    assert len(bound) == 1
++
++    def changed(path):
++        ref = original(path)
++        if str(path).endswith("/lean_graph_state_pipeline_emit.py"):
++            ref["sha256"] = "0" * 64
++        return ref
++
++    monkeypatch.setattr(intake, "file_ref", changed)
++    monkeypatch.setattr(gate, "_run", lambda *args: pytest.fail("native launch on stale emitter"))
++    with pytest.raises(intake.Unavailable, match="stale or forged"):
++        gate.check(actual, lean=tmp_path / "unused", destination=tmp_path / "check")
++
++
++def test_missing_factoring_roots_cannot_grant_whole_entry_authority(actual, monkeypatch, tmp_path):
++    forged = replace(actual, roots=tuple(name for name in actual.roots if not name.endswith("_factored")))
++    monkeypatch.setattr(gate, "_run", lambda *args: pytest.fail("native launch on forged root roster"))
++    with pytest.raises(intake.Unavailable):
++        gate.check(forged, lean=tmp_path / "unused", destination=tmp_path / "check")
++
++
++def test_actual_over_bound_body_is_explicitly_unsupported():
++    # Five partial calls per lane, four lanes. This existing sixteen-call bound
++    # must not be confused with an infrastructure failure or a theorem rejection.
++    source = SOURCE.replace(
++        "func.call @observe(%a) : (i32) -> ()",
++        "\n".join(["func.call @observe(%a) : (i32) -> ()"] * 4),
++    )
++    settings = intake.Settings(factor=4, tile=2)
++    buffers = intake.produce(source, reference=REFERENCE, settings=settings)
++    with pytest.raises(intake.Unsupported, match="at most sixteen retained external calls"):
++        intake.prepare(buffers, reference=REFERENCE, settings=settings)
++
++
++def test_zero_external_call_body_uses_same_complete_model():
++    source = SOURCE.replace("%a = func.call @step(%c,%iv,%y) : (i32,index,i32) -> i32", "%a = arith.addi %c,%y : i32")
++    source = source.replace("func.call @observe(%a) : (i32) -> ()", "")
++    settings = intake.Settings(factor=4, tile=2)
++    buffers = intake.produce(source, reference=REFERENCE, settings=settings)
++    prepared = intake.prepare(buffers, reference=REFERENCE, settings=settings)
++    assert "cases step" not in prepared.query
++    assert prepared.roots[-1] == intake.ROOT
++    assert "evalProgram (M primitive external) N4" in prepared.query

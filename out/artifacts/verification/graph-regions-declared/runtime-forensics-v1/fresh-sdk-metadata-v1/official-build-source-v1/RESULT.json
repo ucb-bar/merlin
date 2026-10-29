@@ -1,0 +1,24 @@
+{
+  "records": [
+    {
+      "url": "https://raw.githubusercontent.com/leanprover/lean4/eb6cafb7290e8bd5f2937522d8d804f58f02bafc/.github/workflows/ci.yml",
+      "git_blob_sha": "15d80ad9d910f0ba4a5c02be3c7f97e8979fee1b",
+      "timeout_seconds": 20,
+      "cap_bytes": 131072,
+      "status": 200,
+      "bytes": 30805,
+      "sha256": "2304df705c05d9f2e3c1c0a31bfc384b73267ef212a92da4f852dee49aed5845"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/leanprover/lean4/eb6cafb7290e8bd5f2937522d8d804f58f02bafc/.github/workflows/build-template.yml",
+      "git_blob_sha": "b1dc2c6ebb945b86c926048363b45425e81847ce",
+      "timeout_seconds": 20,
+      "cap_bytes": 131072,
+      "status": 200,
+      "bytes": 18204,
+      "sha256": "418e2d9692e9ef333bd6294887347eb21fa2f6ede08b86195b32ae772dc4449e"
+    }
+  ],
+  "archive_downloads": 0,
+  "native_launches": 0
+}

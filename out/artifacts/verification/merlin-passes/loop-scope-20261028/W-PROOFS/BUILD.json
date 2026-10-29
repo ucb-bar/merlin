@@ -1,0 +1,352 @@
+[
+  {
+    "module": "Merlin.GraphStateScalarContract",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStateScalarContract.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean"
+    ],
+    "returncode": 0,
+    "seconds": 1.027062177658081,
+    "source_sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9"
+  },
+  {
+    "module": "Merlin.GraphStatePipelineFailure",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStatePipelineFailure.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.13719940185546875,
+    "source_sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215"
+  },
+  {
+    "module": "Merlin.StateEffects",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/StateEffects.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/StateEffects.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.13095426559448242,
+    "source_sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+  },
+  {
+    "module": "Merlin.ResourceGeometry",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/ResourceGeometry.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/ResourceGeometry.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.1708512306213379,
+    "source_sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf"
+  },
+  {
+    "module": "Merlin.GraphLoopsSegment",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphLoopsSegment.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.2277052402496338,
+    "source_sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68"
+  },
+  {
+    "module": "Merlin.GraphLoopsSegmentBounds",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphLoopsSegmentBounds.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.25188279151916504,
+    "source_sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22"
+  },
+  {
+    "module": "Merlin.GraphLoopsSegmentModel",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphLoopsSegmentModel.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.31836962699890137,
+    "source_sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a"
+  },
+  {
+    "module": "Merlin.GraphLoopsSegmentState",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphLoopsSegmentState.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.15193867683410645,
+    "source_sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2"
+  },
+  {
+    "module": "Merlin.GraphLoopsUnroll",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphLoopsUnroll.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.17626380920410156,
+    "source_sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab"
+  },
+  {
+    "module": "Merlin.GraphLoopsUnrollGrouping",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphLoopsUnrollGrouping.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.19830846786499023,
+    "source_sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac"
+  },
+  {
+    "module": "Merlin.GraphStatePipelineControl",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStatePipelineControl.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.19277620315551758,
+    "source_sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035"
+  },
+  {
+    "module": "Merlin.GraphLoopsUnrollBounds",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphLoopsUnrollBounds.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.2999427318572998,
+    "source_sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa"
+  },
+  {
+    "module": "Merlin.GraphStatePipelineIndex",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStatePipelineIndex.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.2832043170928955,
+    "source_sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604"
+  },
+  {
+    "module": "Merlin.GraphStatePipelineLiterals",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStatePipelineLiterals.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.16787052154541016,
+    "source_sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751"
+  },
+  {
+    "module": "Merlin.GraphStateScalarNormalize",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStateScalarNormalize.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.15332937240600586,
+    "source_sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114"
+  },
+  {
+    "module": "Merlin.GraphStateScalarSound",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStateScalarSound.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.28114843368530273,
+    "source_sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d"
+  },
+  {
+    "module": "Merlin.GraphStatePipelineScope",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStatePipelineScope.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.1083681583404541,
+    "source_sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9"
+  },
+  {
+    "module": "Merlin.GraphStatePipelineFold",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStatePipelineFold.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.19538307189941406,
+    "source_sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b"
+  },
+  {
+    "module": "Merlin.GraphStatePipelineSegments",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStatePipelineSegments.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.18061566352844238,
+    "source_sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124"
+  },
+  {
+    "module": "Merlin.GraphStatePipelineLoops",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStatePipelineLoops.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.1886577606201172,
+    "source_sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb"
+  },
+  {
+    "module": "Merlin.GraphStateScalarTyping",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStateScalarTyping.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.1588282585144043,
+    "source_sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d"
+  },
+  {
+    "module": "Merlin.GraphStatePipelineProgram",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStatePipelineProgram.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.2257380485534668,
+    "source_sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453"
+  },
+  {
+    "module": "Merlin.GraphStateScalarInitialized",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStateScalarInitialized.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.14857769012451172,
+    "source_sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a"
+  },
+  {
+    "module": "Merlin.GraphStateScalar",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Merlin/GraphStateScalar.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateScalar.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.11283230781555176,
+    "source_sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02"
+  },
+  {
+    "module": "Query",
+    "cmd": [
+      "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "-R",
+      "/home/jeremy/Projects/merlin-loop-verification",
+      "-o",
+      "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/proof/Query.olean",
+      "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/Q-INTEGRATION/first-example/Query.lean"
+    ],
+    "returncode": 0,
+    "seconds": 0.37468671798706055,
+    "source_sha256": "eb8e8946de395a3ec70b5f466b82d7bf993770674a42828006b634ff04e563e8"
+  }
+]

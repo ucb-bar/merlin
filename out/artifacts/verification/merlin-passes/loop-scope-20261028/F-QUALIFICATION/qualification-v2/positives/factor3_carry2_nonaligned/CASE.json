@@ -1,0 +1,17 @@
+{
+  "settings": {
+    "factor": 3,
+    "tile": 2,
+    "index_bits": 64
+  },
+  "metadata": {
+    "name": "factor3_carry2_nonaligned",
+    "factor": 3,
+    "tile": 2,
+    "carries": 2,
+    "lower": 5,
+    "step": 3,
+    "count": 15,
+    "nonaligned_upper": true
+  }
+}

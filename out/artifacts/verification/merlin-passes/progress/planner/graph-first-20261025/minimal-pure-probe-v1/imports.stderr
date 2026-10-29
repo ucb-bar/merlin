@@ -1,0 +1,196 @@
+    119891:	file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean [0];  generating link map
+    119891:	  dynamic: 0x00007f8329d47a80  base: 0x00007f8329d45000   size: 0x0000000000003d59
+    119891:	    entry: 0x00007f8329d468b0  phdr: 0x00007f8329d45040  phnum:                 11
+    119891:	
+    119891:	
+    119891:	file=libInit_shared.so [0];  needed by /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean [0]
+    119891:	find library=libInit_shared.so [0]; searching
+    119891:	 search path=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean		(--library-path)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libInit_shared.so
+    119891:	    (no such file)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so
+    119891:	
+    119891:	file=libInit_shared.so [0];  generating link map
+    119891:	  dynamic: 0x00007f8329d41660  base: 0x00007f8329d3f000   size: 0x00000000000038e1
+    119891:	    entry: 0x00007f8329d3f000  phdr: 0x00007f8329d3f040  phnum:                  9
+    119891:	
+    119891:	
+    119891:	file=libleanshared_2.so [0];  needed by /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean [0]
+    119891:	find library=libleanshared_2.so [0]; searching
+    119891:	 search path=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean		(--library-path)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libleanshared_2.so
+    119891:	    (no such file)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so
+    119891:	
+    119891:	file=libleanshared_2.so [0];  generating link map
+    119891:	  dynamic: 0x00007f8329d3d660  base: 0x00007f8329d3b000   size: 0x00000000000038e1
+    119891:	    entry: 0x00007f8329d3b000  phdr: 0x00007f8329d3b040  phnum:                  9
+    119891:	
+    119891:	
+    119891:	file=libleanshared_1.so [0];  needed by /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean [0]
+    119891:	find library=libleanshared_1.so [0]; searching
+    119891:	 search path=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean		(--library-path)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libleanshared_1.so
+    119891:	    (no such file)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so
+    119891:	
+    119891:	file=libleanshared_1.so [0];  generating link map
+    119891:	  dynamic: 0x00007f8329d39660  base: 0x00007f8329d37000   size: 0x00000000000038e1
+    119891:	    entry: 0x00007f8329d37000  phdr: 0x00007f8329d37040  phnum:                  9
+    119891:	
+    119891:	
+    119891:	file=libleanshared.so [0];  needed by /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean [0]
+    119891:	find library=libleanshared.so [0]; searching
+    119891:	 search path=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean		(--library-path)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libleanshared.so
+    119891:	    (no such file)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so
+    119891:	
+    119891:	file=libleanshared.so [0];  generating link map
+    119891:	  dynamic: 0x00007f8329c244b0  base: 0x00007f8320200000   size: 0x0000000009af5388
+    119891:	    entry: 0x00007f8320200000  phdr: 0x00007f8320200040  phnum:                 10
+    119891:	
+    119891:	
+    119891:	file=libc.so.6 [0];  needed by /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean [0]
+    119891:	find library=libc.so.6 [0]; searching
+    119891:	 search path=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean		(--library-path)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libc.so.6
+    119891:	    (no such file)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libc.so.6
+    119891:	    (no such file)
+    119891:	 search path=/usr/lib		(system search path)
+    119891:	  trying file=/usr/lib/libc.so.6
+    119891:	
+    119891:	file=libc.so.6 [0];  generating link map
+    119891:	  dynamic: 0x00007f8320018940  base: 0x00007f831fe00000   size: 0x0000000000222b50
+    119891:	    entry: 0x00007f831fe279c0  phdr: 0x00007f831fe00040  phnum:                 16
+    119891:	
+    119891:	
+    119891:	file=libpthread.so.0 [0];  needed by /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean [0]
+    119891:	find library=libpthread.so.0 [0]; searching
+    119891:	 search path=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean		(--library-path)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libpthread.so.0
+    119891:	    (no such file)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libpthread.so.0
+    119891:	    (no such file)
+    119891:	 search path=/usr/lib		(system search path)
+    119891:	  trying file=/usr/lib/libpthread.so.0
+    119891:	
+    119891:	file=libpthread.so.0 [0];  generating link map
+    119891:	  dynamic: 0x00007f8329d33dc8  base: 0x00007f8329d30000   size: 0x0000000000004010
+    119891:	    entry: 0x00007f8329d30000  phdr: 0x00007f8329d30040  phnum:                 13
+    119891:	
+    119891:	
+    119891:	file=libdl.so.2 [0];  needed by /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean [0]
+    119891:	find library=libdl.so.2 [0]; searching
+    119891:	 search path=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean		(--library-path)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libdl.so.2
+    119891:	    (no such file)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libdl.so.2
+    119891:	    (no such file)
+    119891:	 search path=/usr/lib		(system search path)
+    119891:	  trying file=/usr/lib/libdl.so.2
+    119891:	
+    119891:	file=libdl.so.2 [0];  generating link map
+    119891:	  dynamic: 0x00007f8329d2edc8  base: 0x00007f8329d2b000   size: 0x0000000000004010
+    119891:	    entry: 0x00007f8329d2b000  phdr: 0x00007f8329d2b040  phnum:                 13
+    119891:	
+    119891:	
+    119891:	file=libm.so.6 [0];  needed by /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean [0]
+    119891:	find library=libm.so.6 [0]; searching
+    119891:	 search path=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean		(--library-path)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/libm.so.6
+    119891:	    (no such file)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libm.so.6
+    119891:	    (no such file)
+    119891:	 search path=/usr/lib		(system search path)
+    119891:	  trying file=/usr/lib/libm.so.6
+    119891:	
+    119891:	file=libm.so.6 [0];  generating link map
+    119891:	  dynamic: 0x00007f83201feb40  base: 0x00007f83200c9000   size: 0x0000000000136148
+    119891:	    entry: 0x00007f83200c9000  phdr: 0x00007f83200c9040  phnum:                 13
+    119891:	
+    119891:	
+    119891:	file=librt.so.1 [0];  needed by /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so [0]
+    119891:	find library=librt.so.1 [0]; searching
+    119891:	 search path=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean		(--library-path)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/librt.so.1
+    119891:	    (no such file)
+    119891:	  trying file=/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/librt.so.1
+    119891:	    (no such file)
+    119891:	 search path=/usr/lib		(system search path)
+    119891:	  trying file=/usr/lib/librt.so.1
+    119891:	
+    119891:	file=librt.so.1 [0];  generating link map
+    119891:	  dynamic: 0x00007f8329d27da0  base: 0x00007f8329d24000   size: 0x0000000000004010
+    119891:	    entry: 0x00007f8329d24000  phdr: 0x00007f8329d24040  phnum:                 13
+    119891:	
+    119891:	
+    119891:	calling init: /usr/lib/ld-linux-x86-64.so.2
+    119891:	
+    119891:	
+    119891:	calling init: /usr/lib/libc.so.6
+    119891:	
+    119891:	
+    119891:	calling init: /usr/lib/librt.so.1
+    119891:	
+    119891:	
+    119891:	calling init: /usr/lib/libm.so.6
+    119891:	
+    119891:	
+    119891:	calling init: /usr/lib/libdl.so.2
+    119891:	
+    119891:	
+    119891:	calling init: /usr/lib/libpthread.so.0
+    119891:	
+    119891:	
+    119891:	calling init: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so
+    119891:	
+    119891:	
+    119891:	calling init: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so
+    119891:	
+    119891:	
+    119891:	calling init: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so
+    119891:	
+    119891:	
+    119891:	calling init: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so
+    119891:	
+    119891:	
+    119891:	initialize program: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean
+    119891:	
+    119891:	
+    119891:	transferring control: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean
+    119891:	
+    119891:	
+    119891:	calling fini:  [0]
+    119891:	
+    119891:	
+    119891:	calling fini: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so [0]
+    119891:	
+    119891:	
+    119891:	calling fini: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so [0]
+    119891:	
+    119891:	
+    119891:	calling fini: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so [0]
+    119891:	
+    119891:	
+    119891:	calling fini: /home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so [0]
+    119891:	
+    119891:	
+    119891:	calling fini: /usr/lib/libpthread.so.0 [0]
+    119891:	
+    119891:	
+    119891:	calling fini: /usr/lib/libdl.so.2 [0]
+    119891:	
+    119891:	
+    119891:	calling fini: /usr/lib/libm.so.6 [0]
+    119891:	
+    119891:	
+    119891:	calling fini: /usr/lib/librt.so.1 [0]
+    119891:	
+    119891:	
+    119891:	calling fini: /usr/lib/libc.so.6 [0]
+    119891:	
+    119891:	
+    119891:	calling fini: /usr/lib/ld-linux-x86-64.so.2 [0]
+    119891:	

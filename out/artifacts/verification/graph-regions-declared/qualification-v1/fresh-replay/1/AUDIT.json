@@ -1,0 +1,23 @@
+{
+  "actual_calls_valid": [
+    "propext",
+    "Quot.sound"
+  ],
+  "actual_complete_observers": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+  ],
+  "actual_generic_binding": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+  ],
+  "actual_kernel_decoded": [
+    "propext"
+  ],
+  "actual_nonzero_witness": [
+    "propext",
+    "Quot.sound"
+  ]
+}

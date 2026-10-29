@@ -18,6 +18,13 @@ from .gate_errors import GateRejected, GateUnavailable, GateUnsupported
 THEOREMS = ("MerlinVerify.Check.TypedModule.check_sound", "MerlinVerify.Check.supportCheck_sound")
 
 
+def bf16_f32acc_policy(job: dict[str, Any]) -> dict[str, Any]:
+    """Require live exact/local policy checks and independently installed review admission."""
+    from .bf16_policy_gate import check_policy
+
+    return check_policy(job)
+
+
 def _text(path: str | None, what: str) -> str:
     if not path:
         raise GateUnsupported(f"the check needs the exact {what} text")

@@ -1,0 +1,17 @@
+{
+  "settings": {
+    "factor": 3,
+    "tile": 7,
+    "index_bits": 64
+  },
+  "metadata": {
+    "name": "tile7_short",
+    "factor": 3,
+    "tile": 7,
+    "carries": 1,
+    "lower": 0,
+    "step": 1,
+    "count": 27,
+    "nonaligned_upper": false
+  }
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "priority": 1,
+    "owner": "F/root",
+    "obligation": "Justified new authorized runtime context; original/private incidents and all failed profiles held",
+    "status": "EXTERNAL_HOLD"
+  },
+  {
+    "priority": 2,
+    "owner": "W after explicit authorization",
+    "obligation": "Compile exact118 Lean source closure; inspect root types/transitive std3 axioms; fix ordinary diagnostics only in successor cuts",
+    "status": "UNCOMPILED"
+  },
+  {
+    "priority": 3,
+    "owner": "W after authorization",
+    "obligation": "Observe actual positive/binding/refusal roots and nonzero witness; distinguish compile/proof/environment/semantic failures",
+    "status": "UNOBSERVED"
+  },
+  {
+    "priority": 4,
+    "owner": "coordinator/reviewer",
+    "obligation": "New fixed qualification/replay and independent complete raw/projection/frame/allocator review",
+    "status": "UNQUALIFIED"
+  },
+  {
+    "priority": 5,
+    "owner": "future scoped graph task",
+    "obligation": "Repeated calls require related-heap and nonzero private-clock stability; transitive contexts/observer calls need finite-call composition; prefix allocations/descriptor returns need explicit separate semantics",
+    "status": "PRECISE_REFUSALS"
+  },
+  {
+    "priority": 6,
+    "owner": "paper authors",
+    "obligation": "Restrict claim to checked entry grammar and possible-success observation relation; no new native/numeric/allocator/error/divergence claim",
+    "status": "REVIEW_OUTSTANDING"
+  }
+]

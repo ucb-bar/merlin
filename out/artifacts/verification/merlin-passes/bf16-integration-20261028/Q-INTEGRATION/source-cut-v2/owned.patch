@@ -1,0 +1,1070 @@
+--- /dev/null
++++ b/src/merlin/verify/bf16_policy_gate.py
+@@ -0,0 +1,466 @@
++"""Admission of the zero-initialized bf16/f16 f32-accumulation policy.
++
++The installed admission and review records are trusted-host governance inputs, not
++cryptographic authentication of a human. This module never creates them. Raw draft
++checker reports remain abstracted: only a fresh checked pair PLUS exact installed
++review/build admission may produce the separate gate claim. No saved receipt input.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import os
++import subprocess
++from pathlib import Path
++from typing import Any
++
++from merlin.common.paths import repo_root
++
++from .gate_errors import GateRejected, GateUnavailable, GateUnsupported
++from .lean import bf16_f32acc as policy
++
++PASS = "lower_bf16_matmul_f32acc"
++ADMISSION = "merlin/contract/bf16_f32acc_admission.json"
++REVIEW = "merlin/contract/reviews/bf16_f32acc.json"
++DOMAIN = "zero-init-two-input-bf16-f16-ordered-f32acc-index64-v1"
++EXACT = "MerlinVerify.Check.Bf16F32AccExact.check_sound"
++SITES = "MerlinVerify.Check.Bf16F32AccSites.check_sound"
++COVERAGE = "MerlinVerify.Check.Bf16F32AccSites.collectOps_coverage"
++ROOTS = {
++    **policy.CONTRACT_THEOREMS,
++    policy.THEOREM: policy.BOUNDARY[1],
++    f"{policy.BOUNDARY[1]}.qualify_sound": policy.BOUNDARY[1],
++}
++STD3 = {"propext", "Classical.choice", "Quot.sound"}
++PIN_FILES = (
++    "Spec/Bf16F32AccContract",
++    "Rules/Bf16F32AccContract",
++    "Rules/Bf16F32AccBody",
++    "Rules/Bf16F32AccReference",
++    "Rules/Bf16F32AccTensor",
++    "Rules/Bf16F32AccSite",
++    "Rules/Bf16F32AccNonvacuity",
++    "Rules/W8A8TensorTrace",
++    "Rules/W8A8TensorOperands",
++    "Rules/W8A8Fill",
++    "Check/Bf16F32Acc",
++    "Check/Bf16F32AccExact",
++    "Check/Bf16F32AccSites",
++    "Check/ParametricAlpha",
++    "Check/Alpha",
++    "Check/ParametricModule",
++    "Check/PolicyParametric",
++    "Check/PolicyModule",
++    "Check/PolicyExact",
++)
++
++
++def _digest(data: bytes) -> str:
++    return hashlib.sha256(data).hexdigest()
++
++
++def _json(path: Path) -> dict:
++    def unique(pairs):
++        out = {}
++        for key, value in pairs:
++            if key in out:
++                raise ValueError(f"duplicate key: {key}")
++            out[key] = value
++        return out
++
++    result = json.loads(path.read_text(), object_pairs_hook=unique)
++    if type(result) is not dict:
++        raise ValueError(f"expected object: {path}")
++    return result
++
++
++def source_bindings(root: Path) -> dict[str, str]:
++    """Source-only conservative project closure; never traverses .lake/build/SDK trees."""
++    files = set((root / "merlin/lean/MerlinVerify").rglob("*.lean"))
++    files.update((root / "src/merlin/verify").rglob("*.py"))
++    files.update(
++        root / p
++        for p in (
++            "merlin/lean/Main.lean",
++            "merlin/lean/Audit.lean",
++            "merlin/lean/lakefile.toml",
++            "merlin/lean/lake-manifest.json",
++            "merlin/lean/lean-toolchain",
++            "merlin/lean/SPEC_LOCK",
++            "merlin/lean/LEDGER.md",
++            "merlin/contract/schemas/lean_ir.schema.json",
++            "merlin/contract/schemas/lean_receipt.schema.json",
++            "build_tools/scripts/prepare_bf16_review.py",
++            "src/merlin/common/paths.py",
++            "src/merlin/llvmlower/passes_xdsl.py",
++            "src/merlin/runtime/backends/zephyr_model.py",
++            "src/merlin/frontends/linalg_mlir.py",
++            "src/merlin/xdsl_dialects/_common.py",
++            "src/merlin/xdsl_dialects/fp8.py",
++            "src/merlin/__init__.py",
++            "src/merlin/common/__init__.py",
++            "src/merlin/frontends/__init__.py",
++            "src/merlin/xdsl_dialects/__init__.py",
++            "src/merlin/runtime/__init__.py",
++            "src/merlin/runtime/backends/__init__.py",
++        )
++    )
++    return {str(p.relative_to(root)): _digest(p.read_bytes()) for p in sorted(files)}
++
++
++def require_admission(root: Path) -> dict:
++    """Only the fixed, coordinator-installed record can select an approved policy.
++
++    Absence refuses before any native/tool read. Attribution is an explicit trusted
++    installation premise; hashes alone and caller booleans cannot grant approval.
++    """
++    path = root / ADMISSION
++    if not path.is_file():
++        raise GateRejected("human_review_pending: no installed bf16 policy admission")
++    try:
++        admitted, review = _json(path), _json(root / REVIEW)
++        if set(admitted) != {"schema", "domain", "review_sha256", "sources", "statements", "lean", "exporter"}:
++            raise ValueError("unsupported admission fields")
++        if admitted["schema"] != "merlin.bf16.policy.admission.v1" or admitted["domain"] != DOMAIN:
++            raise ValueError("wrong policy admission schema/domain")
++        if set(review) != {
++            "schema",
++            "decision",
++            "domain",
++            "reviewer",
++            "independent_of_implementation",
++            "record",
++            "sources_sha256",
++            "statements_sha256",
++        }:
++            raise ValueError("unsupported human review record fields")
++        if (
++            review["schema"] != "merlin.bf16.policy.review.v1"
++            or review["decision"] != "approved"
++            or review["domain"] != DOMAIN
++            or review["independent_of_implementation"] is not True
++            or not isinstance(review["reviewer"], str)
++            or not review["reviewer"].strip()
++            or not isinstance(review["record"], str)
++            or not review["record"].strip()
++        ):
++            raise ValueError("independently attributable policy approval absent")
++        if admitted["review_sha256"] != _digest((root / REVIEW).read_bytes()):
++            raise ValueError("review record changed")
++        sources = source_bindings(root)
++        if admitted["sources"] != sources:
++            raise ValueError("approved project sources changed")
++        for key in ("sources", "statements"):
++            bound = _digest(json.dumps(admitted[key], sort_keys=True, separators=(",", ":")).encode())
++            if review[key + "_sha256"] != bound:
++                raise ValueError(f"review does not bind {key}")
++        lock = _json(root / "merlin/lean/SPEC_LOCK")
++        for suffix in PIN_FILES:
++            rel = "MerlinVerify/" + suffix + ".lean"
++            if lock.get(rel) != sources.get("merlin/lean/" + rel) or rel not in lock:
++                raise ValueError(f"missing or changed policy pin: {rel}")
++        if set(admitted["statements"]) != set(ROOTS):
++            raise ValueError("incomplete theorem statement roster")
++        for name, statement in admitted["statements"].items():
++            if (
++                not isinstance(statement, str)
++                or not statement
++                or lock.get("statement:" + name) != _digest(statement.encode())
++            ):
++                raise ValueError(f"missing or changed statement pin: {name}")
++        return admitted
++    except (OSError, ValueError, TypeError, KeyError) as exc:
++        raise GateRejected(f"bf16 policy admission refused: {exc}") from exc
++
++
++def _attr(op: dict, name: str) -> dict:
++    return op["props"].get(name, op["attrs"].get(name, {}))
++
++
++def _children(op: dict):
++    for region in op["regions"]:
++        for block in region["blocks"]:
++            yield from block["ops"]
++
++
++def _half_contraction(op: dict) -> bool:
++    # Conservative denominator: all half-result matmul/generic reductions, even
++    # malformed/non-two-input ones. Lean alone establishes actual eligibility.
++    half = any(
++        r["type"].get("kind") == "tensor"
++        and r["type"].get("element") in ({"kind": "float", "format": "bf16"}, {"kind": "float", "format": "f16"})
++        for r in op["results"]
++    )
++    if not half:
++        return False
++    if op["name"] in ("linalg.matmul", "linalg.batch_matmul"):
++        return True
++    iters = _attr(op, "iterator_types").get("elements", [])
++    return op["name"] == "linalg.generic" and any(a.get("value") == "reduction" for a in iters)
++
++
++def source_sites(document: dict) -> list[dict]:
++    """Independently enumerate full-source positions; unsupported nested sites refuse.
++
++    A conservative superset of Lean candidates avoids treating an omitted half
++    contraction as successful coverage. This is a host check, not a Lean proof.
++    """
++    if document.get("schema") != "merlin.lean.ir.v1":
++        raise GateUnavailable("unsupported source export schema")
++    sites = []
++
++    def no_nested(op):
++        if _half_contraction(op):
++            raise GateUnsupported("half contraction outside the supported function-body site scope")
++        for child in _children(op):
++            no_nested(child)
++
++    for fn in document["module"]["ops"]:
++        if fn["name"] != "func.func":
++            no_nested(fn)
++            continue
++        regions = fn["regions"]
++        if not regions:  # declaration
++            continue
++        if len(regions) != 1 or len(regions[0]["blocks"]) != 1:
++            raise GateUnsupported("only single-block defined functions are supported")
++        name = _attr(fn, "sym_name").get("value")
++        if not isinstance(name, str) or not name:
++            raise GateUnavailable("malformed function name in export")
++        for index, op in enumerate(regions[0]["blocks"][0]["ops"]):
++            if _half_contraction(op):
++                sites.append(
++                    {
++                        "function": name,
++                        "source_operation": index,
++                        "source_results": [r["id"] for r in op["results"]],
++                        "qualification_passed": True,
++                    }
++                )
++            for child in _children(op):
++                no_nested(child)
++    if not sites:
++        raise GateUnsupported("no half contraction sites; not positive policy coverage")
++    return sites
++
++
++def validate_report(report: dict, source_export: dict) -> list[dict]:
++    """SDK-free report consistency checks; NEVER grants authority to a saved report."""
++    try:
++        if (report["checker"], report["theorem"], report["claim_type"], report["policy"]) != (
++            policy.CHECKER,
++            policy.THEOREM,
++            "policy",
++            "bf16-f32acc-contract",
++        ):
++            raise GateUnavailable("different checker/root/policy")
++        if type(report["index_bits"]) is not int or report["index_bits"] != 64:
++            raise GateUnsupported("policy requires index64")
++        if report["verdict"] != "abstracted" or report["policy_reviewed"] is not False:
++            raise GateUnavailable("draft checker tried to grant approval")
++        local = report["pass_boundary"]
++        if (local["semantic_match_theorem"], local["site_qualification_theorem"]) != (EXACT, SITES):
++            raise GateUnavailable("different complete-output/local roots")
++        for key in ("checked", "semantic_match", "site_qualification_passed"):
++            if type(local[key]) is not bool:
++                raise GateUnavailable("non-Boolean checker result")
++            if not local[key]:
++                raise GateRejected(f"bf16 complete policy check refused: {key}")
++        expected = source_sites(source_export)
++        for count in (report["candidates"], local["expected_sites"], local["covered_sites"]):
++            if type(count) is not int or count != len(expected):
++                raise GateRejected("incomplete source-site denominator")
++        # JSON equality alone treats True as 1; compare canonical encodings too.
++        if json.dumps(local["site_obligations"], sort_keys=True) != json.dumps(expected, sort_keys=True):
++            raise GateRejected("source-site position/order/result coverage differs")
++        licenses = report["sites"]
++        if len(licenses) != len(expected) or any(
++            set(x) != {"mul", "add"} or any(type(v) is not str or v not in ("none", "contract") for v in x.values())
++            for x in licenses
++        ):
++            raise GateRejected("wrong site flags or license count")
++        return expected
++    except (KeyError, TypeError, ValueError, AttributeError) as exc:
++        raise GateUnavailable(f"malformed bf16 checker report/export: {exc}") from exc
++
++
++def _ref(path: Path) -> dict:
++    data = path.read_bytes()
++    return {"path": str(path.resolve()), "sha256": _digest(data), "bytes": len(data)}
++
++
++def _bound(ref: dict) -> None:
++    if _ref(Path(ref["path"])) != ref:
++        raise GateRejected("bound checker/input/report bytes changed")
++
++
++def _tools(params: dict, admitted: dict) -> dict:
++    """Use ordinary repository freshness and receipt identity, not a custom SDK provider."""
++    from .lean import check
++    from .pass_validation import CheckerTools
++
++    sdk = Path(params["sdk_bin"]).resolve()
++    python = Path(params["compiler_python"]).resolve()
++    CheckerTools(sdk, python)
++    if check._lean_block() != admitted["lean"]:
++        raise GateRejected("checker/spec identity differs from approved policy build")
++    if {**check._exporter_block(python), "round_trip": "identical"} != admitted["exporter"]:
++        raise GateRejected("exporter identity differs from approved policy build")
++    paths = {
++        "lake": sdk / "lake",
++        "lean": sdk / "lean",
++        "compiler_python": python,
++        "checker": check.lean_exe().resolve(),
++        "audit": check.lean_exe().with_name("merlin-lean-audit").resolve(),
++    }
++    return {k: _ref(p) for k, p in paths.items()}
++
++
++def audit_candidate(tools: dict, work: Path) -> dict:
++    """Exact selected lake env/auditor; no implicit build or ~/.elan fallback."""
++    from .lean import check
++
++    env = {**os.environ, "PATH": str(Path(tools["lake"]["path"]).parent) + os.pathsep + os.environ.get("PATH", "")}
++
++    def run(label, arguments):
++        proc = subprocess.run(
++            [tools["lake"]["path"], "env", tools["audit"]["path"], *arguments],
++            cwd=check.lean_root(),
++            env=env,
++            capture_output=True,
++            text=True,
++            timeout=300,
++            check=False,
++        )
++        (work / (label + ".stdout")).write_text(proc.stdout)
++        (work / (label + ".stderr")).write_text(proc.stderr)
++        if proc.returncode != 0:
++            raise GateUnavailable(f"bf16 audit {label} failed: exit {proc.returncode}")
++        return json.loads(proc.stdout.strip().splitlines()[-1])
++
++    for ref in tools.values():
++        _bound(ref)
++    modules = sorted(set(ROOTS.values()))
++    closure = run("closure", ["Main", *modules])
++    if (
++        closure.get("violations") != []
++        or type(closure.get("theorems_audited")) is not int
++        or closure["theorems_audited"] <= 0
++    ):
++        raise GateRejected("checker dependency audit refused")
++    statements = run("statements", ["--statements", ",".join(ROOTS), *modules]).get("statements")
++    if type(statements) is not dict or set(statements) != set(ROOTS):
++        raise GateUnavailable("incomplete live theorem statement roster")
++    axioms = {}
++    for i, (name, module) in enumerate(ROOTS.items()):
++        result = run(f"root-{i}", ["--axioms", name, module])
++        ax = result.get("axioms")
++        if (
++            result.get("decl") != name
++            or type(ax) is not list
++            or any(type(a) is not str for a in ax)
++            or not set(ax) <= STD3
++        ):
++            raise GateRejected("root audit is not standard-three-only")
++        axioms[name] = ax
++    for ref in tools.values():
++        _bound(ref)
++    return {"axioms": axioms, "statements": statements, "closure": closure}
++
++
++def check_policy(job: dict[str, Any]) -> dict[str, Any]:
++    """Worker entry: normal return means a fresh pair AND installed policy admission."""
++    params = job.get("params")
++    if type(params) is not dict or set(params) != {"sdk_bin", "compiler_python", "index_bits"}:
++        raise GateUnsupported("explicit tools/index only; caller approval/receipt fields forbidden")
++    if type(params["index_bits"]) is not int or params["index_bits"] != 64:
++        raise GateUnsupported("bf16 policy gate supports index64 only")
++    if any(type(params[k]) is not str or not params[k] for k in ("sdk_bin", "compiler_python")):
++        raise GateUnsupported("explicit tool paths required")
++    root = repo_root()
++    admitted = require_admission(root)  # MUST precede tool/SDK access.
++    try:
++        before, after = _ref(Path(job["before"])), _ref(Path(job["after"]))
++        if before["sha256"] == after["sha256"]:
++            raise GateUnsupported("identity pair; no changed policy boundary")
++        tools = _tools(params, admitted)
++        from .gate_checks import _stage
++
++        work = Path(job["directory"]) / "bf16-policy"
++        work.mkdir(exist_ok=False)
++        audited = audit_candidate(tools, work)
++        if audited["statements"] != admitted["statements"]:
++            raise GateRejected("live theorem statements differ from approval")
++        axioms = audited["axioms"]
++
++        # The receipt API's historical auditor prepends ~/.elan; use only the
++        # already audited exact roots from the selected build instead.
++        def auditor(name, module):
++            if ROOTS.get(name) != module:
++                raise GateRejected("unexpected audit root")
++            return axioms[name]
++
++        stage = _stage(
++            work,
++            "merlin.llvmlower.passes_xdsl." + PASS,
++            Path(before["path"]).read_text(),
++            Path(after["path"]).read_text(),
++        )
++        receipt = policy.check_stage(
++            stage, work / "receipt", m2m_python=Path(params["compiler_python"]), index_bits=64, theorem_auditor=auditor
++        )
++        if receipt.get("verdict") == "unmeasured":
++            raise GateUnavailable(receipt.get("reason", "checker did not complete"))
++        if receipt.get("schema") != "merlin.lean.receipt.v1" or receipt.get("verdict") != "abstracted":
++            raise GateUnavailable("unexpected policy receipt schema/status")
++        if (receipt.get("checker"), receipt.get("theorem"), receipt.get("policy"), receipt.get("claim_type")) != (
++            policy.CHECKER,
++            policy.THEOREM,
++            policy.POLICY,
++            "policy",
++        ):
++            raise GateUnavailable("receipt obligation identity mismatch")
++        if receipt.get("exporter", {}).get("round_trip") != "identical":
++            raise GateUnsupported("authoritative export round trip refused")
++        if receipt["lean"] != admitted["lean"] or receipt["exporter"] != admitted["exporter"]:
++            raise GateRejected("checker/spec/exporter bindings changed")
++        report = _json(Path(receipt["cert"]["path"]))
++        exports = report["program_exports"]
++        if len(exports) != 2 or receipt["exports"] != dict(zip(("before", "after"), exports, strict=True)):
++            raise GateRejected("exports do not bind one complete boundary")
++        for name, original in (("before", before), ("after", after)):
++            bound = receipt[name]
++            if any(bound[k] != original[k] for k in ("sha256", "bytes")):
++                raise GateRejected("receipt differs from actual worker boundary")
++            doc = _json(Path(receipt["exports"][name]["path"]))
++            if any(doc["source"][k] != original[k] for k in ("sha256", "bytes")):
++                raise GateRejected("export differs from actual source bytes")
++        sites = validate_report(report, _json(Path(exports[0]["path"])))
++        for ref in (before, after, receipt["before"], receipt["after"], receipt["cert"], *exports):
++            _bound(ref)
++        if require_admission(root) != admitted or _tools(params, admitted) != tools:
++            raise GateRejected("admission/build changed during check")
++        return {
++            "schema": "merlin.bf16.policy.gate.v1",
++            "status": "admitted",
++            "claim_type": "policy",
++            "domain": DOMAIN,
++            "claim": (
++                "complete output equals approved f32-accumulation reference under SSA/call laws; "
++                "strict local initialized-input policy refinement"
++            ),
++            "original_source_equivalence": False,
++            "whole_model_definedness": False,
++            "before": before,
++            "after": after,
++            "index_bits": 64,
++            "sites": sites,
++            "theorems": list(ROOTS),
++            "axioms": axioms,
++            "admission": _ref(root / ADMISSION),
++            "review": _ref(root / REVIEW),
++            "receipt": str(work / "receipt/receipt.json"),
++        }
++    except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError) as exc:
++        raise GateUnavailable(f"bf16 live policy check unavailable: {exc}") from exc
+--- a/src/merlin/verify/gate_checks.py
++++ b/src/merlin/verify/gate_checks.py
+@@ -16,6 +16,13 @@
+ from .gate_errors import GateRejected, GateUnavailable, GateUnsupported
+ 
+ THEOREMS = ("MerlinVerify.Check.TypedModule.check_sound", "MerlinVerify.Check.supportCheck_sound")
++
++
++def bf16_f32acc_policy(job: dict[str, Any]) -> dict[str, Any]:
++    """Require live exact/local policy checks and independently installed review admission."""
++    from .bf16_policy_gate import check_policy
++
++    return check_policy(job)
+ 
+ 
+ def _text(path: str | None, what: str) -> str:
+--- a/src/merlin/verify/gate_worker.py
++++ b/src/merlin/verify/gate_worker.py
+@@ -15,7 +15,7 @@
+ import traceback
+ from pathlib import Path
+ 
+-BUILTIN_CHECKS = ("tensor_refinement",)
++BUILTIN_CHECKS = ("tensor_refinement", "bf16_f32acc_policy")
+ 
+ 
+ def resolve(name: str):
+@@ -53,6 +53,17 @@
+     request = json.loads((directory / "request.json").read_text())
+     try:
+         detail = resolve(request["check"])(request) or {}
++        if request["check"] == "bf16_f32acc_policy":
++            # This draft check historically returns abstracted reports. Never
++            # interpret a normally returning report as policy admission.
++            from .gate_errors import GateRejected
++
++            if (
++                not isinstance(detail, dict)
++                or detail.get("schema") != "merlin.bf16.policy.gate.v1"
++                or detail.get("status") != "admitted"
++            ):
++                raise GateRejected("bf16 handler did not return admitted policy evidence")
+         verdict = {"verdict": "accepted", "reason": "", "detail": detail}
+     except BaseException as error:  # noqa: BLE001 -- every outcome must be recorded as a verdict
+         verdict = {
+--- a/src/merlin/verify/pass_validation.py
++++ b/src/merlin/verify/pass_validation.py
+@@ -35,6 +35,8 @@
+     "preprocess_text_textual": "tensor_refinement",
+     # The pipeline's leading tensor-level cse, run by merlin.llvmlower.leading_cse.
+     "cse": "tensor_refinement",
++    # Numerics-changing policy; never route this boundary through tensor_refinement.
++    "lower_bf16_matmul_f32acc": "bf16_f32acc_policy",
+ }
+ ENV_PASSES = "MERLIN_VALIDATE_PASSES"
+ ENV_SDK_BIN = "MERLIN_LEAN_SDK_BIN"
+@@ -108,9 +110,19 @@
+             # merlin/lean/LEDGER.md S6: at index32 the Lean model and the pinned native pipeline
+             # disagree on a retained overflow example; a refinement claim there is not established.
+             raise ValueError("pass validation supports the 64-bit index width only (LEDGER S6)")
++        _policy_handler(self)
+ 
+ 
+ _ACTIVE: ContextVar[PassValidation | None] = ContextVar("merlin_pass_validation", default=None)
++
++
++def _policy_handler(validation: PassValidation) -> None:
++    """A selected numerical policy may not be aliased to an ordinary refinement check."""
++    if "lower_bf16_matmul_f32acc" not in validation.passes:
++        return
++    name = CHECKS["lower_bf16_matmul_f32acc"]
++    if validation.gate._aliases.get(name, name) != name or validation.gate._worker_path:
++        raise ValueError("bf16 policy validation requires the canonical handler and worker import path")
+ 
+ 
+ def from_environment(workdir: Path, *, index_bits: int | None = None) -> PassValidation | None:
+@@ -122,6 +134,13 @@
+     sdk_bin = os.environ.get(ENV_SDK_BIN)
+     if not sdk_bin:
+         raise ValueError(f"{ENV_PASSES} is set but {ENV_SDK_BIN} does not select a Lean SDK")
++    if "lower_bf16_matmul_f32acc" in passes:
++        # Pending numerical policy must refuse before CheckerTools touches an SDK.
++        from merlin.common.paths import repo_root
++
++        from .bf16_policy_gate import require_admission
++
++        require_admission(repo_root())
+     from merlin.llvmlower.toolchain import compiler_python
+ 
+     from .speculative_gate import SpeculativeGate
+@@ -218,6 +237,7 @@
+     validation = _ACTIVE.get()
+     if validation is None or pass_name not in validation.passes or before == after:
+         return False
++    _policy_handler(validation)
+     validation.gate.submit(
+         CHECKS[pass_name],
+         before=before,
+--- a/src/merlin/verify/lean/bf16_f32acc.py
++++ b/src/merlin/verify/lean/bf16_f32acc.py
+@@ -19,6 +19,7 @@
+ 
+ import json
+ import subprocess
++from collections.abc import Callable
+ from pathlib import Path
+ from typing import Any
+ 
+@@ -114,11 +115,22 @@
+ 
+ 
+ def check_stage(
+-    stage: Path, destination: Path, *, m2m_python: Path, index_bits: int = 64, timeout_seconds: int = 1800
++    stage: Path,
++    destination: Path,
++    *,
++    m2m_python: Path,
++    index_bits: int = 64,
++    timeout_seconds: int = 1800,
++    theorem_auditor: Callable[[str, str], list[str]] = theorem_axioms,
+ ) -> dict[str, Any]:
+     """Check one recorded boundary directory and publish ``destination/receipt.json``."""
+     return check_stages(
+-        [stage], destination, m2m_python=m2m_python, index_bits=index_bits, timeout_seconds=timeout_seconds
++        [stage],
++        destination,
++        m2m_python=m2m_python,
++        index_bits=index_bits,
++        timeout_seconds=timeout_seconds,
++        theorem_auditor=theorem_auditor,
+     )
+ 
+ 
+@@ -130,6 +142,7 @@
+     index_bits: int = 64,
+     handoff: Path | None = None,
+     timeout_seconds: int = 1800,
++    theorem_auditor: Callable[[str, str], list[str]] = theorem_axioms,
+ ) -> dict[str, Any]:
+     """Check the bf16 boundary followed by its recorded downstream stages, joined byte for byte."""
+     return _attempt(
+@@ -141,6 +154,7 @@
+             index_bits=index_bits,
+             handoff=handoff,
+             timeout_seconds=timeout_seconds,
++            theorem_auditor=theorem_auditor,
+         ),
+     )
+ 
+@@ -153,6 +167,7 @@
+     index_bits: int,
+     handoff: Path | None,
+     timeout_seconds: int,
++    theorem_auditor: Callable[[str, str], list[str]] = theorem_axioms,
+ ) -> dict[str, Any]:
+     from merlin.verify.lean.check import _export_checked
+ 
+@@ -203,7 +218,7 @@
+         "domain": SEGMENT_DOMAIN.format(index_bits) if chain else BOUNDARY_DOMAIN,
+         "exporter": _exporter_block(m2m_python),
+         "lean": _lean_block(),
+-        "axioms": theorem_axioms(theorem, module),
++        "axioms": theorem_auditor(theorem, module),
+         "verdict": "unmeasured",
+         "assumptions": list(ASSUMPTIONS),
+     }
+@@ -225,9 +240,9 @@
+                 "boundary_links": links,
+                 "program_exports": program_exports,
+                 "handoff": handoff_binding,
+-                "qualification_axioms": theorem_axioms(qualify, module),
++                "qualification_axioms": theorem_auditor(qualify, module),
+                 "contract_theorem_axioms": {
+-                    name: theorem_axioms(name, owner) for name, owner in CONTRACT_THEOREMS.items()
++                    name: theorem_auditor(name, owner) for name, owner in CONTRACT_THEOREMS.items()
+                 },
+                 "checker_timeout_seconds": timeout_seconds,
+             },
+@@ -270,7 +285,14 @@
+     return summary
+ 
+ 
+-def replay(receipt_path: Path, *, m2m_python: Path, work: Path, timeout_seconds: int = 1800) -> dict[str, Any]:
++def replay(
++    receipt_path: Path,
++    *,
++    m2m_python: Path,
++    work: Path,
++    timeout_seconds: int = 1800,
++    theorem_auditor: Callable[[str, str], list[str]] = theorem_axioms,
++) -> dict[str, Any]:
+     """Recheck a receipt's exact exports with the current checker; never trust its verdict string."""
+     import jsonschema
+ 
+@@ -288,7 +310,7 @@
+     stale = _stale(receipt, "receipt")
+     if receipt["exporter"] != {**_exporter_block(m2m_python), "round_trip": "identical"}:
+         stale.append("receipt: exporter identity or round trip differs from the current exporter")
+-    if receipt["axioms"] != theorem_axioms(theorem, module):
++    if receipt["axioms"] != theorem_auditor(theorem, module):
+         stale.append("receipt: axioms differ from the current audited theorem")
+     links = recorded["boundary_links"]
+     sources = [links[0]["before"], *(link["after"] for link in links)]
+--- a/src/merlin/runtime/backends/zephyr_model.py
++++ b/src/merlin/runtime/backends/zephyr_model.py
+@@ -585,7 +585,10 @@
+     _validation.observe(
+         "lower_quant_ext", module, lambda m: _lean_stages.run("prepare-lower-quant-ext", lower_quant_ext, m)
+     )
+-    _lean_stages.run("prepare-bf16-matmul-f32acc", lower_bf16_matmul_f32acc, module)
++    _validation.observe(
++        "lower_bf16_matmul_f32acc", module,
++        lambda m: _lean_stages.run("prepare-bf16-matmul-f32acc", lower_bf16_matmul_f32acc, m),
++    )
+     _lean_stages.run("prepare-fix-bool-sitofp", fix_bool_sitofp, module)
+     # The other half of the bool-cast repair, and the one that erases models rather than skewing
+     # them: a float->i1 `arith.fptosi` is POISON in LLVM for every value but 0 and -1, and the
+--- /dev/null
++++ b/merlin/tests/ir/test_bf16_policy_handler_unit.py
+@@ -0,0 +1,238 @@
++"""SDK-free handler controls. Synthetic reports are not proof or approval evidence."""
++
++import json
++from pathlib import Path
++
++import pytest
++
++from merlin.verify import bf16_policy_gate as gate
++from merlin.verify.gate_errors import GateRejected, GateUnavailable, GateUnsupported
++
++
++def op(name, *, results=None, regions=None, attrs=None):
++    return dict(
++        name=name, results=results or [], operands=[], attrs=attrs or {}, props={}, regions=regions or [], successors=[]
++    )
++
++
++@pytest.fixture
++def pair():
++    contraction = op(
++        "linalg.matmul",
++        results=[
++            {
++                "id": 7,
++                "type": {
++                    "kind": "tensor",
++                    "shape": [2, 2],
++                    "encoding": None,
++                    "element": {"kind": "float", "format": "bf16"},
++                },
++            }
++        ],
++    )
++    source = {
++        "schema": "merlin.lean.ir.v1",
++        "module": {
++            "ops": [
++                op(
++                    "func.func",
++                    attrs={"sym_name": {"kind": "string", "value": "forward"}},
++                    regions=[{"blocks": [{"args": [], "ops": [contraction]}]}],
++                )
++            ]
++        },
++    }
++    local = {
++        "checked": True,
++        "semantic_match": True,
++        "site_qualification_passed": True,
++        "semantic_match_theorem": gate.EXACT,
++        "site_qualification_theorem": gate.SITES,
++        "expected_sites": 1,
++        "covered_sites": 1,
++        "site_obligations": gate.source_sites(source),
++    }
++    report = {
++        "checker": gate.policy.CHECKER,
++        "theorem": gate.policy.THEOREM,
++        "claim_type": "policy",
++        "policy": "bf16-f32acc-contract",
++        "index_bits": 64,
++        "verdict": "abstracted",
++        "policy_reviewed": False,
++        "pass_boundary": local,
++        "candidates": 1,
++        "sites": [{"mul": "contract", "add": "none"}],
++        "conditional_match": True,
++        "qualification_passed": False,
++    }
++    return report, source
++
++
++def test_report_can_validate_without_granting_admission(pair):
++    report, source = pair
++    assert gate.validate_report(report, source) == gate.source_sites(source)
++    assert report["verdict"] == "abstracted" and report["policy_reviewed"] is False
++
++
++@pytest.mark.parametrize("field", ["checked", "semantic_match", "site_qualification_passed"])
++def test_weak_conditional_green_does_not_replace_exact_or_sites(pair, field):
++    report, source = pair
++    report["pass_boundary"][field] = False
++    with pytest.raises(GateRejected):
++        gate.validate_report(report, source)
++
++
++@pytest.mark.parametrize(
++    "mutation", ["missing", "position", "results", "function", "bool-count", "truthy-site", "flags", "root"]
++)
++def test_report_roster_and_identity_refusals(pair, mutation):
++    report, source = pair
++    local = report["pass_boundary"]
++    if mutation == "missing":
++        local["site_obligations"] = []
++    elif mutation == "position":
++        local["site_obligations"][0]["source_operation"] = 3
++    elif mutation == "results":
++        local["site_obligations"][0]["source_results"] = [8]
++    elif mutation == "function":
++        local["site_obligations"][0]["function"] = "other"
++    elif mutation == "bool-count":
++        local["covered_sites"] = True
++    elif mutation == "truthy-site":
++        local["site_obligations"][0]["qualification_passed"] = 1
++    elif mutation == "flags":
++        report["sites"][0]["mul"] = "fast"
++    else:
++        report["checker"] = "different"
++    with pytest.raises((GateRejected, GateUnavailable)):
++        gate.validate_report(report, source)
++
++
++def test_changed_nested_candidate_is_not_omitted(pair):
++    report, source = pair
++    ops = source["module"]["ops"][0]["regions"][0]["blocks"][0]["ops"]
++    ops[:] = [op("scf.if", regions=[{"blocks": [{"args": [], "ops": ops[:]}]}])]
++    with pytest.raises(GateUnsupported, match="outside"):
++        gate.validate_report(report, source)
++
++
++def test_no_site_is_not_positive_coverage(pair):
++    report, source = pair
++    source["module"]["ops"] = []
++    with pytest.raises(GateUnsupported, match="no half"):
++        gate.validate_report(report, source)
++
++
++@pytest.mark.parametrize("field,value", [("verdict", "verified"), ("policy_reviewed", True), ("index_bits", 32)])
++def test_wrong_policy_status_width(pair, field, value):
++    report, source = pair
++    report[field] = value
++    with pytest.raises((GateUnavailable, GateUnsupported)):
++        gate.validate_report(report, source)
++
++
++def test_missing_admission_never_opens_tools_or_inputs(tmp_path, monkeypatch):
++    monkeypatch.setattr(gate, "repo_root", lambda: tmp_path)
++
++    def forbidden(*a, **kw):
++        raise AssertionError("tool/source invocation before approval")
++
++    monkeypatch.setattr(gate, "_tools", forbidden)
++    monkeypatch.setattr(gate, "audit_candidate", forbidden)
++    monkeypatch.setattr(gate.policy, "check_stage", forbidden)
++    monkeypatch.setattr(gate, "_ref", forbidden)
++    with pytest.raises(GateRejected, match="human_review_pending"):
++        gate.check_policy({"params": {"sdk_bin": "/forbidden", "compiler_python": "/forbidden", "index_bits": 64}})
++
++
++def test_caller_approval_flag_and_saved_receipt_are_forbidden():
++    for key in ("human_reviewed", "receipt", "admission"):
++        with pytest.raises(GateUnsupported):
++            gate.check_policy(
++                {"params": {"sdk_bin": "/forbidden", "compiler_python": "/forbidden", "index_bits": 64, key: True}}
++            )
++
++
++def test_fake_installed_flag_is_not_a_review_record(tmp_path):
++    path = tmp_path / gate.ADMISSION
++    path.parent.mkdir(parents=True)
++    path.write_text(json.dumps({"human_reviewed": True, "status": "verified"}))
++    with pytest.raises(GateRejected):
++        gate.require_admission(tmp_path)
++
++
++def test_environment_pending_precedes_tool_construction(tmp_path, monkeypatch):
++    from merlin.common import paths
++    from merlin.verify import pass_validation
++
++    monkeypatch.setattr(paths, "repo_root", lambda: tmp_path)
++    monkeypatch.setenv("MERLIN_VALIDATE_PASSES", gate.PASS)
++    monkeypatch.setenv("MERLIN_LEAN_SDK_BIN", "/forbidden")
++    monkeypatch.setattr(pass_validation, "CheckerTools", lambda *a: pytest.fail("opened SDK"))
++    with pytest.raises(GateRejected, match="human_review_pending"):
++        pass_validation.from_environment(tmp_path)
++
++
++@pytest.mark.parametrize(
++    "detail", [None, {}, {"verdict": "abstracted"}, {"status": "human_review_pending"}, {"status": "admitted"}]
++)
++def test_worker_never_accepts_normal_pending_return(tmp_path, monkeypatch, detail):
++    from merlin.verify import gate_worker
++
++    (tmp_path / "request.json").write_text(json.dumps({"check": "bf16_f32acc_policy"}))
++    monkeypatch.setattr(gate_worker, "resolve", lambda name: lambda request: detail)
++    assert gate_worker.main(["worker", str(tmp_path)]) == 0
++    assert json.loads((tmp_path / "verdict.json").read_text())["verdict"] == "not_established"
++
++
++def test_selected_auditor_is_threaded_without_default(monkeypatch, tmp_path):
++    # Pure call-path test; the native implementation is replaced before entry.
++    captured = {}
++
++    def fake(*args, **kwargs):
++        captured.update(kwargs)
++        return {"verdict": "abstracted"}
++
++    monkeypatch.setattr(gate.policy, "_check_stages", fake)
++
++    def sentinel(name, module):
++        return []
++
++    gate.policy.check_stage(tmp_path, tmp_path / "receipt", m2m_python=Path("/unused"), theorem_auditor=sentinel)
++    assert captured["theorem_auditor"] is sentinel
++
++
++def test_normal_tool_freshness_is_required_before_audit(monkeypatch):
++    from merlin.verify import pass_validation
++
++    calls = []
++
++    def unavailable(*args):
++        calls.append(args)
++        raise ValueError("checker is out of date")
++
++    monkeypatch.setattr(pass_validation, "CheckerTools", unavailable)
++    with pytest.raises(ValueError, match="out of date"):
++        gate._tools({"sdk_bin": "/unused", "compiler_python": "/unused"}, {})
++    assert len(calls) == 1
++
++
++@pytest.mark.parametrize("override", ["alias", "worker_path"])
++def test_selected_policy_cannot_be_rerouted_to_other_handler(tmp_path, override):
++    from types import SimpleNamespace
++
++    from merlin.verify import pass_validation
++    from merlin.verify.speculative_gate import SpeculativeGate
++
++    options = (
++        {"aliases": {"bf16_f32acc_policy": "tensor_refinement"}} if override == "alias" else {"worker_path": [tmp_path]}
++    )
++    worker = SpeculativeGate(tmp_path / "gate", **options)
++    validation = SimpleNamespace(passes={gate.PASS}, gate=worker)
++    try:
++        with pytest.raises(ValueError, match="canonical handler"):
++            pass_validation._policy_handler(validation)
++    finally:
++        worker.close()
+--- a/build_tools/scripts/prepare_bf16_review.py
++++ b/build_tools/scripts/prepare_bf16_review.py
+@@ -24,6 +24,9 @@
+ from pathlib import Path
+ 
+ from merlin.common.paths import artifacts_dir, repo_root
++from merlin.verify.bf16_policy_gate import ADMISSION, REVIEW, require_admission
++from merlin.verify.bf16_policy_gate import ROOTS as GATE_ROOTS
++from merlin.verify.gate_errors import GateError
+ from merlin.verify.lean.bf16_f32acc import BOUNDARY, CONTRACT_THEOREMS, SEGMENT, replay
+ from merlin.verify.lean.check import _file_ref, _stale
+ 
+@@ -55,14 +58,27 @@
+ 
+ 
+ def reviewed(lean: Path, lock: dict[str, str], statements: dict[str, str]) -> bool:
+-    """Approval is absent unless the installed Spec and all claim pins match the current bytes."""
+-    return (
++    """Require complete pins AND installed independently attributable policy admission.
++
++    This publisher creates neither admission nor human review. Their authentic
++    installation is a trusted-host governance premise, not established by hashes.
++    """
++    pins_match = (
+         set(statements) == set(THEOREMS)
+         and all(
+             (lean / name).is_file() and lock.get(name) == digest((lean / name).read_bytes())
+             for name in [SPEC, *REVIEW_FILES]
+         )
+         and all(lock.get(f"statement:{name}") == digest(statement.encode()) for name, statement in statements.items())
++    )
++    if not pins_match:
++        return False
++    try:
++        admitted = require_admission(lean.parent.parent)
++    except GateError:
++        return False
++    return set(admitted["statements"]) == set(GATE_ROOTS) and all(
++        statements.get(name) == statement for name, statement in admitted["statements"].items()
+     )
+ 
+ 
+@@ -176,6 +192,7 @@
+         "receipt": _file_ref(path),
+         "report": receipt["cert"],
+         "checker": receipt["lean"],
++        "exporter": receipt["exporter"],
+         "boundary": receipt["boundary"],
+         "candidates": count,
+         "pass_boundary": local,
+@@ -218,11 +235,20 @@
+         if stale := _stale(json.loads(path.read_text()), str(path)):
+             raise ValueError(f"receipt became stale during publication: {stale}")
+     approved = reviewed(root / "merlin/lean", lock, statements)
++    approval_refs = None
++    if approved:
++        admission = require_admission(root)
++        if any(
++            record["checker"] != admission["lean"] or record["exporter"] != admission["exporter"] for record in records
++        ):
++            raise ValueError("publication checker/exporter differs from installed admission")
++        approval_refs = {"admission": _file_ref(root / ADMISSION), "review": _file_ref(root / REVIEW)}
+     package = {
+         "schema": "merlin.lean.bf16-pass-claim.v1",
+         "claim_type": "policy",
+         "status": "verified" if approved else "human_review_pending",
+         "human_reviewed": approved,
++        "approval_records": approval_refs,
+         "scope": "Merlin bf16 preparation pass between model2MLIR output and the OOT compiler handoff",
+         "claim": "Complete output equality to the source-derived contract under SSA-invariant operation semantics; "
+         "strict local policy refinement for every recognized contraction on all typed nonpoison tensor operands "
+@@ -255,6 +281,11 @@
+     }
+     destination = base / "review"
+     destination.mkdir(exist_ok=True)
++    if approved:
++        if require_admission(root) != admission or any(
++            _file_ref(Path(ref["path"])) != ref for ref in approval_refs.values()
++        ):
++            raise ValueError("installed policy approval changed during publication")
+     (destination / ("claim.json" if approved else "candidate.json")).write_text(json.dumps(package, indent=2) + "\n")
+     if not approved:
+         (destination / "after-approval.patch").write_text(pinning_patch(root))
+--- a/merlin/tests/ir/test_lean_bf16_review.py
++++ b/merlin/tests/ir/test_lean_bf16_review.py
+@@ -28,19 +28,29 @@
+     return lock, statements
+ 
+ 
+-def test_review_never_approves_an_uninstalled_or_unpinned_candidate(tmp_path):
++def mocked_governance(monkeypatch, module, statements):
++    """Test pin checks after a mocked admission; this creates no actual approval."""
++    admitted = {name: statements[name] for name in module.GATE_ROOTS}
++    monkeypatch.setattr(module, "require_admission", lambda root: {"statements": admitted})
++    return admitted
++
++
++def test_review_never_approves_an_uninstalled_or_unpinned_candidate(tmp_path, monkeypatch):
+     module = publisher()
+     assert not module.reviewed(tmp_path, {}, {})
+     lock, statements = installed(tmp_path, module)
++    assert not module.reviewed(tmp_path, lock, statements)  # Pins alone never authenticate review.
++    mocked_governance(monkeypatch, module, statements)
+     assert module.reviewed(tmp_path, lock, statements)
+     del lock["statement:" + next(iter(module.THEOREMS))]
+     assert not module.reviewed(tmp_path, lock, statements)
+ 
+ 
+ @pytest.mark.parametrize("changed", ["specification", "source_reference", "operand_domain", "semantic_laws"])
+-def test_changing_reviewed_policy_bytes_revokes_approval(tmp_path, changed):
++def test_changing_reviewed_policy_bytes_revokes_approval(tmp_path, monkeypatch, changed):
+     module = publisher()
+     lock, statements = installed(tmp_path, module)
++    mocked_governance(monkeypatch, module, statements)
+     assert module.reviewed(tmp_path, lock, statements)
+     name = {
+         "specification": module.SPEC,
+@@ -50,3 +60,25 @@
+     }[changed]
+     (tmp_path / name).write_text("changed policy\n")
+     assert not module.reviewed(tmp_path, lock, statements)
++
++
++def test_admission_must_bind_exact_overlapping_live_statements(tmp_path, monkeypatch):
++    module = publisher()
++    lock, statements = installed(tmp_path, module)
++    admitted = mocked_governance(monkeypatch, module, statements)
++    assert module.reviewed(tmp_path, lock, statements)
++    admitted[next(iter(admitted))] = "different elaborated theorem statement"
++    assert not module.reviewed(tmp_path, lock, statements)
++
++
++def test_refused_human_admission_keeps_publication_pending(tmp_path, monkeypatch):
++    from merlin.verify.gate_errors import GateRejected
++
++    module = publisher()
++    lock, statements = installed(tmp_path, module)
++
++    def pending(root):
++        raise GateRejected("human_review_pending")
++
++    monkeypatch.setattr(module, "require_admission", pending)
++    assert not module.reviewed(tmp_path, lock, statements)

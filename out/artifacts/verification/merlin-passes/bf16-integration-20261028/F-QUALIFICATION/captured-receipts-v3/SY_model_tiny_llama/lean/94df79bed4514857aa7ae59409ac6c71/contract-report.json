@@ -1,0 +1,215 @@
+{
+  "checker": "MerlinVerify.Check.Bf16F32AccChain.check",
+  "claim_type": "policy",
+  "index_bits": 64,
+  "policy": "bf16-f32acc-contract",
+  "policy_boundary": {
+    "candidates": 0,
+    "checker": "MerlinVerify.Check.Bf16F32Acc.check",
+    "claim_type": "policy",
+    "conditional_match": true,
+    "contract_theorems": [
+      "MerlinVerify.Rules.Bf16F32AccTensor.accumulate_sound",
+      "MerlinVerify.Rules.Bf16F32AccTensor.truncate_sound",
+      "MerlinVerify.Rules.Bf16F32AccTensor.zero_fill_sound",
+      "MerlinVerify.Rules.Bf16F32AccContract.accumulate_cell"
+    ],
+    "function_obligations": [
+      {
+        "conditional_match": true,
+        "first_refusal": "",
+        "function": "forward",
+        "reference_supported": true,
+        "source_defined": false
+      }
+    ],
+    "fusion_premises": {
+      "site_formats": [],
+      "source_licensed_operations": 0,
+      "theorem": "MerlinVerify.Rules.Bf16F32AccFusion.fused_step"
+    },
+    "index_bits": 64,
+    "pass_boundary": {
+      "checked": true,
+      "covered_sites": 0,
+      "expected_sites": 0,
+      "scope": "bf16 pass boundary; universal local operand domain; complete output equality under SSA-invariant semantics",
+      "semantic_match": true,
+      "semantic_match_theorem": "MerlinVerify.Check.Bf16F32AccExact.check_sound",
+      "site_obligations": [],
+      "site_qualification_passed": true,
+      "site_qualification_theorem": "MerlinVerify.Check.Bf16F32AccSites.check_sound",
+      "whole_capture_claim": "separate; see function_obligations"
+    },
+    "policy": "bf16-f32acc-contract",
+    "policy_reviewed": false,
+    "qualification_passed": false,
+    "qualification_theorem": "MerlinVerify.Check.Bf16F32Acc.qualify_sound",
+    "reason": "f32-accumulation contract is a review candidate: independent specification review is required; @forward: source definedness has not been established",
+    "sites": [],
+    "theorem": "MerlinVerify.Check.Bf16F32Acc.check_sound",
+    "unverified_changes": [
+      "f32-accumulation contract is a review candidate: independent specification review is required",
+      "@forward: source definedness has not been established"
+    ],
+    "verdict": "abstracted"
+  },
+  "policy_reviewed": false,
+  "qualification_theorem": "MerlinVerify.Check.Bf16F32AccChain.qualify_sound",
+  "reason": "f32-accumulation contract is a review candidate: independent specification review is required; @forward: source definedness has not been established",
+  "segment_match": true,
+  "segment_qualified": false,
+  "suffix_boundaries": [
+    {
+      "conditional_match": true,
+      "index": 0,
+      "reason": ""
+    },
+    {
+      "conditional_match": true,
+      "index": 1,
+      "reason": ""
+    }
+  ],
+  "theorem": "MerlinVerify.Check.Bf16F32AccChain.check_sound",
+  "verdict": "abstracted",
+  "boundary_links": [
+    {
+      "boundary": "prepare-bf16-matmul-f32acc",
+      "pass": "merlin.llvmlower.passes_xdsl.lower_bf16_matmul_f32acc",
+      "before": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc/before.mlir",
+        "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+        "bytes": 3422012
+      },
+      "after": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0008_prepare-bf16-matmul-f32acc/after.mlir",
+        "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+        "bytes": 3422012
+      }
+    },
+    {
+      "boundary": "prepare-fix-bool-sitofp",
+      "pass": "merlin.llvmlower.passes_xdsl.fix_bool_sitofp",
+      "before": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0009_prepare-fix-bool-sitofp/before.mlir",
+        "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+        "bytes": 3422012
+      },
+      "after": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0009_prepare-fix-bool-sitofp/after.mlir",
+        "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+        "bytes": 3422012
+      }
+    },
+    {
+      "boundary": "prepare-fix-bool-fptosi",
+      "pass": "merlin.llvmlower.passes_xdsl.fix_bool_fptosi",
+      "before": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi/before.mlir",
+        "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+        "bytes": 3422012
+      },
+      "after": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/w8a8/model-boundaries/20261020T215617Z/SY_model_tiny_llama/lean-preparation/55b1a0827d7445abb67966a3c8c40195/stages/0010_prepare-fix-bool-fptosi/after.mlir",
+        "sha256": "cf4c20977278faeadec1df6ff81c38f73fab5d0c210a599aa0fdaccfdd4c452c",
+        "bytes": 3422012
+      }
+    }
+  ],
+  "program_exports": [
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_tiny_llama/lean/94df79bed4514857aa7ae59409ac6c71/0_before.json",
+      "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3",
+      "bytes": 8944899
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_tiny_llama/lean/94df79bed4514857aa7ae59409ac6c71/0_after.json",
+      "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3",
+      "bytes": 8944899
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_tiny_llama/lean/94df79bed4514857aa7ae59409ac6c71/1_after.json",
+      "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3",
+      "bytes": 8944899
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_tiny_llama/lean/94df79bed4514857aa7ae59409ac6c71/2_after.json",
+      "sha256": "b7451dd7728154c67376dbbfce03352d487a3e9df8ab1e88bbabaf4567f4eba3",
+      "bytes": 8944899
+    }
+  ],
+  "handoff": null,
+  "qualification_axioms": [
+    "propext",
+    "Classical.choice",
+    "Quot.sound"
+  ],
+  "contract_theorem_axioms": {
+    "MerlinVerify.Check.Bf16F32AccExact.check_sound": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Check.Bf16F32AccExact.defined_execution": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Check.Bf16F32AccSites.check_sound": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Check.Bf16F32AccSites.collectOps_coverage": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Rules.Bf16F32AccNonvacuity.operand_domain_nonempty": [
+      "propext",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Rules.Bf16F32AccTensor.accumulate_sound": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Rules.Bf16F32AccTensor.truncate_sound": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Rules.Bf16F32AccTensor.zero_fill_sound": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Rules.Bf16F32AccContract.accumulate_cell": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Rules.Bf16F32AccContract.contract_distinct": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Rules.Bf16F32AccSite.accumulating_op_sound": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Rules.Bf16F32AccSite.final_op_sound": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "MerlinVerify.Rules.Bf16F32AccFusion.fused_step": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ]
+  },
+  "checker_timeout_seconds": 1800
+}

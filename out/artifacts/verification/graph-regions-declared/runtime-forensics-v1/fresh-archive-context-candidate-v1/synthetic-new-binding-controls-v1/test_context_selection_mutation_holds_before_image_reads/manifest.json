@@ -1,0 +1,122 @@
+{
+  "authority": {
+    "execute": false,
+    "graph_verified": false,
+    "install": false,
+    "old_holds_cleared": false
+  },
+  "expanded_bytes": 9,
+  "members": [
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "measured_bytes": 1,
+      "output_stat": {},
+      "path": "fake-sdk/bin/lean",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "measured_bytes": 1,
+      "output_stat": {},
+      "path": "fake-sdk/lib/lean/libleanshared.so",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "measured_bytes": 1,
+      "output_stat": {},
+      "path": "fake-sdk/src/lean/Init.lean",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "measured_bytes": 1,
+      "output_stat": {},
+      "path": "fake-sdk/lib/lean/Init.olean",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "measured_bytes": 1,
+      "output_stat": {},
+      "path": "fake-sdk/lib/lean/Init.olean.private",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "measured_bytes": 1,
+      "output_stat": {},
+      "path": "fake-sdk/lib/lean/Init.olean.server",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "measured_bytes": 1,
+      "output_stat": {},
+      "path": "fake-sdk/lib/lean/Init.ilean",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "measured_bytes": 1,
+      "output_stat": {},
+      "path": "fake-sdk/lib/lean/Init.ir",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_mode": 33188
+    },
+    {
+      "compression": 0,
+      "crc32": 1,
+      "declared_bytes": 1,
+      "kind": "file",
+      "measured_bytes": 1,
+      "output_stat": {},
+      "path": "fake-sdk/lib/lean/Init.ir.sig",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "source_mode": 33188
+    }
+  ],
+  "new_environment_pins": true,
+  "old_expectations_replaced": false,
+  "parent_archive": {
+    "bytes": 100,
+    "identity": {
+      "synthetic": true
+    },
+    "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "url": "https://example.invalid/fake.zip"
+  },
+  "request_identity": "cec2830bbb8354532a211d9f04a4a17126c7d08ea4c624a52681fb1e5e053b19",
+  "schema": "merlin.fresh-sdk-authenticated-member-manifest.v1"
+}

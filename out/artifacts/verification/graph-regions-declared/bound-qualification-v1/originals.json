@@ -1,0 +1,12 @@
+{
+  "command": [
+    "/home/jeremy/Projects/merlin/.venv/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-q",
+    "merlin/tests/infra/test_lean_graph_regions_declared_bound.py",
+    "--tb=short"
+  ],
+  "returncode": 1
+}

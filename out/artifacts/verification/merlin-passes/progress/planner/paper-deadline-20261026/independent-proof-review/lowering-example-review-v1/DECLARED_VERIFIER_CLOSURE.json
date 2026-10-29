@@ -1,0 +1,18 @@
+{
+  "selected_snapshot_digest_formula_sha256": "a0b581c3ff5ca34858d5679bb2e0e4dd68d89b5ca83e86b0123a4c479d3be745",
+  "semantic_files": [
+    "cb_semantics.py",
+    "linalg_semantics.py",
+    "merlin_iface_semantics.py",
+    "receipts.py",
+    "refine.py",
+    "smt_export.py",
+    "smt_ops.py",
+    "smt_semantics.py"
+  ],
+  "bridge": "targetgen/contract/interface_emit.py",
+  "recognizer_bound_by_formula": false,
+  "missing_trusted_helper": "frontends/linalg_patterns.py",
+  "observed_receipt_digest": null,
+  "implementation_executed": false
+}

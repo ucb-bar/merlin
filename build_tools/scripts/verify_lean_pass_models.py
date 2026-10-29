@@ -42,18 +42,20 @@ def main() -> int:
         source = capture if capture.is_file() else capture / "model.mlir"
         if not source.is_file():
             parser.error(f"capture is neither an MLIR file nor a directory with model.mlir: {capture}")
-    product = new_product("verification", version=1, notes="Dead-code pruning and cse compiler gate model exports")
+    product = new_product("verification", version=1, notes="CSE and quantization compiler gate model exports")
     output = product.path.resolve()
     rows = []
     for index, capture in enumerate(captures):
         source = capture if capture.is_file() else capture / "model.mlir"
         label = capture.parent.name if capture.is_file() else capture.name
+        source_quantizers = source.read_text().count('"quant_ext.quantize_per_tensor"')
         for route in dict.fromkeys(args.routes):
             work = output / f"{index:02d}-{label}" / route
             row = {
                 "capture": str(capture),
                 "source": str(source),
                 "source_sha256": sha256(source),
+                "source_quantizers": source_quantizers,
                 "route": route,
             }
             started = time.monotonic()
@@ -66,7 +68,7 @@ def main() -> int:
                         work / "gated",
                         targets=(),
                         textual=route == "textual",
-                        pass_validation=PassValidation(gate, tools),
+                        pass_validation=PassValidation(gate, tools, frozenset({"prune_dead_pure_tensor_ops", "lower_quant_ext", "preprocess_text_textual", "cse"})),
                     )
                 finally:
                     gate.close()
@@ -77,9 +79,16 @@ def main() -> int:
                     llvm_identical=checked.ll_path.read_bytes() == before.ll_path.read_bytes(),
                 )
                 row["cse_checked"] = any(v["label"] == "cse" for v in gate.verdicts)
+                row["source_quantizer_checked"] = any(
+                    v["label"] in {"lower_quant_ext", "preprocess_text_textual"}
+                    and '"quant_ext.quantize_per_tensor"'
+                    in (work / "pass-validation" / v["job"] / "before.mlir").read_text()
+                    for v in gate.verdicts
+                )
                 row["ok"] = (
                     row["llvm_identical"]
                     and row["cse_checked"]
+                    and (not source_quantizers or row["source_quantizer_checked"])
                     and all(v["verdict"] == "accepted" for v in gate.verdicts)
                 )
             except Exception as error:

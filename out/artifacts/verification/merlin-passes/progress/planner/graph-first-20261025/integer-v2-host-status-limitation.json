@@ -1,0 +1,28 @@
+{
+  "schema": "merlin.integer.host-status-review-finding.v1",
+  "classification": "static source path; not an executed runtime counterexample",
+  "source_refs": [
+    {
+      "path": "src/merlin/verify/lean_graph_state_integer_capture.py",
+      "bytes": 8060,
+      "sha256": "f8437a1c545904b47df8400359f87a38e402e4a9728e68267d48d3e8b3f22cd5"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_integer.py",
+      "bytes": 8414,
+      "sha256": "2272475e998de3ce0a47c4d69e6f45e597fdac61565b9a9e31211d1f7db57d1f"
+    }
+  ],
+  "path": [
+    "capture/projection raises ValueError on changed source/buffers or producer/runtime identity",
+    "capture.main catches ValueError and emits exit1 closed unsupported REJECTION kind ValueError",
+    "intake treats any such record kind ValueError as a domain refusal",
+    "check_boundary reports unsupported without proving why it failed"
+  ],
+  "impact": "stale identity errors may be labeled domain refusals; no demonstrated false Lean acceptance or invalidation of the positive preservation theorems",
+  "qualification_scope": "retain measured75-case v2 engineering evidence; no universal correct error-classification claim",
+  "real_SDK_or_native_faults_created": false,
+  "native_runs": 0,
+  "old95_sources_modified": false,
+  "next_owner": "new GraphStateSchedule host adapter and isolated data/mock tests; old sealed integer sources remain immutable"
+}

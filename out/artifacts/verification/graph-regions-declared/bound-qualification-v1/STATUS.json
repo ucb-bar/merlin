@@ -1,0 +1,10 @@
+{
+  "engineering_qualified": false,
+  "failure": "ValueError('new original qualification failed; first failure retained')",
+  "full_model_verified": false,
+  "independently_reviewed": false,
+  "native_execution_run": false,
+  "numerical_execution_run": false,
+  "phase": "originals",
+  "phase_failed": "originals"
+}

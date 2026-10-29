@@ -1,0 +1,11 @@
+{
+  "status": "UNQUALIFIED_KNOWN_HOST_CLASSIFICATION_GAP",
+  "measured_tests": 66,
+  "measured_originals": 17,
+  "measured_replays": 17,
+  "qualified_originals": 0,
+  "qualified_replays": 0,
+  "unknown_native_failure": false,
+  "old75_preserved": true,
+  "review_approved": false
+}

@@ -1,0 +1,74 @@
+[
+  {
+    "alignment": 2,
+    "backing": "common",
+    "capacity": 512,
+    "ownership": "invocation_private",
+    "resource": "private0",
+    "size": 512,
+    "start": 0
+  },
+  {
+    "alignment": 2,
+    "backing": "common",
+    "capacity": 512,
+    "ownership": "invocation_private",
+    "resource": "private1",
+    "size": 512,
+    "start": 0
+  },
+  {
+    "alignment": 1,
+    "backing": "input0",
+    "capacity": 512,
+    "ownership": "runtime_managed",
+    "resource": "input0",
+    "size": 512,
+    "start": 0
+  },
+  {
+    "alignment": 1,
+    "backing": "input1",
+    "capacity": 512,
+    "ownership": "runtime_managed",
+    "resource": "input1",
+    "size": 512,
+    "start": 0
+  },
+  {
+    "alignment": 1,
+    "backing": "input2",
+    "capacity": 512,
+    "ownership": "runtime_managed",
+    "resource": "input2",
+    "size": 512,
+    "start": 0
+  },
+  {
+    "alignment": 1,
+    "backing": "input3",
+    "capacity": 512,
+    "ownership": "runtime_managed",
+    "resource": "input3",
+    "size": 512,
+    "start": 0
+  },
+  {
+    "alignment": 1,
+    "backing": "output0",
+    "capacity": 512,
+    "ownership": "runtime_managed",
+    "resource": "output0",
+    "size": 512,
+    "start": 0
+  },
+  {
+    "alignment": 1,
+    "backing": "output1",
+    "capacity": 512,
+    "ownership": "runtime_managed",
+    "resource": "output1",
+    "size": 512,
+    "start": 0
+  }
+]

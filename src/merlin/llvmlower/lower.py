@@ -13,13 +13,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:
-    from merlin.verify.pass_validation import PassValidation
-
 from merlin.common import compile_trace
 from merlin.common.ir_audit import IrAudit, audit_mode
 from merlin.verify import pass_validation as _validation
 
+from ..verify.lean import stages as _lean_stages
 from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
 from .concat_dps import ensure_registered as _register_concat_dps
@@ -38,6 +36,11 @@ from .prov_cse import ensure_registered as _register_cse_through_provenance
 from .source_expression_interval import IntervalEffectContract
 from .source_scalar_carrier_binding import host_admitted
 from .transpose_maps import ensure_registered as _register_fold_weight_transpose
+
+if TYPE_CHECKING:
+    from merlin.verify.lean.handoff import Options as SharedPassVerification
+    from merlin.verify.lean.preparation import CapturedPreparation
+    from merlin.verify.pass_validation import PassValidation
 
 _register_epilogue_fusion()
 _register_fold_weight_transpose()
@@ -78,12 +81,11 @@ class LowerResult:
     audit_index: Path | None = None
 
 
-#: Products a lowering leaves in its workdir; a failed pass validation must not leave them usable.
 _ARTIFACTS = ("model.ll", "model_host.so", "model_rv64gcv.o")
 
 
 def _reject_artifacts(work: Path) -> None:
-    """Rename this lowering's products to ``*.rejected``: kept as evidence, never mistaken for output."""
+    """Retain failed compilation products as evidence, with an explicit rejected suffix."""
     for name in _ARTIFACTS:
         path = work / name
         if path.exists():
@@ -91,7 +93,7 @@ def _reject_artifacts(work: Path) -> None:
 
 
 @host_admitted
-@_validation.validated("workdir", index_bits_argument="index_bits", on_failure=lambda w: _reject_artifacts(w))
+@_validation.validated("workdir", index_bits_argument="index_bits", on_failure=_reject_artifacts)
 def lower_model(
     mlir_text: str,
     workdir: str | Path,
@@ -101,9 +103,9 @@ def lower_model(
     transform_schedule: str | None = None,
     hoist_static_allocs: bool = True,
     parallel: bool = False,
-    features: "frozenset[str] | None" = None,
+    features: frozenset[str] | None = None,
     parallel_harts: int | None = None,
-    parallel_chunks: "list | None" = None,
+    parallel_chunks: list | None = None,
     static_arena: bool | None = None,
     ir_audit: bool | str = False,
     audit_sidecars: tuple[str | Path, ...] = (),
@@ -112,14 +114,12 @@ def lower_model(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    shared_pass_verification: SharedPassVerification | None = None,
+    shared_pass_preparation: CapturedPreparation | None = None,
+    verify_native_prefix: bool = False,
     pass_validation: PassValidation | None = None,
 ) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
-
-    ``pass_validation`` (or ``MERLIN_VALIDATE_PASSES`` with ``MERLIN_LEAN_SDK_BIN``) checks the selected
-    passes against Merlin's Lean proofs beside the lowering: each one's exact before/after IR goes to
-    the validation's speculative gate, lowering continues as if the check passes, and a check that does
-    not accept stops the lowering with its evidence. See :mod:`merlin.verify.pass_validation`.
 
     ``data_layout`` is the target's LLVM data layout, set on the module before translation (see
     :func:`merlin.llvmlower.pipeline.lower_to_llvm_ir`). ``index_bits`` explicitly binds every LLVM
@@ -136,9 +136,22 @@ def lower_model(
     ``ir_audit="compact"`` requests native inspection-only views and exact hashes;
     ``"both"`` also retains exact snapshots. Text-only stages have no compact printer.
 
-    ``textual=True`` uses compatibility pure-text preprocessing without an xDSL
-    round-trip. The default route emits generic MLIR at the upstream seam to
-    preserve attributes and avoid custom-printer grammar skew.
+    ``textual=True`` repairs legacy captures before parsing source quantizers in
+    authoritative generic form. The default route emits generic MLIR at the upstream
+    seam to preserve attributes and avoid custom-printer grammar skew.
+
+    ``pass_validation`` (or ``MERLIN_VALIDATE_PASSES``) requires the selected actual
+    pass boundaries to satisfy the Lean refinement and source-support checks before
+    returning compiler products. A failed check rejects any speculative products.
+
+    ``shared_pass_verification`` requires a fresh, replayed Lean chain through preprocessing,
+    including source support and definedness, before upstream lowering starts. It covers only
+    the recorded tensor handoff under its stated assumptions. Unsupported or unavailable checks
+    stop compilation. The semantic index width must match the explicit lowering width.
+
+    ``verify_native_prefix`` additionally holds the ordinary serial native module before
+    bufferization until the complete tensor prefix is replayed. It requires shared-pass
+    verification; bufferization and the native suffix remain trusted lowering.
 
     ``vectorize=True`` bakes native RVV (fixed-width vector ops) into the IR instead of
     relying on clang auto-vectorization — for the rv64gcv vector-tile target.
@@ -162,14 +175,51 @@ def lower_model(
         work.mkdir(parents=True, exist_ok=True)
 
         audit.stage("input", mlir_text)
-        if textual:
-            from .passes_xdsl import preprocess_text_textual
 
-            upstream_text, stats = preprocess_text_textual(mlir_text)
-        else:
+        def preprocess(source):
+            if textual:
+                from .passes_xdsl import preprocess_text_textual
+
+                return preprocess_text_textual(source)
             observed = audit.directory is not None or compile_trace.active() is not None
-            upstream_text, stats = preprocess_text(mlir_text, audit=audit) if observed else preprocess_text(mlir_text)
-        (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
+            return preprocess_text(source, audit=audit) if observed else preprocess_text(source)
+
+        if verify_native_prefix and shared_pass_verification is None:
+            raise ValueError("native tensor-prefix verification requires shared-pass verification")
+        native_session = None
+        if shared_pass_preparation is not None and shared_pass_verification is None:
+            raise ValueError("captured preparation requires explicit shared-pass verification")
+        handoff = work / "model.upstream.mlir"
+        if shared_pass_verification is not None:
+            from merlin.verify.lean import plans as verification_plans
+            from merlin.verify.lean.handoff import VerificationError
+            from merlin.verify.lean.handoff import run as verify_shared_passes
+
+            if index_bits != shared_pass_verification.index_bits:
+                raise ValueError("shared-pass verification and explicit lowering index widths must match")
+            if textual:
+                raise VerificationError("shared-pass verification requires planned structural preprocessing")
+            expected_plan = verification_plans.preprocessing()
+            verified = verify_shared_passes(
+                mlir_text,
+                handoff,
+                shared_pass_verification,
+                preprocess,
+                plan=expected_plan,
+                **({"prefix": shared_pass_preparation} if shared_pass_preparation is not None else {}),
+            )
+            upstream_text, stats = verified.text, verified.stats
+            stats["shared_pass_verification"] = str(verified.report)
+            if verify_native_prefix:
+                from merlin.verify.lean.native_gate import Session
+
+                native_session = Session(
+                    shared_pass_verification, mlir_text, verified, expected_plan, shared_pass_preparation
+                )
+        else:
+            upstream_text, stats = preprocess(mlir_text)
+            handoff.write_text(upstream_text, encoding="utf-8")
+            _lean_stages.record_handoff(handoff)
 
         audit.stage("upstream", upstream_text)
         lowering_selection: dict[str, Any] = {}
@@ -191,6 +241,7 @@ def lower_model(
                 masked_contraction_effects=masked_contraction_effects,
                 source_observation_effects=source_observation_effects,
                 source_scalar_carrier=source_scalar_carrier,
+                **({"shared_pass_native": native_session} if native_session is not None else {}),
             )
         except Exception as exc:
             # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
@@ -210,7 +261,7 @@ def lower_model(
             raise enriched from exc
         from . import leading_cse
 
-        leading_cse.submit(work)  # every tensor-level cse the build's runner ran, as it ran it
+        leading_cse.submit(work)
         if "source_observation" in lowering_selection:
             stats["source_observation"] = lowering_selection["source_observation"]
         if "source_scalar_carrier" in lowering_selection:
@@ -269,9 +320,9 @@ def lower_model_file(
     transform_schedule: str | None = None,
     hoist_static_allocs: bool = True,
     parallel: bool = False,
-    features: "frozenset[str] | None" = None,
+    features: frozenset[str] | None = None,
     parallel_harts: int | None = None,
-    parallel_chunks: "list | None" = None,
+    parallel_chunks: list | None = None,
     static_arena: bool | None = None,
     ir_audit: bool | str = False,
     audit_sidecars: tuple[str | Path, ...] = (),
@@ -280,6 +331,9 @@ def lower_model_file(
     masked_contraction_effects: MaskEffectContract | None = None,
     source_observation_effects: IntervalEffectContract | None = None,
     source_scalar_carrier=None,
+    shared_pass_verification: SharedPassVerification | None = None,
+    shared_pass_preparation: CapturedPreparation | None = None,
+    verify_native_prefix: bool = False,
     pass_validation: PassValidation | None = None,
 ) -> LowerResult:
     audit_mode(ir_audit)
@@ -303,5 +357,8 @@ def lower_model_file(
         masked_contraction_effects=masked_contraction_effects,
         source_observation_effects=source_observation_effects,
         source_scalar_carrier=source_scalar_carrier,
+        shared_pass_verification=shared_pass_verification,
+        shared_pass_preparation=shared_pass_preparation,
+        verify_native_prefix=verify_native_prefix,
         pass_validation=pass_validation,
     )

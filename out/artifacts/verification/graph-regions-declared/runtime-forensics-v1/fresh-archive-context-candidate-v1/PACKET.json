@@ -1,0 +1,31 @@
+{
+  "status": "SOURCE_DATA_TESTED_NOT_NATIVE_QUALIFIED",
+  "source_manifest": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/review-source-cut-v1/MANIFEST.json",
+    "bytes": 10187,
+    "sha256": "497c2d09dab2746c0dec3a5e4b4f41fc1c940b48a5c508e5335c52db8a33d418"
+  },
+  "tests": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/TEST-CONTEXT-v1.txt",
+      "bytes": 1361,
+      "sha256": "8df0f91c45af72f065192d62fafa23c20a211ca0e94f0fec1b57bb9a37767c8c"
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/TEST-NEW-BINDING-v1.txt",
+      "bytes": 521,
+      "sha256": "67ac2a8db0c313dfc655a10f5ef400c761c1a21826db5e0c3d8875c2ddcbc23d"
+    }
+  ],
+  "diagnostic_proposal": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-archive-context-candidate-v1/diagnostic-proposal-v1/REQUEST.json",
+    "bytes": 6204,
+    "sha256": "b8e7a2110bebff2d9a45dc964420fb4a13c97b231af341a00efc6fb8158f7efc"
+  },
+  "native_invocations": 0,
+  "actual_sdk_or_runtime_reads": 0,
+  "actual_archive_manifest_available": false,
+  "host_closure_review_complete": false,
+  "graph_qualification": false,
+  "old_holds_cleared": false
+}

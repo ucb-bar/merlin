@@ -1,0 +1,607 @@
+{
+  "schema": "merlin.graph-state-integer.paper-evidence.v2",
+  "status": "ENGINEERING_QUALIFIED_REVIEW_PENDING",
+  "qualification": {
+    "plan": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/PLAN.json",
+      "sha256": "ba2b1aa9e93c9522f45cdf9b9493932c37992db17870d162e068a9d855fbba04",
+      "bytes": 988933
+    },
+    "batch": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/BATCH.json",
+      "sha256": "094bc29f2c3e2f5fe1ace66b648ec178c9e48ee6551b14090ab29729494c18f7",
+      "bytes": 43101
+    },
+    "tests": {
+      "tests": 75,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "originals": 17,
+    "changed": 14,
+    "identity": 3,
+    "positive_replay_batches": 1,
+    "fresh_replays": 17,
+    "postcheck": true
+  },
+  "proposed_claim": "canonical-entry complete return/error/world preservation for accepted exact wrapping-integer graph boundaries and admitted composed chains under local operation contracts",
+  "producer_revision": "4499eebb959c0f92cefd92cc6d80646ba66474ed",
+  "worked_example": {
+    "name": "chain-i32",
+    "originals": [
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage0.mlir",
+        "sha256": "501cbb7a5d907aec06747aaa8f302389865b9dfa14aa9116a9a4e85799c3a928",
+        "bytes": 2454
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage1.mlir",
+        "sha256": "5eb8639a8618f741d153ca3d1c67bf9b367b3d731326e87943e51f21bf91ad72",
+        "bytes": 2102
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage2.mlir",
+        "sha256": "dcb9864923cfd44b1b47230a378eb3fd1ed5d45533d4ad67cd7c19bbeeb45673",
+        "bytes": 1581
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage3.mlir",
+        "sha256": "3f286f5129ea9bb42cfff7d6f7db3c1ed6c3bb4900bc3f3caf808b4a2a15e25c",
+        "bytes": 1579
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage4.mlir",
+        "sha256": "4a8480afdc58541b5d75dbe88f5db5dbc23ffe61710faa02f2b5e2f77543b321",
+        "bytes": 2797
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/producer/actual/stage5.mlir",
+        "sha256": "89d26974abe9a9410781de48c16c1ab565ebed0e6d923a94677c4738d5de358d",
+        "bytes": 3226
+      }
+    ],
+    "receipt": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/receipt.json",
+      "sha256": "1171774c8d1593332fb41c22f1d945cc0e41a11ef18289ae5ad6957076934166",
+      "bytes": 869229
+    },
+    "query": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/GraphStateIntegerInstance.lean",
+      "sha256": "98ab1e5cd4ee4bdf849a1d762c53818db4efa4c416ba8dd0eba69545bd57bd9d",
+      "bytes": 42713
+    },
+    "object": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/GraphStateIntegerInstance.olean",
+      "sha256": "156e4db1f4bc0aa5b24772114ac8cfbd61854e870b6869f79f3efe64037cd3fe",
+      "bytes": 1891976
+    },
+    "boundary_report": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/report.json",
+      "sha256": "666104b2b28c193f52f769b94a9d4b9b24f873e8cde89638242d7d5e2418c008",
+      "bytes": 7353
+    },
+    "kernel_report": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/report.json",
+      "sha256": "3f415532175a2ad683c81023edbcdd63a5b8869fe1da1e6f1bfb6b803e6b5276",
+      "bytes": 498355
+    },
+    "checker_returncode": 0,
+    "audit": {
+      "theorems_audited": 1009,
+      "axioms_used": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    "audit_output": [
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/audit.stdout",
+        "sha256": "5aa7eccb61ceebbf93c6b2287965678fe3cb6708a3e8b593036ff652b4a31e06",
+        "bytes": 164445
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/audit.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/statements.stdout",
+        "sha256": "275c595e03a1900a8c788f8275ac372743a7af07cb4e76d85ba248681847abe8",
+        "bytes": 12158
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/statements.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    ],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphStateIntegerInstance.complete",
+      "Merlin.GraphStateIntegerInstance.exactMiddle",
+      "Merlin.GraphStateIntegerInstance.Suffix.complete",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F3.actual",
+      "Merlin.GraphStateIntegerInstance.F3.reached",
+      "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F4.actual",
+      "Merlin.GraphStateIntegerInstance.F4.reached",
+      "Merlin.GraphStateIntegerInstance.F4.localRewrites"
+    ],
+    "statements": {
+      "Merlin.GraphState.Integer.Relation.sound": "forall {World : Type} {Error : Type} {registry : List.{0} Merlin.GraphState.Scalar.Signature} (model : Merlin.GraphState.Scalar.Model Int World Error registry), (Merlin.GraphState.Integer.ExactModel World Error registry model) -> (Merlin.GraphState.Integer.LocalTyping World Error registry model Merlin.GraphState.Integer.Canonical) -> (forall {environment : List.{0} Merlin.GraphState.Scalar.Ty} {results : List.{0} Merlin.GraphState.Scalar.Ty} {first : Merlin.GraphState.Scalar.Code} {second : Merlin.GraphState.Scalar.Code}, (Merlin.GraphState.Integer.Relation registry environment results first second) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical environment values) -> (And (Merlin.GraphState.Integer.ResultTyped World Error Merlin.GraphState.Integer.Canonical results (Merlin.GraphState.Scalar.evalCode Int World Error registry model first values world)) (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalCode Int World Error registry model first values world) (Merlin.GraphState.Scalar.evalCode Int World Error registry model second values world)))))",
+      "Merlin.GraphState.Integer.canonical_iff": "forall (width : Nat) (value : Int), Iff (Merlin.GraphState.Integer.Canonical (Merlin.GraphState.Scalar.Ty.bits width) value) (And (LE.le.{0} Int Int.instLEInt (OfNat.ofNat.{0} Int 0 (instOfNat 0)) value) (LT.lt.{0} Int Int.instLTInt value (Nat.cast.{0} Int instNatCastInt (HPow.hPow.{0, 0, 0} Nat Nat Nat (instHPow.{0, 0} Nat Nat (instPowNat.{0} Nat instNatPowNat)) (OfNat.ofNat.{0} Nat 2 (instOfNatNat 2)) width))))",
+      "Merlin.GraphState.Integer.programs_sound": "forall {World : Type} {Error : Type} {registry : List.{0} Merlin.GraphState.Scalar.Signature} (model : Merlin.GraphState.Scalar.Model Int World Error registry), (Merlin.GraphState.Integer.ExactModel World Error registry model) -> (Merlin.GraphState.Integer.LocalTyping World Error registry model Merlin.GraphState.Integer.Canonical) -> (forall {inputs : List.{0} Merlin.GraphState.Scalar.Ty} {outputs : List.{0} Merlin.GraphState.Scalar.Ty} {before : Merlin.GraphState.Scalar.Program} {after : Merlin.GraphState.Scalar.Program} {first : Merlin.GraphState.Scalar.Code} {second : Merlin.GraphState.Scalar.Code}, (Eq.{1} (Option.{0} Merlin.GraphState.Scalar.Code) (Merlin.GraphState.Scalar.normalize registry (Merlin.GraphState.Scalar.vars (List.length.{0} Merlin.GraphState.Scalar.Ty inputs)) before) (Option.some.{0} Merlin.GraphState.Scalar.Code first)) -> (Eq.{1} (Option.{0} Merlin.GraphState.Scalar.Code) (Merlin.GraphState.Scalar.normalize registry (Merlin.GraphState.Scalar.vars (List.length.{0} Merlin.GraphState.Scalar.Ty inputs)) after) (Option.some.{0} Merlin.GraphState.Scalar.Code second)) -> (Merlin.GraphState.Integer.Relation registry inputs outputs first second) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical inputs values) -> (And (Merlin.GraphState.Integer.ResultTyped World Error Merlin.GraphState.Integer.Canonical outputs (Merlin.GraphState.Scalar.evalProgram Int World Error registry model before values world)) (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error registry model before values world) (Merlin.GraphState.Scalar.evalProgram Int World Error registry model after values world)))))",
+      "Merlin.GraphState.Integer.typed_reached": "forall {World : Type} {Error : Type} {registry : List.{0} Merlin.GraphState.Scalar.Signature} {rep : Merlin.GraphState.Scalar.Ty -> Int -> Prop} (model : Merlin.GraphState.Scalar.Model Int World Error registry), (Merlin.GraphState.Integer.LocalTyping World Error registry model rep) -> (forall {types : List.{0} Merlin.GraphState.Scalar.Ty} {results : List.{0} Merlin.GraphState.Scalar.Ty} {program : Merlin.GraphState.Scalar.Program}, (Merlin.GraphState.Scalar.Typed registry types results program) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values rep types values) -> (Merlin.GraphState.Integer.Reached World Error registry model rep program values world)))",
+      "Merlin.GraphState.Integer.typed_result": "forall {World : Type} {Error : Type} {registry : List.{0} Merlin.GraphState.Scalar.Signature} {rep : Merlin.GraphState.Scalar.Ty -> Int -> Prop} (model : Merlin.GraphState.Scalar.Model Int World Error registry), (Merlin.GraphState.Integer.LocalTyping World Error registry model rep) -> (forall {types : List.{0} Merlin.GraphState.Scalar.Ty} {results : List.{0} Merlin.GraphState.Scalar.Ty} {program : Merlin.GraphState.Scalar.Program}, (Merlin.GraphState.Scalar.Typed registry types results program) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values rep types values) -> (Merlin.GraphState.Integer.ResultTyped World Error rep results (Merlin.GraphState.Scalar.evalProgram Int World Error registry model program values world))))",
+      "Merlin.GraphStateIntegerInstance.F3.actual": "forall {World : Type} {Error : Type} (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry), (Merlin.GraphState.Integer.ExactModel World Error Merlin.GraphStateIntegerInstance.registry model) -> (Merlin.GraphState.Integer.LocalTyping World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.inputs values) -> (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphStateIntegerInstance.F3.before values world) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphStateIntegerInstance.F3.after values world)))",
+      "Merlin.GraphStateIntegerInstance.F3.localRewrites": "Merlin.GraphState.Integer.Relation Merlin.GraphStateIntegerInstance.registry Merlin.GraphStateIntegerInstance.F3.inputs Merlin.GraphStateIntegerInstance.F3.outputs Merlin.GraphStateIntegerInstance.F3.first Merlin.GraphStateIntegerInstance.F3.second",
+      "Merlin.GraphStateIntegerInstance.F3.reached": "forall {World : Type} {Error : Type} (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry), (Merlin.GraphState.Integer.LocalTyping World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.inputs values) -> (And (Merlin.GraphState.Integer.Reached World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.before values world) (Merlin.GraphState.Integer.Reached World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.after values world)))",
+      "Merlin.GraphStateIntegerInstance.F4.actual": "forall {World : Type} {Error : Type} (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry), (Merlin.GraphState.Integer.ExactModel World Error Merlin.GraphStateIntegerInstance.registry model) -> (Merlin.GraphState.Integer.LocalTyping World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F4.inputs values) -> (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphStateIntegerInstance.F4.before values world) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphStateIntegerInstance.F4.after values world)))",
+      "Merlin.GraphStateIntegerInstance.F4.localRewrites": "Merlin.GraphState.Integer.Relation Merlin.GraphStateIntegerInstance.registry Merlin.GraphStateIntegerInstance.F4.inputs Merlin.GraphStateIntegerInstance.F4.outputs Merlin.GraphStateIntegerInstance.F4.first Merlin.GraphStateIntegerInstance.F4.second",
+      "Merlin.GraphStateIntegerInstance.F4.reached": "forall {World : Type} {Error : Type} (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry), (Merlin.GraphState.Integer.LocalTyping World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F4.inputs values) -> (And (Merlin.GraphState.Integer.Reached World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F4.before values world) (Merlin.GraphState.Integer.Reached World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F4.after values world)))",
+      "Merlin.GraphStateIntegerInstance.Suffix.complete": "forall {World : Type} {Error : Type} (primitive : Merlin.GraphState.Scalar.Prim -> (List.{0} Int) -> Int) (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStateIntegerInstance.Suffix.registry), Merlin.GraphState.Pipeline.PreservesEntries Int World Error Merlin.GraphStateIntegerInstance.Suffix.registry (Merlin.GraphStateIntegerInstance.Suffix.M World Error primitive external) Merlin.GraphStateIntegerInstance.Suffix.originalEntries Merlin.GraphStateIntegerInstance.Suffix.finalEntries",
+      "Merlin.GraphStateIntegerInstance.complete": "forall {World : Type} {Error : Type} (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStateIntegerInstance.registry), (forall (identity : Nat) (arguments : List.{0} Int) (world : World) (values : List.{0} Int) (final : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical (Merlin.GraphState.Scalar.Signature.inputs (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity)) arguments) -> (Eq.{1} (Except.{0, 0} (Prod.{0, 0} Error World) (Prod.{0, 0} (List.{0} Int) World)) (Merlin.GraphState.Pipeline.External.run World Error Merlin.GraphStateIntegerInstance.registry external identity arguments world) (Except.ok.{0, 0} (Prod.{0, 0} Error World) (Prod.{0, 0} (List.{0} Int) World) (Prod.mk.{0, 0} (List.{0} Int) World values final))) -> (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical (Merlin.GraphState.Scalar.Signature.outputs (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity)) values)) -> (Merlin.GraphState.Integer.PreservesEntriesCanonical World Error Merlin.GraphStateIntegerInstance.Suffix.registry (Merlin.GraphStateIntegerInstance.Suffix.M World Error Merlin.GraphState.Integer.primitive external) Merlin.GraphStateIntegerInstance.originalEntries Merlin.GraphStateIntegerInstance.Suffix.finalEntries)",
+      "Merlin.GraphStateIntegerInstance.exactMiddle": "Eq.{1} (List.{0} Merlin.GraphState.Pipeline.Entry) Merlin.GraphStateIntegerInstance.middleEntries Merlin.GraphStateIntegerInstance.Suffix.originalEntries",
+      "Merlin.GraphStateIntegerInstance.prefix_actual": "forall {World : Type} {Error : Type} (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry), (Merlin.GraphState.Integer.ExactModel World Error Merlin.GraphStateIntegerInstance.registry model) -> (Merlin.GraphState.Integer.LocalTyping World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical) -> (Merlin.GraphState.Integer.PreservesEntriesCanonical World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphStateIntegerInstance.originalEntries Merlin.GraphStateIntegerInstance.middleEntries)"
+    },
+    "model": null,
+    "changed": [
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "fresh_replay": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/chain-i32/report.json",
+      "sha256": "03e95da2cd9c34c762b3b5cf4c7a0ad98c3a70514d3288eba105f84c5cc9d547",
+      "bytes": 1471
+    }
+  },
+  "initialized_model": {
+    "name": "initialized-provider",
+    "originals": [
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage0.mlir",
+        "sha256": "501cbb7a5d907aec06747aaa8f302389865b9dfa14aa9116a9a4e85799c3a928",
+        "bytes": 2454
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage1.mlir",
+        "sha256": "5eb8639a8618f741d153ca3d1c67bf9b367b3d731326e87943e51f21bf91ad72",
+        "bytes": 2102
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage2.mlir",
+        "sha256": "dcb9864923cfd44b1b47230a378eb3fd1ed5d45533d4ad67cd7c19bbeeb45673",
+        "bytes": 1581
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage3.mlir",
+        "sha256": "3f286f5129ea9bb42cfff7d6f7db3c1ed6c3bb4900bc3f3caf808b4a2a15e25c",
+        "bytes": 1579
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage4.mlir",
+        "sha256": "2dc634128ca43d248f4fd60eade3154663603195b7447b91b7fb9aba54902b5a",
+        "bytes": 2257
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/producer/actual/stage5.mlir",
+        "sha256": "4c30f6466fe3a1da00610b847c963d6216ea1707371a640b0c01749f651cac0d",
+        "bytes": 2671
+      }
+    ],
+    "receipt": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/receipt.json",
+      "sha256": "5cce4215646448ce24405366fe1abd15207d74c9a2fe3794ba4016f0887ae788",
+      "bytes": 871192
+    },
+    "query": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/GraphStateIntegerInstance.lean",
+      "sha256": "03a6deb63cc9c22a94647054722c735033181ed85ce94eeb201b18870f808225",
+      "bytes": 44022
+    },
+    "object": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/GraphStateIntegerInstance.olean",
+      "sha256": "6c433278218109f66d0c1f40ce16bce484745601c5eb3d14e292b0b553b508e9",
+      "bytes": 1567120
+    },
+    "boundary_report": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/report.json",
+      "sha256": "804c78f21412f8b549412f8a2391f8dbec81155bd459c97d33b9fb326cbfe2c9",
+      "bytes": 8006
+    },
+    "kernel_report": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/report.json",
+      "sha256": "a800edd1ff25305b5b2b0ac7fb6042a20285708d1a9fae0b91a8ddcc95dc243a",
+      "bytes": 511904
+    },
+    "checker_returncode": 0,
+    "audit": {
+      "theorems_audited": 1056,
+      "axioms_used": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    "audit_output": [
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/audit.stdout",
+        "sha256": "61d562cb92b0531dc7f87e770a4b1014450401ae4dd137ab8e9d4cb2811ec2d4",
+        "bytes": 164941
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/audit.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/statements.stdout",
+        "sha256": "46196d217218c0cb41e5fbbef62f105a112397ef9f290132f27816b1505baa8d",
+        "bytes": 23008
+      },
+      {
+        "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_initialized_symbolic_prov0/checked/lean/statements.stderr",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    ],
+    "roots": [
+      "Merlin.GraphStateIntegerInstance.prefix_actual",
+      "Merlin.GraphStateIntegerInstance.complete",
+      "Merlin.GraphStateIntegerInstance.exactMiddle",
+      "Merlin.GraphStateIntegerInstance.Suffix.complete",
+      "Merlin.GraphState.Integer.programs_sound",
+      "Merlin.GraphState.Integer.Relation.sound",
+      "Merlin.GraphState.Integer.typed_result",
+      "Merlin.GraphState.Integer.typed_reached",
+      "Merlin.GraphState.Integer.canonical_iff",
+      "Merlin.GraphStateIntegerInstance.F3.actual",
+      "Merlin.GraphStateIntegerInstance.F3.reached",
+      "Merlin.GraphStateIntegerInstance.F3.localRewrites",
+      "Merlin.GraphStateIntegerInstance.F4.actual",
+      "Merlin.GraphStateIntegerInstance.F4.reached",
+      "Merlin.GraphStateIntegerInstance.F4.localRewrites",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.entriesCanonical",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.nonzero",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.body_success",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.body_failure",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.source_success",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.source_failure",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_success",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_success",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_failure",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_failure",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.source_values_reached",
+      "Merlin.GraphState.Integer.Countermodels.noncanonical_entry_refutes_neutral_deletion",
+      "Merlin.GraphState.Integer.Countermodels.entry_really_noncanonical",
+      "Merlin.GraphState.Integer.Countermodels.missing_primitive_contract_refutes_deletion",
+      "Merlin.GraphState.Integer.Countermodels.provider_programs_statically_typed",
+      "Merlin.GraphState.Integer.Countermodels.missing_local_result_contract_refutes_deletion",
+      "Merlin.GraphState.Integer.Countermodels.hidden_effect_countermodel"
+    ],
+    "statements": {
+      "Merlin.GraphState.Integer.Countermodels.entry_really_noncanonical": "Not (Merlin.GraphState.Integer.Canonical (Merlin.GraphState.Scalar.Ty.bits (OfNat.ofNat.{0} Nat 8 (instOfNatNat 8))) (OfNat.ofNat.{0} Int 256 (instOfNat 256)))",
+      "Merlin.GraphState.Integer.Countermodels.hidden_effect_countermodel": "Ne.{1} (Except.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat)) (Except.ok.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat) (Prod.mk.{0, 0} (List.{0} Int) Nat (List.cons.{0} Int (OfNat.ofNat.{0} Int 5 (instOfNat 5)) (List.nil.{0} Int)) (OfNat.ofNat.{0} Nat 8 (instOfNatNat 8)))) (Except.ok.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat) (Prod.mk.{0, 0} (List.{0} Int) Nat (List.cons.{0} Int (OfNat.ofNat.{0} Int 5 (instOfNat 5)) (List.nil.{0} Int)) (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7))))",
+      "Merlin.GraphState.Integer.Countermodels.missing_local_result_contract_refutes_deletion": "Ne.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphState.Scalar.evalProgram Int Nat Int Merlin.GraphState.Integer.Countermodels.registry Merlin.GraphState.Integer.Countermodels.noncanonicalProvider Merlin.GraphState.Integer.Countermodels.withProvider (List.nil.{0} Int) (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7))) (Merlin.GraphState.Scalar.evalProgram Int Nat Int Merlin.GraphState.Integer.Countermodels.registry Merlin.GraphState.Integer.Countermodels.noncanonicalProvider Merlin.GraphState.Integer.Countermodels.liftedProvider (List.nil.{0} Int) (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7)))",
+      "Merlin.GraphState.Integer.Countermodels.missing_primitive_contract_refutes_deletion": "Ne.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphState.Scalar.evalProgram Int Nat Int (List.nil.{0} Merlin.GraphState.Scalar.Signature) Merlin.GraphState.Integer.Countermodels.wrongPrimitive Merlin.GraphState.Integer.Countermodels.addZero (List.cons.{0} Int (OfNat.ofNat.{0} Int 5 (instOfNat 5)) (List.nil.{0} Int)) (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7))) (Merlin.GraphState.Scalar.evalProgram Int Nat Int (List.nil.{0} Merlin.GraphState.Scalar.Signature) Merlin.GraphState.Integer.Countermodels.wrongPrimitive Merlin.GraphState.Integer.Countermodels.unchanged (List.cons.{0} Int (OfNat.ofNat.{0} Int 5 (instOfNat 5)) (List.nil.{0} Int)) (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7)))",
+      "Merlin.GraphState.Integer.Countermodels.noncanonical_entry_refutes_neutral_deletion": "Ne.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphState.Scalar.evalProgram Int Nat Int (List.nil.{0} Merlin.GraphState.Scalar.Signature) Merlin.GraphState.Integer.Countermodels.base Merlin.GraphState.Integer.Countermodels.addZero (List.cons.{0} Int (OfNat.ofNat.{0} Int 256 (instOfNat 256)) (List.nil.{0} Int)) (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7))) (Merlin.GraphState.Scalar.evalProgram Int Nat Int (List.nil.{0} Merlin.GraphState.Scalar.Signature) Merlin.GraphState.Integer.Countermodels.base Merlin.GraphState.Integer.Countermodels.unchanged (List.cons.{0} Int (OfNat.ofNat.{0} Int 256 (instOfNat 256)) (List.nil.{0} Int)) (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7)))",
+      "Merlin.GraphState.Integer.Countermodels.provider_programs_statically_typed": "And (Eq.{1} Bool (Merlin.GraphState.Scalar.checkTypes Merlin.GraphState.Integer.Countermodels.registry (List.nil.{0} Merlin.GraphState.Scalar.Ty) (List.cons.{0} Merlin.GraphState.Scalar.Ty (Merlin.GraphState.Scalar.Ty.bits (OfNat.ofNat.{0} Nat 8 (instOfNatNat 8))) (List.nil.{0} Merlin.GraphState.Scalar.Ty)) Merlin.GraphState.Integer.Countermodels.withProvider) Bool.true) (Eq.{1} Bool (Merlin.GraphState.Scalar.checkTypes Merlin.GraphState.Integer.Countermodels.registry (List.nil.{0} Merlin.GraphState.Scalar.Ty) (List.cons.{0} Merlin.GraphState.Scalar.Ty (Merlin.GraphState.Scalar.Ty.bits (OfNat.ofNat.{0} Nat 8 (instOfNatNat 8))) (List.nil.{0} Merlin.GraphState.Scalar.Ty)) Merlin.GraphState.Integer.Countermodels.liftedProvider) Bool.true)",
+      "Merlin.GraphState.Integer.Relation.sound": "forall {World : Type} {Error : Type} {registry : List.{0} Merlin.GraphState.Scalar.Signature} (model : Merlin.GraphState.Scalar.Model Int World Error registry), (Merlin.GraphState.Integer.ExactModel World Error registry model) -> (Merlin.GraphState.Integer.LocalTyping World Error registry model Merlin.GraphState.Integer.Canonical) -> (forall {environment : List.{0} Merlin.GraphState.Scalar.Ty} {results : List.{0} Merlin.GraphState.Scalar.Ty} {first : Merlin.GraphState.Scalar.Code} {second : Merlin.GraphState.Scalar.Code}, (Merlin.GraphState.Integer.Relation registry environment results first second) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical environment values) -> (And (Merlin.GraphState.Integer.ResultTyped World Error Merlin.GraphState.Integer.Canonical results (Merlin.GraphState.Scalar.evalCode Int World Error registry model first values world)) (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalCode Int World Error registry model first values world) (Merlin.GraphState.Scalar.evalCode Int World Error registry model second values world)))))",
+      "Merlin.GraphState.Integer.canonical_iff": "forall (width : Nat) (value : Int), Iff (Merlin.GraphState.Integer.Canonical (Merlin.GraphState.Scalar.Ty.bits width) value) (And (LE.le.{0} Int Int.instLEInt (OfNat.ofNat.{0} Int 0 (instOfNat 0)) value) (LT.lt.{0} Int Int.instLTInt value (Nat.cast.{0} Int instNatCastInt (HPow.hPow.{0, 0, 0} Nat Nat Nat (instHPow.{0, 0} Nat Nat (instPowNat.{0} Nat instNatPowNat)) (OfNat.ofNat.{0} Nat 2 (instOfNatNat 2)) width))))",
+      "Merlin.GraphState.Integer.programs_sound": "forall {World : Type} {Error : Type} {registry : List.{0} Merlin.GraphState.Scalar.Signature} (model : Merlin.GraphState.Scalar.Model Int World Error registry), (Merlin.GraphState.Integer.ExactModel World Error registry model) -> (Merlin.GraphState.Integer.LocalTyping World Error registry model Merlin.GraphState.Integer.Canonical) -> (forall {inputs : List.{0} Merlin.GraphState.Scalar.Ty} {outputs : List.{0} Merlin.GraphState.Scalar.Ty} {before : Merlin.GraphState.Scalar.Program} {after : Merlin.GraphState.Scalar.Program} {first : Merlin.GraphState.Scalar.Code} {second : Merlin.GraphState.Scalar.Code}, (Eq.{1} (Option.{0} Merlin.GraphState.Scalar.Code) (Merlin.GraphState.Scalar.normalize registry (Merlin.GraphState.Scalar.vars (List.length.{0} Merlin.GraphState.Scalar.Ty inputs)) before) (Option.some.{0} Merlin.GraphState.Scalar.Code first)) -> (Eq.{1} (Option.{0} Merlin.GraphState.Scalar.Code) (Merlin.GraphState.Scalar.normalize registry (Merlin.GraphState.Scalar.vars (List.length.{0} Merlin.GraphState.Scalar.Ty inputs)) after) (Option.some.{0} Merlin.GraphState.Scalar.Code second)) -> (Merlin.GraphState.Integer.Relation registry inputs outputs first second) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical inputs values) -> (And (Merlin.GraphState.Integer.ResultTyped World Error Merlin.GraphState.Integer.Canonical outputs (Merlin.GraphState.Scalar.evalProgram Int World Error registry model before values world)) (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error registry model before values world) (Merlin.GraphState.Scalar.evalProgram Int World Error registry model after values world)))))",
+      "Merlin.GraphState.Integer.typed_reached": "forall {World : Type} {Error : Type} {registry : List.{0} Merlin.GraphState.Scalar.Signature} {rep : Merlin.GraphState.Scalar.Ty -> Int -> Prop} (model : Merlin.GraphState.Scalar.Model Int World Error registry), (Merlin.GraphState.Integer.LocalTyping World Error registry model rep) -> (forall {types : List.{0} Merlin.GraphState.Scalar.Ty} {results : List.{0} Merlin.GraphState.Scalar.Ty} {program : Merlin.GraphState.Scalar.Program}, (Merlin.GraphState.Scalar.Typed registry types results program) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values rep types values) -> (Merlin.GraphState.Integer.Reached World Error registry model rep program values world)))",
+      "Merlin.GraphState.Integer.typed_result": "forall {World : Type} {Error : Type} {registry : List.{0} Merlin.GraphState.Scalar.Signature} {rep : Merlin.GraphState.Scalar.Ty -> Int -> Prop} (model : Merlin.GraphState.Scalar.Model Int World Error registry), (Merlin.GraphState.Integer.LocalTyping World Error registry model rep) -> (forall {types : List.{0} Merlin.GraphState.Scalar.Ty} {results : List.{0} Merlin.GraphState.Scalar.Ty} {program : Merlin.GraphState.Scalar.Program}, (Merlin.GraphState.Scalar.Typed registry types results program) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values rep types values) -> (Merlin.GraphState.Integer.ResultTyped World Error rep results (Merlin.GraphState.Scalar.evalProgram Int World Error registry model program values world))))",
+      "Merlin.GraphStateIntegerInstance.F3.actual": "forall {World : Type} {Error : Type} (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry), (Merlin.GraphState.Integer.ExactModel World Error Merlin.GraphStateIntegerInstance.registry model) -> (Merlin.GraphState.Integer.LocalTyping World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.inputs values) -> (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphStateIntegerInstance.F3.before values world) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphStateIntegerInstance.F3.after values world)))",
+      "Merlin.GraphStateIntegerInstance.F3.localRewrites": "Merlin.GraphState.Integer.Relation Merlin.GraphStateIntegerInstance.registry Merlin.GraphStateIntegerInstance.F3.inputs Merlin.GraphStateIntegerInstance.F3.outputs Merlin.GraphStateIntegerInstance.F3.first Merlin.GraphStateIntegerInstance.F3.second",
+      "Merlin.GraphStateIntegerInstance.F3.reached": "forall {World : Type} {Error : Type} (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry), (Merlin.GraphState.Integer.LocalTyping World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.inputs values) -> (And (Merlin.GraphState.Integer.Reached World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.before values world) (Merlin.GraphState.Integer.Reached World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.after values world)))",
+      "Merlin.GraphStateIntegerInstance.F4.actual": "forall {World : Type} {Error : Type} (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry), (Merlin.GraphState.Integer.ExactModel World Error Merlin.GraphStateIntegerInstance.registry model) -> (Merlin.GraphState.Integer.LocalTyping World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F4.inputs values) -> (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int World Error) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphStateIntegerInstance.F4.before values world) (Merlin.GraphState.Scalar.evalProgram Int World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphStateIntegerInstance.F4.after values world)))",
+      "Merlin.GraphStateIntegerInstance.F4.localRewrites": "Merlin.GraphState.Integer.Relation Merlin.GraphStateIntegerInstance.registry Merlin.GraphStateIntegerInstance.F4.inputs Merlin.GraphStateIntegerInstance.F4.outputs Merlin.GraphStateIntegerInstance.F4.first Merlin.GraphStateIntegerInstance.F4.second",
+      "Merlin.GraphStateIntegerInstance.F4.reached": "forall {World : Type} {Error : Type} (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry), (Merlin.GraphState.Integer.LocalTyping World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical) -> (forall (values : List.{0} Int) (world : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F4.inputs values) -> (And (Merlin.GraphState.Integer.Reached World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F4.before values world) (Merlin.GraphState.Integer.Reached World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F4.after values world)))",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_failure": "Eq.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphState.Scalar.evalProgram Int Nat Int Merlin.GraphStateIntegerInstance.registry (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen Bool.true) Merlin.GraphStateIntegerInstance.Suffix.F3.S4 Merlin.GraphStateIntegerInstance.IntegerProvider.arguments (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7))) (Except.error.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat) (Prod.mk.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat (Merlin.GraphState.Scalar.Fault.external Int (OfNat.ofNat.{0} Int 17 (instOfNat 17))) (OfNat.ofNat.{0} Nat 8 (instOfNatNat 8))))",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_final_success": "Eq.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphState.Scalar.evalProgram Int Nat Int Merlin.GraphStateIntegerInstance.registry (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen Bool.false) Merlin.GraphStateIntegerInstance.Suffix.F3.S4 Merlin.GraphStateIntegerInstance.IntegerProvider.arguments (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7))) (Except.ok.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat) (Prod.mk.{0, 0} (List.{0} Int) Nat (List.cons.{0} Int (OfNat.ofNat.{0} Int 17 (instOfNat 17)) (List.nil.{0} Int)) (OfNat.ofNat.{0} Nat 32 (instOfNatNat 32))))",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_failure": "Eq.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphState.Scalar.evalProgram Int Nat Int Merlin.GraphStateIntegerInstance.registry (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen Bool.true) Merlin.GraphStateIntegerInstance.F3.before Merlin.GraphStateIntegerInstance.IntegerProvider.arguments (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7))) (Except.error.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat) (Prod.mk.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat (Merlin.GraphState.Scalar.Fault.external Int (OfNat.ofNat.{0} Int 17 (instOfNat 17))) (OfNat.ofNat.{0} Nat 8 (instOfNatNat 8))))",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.actual_source_success": "Eq.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphState.Scalar.evalProgram Int Nat Int Merlin.GraphStateIntegerInstance.registry (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen Bool.false) Merlin.GraphStateIntegerInstance.F3.before Merlin.GraphStateIntegerInstance.IntegerProvider.arguments (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7))) (Except.ok.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat) (Prod.mk.{0, 0} (List.{0} Int) Nat (List.cons.{0} Int (OfNat.ofNat.{0} Int 17 (instOfNat 17)) (List.nil.{0} Int)) (OfNat.ofNat.{0} Nat 32 (instOfNatNat 32))))",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.body_failure": "forall (index : Int) (carry : List.{0} Int) (world : Nat), (Eq.{1} Nat (List.length.{0} Int carry) (OfNat.ofNat.{0} Nat 1 (instOfNatNat 1))) -> (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphStateIntegerInstance.IntegerProvider.body Bool.true index carry world) (Except.error.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat) (Prod.mk.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat (Merlin.GraphState.Scalar.Fault.external Int (OfNat.ofNat.{0} Int 17 (instOfNat 17))) (HAdd.hAdd.{0, 0, 0} Nat Nat Nat (instHAdd.{0} Nat instAddNat) world (OfNat.ofNat.{0} Nat 1 (instOfNatNat 1))))))",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.body_success": "forall (index : Int) (carry : List.{0} Int) (world : Nat), (Eq.{1} Nat (List.length.{0} Int carry) (OfNat.ofNat.{0} Nat 1 (instOfNatNat 1))) -> (Eq.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphStateIntegerInstance.IntegerProvider.body Bool.false index carry world) (Except.ok.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat) (Prod.mk.{0, 0} (List.{0} Int) Nat (List.cons.{0} Int (OfNat.ofNat.{0} Int 17 (instOfNat 17)) (List.nil.{0} Int)) (HAdd.hAdd.{0, 0, 0} Nat Nat Nat (instHAdd.{0} Nat instAddNat) world (OfNat.ofNat.{0} Nat 2 (instOfNatNat 2))))))",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.entriesCanonical": "Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.inputs Merlin.GraphStateIntegerInstance.IntegerProvider.arguments",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.nonzero": "Eq.{1} Bool (List.all.{0} Int Merlin.GraphStateIntegerInstance.IntegerProvider.arguments (fun (value : Int) => Decidable.decide (Ne.{1} Int value (OfNat.ofNat.{0} Int 0 (instOfNat 0))) (instDecidableNot (Eq.{1} Int value (OfNat.ofNat.{0} Int 0 (instOfNat 0))) (Int.instDecidableEq value (OfNat.ofNat.{0} Int 0 (instOfNat 0)))))) Bool.true",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.source_failure": "forall (world : Nat), Eq.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphState.Scalar.evalProgram Int Nat Int Merlin.GraphStateIntegerInstance.registry (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen Bool.true) Merlin.GraphStateIntegerInstance.F3.before Merlin.GraphStateIntegerInstance.IntegerProvider.arguments world) (Except.error.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat) (Prod.mk.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat (Merlin.GraphState.Scalar.Fault.external Int (OfNat.ofNat.{0} Int 17 (instOfNat 17))) (HAdd.hAdd.{0, 0, 0} Nat Nat Nat (instHAdd.{0} Nat instAddNat) world (OfNat.ofNat.{0} Nat 1 (instOfNatNat 1)))))",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.source_success": "forall (world : Nat), Eq.{1} (Merlin.GraphState.Scalar.Outcome Int Nat Int) (Merlin.GraphState.Scalar.evalProgram Int Nat Int Merlin.GraphStateIntegerInstance.registry (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen Bool.false) Merlin.GraphStateIntegerInstance.F3.before Merlin.GraphStateIntegerInstance.IntegerProvider.arguments world) (Except.ok.{0, 0} (Prod.{0, 0} (Merlin.GraphState.Scalar.Fault Int) Nat) (Prod.{0, 0} (List.{0} Int) Nat) (Prod.mk.{0, 0} (List.{0} Int) Nat (List.cons.{0} Int (OfNat.ofNat.{0} Int 17 (instOfNat 17)) (List.nil.{0} Int)) (HAdd.hAdd.{0, 0, 0} Nat Nat Nat (instHAdd.{0} Nat instAddNat) world (OfNat.ofNat.{0} Nat 25 (instOfNatNat 25)))))",
+      "Merlin.GraphStateIntegerInstance.IntegerProvider.source_values_reached": "Merlin.GraphState.Integer.Reached Nat Int Merlin.GraphStateIntegerInstance.registry (Merlin.GraphStateIntegerInstance.IntegerProvider.chosen Bool.false) Merlin.GraphState.Integer.Canonical Merlin.GraphStateIntegerInstance.F3.before Merlin.GraphStateIntegerInstance.IntegerProvider.arguments (OfNat.ofNat.{0} Nat 7 (instOfNatNat 7))",
+      "Merlin.GraphStateIntegerInstance.Suffix.complete": "forall {World : Type} {Error : Type} (primitive : Merlin.GraphState.Scalar.Prim -> (List.{0} Int) -> Int) (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStateIntegerInstance.Suffix.registry), Merlin.GraphState.Pipeline.PreservesEntries Int World Error Merlin.GraphStateIntegerInstance.Suffix.registry (Merlin.GraphStateIntegerInstance.Suffix.M World Error primitive external) Merlin.GraphStateIntegerInstance.Suffix.originalEntries Merlin.GraphStateIntegerInstance.Suffix.finalEntries",
+      "Merlin.GraphStateIntegerInstance.complete": "forall {World : Type} {Error : Type} (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStateIntegerInstance.registry), (forall (identity : Nat) (arguments : List.{0} Int) (world : World) (values : List.{0} Int) (final : World), (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical (Merlin.GraphState.Scalar.Signature.inputs (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity)) arguments) -> (Eq.{1} (Except.{0, 0} (Prod.{0, 0} Error World) (Prod.{0, 0} (List.{0} Int) World)) (Merlin.GraphState.Pipeline.External.run World Error Merlin.GraphStateIntegerInstance.registry external identity arguments world) (Except.ok.{0, 0} (Prod.{0, 0} Error World) (Prod.{0, 0} (List.{0} Int) World) (Prod.mk.{0, 0} (List.{0} Int) World values final))) -> (Merlin.GraphState.Integer.Values Merlin.GraphState.Integer.Canonical (Merlin.GraphState.Scalar.Signature.outputs (Merlin.GraphState.Scalar.signature Merlin.GraphStateIntegerInstance.registry identity)) values)) -> (Merlin.GraphState.Integer.PreservesEntriesCanonical World Error Merlin.GraphStateIntegerInstance.Suffix.registry (Merlin.GraphStateIntegerInstance.Suffix.M World Error Merlin.GraphState.Integer.primitive external) Merlin.GraphStateIntegerInstance.originalEntries Merlin.GraphStateIntegerInstance.Suffix.finalEntries)",
+      "Merlin.GraphStateIntegerInstance.exactMiddle": "Eq.{1} (List.{0} Merlin.GraphState.Pipeline.Entry) Merlin.GraphStateIntegerInstance.middleEntries Merlin.GraphStateIntegerInstance.Suffix.originalEntries",
+      "Merlin.GraphStateIntegerInstance.prefix_actual": "forall {World : Type} {Error : Type} (model : Merlin.GraphState.Scalar.Model Int World Error Merlin.GraphStateIntegerInstance.registry), (Merlin.GraphState.Integer.ExactModel World Error Merlin.GraphStateIntegerInstance.registry model) -> (Merlin.GraphState.Integer.LocalTyping World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphState.Integer.Canonical) -> (Merlin.GraphState.Integer.PreservesEntriesCanonical World Error Merlin.GraphStateIntegerInstance.registry model Merlin.GraphStateIntegerInstance.originalEntries Merlin.GraphStateIntegerInstance.middleEntries)"
+    },
+    "model": {
+      "mode": "initialized-symbolic-provider-v1",
+      "inputs": [
+        3,
+        5
+      ],
+      "initial_world": 7,
+      "success": {
+        "values": [
+          17
+        ],
+        "world": 32
+      },
+      "failure": {
+        "error": 17,
+        "world": 8
+      },
+      "source_success_assumed": false,
+      "domain": "initialized canonical Int words; no physical poison constructor",
+      "external": "explicit typed constant-word17 provider; world increment1; optional first observer fault",
+      "primitive_fidelity_proved": false,
+      "native_fidelity_proved": false,
+      "review_approved": false,
+      "old_literal_trace_promoted": false
+    },
+    "changed": [
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "fresh_replay": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/fresh-replay/initialized-provider/report.json",
+      "sha256": "5b6631977ae0e8f556fbaacc7e298e6f243a7170980ba48e355ee99e399fbe74",
+      "bytes": 2108
+    }
+  },
+  "valid_negative": {
+    "classification": "unsupported",
+    "compiler_valid": true,
+    "refusal": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_valid_adverse_mutations_e0/REFUSAL.json",
+      "sha256": "efc5685a4c139a6ad4e8376ddc9693beb31677601f821f4db14a620865fa9c25",
+      "bytes": 194
+    },
+    "mutation": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_valid_adverse_mutations_e0/mutated.mlir",
+      "sha256": "e41b252c4816804b9eea4e46428707fa9c03e135424c6e495efb83a41a746ef2",
+      "bytes": 952
+    },
+    "report": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_valid_adverse_mutations_e0/checked/report.json",
+      "sha256": "f3cf0ed1d05f7c9efaea32bdbe25851e2a32da2394d08cba38bfefc978dc6cf1",
+      "bytes": 5360
+    },
+    "producer_original": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_valid_adverse_mutations_e0/producer/actual/stage0.mlir",
+      "sha256": "d02ca499dd86ae658f81a058a1d9e4e4fd402c10e6538317d3a68114c77b02af",
+      "bytes": 1522
+    },
+    "producer_result": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_valid_adverse_mutations_e0/producer/actual/stage1.mlir",
+      "sha256": "ed3e1e0a41db1aeb3bd31744744b3eb3496f559b4b561e56d3a3af47eba6d50b",
+      "bytes": 952
+    }
+  },
+  "kernel_refusal": {
+    "report": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_wrong_constant_bit_certif0/lean/report.json",
+      "sha256": "bd326f814d85376ee37cbc2b00a6109721bc928e54b11c79fc46c4b4b855c27b",
+      "bytes": 1382
+    },
+    "query": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_wrong_constant_bit_certif0/lean/GraphStateIntegerInstance.lean",
+      "sha256": "0b29dc8b2e2caa93e7db591545115275f45de4964d120373ec058a00005fa763",
+      "bytes": 200
+    },
+    "stdout": {
+      "path": "out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_wrong_constant_bit_certif0/lean/kernel.stdout",
+      "sha256": "038e7261dae554ca6ff3ac41c637a8f07bd53e8982c522f6261c2f03e96abbef",
+      "bytes": 255
+    },
+    "returncode": 1
+  },
+  "audits": [
+    {
+      "name": "receipt-protocol",
+      "theorems": 907,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "rules-i128",
+      "theorems": 907,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "rules-i16",
+      "theorems": 907,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "rules-i1",
+      "theorems": 907,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "rules-i256",
+      "theorems": 907,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "rules-i32",
+      "theorems": 907,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "rules-i64",
+      "theorems": 907,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "rules-i8",
+      "theorems": 907,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "nested",
+      "theorems": 907,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "zero-trip",
+      "theorems": 907,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "chain-i32",
+      "theorems": 1009,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "chain-i64",
+      "theorems": 1009,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "chain-i8",
+      "theorems": 1009,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "initialized-provider",
+      "theorems": 1056,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "unchanged-flagged",
+      "theorems": 900,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "unchanged-index",
+      "theorems": 900,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    },
+    {
+      "name": "unchanged-floating",
+      "theorems": 900,
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "violations": []
+    }
+  ],
+  "incident_check": {
+    "path": "out/artifacts/verification/graph-state-integer/active/actual-import-incident-check-v2.json",
+    "sha256": "ea38f9b7901b9dfc0d032b0425e4b63ad692b1775666d672c718f9fa878bcbaa",
+    "bytes": 394
+  },
+  "held_diagnostic_v1": {
+    "manifest": {
+      "path": "out/artifacts/verification/graph-state-integer/review/sealed-diagnostic-v1/MANIFEST.json",
+      "sha256": "1779b3443bc0208ae9dcd90f505f0445b706db726e5f5986233751a7e09db06f",
+      "bytes": 518418
+    },
+    "qualified_originals": 0,
+    "qualified_replays": 0,
+    "cause": "known producer refusal classification gap; fixed in v2; no unknown native fault"
+  },
+  "review_approved": false,
+  "native_fidelity_proved": false,
+  "poison_freedom_proved": false,
+  "primitive_fidelity_proved": false,
+  "all_graph_passes_verified": false,
+  "selected_models": [],
+  "broker_selected": false
+}

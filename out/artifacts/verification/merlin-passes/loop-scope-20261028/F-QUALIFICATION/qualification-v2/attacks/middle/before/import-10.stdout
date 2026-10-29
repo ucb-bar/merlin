@@ -1,0 +1,7 @@
+/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean:36:75: warning: This simp argument is unused:
+  ↓reduceIte
+
+Hint: Omit it from the simp argument list.
+  [apply] simp only [show lower < upper ∧ 0 < step from ⟨correct.live, positive⟩, progression]
+
+Note: This linter can be disabled with `set_option linter.unusedSimpArgs false`

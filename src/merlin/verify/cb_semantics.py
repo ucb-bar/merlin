@@ -147,14 +147,25 @@ class CommandBufferEncoder:
         """
         shared = dict(shared or {})
         for name, spec in (self.cb.get("tensors") or {}).items():
-            if name in shared:
-                self.env[name] = shared[name]
-                continue
             shape = list(spec.get("shape") or ())
             if len(shape) != 2:
                 raise UnsupportedSemantics(f"tensor {name!r} has rank {len(shape)}; only rank-2 tensors are encoded")
             dtype = str(spec.get("dtype") or "")
             width = _width_of(dtype, name)
+            if name in shared:
+                tensor = shared[name]
+                if tuple(shape) != (tensor.rows, tensor.cols):
+                    raise UnsupportedSemantics(
+                        f"shared tensor {name!r} has shape {(tensor.rows, tensor.cols)} "
+                        f"but the command buffer declares {tuple(shape)}"
+                    )
+                if width != tensor.width:
+                    raise UnsupportedSemantics(
+                        f"shared tensor {name!r} has width {tensor.width} "
+                        f"but the command buffer declares dtype {dtype!r} (width {width})"
+                    )
+                self.env[name] = tensor
+                continue
             self.env[name] = self.enc.symbolic_tensor(name, shape[0], shape[1], width)
         return dict(self.env)
 

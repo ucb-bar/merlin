@@ -1,0 +1,288 @@
+{
+  "main_roots": {
+    "GraphMemorySCFObligation.accepted": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphMemorySCFObligation.chain": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphMemorySCFObligation.complete": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphMemorySCFObligation.contextual": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphMemorySCFObligation.valid": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphReuseObligation.accepted": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphReuseObligation.complete": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphReuseObligation.contextual": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "GraphReuseObligation.valid": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.EvalPure.frame": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Model.check_sound": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Model.checked_chain": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Model.checked_complete": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Model.checked_context": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Model.checked_initializer_byte_offset": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Model.checked_inner_control": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Model.checked_outer_control": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Run.covers": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Run.materializes": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Witness.uniform_heap": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Witness.uniform_run_exists": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Witness.uniform_run_values": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.Witness.writes_uniform": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsMemorySCF.checked_complete_observations": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.checked_induced_atomic": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.checked_reuse_then_segment": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.execution_backward": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.execution_forward": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.execution_modes": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.heap_run_iff_log": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.initialization_induced": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.materializes_in_bounds": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.related_initialize_logs": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.segmentation_exact_heaps": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.step_backward": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsMemorySCF.step_forward": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.Countermodels.allocation_call_budget": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsReuse.Countermodels.overlapping_live_values": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsReuse.Countermodels.pointer_identity": [],
+    "Merlin.GraphLoopsReuse.Countermodels.resource_exhaustion": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsReuse.Countermodels.stale_cell": [],
+    "Merlin.GraphLoopsReuse.Geometry.every_cell_covered": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.Geometry.rectangular_initializes": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.LifetimesValid.not_simultaneously_live": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.Model.check_sound": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.Model.checked_complete_observations": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.Model.checked_context": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.Model.checked_initializer_coverage": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.Related.allocate": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsReuse.Related.free": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.Related.initialize": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsReuse.Related.read": [],
+    "Merlin.GraphLoopsReuse.Related.store": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsReuse.Witness.protocol": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.Witness.source_inhabited": [
+      "propext"
+    ],
+    "Merlin.GraphLoopsReuse.Witness.target_inhabited": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.checked_observations": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.execution_backward": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.execution_forward": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.step_backward": [
+      "propext",
+      "Quot.sound"
+    ],
+    "Merlin.GraphLoopsReuse.step_forward": [
+      "propext",
+      "Quot.sound"
+    ]
+  },
+  "root_count": 61,
+  "exact_actual_case": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/pytest/test_actual_complete_common_me0/proof/CHECK.json",
+    "sha256": "f9ff729db75fd0021401be0d84692f4c3ef840df32ed56bec025ad73a946ccd1",
+    "bytes": 866520
+  },
+  "checked_query": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/pytest/test_actual_complete_common_me0/proof/Obligation.lean",
+    "sha256": "afd557e3947928aa4ee187750ec647ffe22daba059704a59d5610deda623dfd6",
+    "bytes": 89489
+  },
+  "stdout": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/pytest/test_actual_complete_common_me0/proof/stdout.log",
+    "sha256": "f177fb0c45d49fbb87769020a6109abb99de42451e3d205633d9ed66d11dedc1",
+    "bytes": 5769
+  },
+  "query_copy": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/Audit.lean",
+    "sha256": "afd557e3947928aa4ee187750ec647ffe22daba059704a59d5610deda623dfd6",
+    "bytes": 89489
+  },
+  "inhabited_actual_case": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-memory-scf/memory-scf-mode-v1/qualification/pytest/test_actual_whole_program_has_0/INHABITED.json",
+    "sha256": "16d592f9f0b0fb8385503c30dd3beedac70d4d0516b4d4ba14bcfaa602733830",
+    "bytes": 6893
+  },
+  "inhabited_root_count": 63,
+  "only_standard_three": true,
+  "native_reflection": false,
+  "independent_review_complete": false
+}

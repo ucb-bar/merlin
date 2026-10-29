@@ -1,0 +1,82 @@
+test_actual_five_and_six_buffers_emit_frozen_complete_roots (__main__.Profiles.test_actual_five_and_six_buffers_emit_frozen_complete_roots) ... ERROR
+test_old_guards_runners_and_minimal_provider_are_never_called (__main__.Profiles.test_old_guards_runners_and_minimal_provider_are_never_called) ... ERROR
+test_stale_middle_observer_body_control_return_refuse (__main__.Profiles.test_stale_middle_observer_body_control_return_refuse) ... FAIL
+test_unsupported_settings_tail_dynamic_and_flags (__main__.Profiles.test_unsupported_settings_tail_dynamic_and_flags) ... ERROR
+test_wrong_profile_domain_roots_and_source_map_are_not_authority (__main__.Profiles.test_wrong_profile_domain_roots_and_source_map_are_not_authority) ... ERROR
+
+======================================================================
+ERROR: test_actual_five_and_six_buffers_emit_frozen_complete_roots (__main__.Profiles.test_actual_five_and_six_buffers_emit_frozen_complete_roots)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py", line 33, in test_actual_five_and_six_buffers_emit_frozen_complete_roots
+    from merlin.verify.lean_graph_state_pipeline_emit import emit as suffix_emit
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_emit.py", line 11, in <module>
+    from .lean_graph_state_pipeline import SIMPS, controls_literal, lean_list, prefix_environment
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline.py", line 10, in <module>
+    from .lean_graph_state_scalar import integer, primitive
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar.py", line 15, in <module>
+    from merlin.common.owned_process import run_owned
+ImportError: cannot import name 'run_owned' from 'merlin.common.owned_process' (/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/owned_process.py)
+
+======================================================================
+ERROR: test_old_guards_runners_and_minimal_provider_are_never_called (__main__.Profiles.test_old_guards_runners_and_minimal_provider_are_never_called)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py", line 115, in test_old_guards_runners_and_minimal_provider_are_never_called
+    from merlin.verify import lean_graph_state_scalar_kernel as kernel
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_kernel.py", line 15, in <module>
+    from merlin.common.owned_process import run_owned
+ImportError: cannot import name 'run_owned' from 'merlin.common.owned_process' (/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/owned_process.py)
+
+======================================================================
+ERROR: test_unsupported_settings_tail_dynamic_and_flags (__main__.Profiles.test_unsupported_settings_tail_dynamic_and_flags)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py", line 81, in test_unsupported_settings_tail_dynamic_and_flags
+    with self.assertRaisesRegex(ValueError,'tail|bulk'):self.preparation.prepare(self.profiles.SCF.name,tail,self.settings)
+                                                        ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py", line 242, in prepare
+    changed = _domain(capture)
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py", line 134, in _domain
+    from .lean_graph_state_pipeline_emit import static_controls
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_emit.py", line 11, in <module>
+    from .lean_graph_state_pipeline import SIMPS, controls_literal, lean_list, prefix_environment
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline.py", line 10, in <module>
+    from .lean_graph_state_scalar import integer, primitive
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar.py", line 15, in <module>
+    from merlin.common.owned_process import run_owned
+ImportError: cannot import name 'run_owned' from 'merlin.common.owned_process' (/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/owned_process.py)
+
+======================================================================
+ERROR: test_wrong_profile_domain_roots_and_source_map_are_not_authority (__main__.Profiles.test_wrong_profile_domain_roots_and_source_map_are_not_authority)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py", line 101, in test_wrong_profile_domain_roots_and_source_map_are_not_authority
+    request=self.requests.request(profile.name,values,self.settings)
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_profile_requests.py", line 50, in request
+    prepared = prepare(profile_name, buffers, settings)
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py", line 242, in prepare
+    changed = _domain(capture)
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py", line 134, in _domain
+    from .lean_graph_state_pipeline_emit import static_controls
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline_emit.py", line 11, in <module>
+    from .lean_graph_state_pipeline import SIMPS, controls_literal, lean_list, prefix_environment
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_pipeline.py", line 10, in <module>
+    from .lean_graph_state_scalar import integer, primitive
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar.py", line 15, in <module>
+    from merlin.common.owned_process import run_owned
+ImportError: cannot import name 'run_owned' from 'merlin.common.owned_process' (/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/owned_process.py)
+
+======================================================================
+FAIL: test_stale_middle_observer_body_control_return_refuse (__main__.Profiles.test_stale_middle_observer_body_control_return_refuse)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py", line 66, in test_stale_middle_observer_body_control_return_refuse
+    self.assertNotEqual(text,values[index])
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+AssertionError: '"builtin.module"() ({\n  "func.func"() <{sym_name = "partial", function_type = (i32, index) -> i32, sym_visibility = "private"}> ({\n  }) : () -> ()\n  "func.func"() <{sym_name = "other", function_type = (i32, index) -> i32, sym_visibility = "private"}> ({\n  }) : () -> ()\n  "func.func"() <{sym_name = "final_observe", function_type = (i32) -> (), sym_visibility = "private"}> ({\n  }) : () -> ()\n  "func.func"() <{sym_name = "main", function_type = (i32, i32) -> i32}> ({\n  ^bb0(%x: i32, %bias: i32):\n    %lb = "arith.constant"() <{value = 0 : index}> : () -> index\n    %ub = "arith.constant"() <{value = 24 : index}> : () -> index\n    %st = "arith.constant"() <{value = 1 : index}> : () -> index\n    %invariant = "arith.addi"(%bias, %bias) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    %out = "arith.constant"() <{value = 2 : index}> : () -> index\n    %out_1 = "arith.constant"() <{value = 24 : index}> : () -> index\n    %out_2 = "arith.constant"() <{value = 6 : index}> : () -> index\n    %out_3 = "scf.for"(%lb, %out_1, %out_2, %x) ({\n    ^bb0(%0: index, %1: i32):\n      %2 = "arith.addi"(%0, %out_2) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index\n      %3 = "arith.minui"(%2, %out_1) : (index, index) -> index\n      %4 = "scf.for"(%0, %3, %out, %1) ({\n      ^bb0(%5: index, %6: i32):\n        %a = "arith.addi"(%6, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n        %a2 = "arith.addi"(%a, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n        %v = "func.call"(%a2, %5) <{callee = @partial}> : (i32, index) -> i32\n        %7 = "arith.constant"() <{value = 1 : index}> : () -> index\n        %8 = "arith.addi"(%5, %7) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index\n        %a_1 = "arith.addi"(%v, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n        %a2_1 = "arith.addi"(%a_1, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n        %v_1 = "func.call"(%a2_1, %8) <{callee = @partial}> : (i32, index) -> i32\n        "scf.yield"(%v_1) : (i32) -> ()\n      }) : (index, index, index, i32) -> i32\n      "scf.yield"(%4) : (i32) -> ()\n    }) : (index, index, index, i32) -> i32\n    "func.call"(%out_3) <{callee = @final_observe}> : (i32) -> ()\n    "func.return"(%out_3) : (i32) -> ()\n  }) : () -> ()\n  "func.func"() <{sym_name = "untouched", function_type = (i32) -> i32}> ({\n  ^bb0(%x: i32):\n    "func.return"(%x) : (i32) -> ()\n  }) : () -> ()\n}) : () -> ()' == '"builtin.module"() ({\n  "func.func"() <{sym_name = "partial", function_type = (i32, index) -> i32, sym_visibility = "private"}> ({\n  }) : () -> ()\n  "func.func"() <{sym_name = "other", function_type = (i32, index) -> i32, sym_visibility = "private"}> ({\n  }) : () -> ()\n  "func.func"() <{sym_name = "final_observe", function_type = (i32) -> (), sym_visibility = "private"}> ({\n  }) : () -> ()\n  "func.func"() <{sym_name = "main", function_type = (i32, i32) -> i32}> ({\n  ^bb0(%x: i32, %bias: i32):\n    %lb = "arith.constant"() <{value = 0 : index}> : () -> index\n    %ub = "arith.constant"() <{value = 24 : index}> : () -> index\n    %st = "arith.constant"() <{value = 1 : index}> : () -> index\n    %invariant = "arith.addi"(%bias, %bias) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n    %out = "arith.constant"() <{value = 2 : index}> : () -> index\n    %out_1 = "arith.constant"() <{value = 24 : index}> : () -> index\n    %out_2 = "arith.constant"() <{value = 6 : index}> : () -> index\n    %out_3 = "scf.for"(%lb, %out_1, %out_2, %x) ({\n    ^bb0(%0: index, %1: i32):\n      %2 = "arith.addi"(%0, %out_2) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index\n      %3 = "arith.minui"(%2, %out_1) : (index, index) -> index\n      %4 = "scf.for"(%0, %3, %out, %1) ({\n      ^bb0(%5: index, %6: i32):\n        %a = "arith.addi"(%6, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n        %a2 = "arith.addi"(%a, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n        %v = "func.call"(%a2, %5) <{callee = @partial}> : (i32, index) -> i32\n        %7 = "arith.constant"() <{value = 1 : index}> : () -> index\n        %8 = "arith.addi"(%5, %7) <{overflowFlags = #arith.overflow<none>}> : (index, index) -> index\n        %a_1 = "arith.addi"(%v, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n        %a2_1 = "arith.addi"(%a_1, %invariant) <{overflowFlags = #arith.overflow<none>}> : (i32, i32) -> i32\n        %v_1 = "func.call"(%a2_1, %8) <{callee = @partial}> : (i32, index) -> i32\n        "scf.yield"(%v_1) : (i32) -> ()\n      }) : (index, index, index, i32) -> i32\n      "scf.yield"(%4) : (i32) -> ()\n    }) : (index, index, index, i32) -> i32\n    "func.call"(%out_3) <{callee = @final_observe}> : (i32) -> ()\n    "func.return"(%out_3) : (i32) -> ()\n  }) : () -> ()\n  "func.func"() <{sym_name = "untouched", function_type = (i32) -> i32}> ({\n  ^bb0(%x: i32):\n    "func.return"(%x) : (i32) -> ()\n  }) : () -> ()\n}) : () -> ()'
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.305s
+
+FAILED (failures=1, errors=4)

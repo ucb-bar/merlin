@@ -1,0 +1,128 @@
+{
+  "schema": "merlin.graph-state-integer.boundary.v1",
+  "status": "unsupported",
+  "reason": "actual ordered expression lacks a supported exact local rewrite proof",
+  "originals": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_valid_adverse_mutations_e0/producer/actual/stage0.mlir",
+      "sha256": "d02ca499dd86ae658f81a058a1d9e4e4fd402c10e6538317d3a68114c77b02af",
+      "bytes": 1522
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_valid_adverse_mutations_e0/mutated.mlir",
+      "sha256": "e41b252c4816804b9eea4e46428707fa9c03e135424c6e495efb83a41a746ef2",
+      "bytes": 952
+    }
+  ],
+  "sources": [
+    {
+      "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer.py",
+      "sha256": "881c51e6b1bd26be1196a8574d0d89fe20f71fd916b77bb8db8cdf6c43035f6e",
+      "bytes": 8292
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer_host.py",
+      "sha256": "95f6e5290f3bd081eb737a73cc89a704b7b3d7177c9aa55f66b77fb01ca38923",
+      "bytes": 3197
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer_mutations.py",
+      "sha256": "4917908943ec208fea2ee4a70188d6aacfe7688a322ebb1bd746df7336ada7d1",
+      "bytes": 4238
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_integer_receipts.py",
+      "sha256": "a33eb47fce9f27d78576ca01798e04dc566653740d1d9c753153604ca238a2c7",
+      "bytes": 9402
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerCode.lean",
+      "sha256": "9c6018fb12065b53d37ede98f3e0ba0732035dc76f3a52da5521118b2c4bc697",
+      "bytes": 9070
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerCountermodels.lean",
+      "sha256": "83249dfd93f8e4e472ba9b4d450a55aa60d6f4a5a730e83349e912e37f494dd2",
+      "bytes": 3419
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerExpressions.lean",
+      "sha256": "a4df60f1fda83c33b98ade070e925e2c2bc03113d4de01a99f90859d8696cf26",
+      "bytes": 8106
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerModels.lean",
+      "sha256": "8232ab65cb3e8b4c903b9aba8d2f161070917e7831ea42881841c9a379b8440c",
+      "bytes": 7063
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerOperations.lean",
+      "sha256": "ed9a3259ba43f1b90948d3c829fc506d326bd8769f170201e122c654bb2112e8",
+      "bytes": 4850
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerProgram.lean",
+      "sha256": "43a8e1aaf9929a948aa58e4c8025b024a716da2b7d5dfb3688f6f33f64a5188b",
+      "bytes": 4275
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerRepresentation.lean",
+      "sha256": "c9336a92263900c867941fe25a0683a5f364ad22372521ac58995af9a0eca8de",
+      "bytes": 7321
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateIntegerTrace.lean",
+      "sha256": "927e945ea615214f5dbd43e8095f3ab967254135d81625c3c1cd09fcc9b28e25",
+      "bytes": 7097
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer.py",
+      "sha256": "2272475e998de3ce0a47c4d69e6f45e597fdac61565b9a9e31211d1f7db57d1f",
+      "bytes": 8414
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_capture.py",
+      "sha256": "f8437a1c545904b47df8400359f87a38e402e4a9728e68267d48d3e8b3f22cd5",
+      "bytes": 8060
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_emit.py",
+      "sha256": "0d41bf9e18ff5204d4c0052308e4e6a27c8b3de2707680c0c593aed96eaaba80",
+      "bytes": 16467
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_kernel.py",
+      "sha256": "eaa2515ab01030b656b716590289ada431df961857bfac005e54db6044fa0dfa",
+      "bytes": 6274
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_models.py",
+      "sha256": "91de1d4ba3c249b4adc53c312c864ce60d76ff4e33d25bbced7173fbaf3f3d78",
+      "bytes": 9769
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_mutate.py",
+      "sha256": "fd9b8516d5ccf80feebf8e0ff1753d384904f7d48db6e37b939c9f1d59ed691e",
+      "bytes": 5936
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_proof.py",
+      "sha256": "adf3091b68dd916413d614ed177f2ad9e96979ad3bdbc13e933fb1edbcac4263",
+      "bytes": 8657
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_integer_receipt.py",
+      "sha256": "420f93195419fcd9198ecd85f01a3a217ffa6c31063a8a52fc253d47f39dda8f",
+      "bytes": 11662
+    }
+  ],
+  "settings": {
+    "factor": 2,
+    "tile": 3,
+    "index_bits": 32
+  },
+  "mode": "graph",
+  "qualified": false,
+  "review_approved": false,
+  "native_failure_counted_as_refusal": false
+}

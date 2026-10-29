@@ -1,0 +1,78 @@
+{
+  "status": "MACC_BATCH_DELIVERED_READY_FOR_LOOP_CWD",
+  "branch": "feat/bf16-f32acc-verification",
+  "head_observed": "4cb0f5b599b5158808c86a1b7443cb64ed3daba4",
+  "owned_job": {
+    "session": 72936,
+    "terminal_returncode": 0,
+    "live_owned_jobs": []
+  },
+  "synthetic": {
+    "authoritative_valid_pairs": 38,
+    "compiled_raw_policy_matches": 17,
+    "compiled_lean_mutation_refusals": 19,
+    "outside_domain_refusals": 2,
+    "own_tests_passed": 56
+  },
+  "actual_receipts_and_fresh_replays": [
+    {
+      "name": "SY_model_smolvla",
+      "sites": 24,
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_smolvla/receipt.json",
+        "bytes": 3620,
+        "sha256": "560c88b479a4d85df0815f82aba1e7bcbb8762fd079be15d89f170a7aa6b7d8e"
+      },
+      "fresh_replay": true,
+      "verdict": "abstracted",
+      "human_policy_reviewed": false
+    },
+    {
+      "name": "SY_model_smolvla-segment",
+      "sites": 24,
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_smolvla-segment/receipt.json",
+        "bytes": 3683,
+        "sha256": "9d2f408ead8945a92abdd6d0329e4dc037ecaa40f31159a17869ddb204c564d5"
+      },
+      "fresh_replay": true,
+      "verdict": "abstracted",
+      "human_policy_reviewed": false
+    },
+    {
+      "name": "SY_model_tiny_llama",
+      "sites": 0,
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/captured-receipts-v3/SY_model_tiny_llama/receipt.json",
+        "bytes": 3618,
+        "sha256": "f587a08fe1180163962bccb3a322f6407eed5fe7c012432f4ab7a3af1ace34fb"
+      },
+      "fresh_replay": true,
+      "verdict": "abstracted",
+      "human_policy_reviewed": false
+    }
+  ],
+  "distinct_smolvla_sites": 24,
+  "segment_repeats_same_sites": true,
+  "formal_audit": {
+    "imported_project_theorems": 9749,
+    "violations": [],
+    "boundary_roots": 15,
+    "segment_roots": 2,
+    "axiom_policy": "std3 only",
+    "exact_statements_retained": 17
+  },
+  "builds_and_guards": {
+    "checker_auditor_freshness": "pass",
+    "full_library": "failed once PolicyW8A8Source code139, retained",
+    "structure": "pass",
+    "lock_only": "pass; no pinned-statement guard claimed"
+  },
+  "human_policy_reviewed": false,
+  "approved_live_gate_positive": false,
+  "whole_model_verified": false,
+  "full_shared_pipeline_verified": false,
+  "source_delivery": "source-cut-v2/SOURCES.json",
+  "owned_patch": "source-cut-v2/owned.patch",
+  "next_assignment": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/TASK.md"
+}

@@ -1,0 +1,997 @@
+{
+  "bindings": [
+    {
+      "profile": "Q-schedule-successor-v1",
+      "case": "cross_observer_keep_effect_order",
+      "label": "after.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/8c9a9be2b82e1ae629628cefcd06c21c75269677a9f297296db319bda62ece69.mlir",
+        "sha256": "8c9a9be2b82e1ae629628cefcd06c21c75269677a9f297296db319bda62ece69",
+        "bytes": 1139
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-schedule-successor-v1",
+      "case": "cross_observer_keep_effect_order",
+      "label": "before.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38.mlir",
+        "sha256": "65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38",
+        "bytes": 1139
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-schedule-successor-v1",
+      "case": "pure_reorder",
+      "label": "after.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/da6153afdd46f1c7ee031fb295215cca356e4e89ad482ed5befa353aa89bb63c.mlir",
+        "sha256": "da6153afdd46f1c7ee031fb295215cca356e4e89ad482ed5befa353aa89bb63c",
+        "bytes": 1139
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-schedule-successor-v1",
+      "case": "pure_reorder",
+      "label": "before.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38.mlir",
+        "sha256": "65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38",
+        "bytes": 1139
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-schedule-successor-v1",
+      "case": "unchanged_order",
+      "label": "after.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38.mlir",
+        "sha256": "65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38",
+        "bytes": 1139
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-schedule-successor-v1",
+      "case": "unchanged_order",
+      "label": "before.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38.mlir",
+        "sha256": "65ff53e3150fe921a8aaa5d743633fa22e42f3c8845674b8ae926b57efcaaf38",
+        "bytes": 1139
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-unroll-tail-successor-v1",
+      "case": "nonzero_nonunit_two",
+      "label": "after.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/248e272e95d389468bd9b306531f522a571289a811e096b7be469f99af22f8eb.mlir",
+        "sha256": "248e272e95d389468bd9b306531f522a571289a811e096b7be469f99af22f8eb",
+        "bytes": 1846
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-unroll-tail-successor-v1",
+      "case": "nonzero_nonunit_two",
+      "label": "before.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/3d06593fec2d6ce9b4c7a69fb553a92fe641b5738341c691842b9a778e925c54.mlir",
+        "sha256": "3d06593fec2d6ce9b4c7a69fb553a92fe641b5738341c691842b9a778e925c54",
+        "bytes": 1196
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-unroll-tail-successor-v1",
+      "case": "remainder_two",
+      "label": "after.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/14bf4ea49ef4f13c25c077c64139bf795b35cfb04aa467efa389638ca456c748.mlir",
+        "sha256": "14bf4ea49ef4f13c25c077c64139bf795b35cfb04aa467efa389638ca456c748",
+        "bytes": 2018
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-unroll-tail-successor-v1",
+      "case": "remainder_two",
+      "label": "before.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/cc62d964daa557b66a3cc0e37aadfa81e3920c21fb2e385b4d86b9c13cf7a579.mlir",
+        "sha256": "cc62d964daa557b66a3cc0e37aadfa81e3920c21fb2e385b4d86b9c13cf7a579",
+        "bytes": 1160
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-unroll-tail-successor-v1",
+      "case": "trip5_factor2",
+      "label": "after.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/36eaa6c790d00e619538ea26844f798cd69f5b7e5dac2f4d46d352947d4448c6.mlir",
+        "sha256": "36eaa6c790d00e619538ea26844f798cd69f5b7e5dac2f4d46d352947d4448c6",
+        "bytes": 1770
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-unroll-tail-successor-v1",
+      "case": "trip5_factor2",
+      "label": "before.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/dd1628fdd5a01b124368fe24039e589a2c000582407c8fb4fd67c56b7368f06f.mlir",
+        "sha256": "dd1628fdd5a01b124368fe24039e589a2c000582407c8fb4fd67c56b7368f06f",
+        "bytes": 1159
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-unroll-tail-successor-v1",
+      "case": "wide_index",
+      "label": "after.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/d4e0eb6b66ef1100c4e104e2cca5f06aad00a7dac581a5e798b25f0d876ef185.mlir",
+        "sha256": "d4e0eb6b66ef1100c4e104e2cca5f06aad00a7dac581a5e798b25f0d876ef185",
+        "bytes": 1871
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "Q-unroll-tail-successor-v1",
+      "case": "wide_index",
+      "label": "before.mlir",
+      "exact_snapshot_ref": {
+        "file": "payload/c6c3b7615f52872b3132c48633aff57183e149670ab46611be820ddf620536ae.mlir",
+        "sha256": "c6c3b7615f52872b3132c48633aff57183e149670ab46611be820ddf620536ae",
+        "bytes": 1213
+      },
+      "original_recorded_path": null,
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "positive",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "positive",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/3b0a5fed1763d89d10284f879777ab40d3ea111f418e8595bf185d6ec7156525.mlir",
+        "sha256": "3b0a5fed1763d89d10284f879777ab40d3ea111f418e8595bf185d6ec7156525",
+        "bytes": 4494
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "untouched_return",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi1/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "untouched_return",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/6f8c038174923abe5114cd1e42e2877b106dc4bf38cc6c3794dd5725a1ca60c2.mlir",
+        "sha256": "6f8c038174923abe5114cd1e42e2877b106dc4bf38cc6c3794dd5725a1ca60c2",
+        "bytes": 4493
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi1/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "wrapper",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/5469a2b1b015bdf986d40152011df0c72a8bc8791f661a8780131e290d379920.mlir",
+        "sha256": "5469a2b1b015bdf986d40152011df0c72a8bc8791f661a8780131e290d379920",
+        "bytes": 4635
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi10/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "wrapper",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/06b67b65e7b8471642d07089043b9d63748ec2bf402220dc4bb7ac2216664c0a.mlir",
+        "sha256": "06b67b65e7b8471642d07089043b9d63748ec2bf402220dc4bb7ac2216664c0a",
+        "bytes": 4817
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi10/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "arity",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi11/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "arity",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/00490715d8c0d256bfd4661bd97e4a1ec89fbe368c1ce20dd04dc114cb6e1ea1.mlir",
+        "sha256": "00490715d8c0d256bfd4661bd97e4a1ec89fbe368c1ce20dd04dc114cb6e1ea1",
+        "bytes": 4512
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi11/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "literal",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi2/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "literal",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/de5663c9101e31b420636536b52704ec8e231e3df5db777ffd0aef5e80892313.mlir",
+        "sha256": "de5663c9101e31b420636536b52704ec8e231e3df5db777ffd0aef5e80892313",
+        "bytes": 4494
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi2/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "callee",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi3/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "callee",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/e315f3b4319b49b505b85f19c6179b5b9e5d3f7db767fb5b795109051962f494.mlir",
+        "sha256": "e315f3b4319b49b505b85f19c6179b5b9e5d3f7db767fb5b795109051962f494",
+        "bytes": 4402
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi3/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "caller_buffer",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi4/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "caller_buffer",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/18f34e0542c33e88455e1364b06d0a018680060c995dd1ddeaa6b356b15cc5ad.mlir",
+        "sha256": "18f34e0542c33e88455e1364b06d0a018680060c995dd1ddeaa6b356b15cc5ad",
+        "bytes": 4580
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi4/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "interface",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi5/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "interface",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/acb417f7a02dc1bc86f8a96d21b80fc69483757bb4d1e75fd60a76eecd29dc17.mlir",
+        "sha256": "acb417f7a02dc1bc86f8a96d21b80fc69483757bb4d1e75fd60a76eecd29dc17",
+        "bytes": 4522
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi5/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "observer",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi6/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "observer",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/a04f497888e692ab8cb2edf65be6ec54a4820c6da0ce8f42d1f6d73e994951e3.mlir",
+        "sha256": "a04f497888e692ab8cb2edf65be6ec54a4820c6da0ce8f42d1f6d73e994951e3",
+        "bytes": 4492
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi6/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "kernel_return",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi7/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "kernel_return",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/bae4fa9ceea234d642685cee6f4b063f976feda76b5a20157ec1068b9418d7c6.mlir",
+        "sha256": "bae4fa9ceea234d642685cee6f4b063f976feda76b5a20157ec1068b9418d7c6",
+        "bytes": 4493
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi7/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "missing_entry",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi8/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "missing_entry",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/d7f4e8947399bdb8e504ff5546cc283d331d22cee8e5140f08d92b659fbd9521.mlir",
+        "sha256": "d7f4e8947399bdb8e504ff5546cc283d331d22cee8e5140f08d92b659fbd9521",
+        "bytes": 4175
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi8/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "declaration",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357.mlir",
+        "sha256": "d1d3c7b9cb4665daec225768282310abb1fdabe07826b784b5bdf76a0a623357",
+        "bytes": 2659
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi9/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-entries-successor-v1",
+      "case": "declaration",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/b24704c0c003c5c9b58f73ca396f13a3c9a7612b638448babf486d8a2f20c039.mlir",
+        "sha256": "b24704c0c003c5c9b58f73ca396f13a3c9a7612b638448babf486d8a2f20c039",
+        "bytes": 4295
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-entries-v4/pytest/test_complete_roster_actual_bi9/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "argument",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7.mlir",
+        "sha256": "301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7",
+        "bytes": 5111
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_ar0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "argument",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/0bb9d1fd3b04e99df9038f5721348cddfc88e739492d3fbc154c0dfb1eaff144.mlir",
+        "sha256": "0bb9d1fd3b04e99df9038f5721348cddfc88e739492d3fbc154c0dfb1eaff144",
+        "bytes": 5293
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_ar0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "argument_alias",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/b60149dc9f1b2055687f1f6a0f651b4c6c079ece630e49f23a3dc77cdc48def0.mlir",
+        "sha256": "b60149dc9f1b2055687f1f6a0f651b4c6c079ece630e49f23a3dc77cdc48def0",
+        "bytes": 5111
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_ar1/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "argument_alias",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/854757f316c71cabc57f2d8fa7df5f0947fc1c1670a91fbfd5fe0b8d612fd7a9.mlir",
+        "sha256": "854757f316c71cabc57f2d8fa7df5f0947fc1c1670a91fbfd5fe0b8d612fd7a9",
+        "bytes": 5293
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_ar1/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "caller_buffer",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7.mlir",
+        "sha256": "301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7",
+        "bytes": 5111
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_ca0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "caller_buffer",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/99f7e80078750cee7c47ae713042cc05930f17fadfc9ee4fa15f6add0056627c.mlir",
+        "sha256": "99f7e80078750cee7c47ae713042cc05930f17fadfc9ee4fa15f6add0056627c",
+        "bytes": 5379
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_ca0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "changed_callee",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7.mlir",
+        "sha256": "301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7",
+        "bytes": 5111
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_ch0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "changed_callee",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/d87d96d0dc4011afbe08b5448358adc11d9d8f47409bf83c35021bd1b5c3f0c4.mlir",
+        "sha256": "d87d96d0dc4011afbe08b5448358adc11d9d8f47409bf83c35021bd1b5c3f0c4",
+        "bytes": 5292
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_ch0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "descriptor_alias",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/611a3a2fab6c25ad26d8dad926eb13f5847138fc086215f26b4c1c0a7a0275dd.mlir",
+        "sha256": "611a3a2fab6c25ad26d8dad926eb13f5847138fc086215f26b4c1c0a7a0275dd",
+        "bytes": 5181
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_de0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "descriptor_alias",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/73d97572d23b23d6d123ddb41d7abec14d59c80ce05b7e1316aab618b6124695.mlir",
+        "sha256": "73d97572d23b23d6d123ddb41d7abec14d59c80ce05b7e1316aab618b6124695",
+        "bytes": 5293
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_de0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "observer",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7.mlir",
+        "sha256": "301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7",
+        "bytes": 5111
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_ob0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "observer",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/1d419d7513f7253bbd887962a11fdfc90373480befd6be4a5f6450e47acf625c.mlir",
+        "sha256": "1d419d7513f7253bbd887962a11fdfc90373480befd6be4a5f6450e47acf625c",
+        "bytes": 5289
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_ob0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "order",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7.mlir",
+        "sha256": "301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7",
+        "bytes": 5111
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_or0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "order",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/680fa1524aadc810be65c3473c1b25aa1c2df5019169f8bdd0e16a0f57582ebf.mlir",
+        "sha256": "680fa1524aadc810be65c3473c1b25aa1c2df5019169f8bdd0e16a0f57582ebf",
+        "bytes": 5371
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_or0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "positive",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7.mlir",
+        "sha256": "301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7",
+        "bytes": 5111
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_po0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "positive",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/73d97572d23b23d6d123ddb41d7abec14d59c80ce05b7e1316aab618b6124695.mlir",
+        "sha256": "73d97572d23b23d6d123ddb41d7abec14d59c80ce05b7e1316aab618b6124695",
+        "bytes": 5293
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_po0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "prefix_allocation",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/aef4071d4fdb4513b88f4b672676f5f99fec40aed9ff4c870d911ff71f27d353.mlir",
+        "sha256": "aef4071d4fdb4513b88f4b672676f5f99fec40aed9ff4c870d911ff71f27d353",
+        "bytes": 5208
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_pr0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "prefix_allocation",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/2b4d86be76346a02374c35ca580e2a5fb49a208f35a456887c31f9943f63b660.mlir",
+        "sha256": "2b4d86be76346a02374c35ca580e2a5fb49a208f35a456887c31f9943f63b660",
+        "bytes": 5390
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_pr0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "private_escape",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/350ce5681938e352d7243bcf97a491a1571adcb623f1b6a62c4ba5c14350b5f1.mlir",
+        "sha256": "350ce5681938e352d7243bcf97a491a1571adcb623f1b6a62c4ba5c14350b5f1",
+        "bytes": 5202
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_pr1/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "private_escape",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/e9d800b09c92c1611c147f7b5f4919fb9b70458f2a16b00dc7447f684eb4b5c4.mlir",
+        "sha256": "e9d800b09c92c1611c147f7b5f4919fb9b70458f2a16b00dc7447f684eb4b5c4",
+        "bytes": 5384
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_pr1/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "return",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7.mlir",
+        "sha256": "301ddb80e5754c54fc77b732f08a8040060690beda0dc3a2e01ec5b1d4c1f3a7",
+        "bytes": 5111
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_re0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "return",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/5f4a07a445b479a402a411271fcc4f51463878976facdda405f600ad175abd17.mlir",
+        "sha256": "5f4a07a445b479a402a411271fcc4f51463878976facdda405f600ad175abd17",
+        "bytes": 5289
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_re0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "repeated",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/8f322a84283a642a9764de29a852a863d98913116b10ab07484f311c4a5d6428.mlir",
+        "sha256": "8f322a84283a642a9764de29a852a863d98913116b10ab07484f311c4a5d6428",
+        "bytes": 5226
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_re1/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "repeated",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/11eda04e5ef467af30862a874af663d3cd8af0a6e78e660516d20c4983dd68a9.mlir",
+        "sha256": "11eda04e5ef467af30862a874af663d3cd8af0a6e78e660516d20c4983dd68a9",
+        "bytes": 5408
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_re1/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "transitive",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/f778f5f01524f35d64b4c366bd25261dd421554d7810272648cf2a4ce0b4df92.mlir",
+        "sha256": "f778f5f01524f35d64b4c366bd25261dd421554d7810272648cf2a4ce0b4df92",
+        "bytes": 5478
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_tr0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "transitive",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/7e29f314c682354eae0f14e1613061e537de7eb8fe209f541d03f727ccae0355.mlir",
+        "sha256": "7e29f314c682354eae0f14e1613061e537de7eb8fe209f541d03f727ccae0355",
+        "bytes": 5660
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_tr0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "unknown_caller",
+      "label": "raw_source",
+      "exact_snapshot_ref": {
+        "file": "payload/67c0e7ecf334650d5b1e7bc4bf51b926ee0bff6ba8777097949d7bdba1d10bb7.mlir",
+        "sha256": "67c0e7ecf334650d5b1e7bc4bf51b926ee0bff6ba8777097949d7bdba1d10bb7",
+        "bytes": 5259
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_un0/source.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    },
+    {
+      "profile": "W-caller-context-successor-v1",
+      "case": "unknown_caller",
+      "label": "raw_final",
+      "exact_snapshot_ref": {
+        "file": "payload/50dfa791bf1d66f377403cea80b136010810fbc04bf93e10327d2ef4e800c1d8.mlir",
+        "sha256": "50dfa791bf1d66f377403cea80b136010810fbc04bf93e10327d2ef4e800c1d8",
+        "bytes": 5441
+      },
+      "original_recorded_path": "out/artifacts/verification/graph-shape-normalization/after-binding-deadline-v1/final-memory-after-v1/tests-context-v4/pytest/test_actual_wrapper_context_un0/final.mlir",
+      "original_absolute_execution_receipt": null,
+      "absolute_receipt_status": "NOT_RETAINED_OR_ONLY_RELATIVE; fixed snapshot bytes are available; no absolute execution receipt fabricated",
+      "snapshot_hash_matched": true,
+      "materialized_in_Lean_tree": false
+    }
+  ],
+  "no_original_absolute_associations_invented": true,
+  "all_actual_snapshot_bytes_available": true,
+  "all_raw_IR_is_external_to_closed_Lean_capsule": true
+}

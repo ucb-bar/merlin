@@ -1,0 +1,445 @@
+--- a/build_tools/scripts/check_lean_guard.py
++++ b/build_tools/scripts/check_lean_guard.py
+@@ -28,6 +28,24 @@
+ LEAN = ROOT / "merlin" / "lean"
+ LOCK = LEAN / "SPEC_LOCK"
+ FROZEN = [
++    "MerlinVerify/Rules/Bf16F32AccContract.lean",
++    "MerlinVerify/Rules/Bf16F32AccBody.lean",
++    "MerlinVerify/Rules/Bf16F32AccReference.lean",
++    "MerlinVerify/Rules/W8A8TensorTrace.lean",
++    "MerlinVerify/Rules/W8A8TensorOperands.lean",
++    "MerlinVerify/Rules/W8A8Fill.lean",
++    "MerlinVerify/Check/Bf16F32Acc.lean",
++    "MerlinVerify/Check/Bf16F32AccChain.lean",
++    "MerlinVerify/Check/Bf16F32AccSites.lean",
++    "MerlinVerify/Check/ParametricAlpha.lean",
++    "MerlinVerify/Check/Alpha.lean",
++    "MerlinVerify/Check/Bf16F32AccExact.lean",
++    "MerlinVerify/Check/ParametricModule.lean",
++    "MerlinVerify/Check/PolicyParametric.lean",
++    "MerlinVerify/Check/PolicyModule.lean",
++    "MerlinVerify/Check/PolicyExact.lean",
++    "MerlinVerify/Rules/Bf16F32AccNonvacuity.lean",
++    "MerlinVerify/Rules/Bf16F32AccTensor.lean",
+     "MerlinVerify/Core/AST.lean",
+     "MerlinVerify/Sem/Outcome.lean",
+     "MerlinVerify/Sem/Float.lean",
+@@ -47,6 +65,23 @@
+ PROOF_ONLY = {"MerlinVerify/Sem/Facts.lean", "MerlinVerify/Sem/OutcomeLaws.lean"}
+ # Claim theorems whose elaborated statements are pinned, with a module that declares each.
+ PINNED = {
++    "MerlinVerify.Check.Bf16F32AccExact.check_sound": "MerlinVerify.Check.Bf16F32AccExact",
++    "MerlinVerify.Check.Bf16F32AccExact.defined_execution": "MerlinVerify.Check.Bf16F32AccExact",
++    "MerlinVerify.Check.Bf16F32AccSites.check_sound": "MerlinVerify.Check.Bf16F32AccSites",
++    "MerlinVerify.Check.Bf16F32AccSites.collectOps_coverage": "MerlinVerify.Check.Bf16F32AccSites",
++    "MerlinVerify.Rules.Bf16F32AccNonvacuity.operand_domain_nonempty": "MerlinVerify.Rules.Bf16F32AccNonvacuity",
++    "MerlinVerify.Rules.Bf16F32AccTensor.accumulate_sound": "MerlinVerify.Rules.Bf16F32AccTensor",
++    "MerlinVerify.Rules.Bf16F32AccTensor.truncate_sound": "MerlinVerify.Rules.Bf16F32AccTensor",
++    "MerlinVerify.Rules.Bf16F32AccTensor.zero_fill_sound": "MerlinVerify.Rules.Bf16F32AccTensor",
++    "MerlinVerify.Rules.Bf16F32AccContract.accumulate_cell": "MerlinVerify.Rules.Bf16F32AccContract",
++    "MerlinVerify.Rules.Bf16F32AccContract.contract_distinct": "MerlinVerify.Rules.Bf16F32AccContract",
++    "MerlinVerify.Rules.Bf16F32AccSite.accumulating_op_sound": "MerlinVerify.Rules.Bf16F32AccSite",
++    "MerlinVerify.Rules.Bf16F32AccSite.final_op_sound": "MerlinVerify.Rules.Bf16F32AccSite",
++    "MerlinVerify.Rules.Bf16F32AccFusion.fused_step": "MerlinVerify.Rules.Bf16F32AccFusion",
++    "MerlinVerify.Check.Bf16F32Acc.check_sound": "MerlinVerify.Check.Bf16F32Acc",
++    "MerlinVerify.Check.Bf16F32Acc.qualify_sound": "MerlinVerify.Check.Bf16F32Acc",
++    "MerlinVerify.Check.Bf16F32AccChain.check_sound": "MerlinVerify.Check.Bf16F32AccChain",
++    "MerlinVerify.Check.Bf16F32AccChain.qualify_sound": "MerlinVerify.Check.Bf16F32AccChain",
+     "MerlinVerify.Check.c1Check_sound": "MerlinVerify.Check.C1",
+     "MerlinVerify.Check.moduleCheck_sound": "MerlinVerify.Check.Module",
+     "MerlinVerify.Check.supportCheck_sound": "MerlinVerify.Check.Rulebook",
+--- a/merlin/lean/MerlinVerify/Rules/Bf16F32AccContract.lean
++++ b/merlin/lean/MerlinVerify/Rules/Bf16F32AccContract.lean
+@@ -1,193 +1,2 @@
+-/-
+-f32-accumulation contract for 16-bit floating-point contractions. REVIEW CANDIDATE: written by
+-the author of its checker after reading the implementing pass, so it is not barrier-authored
+-(design §1.2 item 6) and it is not a reviewed `Spec/` entry. Its six clauses are:
+-
+-1. **Operand conversions.** Each operand element is converted from its own 16-bit storage format
+-   (`bf16` or `f16`, `half`) to `f32` by `arith.extf` with no attributes (`extKey`).
+-2. **Indexing maps.** Operands are read through the source contraction's own indexing maps;
+-   `coordinate` is the frozen structured-op access (`Sem.Ops.Linalg.evalMap`/`toIdx`).
+-3. **Reduction order.** One f32 accumulator per output cell, updated at every loop point that
+-   maps to that cell, in MLIR's lexicographic loop order (`accumulate_cell`). Nothing is
+-   reassociated, reordered or split.
+-4. **Accumulator initialization.** Every accumulator starts at the f32 bit pattern `+0.0`
+-   (`zero`). The source contraction must be initialized with `+0.0` in its own format; that
+-   source condition is checked where sources are recognized, not assumed here.
+-5. **Final conversion.** Each accumulator is converted once to the result's 16-bit format by
+-   `arith.truncf` with no attributes, i.e. the default rounding mode (`truncKey`).
+-6. **Permitted floating-point contraction.** The multiply and the add carry `fastmath` equal to
+-   exactly `none` or `contract` (`Flag`), independently. No other fast-math flag is permitted.
+-
+-Floats stay parametric (design D5): every clause is stated through the frozen `FloatModel`
+-keyed by the exact operation, so claims hold for every interpretation. A `contract`-flagged
+-multiply or add is its own uninterpreted function, distinct from its unflagged counterpart. That
+-the trusted lowering may fuse a `contract` multiply-add into one rounding is not modelled here.
+--/
+-import MerlinVerify.Sem.Ops
+-import MerlinVerify.Rules.W8A8TensorTrace
+-import MerlinVerify.Rules.W8A8TensorOperands
+-
+-namespace MerlinVerify.Rules.Bf16F32AccContract
+-
+-open MerlinVerify MerlinVerify.Sem.Ops.Linalg
+-
+-/-! ### Clause 1: formats and the operand conversion -/
+-
+-/-- Storage formats the contract admits for both operands and the result. -/
+-def half : FKind → Bool
+-  | .bf16 | .f16 => true
+-  | _ => false
+-
+-def extOp : Op := .mk "arith.extf" [] [] [] [] [] []
+-def truncOp : Op := .mk "arith.truncf" [] [] [] [] [] []
+-
+-/-- The semantics' own key for an attribute-free `arith.extf`. -/
+-def extKey : FloatOpKey := Sem.Ops.Arith.floatKey extOp
+-
+-/-- The semantics' own key for an attribute-free `arith.truncf` (default rounding mode). -/
+-def truncKey : FloatOpKey := Sem.Ops.Arith.floatKey truncOp
+-
+-def ext (M : FloatModel) (k : FKind) (x : FBits k) : FBits .f32 := M.convert extKey k .f32 x
+-
+-/-! ### Clause 6: the permitted fast-math license -/
+-
+-inductive Flag where
+-  | none
+-  | contract
+-  deriving DecidableEq, Repr
+-
+-def Flag.text : Flag → String
+-  | .none => "none"
+-  | .contract => "contract"
+-
+-/-- Exactly the two permitted spellings; every other flag set is outside the contract. -/
+-def Flag.ofText? : String → Option Flag
+-  | "none" => some .none
+-  | "contract" => some .contract
+-  | _ => Option.none
+-
+-structure License where
+-  mul : Flag
+-  add : Flag
+-  deriving DecidableEq, Repr
+-
+-def fastmath (f : Flag) : List (String × Attr) := [("fastmath", .enum "arith" "fastmath" f.text)]
+-
+-def mulKey (f : Flag) : FloatOpKey := Sem.Ops.Arith.floatKey (.mk "arith.mulf" [] [] (fastmath f) [] [] [])
+-def addKey (f : Flag) : FloatOpKey := Sem.Ops.Arith.floatKey (.mk "arith.addf" [] [] (fastmath f) [] [] [])
+-
+-/-! The keys, as reviewable literals of the frozen `Sem.Ops.Arith.floatKey`. -/
+-
+-private theorem flagList_contract : flagList "contract" = ["contract"] := by cbv
+-private theorem flagList_none : flagList "none" = ["none"] := by cbv
+-
+-private theorem fastmath_mask (name : String) (f : Flag) :
+-    Sem.Ops.Arith.fastmathKey (.mk name [] [] (fastmath f) [] [] []) =
+-      match f with | .none => "0" | .contract => "32" := by
+-  cases f <;> simp [Sem.Ops.Arith.fastmathKey, Op.attr?, Op.props, Op.attrs, fastmath, Flag.text,
+-    flagList_contract, flagList_none, Sem.Ops.Arith.fastmathBit] <;> rfl
+-
+-theorem extKey_literal : extKey = ⟨"arith.extf", "fm1:0;rm4:none;pred4:none"⟩ := rfl
+-theorem truncKey_literal : truncKey = ⟨"arith.truncf", "fm1:0;rm4:none;pred4:none"⟩ := rfl
+-
+-theorem mulKey_literal (f : Flag) : mulKey f =
+-    ⟨"arith.mulf", match f with
+-      | .none => "fm1:0;rm4:none;pred4:none" | .contract => "fm2:32;rm4:none;pred4:none"⟩ := by
+-  unfold mulKey Sem.Ops.Arith.floatKey
+-  rw [fastmath_mask]
+-  cases f <;> rfl
+-
+-theorem addKey_literal (f : Flag) : addKey f =
+-    ⟨"arith.addf", match f with
+-      | .none => "fm1:0;rm4:none;pred4:none" | .contract => "fm2:32;rm4:none;pred4:none"⟩ := by
+-  unfold addKey Sem.Ops.Arith.floatKey
+-  rw [fastmath_mask]
+-  cases f <;> rfl
+-
+-/-- A `contract` operation is a different uninterpreted function from its unflagged form. -/
+-theorem contract_distinct : mulKey .contract ≠ mulKey .none ∧ addKey .contract ≠ addKey .none := by
+-  rw [mulKey_literal, mulKey_literal, addKey_literal, addKey_literal]
+-  decide
+-
+-/-! ### Clauses 3 and 4: the accumulation step and its initial value -/
+-
+-/-- `+0.0` in binary32. -/
+-def zero : FBits .f32 := 0#32
+-
+-/-- One accumulation step: `acc + ext(a) * ext(b)`, multiply first, accumulator as left addend. -/
+-def step (M : FloatModel) (license : License) {ka kb : FKind}
+-    (a : FBits ka) (b : FBits kb) (acc : FBits .f32) : FBits .f32 :=
+-  M.op (addKey license.add) .f32 [acc, M.op (mulKey license.mul) .f32 [ext M ka a, ext M kb b]]
+-
+-/-! ### Clause 5: the final conversion -/
+-
+-def trunc (M : FloatModel) (kc : FKind) (x : FBits .f32) : FBits kc := M.convert truncKey .f32 kc x
+-
+-/-! ### Element values: `none` is poison, which every clause propagates -/
+-
+-def value (k : FKind) : Option (FBits k) → Val
+-  | Option.none => .poison
+-  | some x => .some (.flt k x)
+-
+-def stepOpt (M : FloatModel) (license : License) {ka kb : FKind} :
+-    Option (FBits ka) → Option (FBits kb) → Option (FBits .f32) → Option (FBits .f32)
+-  | some a, some b, some acc => some (step M license a b acc)
+-  | _, _, _ => Option.none
+-
+-/-! ### Clause 2 and the whole contraction -/
+-
+-/-- A contraction's geometry: operand and result shapes, the three indexing maps, and the loop
+-extents. Loop extents are not chosen by this contract; checkers derive them from the maps. -/
+-structure Geometry where
+-  left : List Nat
+-  right : List Nat
+-  out : List Nat
+-  leftMap : AffineMap
+-  rightMap : AffineMap
+-  outMap : AffineMap
+-  ranges : List Nat
+-
+-def Geometry.coordinate (shape : List Nat) (map : AffineMap) (point : Idx) : Idx :=
+-  W8A8TensorOperands.coordinate shape map point
+-
+-/-- The f32 accumulator of every output cell after the complete, ordered loop nest. -/
+-def accumulate (M : FloatModel) (license : License) {ka kb : FKind} (g : Geometry)
+-    (A : Idx → Option (FBits ka)) (B : Idx → Option (FBits kb)) : Idx → Option (FBits .f32) :=
+-  W8A8TensorTrace.accumulate (Geometry.coordinate g.out g.outMap)
+-    (fun point acc => stepOpt M license (A (Geometry.coordinate g.left g.leftMap point))
+-      (B (Geometry.coordinate g.right g.rightMap point)) acc)
+-    (fun _ => some zero) (allPoints g.ranges)
+-
+-/-- The contract's result tensor: every in-bounds cell holds its truncated accumulator. -/
+-def result (M : FloatModel) (license : License) {ka kb : FKind} (kc : FKind) (g : Geometry)
+-    (A : Idx → Option (FBits ka)) (B : Idx → Option (FBits kb)) : Tensor :=
+-  Tensor.canon g.out (.float kc) fun cell => value kc ((accumulate M license g A B cell).map (trunc M kc))
+-
+-/-- Clause 3, made explicit: each cell folds exactly the loop points that write it, in
+-lexicographic iteration order, from `+0.0`. -/
+-theorem accumulate_cell (M : FloatModel) (license : License) {ka kb : FKind} (g : Geometry)
+-    (A : Idx → Option (FBits ka)) (B : Idx → Option (FBits kb)) (cell : Idx) :
+-    accumulate M license g A B cell =
+-      (allPoints g.ranges).foldl (fun acc point =>
+-        if cell = Geometry.coordinate g.out g.outMap point then
+-          stepOpt M license (A (Geometry.coordinate g.left g.leftMap point))
+-            (B (Geometry.coordinate g.right g.rightMap point)) acc
+-        else acc) (some zero) :=
+-  W8A8TensorTrace.accumulate_cell _ _ _ _ _
+-
+-/-- Poison anywhere along a cell's trace poisons that cell; nothing is skipped or defaulted. -/
+-theorem stepOpt_none_left (M : FloatModel) (license : License) {ka kb : FKind}
+-    (b : Option (FBits kb)) (acc : Option (FBits .f32)) :
+-    stepOpt M license (ka := ka) Option.none b acc = Option.none := by
+-  cases b <;> cases acc <;> rfl
+-
+-theorem stepOpt_none_acc (M : FloatModel) (license : License) {ka kb : FKind}
+-    (a : Option (FBits ka)) (b : Option (FBits kb)) :
+-    stepOpt M license a b Option.none = Option.none := by
+-  cases a <;> cases b <;> rfl
+-
+-#print axioms accumulate_cell
+-#print axioms stepOpt_none_left
+-#print axioms stepOpt_none_acc
+-
+-end MerlinVerify.Rules.Bf16F32AccContract
++-- Compatibility import; install only after independent human approval of exact candidate bytes.
++import MerlinVerify.Spec.Bf16F32AccContract
+--- /dev/null
++++ b/merlin/lean/MerlinVerify/Spec/Bf16F32AccContract.lean
+@@ -0,0 +1,193 @@
++/-
++f32-accumulation contract for 16-bit floating-point contractions. REVIEW CANDIDATE: written by
++the author of its checker after reading the implementing pass, so it is not barrier-authored
++(design §1.2 item 6) and it is not a reviewed `Spec/` entry. Its six clauses are:
++
++1. **Operand conversions.** Each operand element is converted from its own 16-bit storage format
++   (`bf16` or `f16`, `half`) to `f32` by `arith.extf` with no attributes (`extKey`).
++2. **Indexing maps.** Operands are read through the source contraction's own indexing maps;
++   `coordinate` is the frozen structured-op access (`Sem.Ops.Linalg.evalMap`/`toIdx`).
++3. **Reduction order.** One f32 accumulator per output cell, updated at every loop point that
++   maps to that cell, in MLIR's lexicographic loop order (`accumulate_cell`). Nothing is
++   reassociated, reordered or split.
++4. **Accumulator initialization.** Every accumulator starts at the f32 bit pattern `+0.0`
++   (`zero`). The source contraction must be initialized with `+0.0` in its own format; that
++   source condition is checked where sources are recognized, not assumed here.
++5. **Final conversion.** Each accumulator is converted once to the result's 16-bit format by
++   `arith.truncf` with no attributes, i.e. the default rounding mode (`truncKey`).
++6. **Permitted floating-point contraction.** The multiply and the add carry `fastmath` equal to
++   exactly `none` or `contract` (`Flag`), independently. No other fast-math flag is permitted.
++
++Floats stay parametric (design D5): every clause is stated through the frozen `FloatModel`
++keyed by the exact operation, so claims hold for every interpretation. A `contract`-flagged
++multiply or add is its own uninterpreted function, distinct from its unflagged counterpart. That
++the trusted lowering may fuse a `contract` multiply-add into one rounding is not modelled here.
++-/
++import MerlinVerify.Sem.Ops
++import MerlinVerify.Rules.W8A8TensorTrace
++import MerlinVerify.Rules.W8A8TensorOperands
++
++namespace MerlinVerify.Rules.Bf16F32AccContract
++
++open MerlinVerify MerlinVerify.Sem.Ops.Linalg
++
++/-! ### Clause 1: formats and the operand conversion -/
++
++/-- Storage formats the contract admits for both operands and the result. -/
++def half : FKind → Bool
++  | .bf16 | .f16 => true
++  | _ => false
++
++def extOp : Op := .mk "arith.extf" [] [] [] [] [] []
++def truncOp : Op := .mk "arith.truncf" [] [] [] [] [] []
++
++/-- The semantics' own key for an attribute-free `arith.extf`. -/
++def extKey : FloatOpKey := Sem.Ops.Arith.floatKey extOp
++
++/-- The semantics' own key for an attribute-free `arith.truncf` (default rounding mode). -/
++def truncKey : FloatOpKey := Sem.Ops.Arith.floatKey truncOp
++
++def ext (M : FloatModel) (k : FKind) (x : FBits k) : FBits .f32 := M.convert extKey k .f32 x
++
++/-! ### Clause 6: the permitted fast-math license -/
++
++inductive Flag where
++  | none
++  | contract
++  deriving DecidableEq, Repr
++
++def Flag.text : Flag → String
++  | .none => "none"
++  | .contract => "contract"
++
++/-- Exactly the two permitted spellings; every other flag set is outside the contract. -/
++def Flag.ofText? : String → Option Flag
++  | "none" => some .none
++  | "contract" => some .contract
++  | _ => Option.none
++
++structure License where
++  mul : Flag
++  add : Flag
++  deriving DecidableEq, Repr
++
++def fastmath (f : Flag) : List (String × Attr) := [("fastmath", .enum "arith" "fastmath" f.text)]
++
++def mulKey (f : Flag) : FloatOpKey := Sem.Ops.Arith.floatKey (.mk "arith.mulf" [] [] (fastmath f) [] [] [])
++def addKey (f : Flag) : FloatOpKey := Sem.Ops.Arith.floatKey (.mk "arith.addf" [] [] (fastmath f) [] [] [])
++
++/-! The keys, as reviewable literals of the frozen `Sem.Ops.Arith.floatKey`. -/
++
++private theorem flagList_contract : flagList "contract" = ["contract"] := by cbv
++private theorem flagList_none : flagList "none" = ["none"] := by cbv
++
++private theorem fastmath_mask (name : String) (f : Flag) :
++    Sem.Ops.Arith.fastmathKey (.mk name [] [] (fastmath f) [] [] []) =
++      match f with | .none => "0" | .contract => "32" := by
++  cases f <;> simp [Sem.Ops.Arith.fastmathKey, Op.attr?, Op.props, Op.attrs, fastmath, Flag.text,
++    flagList_contract, flagList_none, Sem.Ops.Arith.fastmathBit] <;> rfl
++
++theorem extKey_literal : extKey = ⟨"arith.extf", "fm1:0;rm4:none;pred4:none"⟩ := rfl
++theorem truncKey_literal : truncKey = ⟨"arith.truncf", "fm1:0;rm4:none;pred4:none"⟩ := rfl
++
++theorem mulKey_literal (f : Flag) : mulKey f =
++    ⟨"arith.mulf", match f with
++      | .none => "fm1:0;rm4:none;pred4:none" | .contract => "fm2:32;rm4:none;pred4:none"⟩ := by
++  unfold mulKey Sem.Ops.Arith.floatKey
++  rw [fastmath_mask]
++  cases f <;> rfl
++
++theorem addKey_literal (f : Flag) : addKey f =
++    ⟨"arith.addf", match f with
++      | .none => "fm1:0;rm4:none;pred4:none" | .contract => "fm2:32;rm4:none;pred4:none"⟩ := by
++  unfold addKey Sem.Ops.Arith.floatKey
++  rw [fastmath_mask]
++  cases f <;> rfl
++
++/-- A `contract` operation is a different uninterpreted function from its unflagged form. -/
++theorem contract_distinct : mulKey .contract ≠ mulKey .none ∧ addKey .contract ≠ addKey .none := by
++  rw [mulKey_literal, mulKey_literal, addKey_literal, addKey_literal]
++  decide
++
++/-! ### Clauses 3 and 4: the accumulation step and its initial value -/
++
++/-- `+0.0` in binary32. -/
++def zero : FBits .f32 := 0#32
++
++/-- One accumulation step: `acc + ext(a) * ext(b)`, multiply first, accumulator as left addend. -/
++def step (M : FloatModel) (license : License) {ka kb : FKind}
++    (a : FBits ka) (b : FBits kb) (acc : FBits .f32) : FBits .f32 :=
++  M.op (addKey license.add) .f32 [acc, M.op (mulKey license.mul) .f32 [ext M ka a, ext M kb b]]
++
++/-! ### Clause 5: the final conversion -/
++
++def trunc (M : FloatModel) (kc : FKind) (x : FBits .f32) : FBits kc := M.convert truncKey .f32 kc x
++
++/-! ### Element values: `none` is poison, which every clause propagates -/
++
++def value (k : FKind) : Option (FBits k) → Val
++  | Option.none => .poison
++  | some x => .some (.flt k x)
++
++def stepOpt (M : FloatModel) (license : License) {ka kb : FKind} :
++    Option (FBits ka) → Option (FBits kb) → Option (FBits .f32) → Option (FBits .f32)
++  | some a, some b, some acc => some (step M license a b acc)
++  | _, _, _ => Option.none
++
++/-! ### Clause 2 and the whole contraction -/
++
++/-- A contraction's geometry: operand and result shapes, the three indexing maps, and the loop
++extents. Loop extents are not chosen by this contract; checkers derive them from the maps. -/
++structure Geometry where
++  left : List Nat
++  right : List Nat
++  out : List Nat
++  leftMap : AffineMap
++  rightMap : AffineMap
++  outMap : AffineMap
++  ranges : List Nat
++
++def Geometry.coordinate (shape : List Nat) (map : AffineMap) (point : Idx) : Idx :=
++  W8A8TensorOperands.coordinate shape map point
++
++/-- The f32 accumulator of every output cell after the complete, ordered loop nest. -/
++def accumulate (M : FloatModel) (license : License) {ka kb : FKind} (g : Geometry)
++    (A : Idx → Option (FBits ka)) (B : Idx → Option (FBits kb)) : Idx → Option (FBits .f32) :=
++  W8A8TensorTrace.accumulate (Geometry.coordinate g.out g.outMap)
++    (fun point acc => stepOpt M license (A (Geometry.coordinate g.left g.leftMap point))
++      (B (Geometry.coordinate g.right g.rightMap point)) acc)
++    (fun _ => some zero) (allPoints g.ranges)
++
++/-- The contract's result tensor: every in-bounds cell holds its truncated accumulator. -/
++def result (M : FloatModel) (license : License) {ka kb : FKind} (kc : FKind) (g : Geometry)
++    (A : Idx → Option (FBits ka)) (B : Idx → Option (FBits kb)) : Tensor :=
++  Tensor.canon g.out (.float kc) fun cell => value kc ((accumulate M license g A B cell).map (trunc M kc))
++
++/-- Clause 3, made explicit: each cell folds exactly the loop points that write it, in
++lexicographic iteration order, from `+0.0`. -/
++theorem accumulate_cell (M : FloatModel) (license : License) {ka kb : FKind} (g : Geometry)
++    (A : Idx → Option (FBits ka)) (B : Idx → Option (FBits kb)) (cell : Idx) :
++    accumulate M license g A B cell =
++      (allPoints g.ranges).foldl (fun acc point =>
++        if cell = Geometry.coordinate g.out g.outMap point then
++          stepOpt M license (A (Geometry.coordinate g.left g.leftMap point))
++            (B (Geometry.coordinate g.right g.rightMap point)) acc
++        else acc) (some zero) :=
++  W8A8TensorTrace.accumulate_cell _ _ _ _ _
++
++/-- Poison anywhere along a cell's trace poisons that cell; nothing is skipped or defaulted. -/
++theorem stepOpt_none_left (M : FloatModel) (license : License) {ka kb : FKind}
++    (b : Option (FBits kb)) (acc : Option (FBits .f32)) :
++    stepOpt M license (ka := ka) Option.none b acc = Option.none := by
++  cases b <;> cases acc <;> rfl
++
++theorem stepOpt_none_acc (M : FloatModel) (license : License) {ka kb : FKind}
++    (a : Option (FBits ka)) (b : Option (FBits kb)) :
++    stepOpt M license a b Option.none = Option.none := by
++  cases a <;> cases b <;> rfl
++
++#print axioms accumulate_cell
++#print axioms stepOpt_none_left
++#print axioms stepOpt_none_acc
++
++end MerlinVerify.Rules.Bf16F32AccContract

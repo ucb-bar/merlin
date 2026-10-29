@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/home/jeremy/Projects/merlin-bf16-verification/out/build/lean/build/bin/merlin-lean",
+    "check-bf16-f32acc",
+    "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_positive_zero/before.json",
+    "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v2/wrong_positive_zero/after.json",
+    "64"
+  ],
+  "timeout_seconds": 300
+}

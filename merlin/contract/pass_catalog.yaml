@@ -1,0 +1,48 @@
+# Static requirements for the opt-in catalog experiment. No applicability tool
+# or allocation verifier is provided by this catalog-only treatment.
+schema: merlin.pass_catalog.v1
+roles:
+  - id: register_allocation
+    summary: Assign virtual resident values to finite physical storage.
+    consider_when:
+      - Values require explicit placement in declared register files or local memories.
+      - Simultaneously live footprints must share a finite storage capacity.
+    inputs:
+      hardware:
+        - Storage spaces, capacities, address units and legal access geometry.
+        - Alignment requirements and unavailable or reserved regions.
+      software:
+        - Operation reads, writes, aliases, clobbers and completion semantics.
+        - Value footprint and layout rules, including storage versus arithmetic widths.
+      ir:
+        - Current definitions, uses, shapes, types and operation order.
+        - Live-through values and all outputs retained until their declared consumption.
+    unknown_policy: Report missing declarations; do not invent defaults or infer facts from reference implementations.
+    output:
+      - Value-to-space, offset and extent assignments used by actual command emission.
+      - Explicit refusal for unsupported or unresolved programs.
+    obligations:
+      - Assign every required value exactly once, accounting for independently declared aliases.
+      - Stay within each declared space and outside unavailable or reserved regions.
+      - Satisfy declared footprint, alignment, address units and access geometry.
+      - Keep interfering storage disjoint unless declared semantics permit aliasing.
+      - Preserve numerical results and required effect order, including completion before reuse.
+      - Recompute allocation when relevant IR, effects or hardware declarations change.
+    strategies:
+      - Reuse storage after the last declared read completes.
+      - Use linear scan or interference-based placement with explicit footprints.
+      - Spill, recompute or reschedule only when supported by declared semantics.
+      - Report a failed placement without claiming that a heuristic proved infeasibility.
+    verification:
+      storage_safety:
+        method: independent_allocation_check
+        scope: Current IR, assignments and declared resource and effect model.
+        availability: deferred
+      numerical_semantics:
+        method: existing_execution_comparison
+        scope: Executed cases under the declared numerical contract; no universal proof.
+        availability: existing_grading
+      resource_geometry:
+        method: lean_resource_checks
+        scope: Explicitly encoded bounds, alignment and disjointness under stated assumptions.
+        availability: deferred

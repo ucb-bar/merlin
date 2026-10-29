@@ -1,0 +1,715 @@
+{
+  "schema": "merlin.q_primary_prerequisite_successor.v1",
+  "base_head": "9d7fe0846c43574ca6f83a5cccc5dc147b06ca6e",
+  "assign_manifest": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/PUBLICATION_SOURCE_MANIFEST.json",
+  "assign_manifest_sha256": "ab26a8d941e8e4927b7615ac62cebdea42adeb40e2c827efdf34bf22ba589206",
+  "fixed36_manifest": "out/artifacts/verification/graph-pipeline-gate/development/publication-cut-v1/SOURCES.json",
+  "fixed36_manifest_sha256": "d6e5df5e97f1bc134b718afdbf9d3e03272e437c9f0a40c960e1ea5cd793be02",
+  "applicability": [
+    {
+      "path": "merlin/tests/ir/test_lean_graph_pipeline_gate.py",
+      "assign_sha256": "393647756260b9a8eb58d31158b9eb78a77605c9a96a0770ccefa3cf9c14d3de",
+      "primary_sha256": "33976e630cf9051114a04a1bcdfd1bc34dbd0078c275c8575e0e700d1dfffa00",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/primary/merlin/tests/ir/test_lean_graph_pipeline_gate.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "33976e630cf9051114a04a1bcdfd1bc34dbd0078c275c8575e0e700d1dfffa00",
+      "assign_equals_fixed36": false
+    },
+    {
+      "path": "src/merlin/__init__.py",
+      "assign_sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086",
+      "primary_sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/__init__.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/common/__init__.py",
+      "assign_sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+      "primary_sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/__init__.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/common/bundle_snapshot.py",
+      "assign_sha256": "75ccb58526671f2ee474ce6f3290db2ea0709069d65926be927da9635cb9cc39",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/bundle_snapshot.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/common/cpu_pool.py",
+      "assign_sha256": "980011c6f2a154c1830c2ed7b9ca53509c658cef957ddcf4f4a0ffaa8bf09138",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/common/cpu_pool.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/common/dense_float_ir.py",
+      "assign_sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/dense_float_ir.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/common/digest.py",
+      "assign_sha256": "fe67884c895729e539d3ca638758af39b555ff40b91b4f6828dc31d404c165a9",
+      "primary_sha256": "fe67884c895729e539d3ca638758af39b555ff40b91b4f6828dc31d404c165a9",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/common/digest.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/common/invocation_record.py",
+      "assign_sha256": "b46fb7f0243326e1b93edb3ae02dc575b6160f78749b5df52977a3beb9fe0be5",
+      "primary_sha256": "c8cb7099d6d722d6ec626795b5b27969629d1d9c1565822c3a1d648c2ce98811",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/common/invocation_record.py",
+      "action": "narrow additive original timing API; preserve all existing invocation behavior"
+    },
+    {
+      "path": "src/merlin/common/path_relations.py",
+      "assign_sha256": "8e15c5f6b71785414fca77f9ce2ea84fe71dde328abda9d103faf94156b99f87",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/path_relations.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/common/paths.py",
+      "assign_sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "primary_sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/paths.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/common/read_lease_digest.py",
+      "assign_sha256": "0adb034a66058287259108de8717323eb38c9a83a3e6f810c93b0872d5c0cf4c",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/common/read_lease_digest.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/compile/__init__.py",
+      "assign_sha256": "92721d5b005b1f6bdb33fb81918f2b1001c9368056bca02172b507fe69eeccce",
+      "primary_sha256": "92721d5b005b1f6bdb33fb81918f2b1001c9368056bca02172b507fe69eeccce",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/compile/__init__.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/__init__.py",
+      "assign_sha256": "57bdfb64b2e81fdf842fbafae7b237a93f4c26bbefb973af40ce1ac7a107b86f",
+      "primary_sha256": "57bdfb64b2e81fdf842fbafae7b237a93f4c26bbefb973af40ce1ac7a107b86f",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/compile/scheduling/__init__.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/block_schedule.py",
+      "assign_sha256": "e8bdcabb8068120b77faddb3c738f62b5998012c392e6953031d0149d6517965",
+      "primary_sha256": "e8bdcabb8068120b77faddb3c738f62b5998012c392e6953031d0149d6517965",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/compile/scheduling/block_schedule.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/derive.py",
+      "assign_sha256": "10810c48ea0056b235ae0f3a161363578650edd64e402b3505bb6c288d0ee653",
+      "primary_sha256": "10810c48ea0056b235ae0f3a161363578650edd64e402b3505bb6c288d0ee653",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/compile/scheduling/derive.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/export.py",
+      "assign_sha256": "0652a77b3da5d2b8e3ec1e5cf6b5cfc1f504169c4f3170dcd46d4328d5fda3cc",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/compile/scheduling/export.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/library_sources.py",
+      "assign_sha256": "1e6108dc34a998e54ecad85b519cda474f1a673ba884845276e0e8ba10dbd404",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/compile/scheduling/library_sources.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/llvmlower/__init__.py",
+      "assign_sha256": "8a2a6206e74b555f98b42b04c78f8ad19b96807442e9a54e98a0baaf72bcbf6d",
+      "primary_sha256": "8a2a6206e74b555f98b42b04c78f8ad19b96807442e9a54e98a0baaf72bcbf6d",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/llvmlower/__init__.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/llvmlower/device_ir_scalability.py",
+      "assign_sha256": "8f54758a7e90a9bc31c600b17b3a0227ba1bc1cf1d9cfaa8465584b9e6fc82f5",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/llvmlower/device_ir_scalability.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/perf/__init__.py",
+      "assign_sha256": "9f8e5f6b298aec3ee46e87d50887f8ff11c9aff1f4d05d9cf1b715778f3d0a8e",
+      "primary_sha256": "9f8e5f6b298aec3ee46e87d50887f8ff11c9aff1f4d05d9cf1b715778f3d0a8e",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/perf/__init__.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/perf/pass_observation.py",
+      "assign_sha256": "3a58c25461a41e466e30b46a79cb377f8d9387d94a7e7ab948ca82cbf345249c",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/perf/pass_observation.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/targetgen/__init__.py",
+      "assign_sha256": "7dae9fca1d8a5a860c76b424adfe208304bf12642774611599e78f7148210c70",
+      "primary_sha256": "7dae9fca1d8a5a860c76b424adfe208304bf12642774611599e78f7148210c70",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/__init__.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/targetgen/address_space.py",
+      "assign_sha256": "e32e6bca97b4bc95e0a1c16320c570a2666d98173cf9a85e38c59413ad24e205",
+      "primary_sha256": "e32e6bca97b4bc95e0a1c16320c570a2666d98173cf9a85e38c59413ad24e205",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/targetgen/address_space.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/targetgen/common_transforms.py",
+      "assign_sha256": "4093df99cfb2ec1a343aa7a641f3430725364b95206c264530b271b4811466ab",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/corrective-producer/src/merlin/targetgen/common_transforms.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "4093df99cfb2ec1a343aa7a641f3430725364b95206c264530b271b4811466ab",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/targetgen/public_codegen_budget.py",
+      "assign_sha256": "fef713c3042576d5bdd12aa9a28ca940c8ae0bae66c127529cd60717f58aa8c7",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/targetgen/public_codegen_budget.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/targetgen/tool_profile.py",
+      "assign_sha256": "c78f181120e193c3d7a87e2d5456c14cf0c468bef9c8216a7284717dd6fb2996",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/targetgen/tool_profile.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/targetgen/tool_profile_shared.py",
+      "assign_sha256": "c2f97ac5d624376c77f619e482c6c05c4882597fd026fdb040a8c436be546b9a",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/targetgen/tool_profile_shared.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/targetgen/tool_registry.py",
+      "assign_sha256": "de8e4deb4ad0962732b4aa3cb319e6d575f9f315abfc42c31efba28d74fe87c0",
+      "primary_sha256": "de8e4deb4ad0962732b4aa3cb319e6d575f9f315abfc42c31efba28d74fe87c0",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/targetgen/tool_registry.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/transforms/__init__.py",
+      "assign_sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/__init__.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/analyses.py",
+      "assign_sha256": "f644bb56349d680a3228b75308f2ebf51f7491baa628e704e1617f472ad8e754",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analyses.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_liveness.py",
+      "assign_sha256": "ee3e4b9ed35d5f888f1706eb2d540016e28eacfc8454c96d769ee76b4b7b4b5f",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analysis_liveness.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_memory.py",
+      "assign_sha256": "042cb7a7e72db59c574a6ecb1bfe9bc0c70de88898553f5a129d469071e38fbd",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analysis_memory.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_types.py",
+      "assign_sha256": "63eb8ab800b446c3f50b61dd54f228db5d3c9a66457939eb16a678ff78a68b0c",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/analysis_types.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/certificates.py",
+      "assign_sha256": "4b3348bd83b347b262dc6457a1827e5f0b0c2e94251e570d642afe19a18cc639",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/certificates.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/loops.py",
+      "assign_sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/loops.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/normalization.py",
+      "assign_sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/normalization.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/pipeline.py",
+      "assign_sha256": "e665f6370c27a6d82509d42679c778b79b7983a56ebb6697bbbe96c2c183b73f",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/corrective-producer/src/merlin/transforms/pipeline.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "e665f6370c27a6d82509d42679c778b79b7983a56ebb6697bbbe96c2c183b73f",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/transforms/pipeline_state.py",
+      "assign_sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pipeline_state.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/planning.py",
+      "assign_sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/planning.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/pure_scalar.py",
+      "assign_sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/pure_scalar.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/scalar_witness.py",
+      "assign_sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/scalar_witness.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/transforms/validation.py",
+      "assign_sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/transforms/validation.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/verify/__init__.py",
+      "assign_sha256": "ed2b23769b23d2a34b47f38b316aca76277193efbcbce589670188a5cceeffe4",
+      "primary_sha256": "ed2b23769b23d2a34b47f38b316aca76277193efbcbce589670188a5cceeffe4",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/publication-sources/src/merlin/verify/__init__.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean",
+      "assign_sha256": "9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8",
+      "primary_sha256": "9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/primary/src/merlin/verify/lean/Merlin/GraphStateGateEntries.lean",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "9a295451a27cf8df3ef26a542ce19266dff7c6e6ae727df3b589e41e1476fdf8",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "assign_sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "primary_sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "assign_sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "primary_sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "assign_sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "primary_sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "assign_sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "primary_sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "assign_sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "primary_sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "assign_sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "primary_sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean_checker.py",
+      "assign_sha256": "abbe47809b5fab74c65c79bd4acb4b7d311303f7fecebbf6a26c62382197dce1",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/corrective-producer/src/merlin/verify/lean_checker.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "abbe47809b5fab74c65c79bd4acb4b7d311303f7fecebbf6a26c62382197dce1",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/verify/lean_contract.py",
+      "assign_sha256": "fcb0b8a2812d41d20fa95724c8a54b50dd5763260f63f672bfeb17a8de346ab8",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_contract.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/verify/lean_export.py",
+      "assign_sha256": "73a0764df9f026c3b9e1b2643f5562119b585ffa7ea7b7d364feeb6db1c9c1e3",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_export.py",
+      "action": "add exact missing generic source from Assign proposal"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_input_admission.py",
+      "assign_sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "primary_sha256": "d523bc18fb1125e8b51e832c7a7ba30c33e77f0a71244dade2f027a8c81246d8",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_graph_input_admission.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_original_image_context.py",
+      "assign_sha256": "bfdb1a71019dfccc335f35f560dd6e51b7b1bc2671cf033c529ad52f6473bcc6",
+      "primary_sha256": "bfdb1a71019dfccc335f35f560dd6e51b7b1bc2671cf033c529ad52f6473bcc6",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_original_image_context_data.py",
+      "assign_sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1",
+      "primary_sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context_data.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_original_image_context_io.py",
+      "assign_sha256": "9ed416a334277acd890c95a75d45ca0366c0eb0797b71574bc467720ad1bdb09",
+      "primary_sha256": "9ed416a334277acd890c95a75d45ca0366c0eb0797b71574bc467720ad1bdb09",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/source-snapshot/src/merlin/verify/lean_graph_original_image_context_io.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate.py",
+      "assign_sha256": "43107d4178316f361b2a5a71fce6417b68bf8212ae7d9c4abbca12ff4bb2aba6",
+      "primary_sha256": "43107d4178316f361b2a5a71fce6417b68bf8212ae7d9c4abbca12ff4bb2aba6",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "43107d4178316f361b2a5a71fce6417b68bf8212ae7d9c4abbca12ff4bb2aba6",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_emit.py",
+      "assign_sha256": "8a45093f252cfcbcca0294f6c07897abab8a8004e10c1919d3b83a95d3404816",
+      "primary_sha256": "8a45093f252cfcbcca0294f6c07897abab8a8004e10c1919d3b83a95d3404816",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_emit.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "8a45093f252cfcbcca0294f6c07897abab8a8004e10c1919d3b83a95d3404816",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_models.py",
+      "assign_sha256": "1c35ab853f13779bb1ae9e2adb833664fb00b7c7b75b6b46e6557b489d9fee98",
+      "primary_sha256": "1c35ab853f13779bb1ae9e2adb833664fb00b7c7b75b6b46e6557b489d9fee98",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_models.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "1c35ab853f13779bb1ae9e2adb833664fb00b7c7b75b6b46e6557b489d9fee98",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_native.py",
+      "assign_sha256": "352af415cea2a7b7f538abac0af79b15123fe0ff079c5d6a8afae44e8f5eb7da",
+      "primary_sha256": "352af415cea2a7b7f538abac0af79b15123fe0ff079c5d6a8afae44e8f5eb7da",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_native.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "352af415cea2a7b7f538abac0af79b15123fe0ff079c5d6a8afae44e8f5eb7da",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "assign_sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "primary_sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_projection.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "c6fde0939c304d9e3a60267d7a45cfd9cd33bad7b4fb0ed4ee05212f87e402ef",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_provider.py",
+      "assign_sha256": "3308c8ae184ee8a46d5ad25172ea4c49b2b9b2623ad83698265c59110f9b0290",
+      "primary_sha256": "3308c8ae184ee8a46d5ad25172ea4c49b2b9b2623ad83698265c59110f9b0290",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_provider.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "3308c8ae184ee8a46d5ad25172ea4c49b2b9b2623ad83698265c59110f9b0290",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_pipeline_gate_service.py",
+      "assign_sha256": "1db5340598add5cb9ec19995c8d44a458059b43b50718fa82bfecb2980940ff6",
+      "primary_sha256": "1db5340598add5cb9ec19995c8d44a458059b43b50718fa82bfecb2980940ff6",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/source-snapshot/primary/src/merlin/verify/lean_graph_pipeline_gate_service.py",
+      "action": "fixed36 publication selection; no duplicate prerequisite patch",
+      "fixed36_sha256": "1db5340598add5cb9ec19995c8d44a458059b43b50718fa82bfecb2980940ff6",
+      "assign_equals_fixed36": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "assign_sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "primary_sha256": "4def53377d503a2ffc5ac91fbfdd2831c0aaa51322c239e292e9bc5efd7dd13b",
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/src/merlin/verify/lean_graph_state_scalar_capture.py",
+      "action": "already present exact; retain primary, no patch"
+    },
+    {
+      "path": "src/merlin/verify/lean_sat_runtime.py",
+      "assign_sha256": "26a2104f7baef33ac46720c7f14c13bd1ff4163b5c5f4f385b1343ea7575f6ac",
+      "primary_sha256": null,
+      "assign_source": "out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/independent-reproduction/service-integration-v2/fixed-Q-packet/project-dependencies/out/build/graph-paper-deadline/producer-corrections/src/merlin/verify/lean_sat_runtime.py",
+      "action": "add exact missing generic source from Assign proposal"
+    }
+  ],
+  "patch_sources": [
+    {
+      "path": "src/merlin/common/bundle_snapshot.py",
+      "preimage": null,
+      "sha256": "75ccb58526671f2ee474ce6f3290db2ea0709069d65926be927da9635cb9cc39",
+      "bytes": 34386,
+      "source": "sources/src/merlin/common/bundle_snapshot.py"
+    },
+    {
+      "path": "src/merlin/common/cpu_pool.py",
+      "preimage": null,
+      "sha256": "980011c6f2a154c1830c2ed7b9ca53509c658cef957ddcf4f4a0ffaa8bf09138",
+      "bytes": 39630,
+      "source": "sources/src/merlin/common/cpu_pool.py"
+    },
+    {
+      "path": "src/merlin/common/dense_float_ir.py",
+      "preimage": null,
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505",
+      "bytes": 4227,
+      "source": "sources/src/merlin/common/dense_float_ir.py"
+    },
+    {
+      "path": "src/merlin/common/path_relations.py",
+      "preimage": null,
+      "sha256": "8e15c5f6b71785414fca77f9ce2ea84fe71dde328abda9d103faf94156b99f87",
+      "bytes": 2539,
+      "source": "sources/src/merlin/common/path_relations.py"
+    },
+    {
+      "path": "src/merlin/common/read_lease_digest.py",
+      "preimage": null,
+      "sha256": "0adb034a66058287259108de8717323eb38c9a83a3e6f810c93b0872d5c0cf4c",
+      "bytes": 18925,
+      "source": "sources/src/merlin/common/read_lease_digest.py"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/export.py",
+      "preimage": null,
+      "sha256": "0652a77b3da5d2b8e3ec1e5cf6b5cfc1f504169c4f3170dcd46d4328d5fda3cc",
+      "bytes": 12547,
+      "source": "sources/src/merlin/compile/scheduling/export.py"
+    },
+    {
+      "path": "src/merlin/compile/scheduling/library_sources.py",
+      "preimage": null,
+      "sha256": "1e6108dc34a998e54ecad85b519cda474f1a673ba884845276e0e8ba10dbd404",
+      "bytes": 7056,
+      "source": "sources/src/merlin/compile/scheduling/library_sources.py"
+    },
+    {
+      "path": "src/merlin/llvmlower/device_ir_scalability.py",
+      "preimage": null,
+      "sha256": "8f54758a7e90a9bc31c600b17b3a0227ba1bc1cf1d9cfaa8465584b9e6fc82f5",
+      "bytes": 12313,
+      "source": "sources/src/merlin/llvmlower/device_ir_scalability.py"
+    },
+    {
+      "path": "src/merlin/perf/pass_observation.py",
+      "preimage": null,
+      "sha256": "3a58c25461a41e466e30b46a79cb377f8d9387d94a7e7ab948ca82cbf345249c",
+      "bytes": 5307,
+      "source": "sources/src/merlin/perf/pass_observation.py"
+    },
+    {
+      "path": "src/merlin/targetgen/public_codegen_budget.py",
+      "preimage": null,
+      "sha256": "fef713c3042576d5bdd12aa9a28ca940c8ae0bae66c127529cd60717f58aa8c7",
+      "bytes": 9490,
+      "source": "sources/src/merlin/targetgen/public_codegen_budget.py"
+    },
+    {
+      "path": "src/merlin/targetgen/tool_profile.py",
+      "preimage": null,
+      "sha256": "c78f181120e193c3d7a87e2d5456c14cf0c468bef9c8216a7284717dd6fb2996",
+      "bytes": 35005,
+      "source": "sources/src/merlin/targetgen/tool_profile.py"
+    },
+    {
+      "path": "src/merlin/targetgen/tool_profile_shared.py",
+      "preimage": null,
+      "sha256": "c2f97ac5d624376c77f619e482c6c05c4882597fd026fdb040a8c436be546b9a",
+      "bytes": 31607,
+      "source": "sources/src/merlin/targetgen/tool_profile_shared.py"
+    },
+    {
+      "path": "src/merlin/transforms/__init__.py",
+      "preimage": null,
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39",
+      "bytes": 1017,
+      "source": "sources/src/merlin/transforms/__init__.py"
+    },
+    {
+      "path": "src/merlin/transforms/analyses.py",
+      "preimage": null,
+      "sha256": "f644bb56349d680a3228b75308f2ebf51f7491baa628e704e1617f472ad8e754",
+      "bytes": 1372,
+      "source": "sources/src/merlin/transforms/analyses.py"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_liveness.py",
+      "preimage": null,
+      "sha256": "ee3e4b9ed35d5f888f1706eb2d540016e28eacfc8454c96d769ee76b4b7b4b5f",
+      "bytes": 7014,
+      "source": "sources/src/merlin/transforms/analysis_liveness.py"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_memory.py",
+      "preimage": null,
+      "sha256": "042cb7a7e72db59c574a6ecb1bfe9bc0c70de88898553f5a129d469071e38fbd",
+      "bytes": 6597,
+      "source": "sources/src/merlin/transforms/analysis_memory.py"
+    },
+    {
+      "path": "src/merlin/transforms/analysis_types.py",
+      "preimage": null,
+      "sha256": "63eb8ab800b446c3f50b61dd54f228db5d3c9a66457939eb16a678ff78a68b0c",
+      "bytes": 3166,
+      "source": "sources/src/merlin/transforms/analysis_types.py"
+    },
+    {
+      "path": "src/merlin/transforms/certificates.py",
+      "preimage": null,
+      "sha256": "4b3348bd83b347b262dc6457a1827e5f0b0c2e94251e570d642afe19a18cc639",
+      "bytes": 9448,
+      "source": "sources/src/merlin/transforms/certificates.py"
+    },
+    {
+      "path": "src/merlin/transforms/loops.py",
+      "preimage": null,
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e",
+      "bytes": 4572,
+      "source": "sources/src/merlin/transforms/loops.py"
+    },
+    {
+      "path": "src/merlin/transforms/normalization.py",
+      "preimage": null,
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84",
+      "bytes": 4097,
+      "source": "sources/src/merlin/transforms/normalization.py"
+    },
+    {
+      "path": "src/merlin/transforms/pipeline_state.py",
+      "preimage": null,
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652",
+      "bytes": 12317,
+      "source": "sources/src/merlin/transforms/pipeline_state.py"
+    },
+    {
+      "path": "src/merlin/transforms/planning.py",
+      "preimage": null,
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39",
+      "bytes": 12381,
+      "source": "sources/src/merlin/transforms/planning.py"
+    },
+    {
+      "path": "src/merlin/transforms/pure_scalar.py",
+      "preimage": null,
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06",
+      "bytes": 6617,
+      "source": "sources/src/merlin/transforms/pure_scalar.py"
+    },
+    {
+      "path": "src/merlin/transforms/scalar_witness.py",
+      "preimage": null,
+      "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31",
+      "bytes": 2083,
+      "source": "sources/src/merlin/transforms/scalar_witness.py"
+    },
+    {
+      "path": "src/merlin/transforms/validation.py",
+      "preimage": null,
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159",
+      "bytes": 10145,
+      "source": "sources/src/merlin/transforms/validation.py"
+    },
+    {
+      "path": "src/merlin/verify/lean_contract.py",
+      "preimage": null,
+      "sha256": "fcb0b8a2812d41d20fa95724c8a54b50dd5763260f63f672bfeb17a8de346ab8",
+      "bytes": 9284,
+      "source": "sources/src/merlin/verify/lean_contract.py"
+    },
+    {
+      "path": "src/merlin/verify/lean_export.py",
+      "preimage": null,
+      "sha256": "73a0764df9f026c3b9e1b2643f5562119b585ffa7ea7b7d364feeb6db1c9c1e3",
+      "bytes": 9605,
+      "source": "sources/src/merlin/verify/lean_export.py"
+    },
+    {
+      "path": "src/merlin/verify/lean_sat_runtime.py",
+      "preimage": null,
+      "sha256": "26a2104f7baef33ac46720c7f14c13bd1ff4163b5c5f4f385b1343ea7575f6ac",
+      "bytes": 5966,
+      "source": "sources/src/merlin/verify/lean_sat_runtime.py"
+    },
+    {
+      "path": "src/merlin/common/invocation_record.py",
+      "preimage": "c8cb7099d6d722d6ec626795b5b27969629d1d9c1565822c3a1d648c2ce98811",
+      "sha256": "e0cc8a707e38920baf362a57d4eea1bd0b2f4c47e7283f9d55cf4a9c1c8ba8bb",
+      "bytes": 13107,
+      "source": "sources/src/merlin/common/invocation_record.py",
+      "review_required": "generic common owner must approve additive timing API; no full invocation_record replacement"
+    }
+  ],
+  "old_primary_invocation_ast_preserved": true,
+  "copied_timing_function_asts_equal_4499": true,
+  "canonical_and_F_admission_reapplied": false,
+  "real_application": false,
+  "new_runtime_permission": false,
+  "native_qualification": "UNQUALIFIED",
+  "deferred": [
+    "v2 change certificate serialization imports absent transforms.unrolling",
+    "ordinary compiler_imports requires absent compiler_profile_admission",
+    "tool_profile_toolchain release/constructor route absent and held",
+    "public gate remains held; no same-live typed completion has been created here",
+    "ordinary launcher/broker consumers and global bypass coverage remain separate"
+  ]
+}

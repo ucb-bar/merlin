@@ -1,0 +1,31 @@
+{
+  "byte_orders": [
+    "little",
+    "little",
+    "little",
+    "little"
+  ],
+  "external_buffers_disjoint": true,
+  "inputs": [
+    {
+      "size": 141,
+      "space": "input0",
+      "start": 0
+    },
+    {
+      "size": 141,
+      "space": "input1",
+      "start": 0
+    },
+    {
+      "size": 141,
+      "space": "input2",
+      "start": 0
+    }
+  ],
+  "output": {
+    "size": 141,
+    "space": "output0",
+    "start": 0
+  }
+}

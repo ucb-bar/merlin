@@ -1,0 +1,6 @@
+{
+  "classification": "LEAN_COMPONENT_OBLIGATION_REFUSAL",
+  "root": "Merlin.GraphStatePipelineInstance.F4.innerAccepted",
+  "line": 254,
+  "diagnostic": "Tactic `decide` proved that the proposition"
+}

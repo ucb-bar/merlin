@@ -1,0 +1,2917 @@
+{
+  "configuration": {
+    "bytes": 129,
+    "path": "/home/jeremy/Projects/merlin/.venv/pyvenv.cfg",
+    "sha256": "d0941ce4696a765d5449d89b2135fdaa7287fb6d5154d7943f48f81097804c7d"
+  },
+  "loaded_modules": {
+    "__future__": {
+      "bytes": 5218,
+      "path": "/usr/lib/python3.14/__future__.py",
+      "sha256": "981d4c398849f9ebcab72300d9c1fe288fd6d7f28957b3b3fa3a493a5836d95c"
+    },
+    "__main__": {
+      "bytes": 11987,
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_capture.py",
+      "sha256": "898cef71246d8ef510ba157a6e691da7437d1373d6ef94f05d8b642cf6e47565"
+    },
+    "_bisect": {
+      "bytes": 23232,
+      "path": "/usr/lib/python3.14/lib-dynload/_bisect.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "37cc54cce8a99509cc0da93dae7c5efc3e596a486eee1f3532e7e6cd9362663f"
+    },
+    "_blake2": {
+      "bytes": 93152,
+      "path": "/usr/lib/python3.14/lib-dynload/_blake2.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "c45f991f66756634f0cfe238f559a826858ca990f8b059ada9c680b7f9e37379"
+    },
+    "_bz2": {
+      "bytes": 27480,
+      "path": "/usr/lib/python3.14/lib-dynload/_bz2.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "0b9c9491d9ccdf9448886b75db71e83af003495c28ad0c3c74bed2cd3f3b66ce"
+    },
+    "_collections_abc": {
+      "bytes": 32147,
+      "path": "/usr/lib/python3.14/_collections_abc.py",
+      "sha256": "50b68b76687edc29824e5d735914b9c9ebb5145b663ba4ab7fce273283356a1c"
+    },
+    "_colorize": {
+      "bytes": 11031,
+      "path": "/usr/lib/python3.14/_colorize.py",
+      "sha256": "15db41bec8e25fd1ba81cf234df2cc7446d0fbc10285fda73186176365efd730"
+    },
+    "_compat_pickle": {
+      "bytes": 8735,
+      "path": "/usr/lib/python3.14/_compat_pickle.py",
+      "sha256": "028d2d9845d7acac2e1ceb565aacaee64e3f8019fba96174d65eff1609b50cd0"
+    },
+    "_ctypes": {
+      "bytes": 132192,
+      "path": "/usr/lib/python3.14/lib-dynload/_ctypes.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "70bfa0e3a17405eae19fbe5f7f96b2587446c840e64edfe2a2d2f17a8667a0ef"
+    },
+    "_decimal": {
+      "bytes": 186544,
+      "path": "/usr/lib/python3.14/lib-dynload/_decimal.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "41a639d7ca16fb2152cf15e76a8a20ef5689544ec597667840dd060f446eb154"
+    },
+    "_distutils_hack": {
+      "bytes": 6800,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_distutils_hack/__init__.py",
+      "sha256": "ced72e54431ecf2d8d7dbd8a1e27724f1b171af3ca1503c304bf11c59a7fe861"
+    },
+    "_frozen_importlib": {
+      "bytes": 57937,
+      "path": "/usr/lib/python3.14/importlib/_bootstrap.py",
+      "sha256": "e50d35b1191ecbc5f7faecc73f54efd242bcf24c510e4ea5eb64bfba9458c0e3"
+    },
+    "_frozen_importlib_external": {
+      "bytes": 57685,
+      "path": "/usr/lib/python3.14/importlib/_bootstrap_external.py",
+      "sha256": "b9af1fb7b625030cf5ee06b39aeb7838c2a30c97ddee09410286b7afbd8b7098"
+    },
+    "_hashlib": {
+      "bytes": 63424,
+      "path": "/usr/lib/python3.14/lib-dynload/_hashlib.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "ff3cb1b51560b756ade015f07320edb5d2ca455ad4b0a675c0b2e7300135579d"
+    },
+    "_json": {
+      "bytes": 44368,
+      "path": "/usr/lib/python3.14/lib-dynload/_json.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "096e14a4e783ac28bbb971898610f67fcc46f56a8d0e4b906cb71e8eaea5c044"
+    },
+    "_lzma": {
+      "bytes": 40280,
+      "path": "/usr/lib/python3.14/lib-dynload/_lzma.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "3e5a9f0cfd5810d89f98147c1e2ce6389d7f98107832c11e8d58ebab47bb23fd"
+    },
+    "_opcode_metadata": {
+      "bytes": 10115,
+      "path": "/usr/lib/python3.14/_opcode_metadata.py",
+      "sha256": "d9badc5ab19a66415e230bf8f4299491b2207d584981a92b6e7c447cfa1aeac3"
+    },
+    "_pickle": {
+      "bytes": 144288,
+      "path": "/usr/lib/python3.14/lib-dynload/_pickle.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "a5c0272379c8a2af2d39dccbd69e3b9077c54cfa0a6018a4ac2c46c27027e6cb"
+    },
+    "_posixsubprocess": {
+      "bytes": 26776,
+      "path": "/usr/lib/python3.14/lib-dynload/_posixsubprocess.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "0bcd832e1551bd30ee78621a39bee93669d4406c54c9d2b5897b86421e2c364c"
+    },
+    "_py_warnings": {
+      "bytes": 30631,
+      "path": "/usr/lib/python3.14/_py_warnings.py",
+      "sha256": "7728580177727fa3b295478cef4777a9d2a364c5cbd809efcea352db31144f85"
+    },
+    "_pytest": {
+      "bytes": 391,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/__init__.py",
+      "sha256": "e087512619d6e571b62a568990ec67e7f4c2f56790e6d5c3485eed6dbe2f12ca"
+    },
+    "_pytest._code": {
+      "bytes": 521,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_code/__init__.py",
+      "sha256": "04a6e8c286100032a300999359d43c49240b6c106c874f9d663dd31a3b67eb23"
+    },
+    "_pytest._code.code": {
+      "bytes": 58426,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_code/code.py",
+      "sha256": "63ec03d20e61d3ac2a0e9954be71a619dd742d009c2409b1e3168e2a6fad9096"
+    },
+    "_pytest._code.source": {
+      "bytes": 7859,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_code/source.py",
+      "sha256": "46f3d07f3144e3e05da5aa6c51cb1d2f89ac81e1e737e5a7a863e4032acf6c01"
+    },
+    "_pytest._io": {
+      "bytes": 190,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_io/__init__.py",
+      "sha256": "a642c5dbd54416be8396bdde3ad24bf2c7f8ed12c5b7525fe17d436413e56267"
+    },
+    "_pytest._io.pprint": {
+      "bytes": 19572,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_io/pprint.py",
+      "sha256": "87fcb9cd098dda72f3d5458f868242bea60d53f1c8d88e2ab499827da80bf4e4"
+    },
+    "_pytest._io.saferepr": {
+      "bytes": 4920,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_io/saferepr.py",
+      "sha256": "c4634e463e01eb613fc52d909f6f44e4aa682e0c3ad2ad3d6fe0286d6f1c7aa8"
+    },
+    "_pytest._io.terminalwriter": {
+      "bytes": 8994,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_io/terminalwriter.py",
+      "sha256": "2b4a41d697c0beb281585011292a1b438c168b4a5d9a205a19bddafeffc00234"
+    },
+    "_pytest._io.wcwidth": {
+      "bytes": 1289,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_io/wcwidth.py",
+      "sha256": "714109ef8521c1e202c1b2af536aba9e865c3600f442504407d09f6a41986aa0"
+    },
+    "_pytest._py": {
+      "bytes": 0,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_py/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "_pytest._py.error": {
+      "bytes": 3475,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_py/error.py",
+      "sha256": "90643b17cfdf67a615061031faef669134014f1d2a231c6754c0b40a088e77bd"
+    },
+    "_pytest._py.path": {
+      "bytes": 49229,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_py/path.py",
+      "sha256": "72a0a7d1a9b32a1a92aa25b55b3b782aabc52369dc281cc69f011152c5a90bfd"
+    },
+    "_pytest._version": {
+      "bytes": 520,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_version.py",
+      "sha256": "a92165fd7b0e147d0e1b873f42ebe87f108f1f3d56b1b53fe4ad352a27adec4a"
+    },
+    "_pytest.assertion": {
+      "bytes": 8081,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/__init__.py",
+      "sha256": "2a69087174fab92dd88352b60b546d879fb93411a6c0996384a0f84a07071ac7"
+    },
+    "_pytest.assertion._compare_any": {
+      "bytes": 4959,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/_compare_any.py",
+      "sha256": "96db744e2023ecb555cf3f03d7e9a6eafc8cfe250f28eff55cd8239793d894c2"
+    },
+    "_pytest.assertion._compare_mapping": {
+      "bytes": 1680,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/_compare_mapping.py",
+      "sha256": "74a33986faa3645f96334887c04ee51e3ea689568b4edeeed1e429ae9d86f690"
+    },
+    "_pytest.assertion._compare_sequence": {
+      "bytes": 2947,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/_compare_sequence.py",
+      "sha256": "6a7c68748e05632a8c9a784a4a099cfc0b4afe86eb1d4a0e0c16c13723a58681"
+    },
+    "_pytest.assertion._compare_set": {
+      "bytes": 2667,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/_compare_set.py",
+      "sha256": "251a73d7d113fdb8ba784f59fee5b14bf073ac423222d1b68725d096ce889c94"
+    },
+    "_pytest.assertion._guards": {
+      "bytes": 1923,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/_guards.py",
+      "sha256": "1fa6a11bfe490b06614e0e65224f03eaf82151074a7e8399194c2c4f7390085e"
+    },
+    "_pytest.assertion._typing": {
+      "bytes": 338,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/_typing.py",
+      "sha256": "f62ce7a05b0aa7ce3b818d62aad74bfd3848519ad80403daf0def63b774da568"
+    },
+    "_pytest.assertion.compare_text": {
+      "bytes": 3385,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/compare_text.py",
+      "sha256": "e10edb296d8df5dd2eee4480e68bda9ae1ba2ccbc55faf22c4cc8e453a4808c7"
+    },
+    "_pytest.assertion.highlight": {
+      "bytes": 327,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/highlight.py",
+      "sha256": "015a92e17eb83e0d5a7a45e73984687898a02000d6c0075b76d1bff5b93fdfe7"
+    },
+    "_pytest.assertion.rewrite": {
+      "bytes": 47740,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/rewrite.py",
+      "sha256": "17f1eefbd1c2fe5326cb7592ff3af92a773582cf9d01727b09d3ab864906ee50"
+    },
+    "_pytest.assertion.truncate": {
+      "bytes": 5156,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/truncate.py",
+      "sha256": "ee48bcb41d2bc23ed9efe6020000d046e077468d7d3bcdf2ed75777938de2f5c"
+    },
+    "_pytest.assertion.util": {
+      "bytes": 7710,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/assertion/util.py",
+      "sha256": "f2ede44368c40674cc9943833a56342539747e9242094191cfe24b7eeaf13d33"
+    },
+    "_pytest.cacheprovider": {
+      "bytes": 22627,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/cacheprovider.py",
+      "sha256": "bd9bfb0437645da5d042792f30ba379d28ff4c1fffac6806f5543305a3073579"
+    },
+    "_pytest.capture": {
+      "bytes": 37228,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/capture.py",
+      "sha256": "12004dbff0ab7b34141ff53e33e616db2e857c695f64e640631f5abe30619145"
+    },
+    "_pytest.compat": {
+      "bytes": 10628,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/compat.py",
+      "sha256": "41f703ee4606232e1fc6eaa2136f360700c90824503491221a435861c3f2161e"
+    },
+    "_pytest.config": {
+      "bytes": 80947,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/config/__init__.py",
+      "sha256": "98b05c2c37d09e1d5c05975efc2d9af98d4aff6ea47de410a8e93956420873c1"
+    },
+    "_pytest.config.argparsing": {
+      "bytes": 17795,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/config/argparsing.py",
+      "sha256": "a30373a110ac568e752b5cc5c4eb66cfa8595f2c1eaa1bf950b1fc5070a0d098"
+    },
+    "_pytest.config.exceptions": {
+      "bytes": 315,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/config/exceptions.py",
+      "sha256": "e959bdcb3c143b12469b5ed93066f0ebdbff8b4ee64f52a607010d336b1c2a19"
+    },
+    "_pytest.config.findpaths": {
+      "bytes": 12890,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/config/findpaths.py",
+      "sha256": "535d149e6f3962e44260b6645bb354976e19531f5dd248e14ee7d7fff61c8848"
+    },
+    "_pytest.debugging": {
+      "bytes": 13853,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/debugging.py",
+      "sha256": "fde26a89f0ca1311423afe098601610680d7627b30b301c6d5d7192026538e0f"
+    },
+    "_pytest.deprecated": {
+      "bytes": 5443,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/deprecated.py",
+      "sha256": "7f24f0a94f9fb68a09f0fbbc8b2db84cba965d5894a59415d6a4ab2490ea4e2a"
+    },
+    "_pytest.doctest": {
+      "bytes": 25424,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/doctest.py",
+      "sha256": "04261f5b3ddce0c36584f2be42e2938d5a0dbe914414502533a93e8c142dacf9"
+    },
+    "_pytest.fixtures": {
+      "bytes": 92893,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/fixtures.py",
+      "sha256": "f5d4d3f848d97411e456d50400d3aaecc19a9b0c90def9151e395ee8952042b7"
+    },
+    "_pytest.freeze_support": {
+      "bytes": 1300,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/freeze_support.py",
+      "sha256": "5fde08c62a6a79b780fc7833261f1d6e3a869ebb44405b8c202e612bb486597c"
+    },
+    "_pytest.hookspec": {
+      "bytes": 41840,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/hookspec.py",
+      "sha256": "12098571044671c24ed0011e2bb7d94976380265e5734c30f856479482e6f88d"
+    },
+    "_pytest.legacypath": {
+      "bytes": 16588,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/legacypath.py",
+      "sha256": "fe5eaff1a90d31f4dce53023bdb73a33efedd79ee9f5013afb5d7c58cd0346df"
+    },
+    "_pytest.logging": {
+      "bytes": 36104,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/logging.py",
+      "sha256": "9ad4c3e583c205a97c37264bf479503e74e027cf68ba818996e923062380cac2"
+    },
+    "_pytest.main": {
+      "bytes": 42771,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/main.py",
+      "sha256": "8ee2725057ff1811e2ae9ebdf1befb7518195f8f333f9f8ca024d76a4b80780e"
+    },
+    "_pytest.mark": {
+      "bytes": 9857,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/mark/__init__.py",
+      "sha256": "1a649c9ecb24f1e7092d62c86b6d5b38648dc4bf43dac992f061f6876acde051"
+    },
+    "_pytest.mark.expression": {
+      "bytes": 11250,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/mark/expression.py",
+      "sha256": "edae43a0bfb44f6ae09747551f6c139cdbd985b8a66e2af33352c4c57ac1f27d"
+    },
+    "_pytest.mark.structures": {
+      "bytes": 24633,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/mark/structures.py",
+      "sha256": "598ff2b44193f1e98868257ff55f4fff39276fc5d5ae8427fe4de7176ea1bc96"
+    },
+    "_pytest.monkeypatch": {
+      "bytes": 15510,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/monkeypatch.py",
+      "sha256": "b5c405ed57dbd58adfb7f0fae44f84d62402993c50058e07f03387285c03df33"
+    },
+    "_pytest.nodes": {
+      "bytes": 26286,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/nodes.py",
+      "sha256": "4701f2fa74e292b2551ae790d26fe421bb25e5e459022026107bd024177cd129"
+    },
+    "_pytest.outcomes": {
+      "bytes": 8799,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/outcomes.py",
+      "sha256": "aa02dbf351cd1101a795e3fef683ab2fd7a2c04eb96188689663f51ece80c081"
+    },
+    "_pytest.pathlib": {
+      "bytes": 37454,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/pathlib.py",
+      "sha256": "c9fe77dccbf52afa1196ff92870ed919e09f254c082710a86ed417fd3ca90329"
+    },
+    "_pytest.pytester": {
+      "bytes": 62905,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/pytester.py",
+      "sha256": "9e791d0a3446b04324e70bb939712f8d490005ad13eb46ab3249592baa08ff17"
+    },
+    "_pytest.python": {
+      "bytes": 67758,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/python.py",
+      "sha256": "b04488f5e46bf1ffe2e8344f81756e10b970dbfaf2f7f2f4d312becd6404df76"
+    },
+    "_pytest.python_api": {
+      "bytes": 35984,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/python_api.py",
+      "sha256": "cba22d17b5dedccb39be71ca946b765b998c4c3055ae1adad453fefbd843497d"
+    },
+    "_pytest.raises": {
+      "bytes": 59770,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/raises.py",
+      "sha256": "dc28805f1e1c2db835f1a5290218efee5d510d190ad333d61663d59bd6d1362c"
+    },
+    "_pytest.recwarn": {
+      "bytes": 13875,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/recwarn.py",
+      "sha256": "0e3ab27f6b7313d89eff1136c4cd60913e591fe5b32961c87e7711778f2dc906"
+    },
+    "_pytest.reports": {
+      "bytes": 23230,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/reports.py",
+      "sha256": "2e9272a67cde38b925eba24a288b2ef77f741c0daa22da6fbce53ee6e58fa41d"
+    },
+    "_pytest.runner": {
+      "bytes": 20346,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/runner.py",
+      "sha256": "c8d7fd553c0516f7884502ee0e7954eb5a5b1542f21fcb5c4357500ed2fe1570"
+    },
+    "_pytest.scope": {
+      "bytes": 2736,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/scope.py",
+      "sha256": "78499126f474ba3787fd1ca9524dcf8583b2b505f5632af491ea1c458a72ae2a"
+    },
+    "_pytest.stash": {
+      "bytes": 3090,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/stash.py",
+      "sha256": "e69137903c78abce794d6f5a56f61376b9242a530353afb1897e25b8aa491202"
+    },
+    "_pytest.subtests": {
+      "bytes": 13507,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/subtests.py",
+      "sha256": "f514883bad06a84cec0d7ddc1dd8ce8c16e5680597f9fc5a9bd8836b878f92a4"
+    },
+    "_pytest.terminal": {
+      "bytes": 65489,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/terminal.py",
+      "sha256": "28c4a9ebca0243385b154f47ecb83b18a1df415e0b912ebd97079c5ea0036459"
+    },
+    "_pytest.timing": {
+      "bytes": 3196,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/timing.py",
+      "sha256": "62de28571e5296350624bc18fe2096f2feb064a55f33e1cc8d1e223c047db9d4"
+    },
+    "_pytest.tmpdir": {
+      "bytes": 13271,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/tmpdir.py",
+      "sha256": "5099f71d89413191c9e7515c9d4fe9fc7083bb73306f2cf1f73a9f89c862ed90"
+    },
+    "_pytest.warning_types": {
+      "bytes": 4241,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/warning_types.py",
+      "sha256": "8e27be526f030b2798164fd8511132a2f447b6f5ef6958363228bf978998edb5"
+    },
+    "_random": {
+      "bytes": 18856,
+      "path": "/usr/lib/python3.14/lib-dynload/_random.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "f0286f4680f10a8c6ba3935ef638fde5c22818f3025a130d6ad4e874dbbecec0"
+    },
+    "_sitebuiltins": {
+      "bytes": 2699,
+      "path": "/usr/lib/python3.14/_sitebuiltins.py",
+      "sha256": "f688c89b860d5839aff1047d4f3df6c9695f136e2ae8a167bbbfa51846bbdaa5"
+    },
+    "_struct": {
+      "bytes": 54600,
+      "path": "/usr/lib/python3.14/lib-dynload/_struct.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "1750413a74b63c2c5bd9779734e53f44359df1aa683404c7605abf00af7c3d8d"
+    },
+    "_uuid": {
+      "bytes": 14480,
+      "path": "/usr/lib/python3.14/lib-dynload/_uuid.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "1c4780c05741f6bb79c5dc4757e04782a33917b3c24dc7e2437ab21624a56684"
+    },
+    "_virtualenv": {
+      "bytes": 5246,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_virtualenv.py",
+      "sha256": "cfb3db86aaa53bb62b5ff764970bec2d71c9228590a0ebec57f6ec926cc0bf1a"
+    },
+    "_weakrefset": {
+      "bytes": 3962,
+      "path": "/usr/lib/python3.14/_weakrefset.py",
+      "sha256": "2dd7cb459d654fe78b00c5c47ee8e786c037ee77763304603f5e976dd62cbf81"
+    },
+    "_zstd": {
+      "bytes": 53912,
+      "path": "/usr/lib/python3.14/lib-dynload/_zstd.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "53fa01008c7f964c67d6396b2f2f482d85f7564c69f13dc9c7460b4562e3ab5d"
+    },
+    "abc": {
+      "bytes": 6538,
+      "path": "/usr/lib/python3.14/abc.py",
+      "sha256": "e558702a95cdce3febd289da021715d2b92bc43995b8a1bc58dfa1c3d8010287"
+    },
+    "annotationlib": {
+      "bytes": 44420,
+      "path": "/usr/lib/python3.14/annotationlib.py",
+      "sha256": "1cce29393714b91e3f71571ffbedacc7f73f11ad26be10701debeb86ec059a32"
+    },
+    "argparse": {
+      "bytes": 106825,
+      "path": "/usr/lib/python3.14/argparse.py",
+      "sha256": "b9f0fa53be3d7c9c10a71a8eecc538a27c32fbe7abe337818d0d36e138bfc5c5"
+    },
+    "ast": {
+      "bytes": 25479,
+      "path": "/usr/lib/python3.14/ast.py",
+      "sha256": "5ea9a796353544bea0d706153516f04ef3d92be305d15a73238403837d77e34c"
+    },
+    "base64": {
+      "bytes": 22301,
+      "path": "/usr/lib/python3.14/base64.py",
+      "sha256": "87fca266896d1069fa218eafd976be35bca402b29fdf24bc2863f855e60c2027"
+    },
+    "bdb": {
+      "bytes": 44829,
+      "path": "/usr/lib/python3.14/bdb.py",
+      "sha256": "ed54964aed0bb23931265607c3ef1e38ec09ccb681d298fd1b56e5ac1cd4223c"
+    },
+    "binascii": {
+      "bytes": 27872,
+      "path": "/usr/lib/python3.14/lib-dynload/binascii.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "d6dd20a3495a384f821425551f85ff31e9adfb99aa6c4a327f3e72650eef7f9b"
+    },
+    "bisect": {
+      "bytes": 3423,
+      "path": "/usr/lib/python3.14/bisect.py",
+      "sha256": "f1cf7b85fc36b5da249813fc5ab97d9464f8cc1bc817f7146206fa2713e35999"
+    },
+    "bz2": {
+      "bytes": 11978,
+      "path": "/usr/lib/python3.14/bz2.py",
+      "sha256": "368b9ee55f0b6dbfc81b15e1a17c51cccddb009389eae8e9a7acf2402ca4109a"
+    },
+    "codecs": {
+      "bytes": 36840,
+      "path": "/usr/lib/python3.14/codecs.py",
+      "sha256": "718f39b3ea68fe934214d789c5bce3005fa828040b03a72d2f715fc5e2647b7e"
+    },
+    "codeop": {
+      "bytes": 5902,
+      "path": "/usr/lib/python3.14/codeop.py",
+      "sha256": "6777d19fa0f88c415d615c78e214ede057dd7507db8494744ca2c53fe9911a3a"
+    },
+    "collections": {
+      "bytes": 53021,
+      "path": "/usr/lib/python3.14/collections/__init__.py",
+      "sha256": "cb8367b8edd188662143ea2e3942d360c2deae51c72fd779ec898f5076d2c2b9"
+    },
+    "collections.abc": {
+      "bytes": 32147,
+      "path": "/usr/lib/python3.14/_collections_abc.py",
+      "sha256": "50b68b76687edc29824e5d735914b9c9ebb5145b663ba4ab7fce273283356a1c"
+    },
+    "compression": {
+      "bytes": 0,
+      "path": "/usr/lib/python3.14/compression/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "compression._common": {
+      "bytes": 0,
+      "path": "/usr/lib/python3.14/compression/_common/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "compression._common._streams": {
+      "bytes": 5670,
+      "path": "/usr/lib/python3.14/compression/_common/_streams.py",
+      "sha256": "8b8e943815c748d030e540a023400cb87fb13f75c2f0615a63ec42ef9f156c92"
+    },
+    "compression.zstd": {
+      "bytes": 8769,
+      "path": "/usr/lib/python3.14/compression/zstd/__init__.py",
+      "sha256": "4575544839872594ad5c9be284d062384dd5abdd0ddcc0258f6d66dac2c51d60"
+    },
+    "compression.zstd._zstdfile": {
+      "bytes": 12325,
+      "path": "/usr/lib/python3.14/compression/zstd/_zstdfile.py",
+      "sha256": "84da3160987a2ee10f3b99813a68e70f16ec42a52612fef32581eb628aabc720"
+    },
+    "contextlib": {
+      "bytes": 27801,
+      "path": "/usr/lib/python3.14/contextlib.py",
+      "sha256": "c1e0d67b2007de11ae93cd36cf6faf38d9ab32656a832d592a49325eec579f96"
+    },
+    "contextvars": {
+      "bytes": 198,
+      "path": "/usr/lib/python3.14/contextvars.py",
+      "sha256": "cf0d77b49a9cde369bb6fc3e5c3e51658e8878cb9dab64a883b70caa86119007"
+    },
+    "copy": {
+      "bytes": 8582,
+      "path": "/usr/lib/python3.14/copy.py",
+      "sha256": "15154fde290d6e65b5007905689a47a9a5a724822c5e06eec35d9ffbb2a3aa69"
+    },
+    "copyreg": {
+      "bytes": 7716,
+      "path": "/usr/lib/python3.14/copyreg.py",
+      "sha256": "6376eb5722806396f5842997ac18add369ea9ac3ff4fcfe1460c41a088cac425"
+    },
+    "ctypes": {
+      "bytes": 22131,
+      "path": "/usr/lib/python3.14/ctypes/__init__.py",
+      "sha256": "72f2df568380c275a5596944810953124ff2ee8d678c5f8ddcf50f0f77577eb3"
+    },
+    "ctypes._endian": {
+      "bytes": 2557,
+      "path": "/usr/lib/python3.14/ctypes/_endian.py",
+      "sha256": "499773a028a41ee18153fedfe0a00a26efb2a650f568b9bc17e2f3a914a23468"
+    },
+    "dataclasses": {
+      "bytes": 71537,
+      "path": "/usr/lib/python3.14/dataclasses.py",
+      "sha256": "e8439c8b111856645a8b31e0dbbba532b494426399bad456079c0e5730ad322e"
+    },
+    "datetime": {
+      "bytes": 331,
+      "path": "/usr/lib/python3.14/datetime.py",
+      "sha256": "742884b0c8e7dc69911858245db4f34d42e8ec0f769d580c570bd56032b0866c"
+    },
+    "decimal": {
+      "bytes": 2826,
+      "path": "/usr/lib/python3.14/decimal.py",
+      "sha256": "af29fa99aa720a68cab5a6384c7beba4c8e9480a6c1d53a512efeeb5a7e5c781"
+    },
+    "dis": {
+      "bytes": 45533,
+      "path": "/usr/lib/python3.14/dis.py",
+      "sha256": "17d4d9a9195c9ee5aa27a96f3e0871f9363fd501e3a64ef20cb1cc876d7ad553"
+    },
+    "email": {
+      "bytes": 1759,
+      "path": "/usr/lib/python3.14/email/__init__.py",
+      "sha256": "dafca994154b9a6eb2b69d0e6e69e7596f397c2aec9bc62702259f4b39bd111a"
+    },
+    "encodings": {
+      "bytes": 5945,
+      "path": "/usr/lib/python3.14/encodings/__init__.py",
+      "sha256": "2b708410495acf12a6fad9d2de928dd89e567537c253eaa2b51aaae578e96c59"
+    },
+    "encodings.aliases": {
+      "bytes": 16255,
+      "path": "/usr/lib/python3.14/encodings/aliases.py",
+      "sha256": "1ee993f8eb4986999b6501381e53947be9a04443626cb48b4190bcff2e87d3b4"
+    },
+    "encodings.utf_8": {
+      "bytes": 1005,
+      "path": "/usr/lib/python3.14/encodings/utf_8.py",
+      "sha256": "ba0cac060269583523ca9506473a755203037c57d466a11aa89a30a5f6756f3d"
+    },
+    "encodings.utf_8_sig": {
+      "bytes": 4133,
+      "path": "/usr/lib/python3.14/encodings/utf_8_sig.py",
+      "sha256": "1ef3da8d8aa08149e7f274dc64dbfce2155da812e5258ca8e8f832428d3b5c2d"
+    },
+    "enum": {
+      "bytes": 85450,
+      "path": "/usr/lib/python3.14/enum.py",
+      "sha256": "fd23a7598fa1104ef892abcd4154d3627283e6361eb7a91cd11dc4a7b6fb3a93"
+    },
+    "fcntl": {
+      "bytes": 22768,
+      "path": "/usr/lib/python3.14/lib-dynload/fcntl.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "008aeecebd36b01c44b8c599d119d834cb0472776c554c65adf52de9a8dcc680"
+    },
+    "fnmatch": {
+      "bytes": 6791,
+      "path": "/usr/lib/python3.14/fnmatch.py",
+      "sha256": "ce582bc266922e4c682e2a85d72095124430a6bf58716c6f2537103480eae742"
+    },
+    "fractions": {
+      "bytes": 41453,
+      "path": "/usr/lib/python3.14/fractions.py",
+      "sha256": "7a95f1c506c9ac4b2277df5f2bdd9d61cc67b520c45021a5a961939770221ef6"
+    },
+    "functools": {
+      "bytes": 43564,
+      "path": "/usr/lib/python3.14/functools.py",
+      "sha256": "9db56d38172c4c9e689b21cc58c8538008b09d86b682faf4dd193b529cdd79d5"
+    },
+    "genericpath": {
+      "bytes": 6247,
+      "path": "/usr/lib/python3.14/genericpath.py",
+      "sha256": "cdac5a68dd738051e0d66fc81d5947d6a1776248fc6fe862253477608d870ec4"
+    },
+    "gettext": {
+      "bytes": 21595,
+      "path": "/usr/lib/python3.14/gettext.py",
+      "sha256": "54c00df11915aafb017ed23860dcb5197ed063f7ee07e5612625ec86afadcaf5"
+    },
+    "glob": {
+      "bytes": 20775,
+      "path": "/usr/lib/python3.14/glob.py",
+      "sha256": "21d290be171e3d0643a444e4b58a2c4ee9bfe2c1474bb36ead043794bb769365"
+    },
+    "grp": {
+      "bytes": 14936,
+      "path": "/usr/lib/python3.14/lib-dynload/grp.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "e6083a4bb871a9019cec4b7436eb0acc0281cc215f03cb80eb96371676b5491b"
+    },
+    "hashlib": {
+      "bytes": 9459,
+      "path": "/usr/lib/python3.14/hashlib.py",
+      "sha256": "88fa624821fbdee7eb2ef87c2437b207afe328cf117c7463367e2db5eb1af492"
+    },
+    "html": {
+      "bytes": 4775,
+      "path": "/usr/lib/python3.14/html/__init__.py",
+      "sha256": "923d82d821e75e8d235392c10c145ab8587927b3faf9c952bbd48081eebd8522"
+    },
+    "html.entities": {
+      "bytes": 75512,
+      "path": "/usr/lib/python3.14/html/entities.py",
+      "sha256": "d9c65fb2828dbc1f3e399058a341d51e9375ec5bca95a8e92599c41bd5b78bde"
+    },
+    "immutabledict": {
+      "bytes": 7093,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/immutabledict/__init__.py",
+      "sha256": "7ac43f32fc5a4403600263055dca00f644a41238cf5d50e8040acbd8391d472b"
+    },
+    "importlib": {
+      "bytes": 4767,
+      "path": "/usr/lib/python3.14/importlib/__init__.py",
+      "sha256": "72b07de4133a7e39b2f6a7920465669aa04626f217e800779587bc0713fe002e"
+    },
+    "importlib._abc": {
+      "bytes": 1354,
+      "path": "/usr/lib/python3.14/importlib/_abc.py",
+      "sha256": "80aab7931dc999dee581c8b8b56fcd973fe156335a96ceeaf6acfc03cebf10e8"
+    },
+    "importlib._bootstrap": {
+      "bytes": 57937,
+      "path": "/usr/lib/python3.14/importlib/_bootstrap.py",
+      "sha256": "e50d35b1191ecbc5f7faecc73f54efd242bcf24c510e4ea5eb64bfba9458c0e3"
+    },
+    "importlib._bootstrap_external": {
+      "bytes": 57685,
+      "path": "/usr/lib/python3.14/importlib/_bootstrap_external.py",
+      "sha256": "b9af1fb7b625030cf5ee06b39aeb7838c2a30c97ddee09410286b7afbd8b7098"
+    },
+    "importlib.abc": {
+      "bytes": 7583,
+      "path": "/usr/lib/python3.14/importlib/abc.py",
+      "sha256": "66da663909ac110b77d89d4402589574308aac2a5b524bba014fabd65f34cc99"
+    },
+    "importlib.machinery": {
+      "bytes": 2166,
+      "path": "/usr/lib/python3.14/importlib/machinery.py",
+      "sha256": "34b7583fd83ebb2629b7645c0dd293839ce16b19cf8742801e21a21fe08f5811"
+    },
+    "importlib.metadata": {
+      "bytes": 34091,
+      "path": "/usr/lib/python3.14/importlib/metadata/__init__.py",
+      "sha256": "5476c7c22a65f9e8b5a07b799336d87fa70e792758fd95b161b53b530e3b2654"
+    },
+    "importlib.metadata._collections": {
+      "bytes": 743,
+      "path": "/usr/lib/python3.14/importlib/metadata/_collections.py",
+      "sha256": "089d0e4c21c88d6034648552e2fa0e440b27d91e11d9c40112d3ec6442690126"
+    },
+    "importlib.metadata._functools": {
+      "bytes": 2895,
+      "path": "/usr/lib/python3.14/importlib/metadata/_functools.py",
+      "sha256": "3ec636fb8aeb297e1155e442d681a9d65075a660bd78a37cf3f7fe6c3f6e3a80"
+    },
+    "importlib.metadata._itertools": {
+      "bytes": 2068,
+      "path": "/usr/lib/python3.14/importlib/metadata/_itertools.py",
+      "sha256": "72faffdaff0145bc5c225e71e6575fa9d1e3848f188bcb3cca4e741bf9e6ea34"
+    },
+    "importlib.metadata._meta": {
+      "bytes": 1801,
+      "path": "/usr/lib/python3.14/importlib/metadata/_meta.py",
+      "sha256": "9f167b0bc19595c04500a5b254e9ff767ee8b7fb7005c6e6d4d9af8c87ad0472"
+    },
+    "importlib.readers": {
+      "bytes": 327,
+      "path": "/usr/lib/python3.14/importlib/readers.py",
+      "sha256": "d0d57d118d64916f7e6edb04f8bd1a760a1abb879125899ef50a36d09ef54df4"
+    },
+    "importlib.resources": {
+      "bytes": 703,
+      "path": "/usr/lib/python3.14/importlib/resources/__init__.py",
+      "sha256": "dc9fb6eb542ace0fb59017a7315b0eb2f268d7d11b52662a8c792b6568851ce3"
+    },
+    "importlib.resources._adapters": {
+      "bytes": 4482,
+      "path": "/usr/lib/python3.14/importlib/resources/_adapters.py",
+      "sha256": "be9ac919b51e1db6a35fa5c2b8c3fa27794caea0a2f8ffcc4e5ce225447b8df9"
+    },
+    "importlib.resources._common": {
+      "bytes": 5618,
+      "path": "/usr/lib/python3.14/importlib/resources/_common.py",
+      "sha256": "fcfb97ce807c692b36ac1b224379b455d64937a210c48c5ae60369bcaabe6456"
+    },
+    "importlib.resources._functional": {
+      "bytes": 2651,
+      "path": "/usr/lib/python3.14/importlib/resources/_functional.py",
+      "sha256": "98b5380f04a587cff62175aac0a39f3d5c7246a004a41dc1e174df471af75f73"
+    },
+    "importlib.resources._itertools": {
+      "bytes": 1277,
+      "path": "/usr/lib/python3.14/importlib/resources/_itertools.py",
+      "sha256": "7838ac57a46a88d64ea202d25dfe8b3861ce61cefd14680faca34bcc52e60ab5"
+    },
+    "importlib.resources.abc": {
+      "bytes": 5203,
+      "path": "/usr/lib/python3.14/importlib/resources/abc.py",
+      "sha256": "a726c48590b21ba5532f0c654735991571bc0ecafe88145cb8891d82cd364e5e"
+    },
+    "importlib.resources.readers": {
+      "bytes": 6243,
+      "path": "/usr/lib/python3.14/importlib/resources/readers.py",
+      "sha256": "f64855ffaa44f6c21ffc49e77b8cbfeeca37183bf7f7d3aecb30cb079ab45939"
+    },
+    "importlib.util": {
+      "bytes": 11414,
+      "path": "/usr/lib/python3.14/importlib/util.py",
+      "sha256": "7bdfadad42664ba169ffac8160765673cd79937f74324f4664de8d820c35b863"
+    },
+    "iniconfig": {
+      "bytes": 7497,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/iniconfig/__init__.py",
+      "sha256": "bb1c9017eea0053a104bd0703f3d8d13e7b9a854e4a364ee765ad64da7220819"
+    },
+    "iniconfig._parse": {
+      "bytes": 5113,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/iniconfig/_parse.py",
+      "sha256": "15824a78105b52aa9ed414ce6ad073967c73be7ea5ae9d991a0df97a6e0cc2e1"
+    },
+    "iniconfig.exceptions": {
+      "bytes": 399,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/iniconfig/exceptions.py",
+      "sha256": "9a2a50fda3310fd0af4af156375a135d8e10b919ca00c6757f7b027668c34d4d"
+    },
+    "inspect": {
+      "bytes": 127725,
+      "path": "/usr/lib/python3.14/inspect.py",
+      "sha256": "7a2878507255eb568a6ecfa04e051009f197513aa052eebc9e7e60d667d78cb4"
+    },
+    "io": {
+      "bytes": 4736,
+      "path": "/usr/lib/python3.14/io.py",
+      "sha256": "1b75584d4efcc612dc0db2ae98619408276585a106f0544879edb5e25b55430a"
+    },
+    "json": {
+      "bytes": 14132,
+      "path": "/usr/lib/python3.14/json/__init__.py",
+      "sha256": "2dd10f1bf4c9ea5478e589216805e7f279d0e4bce134a19efa297404fb87407d"
+    },
+    "json.decoder": {
+      "bytes": 12877,
+      "path": "/usr/lib/python3.14/json/decoder.py",
+      "sha256": "dc98d3e677612ea7311303f06a144cec6b91ebadc7ec037d1777501647578a07"
+    },
+    "json.encoder": {
+      "bytes": 16990,
+      "path": "/usr/lib/python3.14/json/encoder.py",
+      "sha256": "d68a4d04d2cfd95897498307f29349058b42c3f48ea6aa6739714a09200a7d01"
+    },
+    "json.scanner": {
+      "bytes": 2434,
+      "path": "/usr/lib/python3.14/json/scanner.py",
+      "sha256": "572958017eae8842eeddd0e3d18d3c56cc0a197348224915e1d87ce937841764"
+    },
+    "keyword": {
+      "bytes": 1073,
+      "path": "/usr/lib/python3.14/keyword.py",
+      "sha256": "18c2be738c04ad20ad375f6a71db34b3823c7f40b0340f5294d0e89f3c9b093b"
+    },
+    "linecache": {
+      "bytes": 8044,
+      "path": "/usr/lib/python3.14/linecache.py",
+      "sha256": "692daec68e2a419adf46bafc0eb2f8a2fb36c482183fa1ac47e00fec440f7d7e"
+    },
+    "locale": {
+      "bytes": 87190,
+      "path": "/usr/lib/python3.14/locale.py",
+      "sha256": "f2e390ebde2bb52eabcf6d444a6a2e758749f3aa82c61427cbb053332fac56b2"
+    },
+    "logging": {
+      "bytes": 84068,
+      "path": "/usr/lib/python3.14/logging/__init__.py",
+      "sha256": "e525bc1ea1744fca8d5a3d1639082eac53eaced7a8543691ceeae71649be0975"
+    },
+    "lzma": {
+      "bytes": 13426,
+      "path": "/usr/lib/python3.14/lzma.py",
+      "sha256": "b01a78a04c6a9ba6c645758cace78ed53a53871ea3ff88744e23f6263613d507"
+    },
+    "math": {
+      "bytes": 78072,
+      "path": "/usr/lib/python3.14/lib-dynload/math.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "9f8e6891af682979eaf79456d970057eef7ab8b0e4c57fd8f30358869b3b0bdc"
+    },
+    "merlin": {
+      "bytes": 742,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/__init__.py",
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086"
+    },
+    "merlin.common": {
+      "bytes": 144,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/common/__init__.py",
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e"
+    },
+    "merlin.common.dense_float_ir": {
+      "bytes": 4227,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/common/dense_float_ir.py",
+      "sha256": "1e0b9ca12ee5011a8dfb09a3070837f16c6c8d8bd79bbe2ca46d34e5f3bcc505"
+    },
+    "merlin.common.digest": {
+      "bytes": 2083,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/common/digest.py",
+      "sha256": "fe67884c895729e539d3ca638758af39b555ff40b91b4f6828dc31d404c165a9"
+    },
+    "merlin.common.ir_lock": {
+      "bytes": 1747,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/common/ir_lock.py",
+      "sha256": "f6450a205f3984824ae4abe02b005e4aa88364289f84fbc6ec458e8eeacf04ff"
+    },
+    "merlin.common.mlir_query": {
+      "bytes": 14777,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/common/mlir_query.py",
+      "sha256": "614db4d0d4c4deff199919f43d045cbc95768f1c2a16e12cd490add292ed3909"
+    },
+    "merlin.compile": {
+      "bytes": 633,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/__init__.py",
+      "sha256": "92721d5b005b1f6bdb33fb81918f2b1001c9368056bca02172b507fe69eeccce"
+    },
+    "merlin.compile.connected_regions": {
+      "bytes": 18387,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/connected_regions.py",
+      "sha256": "4a5fb1355e1b633d808644c575894267ca618f6c97d73cbc56695c2e11371ba4"
+    },
+    "merlin.compile.fusion_discovery": {
+      "bytes": 16086,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/fusion_discovery.py",
+      "sha256": "48c40d6e9963e89dd6030e8af0268d3820ef33267da73800d9de12cc95b3288d"
+    },
+    "merlin.compile.scheduling": {
+      "bytes": 1895,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/__init__.py",
+      "sha256": "0811ba56924f50f4ef550de4dce72c481bccd30a932f0963e82a1151b8783669"
+    },
+    "merlin.compile.scheduling.block_schedule": {
+      "bytes": 57909,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/block_schedule.py",
+      "sha256": "69b05df24007d8b9023c1e986e0c5a93cf8485ddce97d64e58c5e79ba659dd62"
+    },
+    "merlin.compile.scheduling.compact_dense": {
+      "bytes": 30683,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/compact_dense.py",
+      "sha256": "bfe8e45bc18bf7613ad54c766ed9c1eaad0db90b11c552a4b8d274de8667b304"
+    },
+    "merlin.compile.scheduling.compact_dense_group": {
+      "bytes": 20584,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/compact_dense_group.py",
+      "sha256": "ea2a3aaf04f88854ec6934e69fbf5f8a6274f6f199d461266c3eaf2b810f80cf"
+    },
+    "merlin.compile.scheduling.compact_dense_group_check": {
+      "bytes": 20950,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/compact_dense_group_check.py",
+      "sha256": "482ce50ddef779438678c23a4c7270acad3f921984a2fe943ab3a38024c42bba"
+    },
+    "merlin.compile.scheduling.compact_verification": {
+      "bytes": 23928,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/compact_verification.py",
+      "sha256": "a69f00b3638035b5bad2911fa79dbc90eda7150770c5bb7a02a678145acf278a"
+    },
+    "merlin.compile.scheduling.configuration": {
+      "bytes": 9736,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/configuration.py",
+      "sha256": "3dd17bdbc6a08de8ccf2913e4687ca352d5a118017e41dd9e1b1a9edeb8527b8"
+    },
+    "merlin.compile.scheduling.configuration_ir": {
+      "bytes": 19833,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/configuration_ir.py",
+      "sha256": "64eca6d38dd7c557c7a340f8faa77790fe692b6bdc3db895d756ff4b9cb3782d"
+    },
+    "merlin.compile.scheduling.copy_elimination": {
+      "bytes": 5258,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/copy_elimination.py",
+      "sha256": "31d66c0ec4872cc06561fada87f0bcc210babb4629eabd9235d968bff3c48566"
+    },
+    "merlin.compile.scheduling.dense_contracts": {
+      "bytes": 26305,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/dense_contracts.py",
+      "sha256": "7490583811a774699148938a2b2a1a2719f922d4aecbd102146e1d325b5d6da3"
+    },
+    "merlin.compile.scheduling.dense_source": {
+      "bytes": 22791,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/dense_source.py",
+      "sha256": "90b37ddf93199eefa6d36c53bbbfaa37646c1da3b99c66e6713078f04c003727"
+    },
+    "merlin.compile.scheduling.derive": {
+      "bytes": 6930,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/derive.py",
+      "sha256": "10810c48ea0056b235ae0f3a161363578650edd64e402b3505bb6c288d0ee653"
+    },
+    "merlin.compile.scheduling.device_spills": {
+      "bytes": 9430,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/device_spills.py",
+      "sha256": "668bdc114224b68db6e26128238501954d37bda756d9806cb9d819a063a5103d"
+    },
+    "merlin.compile.scheduling.fusion": {
+      "bytes": 15465,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/fusion.py",
+      "sha256": "144298845e4fff2134dc3506466c210fb60ed8aba03208e73a49f53392b3e9e3"
+    },
+    "merlin.compile.scheduling.fusion_contracts": {
+      "bytes": 11419,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/fusion_contracts.py",
+      "sha256": "0a54500cd8e92df596e0732ba9ab2b21e2277fbddbc710a141cc71bff6478d3b"
+    },
+    "merlin.compile.scheduling.fusion_semantics": {
+      "bytes": 7727,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/fusion_semantics.py",
+      "sha256": "923287772d9c2716e3d3e7f18b2956227a9dccc29e4289908cf6d96302b0dada"
+    },
+    "merlin.compile.scheduling.library_sources": {
+      "bytes": 7056,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/library_sources.py",
+      "sha256": "1e6108dc34a998e54ecad85b519cda474f1a673ba884845276e0e8ba10dbd404"
+    },
+    "merlin.compile.scheduling.multioutput_fusion": {
+      "bytes": 20806,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/multioutput_fusion.py",
+      "sha256": "0a1d429e3478c68eeaa23958f7c6c500c41a83534ef72ab646161b365a0ee0bb"
+    },
+    "merlin.compile.scheduling.multioutput_fusion_check": {
+      "bytes": 20517,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/multioutput_fusion_check.py",
+      "sha256": "c24921262f65042f5aad9e5a17d15675e50501bb68220ee9479ec86cf324d30f"
+    },
+    "merlin.compile.scheduling.pointwise_source": {
+      "bytes": 33744,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/pointwise_source.py",
+      "sha256": "b5078dbd3519a5b54147fa11325d819fdda4badd78c4ee8e7d5b59d31605698d"
+    },
+    "merlin.compile.scheduling.program_contracts": {
+      "bytes": 20338,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/program_contracts.py",
+      "sha256": "1b386d67b46b2211b44171620227ee9f2360ddc52f9b3c177a2483f28b2108c0"
+    },
+    "merlin.compile.scheduling.program_limits": {
+      "bytes": 22728,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/program_limits.py",
+      "sha256": "0eaa03348cf16bebcef2ec5dd2658059dbc4a0399f789af741b615f57d0f16e0"
+    },
+    "merlin.compile.scheduling.row_contracts": {
+      "bytes": 16603,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/row_contracts.py",
+      "sha256": "fdac6f442489cfa1a7577279716124230ec99b742154d2335bf8c38f865b87be"
+    },
+    "merlin.compile.scheduling.row_softmax": {
+      "bytes": 40962,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/row_softmax.py",
+      "sha256": "57d53dbad821ed37c0000f585043dcf1310b91bb6153f46f8fc5c5155f347bf9"
+    },
+    "merlin.compile.scheduling.row_softmax_verification": {
+      "bytes": 9995,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/row_softmax_verification.py",
+      "sha256": "c520304653a3b788b32b59707f978620428eef519e5af8d8141f03c8ad4731ce"
+    },
+    "merlin.compile.scheduling.schedule_pipeline": {
+      "bytes": 68429,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/schedule_pipeline.py",
+      "sha256": "3bbb7a5be0ef5e5485e298ea8f3e75ae3897923f9fd16e6f33b82642937126a5"
+    },
+    "merlin.compile.scheduling.selected_contracts": {
+      "bytes": 20957,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/selected_contracts.py",
+      "sha256": "463bd1db9c33bbbff0139819b426ec6f68aaf60b335246fc9bad0dd2d624003d"
+    },
+    "merlin.compile.scheduling.spill_conformance": {
+      "bytes": 16403,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/spill_conformance.py",
+      "sha256": "62c4d210966f7846b047ec4ec3338f84d0285e1cf148676779e73db0b0425f5b"
+    },
+    "merlin.compile.scheduling.spill_contracts": {
+      "bytes": 8119,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/spill_contracts.py",
+      "sha256": "7aeff5b6e27de83a15a4f40fde0246d2b027a9fac9202ba9430ab192d5d96b84"
+    },
+    "merlin.compile.scheduling.storage_contracts": {
+      "bytes": 27303,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/storage_contracts.py",
+      "sha256": "9d3f5a0df073a0a2325fa392da6d28fa3bc3cb5ae00290c4b8d99dac46962814"
+    },
+    "merlin.compile.scheduling.temporary_storage": {
+      "bytes": 33929,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/compile/scheduling/temporary_storage.py",
+      "sha256": "6041a26d852d8468192648355b05f508ac0a7b5aea6ead36401d8e72f9ba628c"
+    },
+    "merlin.frontends": {
+      "bytes": 321,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/frontends/__init__.py",
+      "sha256": "c8685b3ce4e99890bbce99edf32bea9cee5cde243425d383e7bf81db29d87198"
+    },
+    "merlin.frontends.linalg_mlir": {
+      "bytes": 12618,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/frontends/linalg_mlir.py",
+      "sha256": "c871a6a47e746f92e26831b0b34ba4599dd2a67e5fb0bd33d079e858e091911e"
+    },
+    "merlin.llvmlower": {
+      "bytes": 773,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/llvmlower/__init__.py",
+      "sha256": "8a2a6206e74b555f98b42b04c78f8ad19b96807442e9a54e98a0baaf72bcbf6d"
+    },
+    "merlin.llvmlower.borrowed_buffer_calls": {
+      "bytes": 23673,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/llvmlower/borrowed_buffer_calls.py",
+      "sha256": "f678751861a0bc6165624b58de4ef2a8fd93e2f8fdb741f178b07bbc0f413696"
+    },
+    "merlin.llvmlower.cpu_softmax": {
+      "bytes": 9201,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/llvmlower/cpu_softmax.py",
+      "sha256": "3370f42d1f8563530af38ddb1ee91d6f44c197bae351d191e4959aa7b9ab7527"
+    },
+    "merlin.llvmlower.source_multioutput": {
+      "bytes": 13415,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/llvmlower/source_multioutput.py",
+      "sha256": "eb0dcf3c086eb30128109b9feaa99c60ae4384dd67372079b681110051cb8f1c"
+    },
+    "merlin.llvmlower.source_pointwise": {
+      "bytes": 11030,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/llvmlower/source_pointwise.py",
+      "sha256": "62b3d661a491fc20a4b6885b5484688ba03cc5aee29a22293279b100fcc3d93a"
+    },
+    "merlin.sched": {
+      "bytes": 668,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/__init__.py",
+      "sha256": "b84e4c42421f5277d338c12ae9726ba256befa5c1491d4928c2da994fc1ee7a0"
+    },
+    "merlin.sched.codegen": {
+      "bytes": 8657,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/codegen/__init__.py",
+      "sha256": "79f3b954801d5a06209fbdf3b7385dee43e8c77c9774231f264989af2892bb63"
+    },
+    "merlin.sched.ir": {
+      "bytes": 935,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/ir/__init__.py",
+      "sha256": "7783c6bfc27bde3f32164ca70803d6d4d21dde9e812363da2c05693a46fedfd9"
+    },
+    "merlin.sched.ir.expr": {
+      "bytes": 5739,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/ir/expr.py",
+      "sha256": "45e311e72c194a679349334e2baa16078c623a39b83ac50c3759116ad5225e76"
+    },
+    "merlin.sched.ir.integer_domain": {
+      "bytes": 3645,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/ir/integer_domain.py",
+      "sha256": "975f54c1607fe7db57425834bf71e2cd3b47cdac7956bbf9223f6c5c18dcbd65"
+    },
+    "merlin.sched.ir.kernel": {
+      "bytes": 16088,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/ir/kernel.py",
+      "sha256": "513697a4a32a8e7302f86de194a2e3af1f374bbc3a1b939f779ea3e273b41e4e"
+    },
+    "merlin.sched.ir.parse": {
+      "bytes": 14514,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/ir/parse.py",
+      "sha256": "ae66843c9dcbde727eb113f541f9c9c3214ef01c4dc1f0ed8035e32bfae758a3"
+    },
+    "merlin.sched.isa": {
+      "bytes": 775,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/isa/__init__.py",
+      "sha256": "b6cd8226548aaa1edfd17bc464b75578ebdbb55d4e12613ed661ecd897bb2310"
+    },
+    "merlin.sched.isa.types": {
+      "bytes": 2683,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/sched/isa/types.py",
+      "sha256": "d36576f047352f0b1230e17e26fcc675f08feb4770ea509dbac919db709cb91b"
+    },
+    "merlin.semantic_compiler": {
+      "bytes": 224,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/__init__.py",
+      "sha256": "f2103ce7e4638a4f655c80f62c61acda55ef8135a293503d0e036bc53724d18b"
+    },
+    "merlin.semantic_compiler.allocate": {
+      "bytes": 21653,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/allocate.py",
+      "sha256": "d680d5bcd3b8d63de40a5be7e0571ad9909e17b23fbb9bc5491ab093b5011673"
+    },
+    "merlin.semantic_compiler.allocation_types": {
+      "bytes": 3561,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/allocation_types.py",
+      "sha256": "08ca15534bc4e1704613712270d356b40f86bd6e2155c3d3c781acdb37cc7c4a"
+    },
+    "merlin.semantic_compiler.egg_bridge": {
+      "bytes": 3079,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/egg_bridge.py",
+      "sha256": "4a017658944366a2b4a2f31e35095ecda126c5694798b80f8b67d8b20f362afc"
+    },
+    "merlin.semantic_compiler.extract": {
+      "bytes": 6223,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/extract.py",
+      "sha256": "315a4a545020fe910c151618f6826cc1c8ee628afc345ef5eaa29efe51b390cf"
+    },
+    "merlin.semantic_compiler.model": {
+      "bytes": 14252,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/model.py",
+      "sha256": "5f784c7b26e458236004bd7e11e058dcf87dd7d5ab66afc969aa1bd4fda8f6b6"
+    },
+    "merlin.semantic_compiler.rules": {
+      "bytes": 24500,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/semantic_compiler/rules.py",
+      "sha256": "378c156c6c79a89254f67a62e7b1021ab5f78e99ffc213389d90da5cad91bfc5"
+    },
+    "merlin.targetgen": {
+      "bytes": 340,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/targetgen/__init__.py",
+      "sha256": "7dae9fca1d8a5a860c76b424adfe208304bf12642774611599e78f7148210c70"
+    },
+    "merlin.targetgen.address_space": {
+      "bytes": 56857,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/targetgen/address_space.py",
+      "sha256": "339c01f53e0203a850a01588d77fc213c950d1ff1339ee6b1aff9fd4fa4d2c64"
+    },
+    "merlin.targetgen.isa_dialect_gen": {
+      "bytes": 16632,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/targetgen/isa_dialect_gen.py",
+      "sha256": "a87f11dcbb7d6a4caf942514d6b677839149ebe56e0d9aae4bd45fe69de7c497"
+    },
+    "merlin.targetgen.isa_spec": {
+      "bytes": 18990,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/targetgen/isa_spec.py",
+      "sha256": "c7504461b20154ad2678d7a0b4e534c6705f76792ee4c49641b05b3ec2c4a5e2"
+    },
+    "merlin.transforms": {
+      "bytes": 1017,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/__init__.py",
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39"
+    },
+    "merlin.transforms.certificates": {
+      "bytes": 9294,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/certificates.py",
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b"
+    },
+    "merlin.transforms.dense_ir": {
+      "bytes": 20596,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/dense_ir.py",
+      "sha256": "b51235a85906b14c48c32a50fe158bc72f5f6726b2ecbdcebf647365e8809e27"
+    },
+    "merlin.transforms.dense_planning": {
+      "bytes": 13852,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/dense_planning.py",
+      "sha256": "da2816b33ae94e1b57cd1126c6d19c5db42cab9322121aab0c0a379720dcb283"
+    },
+    "merlin.transforms.loops": {
+      "bytes": 4572,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/loops.py",
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e"
+    },
+    "merlin.transforms.normalization": {
+      "bytes": 4097,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/normalization.py",
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84"
+    },
+    "merlin.transforms.pipeline": {
+      "bytes": 8634,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pipeline.py",
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0"
+    },
+    "merlin.transforms.pipeline_state": {
+      "bytes": 12317,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pipeline_state.py",
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652"
+    },
+    "merlin.transforms.planning": {
+      "bytes": 12381,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/planning.py",
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39"
+    },
+    "merlin.transforms.pure_scalar": {
+      "bytes": 6617,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/pure_scalar.py",
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06"
+    },
+    "merlin.transforms.scalar_witness": {
+      "bytes": 2083,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/scalar_witness.py",
+      "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31"
+    },
+    "merlin.transforms.unrolling": {
+      "bytes": 7588,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/unrolling.py",
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f"
+    },
+    "merlin.transforms.validation": {
+      "bytes": 10145,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/transforms/validation.py",
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159"
+    },
+    "merlin.verify": {
+      "bytes": 1018,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/verify/__init__.py",
+      "sha256": "efa25d1ea886cb3005f0239a7e8570c13724c9b1d852b31254058c2f0f5b1298"
+    },
+    "merlin.verify.epilogue_applicability": {
+      "bytes": 15851,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/verify/epilogue_applicability.py",
+      "sha256": "98bdd5789a9ffef705a74ecf621be41fbc15f8e80a83a976c3261e5422e9e65f"
+    },
+    "merlin.verify.lean_contract": {
+      "bytes": 9284,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/verify/lean_contract.py",
+      "sha256": "fcb0b8a2812d41d20fa95724c8a54b50dd5763260f63f672bfeb17a8de346ab8"
+    },
+    "merlin.xdsl_dialects": {
+      "bytes": 1724,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/xdsl_dialects/__init__.py",
+      "sha256": "9c1371add3faea356b6678e50e5564056e53583a1859add917f22ba877c5ee00"
+    },
+    "merlin.xdsl_dialects._common": {
+      "bytes": 3722,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/xdsl_dialects/_common.py",
+      "sha256": "557e2516de71b6e8b7a169257a53cfdfaf8f6650b513954c1b084f85d6bb1566"
+    },
+    "merlin.xdsl_dialects.fp8": {
+      "bytes": 7984,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/src/merlin/xdsl_dialects/fp8.py",
+      "sha256": "f6d9e6ef85b56bdb148e776562a80306e366cde6924d3842213cd719f367e86f"
+    },
+    "ntpath": {
+      "bytes": 30905,
+      "path": "/usr/lib/python3.14/ntpath.py",
+      "sha256": "bf16566322f41f7052b7516fb684b2d64a437b39f5bbd21731b1bda1697d1a2e"
+    },
+    "numbers": {
+      "bytes": 11769,
+      "path": "/usr/lib/python3.14/numbers.py",
+      "sha256": "e5e73beba4a7674bd5e9a881a202d403a0c3e2b59af4181699155ea4827a7561"
+    },
+    "numpy": {
+      "bytes": 26277,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/__init__.py",
+      "sha256": "92a46f791e453926d3292af2582b89995a289475f0eaaea71a949823200b838a"
+    },
+    "numpy.__config__": {
+      "bytes": 5301,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/__config__.py",
+      "sha256": "a6a46bd9c0a54ec3dcdcd473791fbd9fdea291e823514304de13c65dea3b14bb"
+    },
+    "numpy._array_api_info": {
+      "bytes": 10385,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_array_api_info.py",
+      "sha256": "ce6ec789062aca14aa165dc9586ece2e1130f891843eaefeefea968575aa559f"
+    },
+    "numpy._core": {
+      "bytes": 6662,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/__init__.py",
+      "sha256": "837ce8aec8693095d2e1c7c306d385d1785a50be97a009935c64cae04e3555d2"
+    },
+    "numpy._core._add_newdocs": {
+      "bytes": 216086,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_add_newdocs.py",
+      "sha256": "bdb68c6da2f3a1048cb2d6123afb6ede6f2bee88c88acb4d330c5485dc1324ce"
+    },
+    "numpy._core._add_newdocs_scalars": {
+      "bytes": 12933,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_add_newdocs_scalars.py",
+      "sha256": "db6f2b889f9dcfd7d5df64ef3a430f532b3fdbfc279c3b94f8451b1757a16efb"
+    },
+    "numpy._core._asarray": {
+      "bytes": 3894,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_asarray.py",
+      "sha256": "f5aa779032cd51c8ca49039fae454fcebd2d64647513576d0884ff61e68525d2"
+    },
+    "numpy._core._dtype": {
+      "bytes": 10547,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_dtype.py",
+      "sha256": "70ce899e3a072d445608780df15990ca37a28838dcc210792ff7cf30e7b5bae3"
+    },
+    "numpy._core._dtype_ctypes": {
+      "bytes": 3726,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_dtype_ctypes.py",
+      "sha256": "28f3e56a40ec3e4b938523abe6a1705b48c9f559e36ef5b811684e6c21d81881"
+    },
+    "numpy._core._exceptions": {
+      "bytes": 5159,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_exceptions.py",
+      "sha256": "5fc120d61ab5b94f0bf7088ec05a368d1aba4b4be78c27606051e3de1016f42a"
+    },
+    "numpy._core._internal": {
+      "bytes": 29437,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_internal.py",
+      "sha256": "c15b426aca730fccd5261139ee1a825abaf298d21d2522aa7f37338cd44598ee"
+    },
+    "numpy._core._methods": {
+      "bytes": 9393,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_methods.py",
+      "sha256": "724facf7e63c5b8fcc2fac14bf31a02cb048d9e28f516d86502ba5077a425476"
+    },
+    "numpy._core._multiarray_umath": {
+      "bytes": 10452729,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_multiarray_umath.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "75eb7a6fdffcad459e89100b5102342ec49b33717cb0f593f1b7146b90ad18d6"
+    },
+    "numpy._core._string_helpers": {
+      "bytes": 2845,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_string_helpers.py",
+      "sha256": "e929a0a22ea80f60ae9e3c014abf41676d079029ef5ba9d33db953394de95a78"
+    },
+    "numpy._core._type_aliases": {
+      "bytes": 3755,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_type_aliases.py",
+      "sha256": "a4d4a14f10ba6af2c1d912fbf8f38eb69150469e773bee5480e4f1962cf58296"
+    },
+    "numpy._core._ufunc_config": {
+      "bytes": 15611,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_ufunc_config.py",
+      "sha256": "0e938bb63600619bfe9028e8f285f9ddcd925b62d0220690ec4a650a48ac45a5"
+    },
+    "numpy._core.arrayprint": {
+      "bytes": 65271,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/arrayprint.py",
+      "sha256": "f7a7c9a96b764436f675560f2dda3990d0d042ae8aa898d2baa40e7f5918209b"
+    },
+    "numpy._core.einsumfunc": {
+      "bytes": 57930,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/einsumfunc.py",
+      "sha256": "b91287b000d50c68c3be44597f9d968d4e18a967c729143aa5efe012bf4f847d"
+    },
+    "numpy._core.fromnumeric": {
+      "bytes": 142658,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/fromnumeric.py",
+      "sha256": "6055d8e195cf7aaae417d23bda203cd35014e3db3d7c28a32e7eb71e858e945f"
+    },
+    "numpy._core.function_base": {
+      "bytes": 19677,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/function_base.py",
+      "sha256": "b8b8f508410c567b0ea4b44db18e28eb09c62e9ec33680fcefdea7de82eeb9c1"
+    },
+    "numpy._core.getlimits": {
+      "bytes": 15003,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/getlimits.py",
+      "sha256": "46d3015808f29584e67eab482f52542a02fb6f0c95c2ca1bd386dc42b9a9ed72"
+    },
+    "numpy._core.memmap": {
+      "bytes": 12651,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/memmap.py",
+      "sha256": "c88b10ea7f64a59ba58204492459136e35709c1e257a8ca2cef529736894e27f"
+    },
+    "numpy._core.multiarray": {
+      "bytes": 56786,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/multiarray.py",
+      "sha256": "ae9b35e60d0150e2ade05d45c1a31dbfeee627dbe668b2b7a1bfc2e3fe53f77f"
+    },
+    "numpy._core.numeric": {
+      "bytes": 83038,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/numeric.py",
+      "sha256": "d75e4d3072e59b477cad20f088d964f6b41c840e7304d3f76fe9f6832d760a9f"
+    },
+    "numpy._core.numerictypes": {
+      "bytes": 15967,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/numerictypes.py",
+      "sha256": "d7924b057d26fcc4206a21ffc81048e6096fd2f5ee794d1aae74b9e915df5319"
+    },
+    "numpy._core.overrides": {
+      "bytes": 7480,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/overrides.py",
+      "sha256": "2bdc18ac0e766e23be366f0605d0f382ea9272d2500e8baf03821e91395fc555"
+    },
+    "numpy._core.printoptions": {
+      "bytes": 1056,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/printoptions.py",
+      "sha256": "345a6fcb96e78dbbea9ca7aa42dd2f784131a400180153688865c7de98255807"
+    },
+    "numpy._core.records": {
+      "bytes": 36754,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/records.py",
+      "sha256": "fd40158fe835806fa832a449440e04f414f72331b733825fc58dd48e6255330d"
+    },
+    "numpy._core.shape_base": {
+      "bytes": 32712,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/shape_base.py",
+      "sha256": "1d6e897dfdb7edf2d71e8ed75254a6e7106b1a947592f88d91af96d1ad2c469e"
+    },
+    "numpy._core.umath": {
+      "bytes": 2140,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/umath.py",
+      "sha256": "450a42560a838a2260e85f23c8398b7d09e7a8d8dd4170376e0d920463060c0b"
+    },
+    "numpy._distributor_init": {
+      "bytes": 421,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_distributor_init.py",
+      "sha256": "14148976054795071ae41ad011560fa059ba2924c98481675ad59b1241214d2a"
+    },
+    "numpy._expired_attrs_2_0": {
+      "bytes": 3771,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_expired_attrs_2_0.py",
+      "sha256": "735b4637a636441b0324e9498dcff127231ea3a1d321d939c75048c6dfab2684"
+    },
+    "numpy._globals": {
+      "bytes": 4155,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_globals.py",
+      "sha256": "d37b1eb1df7d7ae55fdc2bd9d757631344be0bacfe56d8456062b60b23e3722b"
+    },
+    "numpy._pytesttester": {
+      "bytes": 6328,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_pytesttester.py",
+      "sha256": "0e39582fcb8834dd9759ade79e55fa80f1aea0b8dcc750627bf3d0cdba767290"
+    },
+    "numpy._typing": {
+      "bytes": 5466,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_typing/__init__.py",
+      "sha256": "33034ac192a99a0eecf9babd14db781811274926d04a6923f92a71b66329a229"
+    },
+    "numpy._typing._array_like": {
+      "bytes": 4188,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_typing/_array_like.py",
+      "sha256": "10f6547c94a36a6bec589e91b39670c00ff916106961da227dc555b557163e7d"
+    },
+    "numpy._typing._char_codes": {
+      "bytes": 8764,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_typing/_char_codes.py",
+      "sha256": "8f4ee7a64f3635bec8adadb3ed94e553751c38fc2dda033ba992ab3cb7634f8f"
+    },
+    "numpy._typing._dtype_like": {
+      "bytes": 3907,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_typing/_dtype_like.py",
+      "sha256": "1a299be0d4de9405780e7c09bceebd8aad17f7fbdd438071433dd0232632f4c1"
+    },
+    "numpy._typing._nbit": {
+      "bytes": 632,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_typing/_nbit.py",
+      "sha256": "2926cac0e2adb686fee72b53e6f095907ac3327d181efca9b534f28ffe8061cc"
+    },
+    "numpy._typing._nbit_base": {
+      "bytes": 3058,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_typing/_nbit_base.py",
+      "sha256": "9cf669b1096db91e41d22680605f6a0f685efe45e79acb2ffd185a50d16c5beb"
+    },
+    "numpy._typing._nested_sequence": {
+      "bytes": 2639,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_typing/_nested_sequence.py",
+      "sha256": "c2678328b566bc49c1f5e61d77f982355584a1caa6068f0686929661018541ec"
+    },
+    "numpy._typing._scalars": {
+      "bytes": 944,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_typing/_scalars.py",
+      "sha256": "2e15d8d814c799e60acde2197e98efb8c9fee5e38b8d4da7f73ef3d65e5b29ff"
+    },
+    "numpy._typing._shape": {
+      "bytes": 275,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_typing/_shape.py",
+      "sha256": "e9c16ff8b6d2c86f6695f4813861b2ba5f50fc652b95c1d00bd2596be9b6d1c0"
+    },
+    "numpy._typing._ufunc": {
+      "bytes": 156,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_typing/_ufunc.py",
+      "sha256": "1ce91a13eeb05747dddeb9876460b7f580072087fcb72be5cde903e32e064310"
+    },
+    "numpy._utils": {
+      "bytes": 3477,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_utils/__init__.py",
+      "sha256": "8559d9ec2d0c09235b330f99caaf8c282612b5a197e91cea14c9e787b79de1d1"
+    },
+    "numpy._utils._convertions": {
+      "bytes": 329,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_utils/_convertions.py",
+      "sha256": "d3133175e2cece20e61ec44cffc96e121e12fa441d328320e86c4d0c36acebd9"
+    },
+    "numpy._utils._inspect": {
+      "bytes": 7436,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_utils/_inspect.py",
+      "sha256": "cc5b890011f4f03d4a82afde79c6240f53a0834397a75b78a2a8d9c4cd2474b9"
+    },
+    "numpy.dtypes": {
+      "bytes": 1312,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/dtypes.py",
+      "sha256": "cee3f0802d228c5da80d100e27a23d24a85a26e857140ca00722d06a856d4f9e"
+    },
+    "numpy.exceptions": {
+      "bytes": 7709,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/exceptions.py",
+      "sha256": "df16e967d97b1779a1c2dca6be5d2fa84e346a237c6e471e6a8f1a5df66c9795"
+    },
+    "numpy.lib": {
+      "bytes": 3004,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/__init__.py",
+      "sha256": "cd81aea847cfaaaecb0db89da7162cf068023409a8278c50805bc5dd7289e518"
+    },
+    "numpy.lib._array_utils_impl": {
+      "bytes": 1697,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_array_utils_impl.py",
+      "sha256": "1985a2c8da8b43b0c6512057cf46db47a000a994ad0c8c147bbb6c6d9fffd793"
+    },
+    "numpy.lib._arraypad_impl": {
+      "bytes": 33519,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_arraypad_impl.py",
+      "sha256": "69f17907431860505f879f7ac0f69be927464119e4068583b5f84f11fee63131"
+    },
+    "numpy.lib._arraysetops_impl": {
+      "bytes": 37341,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_arraysetops_impl.py",
+      "sha256": "9f896cc0ddc2f4f94ed7cf0b28fa5dba777ec77df3c44788afcd6448d55416b4"
+    },
+    "numpy.lib._arrayterator_impl": {
+      "bytes": 7218,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_arrayterator_impl.py",
+      "sha256": "1ed3800c81ee1bd0036db3138268783ff9ae91ed55fbc13e14d10eddb54e18f0"
+    },
+    "numpy.lib._datasource": {
+      "bytes": 22731,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_datasource.py",
+      "sha256": "ce4f956e7e099431c455adc37ba0373608e79e2cd2262f8717466fbc0e98228e"
+    },
+    "numpy.lib._format_impl": {
+      "bytes": 36884,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_format_impl.py",
+      "sha256": "2a90cc1f9fc635b13815c166b03eda58e1fb11f8ac511e4d9b6d67d147e83691"
+    },
+    "numpy.lib._function_base_impl": {
+      "bytes": 193738,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_function_base_impl.py",
+      "sha256": "b2310fd26d09b566bc50c94be4d3032866503c16a75a5ff67ae994a4a7aea7c9"
+    },
+    "numpy.lib._histograms_impl": {
+      "bytes": 38432,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_histograms_impl.py",
+      "sha256": "52dbbb68041ced9a6c1e7ff4e288149d9ab565c7477e2a5cabd791abcd7ba155"
+    },
+    "numpy.lib._index_tricks_impl": {
+      "bytes": 31519,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_index_tricks_impl.py",
+      "sha256": "0cde783785ad86729ac3dc079a9f77ae8e1abb7d11d2cde9e35447ec91463e2b"
+    },
+    "numpy.lib._iotools": {
+      "bytes": 30876,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_iotools.py",
+      "sha256": "d23b69be99792feff5383236d45fb58b5f6dd5edcbfbac09c517750922dec0bd"
+    },
+    "numpy.lib._nanfunctions_impl": {
+      "bytes": 71399,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_nanfunctions_impl.py",
+      "sha256": "62d1c87a064ab166c6795a192ea7dd4004797f7b63d7a9a33c86cec6ca05e4b4"
+    },
+    "numpy.lib._npyio_impl": {
+      "bytes": 98636,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_npyio_impl.py",
+      "sha256": "557dbdca775fdf05ab660f6694c5d25194634426ddb2a22a7e1706828dc83b82"
+    },
+    "numpy.lib._polynomial_impl": {
+      "bytes": 44125,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_polynomial_impl.py",
+      "sha256": "048794e3f17a3923deb56fdfa30544f29d03775bafb13bb57c9737b928130521"
+    },
+    "numpy.lib._scimath_impl": {
+      "bytes": 15684,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_scimath_impl.py",
+      "sha256": "6f9ffec91cd62483bc75afd9e01f2a41eebc8fc9693bc82db4696f18da65cadc"
+    },
+    "numpy.lib._shape_base_impl": {
+      "bytes": 39013,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_shape_base_impl.py",
+      "sha256": "c9858af506f79e40dae1a4fee13900a06216aa78b95813d0a952156c7c37b311"
+    },
+    "numpy.lib._stride_tricks_impl": {
+      "bytes": 19115,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_stride_tricks_impl.py",
+      "sha256": "d4ff05ee3167787eff06d5fbe0ebdc23a48d9f6890a733e348aa266e1355366c"
+    },
+    "numpy.lib._twodim_base_impl": {
+      "bytes": 33923,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_twodim_base_impl.py",
+      "sha256": "0fe52393e90c6565cc23ac1b8ba44fb347a02e084827309ece0468ac88b085c8"
+    },
+    "numpy.lib._type_check_impl": {
+      "bytes": 19914,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_type_check_impl.py",
+      "sha256": "d2b5b3bcb84c16ab9ddbeca1e7c45515063c0f61a98146039a77e99782b7b563"
+    },
+    "numpy.lib._ufunclike_impl": {
+      "bytes": 6014,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_ufunclike_impl.py",
+      "sha256": "2987a20d544c11fcfdf243a4c3e5d1cb47be8eb4f38c238399d946252afb8cd3"
+    },
+    "numpy.lib._utils_impl": {
+      "bytes": 23499,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_utils_impl.py",
+      "sha256": "96db16f4c329de4d6fc3b22789d8584f97e8f60ae0c33eb6e1fbd17a21c3c967"
+    },
+    "numpy.lib._version": {
+      "bytes": 4783,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/_version.py",
+      "sha256": "0affabe9bf73540e9b0febf2158f2d09746ef5de4eb069e3a976a57d8d9194e0"
+    },
+    "numpy.lib.array_utils": {
+      "bytes": 144,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/array_utils.py",
+      "sha256": "5db732849f52d0894d9cff4dcbacb280b30400259650f34e53cbdebe3d531292"
+    },
+    "numpy.lib.format": {
+      "bytes": 477,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/format.py",
+      "sha256": "9e9274789853eee28d2b96b49423067e226ff91e23c8d86220f7996c970d5c1b"
+    },
+    "numpy.lib.introspect": {
+      "bytes": 2749,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/introspect.py",
+      "sha256": "e97a1b86c7a928352ff339a83e47d53391206421afeb53f63ca97f6916c49074"
+    },
+    "numpy.lib.mixins": {
+      "bytes": 7195,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/mixins.py",
+      "sha256": "cd047e8888c2492796c5ea4ae62fbbba34967f0163ad467fab18deac88a4c3a6"
+    },
+    "numpy.lib.npyio": {
+      "bytes": 68,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/npyio.py",
+      "sha256": "79a3ef7c7192cd413bd132471cb3823c85fd1b98a132e0447b1cbafcf36127d4"
+    },
+    "numpy.lib.scimath": {
+      "bytes": 169,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/scimath.py",
+      "sha256": "aa315a41eab4cc4225ee02aa3a16a3fef9820bf29a15dc9398774b514912a792"
+    },
+    "numpy.lib.stride_tricks": {
+      "bytes": 88,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/lib/stride_tricks.py",
+      "sha256": "c74fc17f097270102547706fa714e775e3fde9d1c14ff7c049b9134d3cc16202"
+    },
+    "numpy.linalg": {
+      "bytes": 2076,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/linalg/__init__.py",
+      "sha256": "b50025b9aa09f4e77b1a67d7c03b8915a86cc1549179084da21a1a1a5d613d02"
+    },
+    "numpy.linalg._linalg": {
+      "bytes": 114861,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/linalg/_linalg.py",
+      "sha256": "e47d0e2aed21361291cd6651999a59e6479ba5866abb8eabb1dbea5b0d1618ac"
+    },
+    "numpy.linalg._umath_linalg": {
+      "bytes": 231777,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/linalg/_umath_linalg.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "9044fb4c88488c93acdcb13ed4b7c4d639fada857456bb0254a190deb2e12aa7"
+    },
+    "numpy.matrixlib": {
+      "bytes": 243,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/matrixlib/__init__.py",
+      "sha256": "52de88a9f8ee03e930c28e8704e6008058d75c2fe1ed857fdc7c83b0a33bd9d9"
+    },
+    "numpy.matrixlib.defmatrix": {
+      "bytes": 30875,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/matrixlib/defmatrix.py",
+      "sha256": "c29c3a95953d5faaa9f30009a240d7b76441acbd5e5ea96606dfa88c8c18ce55"
+    },
+    "numpy.version": {
+      "bytes": 293,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/version.py",
+      "sha256": "833eb1051581de6bf4d23cd6f090e0fa4cbab6c548463dc718b5be62920fa2d7"
+    },
+    "opcode": {
+      "bytes": 3152,
+      "path": "/usr/lib/python3.14/opcode.py",
+      "sha256": "1036d90c917bb27c540ac3205d22896ee747214df1f2682458ab915758e4fdf2"
+    },
+    "operator": {
+      "bytes": 11158,
+      "path": "/usr/lib/python3.14/operator.py",
+      "sha256": "a9f9910965c31f841caad0447ee47299ac539a371422aefe200c86c60f3b4697"
+    },
+    "os": {
+      "bytes": 41958,
+      "path": "/usr/lib/python3.14/os.py",
+      "sha256": "976bdb3e24925f2fb3ce43a4d788de6dcbb88a7cc8604c60ae690fbdd6507546"
+    },
+    "os.path": {
+      "bytes": 18813,
+      "path": "/usr/lib/python3.14/posixpath.py",
+      "sha256": "8a5bc2b6674e76efe0f507b873a41d746beba466a191153ed18a7580ef6e08e1"
+    },
+    "pathlib": {
+      "bytes": 46807,
+      "path": "/usr/lib/python3.14/pathlib/__init__.py",
+      "sha256": "042a4d0a5e1ef66778daa86dc269af205bd42d06e793e53d8b99dff4c45928ca"
+    },
+    "pathlib._os": {
+      "bytes": 18161,
+      "path": "/usr/lib/python3.14/pathlib/_os.py",
+      "sha256": "61e844988e54bdf47c0b11ad2b3fd961f058bb370793428f4c6868bd40cab6f2"
+    },
+    "pickle": {
+      "bytes": 69690,
+      "path": "/usr/lib/python3.14/pickle.py",
+      "sha256": "c9998751cf3b94536b4c2cffd6bb719fa1ee6027bd1bd37235d597c9ecf9f98c"
+    },
+    "pkgutil": {
+      "bytes": 16055,
+      "path": "/usr/lib/python3.14/pkgutil.py",
+      "sha256": "c0ae4cc6a6d36be016d77764cf846c0da4b1b85229d94f090ac994495fc2f203"
+    },
+    "platform": {
+      "bytes": 49128,
+      "path": "/usr/lib/python3.14/platform.py",
+      "sha256": "240eba74565cd0dc4f99f182f7afc32bbea0593016ddb34165b529b5bcb6be0a"
+    },
+    "pluggy": {
+      "bytes": 811,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pluggy/__init__.py",
+      "sha256": "0fa769d609840e3b43a7c840c1073eaab81aba59cbe2296daea90b0ddfa0f6d8"
+    },
+    "pluggy._callers": {
+      "bytes": 5991,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pluggy/_callers.py",
+      "sha256": "804665946692615b2c676526a4d7e6602d1b755821da361b0057982afb913236"
+    },
+    "pluggy._hooks": {
+      "bytes": 25218,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pluggy/_hooks.py",
+      "sha256": "13a7f79d8708e9d6c4b8ed069b2eb5a3380653fe7dfdeebd902d3c6b4e8406ea"
+    },
+    "pluggy._manager": {
+      "bytes": 20219,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pluggy/_manager.py",
+      "sha256": "2b8229fe99048ef4f6a0e21f40fa7c0b0016a1756710d81045ccbdb651a28b4a"
+    },
+    "pluggy._result": {
+      "bytes": 3098,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pluggy/_result.py",
+      "sha256": "dd77f2ec3ae35db61bee9b91aaec98d956e274858daba3e9ed09ee12531d8fc4"
+    },
+    "pluggy._tracing": {
+      "bytes": 2073,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pluggy/_tracing.py",
+      "sha256": "9d777604298381ff2327157e1cedcfab147e595e777969c5f01e001759c91a0a"
+    },
+    "pluggy._version": {
+      "bytes": 511,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pluggy/_version.py",
+      "sha256": "e45189369f4b924f6e3b17828d7a68086045efd02be8b18f391efe6ad06a6ffe"
+    },
+    "pluggy._warnings": {
+      "bytes": 828,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pluggy/_warnings.py",
+      "sha256": "b5dd00bd90697da9ab8820b73aab0bc31321f92cc03237e399ce7c4f9bcfde5c"
+    },
+    "posixpath": {
+      "bytes": 18813,
+      "path": "/usr/lib/python3.14/posixpath.py",
+      "sha256": "8a5bc2b6674e76efe0f507b873a41d746beba466a191153ed18a7580ef6e08e1"
+    },
+    "pprint": {
+      "bytes": 24412,
+      "path": "/usr/lib/python3.14/pprint.py",
+      "sha256": "0b807d4a62c4292ead5b64e1b455f98b0ba225667ff3ee74bd7e0b873620402d"
+    },
+    "py": {
+      "bytes": 329,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/py.py",
+      "sha256": "b71675b5d9845ba0814e9e88767f88dac3b3cc0d3128da028bd45edbb523e871"
+    },
+    "py.error": {
+      "bytes": 3475,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_py/error.py",
+      "sha256": "90643b17cfdf67a615061031faef669134014f1d2a231c6754c0b40a088e77bd"
+    },
+    "py.path": {
+      "bytes": 49229,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/_pytest/_py/path.py",
+      "sha256": "72a0a7d1a9b32a1a92aa25b55b3b782aabc52369dc281cc69f011152c5a90bfd"
+    },
+    "pygments": {
+      "bytes": 2962,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/__init__.py",
+      "sha256": "83fe99688e06ed80d7d44d325f79027de83a434c60f249bceffd67fda3e7d2b1"
+    },
+    "pygments.console": {
+      "bytes": 1721,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/console.py",
+      "sha256": "0b5f3d240c210b5421d002a0b21cdbd70543cc5a819efd55678e644c40c83b7d"
+    },
+    "pygments.filter": {
+      "bytes": 1913,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/filter.py",
+      "sha256": "d5d9db92ad80742dc0907b770da5f09ce91304b0a1975911ea76922f09ebfed7"
+    },
+    "pygments.filters": {
+      "bytes": 40349,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/filters/__init__.py",
+      "sha256": "d37658748626c6758287b80d5c3ee5110f3af437f89331e7386338e222716a7f"
+    },
+    "pygments.formatter": {
+      "bytes": 4369,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/formatter.py",
+      "sha256": "3d30674d6d041e47b6bf39402aebc72648f7fbf08c8fc76e231fb7c955227bea"
+    },
+    "pygments.formatters": {
+      "bytes": 5352,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/formatters/__init__.py",
+      "sha256": "a8f1b8ab972e69944606096610954b3f8483bf8dd0237b4052c923df433e98e6"
+    },
+    "pygments.formatters._mapping": {
+      "bytes": 4176,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/formatters/_mapping.py",
+      "sha256": "d42c37ec5b9094d69c9f144a9ad94f5f89f22e85fdfedb64a39670b1c354659e"
+    },
+    "pygments.formatters.terminal": {
+      "bytes": 4629,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/formatters/terminal.py",
+      "sha256": "abb8cb2da9e57b7dde099903af80a81c037e7470457f50c1862e0570143cff51"
+    },
+    "pygments.lexer": {
+      "bytes": 35155,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/lexer.py",
+      "sha256": "2037632e5c3bbf18c6c12a14dc38815e0584b16b2e81e7b765c04af1b3e1b738"
+    },
+    "pygments.lexers": {
+      "bytes": 12070,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/lexers/__init__.py",
+      "sha256": "1b876da84e5030402aa1a683d6bc126597aea8a84cc92e2eb65333d6cce4ad38"
+    },
+    "pygments.lexers._mapping": {
+      "bytes": 71218,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/lexers/_mapping.py",
+      "sha256": "fd7e1ac14a895e47591c7a911460ebbe2a47caed81159ea292776c08a122b4fa"
+    },
+    "pygments.lexers.diff": {
+      "bytes": 5385,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/lexers/diff.py",
+      "sha256": "fbadbb966b98a49dae51550cfe8ad51a05c91972011925476e696a7e508479a3"
+    },
+    "pygments.lexers.python": {
+      "bytes": 54574,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/lexers/python.py",
+      "sha256": "e7a326fd60673e33dab44397c99abe3f108224d619a34e5b20af5ed62eb603a5"
+    },
+    "pygments.modeline": {
+      "bytes": 1008,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/modeline.py",
+      "sha256": "99ef20e6bc9289dbcfb4c04eac3cb63b5b0ca99774da5047318e4a0d979f530b"
+    },
+    "pygments.plugin": {
+      "bytes": 1933,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/plugin.py",
+      "sha256": "f4d2931f3bbd495ee17d8dfe4d50b863bc10c7cdc2f22e4b82cdfe0014c131b4"
+    },
+    "pygments.regexopt": {
+      "bytes": 3313,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/regexopt.py",
+      "sha256": "2a8f57b570e22c429ead6683e78f7692b08159da6666982f924994fce911992a"
+    },
+    "pygments.styles": {
+      "bytes": 2009,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/styles/__init__.py",
+      "sha256": "daf8062a76f2b749dffc248312d3211f1a693d200faf68da7f39791625c5b86b"
+    },
+    "pygments.styles._mapping": {
+      "bytes": 3381,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/styles/_mapping.py",
+      "sha256": "300df2a81cbee4921cf706b0c4ff32ff4198bfb216451e8e2e8fadd285061134"
+    },
+    "pygments.token": {
+      "bytes": 6229,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/token.py",
+      "sha256": "0d58a5e53da5b479138104d4632d5d32d8328a08dabc2b35ca913841fd82ac6a"
+    },
+    "pygments.unistring": {
+      "bytes": 63211,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/unistring.py",
+      "sha256": "678c381df395521b9e09445191f840a90d9bfbaf54ce4858e31b877af604cb98"
+    },
+    "pygments.util": {
+      "bytes": 10770,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pygments/util.py",
+      "sha256": "37432e828279a6e031c557865aa1daa2b242f4770792f45489a8536dc592e3c5"
+    },
+    "pytest": {
+      "bytes": 5644,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/pytest/__init__.py",
+      "sha256": "ee37885c9583f843390684dfb496907f87a0905128e7a3cf4ad227f49ff34c2d"
+    },
+    "random": {
+      "bytes": 37553,
+      "path": "/usr/lib/python3.14/random.py",
+      "sha256": "cf8e72f887d838e273c274b79758b2bf8630a0927112b8876fa3a9e4b9b1756b"
+    },
+    "re": {
+      "bytes": 17876,
+      "path": "/usr/lib/python3.14/re/__init__.py",
+      "sha256": "741a9de729ed8207bfa19db990f8826f1bf3661f33d0970a80c08cd1338ebc35"
+    },
+    "re._casefix": {
+      "bytes": 5444,
+      "path": "/usr/lib/python3.14/re/_casefix.py",
+      "sha256": "1b12d9136f23db6c3f6f26053fefc15ca964b886838c7b9c1fabf8d2efc1e5c8"
+    },
+    "re._compiler": {
+      "bytes": 26855,
+      "path": "/usr/lib/python3.14/re/_compiler.py",
+      "sha256": "d49f30cf9a1dbae33b200ed8befd9d0ce3ac612783a10ac35196536f98923e91"
+    },
+    "re._constants": {
+      "bytes": 6036,
+      "path": "/usr/lib/python3.14/re/_constants.py",
+      "sha256": "42253b3181b81aad6c46392f44a0ab26dcfa31feea411296f43ba16616a1ab0b"
+    },
+    "re._parser": {
+      "bytes": 40353,
+      "path": "/usr/lib/python3.14/re/_parser.py",
+      "sha256": "e57bd194a2d42398355ae7c1ccc2ddfb78421dd431eb81e3809dbe8ca9057dc4"
+    },
+    "reprlib": {
+      "bytes": 8064,
+      "path": "/usr/lib/python3.14/reprlib.py",
+      "sha256": "b04872e10d76252e44eae50cc785eb0fe478491afc4d7f0825a93f82b2eaba5f"
+    },
+    "select": {
+      "bytes": 36392,
+      "path": "/usr/lib/python3.14/lib-dynload/select.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "5b30d9bb7e632770a1763885bc98b5430abef470496d3e6dccea5b1b7a6e8531"
+    },
+    "selectors": {
+      "bytes": 19457,
+      "path": "/usr/lib/python3.14/selectors.py",
+      "sha256": "4b8a60cfbb619d080f87dffe1578372e56e8c0ac826f043224a154cf7b77606d"
+    },
+    "shlex": {
+      "bytes": 13756,
+      "path": "/usr/lib/python3.14/shlex.py",
+      "sha256": "aeda1c54188363d907654a19d338e5961416ebec2e2f506afab19be61ada8120"
+    },
+    "shutil": {
+      "bytes": 60235,
+      "path": "/usr/lib/python3.14/shutil.py",
+      "sha256": "28a5df6415bf1a7ab36cbd544d6d35ae0f056a198e3872a786dc4e156d5fcd7d"
+    },
+    "signal": {
+      "bytes": 2495,
+      "path": "/usr/lib/python3.14/signal.py",
+      "sha256": "0363c964c90ac0b3e515de5749205e6e6454051a1211058375d84d91eab6071a"
+    },
+    "site": {
+      "bytes": 25768,
+      "path": "/usr/lib/python3.14/site.py",
+      "sha256": "bf3567b10092d10189a9f7eb12eb1f0c72d023c0d4e72cfa93a5f2e7d3122fd0"
+    },
+    "stat": {
+      "bytes": 6308,
+      "path": "/usr/lib/python3.14/stat.py",
+      "sha256": "07217986d9b2172b509dab3578d18ac05ba768b418e1f1e8c90e38a8f7c2b3c6"
+    },
+    "string": {
+      "bytes": 12807,
+      "path": "/usr/lib/python3.14/string/__init__.py",
+      "sha256": "8c9751e6ae9776b4e94c1c9850b53c0d24e8407196901aeaebffbb1a11a64e05"
+    },
+    "struct": {
+      "bytes": 285,
+      "path": "/usr/lib/python3.14/struct.py",
+      "sha256": "50c14e55f94957804c1e45e975fedbe8e86f7e1dbb745b150370ff681155370a"
+    },
+    "subprocess": {
+      "bytes": 90732,
+      "path": "/usr/lib/python3.14/subprocess.py",
+      "sha256": "6628ffdd65c093a6c08cae01ffe82877d3ced515aac9e7be0cff16512c30a7d9"
+    },
+    "sysconfig": {
+      "bytes": 29047,
+      "path": "/usr/lib/python3.14/sysconfig/__init__.py",
+      "sha256": "b40242a0824caab81d6eab15f249c0a7ff464c6a4b9ad633de0382e0604488e2"
+    },
+    "tempfile": {
+      "bytes": 33112,
+      "path": "/usr/lib/python3.14/tempfile.py",
+      "sha256": "3714372b63f6bc05a5273425d446f6ad3a2112a659c71c321bb4575fd082d634"
+    },
+    "test_multi_output_provider": {
+      "bytes": 27636,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/merlin/tests/infra/test_multi_output_provider.py",
+      "sha256": "9b78ae5bfb435fe282ae5e65d8a9450471707449b45c998e33415349d3d66c5c"
+    },
+    "test_multi_output_source": {
+      "bytes": 23747,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/merlin/tests/infra/test_multi_output_source.py",
+      "sha256": "acf76852c42f5d57455d89dc963cc2c68f35583aa53074e14e6690917d35b037"
+    },
+    "test_shared_lhs_provider": {
+      "bytes": 37563,
+      "path": "/home/jeremy/Projects/merlin-graph-proof-intake/merlin/tests/infra/test_shared_lhs_provider.py",
+      "sha256": "855c1ff7c111b8ee779b9bcdb8581ff54377cff92abb620e417330538fdf96ab"
+    },
+    "textwrap": {
+      "bytes": 19382,
+      "path": "/usr/lib/python3.14/textwrap.py",
+      "sha256": "7f05d89c983f5aa8cefcff707a9cc561ed60c51fc8a68e2e3ab61cc6dfa84544"
+    },
+    "threading": {
+      "bytes": 56923,
+      "path": "/usr/lib/python3.14/threading.py",
+      "sha256": "5323909624ec2165e70b6d31333e4191b63d383d2dc5a7d7d516a3475ea2b7e3"
+    },
+    "token": {
+      "bytes": 2584,
+      "path": "/usr/lib/python3.14/token.py",
+      "sha256": "61d4270311099c8a0c0b2e45fb363fd1c4e347a720bcc25f682b63dc28c34234"
+    },
+    "tokenize": {
+      "bytes": 21849,
+      "path": "/usr/lib/python3.14/tokenize.py",
+      "sha256": "65ba1bacdc42e768382208ff27f3001ee77d9d61aafba686c67652d22b84b330"
+    },
+    "traceback": {
+      "bytes": 70064,
+      "path": "/usr/lib/python3.14/traceback.py",
+      "sha256": "a8fbeea470aa4e29691560de889de136570bead76d9c8a2b6a891849c047a3b3"
+    },
+    "types": {
+      "bytes": 11464,
+      "path": "/usr/lib/python3.14/types.py",
+      "sha256": "8c54d3d5ffc1d1204237e6c69b25c27c7b05b483128f185eeed9ba7ef2229ac2"
+    },
+    "typing": {
+      "bytes": 136036,
+      "path": "/usr/lib/python3.14/typing.py",
+      "sha256": "de569368c2c4958b7aaddbe755056860a89b1d313f69d437177864f37cb2503b"
+    },
+    "typing_extensions": {
+      "bytes": 165012,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/typing_extensions.py",
+      "sha256": "4040ca1a1ecbee00d1385c12a93084d1c5bd46f0b774f07e5ae7e91c4f55e696"
+    },
+    "unicodedata": {
+      "bytes": 742424,
+      "path": "/usr/lib/python3.14/lib-dynload/unicodedata.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "4140134f67ab3c923038d738413589e44366a9428908067e71875ae885673adf"
+    },
+    "uuid": {
+      "bytes": 38286,
+      "path": "/usr/lib/python3.14/uuid.py",
+      "sha256": "915321474fa4b27c3e289751e8ffc86e6a134b1244a37ca9053aeb2bf3c7e150"
+    },
+    "warnings": {
+      "bytes": 1966,
+      "path": "/usr/lib/python3.14/warnings.py",
+      "sha256": "142225786de63c593f1c9abdacf5b4fc0b05dd847f6bed0ebb4b4aa2d4d93b02"
+    },
+    "weakref": {
+      "bytes": 17771,
+      "path": "/usr/lib/python3.14/weakref.py",
+      "sha256": "5e5f727a19a858cb4c56dbaf3e0a138ded02fb954a9a58a840a0764216ae9522"
+    },
+    "xdsl": {
+      "bytes": 628,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/__init__.py",
+      "sha256": "27a3162201d47a8e684ca7b6bc5b41d9410b5397d95abf7ae4161fcecec96e5a"
+    },
+    "xdsl.builder": {
+      "bytes": 11622,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/builder.py",
+      "sha256": "07edf3d0ba3af9083c22310dd98bddd37a3300b7b166466193389aa50aca395a"
+    },
+    "xdsl.context": {
+      "bytes": 11751,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/context.py",
+      "sha256": "398f6fe1a77cb940e30cb499f5ddd3e6d80073fb9d4e3b0ea5bc3f5fdc4b81de"
+    },
+    "xdsl.dialect_interfaces": {
+      "bytes": 549,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/__init__.py",
+      "sha256": "0ce455fc728c51ade6e19ed26ff61c625b9b5f85af77f0976cc6de9504c25556"
+    },
+    "xdsl.dialect_interfaces.constant_materialization": {
+      "bytes": 1069,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/constant_materialization.py",
+      "sha256": "1d805e0a398ccea6bb05684210a22e106600146044902e431129a524eac433b3"
+    },
+    "xdsl.dialect_interfaces.op_asm": {
+      "bytes": 3093,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialect_interfaces/op_asm.py",
+      "sha256": "4ce3e98d238e453d63d3f480ba06cb232e7d0a1571736c67fe784117a1664351"
+    },
+    "xdsl.dialects": {
+      "bytes": 10337,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/__init__.py",
+      "sha256": "09111f29545dac8235bb5b0cbbc63e591c43a92e9b1fa8e4e23815c2c0371afd"
+    },
+    "xdsl.dialects.arith": {
+      "bytes": 42917,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/arith.py",
+      "sha256": "8e58a5ab3c4e7a7b4cc30653a52b8f6f7b9b35574ed88485f1dbd85866ca3b63"
+    },
+    "xdsl.dialects.bufferization": {
+      "bytes": 8739,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/bufferization.py",
+      "sha256": "a04674c3dfafa474603eb397c745cac521f3ab714a891356a1b17f574d877fc0"
+    },
+    "xdsl.dialects.builtin": {
+      "bytes": 114583,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/builtin.py",
+      "sha256": "a58c193c85430bcfb34e6e5dba23f442880f8e9593e07ca313906f4a5775a4e2"
+    },
+    "xdsl.dialects.cf": {
+      "bytes": 14465,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/cf.py",
+      "sha256": "166cdc8ff9958d5990700f659bb70916e716d312acc3f6f0ed0a55087980db22"
+    },
+    "xdsl.dialects.func": {
+      "bytes": 11699,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/func.py",
+      "sha256": "8a0cb3d1cfb47bfea7f642decd5c4b6f742461c6fe89b283f0918e515e8b8f8e"
+    },
+    "xdsl.dialects.linalg": {
+      "bytes": 1530,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/linalg/__init__.py",
+      "sha256": "5df06e6ae046770ae1335d9b87377cde410478bd7f4da8a851a1002dc096a67c"
+    },
+    "xdsl.dialects.linalg.abstract_ops": {
+      "bytes": 22147,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/linalg/abstract_ops.py",
+      "sha256": "11e4fa3af06bf395de5191a7ff2b57131637c3f58ab010361542d01cd11c1e66"
+    },
+    "xdsl.dialects.linalg.attrs": {
+      "bytes": 1168,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/linalg/attrs.py",
+      "sha256": "dfded34f41b24e57aec3cef555a69dbc44fb33589ab36f09e3bdd50821c4737f"
+    },
+    "xdsl.dialects.linalg.ops": {
+      "bytes": 50392,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/linalg/ops.py",
+      "sha256": "66102c6ad53ec51d85ab30066febbd627a9676de589d76c6b7b68fa587db1025"
+    },
+    "xdsl.dialects.math": {
+      "bytes": 25108,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/math.py",
+      "sha256": "e33170c9102d53df937fefba3d160b926757f9e18380de749693dfed7e016c67"
+    },
+    "xdsl.dialects.memref": {
+      "bytes": 40815,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/memref.py",
+      "sha256": "216e58c59ab59abe72e12a55c2af9bf89e53569c19479bfc9a7103c387cf28ba"
+    },
+    "xdsl.dialects.scf": {
+      "bytes": 27021,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/scf.py",
+      "sha256": "57a47001029e79e03994fe67de0ed3c95b86ab465103cbd721f1b32b31155ab6"
+    },
+    "xdsl.dialects.tensor": {
+      "bytes": 36569,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/tensor.py",
+      "sha256": "62942a7647975160173603be0ab968fd58275552974520b571ebc0dc5c58d4a9"
+    },
+    "xdsl.dialects.utils": {
+      "bytes": 440,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/__init__.py",
+      "sha256": "9333bca6184814c39e9eaf592f58e6ed493e9898d527ad136fe32f5f59343433"
+    },
+    "xdsl.dialects.utils.bit_enum_attribute": {
+      "bytes": 4759,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/bit_enum_attribute.py",
+      "sha256": "a95bd0416fc8501a6e727ca1315a94b7d8c5cb790358affc1be7c501b3c6501e"
+    },
+    "xdsl.dialects.utils.dimension_list": {
+      "bytes": 1542,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dimension_list.py",
+      "sha256": "a6612af576bd0357107529dd60c4053f48dfcbf03abe6a431c29a55a2d475989"
+    },
+    "xdsl.dialects.utils.dynamic_index_list": {
+      "bytes": 11826,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/dynamic_index_list.py",
+      "sha256": "38daa52c1113b0b9c7e184a812206fca75c99bf89bf2d489f9819525c040c242"
+    },
+    "xdsl.dialects.utils.enum_attribute": {
+      "bytes": 2170,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/enum_attribute.py",
+      "sha256": "a78ec420a097f747703642e1f27f8e41024b087a5244b4dd4709ee537d852dfe"
+    },
+    "xdsl.dialects.utils.fast_math": {
+      "bytes": 684,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/fast_math.py",
+      "sha256": "6b5b526f36fcebd1afee8f3e8cd0e447f5240075885646edd9fbd84b79611b55"
+    },
+    "xdsl.dialects.utils.format": {
+      "bytes": 18761,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/format.py",
+      "sha256": "cc99781fa71fcaf702737a52e8c3c3e37754fdd13d9e7530960714dfa721acec"
+    },
+    "xdsl.dialects.utils.reshape_ops_utils": {
+      "bytes": 5041,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/dialects/utils/reshape_ops_utils.py",
+      "sha256": "20d38aaa290665a1f23c3a7781aacd1cc30e0bc1761cac25a2a4c6bcd45d8db9"
+    },
+    "xdsl.folder": {
+      "bytes": 3430,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/folder.py",
+      "sha256": "3906e6d34b791f4d1de56bd347cb1af8a53424afaebc1c7e97dff2e70da503de"
+    },
+    "xdsl.interfaces": {
+      "bytes": 3803,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/interfaces.py",
+      "sha256": "66a219f8cff8fdf8759426e3ab38f2fedfbd092b09b9daaa2d033831339dc300"
+    },
+    "xdsl.ir": {
+      "bytes": 808,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/__init__.py",
+      "sha256": "9b70e7a611de326f314eb7f5877f896f864519cf73404a98c0ba1448f5f91485"
+    },
+    "xdsl.ir.affine": {
+      "bytes": 296,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/__init__.py",
+      "sha256": "1defb1dab5f098264ce81e6318161a17100e5aeeb8c2fc966327203a5e5a26ba"
+    },
+    "xdsl.ir.affine.affine_expr": {
+      "bytes": 33741,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_expr.py",
+      "sha256": "e52f3d8ffe8f36c050c9868f679e7bf254f25a64dd50e55f17e37a0c2e811061"
+    },
+    "xdsl.ir.affine.affine_map": {
+      "bytes": 17632,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_map.py",
+      "sha256": "b7459de550eb7e16a58c54ef80f0cb799d8d4bdc125eb1aa1431265a2b20217c"
+    },
+    "xdsl.ir.affine.affine_set": {
+      "bytes": 1605,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/affine/affine_set.py",
+      "sha256": "bf5fe3832e0b73c2d09280a92edb4bea307a24d8f81efdb59fbf09dc7892133b"
+    },
+    "xdsl.ir.core": {
+      "bytes": 87560,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/core.py",
+      "sha256": "e4a56ec3e51f856d02ee8230739b5024c91da00260d4bce7c125ff08a6f52c08"
+    },
+    "xdsl.ir.post_order": {
+      "bytes": 1400,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/ir/post_order.py",
+      "sha256": "214c01e0572c013b5de698e3568726c25deb4d641e9e08fd1111b795acac6fe3"
+    },
+    "xdsl.irdl": {
+      "bytes": 302,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/__init__.py",
+      "sha256": "5cac03e289cfd95b58f728d2fe09fd069aec7990e05801d02e6c4b20e8a7e119"
+    },
+    "xdsl.irdl.attributes": {
+      "bytes": 22211,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/attributes.py",
+      "sha256": "5390db1921844923d604abee03d99d2b713b388848a9b2e0f528826fe182e473"
+    },
+    "xdsl.irdl.constraints": {
+      "bytes": 49824,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/constraints.py",
+      "sha256": "83c063f55d9b835d92c16fdd51e1ada3eb4ad84f7bc6a18698793606dcbf7e75"
+    },
+    "xdsl.irdl.declarative_assembly_format": {
+      "bytes": 55097,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format.py",
+      "sha256": "0634b37132aa57248a3000ec873f1664b9890e550b8a7521e0b58cd3ceeea1fb"
+    },
+    "xdsl.irdl.declarative_assembly_format_parser": {
+      "bytes": 39149,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/declarative_assembly_format_parser.py",
+      "sha256": "fc16909fd1530a8bb6681bd944fcae0dd7cfe7ee7ea55aa28ff140744fb508b8"
+    },
+    "xdsl.irdl.operations": {
+      "bytes": 74020,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/irdl/operations.py",
+      "sha256": "7c5c8bf820d4f89942903794e8a1a21ce9aa5c84e451602f3a54c6cb481149d4"
+    },
+    "xdsl.parser": {
+      "bytes": 466,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/__init__.py",
+      "sha256": "a8c23f2dc3bad21336cca3171afa34339dfabf90298dd19ed4e92798e17e823e"
+    },
+    "xdsl.parser.affine_parser": {
+      "bytes": 11088,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/affine_parser.py",
+      "sha256": "77e1a321b84693db30272b42deafb3453475705c00bff128480f7857b2a5c36b"
+    },
+    "xdsl.parser.attribute_parser": {
+      "bytes": 62798,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/attribute_parser.py",
+      "sha256": "2390628c63b7069fd6e4d814e06fbd5da19df487d0b2af469cc0704b3355c13c"
+    },
+    "xdsl.parser.base_parser": {
+      "bytes": 12513,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/base_parser.py",
+      "sha256": "158558fb5b4fb9dc2a7438f0c6cc3cb5276b462a1adb7da44a1eaabe204b8bad"
+    },
+    "xdsl.parser.core": {
+      "bytes": 41286,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/core.py",
+      "sha256": "fea4787ef90a2893e6a55bb9a7c70a3d81304b68a40a30904b330e6919ea37e7"
+    },
+    "xdsl.parser.generic_parser": {
+      "bytes": 11901,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/parser/generic_parser.py",
+      "sha256": "badaa2593ec46f77c0856d62e100fe19195357a40c444dc0b4aed8e1376d92d7"
+    },
+    "xdsl.passes": {
+      "bytes": 6428,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/passes.py",
+      "sha256": "f6833a451a2403c8565bd7688fcd9e862948d0d918c29ecca89c37e5488767c1"
+    },
+    "xdsl.pattern_rewriter": {
+      "bytes": 30506,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/pattern_rewriter.py",
+      "sha256": "759350b3ea7defd18f75161034182100b69778d9be52d47c2e63060eb80f2e38"
+    },
+    "xdsl.printer": {
+      "bytes": 25749,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/printer.py",
+      "sha256": "44d48c3d67a1a60793434c3f92376840f764b0fa2f7a7e835173a0ba819e7765"
+    },
+    "xdsl.rewriter": {
+      "bytes": 11614,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/rewriter.py",
+      "sha256": "ecb85c0cd62c5fdf04fb72291cab1c0145bce8c6cafedf7b2d7eba21121deb47"
+    },
+    "xdsl.traits": {
+      "bytes": 29464,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/traits.py",
+      "sha256": "9a8df8a232a7d79c1836ce40136a5245559b9f6e6f9ea7e5b5f7782d5bcb7a2e"
+    },
+    "xdsl.transforms": {
+      "bytes": 30431,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/__init__.py",
+      "sha256": "38f63ce74615b1584a9e75711570637339dc91aabf0751704b75ebd6593935e4"
+    },
+    "xdsl.transforms.common_subexpression_elimination": {
+      "bytes": 8648,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/common_subexpression_elimination.py",
+      "sha256": "9e10dbdc2cedfc0dae55f2adaf3c7fd16c02079a8dfb0bcbe5f9b18edaaab0e6"
+    },
+    "xdsl.transforms.dead_code_elimination": {
+      "bytes": 5369,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/dead_code_elimination.py",
+      "sha256": "184d6afb7fe59753ef23b9a49701431323bf60fc15d00cfa67c3caa2c684daee"
+    },
+    "xdsl.transforms.loop_invariant_code_motion": {
+      "bytes": 3364,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/transforms/loop_invariant_code_motion.py",
+      "sha256": "6014e7b190213fb952a24cc5376a7f02b28cad6c372d3712b89ab37f3fefb47d"
+    },
+    "xdsl.utils": {
+      "bytes": 0,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "xdsl.utils.arg_spec": {
+      "bytes": 19034,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/arg_spec.py",
+      "sha256": "129d04cfd40731165385cfbf36a836bb528465905c8c7fef45d26414209b714b"
+    },
+    "xdsl.utils.base_printer": {
+      "bytes": 5606,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/base_printer.py",
+      "sha256": "e481727cfc8d6f5019b3e7d0341e25607c6f64c19cabf27c029cdd7ef2c57a9b"
+    },
+    "xdsl.utils.bitwise_casts": {
+      "bytes": 1903,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/bitwise_casts.py",
+      "sha256": "a19b2f68806f22a22c1258fd38dc2568a9a713daaa1bdbe822e9ee8c8134cfd6"
+    },
+    "xdsl.utils.classvar": {
+      "bytes": 1129,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/classvar.py",
+      "sha256": "75817d634d44001d56dc60cf2142e0fc186c7f4c1bacac124c59380350c90627"
+    },
+    "xdsl.utils.comparisons": {
+      "bytes": 3799,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/comparisons.py",
+      "sha256": "d457aaed334bf384daa7aa70238300f39ad9c8ecc636291b5c8cb6bd07e224ac"
+    },
+    "xdsl.utils.diagnostic": {
+      "bytes": 1901,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/diagnostic.py",
+      "sha256": "fdcb80084e612ae2b1b75cd7ecf1c79796e4c912c58fa3ae612fae97447fe0f3"
+    },
+    "xdsl.utils.dialect_loader": {
+      "bytes": 3966,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_loader.py",
+      "sha256": "fc7fbe1d9ea015f6b9caa764797a0849c9cc972efb778d258baee6b0f8bbb9ec"
+    },
+    "xdsl.utils.dialect_stub": {
+      "bytes": 10855,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/dialect_stub.py",
+      "sha256": "e56615befeb25b7ef8dc739ab1afaf7481045af9c13cf82902e1901358f90a43"
+    },
+    "xdsl.utils.exceptions": {
+      "bytes": 3497,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/exceptions.py",
+      "sha256": "2c5a6d5e0a8f44c998cae5a22a3922feb4d226e6de2100d3c976cb47e5a091c0"
+    },
+    "xdsl.utils.hints": {
+      "bytes": 7859,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/hints.py",
+      "sha256": "298718d6044b829594b43ad7e1b1226f8aa9318f73de1e4f806073d39004dacf"
+    },
+    "xdsl.utils.lexer": {
+      "bytes": 5454,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/lexer.py",
+      "sha256": "d2d6d2f8e2bf110426e7663c28eb0626de5334ecbc27e74cec92c21af69fefef"
+    },
+    "xdsl.utils.mlir_lexer": {
+      "bytes": 18808,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/mlir_lexer.py",
+      "sha256": "d2d2b59b9a09d18e2edde2d6ccc2fa49f4e063e19672eab4c158e35d44b32e36"
+    },
+    "xdsl.utils.runtime_final": {
+      "bytes": 812,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/runtime_final.py",
+      "sha256": "37edf56a59a7f385128f5864f07560d2e2535644260141f0f1893bf28a83e7d5"
+    },
+    "xdsl.utils.str_enum": {
+      "bytes": 356,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/str_enum.py",
+      "sha256": "3a5fa8d24f075b14a95a56146f832980d666da690e8c4eb7e5d491c3e813456e"
+    },
+    "xdsl.utils.type": {
+      "bytes": 1540,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/type.py",
+      "sha256": "9c4c1ac090bd0da004fd7db64e4c95e96a2803b1b078e49f669085cbbc74fbce"
+    },
+    "xdsl.utils.worklist": {
+      "bytes": 2081,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/xdsl/utils/worklist.py",
+      "sha256": "dea6f7332e611bea48493d6ce60a478a0f484238ab4ddbe24c84e3f63764d842"
+    },
+    "yaml": {
+      "bytes": 12311,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/__init__.py",
+      "sha256": "b19dfcc333d6a75dfd73073901164507252f271b41d3b5f7d85510033a0547a7"
+    },
+    "yaml._yaml": {
+      "bytes": 2620168,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/_yaml.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "458bd0cb0030102b9bcffb7689696ac87bedcbd5384bc4c7883e7bbe0ce4e0a1"
+    },
+    "yaml.composer": {
+      "bytes": 4883,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/composer.py",
+      "sha256": "fcaa37d16afa783594794a5ab94193dcb720f503c19ce3d59539c8311189f453"
+    },
+    "yaml.constructor": {
+      "bytes": 28639,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/constructor.py",
+      "sha256": "90d8247da78b524c10618fd0e857f54f3d97570fe91b5c5513d024ef3faf88b0"
+    },
+    "yaml.cyaml": {
+      "bytes": 3851,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/cyaml.py",
+      "sha256": "e99ac01bd7c062f7557b614aff0d21997a06ed962ca185306a91bc0a20bbd87d"
+    },
+    "yaml.dumper": {
+      "bytes": 2837,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/dumper.py",
+      "sha256": "3cb72d66563064ba7b5e679477046ebf89d8399d940670c8532f3e94a7cb17ea"
+    },
+    "yaml.emitter": {
+      "bytes": 43006,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/emitter.py",
+      "sha256": "8e086d694ede170837d5b1b407b45979aff6f40762f422a65eafd08e04290a44"
+    },
+    "yaml.error": {
+      "bytes": 2533,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/error.py",
+      "sha256": "021f73fada072546c4f63f8cf18a7181244ce4280b09cc15cc980b2d1176171a"
+    },
+    "yaml.events": {
+      "bytes": 2445,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/events.py",
+      "sha256": "e74fd392c810884e2ea7e94aa3f57e9c1cbeb402319083d0c58e6a0e1282787c"
+    },
+    "yaml.loader": {
+      "bytes": 2061,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/loader.py",
+      "sha256": "5156becc8aa6905482218abf3e04869b835226db4763645fff3438fdbd5f1cdd"
+    },
+    "yaml.nodes": {
+      "bytes": 1440,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/nodes.py",
+      "sha256": "80f28d8fca4a09d87677882bde021820d9cf39a3b11a12405226211919cf13ce"
+    },
+    "yaml.parser": {
+      "bytes": 25495,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/parser.py",
+      "sha256": "8a55a9e6fbe0a07146cef3990c8b45a068c3e83e369e1959ad9ca30306b4a09a"
+    },
+    "yaml.reader": {
+      "bytes": 6794,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/reader.py",
+      "sha256": "d1d9b38ab3a20c6e17a38d519ee412ecaf6b918df18c78956ac7c330d4ea08dc"
+    },
+    "yaml.representer": {
+      "bytes": 14190,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/representer.py",
+      "sha256": "22e58ff9c016f6c1ca1274b4802a926bcf78935060e1c813c5a0f021c6d143e6"
+    },
+    "yaml.resolver": {
+      "bytes": 9004,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/resolver.py",
+      "sha256": "f4bf9561f9b89961f1503d558385fbae30d12bfed565de9bf76c33abb63620a6"
+    },
+    "yaml.scanner": {
+      "bytes": 51279,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/scanner.py",
+      "sha256": "60433788b652690c17710460da5d91e0c753d3318fd85f5e1e42862a71f25906"
+    },
+    "yaml.serializer": {
+      "bytes": 4165,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/serializer.py",
+      "sha256": "0a1b85826854d35863e31808f0668abfabdf33606e8f06bd8bb7761401e3edc0"
+    },
+    "yaml.tokens": {
+      "bytes": 2573,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/tokens.py",
+      "sha256": "953408cd2570f0c83dc2fe39f7e4e388e41eeb05738aa69196a5f6ffcf6ba79e"
+    },
+    "z3": {
+      "bytes": 232,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/__init__.py",
+      "sha256": "54e1833c2df2ca01c33b487180f75580eab8364dc1800a259263b64310069bf3"
+    },
+    "z3.z3": {
+      "bytes": 367434,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/z3.py",
+      "sha256": "e80c1a86f03f0c4a4d2114dffb28d01523140b26780e348bd71d719d155d0001"
+    },
+    "z3.z3consts": {
+      "bytes": 8432,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/z3consts.py",
+      "sha256": "1e6834688dd723f526a8b1d9e4702383b8f1a91e366d5899848abfe9c8c06c3a"
+    },
+    "z3.z3core": {
+      "bytes": 207925,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/z3core.py",
+      "sha256": "17bdfafeb52dfd534c8d718b5e41054e30b2131d6b83571632fa3cacf8a00001"
+    },
+    "z3.z3num": {
+      "bytes": 16384,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/z3num.py",
+      "sha256": "b099dee2352be581ef96fbedc183ac324f03002ee7cf71fbebf6aa1355cd4341"
+    },
+    "z3.z3poly": {
+      "bytes": 1113,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/z3poly.py",
+      "sha256": "fd06029418e5899b300fe3b3a300d110c8e174e633cba8b751314f22a583394e"
+    },
+    "z3.z3printer": {
+      "bytes": 46427,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/z3printer.py",
+      "sha256": "d07e2ec1ca90ee1a7f80a0bf5ad3fded67a0eaa5fd73985dd9cef16989421bf5"
+    },
+    "z3.z3rcf": {
+      "bytes": 5039,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/z3rcf.py",
+      "sha256": "504e0339b1bb06075c19ca52e51457716671218a2f2191d0c9754e0b75bede87"
+    },
+    "z3.z3regex": {
+      "bytes": 5039,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/z3regex.py",
+      "sha256": "4f64903cce356c6fb541041d9c50ce70c8d12a0824592611d87bd603290f83e4"
+    },
+    "z3.z3types": {
+      "bytes": 4883,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/z3types.py",
+      "sha256": "ba728354b4a9ee40bcfbd899f405d904bc4bb023e41807044c06c318548c3080"
+    },
+    "z3.z3util": {
+      "bytes": 11466,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/z3util.py",
+      "sha256": "bd1b436749b0d7700100a6a49fd09f09975c025f156925fc8805ac99e6db50f8"
+    },
+    "zipfile": {
+      "bytes": 92940,
+      "path": "/usr/lib/python3.14/zipfile/__init__.py",
+      "sha256": "adb6f48ee990b42cabfc665d910992c5a30cee31d5d50d846e18e0e45c6a3f31"
+    },
+    "zipfile._path": {
+      "bytes": 11953,
+      "path": "/usr/lib/python3.14/zipfile/_path/__init__.py",
+      "sha256": "319c002564b7deca9ca9dc913f5d06bc32a2f376d291094afa635558af6e17ff"
+    },
+    "zipfile._path.glob": {
+      "bytes": 3314,
+      "path": "/usr/lib/python3.14/zipfile/_path/glob.py",
+      "sha256": "d84da9b313d40544a87657a0ea2f9cf719416fd3c3450724c5d2dde5b475d2b5"
+    },
+    "zipimport": {
+      "bytes": 33466,
+      "path": "/usr/lib/python3.14/zipimport.py",
+      "sha256": "4de64633a484e16c39fdb46a3f939ce7c577b14a6e9ee49b79871ec1880b4597"
+    },
+    "zlib": {
+      "bytes": 45624,
+      "path": "/usr/lib/python3.14/lib-dynload/zlib.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "1684cb3a3e7316b6443f21002ab94caf7081a5bf1bc24d3f018f8ae23a69610f"
+    }
+  },
+  "mapped_host_files": {
+    "/etc/ld.so.cache": {
+      "bytes": 155599,
+      "path": "/etc/ld.so.cache",
+      "sha256": "2d739a1197d8c4afff46bc417f7ebfbdeea443ee63f35a9770685b7ddebb5bfc"
+    },
+    "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy.libs/libgfortran-040039e1-0352e75f.so.5.0.0": {
+      "bytes": 2833617,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy.libs/libgfortran-040039e1-0352e75f.so.5.0.0",
+      "sha256": "c6090048eccc763522c12ef016f81da6b627cb3a044f55cf0479a839c41c0980"
+    },
+    "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy.libs/libquadmath-96973f99-934c22de.so.0.0.0": {
+      "bytes": 250985,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy.libs/libquadmath-96973f99-934c22de.so.0.0.0",
+      "sha256": "6ed5137f412781ad7863439fb543613f620b43c32b63292a0029246162f5bbc6"
+    },
+    "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy.libs/libscipy_openblas64_-32a4b2a6.so": {
+      "bytes": 25409073,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy.libs/libscipy_openblas64_-32a4b2a6.so",
+      "sha256": "05c9f9eb89ee68a4b9d673184fa91c99587e736392c0c2d49180a8aa5303d080"
+    },
+    "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_multiarray_umath.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 10452729,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/_core/_multiarray_umath.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "75eb7a6fdffcad459e89100b5102342ec49b33717cb0f593f1b7146b90ad18d6"
+    },
+    "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/linalg/_umath_linalg.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 231777,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/numpy/linalg/_umath_linalg.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "9044fb4c88488c93acdcb13ed4b7c4d639fada857456bb0254a190deb2e12aa7"
+    },
+    "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/_yaml.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 2620168,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/yaml/_yaml.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "458bd0cb0030102b9bcffb7689696ac87bedcbd5384bc4c7883e7bbe0ce4e0a1"
+    },
+    "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/lib/libz3.so.5.1": {
+      "bytes": 25089088,
+      "path": "/home/jeremy/Projects/merlin/.venv/lib/python3.14/site-packages/z3/lib/libz3.so.5.1",
+      "sha256": "da99bbf1032d8f90698897c0408ade323440bdfda3304a7d1a00cc379d2acfc1"
+    },
+    "/usr/bin/python3.14": {
+      "bytes": 14424,
+      "path": "/usr/bin/python3.14",
+      "sha256": "d78f9cf7178ecff09963551399855543c297f37ac207e626228bfe43cb26a70c"
+    },
+    "/usr/lib/gconv/gconv-modules.cache": {
+      "bytes": 27010,
+      "path": "/usr/lib/gconv/gconv-modules.cache",
+      "sha256": "0fde9bfd93c2ac83b23f0ab2e89f438be92f3c368247410eff58ccc847d7a783"
+    },
+    "/usr/lib/ld-linux-x86-64.so.2": {
+      "bytes": 263152,
+      "path": "/usr/lib/ld-linux-x86-64.so.2",
+      "sha256": "d011113b7054c641c8ca064f58bcc23804fd2654a3dff2444dad06ddeda61bfb"
+    },
+    "/usr/lib/libbrotlicommon.so.1.2.0": {
+      "bytes": 141264,
+      "path": "/usr/lib/libbrotlicommon.so.1.2.0",
+      "sha256": "4f895094b7b6ff9c82909e6516bc9cf212e2ec5af451d39bf1bcbc5e5fa225b2"
+    },
+    "/usr/lib/libbrotlidec.so.1.2.0": {
+      "bytes": 55168,
+      "path": "/usr/lib/libbrotlidec.so.1.2.0",
+      "sha256": "0883fb05fa42aa6a883722098530ab08551ed317e38a2311f5c96e94dd460979"
+    },
+    "/usr/lib/libbrotlienc.so.1.2.0": {
+      "bytes": 780768,
+      "path": "/usr/lib/libbrotlienc.so.1.2.0",
+      "sha256": "8dbc539197d276310ce2750dcb73de5465a1259d46a5d1894e6138fd354bf5c7"
+    },
+    "/usr/lib/libbz2.so.1.0.8": {
+      "bytes": 74720,
+      "path": "/usr/lib/libbz2.so.1.0.8",
+      "sha256": "3265f0647d9157aaa820c5094eba03c5be0f101c49e9ffd21289978b8e1875af"
+    },
+    "/usr/lib/libc.so.6": {
+      "bytes": 2215072,
+      "path": "/usr/lib/libc.so.6",
+      "sha256": "e221b10fee9ee4776d8f0f1701253bc06817f7a4dbe6c5292487277d0bf8ffff"
+    },
+    "/usr/lib/libcrypto.so.3": {
+      "bytes": 5922312,
+      "path": "/usr/lib/libcrypto.so.3",
+      "sha256": "24882a9ce56d9bf2f4c3722772aa8ce99e53b7165d70072ad06c9dd35cee13e3"
+    },
+    "/usr/lib/libffi.so.8.5.0": {
+      "bytes": 51432,
+      "path": "/usr/lib/libffi.so.8.5.0",
+      "sha256": "b38bb3a55ba04dfbb5be68e881a72385d6c30010afffb1cf1dfc373b72c2278c"
+    },
+    "/usr/lib/libgcc_s.so.1": {
+      "bytes": 182512,
+      "path": "/usr/lib/libgcc_s.so.1",
+      "sha256": "e618cb9c90c2eb3a1dad1cfea5b6c1eebcf2e799ad805976f4ae47bdd61c716a"
+    },
+    "/usr/lib/liblzma.so.5.8.4": {
+      "bytes": 219344,
+      "path": "/usr/lib/liblzma.so.5.8.4",
+      "sha256": "6e4dae5b099ec0e40a56beead2e51f858535aa794b5a8574a6723dfc1da8a3c1"
+    },
+    "/usr/lib/libm.so.6": {
+      "bytes": 1268336,
+      "path": "/usr/lib/libm.so.6",
+      "sha256": "965106704753eefe8c31ae7da6daba3ead3d18c52b19b5fcc41178bcc4aa999d"
+    },
+    "/usr/lib/libmpdec.so.4.0.1": {
+      "bytes": 198936,
+      "path": "/usr/lib/libmpdec.so.4.0.1",
+      "sha256": "d1913560ba02c72659c6c8a029a914d9fbb3d1017aa90306972d1f1d212ef50e"
+    },
+    "/usr/lib/libpthread.so.0": {
+      "bytes": 14360,
+      "path": "/usr/lib/libpthread.so.0",
+      "sha256": "839b91403f89fa4c6888d50deb2b59cd0612f8cfe3d57dd9d6314832b4cb31ab"
+    },
+    "/usr/lib/libpython3.14.so.1.0": {
+      "bytes": 6360840,
+      "path": "/usr/lib/libpython3.14.so.1.0",
+      "sha256": "bdff40cf7c514d048c29721bb16acfceceb9fa691d2b111c32ba1f8b77abae39"
+    },
+    "/usr/lib/libstdc++.so.6.0.36": {
+      "bytes": 2939928,
+      "path": "/usr/lib/libstdc++.so.6.0.36",
+      "sha256": "f5fc7380f2ae46fa4053a64be04e7b98109f1066a4bbfff3c37042488aa0be0e"
+    },
+    "/usr/lib/libuuid.so.1.3.0": {
+      "bytes": 34976,
+      "path": "/usr/lib/libuuid.so.1.3.0",
+      "sha256": "7881e0279d5ce79b0d8ace923e94df9b543bc8dd8152df0894358b862e1725be"
+    },
+    "/usr/lib/libz.so.1.3.2": {
+      "bytes": 104464,
+      "path": "/usr/lib/libz.so.1.3.2",
+      "sha256": "9ba92a0b85dc9b659e8f5e596a69452cec801def6ece0883a8a2c1f032e52397"
+    },
+    "/usr/lib/libzstd.so.1.5.7": {
+      "bytes": 939976,
+      "path": "/usr/lib/libzstd.so.1.5.7",
+      "sha256": "f023d49e85fb22057bfdd21857263d2638b73356c06f3b342f678a75212379f8"
+    },
+    "/usr/lib/locale/C.utf8/LC_CTYPE": {
+      "bytes": 369120,
+      "path": "/usr/lib/locale/C.utf8/LC_CTYPE",
+      "sha256": "40680545df4f92443c15e7c6f51a7fdc9154ebedd9eff1ed5c48437039add365"
+    },
+    "/usr/lib/locale/locale-archive": {
+      "bytes": 3064432,
+      "path": "/usr/lib/locale/locale-archive",
+      "sha256": "7bf2da63b17127e5976936957419603a8b057f606dcf56de1e81e9256ad06a32"
+    },
+    "/usr/lib/python3.14/lib-dynload/_bisect.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 23232,
+      "path": "/usr/lib/python3.14/lib-dynload/_bisect.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "37cc54cce8a99509cc0da93dae7c5efc3e596a486eee1f3532e7e6cd9362663f"
+    },
+    "/usr/lib/python3.14/lib-dynload/_blake2.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 93152,
+      "path": "/usr/lib/python3.14/lib-dynload/_blake2.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "c45f991f66756634f0cfe238f559a826858ca990f8b059ada9c680b7f9e37379"
+    },
+    "/usr/lib/python3.14/lib-dynload/_bz2.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 27480,
+      "path": "/usr/lib/python3.14/lib-dynload/_bz2.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "0b9c9491d9ccdf9448886b75db71e83af003495c28ad0c3c74bed2cd3f3b66ce"
+    },
+    "/usr/lib/python3.14/lib-dynload/_ctypes.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 132192,
+      "path": "/usr/lib/python3.14/lib-dynload/_ctypes.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "70bfa0e3a17405eae19fbe5f7f96b2587446c840e64edfe2a2d2f17a8667a0ef"
+    },
+    "/usr/lib/python3.14/lib-dynload/_decimal.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 186544,
+      "path": "/usr/lib/python3.14/lib-dynload/_decimal.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "41a639d7ca16fb2152cf15e76a8a20ef5689544ec597667840dd060f446eb154"
+    },
+    "/usr/lib/python3.14/lib-dynload/_hashlib.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 63424,
+      "path": "/usr/lib/python3.14/lib-dynload/_hashlib.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "ff3cb1b51560b756ade015f07320edb5d2ca455ad4b0a675c0b2e7300135579d"
+    },
+    "/usr/lib/python3.14/lib-dynload/_json.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 44368,
+      "path": "/usr/lib/python3.14/lib-dynload/_json.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "096e14a4e783ac28bbb971898610f67fcc46f56a8d0e4b906cb71e8eaea5c044"
+    },
+    "/usr/lib/python3.14/lib-dynload/_lzma.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 40280,
+      "path": "/usr/lib/python3.14/lib-dynload/_lzma.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "3e5a9f0cfd5810d89f98147c1e2ce6389d7f98107832c11e8d58ebab47bb23fd"
+    },
+    "/usr/lib/python3.14/lib-dynload/_pickle.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 144288,
+      "path": "/usr/lib/python3.14/lib-dynload/_pickle.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "a5c0272379c8a2af2d39dccbd69e3b9077c54cfa0a6018a4ac2c46c27027e6cb"
+    },
+    "/usr/lib/python3.14/lib-dynload/_posixsubprocess.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 26776,
+      "path": "/usr/lib/python3.14/lib-dynload/_posixsubprocess.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "0bcd832e1551bd30ee78621a39bee93669d4406c54c9d2b5897b86421e2c364c"
+    },
+    "/usr/lib/python3.14/lib-dynload/_random.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 18856,
+      "path": "/usr/lib/python3.14/lib-dynload/_random.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "f0286f4680f10a8c6ba3935ef638fde5c22818f3025a130d6ad4e874dbbecec0"
+    },
+    "/usr/lib/python3.14/lib-dynload/_struct.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 54600,
+      "path": "/usr/lib/python3.14/lib-dynload/_struct.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "1750413a74b63c2c5bd9779734e53f44359df1aa683404c7605abf00af7c3d8d"
+    },
+    "/usr/lib/python3.14/lib-dynload/_uuid.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 14480,
+      "path": "/usr/lib/python3.14/lib-dynload/_uuid.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "1c4780c05741f6bb79c5dc4757e04782a33917b3c24dc7e2437ab21624a56684"
+    },
+    "/usr/lib/python3.14/lib-dynload/_zstd.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 53912,
+      "path": "/usr/lib/python3.14/lib-dynload/_zstd.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "53fa01008c7f964c67d6396b2f2f482d85f7564c69f13dc9c7460b4562e3ab5d"
+    },
+    "/usr/lib/python3.14/lib-dynload/binascii.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 27872,
+      "path": "/usr/lib/python3.14/lib-dynload/binascii.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "d6dd20a3495a384f821425551f85ff31e9adfb99aa6c4a327f3e72650eef7f9b"
+    },
+    "/usr/lib/python3.14/lib-dynload/fcntl.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 22768,
+      "path": "/usr/lib/python3.14/lib-dynload/fcntl.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "008aeecebd36b01c44b8c599d119d834cb0472776c554c65adf52de9a8dcc680"
+    },
+    "/usr/lib/python3.14/lib-dynload/grp.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 14936,
+      "path": "/usr/lib/python3.14/lib-dynload/grp.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "e6083a4bb871a9019cec4b7436eb0acc0281cc215f03cb80eb96371676b5491b"
+    },
+    "/usr/lib/python3.14/lib-dynload/math.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 78072,
+      "path": "/usr/lib/python3.14/lib-dynload/math.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "9f8e6891af682979eaf79456d970057eef7ab8b0e4c57fd8f30358869b3b0bdc"
+    },
+    "/usr/lib/python3.14/lib-dynload/select.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 36392,
+      "path": "/usr/lib/python3.14/lib-dynload/select.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "5b30d9bb7e632770a1763885bc98b5430abef470496d3e6dccea5b1b7a6e8531"
+    },
+    "/usr/lib/python3.14/lib-dynload/unicodedata.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 742424,
+      "path": "/usr/lib/python3.14/lib-dynload/unicodedata.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "4140134f67ab3c923038d738413589e44366a9428908067e71875ae885673adf"
+    },
+    "/usr/lib/python3.14/lib-dynload/zlib.cpython-314-x86_64-linux-gnu.so": {
+      "bytes": 45624,
+      "path": "/usr/lib/python3.14/lib-dynload/zlib.cpython-314-x86_64-linux-gnu.so",
+      "sha256": "1684cb3a3e7316b6443f21002ab94caf7081a5bf1bc24d3f018f8ae23a69610f"
+    }
+  },
+  "python": {
+    "bytes": 14424,
+    "path": "/usr/bin/python3.14",
+    "sha256": "d78f9cf7178ecff09963551399855543c297f37ac207e626228bfe43cb26a70c"
+  },
+  "python_version": "3.14.7 (main, Aug 10 2026, 07:46:56) [GCC 16.1.1 20260728]"
+}

@@ -1,0 +1,48 @@
+{
+  "schema": "merlin.frontend.recorded-dependency-review.v1",
+  "inputs": [
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/pure-development-v9/COMMAND-PHASE.json",
+      "bytes": 1122,
+      "sha256": "b5bc5efcdb0af0553a003a80584f8d508c9cb7366efad23e7db5b1543a8f2865"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/pure-development-v9/build/FIRST-ERROR.json",
+      "bytes": 1254,
+      "sha256": "b16a75041fa8e02ea95b423e20ced41d1a40683473d3910f7d429675508154d9"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/pure-development-v9/build/CONTROLLER-SOURCES.json",
+      "bytes": 1133,
+      "sha256": "5e53a229da6a0244df1ef88d362f0e372affb8df1d118ff6c568d2cf96c4781d"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/pure-development-v9/build/commands/0002-Merlin.GraphRegionsDeclaredCaptureFusion-source-imports/PROCESS.json",
+      "bytes": 588,
+      "sha256": "438752312a963155fa3be68184855cf87783206be557cd630525ca308953077c"
+    },
+    {
+      "path": "out/artifacts/verification/graph-regions-declared/pure-development-v9/build/commands/0002-Merlin.GraphRegionsDeclaredCaptureFusion-source-imports/stderr.txt",
+      "bytes": 11190,
+      "sha256": "622b1ac6950a6f6121b36c64530837373588d13fdf69ef828e87e47d5be91538"
+    }
+  ],
+  "sdk_runtime_reads": 0,
+  "native_invocations": 0,
+  "read_original_implementation": "one fresh read-only non-following descriptor; regular-file and pre/post descriptor stats; SHA256 of bytes read; no demonstrated guard bug from source inspection",
+  "observed_digest_matches_other_original_ref": false,
+  "v9_third_header_returncode": 0,
+  "first_mismatch_phase": "POSTCHECK, before runtime parser",
+  "raw_third_trace_contains_libclang": false,
+  "cause": "UNKNOWN",
+  "new_selection_rule": "complete original Init module families plus pre-existing selected runtime; excludes auxiliary/alternative-runtime set as a class",
+  "original_expected_hashes_changed": false,
+  "new_context_scope": "development only after exact-membership tests",
+  "old_profile_status": "PARTIAL/UNQUALIFIED, not retried or promoted",
+  "inspected_read_original_source_ref": {
+    "bytes": 23330,
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/pure-development-v9/controller-snapshot/lean_graph_regions_declared_loader_plan.py",
+    "sha256": "df974ee99e06b53fb91fbae0123987ffe4f18d26c5fd5eacd0de133588761488"
+  },
+  "source_matches_v9_controller_ref": true
+}

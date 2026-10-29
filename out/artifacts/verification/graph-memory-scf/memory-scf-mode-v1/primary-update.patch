@@ -1,0 +1,1983 @@
+diff --git a/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFBounds.lean
+@@ -0,0 +1,45 @@
++/- Signed control and allocation-relative byte safety from the ACTUAL checked
++boundary. These facts do not establish physical base/capacity or scalar fidelity. -/
++import Merlin.GraphLoopsMemorySCFWitness
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsMemorySCF.Model
++
++theorem checked_outer_control {p : Projection} (accepted : check p = true) {boundary : Boundary}
++    (member : boundary ∈ p.boundaries) {outer : Nat} (inside : outer < boundary.segment.bounds.upper) :
++    GraphLoopsSegment.FitsSigned p.reuse.bits outer ∧
++    GraphLoopsSegment.FitsSigned p.reuse.bits (outer + boundary.segment.bounds.step * boundary.segment.bounds.tile) ∧
++    GraphLoopsSegment.FitsSigned p.reuse.bits (min (outer + boundary.segment.bounds.step * boundary.segment.bounds.tile) boundary.segment.bounds.upper) := by
++  have valid := (check_sound accepted).1.2.2.2.1 boundary member
++  have bounds := valid.2.2.2.1.1
++  have bits := valid.2.2.2.2.2.1
++  rw [← bits]
++  exact GraphLoopsSegment.Bounds.outer_control bounds inside
++
++theorem checked_inner_control {p : Projection} (accepted : check p = true) {boundary : Boundary}
++    (member : boundary ∈ p.boundaries) {outer inner : Nat}
++    (inside : inner < min (outer + boundary.segment.bounds.step * boundary.segment.bounds.tile) boundary.segment.bounds.upper) :
++    GraphLoopsSegment.FitsSigned p.reuse.bits inner ∧
++    GraphLoopsSegment.FitsSigned p.reuse.bits (inner + boundary.segment.bounds.step) := by
++  have valid := (check_sound accepted).1.2.2.2.1 boundary member
++  rw [← valid.2.2.2.2.2.1]
++  exact GraphLoopsSegment.Bounds.inner_control valid.2.2.2.1.1 inside
++
++/-- Every admitted initializer store coordinate has a fitting relative byte
++offset. No actual allocator base address or host ABI fact is invented. -/
++theorem checked_initializer_byte_offset {p : Projection} (accepted : check p = true) {boundary : Boundary}
++    (member : boundary ∈ p.boundaries) {coordinates : List Nat}
++    (inside : GraphLoopsReuse.Geometry.Coordinate boundary.config.program.shape coordinates) :
++    GraphLoopsReuse.Geometry.flatten boundary.config.program.shape coordinates *
++      ((GraphLoopsReuse.objectAt p.reuse.objects boundary.config.object).elementBits / 8) < 2 ^ (p.reuse.bits - 1) := by
++  have configValid := ((check_sound accepted).1.2.2.2.1 boundary member).1
++  have objectMember : GraphLoopsReuse.objectAt p.reuse.objects boundary.config.object ∈ p.reuse.objects := by
++    unfold GraphLoopsReuse.objectAt
++    rw [List.getElem?_eq_getElem configValid.1]
++    exact List.mem_of_getElem rfl
++  have objectValid := (check_sound accepted).2.1.2.1 _ objectMember
++  rw [configValid.2.2.1] at inside ⊢
++  exact GraphLoopsReuse.Model.ValidObject.byte_offset objectValid inside
++
++end Merlin.GraphLoopsMemorySCF.Model
+diff --git a/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFModel.lean
+@@ -0,0 +1,105 @@
++/- Recomputed finite facts for complete actual reuse→nested segmentation.
++Python supplies full parsed trees and scoped correspondence. Acceptance checks
++all registry/control links; operational correctness is the existing new root. -/
++import Merlin.GraphLoopsMemorySCFModes
++import Merlin.GraphLoopsSegmentModel
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsMemorySCF.Model
++
++structure Boundary where
++  config : Configuration
++  segment : GraphLoopsSegment.Model.Projection
++  sourceInitializer : String
++  middleInitializer : String
++  segmentationSourceInitializer : String
++  deriving DecidableEq, Repr
++
++structure Projection where
++  reuse : GraphLoopsReuse.Model.Projection
++  boundaries : List Boundary
++  reuseMiddle : String
++  segmentationMiddle : String
++  deriving DecidableEq, Repr
++
++def configs (p : Projection) : List Configuration := p.boundaries.map Boundary.config
++
++def Boundary.Valid (reuse : GraphLoopsReuse.Model.Projection) (boundary : Boundary) : Prop :=
++  boundary.config.Valid reuse.objects ∧
++  boundary.sourceInitializer = boundary.config.key ∧
++  boundary.middleInitializer = boundary.segmentationSourceInitializer ∧
++  GraphLoopsSegment.Model.Numeric boundary.segment ∧ GraphLoopsSegment.Model.Structural boundary.segment ∧
++  boundary.segment.bounds.bits = reuse.bits ∧ boundary.segment.bounds.lower = 0 ∧ boundary.segment.bounds.step = 1 ∧
++  boundary.segment.bounds.upper = boundary.config.program.rows ∧ boundary.segment.bounds.tile = boundary.config.tile ∧
++  ∃ init ∈ reuse.initializers, init.object = boundary.config.object ∧ init.sourceBody = boundary.config.key ∧
++    init.ivs = boundary.config.program.ivs ∧ init.indices = boundary.config.program.leaf.indices
++
++instance (reuse : GraphLoopsReuse.Model.Projection) (boundary : Boundary) : Decidable (boundary.Valid reuse) :=
++  inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _))
++
++def Bound (p : Projection) : GraphLoopsReuse.Instruction → Prop
++  | .initialize object key => ∃ config ∈ configs p, config.object = object ∧ config.key = key
++  | _ => True
++
++instance (p : Projection) (instruction : GraphLoopsReuse.Instruction) : Decidable (Bound p instruction) := by
++  cases instruction <;> unfold Bound <;> infer_instance
++
++def Valid (p : Projection) : Prop :=
++  p.boundaries ≠ [] ∧ p.reuseMiddle = p.segmentationMiddle ∧
++  p.boundaries.length = p.reuse.initializers.length ∧
++  (∀ boundary ∈ p.boundaries, boundary.Valid p.reuse) ∧
++  (∀ instruction ∈ p.reuse.instructions, Bound p instruction) ∧
++  ∀ first ∈ configs p, ∀ second ∈ configs p, first.key = second.key → first = second
++
++instance (p : Projection) : Decidable (Valid p) :=
++  inferInstanceAs (Decidable (_ ∧ _ ∧ _ ∧ _ ∧ _ ∧ _))
++
++def check (p : Projection) : Bool := decide (Valid p) && GraphLoopsReuse.Model.check p.reuse
++
++theorem check_sound {p : Projection} (accepted : check p = true) :
++    Valid p ∧ GraphLoopsReuse.Model.Valid p.reuse ∧ GraphLoopsReuse.Safe p.reuse.objects GraphLoopsReuse.emptyStatus p.reuse.instructions := by
++  obtain ⟨valid, checked⟩ := Bool.and_eq_true_iff.mp accepted
++  exact ⟨of_decide_eq_true valid, GraphLoopsReuse.Model.check_sound checked⟩
++
++theorem checked_configs {p : Projection} (accepted : check p = true) :
++    ∀ config ∈ configs p, config.Valid p.reuse.objects := by
++  intro config member
++  obtain ⟨boundary, boundaryMember, rfl⟩ := List.mem_map.mp member
++  exact ((check_sound accepted).1.2.2.2.1 boundary boundaryMember).1
++
++/-- Source, exact middle and final all use the SAME operational interpretation.
++Multiple changed boundaries compose by instruction-list congruence. -/
++theorem checked_chain {p : Projection} (accepted : check p = true) {Value Public : Type}
++    (meaning : Interpretation Value Public) (source middle : GraphLoopsReuse.Memory Value Public)
++    (same : source.observed = middle.observed) (outcome : Public) :
++    (outcomes p.reuse.objects (configs p) meaning false false p.reuse.instructions source outcome ↔
++      outcomes p.reuse.objects (configs p) meaning true false p.reuse.instructions middle outcome) ∧
++    (outcomes p.reuse.objects (configs p) meaning true false p.reuse.instructions middle outcome ↔
++      outcomes p.reuse.objects (configs p) meaning true true p.reuse.instructions middle outcome) ∧
++    (outcomes p.reuse.objects (configs p) meaning false false p.reuse.instructions source outcome ↔
++      outcomes p.reuse.objects (configs p) meaning true true p.reuse.instructions middle outcome) := by
++  have safe := (Bool.and_eq_true_iff.mp (Bool.and_eq_true_iff.mp accepted).2).2
++  exact checked_reuse_then_segment p.reuse.objects (configs p) p.reuse.instructions (checked_configs accepted) safe meaning source middle same outcome
++
++theorem checked_complete {p : Projection} (accepted : check p = true) {Value Public : Type}
++    (meaning : Interpretation Value Public) (source middle : GraphLoopsReuse.Memory Value Public)
++    (same : source.observed = middle.observed) (outcome : Public) :
++    outcomes p.reuse.objects (configs p) meaning false false p.reuse.instructions source outcome ↔
++      outcomes p.reuse.objects (configs p) meaning true true p.reuse.instructions middle outcome :=
++  (checked_chain accepted meaning source middle same outcome).2.2
++
++/-- Arbitrary common callers may observe the complete public outcome set.
++The mapping from actual unchanged functions/callers is trusted full-tree Python. -/
++theorem checked_context {p : Projection} (accepted : check p = true) {Value Public Outcome : Type}
++    (meaning : Interpretation Value Public) (source middle : GraphLoopsReuse.Memory Value Public)
++    (same : source.observed = middle.observed) (context : (Public → Prop) → Outcome) :
++    context (outcomes p.reuse.objects (configs p) meaning false false p.reuse.instructions source) =
++      context (outcomes p.reuse.objects (configs p) meaning true true p.reuse.instructions middle) := by
++  have equal : outcomes p.reuse.objects (configs p) meaning false false p.reuse.instructions source =
++      outcomes p.reuse.objects (configs p) meaning true true p.reuse.instructions middle := by
++    funext outcome
++    exact propext (checked_complete accepted meaning source middle same outcome)
++  rw [equal]
++
++end Merlin.GraphLoopsMemorySCF.Model
+diff --git a/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFWitness.lean
+@@ -0,0 +1,157 @@
++/- Constructive nonzero initializer witnesses. These instantiate the common
++abstract operation semantics, not native scalar/allocator conformance. Bounds
++remain parameters; no shape-sized proof expansion is used by the validator. -/
++import Merlin.GraphLoopsMemorySCFModel
++
++set_option autoImplicit false
++
++namespace Merlin.GraphLoopsMemorySCF.Witness
++
++def uniform (rows columns outerIV innerIV seed : Nat) : Initializer :=
++  ⟨[rows, columns], [outerIV, innerIV], [], ⟨[], seed, [outerIV, innerIV]⟩⟩
++
++/-- Totality is DERIVED here for explicit constant-store witness bodies only;
++it is never inferred for the arbitrary partial meanings in the main theorem. -/
++theorem scf_exists {State : Type} {body : Nat → State → State → Prop} (upper : Nat)
++    (total : ∀ index, index < upper → ∀ before, ∃ after, body index before after) :
++    ∀ count lower before, upper ≤ lower + count →
++      ∃ trace after, GraphLoopsSegment.Execution body upper 1 lower before trace after := by
++  intro count
++  induction count with
++  | zero =>
++    intro lower before stopped
++    exact ⟨[], before, .done before (by omega)⟩
++  | succ count induction =>
++    intro lower before bound
++    by_cases stopped : upper ≤ lower
++    · exact ⟨[], before, .done before stopped⟩
++    · have inside : lower < upper := by omega
++      obtain ⟨middle, first⟩ := total lower inside before
++      obtain ⟨trace, after, rest⟩ := induction (lower + 1) middle (by omega)
++      exact ⟨lower :: trace, after, .more inside first rest⟩
++
++theorem scf_invariant {State : Type} {body : Nat → State → State → Prop} (invariant : State → Prop)
++    (preserve : ∀ index before after, body index before after → invariant before → invariant after)
++    {upper lower stride : Nat} {before after : State} {trace : List Nat}
++    (run : GraphLoopsSegment.Execution body upper stride lower before trace after) (initial : invariant before) : invariant after := by
++  induction run with
++  | done => exact initial
++  | more _ first _ induction => exact induction (preserve _ _ _ first initial)
++
++theorem leaf_result {Value : Type} (meaning : PureMeaning Value) (outerIV innerIV seed row column : Nat)
++    (different : outerIV ≠ innerIV) (outerFresh : seed ≠ outerIV) (innerFresh : seed ≠ innerIV)
++    (captures : Env Value) (value : Value) (captured : captures seed = some (.scalar value)) :
++    LeafResult meaning ⟨[], seed, [outerIV, innerIV]⟩
++      (put (put captures outerIV (.index row)) innerIV (.index column)) [row, column] value := by
++  refine ⟨_, .done _, ?_, ?_⟩
++  · simp only [put, ite_eq_right innerFresh, ite_eq_right outerFresh, captured]
++  · simp only [read, put, ite_eq_right different, ↓reduceIte, List.map_cons, List.map_nil,
++      Option.pure_def]
++    rfl
++
++def AllValues {Value : Type} (value : Value) (writes : Log Value) : Prop := ∀ event ∈ writes, event.2 = value
++
++theorem uniform_leaf_values {Value : Type} {meaning : PureMeaning Value} {rows columns iv seed index : Nat}
++    (fresh : seed ≠ iv) {captures : Env Value} {value : Value} (captured : captures seed = some (.scalar value))
++    {before after : Log Value} {indices : List Nat}
++    (run : LeafBody meaning ⟨[], seed, indices⟩ [rows, columns] iv captures index before after)
++    (initial : AllValues value before) : AllValues value after := by
++  obtain ⟨emitted, stored, rfl⟩ := run
++  obtain ⟨coordinates, storedValue, ⟨env, evaluated, scalar, _indices⟩, _inside, rfl⟩ := stored
++  cases evaluated
++  have same : storedValue = value := by
++    simp only [put, ite_eq_right fresh, captured] at scalar
++    exact (Datum.scalar.inj (Option.some.inj scalar)).symm
++  subst storedValue
++  intro event member
++  rcases List.mem_append.mp member with previous | last
++  · exact initial event previous
++  · have equal : event = (GraphLoopsReuse.Geometry.flatten [rows, columns] coordinates, value) := List.mem_singleton.mp last
++    exact congrArg Prod.snd equal
++
++theorem uniform_run_exists {Value : Type} (meaning : PureMeaning Value) (rows columns outerIV innerIV seed tile : Nat)
++    (different : outerIV ≠ innerIV) (outerFresh : seed ≠ outerIV) (innerFresh : seed ≠ innerIV)
++    (captures : Env Value) (value : Value) (captured : captures seed = some (.scalar value)) :
++    ∃ writes, Run meaning (uniform rows columns outerIV innerIV seed) tile false captures writes := by
++  have total : ∀ row, row < rows → ∀ before,
++      ∃ after, NestedBody meaning [] ⟨[], seed, [outerIV, innerIV]⟩ rows columns outerIV innerIV captures row before after := by
++    intro row rowInside before
++    have leaves : ∀ column, column < columns → ∀ writes,
++        ∃ after, LeafBody meaning ⟨[], seed, [outerIV, innerIV]⟩ [rows, columns] innerIV
++          (put captures outerIV (.index row)) column writes after := by
++      intro column columnInside writes
++      refine ⟨writes ++ [(row * columns + column, value)], ?_⟩
++      refine ⟨⟨_, _⟩, ⟨[row, column], value, leaf_result meaning outerIV innerIV seed row column different outerFresh innerFresh captures value captured,
++        ⟨rowInside, columnInside, True.intro⟩, rfl⟩, ?_⟩
++      simp only [GraphLoopsReuse.Geometry.flatten, GraphLoopsReuse.Geometry.volume, Nat.mul_one, Nat.add_zero]
++    obtain ⟨trace, after, inner⟩ := scf_exists columns leaves columns 0 before (by omega)
++    exact ⟨after, _, trace, .done _, inner⟩
++  obtain ⟨trace, writes, run⟩ := scf_exists rows total rows 0 [] (by omega)
++  exact ⟨writes, trace, run⟩
++
++theorem uniform_run_values {Value : Type} {meaning : PureMeaning Value} {rows columns outerIV innerIV seed tile : Nat}
++    (outerFresh : seed ≠ outerIV) (innerFresh : seed ≠ innerIV)
++    {captures : Env Value} {value : Value} (captured : captures seed = some (.scalar value)) {writes : Log Value}
++    (run : Run meaning (uniform rows columns outerIV innerIV seed) tile false captures writes) : AllValues value writes := by
++  obtain ⟨_trace, run⟩ := run
++  have source : GraphLoopsSegment.Execution
++      (NestedBody meaning [] ⟨[], seed, [outerIV, innerIV]⟩ rows columns outerIV innerIV captures) rows 1 0 [] _ writes := run
++  apply scf_invariant (AllValues value) (fun row before after body initial => ?_) source (by simp [AllValues])
++  obtain ⟨rowEnv, _trace, computed, inner⟩ := body
++  cases computed
++  have seedValue : put captures outerIV (.index row) seed = some (.scalar value) := (ite_eq_right outerFresh).trans captured
++  exact scf_invariant (AllValues value) (fun _ _ _ leaf initial => uniform_leaf_values innerFresh seedValue leaf initial) inner initial
++
++theorem writes_preserve_uniform {Value : Type} {value : Value} {writes : Log Value}
++    (uniformValues : AllValues value writes) (cells : Cells Value) {index : Nat}
++    (initialized : cells index = some value) : applyWrites writes cells index = some value := by
++  induction writes generalizing cells with
++  | nil => exact initialized
++  | cons event rest induction =>
++    have eventValue := uniformValues event (List.mem_cons_self)
++    have restValues : AllValues value rest := fun write member => uniformValues write (List.mem_cons_of_mem event member)
++    apply induction restValues
++    change (if index = event.1 then some event.2 else cells index) = some value
++    split
++    · exact congrArg some eventValue
++    · exact initialized
++
++theorem writes_uniform {Value : Type} {value : Value} {writes : Log Value} (uniformValues : AllValues value writes)
++    (cells : Cells Value) {index : Nat} (written : ∃ stored, (index, stored) ∈ writes) :
++    applyWrites writes cells index = some value := by
++  induction writes generalizing cells with
++  | nil => obtain ⟨_, member⟩ := written; cases member
++  | cons event rest induction =>
++    have eventValue := uniformValues event (List.mem_cons_self)
++    have restValues : AllValues value rest := fun write member => uniformValues write (List.mem_cons_of_mem event member)
++    obtain ⟨stored, member⟩ := written
++    rcases List.mem_cons.mp member with equal | later
++    · subst event
++      have same : stored = value := eventValue
++      subst stored
++      exact writes_preserve_uniform restValues _ (by simp only [writeCell, ↓reduceIte])
++    · exact induction restValues _ ⟨stored, later⟩
++
++/-- Explicit successful operational initializer with EVERY cell equal to the
++nonzero captured seed, starting from arbitrary prior private contents. -/
++theorem uniform_heap {Value : Type} (meaning : PureMeaning Value) (rows columns outerIV innerIV seed tile object : Nat)
++    (positiveRows : 0 < rows) (positiveColumns : 0 < columns)
++    (different : outerIV ≠ innerIV) (outerFresh : seed ≠ outerIV) (innerFresh : seed ≠ innerIV)
++    (captures : Env Value) (value : Value) (captured : captures seed = some (.scalar value)) (before : Heap Value) :
++    ∃ after, HeapRun meaning (uniform rows columns outerIV innerIV seed) tile object false captures before after ∧
++      ∀ index, index < rows * columns → after object index = some value := by
++  have valid : (uniform rows columns outerIV innerIV seed).WellFormed := by
++    refine ⟨Or.inr ?_, rfl, ?_, ?_⟩
++    · exact ⟨rfl, rfl, positiveRows, positiveColumns, different⟩
++    · simp [uniform, definitions]
++    · simp [uniform, definitions]
++  obtain ⟨writes, run⟩ := uniform_run_exists meaning rows columns outerIV innerIV seed tile different outerFresh innerFresh captures value captured
++  have allValues := uniform_run_values outerFresh innerFresh captured run
++  refine ⟨applyHeapWrites object writes before, (heap_run_iff_log meaning _ tile object captures before _ valid).mpr ⟨writes, run, rfl⟩, ?_⟩
++  intro index inside
++  rw [applyHeapWrites_at]
++  apply writes_uniform allValues
++  apply run.covers valid index
++  simpa only [uniform, GraphLoopsReuse.Geometry.volume, Nat.mul_one] using inside
++
++end Merlin.GraphLoopsMemorySCF.Witness
+diff --git a/src/merlin/verify/lean_graph_loops_memory_scf.py b/src/merlin/verify/lean_graph_loops_memory_scf.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf.py
+@@ -0,0 +1,164 @@
++"""Kernel-check exact actual reuse→nested segmentation in one memory meaning.
++
++Fresh complete IR projection is trusted Python. This leaf validator does not
++integrate receipts into ordinary compilation or prove a native SCF interpreter.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import subprocess
++import sys
++from pathlib import Path
++
++from .lean_graph_loops import _reference
++from .lean_graph_loops_memory_scf_model import MEMORY_SCF_ROOTS, obligation
++from .lean_graph_loops_memory_scf_projection import project_exports
++from .lean_graph_loops_reuse import ALLOCATOR_MODE
++from .lean_graph_loops_reuse import _audit as _prior_audit
++
++
++def audit(stdout, roots=MEMORY_SCF_ROOTS):
++    names = [
++        line.split("'", 2)[1]
++        for line in stdout.splitlines()
++        if line.startswith("'") and (" depends on axioms:" in line or " does not depend on any axioms" in line)
++    ]
++    if names != list(roots):
++        raise ValueError("exact ordered root audit roster changed, missing or duplicated")
++    return _prior_audit(stdout, roots)
++
++
++def verify_memory_scf_files(before, middle, after, *, selection, output, index_bits, max_nodes, allocator_model):
++    output.mkdir(parents=True, exist_ok=False)
++    try:
++        return _verify(
++            before,
++            middle,
++            after,
++            selection=selection,
++            output=output,
++            index_bits=index_bits,
++            max_nodes=max_nodes,
++            allocator_model=allocator_model,
++        )
++    except Exception as error:
++        (output / "REFUSAL.json").write_text(
++            json.dumps(
++                dict(
++                    error=str(error),
++                    type=type(error).__name__,
++                    lean_complete_composition_checked=False,
++                    pipeline_receipt_issued=False,
++                    python_projection_trusted=True,
++                ),
++                indent=2,
++            )
++            + "\n"
++        )
++        raise
++
++
++def _verify(before, middle, after, *, selection, output, index_bits, max_nodes, allocator_model):
++    if allocator_model != ALLOCATOR_MODE:
++        raise ValueError("explicit total/private/unobservable allocator required; actual8→16B counterexample retained")
++    inputs = [path.read_bytes() for path in (before, middle, after)]
++    originals = [_reference(path, data) for path, data in zip((before, middle, after), inputs, strict=True)]
++    dependencies = selection.dependencies()
++    from . import lean_graph_loops_memory_scf_capture as capture
++
++    buffers = [output / name for name in ("before.mlir", "middle.mlir", "after.mlir")]
++    for path, data in zip(buffers, inputs, strict=True):
++        path.write_bytes(data)
++    exported = output / "actual-triple.json"
++    env = dict(os.environ, PYTHONPATH=str(selection.source / "src"), PYTHONDONTWRITEBYTECODE="1")
++    command = [
++        sys.executable,
++        str(Path(capture.__file__).resolve()),
++        "--source",
++        str(selection.source),
++        "--revision",
++        selection.revision,
++        "--index-bits",
++        str(index_bits),
++        "--before",
++        str(buffers[0].resolve()),
++        "--middle",
++        str(buffers[1].resolve()),
++        "--after",
++        str(buffers[2].resolve()),
++        "--output",
++        str(exported.resolve()),
++    ]
++    parsed = subprocess.run(command, env=env, capture_output=True, text=True, check=False, timeout=120)
++    (output / "projection.stdout").write_text(parsed.stdout)
++    (output / "projection.stderr").write_text(parsed.stderr)
++    if parsed.returncode:
++        raise ValueError("fresh verified actual triple parsing/SSA export refused; malformed IR is separate")
++    tree = json.loads(exported.read_bytes())
++    exported_ref = _reference(exported)
++    for name, path, data in zip(("before", "middle", "after"), buffers, inputs, strict=True):
++        if tree[name] != _reference(path, data):
++            raise ValueError("actual triple trees not bound to the SAME input buffers")
++    manifest = json.loads(selection.manifest.read_bytes())
++    for name in ("producer_source", "xdsl_loaded_source"):
++        known = {row["path"]: row for row in manifest[name]}
++        if not tree[name] or any(known.get(row["path"]) != row for row in tree[name]):
++            raise ValueError("fresh loaded provider/parser differs from originally selected source")
++    projection = project_exports(
++        tree["before_export"], tree["middle_export"], tree["after_export"], index_bits=index_bits, max_nodes=max_nodes
++    )
++    model = output / "model.json"
++    model.write_text(json.dumps(projection, sort_keys=True, indent=2) + "\n")
++    model_ref = _reference(model)
++    query = output / "Obligation.lean"
++    query.write_text(obligation(projection))
++    query_ref = _reference(query)
++    proof = selection.proof
++    env.update(LEAN_PATH=str(proof.library), LEAN_SYSROOT=str(proof.executable.parent.parent), LEAN_NUM_THREADS="2")
++    lean_command = [str(proof.executable), "-DautoImplicit=false", "-DrelaxedAutoImplicit=false", str(query.resolve())]
++    checked = subprocess.run(lean_command, env=env, capture_output=True, text=True, check=False, timeout=120)
++    (output / "stdout.log").write_text(checked.stdout)
++    (output / "stderr.log").write_text(checked.stderr)
++    result = dict(
++        schema="merlin.graph.memory_scf.actual_composition.v1",
++        originals=originals,
++        dependencies=dependencies,
++        fresh_exports=exported_ref,
++        model=model_ref,
++        query=query_ref,
++        projection_command=command,
++        command=lean_command,
++        returncode=checked.returncode,
++        lean_complete_composition_checked=False,
++        python_projection_trusted=True,
++        operation_level_initializer_bridge=True,
++        same_semantics_exact_middle=True,
++        allocator_total_private_unobservable_is_premise=True,
++        categorized_failure_or_divergence_equivalence=False,
++        primitive_totality_inferred=False,
++        independent_review_complete=False,
++        pipeline_receipt_issued=False,
++        LeanMLIR_selected=False,
++        numerical_gates_discharged=False,
++        native_allocator_or_hardware_proved=False,
++    )
++    if (
++        dependencies != selection.dependencies()
++        or originals != [_reference(path) for path in (before, middle, after)]
++        or inputs != [path.read_bytes() for path in buffers]
++        or exported_ref != _reference(exported)
++        or model_ref != _reference(model)
++        or query_ref != _reference(query)
++    ):
++        result["refusal"] = "actual triple/model/query or originally selected proof/source/tool/host binding changed"
++    elif checked.returncode:
++        result["refusal"] = "Lean refused complete operational memory/SSA/control/multiple-boundary composition"
++        if checked.returncode < 0:
++            result["context_disqualified_unknown_native_failure"] = True
++    else:
++        result["transitive_axioms"] = audit(checked.stdout, MEMORY_SCF_ROOTS)
++        result["lean_complete_composition_checked"] = True
++    (output / "CHECK.json").write_text(json.dumps(result, sort_keys=True, indent=2) + "\n")
++    return result
+diff --git a/src/merlin/verify/lean_graph_loops_memory_scf_capture.py b/src/merlin/verify/lean_graph_loops_memory_scf_capture.py
+--- a/src/merlin/verify/lean_graph_loops_memory_scf_capture.py
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_capture.py
+@@ -14,11 +14,11 @@
+ from pathlib import Path
+ 
+ if __package__:
+-    from .lean_graph_loops_capture import _producer_sources, _reference
++    from .lean_graph_loops_capture import _producer_sources
+     from .lean_graph_loops_reuse_capture import export
+     from .lean_graph_loops_segment_capture import loaded_xdsl_sources
+ else:
+-    from lean_graph_loops_capture import _producer_sources, _reference
++    from lean_graph_loops_capture import _producer_sources
+     from lean_graph_loops_reuse_capture import export
+     from lean_graph_loops_segment_capture import loaded_xdsl_sources
+ 
+@@ -27,7 +27,7 @@
+     return dict(path=str(path.resolve()), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+ 
+ 
+-def run(*, source, revision, before, output, middle=None, after=None, tile=2):
++def run(*, source, revision, before, output, middle=None, after=None, tile=2, index_bits=64):
+     sys.dont_write_bytecode = True
+     from merlin.transforms import loops, planning
+     from merlin.transforms.certificates import ir_text, parse_ir
+@@ -50,7 +50,7 @@
+         middle = output / "middle.mlir"
+         middle.write_bytes(middle_bytes)
+         middle_export = export(first)
+-        segmented = loops.segment_loops(first, tile=tile)
++        segmented = loops.segment_loops(first, [tile], index_bits=index_bits)
+         first.verify()
+         after_bytes = ir_text(first).encode()
+         after = output / "after.mlir"
+@@ -65,14 +65,28 @@
+         final.verify()
+         middle_export, after_export = export(center), export(final)
+         destination, changed = output, None
+-    identities = _producer_sources(source, revision, (Path(loops.__file__).resolve(), Path(planning.__file__).resolve()))
++    identities = _producer_sources(
++        source, revision, (Path(loops.__file__).resolve(), Path(planning.__file__).resolve())
++    )
+     xdsl = loaded_xdsl_sources()
+-    result = dict(schema="merlin.graph.memory_scf.actual_triple.v1", producer_revision=revision,
+-                  producer_source=identities, xdsl_loaded_source=xdsl,
+-                  before=buffer_reference(before, original), middle=buffer_reference(middle, middle_bytes), after=buffer_reference(after, after_bytes),
+-                  before_export=before_export, middle_export=middle_export, after_export=after_export,
+-                  changed=changed, python_projection_trusted=True, untrusted_plan_used_as_authority=False,
+-                  raw_parser_formally_verified=False, native_or_hardware_proved=False)
++    result = dict(
++        schema="merlin.graph.memory_scf.actual_triple.v1",
++        producer_revision=revision,
++        producer_source=identities,
++        xdsl_loaded_source=xdsl,
++        before=buffer_reference(before, original),
++        middle=buffer_reference(middle, middle_bytes),
++        after=buffer_reference(after, after_bytes),
++        before_export=before_export,
++        middle_export=middle_export,
++        after_export=after_export,
++        changed=changed,
++        index_bits=index_bits,
++        python_projection_trusted=True,
++        untrusted_plan_used_as_authority=False,
++        raw_parser_formally_verified=False,
++        native_or_hardware_proved=False,
++    )
+     if before.read_bytes() != original or middle.read_bytes() != middle_bytes or after.read_bytes() != after_bytes:
+         raise ValueError("input buffer writer during fresh actual triple capture")
+     if identities != _producer_sources(source, revision, ()) or xdsl != loaded_xdsl_sources():
+@@ -89,8 +103,13 @@
+         parser.add_argument("--" + name, type=Path)
+     parser.add_argument("--revision", required=True)
+     parser.add_argument("--tile", type=int, default=2)
++    parser.add_argument("--index-bits", type=int, required=True)
+     result = run(**vars(parser.parse_args()))
+-    print(json.dumps(dict(schema=result["schema"], producer_revision=result["producer_revision"], changed=result["changed"])))
++    print(
++        json.dumps(
++            dict(schema=result["schema"], producer_revision=result["producer_revision"], changed=result["changed"])
++        )
++    )
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/src/merlin/verify/lean_graph_loops_memory_scf_cases.py b/src/merlin/verify/lean_graph_loops_memory_scf_cases.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_cases.py
+@@ -0,0 +1,44 @@
++"""Independent actual changed source families for the nested memory-SCF bridge."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++from .lean_graph_loops_reuse_cases import Case
++from .lean_graph_loops_reuse_cases import source as epoch_source
++
++
++@dataclass(frozen=True)
++class CompositionCase:
++    epoch: Case
++    tile: int
++    prefixes: bool = False
++
++
++CASES = (
++    CompositionCase(Case("rank_one_tail", (5,), 8, 1, 3, index_bits=32), 2),
++    CompositionCase(Case("rank_two_tail", (5, 3), 16, 8, 3), 3),
++    CompositionCase(Case("rank_two_one_row", (1, 7), 64, 64, 2), 4),
++    CompositionCase(Case("rank_two_prefix", (4, 2), 32, 16, 2), 3, True),
++    CompositionCase(Case("other_live_slot", (3, 2), 32, 16, 3, True), 2),
++    CompositionCase(Case("compact_small", (3, 4), 32, 64, 3), 2),
++    CompositionCase(Case("compact_huge", (1_000_000_000, 1024), 32, 64, 3), 2),
++)
++
++
++def source(case):
++    text = epoch_source(case.epoch)
++    if not case.prefixes:
++        return text
++    for epoch in range(case.epoch.epochs):
++        line = f"   scf.for %iv{epoch}_1 = %zero to %bound1 step %one {{"
++        prefix = f"   %row{epoch} = arith.addi %seed{epoch}, %seed{epoch} : i32\n"
++        if line not in text:
++            raise ValueError("rank2 outer initializer missing from independent source generator")
++        text = text.replace(line, prefix + line)
++        line = f"    memref.store %seed{epoch},"
++        prefix = f"    %cell{epoch} = arith.addi %row{epoch}, %seed{epoch} : i32\n"
++        if line not in text:
++            raise ValueError("rank2 leaf store missing from independent source generator")
++        text = text.replace(line, prefix + f"    memref.store %cell{epoch},")
++    return text
+diff --git a/src/merlin/verify/lean_graph_loops_memory_scf_model.py b/src/merlin/verify/lean_graph_loops_memory_scf_model.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_model.py
+@@ -0,0 +1,181 @@
++"""Kernel obligation for actual operation-level reuse→segmentation composition."""
++
++from __future__ import annotations
++
++from .lean_graph_loops_reuse import REUSE_ROOTS
++from .lean_graph_loops_reuse import obligation as reuse_obligation
++from .lean_graph_loops_unroll import _list, _nat, _string
++
++MEMORY_SCF_ROOTS = REUSE_ROOTS + (
++    "GraphMemorySCFObligation.valid",
++    "GraphMemorySCFObligation.accepted",
++    "GraphMemorySCFObligation.complete",
++    "GraphMemorySCFObligation.chain",
++    "GraphMemorySCFObligation.contextual",
++    "Merlin.GraphLoopsMemorySCF.EvalPure.frame",
++    "Merlin.GraphLoopsMemorySCF.Run.covers",
++    "Merlin.GraphLoopsMemorySCF.Run.materializes",
++    "Merlin.GraphLoopsMemorySCF.heap_run_iff_log",
++    "Merlin.GraphLoopsMemorySCF.segmentation_exact_heaps",
++    "Merlin.GraphLoopsMemorySCF.materializes_in_bounds",
++    "Merlin.GraphLoopsMemorySCF.related_initialize_logs",
++    "Merlin.GraphLoopsMemorySCF.initialization_induced",
++    "Merlin.GraphLoopsMemorySCF.step_forward",
++    "Merlin.GraphLoopsMemorySCF.step_backward",
++    "Merlin.GraphLoopsMemorySCF.execution_forward",
++    "Merlin.GraphLoopsMemorySCF.execution_backward",
++    "Merlin.GraphLoopsMemorySCF.checked_complete_observations",
++    "Merlin.GraphLoopsMemorySCF.execution_modes",
++    "Merlin.GraphLoopsMemorySCF.checked_reuse_then_segment",
++    "Merlin.GraphLoopsMemorySCF.checked_induced_atomic",
++    "Merlin.GraphLoopsMemorySCF.Model.check_sound",
++    "Merlin.GraphLoopsMemorySCF.Model.checked_chain",
++    "Merlin.GraphLoopsMemorySCF.Model.checked_complete",
++    "Merlin.GraphLoopsMemorySCF.Model.checked_context",
++    "Merlin.GraphLoopsMemorySCF.Witness.uniform_heap",
++    "Merlin.GraphLoopsMemorySCF.Witness.uniform_run_exists",
++    "Merlin.GraphLoopsMemorySCF.Witness.uniform_run_values",
++    "Merlin.GraphLoopsMemorySCF.Witness.writes_uniform",
++    "Merlin.GraphLoopsMemorySCF.Model.checked_outer_control",
++    "Merlin.GraphLoopsMemorySCF.Model.checked_inner_control",
++    "Merlin.GraphLoopsMemorySCF.Model.checked_initializer_byte_offset",
++)
++
++
++def pure_op(row):
++    if set(row) != {"key", "operands", "results"}:
++        raise ValueError("complete explicit pure operation required")
++    return "⟨" + ", ".join((_string(row["key"]), _list(row["operands"], _nat), _list(row["results"], _nat))) + "⟩"
++
++
++def configuration(row):
++    program, leaf = row["program"], row["program"]["leaf"]
++    if set(program) != {"shape", "ivs", "outerPrefix", "leaf"} or set(leaf) != {"ops", "value", "indices"}:
++        raise ValueError("complete scoped initializer program required")
++    leaf_literal = (
++        "⟨" + ", ".join((_list(leaf["ops"], pure_op), _nat(leaf["value"]), _list(leaf["indices"], _nat))) + "⟩"
++    )
++    program_literal = (
++        "⟨"
++        + ", ".join(
++            (
++                _list(program["shape"], _nat),
++                _list(program["ivs"], _nat),
++                _list(program["outerPrefix"], pure_op),
++                leaf_literal,
++            )
++        )
++        + "⟩"
++    )
++    return "⟨" + ", ".join((_nat(row["object"]), _string(row["key"]), program_literal, _nat(row["tile"]))) + "⟩"
++
++
++def segment_literal(row):
++    strings = {"sourceBody", "targetBody", "sourceContext", "targetContext"}
++    string_lists = {"carryTypes", "sourceResults", "outerResults", "innerResults", "outerArgumentTypes"}
++    naturals = {
++        "targetLower",
++        "targetUpper",
++        "targetStride",
++        "targetInnerStep",
++        "outerIV",
++        "strideValue",
++        "upperValue",
++        "originalStepValue",
++        "addResult",
++        "minResult",
++        "sourceYieldArity",
++    }
++    natural_lists = {
++        "sourceInitial",
++        "outerInitial",
++        "outerCarryArguments",
++        "addOperands",
++        "minOperands",
++        "innerOperands",
++        "innerResultValues",
++        "outerYield",
++    }
++    if set(row) != strings | string_lists | naturals | natural_lists | {"bounds"}:
++        raise ValueError("complete exact segmentation projection required")
++    bounds = row["bounds"]
++    if set(bounds) != {"bits", "lower", "upper", "step", "tile"}:
++        raise ValueError("complete signed control bounds required")
++    fields = [
++        "bounds := ⟨" + ", ".join(_nat(bounds[name]) for name in ("bits", "lower", "upper", "step", "tile")) + "⟩"
++    ]
++    for name, render in [(name, _string) for name in sorted(strings)] + [(name, _nat) for name in sorted(naturals)]:
++        fields.append(name + " := " + render(row[name]))
++    for names, render in ((string_lists, _string), (natural_lists, _nat)):
++        fields.extend(name + " := " + _list(row[name], render) for name in sorted(names))
++    return "{ " + ", ".join(fields) + " }"
++
++
++def obligation(projection):
++    old = reuse_obligation(projection["reuse"])
++    old = old.partition("\n")[2]  # replace only its import; new module imports this exact old root
++    boundaries = []
++    for row in projection["configurations"]:
++        key, middle = _string(row["key"]), _string(row["middleInitializer"])
++        boundaries.append(
++            "⟨" + ", ".join((configuration(row), segment_literal(row["segment"]), key, middle, middle)) + "⟩"
++        )
++    literal = "{ reuse := GraphReuseObligation.actual, boundaries := [" + ", ".join(boundaries) + "]"
++    literal += (
++        ", reuseMiddle := "
++        + _string(projection["middleBinding"])
++        + ", segmentationMiddle := "
++        + _string(projection["middleBinding"])
++        + " }"
++    )
++    roots = "\n".join("#print axioms " + root for root in MEMORY_SCF_ROOTS[len(REUSE_ROOTS) :])
++    return f"""import Merlin.GraphLoopsMemorySCFBounds
++section OldReuse
++{old}
++end OldReuse
++namespace GraphMemorySCFObligation
++open Merlin Merlin.GraphLoopsMemorySCF
++set_option maxHeartbeats 2000000
++set_option maxRecDepth 16384
++def actual : Model.Projection := {literal}
++theorem valid : Model.Valid actual := by
++  simp [Model.Valid, Model.Boundary.Valid, Model.Bound, Model.configs,
++    Configuration.Valid, Initializer.WellFormed, Initializer.One, Initializer.Two,
++    Initializer.rows, Initializer.columns, Initializer.outerIV, Initializer.innerIV,
++    definitions, GraphLoopsSegment.Model.Numeric, GraphLoopsSegment.Model.Structural,
++    GraphLoopsSegment.Bounds.Valid, actual, GraphReuseObligation.actual,
++    GraphLoopsReuse.objectAt]
++  all_goals decide
++theorem accepted : Model.check actual = true := by
++  apply Bool.and_eq_true_iff.mpr
++  exact ⟨by simp only [valid, decide_true], GraphReuseObligation.accepted⟩
++theorem complete {{Value Public : Type}} (meaning : Interpretation Value Public)
++    (source middle : GraphLoopsReuse.Memory Value Public) (same : source.observed = middle.observed)
++    (outcome : Public) :
++    outcomes actual.reuse.objects (Model.configs actual) meaning false false actual.reuse.instructions source outcome ↔
++    outcomes actual.reuse.objects (Model.configs actual) meaning true true actual.reuse.instructions middle outcome :=
++  Model.checked_complete accepted meaning source middle same outcome
++theorem chain {{Value Public : Type}} (meaning : Interpretation Value Public)
++    (source middle : GraphLoopsReuse.Memory Value Public) (same : source.observed = middle.observed)
++    (outcome : Public) :
++    (outcomes actual.reuse.objects (Model.configs actual) meaning false false actual.reuse.instructions source outcome ↔
++      outcomes actual.reuse.objects (Model.configs actual) meaning true false 
++        actual.reuse.instructions middle outcome) ∧
++    (outcomes actual.reuse.objects (Model.configs actual) meaning true false actual.reuse.instructions middle outcome ↔
++      outcomes actual.reuse.objects (Model.configs actual) meaning true true 
++        actual.reuse.instructions middle outcome) ∧
++    (outcomes actual.reuse.objects (Model.configs actual) meaning false false actual.reuse.instructions source outcome ↔
++      outcomes actual.reuse.objects (Model.configs actual) meaning true true 
++        actual.reuse.instructions middle outcome) :=
++  Model.checked_chain accepted meaning source middle same outcome
++theorem contextual {{Value Public Outcome : Type}} (meaning : Interpretation Value Public)
++    (source middle : GraphLoopsReuse.Memory Value Public) (same : source.observed = middle.observed)
++    (context : (Public → Prop) → Outcome) :
++    context (outcomes actual.reuse.objects (Model.configs actual) meaning false false 
++      actual.reuse.instructions source) =
++      context (outcomes actual.reuse.objects (Model.configs actual) meaning true true 
++        actual.reuse.instructions middle) :=
++  Model.checked_context accepted meaning source middle same context
++end GraphMemorySCFObligation
++{roots}
++"""
+diff --git a/src/merlin/verify/lean_graph_loops_memory_scf_projection.py b/src/merlin/verify/lean_graph_loops_memory_scf_projection.py
+--- a/src/merlin/verify/lean_graph_loops_memory_scf_projection.py
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_projection.py
+@@ -35,8 +35,7 @@
+             sourceContext=_key(first),
+             targetContext=_key(second),
+             objects=[
+-                {key: epoch[key] for key in ("slot", "shape", "elementBits", "alignment")}
+-                for epoch in self.epochs
++                {key: epoch[key] for key in ("slot", "shape", "elementBits", "alignment")} for epoch in self.epochs
+             ],
+             instructions=self.instructions,
+             epochs=self.epochs,
+@@ -120,9 +119,16 @@
+     def constant(self, identity, *, target=False):
+         op, kind = (self.target_defs if target else self.source_defs).get(identity, (None, None))
+         if (
+-            op is None or kind != "index" or op["name"] != "arith.constant" or op["attributes"]
+-            or op["operands"] or op["regions"] or set(dict(op["properties"])) != {"value"}
+-            or len(op["results"]) != 1 or type(op["index_constant"]) is not int or op["index_constant"] < 0
++            op is None
++            or kind != "index"
++            or op["name"] != "arith.constant"
++            or op["attributes"]
++            or op["operands"]
++            or op["regions"]
++            or set(dict(op["properties"])) != {"value"}
++            or len(op["results"]) != 1
++            or type(op["index_constant"]) is not int
++            or op["index_constant"] < 0
+         ):
+             raise ValueError("static nonnegative exact index constant required")
+         return op["index_constant"]
+@@ -150,7 +156,7 @@
+             if _key(op) in self.expected:
+                 if cursor + 1 >= len(second["operations"]):
+                     raise ValueError("missing complete generated initializer boundary")
+-                a, b = self.segment(op, *second["operations"][cursor:cursor + 2], env)
++                a, b = self.segment(op, *second["operations"][cursor : cursor + 2], env)
+                 cursor += 2
+             else:
+                 if cursor >= len(second["operations"]):
+@@ -161,14 +167,21 @@
+             after.append(b)
+         if cursor != len(second["operations"]):
+             raise ValueError("extra operation outside complete boundary")
+-        return dict(arguments=first["arguments"], operations=before), dict(arguments=first["arguments"], operations=after)
++        return dict(arguments=first["arguments"], operations=before), dict(
++            arguments=first["arguments"], operations=after
++        )
+ 
+     def segment(self, source, stride, outer, env):
+         epoch = self.expected[_key(source)]
+         if (
+-            source["name"] != "scf.for" or source["attributes"] or source["properties"] or source["results"]
+-            or len(source["operands"]) != 3 or _metadata(outer) != _metadata(source)
+-            or outer["results"] or len(outer["operands"]) != 3
++            source["name"] != "scf.for"
++            or source["attributes"]
++            or source["properties"]
++            or source["results"]
++            or len(source["operands"]) != 3
++            or _metadata(outer) != _metadata(source)
++            or outer["results"]
++            or len(outer["operands"]) != 3
+         ):
+             raise ValueError("supported exact no-carry initializer control required")
+         lower, upper, step = [self.constant(value) for value in source["operands"]]
+@@ -181,11 +194,24 @@
+         if outer["operands"] != [*self.mapped(source["operands"][:2], env), stride_value]:
+             raise ValueError("generated outer bounds/stride binding changed")
+         source_body, outer_body = _one_block(source), _one_block(outer)
+-        if _types(source_body["arguments"]) != ["index"] or _types(outer_body["arguments"]) != ["index"] or len(outer_body["operations"]) != 4:
++        if (
++            _types(source_body["arguments"]) != ["index"]
++            or _types(outer_body["arguments"]) != ["index"]
++            or len(outer_body["operations"]) != 4
++        ):
+             raise ValueError("exact outer IV, add/min/inner/yield required")
+         add, minimum, inner, final_yield = outer_body["operations"]
+-        for op, name, properties in ((add, "arith.addi", [["overflowFlags", "#arith.overflow<none>"]]), (minimum, "arith.minui", [])):
+-            if op["name"] != name or op["attributes"] or op["properties"] != properties or op["regions"] or _types(op["results"]) != ["index"]:
++        for op, name, properties in (
++            (add, "arith.addi", [["overflowFlags", "#arith.overflow<none>"]]),
++            (minimum, "arith.minui", []),
++        ):
++            if (
++                op["name"] != name
++                or op["attributes"]
++                or op["properties"] != properties
++                or op["regions"]
++                or _types(op["results"]) != ["index"]
++            ):
+                 raise ValueError("generated bound arithmetic semantics changed")
+         if _metadata(inner) != _metadata(source) or inner["results"] or len(inner["operands"]) != 3:
+             raise ValueError("generated inner loop semantics changed")
+@@ -196,15 +222,31 @@
+         plan = dict(
+             bounds=dict(bits=self.bits, lower=lower, upper=upper, step=step, tile=actual_stride),
+             targetLower=self.constant(outer["operands"][0], target=True),
+-            targetUpper=self.constant(outer["operands"][1], target=True), targetStride=actual_stride,
++            targetUpper=self.constant(outer["operands"][1], target=True),
++            targetStride=actual_stride,
+             targetInnerStep=self.constant(inner["operands"][2], target=True),
+-            sourceBody=_key(left), targetBody=_key(right), carryTypes=[], sourceInitial=[], outerInitial=[],
+-            sourceResults=[], outerResults=[], innerResults=[], outerArgumentTypes=["index"],
+-            outerIV=outer_body["arguments"][0][0], outerCarryArguments=[], strideValue=stride_value,
+-            upperValue=outer["operands"][1], originalStepValue=self.mapped([source["operands"][2]], env)[0],
+-            addOperands=add["operands"], addResult=add["results"][0][0], minOperands=minimum["operands"],
+-            minResult=minimum["results"][0][0], innerOperands=inner["operands"], innerResultValues=[],
+-            outerYield=final_yield["operands"], sourceYieldArity=0,
++            sourceBody=_key(left),
++            targetBody=_key(right),
++            carryTypes=[],
++            sourceInitial=[],
++            outerInitial=[],
++            sourceResults=[],
++            outerResults=[],
++            innerResults=[],
++            outerArgumentTypes=["index"],
++            outerIV=outer_body["arguments"][0][0],
++            outerCarryArguments=[],
++            strideValue=stride_value,
++            upperValue=outer["operands"][1],
++            originalStepValue=self.mapped([source["operands"][2]], env)[0],
++            addOperands=add["operands"],
++            addResult=add["results"][0][0],
++            minOperands=minimum["operands"],
++            minResult=minimum["results"][0][0],
++            innerOperands=inner["operands"],
++            innerResultValues=[],
++            outerYield=final_yield["operands"],
++            sourceYieldArity=0,
+         )
+         self.plans.append(dict(epoch=epoch, middleInitializer=_key(source), projection=plan))
+         hole = dict(initializer_boundary=epoch)
+@@ -226,9 +268,21 @@
+         epoch = row["epoch"]
+         plan = row["projection"]
+         plan.update(sourceContext=_key(first), targetContext=_key(last))
+-        configs.append(dict(object=epoch, key=reuse.epochs[epoch]["initializer"]["body"],
+-                            program=initializer_program(reuse, reuse.epochs[epoch]), tile=plan["bounds"]["tile"],
+-                            middleInitializer=row["middleInitializer"], segment=plan))
+-    return dict(reuse=original_model, configurations=configs, middleBinding=_key(middle["tree"]),
+-                structural_nodes=reuse.nodes + segment.nodes, python_projection_trusted=True,
+-                raw_parser_formally_verified=False)
++        configs.append(
++            dict(
++                object=epoch,
++                key=reuse.epochs[epoch]["initializer"]["body"],
++                program=initializer_program(reuse, reuse.epochs[epoch]),
++                tile=plan["bounds"]["tile"],
++                middleInitializer=row["middleInitializer"],
++                segment=plan,
++            )
++        )
++    return dict(
++        reuse=original_model,
++        configurations=configs,
++        middleBinding=_key(middle["tree"]),
++        structural_nodes=reuse.nodes + segment.nodes,
++        python_projection_trusted=True,
++        raw_parser_formally_verified=False,
++    )
+diff --git a/src/merlin/verify/lean_graph_loops_memory_scf_runtime.py b/src/merlin/verify/lean_graph_loops_memory_scf_runtime.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_runtime.py
+@@ -0,0 +1,163 @@
++"""Finite actual source/middle/final witnesses, separate from the Lean theorem.
++
++Private stores and caller effects are instrumented. Only exactly recognized
++emitted index controls are removed from body traces. Allocation observations
++remain separate. This Python/xDSL witness does not prove native conformance.
++"""
++
++from __future__ import annotations
++
++from math import prod
++
++
++def execute(module, inputs, *, index_bits):
++    from xdsl.dialects import arith, builtin, func, memref, scf
++    from xdsl.interpreter import Interpreter, InterpreterFunctions, impl, register_impls
++    from xdsl.interpreters.arith import ArithFunctions
++    from xdsl.interpreters.func import FuncFunctions
++    from xdsl.interpreters.memref import MemRefFunctions, xtype_for_el_type
++    from xdsl.interpreters.scf import ScfFunctions
++    from xdsl.interpreters.shaped_array import ShapedArray
++    from xdsl.interpreters.utils.ptr import TypedPtr
++
++    controls = set()
++    for op in module.walk():
++        if not isinstance(op, scf.ForOp):
++            continue
++        body = list(op.body.block.ops)
++        if (
++            len(body) == 4
++            and isinstance(body[0], arith.AddiOp)
++            and isinstance(body[1], arith.MinUIOp)
++            and isinstance(body[2], scf.ForOp)
++            and isinstance(body[3], scf.YieldOp)
++        ):
++            if not isinstance(body[0].result.type, builtin.IndexType):
++                raise ValueError("generated control must compute index values")
++            controls.update(body[:2])
++    private, allocations = {}, []
++    caller = inputs[-1]
++
++    def check(array, indices):
++        if len(indices) != len(array.shape) or any(
++            not 0 <= index < size for index, size in zip(indices, array.shape, strict=True)
++        ):
++            raise ValueError("out-of-bounds finite memory witness")
++        if id(array) in private and not private[id(array)]["live"]:
++            raise ValueError("use after private free in finite memory witness")
++
++    @register_impls
++    class PrivateMemory(InterpreterFunctions):
++        @impl(memref.AllocOp)
++        def allocate(self, interpreter, op, args):
++            kind = op.memref.type
++            shape = list(kind.get_shape())
++            if prod(shape) > 4096:
++                raise ValueError("finite execution refuses large-shape dynamic expansion")
++            array = ShapedArray(
++                TypedPtr.new([73] * prod(shape), xtype=xtype_for_el_type(kind.get_element_type(), index_bits)), shape
++            )
++            private[id(array)] = dict(
++                live=True, written=set(), bytes=prod(shape) * (kind.get_element_type().width.data // 8)
++            )
++            allocations.append(dict(kind="allocate", bytes=private[id(array)]["bytes"], array=id(array)))
++            return (array,)
++
++        @impl(memref.DeallocOp)
++        def release(self, interpreter, op, args):
++            (array,) = args
++            if id(array) not in private or not private[id(array)]["live"]:
++                raise ValueError("invalid/double private free in finite memory witness")
++            private[id(array)]["live"] = False
++            allocations.append(dict(kind="free", bytes=private[id(array)]["bytes"], array=id(array)))
++            return ()
++
++        @impl(memref.StoreOp)
++        def store(self, interpreter, op, args):
++            value, array, *indices = args
++            coordinate = tuple(indices)
++            check(array, coordinate)
++            array.store(coordinate, value)
++            if id(array) in private:
++                private[id(array)]["written"].add(coordinate)
++            return ()
++
++        @impl(memref.LoadOp)
++        def load(self, interpreter, op, args):
++            array, *indices = args
++            coordinate = tuple(indices)
++            check(array, coordinate)
++            if id(array) in private and coordinate not in private[id(array)]["written"]:
++                raise ValueError("uninitialized private load in finite memory witness")
++            return (array.load(coordinate),)
++
++        @impl(memref.DimOp)
++        def dimension(self, interpreter, op, args):
++            array, axis = args
++            if id(array) in private and not private[id(array)]["live"]:
++                raise ValueError("dimension after private free in finite memory witness")
++            if not 0 <= axis < len(array.shape):
++                raise ValueError("dimension axis out of range in finite memory witness")
++            return (array.shape[axis],)
++
++    @register_impls
++    class IndexControls(InterpreterFunctions):
++        @impl(arith.MinUIOp)
++        def minimum(self, interpreter, op, args):
++            if op not in controls or any(not 0 <= value < 2 ** (index_bits - 1) for value in args):
++                raise ValueError("finite witness only implements recognized fitting generated minui")
++            return (min(args),)
++
++    def snapshot(value):
++        if isinstance(value, ShapedArray):
++            if id(value) in private:
++                return ("private", tuple(value.shape))
++            return ("caller", tuple(value.shape), tuple(value.data))
++        assert type(value) is int
++        return value
++
++    tracked = (memref.LoadOp, memref.StoreOp, memref.DimOp, arith.AddiOp, arith.TruncIOp, func.CallOp, func.ReturnOp)
++
++    class Listener(Interpreter.Listener):
++        def __init__(self):
++            self.trace = []
++
++        def will_interpret_op(self, op, args):
++            if op not in controls and isinstance(op, tracked):
++                self.trace.append(("before", op.name, tuple(snapshot(arg) for arg in args), tuple(caller.data)))
++
++        def did_interpret_op(self, op, results):
++            if op not in controls and isinstance(op, tracked):
++                self.trace.append(("after", op.name, tuple(snapshot(value) for value in results), tuple(caller.data)))
++
++    listener = Listener()
++    interpreter = Interpreter(module, index_bitwidth=index_bits, listeners=(listener,))
++    for functions in (ArithFunctions(), ScfFunctions(), MemRefFunctions(), FuncFunctions()):
++        interpreter.register_implementations(functions)
++    interpreter.register_implementations(PrivateMemory(), override=True)
++    interpreter.register_implementations(IndexControls(), override=True)
++    result = interpreter.call_op("kernel", inputs)
++    assert interpreter.call_op("untouched", (2**31 - 1,)) == (-(2**31),)
++    if any(record["live"] for record in private.values()):
++        raise ValueError("missing final physical free in finite memory witness")
++    used, peak = 0, 0
++    for row in allocations:
++        used += row["bytes"] if row["kind"] == "allocate" else -row["bytes"]
++        peak = max(peak, used)
++        del row["array"]
++    assert used == 0
++    return dict(
++        result=result,
++        trace=listener.trace,
++        caller=list(caller.data),
++        allocation_events=allocations,
++        allocation_count=sum(row["kind"] == "allocate" for row in allocations),
++        peak_live_bytes=peak,
++        poisoned_initial_private_memory=True,
++        all_private_reads_initialized=True,
++        all_private_frees_valid=True,
++        actual_native_execution=False,
++        native_conformance_proved=False,
++        recognized_control_operations=len(controls),
++        operational_graph_theorem_is_separate=True,
++    )
+diff --git a/src/merlin/verify/lean_graph_loops_memory_scf_selection.py b/src/merlin/verify/lean_graph_loops_memory_scf_selection.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_selection.py
+@@ -0,0 +1,121 @@
++"""Pinned independent proof/parser/host context for the memory-SCF validator.
++
++The selected contract is a policy binding, not proof of native conformance or
++independent review. Every invocation checks original source/object/import pins.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import subprocess
++from dataclasses import dataclass
++from pathlib import Path
++
++from .lean_graph_loops import LeanSelection, _reference
++from .lean_graph_loops_memory_scf_model import MEMORY_SCF_ROOTS
++
++
++@dataclass(frozen=True)
++class MemorySCFSelection:
++    proof: LeanSelection
++    source: Path
++    revision: str
++    manifest: Path
++    manifest_sha256: str
++    fixed_context: Path
++    fixed_context_sha256: str
++    contract: Path
++    contract_sha256: str
++
++    @staticmethod
++    def checked_json(path, digest, label):
++        data = path.read_bytes()
++        if hashlib.sha256(data).hexdigest() != digest:
++            raise ValueError("originally selected " + label + " changed")
++        return json.loads(data), _reference(path, data)
++
++    def dependencies(self):
++        contract, contract_ref = self.checked_json(self.contract, self.contract_sha256, "memory-SCF contract")
++        if contract["allocator_mode"] != "total_private_unobservable":
++            raise ValueError("unsupported allocator contract; finite-capacity counterexample remains")
++        context = {
++            key: str(value.resolve()) if isinstance(value, Path) else value
++            for key, value in vars(self).items()
++            if key not in ("contract", "contract_sha256", "proof")
++        }
++        proof = {
++            key: str(value.resolve()) if isinstance(value, Path) else value for key, value in vars(self.proof).items()
++        }
++        if contract["selected_context"] != dict(context, proof=proof):
++            raise ValueError("replacement proof/source/tool selection differs from original contract")
++        manifest, manifest_ref = self.checked_json(self.manifest, self.manifest_sha256, "provider/parser manifest")
++        if (
++            manifest["producer_revision"] != self.revision
++            or subprocess.check_output(["git", "-C", str(self.source), "rev-parse", "HEAD"], text=True).strip()
++            != self.revision
++        ):
++            raise ValueError("selected actual provider revision changed")
++        if not manifest["producer_source"] or not manifest["xdsl_loaded_source"]:
++            raise ValueError("actual provider/parser inventory missing")
++        fixed, fixed_ref = self.checked_json(self.fixed_context, self.fixed_context_sha256, "unaffected fixed context")
++        if (
++            not fixed["fixed_context_verified_unaffected"]
++            or fixed["suspect_in_actual_closure"]
++            or fixed["toolchain_written"]
++            or fixed["rehash_to_promote"]
++        ):
++            raise ValueError("fixed context is affected, unconfirmed or repaired")
++        build = json.loads(self.proof.build_record.read_bytes())
++        if sorted(row["module"] for row in build["attempts"]) != contract["proof_modules"]:
++            raise ValueError("complete selected project proof/module closure required")
++        audit_ref = contract["root_audit"]
++        audit = json.loads(Path(audit_ref["path"]).read_bytes())
++        if audit["returncode"] != 0 or not audit["bindings_unchanged"] or set(audit["audit"]) != set(MEMORY_SCF_ROOTS):
++            raise ValueError("successful exact-root transitive standard3 audit required")
++        if any(not set(names) <= {"propext", "Classical.choice", "Quot.sound"} for names in audit["audit"].values()):
++            raise ValueError("unapproved audited axiom")
++        rows = (
++            [audit_ref]
++            + manifest["producer_source"]
++            + manifest["xdsl_loaded_source"]
++            + fixed["files"]
++            + fixed["prior_dependencies"]
++            + contract["owned_host_sources"]
++        )
++        for row in fixed["copied_objects"]:
++            rows.append(row["object"])
++        checked = []
++        for row in rows:
++            expected = {key: row[key] for key in ("path", "sha256", "bytes")}
++            path = Path(row["path"])
++            before = path.stat()
++            actual = _reference(path)
++            after = path.stat()
++            if (before.st_ino, before.st_size, before.st_mtime_ns) != (
++                after.st_ino,
++                after.st_size,
++                after.st_mtime_ns,
++            ) or actual != expected:
++                raise ValueError("original source/object/import/host binding changed: " + row["path"])
++            checked.append(actual)
++        return dict(
++            proof=self.proof.dependencies(),
++            contract=contract_ref,
++            provider_manifest=manifest_ref,
++            fixed_context=fixed_ref,
++            original_bindings=checked,
++            review_status=contract["review_status"],
++            allocator_mode=contract["allocator_mode"],
++            fixed_context_verified_unaffected=True,
++        )
++
++
++def load_selection(path):
++    data = json.loads(Path(path).read_bytes())
++    for key in ("executable", "library", "build_record"):
++        data["proof"][key] = Path(data["proof"][key])
++    data["proof"] = LeanSelection(**data["proof"])
++    for key in ("source", "manifest", "fixed_context", "contract"):
++        data[key] = Path(data[key])
++    return MemorySCFSelection(**data)
+diff --git a/src/merlin/verify/lean_graph_loops_memory_scf_witness.py b/src/merlin/verify/lean_graph_loops_memory_scf_witness.py
+new file mode 100644
+--- /dev/null
++++ b/src/merlin/verify/lean_graph_loops_memory_scf_witness.py
+@@ -0,0 +1,169 @@
++"""Finite inhabited common interpretations bound to an actual complete model.
++
++This generates an explicit abstract witness, not native arithmetic conformance.
++It supports uniform rank2 bodies, logs all private loads as public observations,
++and gives explicit common meanings to retained keys. Separate xDSL tests check
++real scalar operations, caller updates and returned values on finite inputs.
++"""
++
++from __future__ import annotations
++
++from .lean_graph_loops_memory_scf_model import obligation
++from .lean_graph_loops_unroll import _nat, _string
++
++WITNESS_ROOTS = (
++    "GraphMemorySCFWitness.source_inhabited",
++    "GraphMemorySCFWitness.final_inhabited",
++)
++
++
++def witness_obligation(projection):
++    configs = projection["configurations"]
++    instructions = projection["reuse"]["instructions"]
++    if len(configs) > 4:
++        raise ValueError("finite witness supports at most four epochs; general theorem is not bounded here")
++    seeds, values = {}, {}
++    declarations = []
++    for index, row in enumerate(configs):
++        program = row["program"]
++        if len(program["shape"]) != 2 or program["outerPrefix"] or program["leaf"]["ops"]:
++            raise ValueError("inhabited witness requires explicit uniform rank2 bodies")
++        seed = program["leaf"]["value"]
++        if seed in seeds or seed in program["ivs"]:
++            raise ValueError("distinct captured scalar seeds and IVs required")
++        seeds[seed] = 17 + 12 * index
++        values[row["object"]] = seeds[seed]
++        declarations.append(f"def cfg{index} : Configuration := actual.boundaries[{index}].config")
++    captures = "none"
++    for seed, value in reversed(list(seeds.items())):
++        captures = f"if name = {_nat(seed)} then some (.scalar {value}) else ({captures})"
++    stores = [row for row in instructions if row["kind"] == "store"]
++    stored = {row["key"]: values[row["object"]] * 2 for row in stores}
++    choices = " ∨ ".join(f"(key = {_string(key)} ∧ value = {value})" for key, value in stored.items()) or "False"
++    old = obligation(projection).replace(
++        "import Merlin.GraphLoopsMemorySCFModel", "import Merlin.GraphLoopsMemorySCFWitness", 1
++    )
++    pieces = [
++        old,
++        "namespace GraphMemorySCFWitness",
++        "open Merlin Merlin.GraphLoopsMemorySCF",
++        "abbrev actual := GraphMemorySCFObligation.actual",
++        "abbrev objects := actual.reuse.objects",
++        "abbrev configs := Model.configs actual",
++        "abbrev instructions := actual.reuse.instructions",
++        *declarations,
++        f"def captures : List Nat → Env Nat := fun _ name => {captures}",
++        f"""def retained : GraphLoopsReuse.Primitives Nat (List Nat) where
++  initialization := fun _ _ _ => False
++  address := fun _ _ index => index = 0
++  load := fun _ value before after => after = before ++ [value]
++  store := fun key _ index value => index = 0 ∧ ({choices})
++  dimension := fun _ _ before after => after = before
++  retained := fun _ before after => after = before
++def meaning : Interpretation Nat (List Nat) where
++  pure := fun _ _ _ => False
++  captures := captures
++  retained := retained
++def source : GraphLoopsReuse.Memory Nat (List Nat) := ⟨[], fun _ _ => none⟩
++""",
++        "theorem source_inhabited : ∃ after, "
++        "Execution objects configs meaning false false instructions source after ∧ after.observed = ",
++    ]
++    observation = []
++    current_values = dict(values)
++    for row in instructions:
++        if row["kind"] == "load":
++            observation.append(current_values[row["object"]])
++        if row["kind"] == "store":
++            current_values[row["object"]] = stored[row["key"]]
++    outcome = "[" + ", ".join(map(str, observation)) + "]"
++    pieces[-1] += outcome + " := by"
++    lines = []
++    current_values = dict(values)
++    heap_proofs = {}
++    step_names = []
++    for index, row in enumerate(instructions):
++        prior = "source" if index == 0 else f"state{index - 1}"
++        state, step = f"state{index}", f"step{index}"
++        kind = row["kind"]
++        obj = row.get("object")
++        key = _string(row["key"]) if "key" in row else None
++        if kind in ("allocate", "release"):
++            keep = str(row["retained"]).lower()
++            lines.append(f"  let {state} := GraphLoopsReuse.clearMemory objects false {obj} {keep} {prior}")
++            constructor = "allocate" if kind == "allocate" else "release"
++            instruction = f"(.{kind} {obj} {keep})"
++            proof = f".ordinary True.intro (.{constructor} {obj} {keep} {prior})"
++        elif kind == "initialize":
++            cfg = next(i for i, config in enumerate(configs) if config["object"] == obj and config["key"] == row["key"])
++            program = configs[cfg]["program"]
++            rows, columns = program["shape"]
++            outer, inner = program["ivs"]
++            seed, value = program["leaf"]["value"], values[obj]
++            lines.append(
++                f"  obtain ⟨heap{index}, run{index}, initialized{index}⟩ := Witness.uniform_heap "
++                f"meaning.pure {rows} {columns} {outer} {inner} {seed} {configs[cfg]['tile']} {obj} "
++                "(by decide) (by decide) (by decide) (by decide) (by decide) "
++                f"(meaning.captures {prior}.observed) {value} (by rfl) {prior}.heap"
++            )
++            lines.append(f"  let {state} : GraphLoopsReuse.Memory Nat (List Nat) := ⟨{prior}.observed, heap{index}⟩")
++            instruction = f"(.initialize {obj} {key})"
++            proof = (
++                f".initialized (config := cfg{cfg}) (by simp [Model.configs, configs, actual, "
++                f"GraphMemorySCFObligation.actual, cfg{cfg}]) {prior} run{index}"
++            )
++            heap_proofs[obj] = f"initialized{index} 0 (by decide)"
++            current_values[obj] = value
++        elif kind == "load":
++            value = current_values[obj]
++            lines.append(
++                f"  let {state} : GraphLoopsReuse.Memory Nat (List Nat) := "
++                f"⟨{prior}.observed ++ [{value}], {prior}.heap⟩"
++            )
++            instruction = f"(.load {obj} {key})"
++            proof = (
++                f".ordinary True.intro (.load {obj} 0 {key} {prior} {value} _ rfl (by decide) "
++                "(by simpa only [GraphLoopsReuse.addressOf, Bool.false_eq_true, ↓reduceIte] "
++                f"using {heap_proofs[obj]}) rfl)"
++            )
++        elif kind == "store":
++            value = stored[row["key"]]
++            lines.append(f"  let {state} := GraphLoopsReuse.storeMemory objects false {obj} 0 {value} {prior}")
++            instruction = f"(.store {obj} {key})"
++            proof = (
++                f".ordinary True.intro (.store {obj} 0 {key} {prior} {value} "
++                "(by simp [inducedPrimitives, meaning, retained]) (by decide))"
++            )
++            lines.append(
++                f"  have cell{index} : {state}.heap {obj} 0 = some {value} := by simp [{state}, "
++                "GraphLoopsReuse.storeMemory, GraphLoopsReuse.addressOf, "
++                "GraphLoopsReuse.replaceCell, GraphLoopsReuse.replaceObject]"
++            )
++            heap_proofs[obj] = f"cell{index}"
++            current_values[obj] = value
++        else:
++            lines.append(f"  let {state} := {prior}")
++            instruction = f"(.{kind} {obj} {key})" if obj is not None else f"(.retained {key})"
++            constructor = (
++                f".dimension {obj} {key} {prior} {prior}.observed rfl"
++                if kind == "dimension"
++                else f".retained {key} {prior} {prior}.observed rfl"
++            )
++            proof = f".ordinary True.intro ({constructor})"
++        lines.append(
++            f"  have {step} : Step objects configs meaning false false {instruction} {prior} {state} := {proof}"
++        )
++        step_names.append(step)
++    lines.append(f"  refine ⟨state{len(instructions) - 1}, ?_, rfl⟩")
++    nested = ".done _"
++    for step in reversed(step_names):
++        nested = f".more {step} ({nested})"
++    lines.append("  exact " + nested)
++    pieces.extend(lines)
++    pieces.append(f"""theorem final_inhabited : ∃ after,
++    Execution objects configs meaning true true instructions source after ∧ after.observed = {outcome} :=
++  (GraphMemorySCFObligation.complete meaning source source rfl {outcome}).mp source_inhabited
++end GraphMemorySCFWitness
++""")
++    pieces.extend("#print axioms " + root for root in WITNESS_ROOTS)
++    return "\n".join(pieces) + "\n"
+diff --git a/merlin/tests/ir/test_lean_graph_loops_memory_scf.py b/merlin/tests/ir/test_lean_graph_loops_memory_scf.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_loops_memory_scf.py
+@@ -0,0 +1,294 @@
++"""Actual whole-triple correspondence and compiler-valid adversarial changes."""
++
++from __future__ import annotations
++
++import copy
++import io
++import json
++import os
++import subprocess
++from pathlib import Path
++
++import pytest
++from xdsl.context import Context
++from xdsl.dialects import arith, builtin, func, memref, scf
++from xdsl.ir import Block
++from xdsl.parser import Parser
++from xdsl.printer import Printer
++from xdsl.rewriter import Rewriter
++
++from merlin.common.paths import repo_root
++from merlin.verify.lean_graph_loops_memory_scf import verify_memory_scf_files
++from merlin.verify.lean_graph_loops_memory_scf_model import MEMORY_SCF_ROOTS, obligation
++from merlin.verify.lean_graph_loops_memory_scf_selection import load_selection
++from merlin.verify.lean_graph_loops_reuse import ALLOCATOR_MODE
++
++
++@pytest.fixture(scope="module")
++def context():
++    selected = os.environ.get("MERLIN_GRAPH_MEMORY_SCF_SELECTION")
++    if not selected:
++        pytest.skip("explicit unaffected memory-SCF proof/source context unavailable")
++    base = repo_root() / "out/artifacts/verification/graph-memory-scf"
++    old = repo_root() / "out/artifacts/verification/graph-buffer-reuse"
++    paths = dict(
++        two_epochs=(
++            old / "actual-cases-v3/two_epochs/before.mlir",
++            old / "actual-cases-v3/two_epochs/after.mlir",
++            old / "actual-neighbor-segment-v1/after.mlir",
++            64,
++        )
++    )
++    for row in json.loads((base / "independent-cases-v2/RUNS.json").read_bytes()):
++        case = base / "independent-cases-v2" / row["name"]
++        paths[row["name"]] = (case.with_suffix(".mlir"), case / "middle.mlir", case / "after.mlir", row["index_bits"])
++    return load_selection(selected), paths
++
++
++def check(context, tmp_path, *, name="two_epochs", texts=None, allocator=ALLOCATOR_MODE, max_nodes=5000):
++    selection, cases = context
++    before, middle, after, bits = cases[name]
++    if texts is not None:
++        tmp_path.mkdir(parents=True, exist_ok=True)
++        paths = [tmp_path / name for name in ("before.mlir", "middle.mlir", "after.mlir")]
++        for path, text in zip(paths, texts, strict=True):
++            path.write_text(text)
++        before, middle, after = paths
++    return verify_memory_scf_files(
++        before,
++        middle,
++        after,
++        selection=selection,
++        output=tmp_path / "proof",
++        index_bits=bits,
++        max_nodes=max_nodes,
++        allocator_model=allocator,
++    )
++
++
++def parse(text):
++    ctx = Context(allow_unregistered=True)
++    for dialect in (builtin.Builtin, arith.Arith, scf.Scf, memref.MemRef, func.Func):
++        ctx.load_dialect(dialect)
++    module = Parser(ctx, text).parse_module()
++    module.verify()
++    return module
++
++
++def text(module):
++    output = io.StringIO()
++    Printer(stream=output, print_generic_format=True).print_op(module)
++    return output.getvalue()
++
++
++@pytest.mark.parametrize(
++    "name",
++    (
++        "two_epochs",
++        "rank_one_tail",
++        "rank_two_tail",
++        "rank_two_one_row",
++        "rank_two_prefix",
++        "other_live_slot",
++        "compact_small",
++        "compact_huge",
++    ),
++)
++def test_actual_complete_common_memory(context, tmp_path, name):
++    result = check(context, tmp_path, name=name)
++    assert result["lean_complete_composition_checked"] and result["returncode"] == 0
++    assert set(result["transitive_axioms"]) == set(MEMORY_SCF_ROOTS)
++    assert result["operation_level_initializer_bridge"] and result["same_semantics_exact_middle"]
++    assert result["allocator_total_private_unobservable_is_premise"]
++    assert not any(
++        result[name]
++        for name in (
++            "categorized_failure_or_divergence_equivalence",
++            "primitive_totality_inferred",
++            "independent_review_complete",
++            "pipeline_receipt_issued",
++            "numerical_gates_discharged",
++            "native_allocator_or_hardware_proved",
++        )
++    )
++
++
++def test_huge_shape_no_proof_unrolling(context, tmp_path):
++    small = check(context, tmp_path / "small", name="compact_small")
++    huge = check(context, tmp_path / "huge", name="compact_huge")
++    a = json.loads(Path(small["model"]["path"]).read_bytes())
++    b = json.loads(Path(huge["model"]["path"]).read_bytes())
++    assert a["structural_nodes"] == b["structural_nodes"]
++    assert abs(small["query"]["bytes"] - huge["query"]["bytes"]) < 8192
++
++
++def mutate(module, kind):
++    function = next(op for op in module.walk() if isinstance(op, func.FuncOp))
++    block = function.body.block
++    roots = [op for op in block.ops if isinstance(op, scf.ForOp)]
++    second = roots[1]
++    loops = [op for op in second.walk() if isinstance(op, scf.ForOp)]
++    chunk, inner = loops[1:]
++    store = next(op for op in second.walk() if isinstance(op, memref.StoreOp))
++    one = next(
++        op
++        for op in block.ops
++        if isinstance(op, arith.ConstantOp)
++        and isinstance(op.result.type, builtin.IndexType)
++        and op.value.value.data == 1
++    )
++    if kind == "second_value":
++        store.operands = (block.args[0], *store.operands[1:])
++    elif kind == "second_index":
++        store.operands = (*store.operands[:-1], store.operands[-2])
++    elif kind == "partial_coverage":
++        inner.operands = (inner.lb, one.result, inner.step)
++    elif kind == "inner_stride":
++        chunk.operands = (chunk.lb, chunk.ub, second.step)
++    elif kind == "tail_bound":
++        minimum = next(op for op in second.walk() if isinstance(op, arith.MinUIOp))
++        minimum.operands = (minimum.lhs, one.result)
++    elif kind == "outer_stride":
++        second.operands = (second.lb, second.ub, one.result)
++    elif kind == "missing_second_initializer":
++        block.erase_op(second)
++    elif kind == "retained_capture":
++        call = [op for op in block.ops if isinstance(op, func.CallOp)][-1]
++        call.operands = (block.args[0], *call.operands[1:])
++    elif kind == "untouched_observer":
++        untouched = [op for op in module.walk() if isinstance(op, func.FuncOp)][-1]
++        constant = next(op for op in untouched.walk() if isinstance(op, arith.ConstantOp))
++        constant.properties["value"] = builtin.IntegerAttr(2, builtin.i32)
++    elif kind in ("missing_final_free", "early_final_free", "double_free"):
++        free = next(op for op in block.ops if isinstance(op, memref.DeallocOp))
++        if kind == "missing_final_free":
++            block.erase_op(free)
++        elif kind == "early_final_free":
++            block.detach_op(free)
++            block.insert_op_before(free, second)
++        else:
++            block.insert_op_after(free.clone(), free)
++    elif kind == "new_carry":
++        body = Block(arg_types=[builtin.IndexType(), builtin.i32])
++        mapper = {second.body.block.args[0]: body.args[0]}
++        body.add_ops(op.clone(mapper) for op in list(second.body.block.ops)[:-1])
++        body.add_op(scf.YieldOp(body.args[1]))
++        replacement = scf.ForOp(second.lb, second.ub, second.step, [block.args[0]], body)
++        Rewriter.replace_op(second, [replacement], [])
++    elif kind == "added_alias":
++        alloc = next(op for op in block.ops if isinstance(op, memref.AllocOp))
++        block.insert_op_after(memref.CastOp.get(alloc.memref, alloc.memref.type), alloc)
++    else:
++        raise AssertionError(kind)
++    module.verify()
++
++
++@pytest.mark.parametrize(
++    "kind",
++    (
++        "second_value",
++        "second_index",
++        "partial_coverage",
++        "inner_stride",
++        "tail_bound",
++        "outer_stride",
++        "missing_second_initializer",
++        "retained_capture",
++        "untouched_observer",
++        "missing_final_free",
++        "early_final_free",
++        "double_free",
++        "added_alias",
++        "new_carry",
++    ),
++)
++def test_compiler_valid_mutations_refuse(context, tmp_path, kind):
++    _, paths = context
++    buffers = [path.read_text() for path in paths["two_epochs"][:3]]
++    module = parse(buffers[2])
++    mutate(module, kind)
++    buffers[2] = text(module)
++    try:
++        refused = check(context, tmp_path, texts=buffers)
++    except ValueError:
++        refused = json.loads((tmp_path / "proof/REFUSAL.json").read_bytes())
++    else:
++        assert refused["returncode"] > 0, "unexpected HOST crash disqualifies the context"
++    assert not refused["lean_complete_composition_checked"]
++
++
++def test_exact_middle_cannot_change(context, tmp_path):
++    _, paths = context
++    buffers = [path.read_text() for path in paths["two_epochs"][:3]]
++    module = parse(buffers[1])
++    untouched = [op for op in module.walk() if isinstance(op, func.FuncOp)][-1]
++    constant = next(op for op in untouched.walk() if isinstance(op, arith.ConstantOp))
++    constant.properties["value"] = builtin.IntegerAttr(2, builtin.i32)
++    module.verify()
++    buffers[1] = text(module)
++    with pytest.raises(ValueError, match="retained"):
++        check(context, tmp_path, texts=buffers)
++
++
++@pytest.mark.parametrize("kind", ("slot", "inner_step", "scope", "missing_registry", "signed_bound", "context"))
++def test_kernel_recomputes_facts(context, tmp_path, kind):
++    selection, _ = context
++    accepted = check(context, tmp_path / "valid")
++    model = copy.deepcopy(json.loads(Path(accepted["model"]["path"]).read_bytes()))
++    if kind == "slot":
++        model["reuse"]["objects"][1]["slot"] = 99
++    elif kind == "inner_step":
++        model["configurations"][1]["segment"]["targetInnerStep"] = 2
++    elif kind == "scope":
++        model["configurations"][1]["program"]["leaf"]["indices"][0] += 100
++    elif kind == "missing_registry":
++        model["configurations"].pop()
++    elif kind == "signed_bound":
++        model["configurations"][1]["segment"]["bounds"]["upper"] = 2**63 - 1
++    else:
++        model["configurations"][1]["segment"]["targetContext"] += "changed"
++    query = tmp_path / "Mutated.lean"
++    query.write_text(obligation(model))
++    before = selection.dependencies()
++    env = dict(
++        os.environ,
++        LEAN_PATH=str(selection.proof.library),
++        LEAN_SYSROOT=str(selection.proof.executable.parent.parent),
++        LEAN_NUM_THREADS="2",
++    )
++    result = subprocess.run(
++        [str(selection.proof.executable), str(query)], env=env, capture_output=True, text=True, check=False, timeout=120
++    )
++    (tmp_path / "stdout.log").write_text(result.stdout)
++    (tmp_path / "stderr.log").write_text(result.stderr)
++    assert result.returncode > 0, "unexpected HOST crash disqualifies this context; never retry to promote"
++    assert before == selection.dependencies()
++
++
++@pytest.mark.parametrize("allocator", ("finite_capacity", "observable_pointers", ""))
++def test_allocator_counterexample_is_not_erased(context, tmp_path, allocator):
++    with pytest.raises(ValueError, match="allocator"):
++        check(context, tmp_path, allocator=allocator)
++
++
++def test_complete_node_budget(context, tmp_path):
++    with pytest.raises(ValueError, match="budget"):
++        check(context, tmp_path, max_nodes=1)
++
++
++def test_malformed_ir_is_separate(context, tmp_path):
++    _, paths = context
++    buffers = [path.read_text() for path in paths["two_epochs"][:3]]
++    buffers[2] = buffers[2][:-13]
++    with pytest.raises(ValueError, match="parsing/SSA"):
++        check(context, tmp_path, texts=buffers)
++
++
++def test_rank_three_remains_refused(context, tmp_path):
++    from merlin.verify.lean_graph_loops_memory_scf_projection import initializer_program
++
++    class UnusedDecoder:
++        source_ops = {}
++
++    with pytest.raises(ValueError, match="rank1/rank2"):
++        initializer_program(UnusedDecoder(), {"shape": [2, 3, 4]})
+diff --git a/merlin/tests/ir/test_lean_graph_loops_memory_scf_runtime.py b/merlin/tests/ir/test_lean_graph_loops_memory_scf_runtime.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_loops_memory_scf_runtime.py
+@@ -0,0 +1,85 @@
++"""Nonzero actual common-model witnesses; finite xDSL evidence, not native proof."""
++
++from __future__ import annotations
++
++import json
++
++import pytest
++from xdsl.dialects import builtin
++from xdsl.interpreters.memref import xtype_for_el_type
++from xdsl.interpreters.shaped_array import ShapedArray
++from xdsl.interpreters.utils.ptr import TypedPtr
++
++from merlin.common.paths import repo_root
++from merlin.tests.ir.test_lean_graph_loops_memory_scf import parse
++from merlin.verify.lean_graph_loops_memory_scf_cases import CASES, CompositionCase
++from merlin.verify.lean_graph_loops_memory_scf_runtime import execute
++from merlin.verify.lean_graph_loops_reuse_cases import Case
++
++
++def signed(value, bits):
++    return (value + 2 ** (bits - 1)) % (2**bits) - 2 ** (bits - 1)
++
++
++def reference(seeds, caller, case):
++    observed = []
++    multiplier = 4 if case.prefixes else 2
++    for epoch, seed in enumerate(seeds):
++        value = signed(multiplier * seed, case.epoch.bits)
++        caller = signed(caller + value, case.epoch.bits)
++        observed.append(caller)
++        if case.epoch.overlap and epoch == 1:
++            caller = signed(multiplier * seeds[0], case.epoch.bits)
++    return (signed(observed[0] + observed[-1], case.epoch.bits), case.epoch.shape[0]), [caller]
++
++
++@pytest.mark.parametrize(
++    "case",
++    [case for case in CASES if case.epoch.name != "compact_huge"]
++    + [CompositionCase(Case("two_epochs", (2, 3), 32, 16, 2), 2)],
++    ids=lambda case: case.epoch.name,
++)
++@pytest.mark.parametrize("negative", [False, True])
++def test_nonzero_actual_complete_triples(tmp_path, case, negative):
++    root = repo_root() / "out/artifacts/verification/graph-memory-scf/independent-cases-v2"
++    if case.epoch.name == "two_epochs":
++        old = repo_root() / "out/artifacts/verification/graph-buffer-reuse"
++        paths = [
++            old / "actual-cases-v3/two_epochs/before.mlir",
++            old / "actual-cases-v3/two_epochs/after.mlir",
++            old / "actual-neighbor-segment-v1/after.mlir",
++        ]
++    else:
++        paths = [
++            root / (case.epoch.name + ".mlir"),
++            root / case.epoch.name / "middle.mlir",
++            root / case.epoch.name / "after.mlir",
++        ]
++    seeds = [(-1 if negative else 1) * (17 + 12 * index) for index in range(case.epoch.epochs)]
++    initial = -7 if negative else 11
++    records = []
++    kind = builtin.IntegerType(case.epoch.bits)
++    for path in paths:
++        caller = ShapedArray(TypedPtr.new([initial], xtype=xtype_for_el_type(kind, case.epoch.index_bits)), [1])
++        records.append(execute(parse(path.read_text()), (*seeds, caller), index_bits=case.epoch.index_bits))
++    expected, caller = reference(seeds, initial, case)
++    assert all(record["result"] == expected and record["caller"] == caller for record in records)
++    assert records[0]["trace"] == records[1]["trace"] == records[2]["trace"]
++    assert records[0]["recognized_control_operations"] == records[1]["recognized_control_operations"] == 0
++    assert records[2]["recognized_control_operations"] == case.epoch.epochs * 2
++    assert records[0]["allocation_count"] > records[1]["allocation_count"] == records[2]["allocation_count"]
++    assert all(record["all_private_reads_initialized"] and record["all_private_frees_valid"] for record in records)
++    (tmp_path / "RUNTIME.json").write_text(
++        json.dumps(
++            dict(
++                case=case.epoch.name,
++                seeds=seeds,
++                initial_caller=initial,
++                records=records,
++                expected=list(expected),
++                native_conformance_proved=False,
++            ),
++            indent=2,
++        )
++        + "\n"
++    )
+diff --git a/merlin/tests/ir/test_lean_graph_loops_memory_scf_selection.py b/merlin/tests/ir/test_lean_graph_loops_memory_scf_selection.py
+new file mode 100644
+--- /dev/null
++++ b/merlin/tests/ir/test_lean_graph_loops_memory_scf_selection.py
+@@ -0,0 +1,145 @@
++"""Stale/coherently rehashed selections, retained roots and writer refusals."""
++
++from __future__ import annotations
++
++import json
++import subprocess
++from dataclasses import replace
++from pathlib import Path
++
++import pytest
++
++from merlin.tests.ir.test_lean_graph_loops_memory_scf import check
++from merlin.tests.ir.test_lean_graph_loops_memory_scf import context as context
++from merlin.verify import lean_graph_loops_memory_scf as validator
++from merlin.verify.lean_graph_loops import _reference
++from merlin.verify.lean_graph_loops_memory_scf import audit as _audit
++from merlin.verify.lean_graph_loops_memory_scf_model import MEMORY_SCF_ROOTS
++
++
++@pytest.mark.parametrize("field", ("contract", "manifest", "fixed_context"))
++@pytest.mark.parametrize("rehash", (False, True))
++def test_replacement_context_cannot_become_original(context, tmp_path, field, rehash):
++    selection, _ = context
++    path = tmp_path / (field + ".json")
++    data = json.loads(getattr(selection, field).read_bytes())
++    if field == "contract":
++        data["allocator_mode"] = "finite_capacity"
++    elif field == "fixed_context":
++        data["suspect_in_actual_closure"] = True
++    else:
++        data["producer_revision"] = "0" * 40
++    path.write_text(json.dumps(data))
++    changes = {field: path}
++    if rehash:
++        changes[field + "_sha256"] = _reference(path)["sha256"]
++    mutated = replace(selection, **changes)
++    with pytest.raises(ValueError):
++        mutated.dependencies()
++
++
++@pytest.mark.parametrize("field", ("executable", "library", "build_record"))
++def test_rehashed_proof_selection_cannot_replace_policy(context, tmp_path, field):
++    selection, _ = context
++    path = tmp_path / field
++    if field != "library":
++        path.write_bytes(getattr(selection.proof, field).read_bytes())
++    else:
++        path.mkdir()
++    proof = replace(selection.proof, **{field: path})
++    with pytest.raises(ValueError, match="replacement"):
++        replace(selection, proof=proof).dependencies()
++
++
++@pytest.mark.parametrize("kind", ("missing", "extra", "duplicate", "new_axiom", "interrupted"))
++def test_exact_root_transitive_audit_refuses(kind):
++    lines = [f"'{root}' does not depend on any axioms" for root in MEMORY_SCF_ROOTS]
++    if kind == "missing":
++        lines.pop()
++    elif kind == "extra":
++        lines.append("'unrelated' does not depend on any axioms")
++    elif kind == "duplicate":
++        lines.append(lines[0])
++    elif kind == "new_axiom":
++        lines[-1] = f"'{MEMORY_SCF_ROOTS[-1]}' depends on axioms: [newAssumption]"
++    else:
++        lines[-1] = f"'{MEMORY_SCF_ROOTS[-1]}' depends on axioms: [propext,\nerror: interrupted report"
++    with pytest.raises(ValueError):
++        _audit("\n".join(lines), MEMORY_SCF_ROOTS)
++
++
++@pytest.mark.parametrize("kind", ("original_middle", "private_middle", "query", "model", "exports"))
++def test_intervening_writer_never_earns_acceptance(context, tmp_path, monkeypatch, kind):
++    selection, paths = context
++    texts = [path.read_text() for path in paths["two_epochs"][:3]]
++    real_run = subprocess.run
++
++    def run(command, *args, **kwargs):
++        result = real_run(command, *args, **kwargs)
++        if command[0] == str(selection.proof.executable):
++            target = {
++                "original_middle": tmp_path / "middle.mlir",
++                "private_middle": tmp_path / "proof/middle.mlir",
++                "query": tmp_path / "proof/Obligation.lean",
++                "model": tmp_path / "proof/model.json",
++                "exports": tmp_path / "proof/actual-triple.json",
++            }[kind]
++            with target.open("a") as output:
++                output.write("\n ")
++        return result
++
++    monkeypatch.setattr(validator.subprocess, "run", run)
++    result = check(context, tmp_path, texts=texts)
++    assert result["returncode"] == 0
++    assert not result["lean_complete_composition_checked"]
++    assert "changed" in result["refusal"]
++
++
++def test_saved_positive_report_has_no_authority(context, tmp_path):
++    _, paths = context
++    texts = [path.read_text() for path in paths["two_epochs"][:3]]
++    texts[2] = texts[2].replace("value = 1 : i32", "value = 2 : i32")
++    (tmp_path / "old_saved_report.json").write_text(json.dumps(dict(lean_complete_composition_checked=True)))
++    with pytest.raises(ValueError):
++        check(context, tmp_path, texts=texts)
++
++
++def test_actual_whole_program_has_nonzero_complete_outcome(context, tmp_path):
++    import os
++
++    from merlin.verify.lean_graph_loops_memory_scf_witness import WITNESS_ROOTS, witness_obligation
++
++    selection, _ = context
++    result = check(context, tmp_path / "bound")
++    model = json.loads(Path(result["model"]["path"]).read_bytes())
++    query = tmp_path / "Witness.lean"
++    query.write_text(witness_obligation(model))
++    dependencies = selection.dependencies()
++    env = dict(
++        os.environ,
++        LEAN_PATH=str(selection.proof.library),
++        LEAN_SYSROOT=str(selection.proof.executable.parent.parent),
++        LEAN_NUM_THREADS="2",
++    )
++    checked = subprocess.run(
++        [str(selection.proof.executable), str(query)], env=env, capture_output=True, text=True, check=False, timeout=120
++    )
++    (tmp_path / "stdout.log").write_text(checked.stdout)
++    (tmp_path / "stderr.log").write_text(checked.stderr)
++    assert checked.returncode == 0
++    assert dependencies == selection.dependencies()
++    report = _audit(checked.stdout, MEMORY_SCF_ROOTS + WITNESS_ROOTS)
++    (tmp_path / "INHABITED.json").write_text(
++        json.dumps(
++            dict(
++                root_audit=report,
++                seeds=[17, 29],
++                complete_public_load_observations=[17, 34, 29, 58],
++                actual_full_instruction_sequence=True,
++                common_abstract_interpretation=True,
++                numeric_or_native_primitive_conformance_proved=False,
++            ),
++            indent=2,
++        )
++        + "\n"
++    )

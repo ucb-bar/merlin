@@ -1,0 +1,51 @@
+{
+  "actual_commands": 3,
+  "actual_schedule_sha256": "2da71cef76e4efeff92c052aedd2cfb43ffe1d6dfd25464cf000fcde67fdcf5d",
+  "address_scope": "actual_physical",
+  "epilogue_evaluations": [
+    141,
+    141
+  ],
+  "epilogue_instructions": [
+    1,
+    1
+  ],
+  "law": {
+    "adapter_qualification_identity": "original-neutral-fixed-integer-byte-machine-v1",
+    "complete_projected_effects": true,
+    "configuration_identity": "rtl:1287dd7f8650c91b54abcf4702a7cafb36894cd2b80c34960e76dad14b1d8e69",
+    "epilogues": [
+      [
+        "add",
+        "('add', 1, 0, 5, 0, 6)"
+      ],
+      [
+        "multiply",
+        "('multiply', 1, 0, 5, 0, 7)"
+      ]
+    ],
+    "numerical_policy_identity": "integer-modular-8",
+    "producer": [
+      "produce",
+      "('produce', 1, 2, 3, 4, 0)"
+    ],
+    "qualification_identity": "original-neutral-fixed-integer-byte-machine-v1",
+    "suppressed_intermediate_transfers_no_faults": true,
+    "suppressed_intermediate_transfers_unobserved": true,
+    "synchronous_private_composition": true
+  },
+  "output_elements": [
+    141,
+    141
+  ],
+  "producer_evaluations": 141,
+  "producer_instructions": 1,
+  "requested_read_bytes": 987,
+  "requested_write_bytes": 423,
+  "schema": "merlin.physical_multioutput_fusion.v1",
+  "source_shape": [
+    3,
+    47
+  ],
+  "timing": "UNKNOWN"
+}

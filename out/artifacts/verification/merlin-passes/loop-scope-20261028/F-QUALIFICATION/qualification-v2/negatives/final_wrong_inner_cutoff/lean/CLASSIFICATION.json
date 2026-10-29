@@ -1,0 +1,6 @@
+{
+  "classification": "LEAN_COMPONENT_OBLIGATION_REFUSAL",
+  "root": "Merlin.GraphStatePipelineInstance.F4.outer_form",
+  "line": 299,
+  "diagnostic": "Tactic `rfl` failed: The left-hand side"
+}

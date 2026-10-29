@@ -1,0 +1,36 @@
+{
+  "original_witness": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/witness-v1/Witness.lean",
+    "sha256": "0a11327b19f84015fe0490d6a2d128f1fa60a09428ce6e4b5d82ed239a352802",
+    "bytes": 6362
+  },
+  "current_witness": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/witness-v2/CurrentWitness.lean",
+    "sha256": "6dcfce8c349790bab1fea126d7ee7f793d09af37ea7bc83fe55f754633da5184",
+    "bytes": 6375
+  },
+  "current_query_report": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/positives/witness_example/REPORT.json",
+    "sha256": "6f8030904c29f73fa3808a122ed4acf70174bbdd3cc11ee268347ab32908b94e",
+    "bytes": 218341
+  },
+  "only_source_delta": "import Query \u2192 import LoopTransformQuery",
+  "roots": [
+    "Merlin.LoopScopedWitness.provider_step",
+    "Merlin.LoopScopedWitness.staticIndices",
+    "Merlin.LoopScopedWitness.loop_success",
+    "Merlin.LoopScopedWitness.loop_failure",
+    "Merlin.LoopScopedWitness.observer",
+    "Merlin.LoopScopedWitness.source_success",
+    "Merlin.LoopScopedWitness.source_failure",
+    "Merlin.LoopScopedWitness.input_arity",
+    "Merlin.LoopScopedWitness.input_nonzero",
+    "Merlin.LoopScopedWitness.input_word_domain",
+    "Merlin.LoopScopedWitness.actual_source_success",
+    "Merlin.LoopScopedWitness.actual_final_success",
+    "Merlin.LoopScopedWitness.actual_source_failure",
+    "Merlin.LoopScopedWitness.actual_final_failure",
+    "Merlin.LoopScopedWitness.source_initialized",
+    "Merlin.LoopScopedWitness.final_initialized"
+  ]
+}

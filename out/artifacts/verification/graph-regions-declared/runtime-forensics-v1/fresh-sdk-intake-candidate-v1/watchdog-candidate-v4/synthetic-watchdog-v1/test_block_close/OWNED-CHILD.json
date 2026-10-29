@@ -1,0 +1,12 @@
+{
+  "command": [
+    "/usr/bin/python3",
+    "-I",
+    "-S",
+    "-B",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/fresh-sdk-intake-candidate-v1/watchdog-candidate-v4/own_child_control.py",
+    "close"
+  ],
+  "pid": 235734,
+  "source": "Popen returned by this one launch"
+}

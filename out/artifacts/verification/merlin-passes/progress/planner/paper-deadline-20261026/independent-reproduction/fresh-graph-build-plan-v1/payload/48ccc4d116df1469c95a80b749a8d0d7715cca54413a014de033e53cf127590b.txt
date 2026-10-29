@@ -1,0 +1,23 @@
+test_actual_five_and_six_buffers_emit_frozen_complete_roots (__main__.Profiles.test_actual_five_and_six_buffers_emit_frozen_complete_roots) ... 
+  test_actual_five_and_six_buffers_emit_frozen_complete_roots (__main__.Profiles.test_actual_five_and_six_buffers_emit_frozen_complete_roots) (profile='canonical_integer_scalar_scf_source_v1') ... ERROR
+test_old_guards_runners_and_minimal_provider_are_never_called (__main__.Profiles.test_old_guards_runners_and_minimal_provider_are_never_called) ... ok
+test_stale_middle_observer_body_control_return_refuse (__main__.Profiles.test_stale_middle_observer_body_control_return_refuse) ... ok
+test_unsupported_settings_tail_dynamic_and_flags (__main__.Profiles.test_unsupported_settings_tail_dynamic_and_flags) ... ok
+test_wrong_profile_domain_roots_and_source_map_are_not_authority (__main__.Profiles.test_wrong_profile_domain_roots_and_source_map_are_not_authority) ... ok
+
+======================================================================
+ERROR: test_actual_five_and_six_buffers_emit_frozen_complete_roots (__main__.Profiles.test_actual_five_and_six_buffers_emit_frozen_complete_roots) (profile='canonical_integer_scalar_scf_source_v1')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_pipeline_gate_profiles.py", line 37, in test_actual_five_and_six_buffers_emit_frozen_complete_roots
+    p = self.preparation.prepare(profile.name, buffers(name), self.settings)
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py", line 243, in prepare
+    attribution = _recheck(buffers, modules, profile, settings)
+  File "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py", line 95, in _recheck
+    raise ValueError("actual changed adjacent output differs from registered " + kind)
+ValueError: actual changed adjacent output differs from registered ordered_loop_unrolling
+
+----------------------------------------------------------------------
+Ran 5 tests in 2.386s
+
+FAILED (errors=1)

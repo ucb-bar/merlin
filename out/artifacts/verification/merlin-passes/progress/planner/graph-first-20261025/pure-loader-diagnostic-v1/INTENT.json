@@ -1,0 +1,76 @@
+{
+  "command": [
+    "/usr/lib/ld-linux-x86-64.so.2",
+    "--inhibit-cache",
+    "--glibc-hwcaps-mask",
+    "",
+    "--library-path",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib:/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean:/usr/lib",
+    "--list",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean"
+  ],
+  "environment": {
+    "LANG": "C",
+    "LC_ALL": "C"
+  },
+  "cwd": "/home/jeremy/Projects/merlin",
+  "original_refs": [
+    {
+      "bytes": 9024,
+      "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+      "sha256": "bf8d54e4714cc4b03d3f6bb34c83b7202b87e49c8bfcbff6895c085bb90ceb38"
+    },
+    {
+      "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libInit_shared.so",
+      "sha256": "7831b707e868cee76c353d26649fbd8981b2f4d7e0329af55bbf4fa9e0c69350",
+      "bytes": 6264
+    },
+    {
+      "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared.so",
+      "sha256": "efef27df56f2197139afe12f1a2b63913a05f1aba81ce88824c44100431ed8c4",
+      "bytes": 231113560
+    },
+    {
+      "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_1.so",
+      "sha256": "691bf49d9e542a15808fad9d1f8c5df45860166f77efa57961b5335e65a3a0ed",
+      "bytes": 6264
+    },
+    {
+      "path": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/libleanshared_2.so",
+      "sha256": "141cbfdb3bc2016cd68e0bebc2e5494818213b462ed985afa6d975d4872fb8ec",
+      "bytes": 6264
+    },
+    {
+      "path": "/usr/lib/ld-linux-x86-64.so.2",
+      "sha256": "d011113b7054c641c8ca064f58bcc23804fd2654a3dff2444dad06ddeda61bfb",
+      "bytes": 263152
+    },
+    {
+      "path": "/usr/lib/libc.so.6",
+      "sha256": "e221b10fee9ee4776d8f0f1701253bc06817f7a4dbe6c5292487277d0bf8ffff",
+      "bytes": 2215072
+    },
+    {
+      "path": "/usr/lib/libdl.so.2",
+      "sha256": "9b3812e7f6b766e2d0a1d9eeca1a58c1272392859e8b04f708b2f86b2256d03c",
+      "bytes": 14352
+    },
+    {
+      "path": "/usr/lib/libm.so.6",
+      "sha256": "965106704753eefe8c31ae7da6daba3ead3d18c52b19b5fcc41178bcc4aa999d",
+      "bytes": 1268336
+    },
+    {
+      "path": "/usr/lib/libpthread.so.0",
+      "sha256": "839b91403f89fa4c6888d50deb2b59cd0612f8cfe3d57dd9d6314832b4cb31ab",
+      "bytes": 14360
+    },
+    {
+      "path": "/usr/lib/librt.so.1",
+      "sha256": "e06e12b8a78494908d08376838c380fb3817bfd7d54f6a86ef050016f7ade5f8",
+      "bytes": 14424
+    }
+  ],
+  "scope": "startup loader dependency listing only; no Lean source/query or MLIR oracle",
+  "graph_or_pure_proof_execution_authorized": false
+}

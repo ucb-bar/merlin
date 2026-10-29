@@ -1,0 +1,17 @@
+test_actual_object_header_disagreement (__main__.ArchiveTests.test_actual_object_header_disagreement) ... ok
+test_adversarial_associations (__main__.ArchiveTests.test_adversarial_associations) ... ok
+test_changed_query_preserves_failed_buffer (__main__.ArchiveTests.test_changed_query_preserves_failed_buffer) ... ok
+test_escape_and_prefix_collision (__main__.ArchiveTests.test_escape_and_prefix_collision) ... ok
+test_missing_full_type_output_holds (__main__.ArchiveTests.test_missing_full_type_output_holds) ... ok
+test_missing_ir_even_with_matching_manifest_roster (__main__.ArchiveTests.test_missing_ir_even_with_matching_manifest_roster) ... ok
+test_nonstandard_axiom_holds (__main__.ArchiveTests.test_nonstandard_axiom_holds) ... ok
+test_pure_full_selection (__main__.ArchiveTests.test_pure_full_selection) ... ok
+test_query_roots_and_names (__main__.ArchiveTests.test_query_roots_and_names) ... ok
+test_same_common_protocol_methods (__main__.ArchiveTests.test_same_common_protocol_methods) ... ok
+test_same_live_typed_authority_with_mocked_execution (__main__.ArchiveTests.test_same_live_typed_authority_with_mocked_execution) ... ok
+test_source_prepare_does_not_guard_or_launch (__main__.ArchiveTests.test_source_prepare_does_not_guard_or_launch) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.054s
+
+OK

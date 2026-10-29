@@ -1,0 +1,1024 @@
+{
+  "status": "conditional_graph_checked",
+  "branch": "feat/pass-verification",
+  "checkout": "/home/jeremy/Projects/merlin",
+  "owned_sources": [
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar.py",
+        "sha256": "d1cb71af342dd09008bade5b8d56a4c039781a0bbf37bf7813d508acacb50e43",
+        "bytes": 15186
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_scalar.py",
+        "sha256": "d1cb71af342dd09008bade5b8d56a4c039781a0bbf37bf7813d508acacb50e43",
+        "bytes": 15186
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_capture.py",
+        "sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+        "bytes": 20214
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_scalar_capture.py",
+        "sha256": "d03ed1697cb8316f164b1f5c71940f2805843d5a7bf87af5cd46acbe49c76fb0",
+        "bytes": 20214
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_chain.py",
+        "sha256": "710ca7a0341e5f0e42a42c63ee1323a84e9c9fa5f31750e60b69ade52d87f986",
+        "bytes": 4106
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_scalar_chain.py",
+        "sha256": "710ca7a0341e5f0e42a42c63ee1323a84e9c9fa5f31750e60b69ade52d87f986",
+        "bytes": 4106
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_execution.py",
+        "sha256": "9f99cd0b5ec6b04b2286baa8c6b119767222abf8bb10c2e702f96db59fa59cc8",
+        "bytes": 8899
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_scalar_execution.py",
+        "sha256": "9f99cd0b5ec6b04b2286baa8c6b119767222abf8bb10c2e702f96db59fa59cc8",
+        "bytes": 8899
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_kernel.py",
+        "sha256": "2a170583ecdab74f9690cbe071e6ef4c4d459daa07c42c07c351e201dfc405e0",
+        "bytes": 10303
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_scalar_kernel.py",
+        "sha256": "2a170583ecdab74f9690cbe071e6ef4c4d459daa07c42c07c351e201dfc405e0",
+        "bytes": 10303
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_models.py",
+        "sha256": "f7530f5cf3fb0c61e52b2234231c652173327d964fa783c63df0740c7fd28ea7",
+        "bytes": 10937
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_scalar_models.py",
+        "sha256": "f7530f5cf3fb0c61e52b2234231c652173327d964fa783c63df0740c7fd28ea7",
+        "bytes": 10937
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_state_scalar_receipt.py",
+        "sha256": "0df15962e7e8f73904d9a126dc5b0dffcb8d2b4e2a67464cd978b0d0c1fd8955",
+        "bytes": 15444
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean_graph_state_scalar_receipt.py",
+        "sha256": "0df15962e7e8f73904d9a126dc5b0dffcb8d2b4e2a67464cd978b0d0c1fd8955",
+        "bytes": 15444
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+        "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+        "bytes": 4654
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+        "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+        "bytes": 4654
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+        "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+        "bytes": 8229
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+        "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+        "bytes": 8229
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+        "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+        "bytes": 11782
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+        "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+        "bytes": 11782
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+        "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+        "bytes": 6170
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+        "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+        "bytes": 6170
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+        "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+        "bytes": 9963
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+        "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+        "bytes": 9963
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSteps.lean",
+        "sha256": "9dd93e22d7027a7a9ccadff15b00b057e87a26a440552d6c5c1ab77fdd13c883",
+        "bytes": 5087
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStateScalarSteps.lean",
+        "sha256": "9dd93e22d7027a7a9ccadff15b00b057e87a26a440552d6c5c1ab77fdd13c883",
+        "bytes": 5087
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+        "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+        "bytes": 6614
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+        "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+        "bytes": 6614
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_scalar.py",
+        "sha256": "3496470747c0f7819197188859cd1517d77b6adf7c590c118802f36f3f782426",
+        "bytes": 9875
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/merlin/tests/ir/test_lean_graph_state_scalar.py",
+        "sha256": "3496470747c0f7819197188859cd1517d77b6adf7c590c118802f36f3f782426",
+        "bytes": 9875
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_scalar_models.py",
+        "sha256": "ceadf0f741d82601d8ad9dde2cae2b8d45997090ceff8e70bbe09dd72c1b57ae",
+        "bytes": 4600
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/merlin/tests/ir/test_lean_graph_state_scalar_models.py",
+        "sha256": "ceadf0f741d82601d8ad9dde2cae2b8d45997090ceff8e70bbe09dd72c1b57ae",
+        "bytes": 4600
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_scalar_mutations.py",
+        "sha256": "60ccd47d2cafea2db21e408a8b79a67369b3cec85077f25b8a2aa98b95f3e702",
+        "bytes": 9574
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/merlin/tests/ir/test_lean_graph_state_scalar_mutations.py",
+        "sha256": "60ccd47d2cafea2db21e408a8b79a67369b3cec85077f25b8a2aa98b95f3e702",
+        "bytes": 9574
+      }
+    },
+    {
+      "original": {
+        "path": "/home/jeremy/Projects/merlin/merlin/tests/ir/test_lean_graph_state_scalar_receipt.py",
+        "sha256": "5e0f14cfec04ba5f229a9cd03330b8b944294ccf91b1c1bf4a57828b241f019d",
+        "bytes": 6583
+      },
+      "retained": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/sources/merlin/tests/ir/test_lean_graph_state_scalar_receipt.py",
+        "sha256": "5e0f14cfec04ba5f229a9cd03330b8b944294ccf91b1c1bf4a57828b241f019d",
+        "bytes": 6583
+      }
+    }
+  ],
+  "owned_patch": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/review/sealed-v1/owned.patch",
+    "sha256": "cb76ac89365529b3a06061703444603e504fee86973bc64868fac9b9f43ad812",
+    "bytes": 176122
+  },
+  "originals": 20,
+  "fresh_process_replays": 20,
+  "changed_boundaries": 19,
+  "identity_boundaries": 1,
+  "actual_two_changed_stage_chains": 3,
+  "claims": [
+    {
+      "case": "cse-i1",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i1/receipt.json",
+        "sha256": "76a865d49de465f93fda667d313ff37d18e08033bd4b167055bb4b25ba8c4723",
+        "bytes": 219072
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/cse-i1/report.json",
+        "sha256": "209d0499e632c309a00fed3866fb6faece1404c5e0f50b21541efa0be06fbc74",
+        "bytes": 1057
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i1/selection.json",
+        "sha256": "ee53953764ff08b15a50edbc26f8071daa185ba179409d9d88973d95b688262d",
+        "bytes": 1258
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "cse-i8",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i8/receipt.json",
+        "sha256": "161dac65143c95e3c2e395ea1d35a8c799c836e86c681e4ff9e71bc6a99bd6e0",
+        "bytes": 219072
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/cse-i8/report.json",
+        "sha256": "26ce848815143a9e3dd3ad9584725c48de1aac72688be6e18e2c7fd3c4fcd6c3",
+        "bytes": 1057
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i8/selection.json",
+        "sha256": "588e80853b5795e3771d2690738de516ab0ce8fa57d2950612ce000641fb1d82",
+        "bytes": 1258
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "cse-i16",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i16/receipt.json",
+        "sha256": "c1c07394370cdec3f5bd32038eecd6eb98d68042468b52d4113870510f625e2c",
+        "bytes": 219126
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/cse-i16/report.json",
+        "sha256": "c54e55872ca25a1991fbb45e7ff2527219dcb283b2f2338e6b66e0528e37018c",
+        "bytes": 1059
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i16/selection.json",
+        "sha256": "9d035e07670bd6d18696d905ce063a888adaed734ced1eb015f1de625c452255",
+        "bytes": 1263
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "cse-i32",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i32/receipt.json",
+        "sha256": "d15777fac593dbbfe18768664c06bef80bd59e2307fc457ea56f698ff1e2b51e",
+        "bytes": 219126
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/cse-i32/report.json",
+        "sha256": "49ee342a56d9a9f02e2ed35ec9e152730ccc5d71a30b943364c8aa37cdf83514",
+        "bytes": 1059
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i32/selection.json",
+        "sha256": "5e0b141d58230e23c66c08d579715bf874cabb5650729fcf9982ca8151c83794",
+        "bytes": 1263
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "cse-i128",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i128/receipt.json",
+        "sha256": "5b52fd8f1154d555dd7c2c00ee3fd7fd7b5b25f5898e733a44c8e61d906fd1c9",
+        "bytes": 219180
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/cse-i128/report.json",
+        "sha256": "8ba680601363c8b158188dc6c81b899258ce4e6c2e90b9ee35ded37aaef1ebb9",
+        "bytes": 1061
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i128/selection.json",
+        "sha256": "c406ce5b1461d6f652d18e0e157e55e92b27e8c6ebfb553b31a2b012efdb2eee",
+        "bytes": 1268
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "cse-i256",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i256/receipt.json",
+        "sha256": "102e0a39915d90b74ee82f9dc63b376336a0ba9ad0814d0241d874da05907f2e",
+        "bytes": 219180
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/cse-i256/report.json",
+        "sha256": "086b4b99de3eaaa751044f7ffaae004ae510e57a0445e6e781cf77ee954af5b7",
+        "bytes": 1061
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/cse-i256/selection.json",
+        "sha256": "dfffc4fabccdf1539641cebbe79be08869b88c7d1bc54382164e63531b72dcd4",
+        "bytes": 1268
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "constants-casts",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/constants-casts/receipt.json",
+        "sha256": "e5fbf5a421f12ae9bb4029e608ebba13f701cc14398e6b83d2ba2d96156fbb80",
+        "bytes": 219558
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/constants-casts/report.json",
+        "sha256": "54548c2e19f7acb2d572c8f8b9522e03d0d973d7a103eb919042e4831742768a",
+        "bytes": 1075
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/constants-casts/selection.json",
+        "sha256": "71fcdb7446c4160922e3095b1b8dec6ebe097b7363e369bd6f6ce7ee2b3ded65",
+        "bytes": 1303
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "equivalent-constants",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/equivalent-constants/receipt.json",
+        "sha256": "f4fb85890e3f4d469f1755d16d44a7468ec20f3d1f3a046fd2b93869a69c0145",
+        "bytes": 219828
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/equivalent-constants/report.json",
+        "sha256": "76d178706bee2f37adf090e91d5971a6700c6c0af9a4c064b94e770df4d69c69",
+        "bytes": 1085
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/equivalent-constants/selection.json",
+        "sha256": "ffdc235c1c298c21cc8cc2386cffbf70c1612acbdc0ffa015eccce2cc7110c88",
+        "bytes": 1328
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "opaque-effects",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/opaque-effects/receipt.json",
+        "sha256": "8ae4bd583603be550c32ef6958f4e0d901b59bf178f228b7652dfb9347fd46ba",
+        "bytes": 219504
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/opaque-effects/report.json",
+        "sha256": "5a85db24b594bd7af66a03cb35634b7777cb8d25b7a401804b515f8042434f75",
+        "bytes": 1073
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/opaque-effects/selection.json",
+        "sha256": "00855fe195eec746d19525a12cea37a458df9d8e66053148bcada1d7c9f87e2f",
+        "bytes": 1298
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "separate-functions",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/separate-functions/receipt.json",
+        "sha256": "35dbf2c70165be4e8c45d45f120131fad5bf6dcd5efc3362327c032010b9ba6a",
+        "bytes": 219720
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/separate-functions/report.json",
+        "sha256": "cce1d2788a6fb95e9b521b977dec9fa38d490ac551cd5242dbae112697ca1e55",
+        "bytes": 1081
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/separate-functions/selection.json",
+        "sha256": "1d64773f9cb7320db1822b9af3301653ca090652fa7f3eda78c0a8b4989d8b18",
+        "bytes": 1318
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "external-contract",
+      "mode": "cse",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/external-contract/receipt.json",
+        "sha256": "5c3e02bc3d1ec9222cc99566495185b3bf947e2f97a7f65d2d513d9af6308619",
+        "bytes": 219666
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/external-contract/report.json",
+        "sha256": "5471a0a5a81c6df4f4f03502927ddf8cc7c6461287dc5081a5368d3bd34fc999",
+        "bytes": 1079
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/external-contract/selection.json",
+        "sha256": "3f125b43c1c91f4efa07bbb0d2a90936580a55cd0506269cb3cba053b324ca46",
+        "bytes": 1313
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "licm-nonunit",
+      "mode": "licm",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/licm-nonunit/receipt.json",
+        "sha256": "bc0fce09dba6bbf125a05eec5bdc96b5f7d1b6f9c236ee0bb37b8351ebcf9c0c",
+        "bytes": 219396
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/licm-nonunit/report.json",
+        "sha256": "adad7c2dd776c0c98d5fd974d19b2ef4aa359bd084d0fd26ea7d53f9c132ef2c",
+        "bytes": 1069
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/licm-nonunit/selection.json",
+        "sha256": "21b0a3c9787f981b2d979624b3b4adca391e52db14c62b3436180bfd4bf00919",
+        "bytes": 1289
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "licm-zero",
+      "mode": "licm",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/licm-zero/receipt.json",
+        "sha256": "4b76bf8ce96d4fada06ea40cc9bc7ca4686ebb1078f10b43f61eb363f24d7f85",
+        "bytes": 219234
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/licm-zero/report.json",
+        "sha256": "edbe1f40f4334b0f6602832191bd2ab4f24f5e722c737448e84bd47fba8b02e7",
+        "bytes": 1063
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/licm-zero/selection.json",
+        "sha256": "fd66b21fc5723248d118b6951c372bda704838fc8b0d00c65af23d31bb0e9317",
+        "bytes": 1274
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "licm-negative-lower",
+      "mode": "licm",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/licm-negative-lower/receipt.json",
+        "sha256": "377684423712557ff61d6325d75a33eb1b90a0ce0af02d88a24c799fa015666e",
+        "bytes": 219774
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/licm-negative-lower/report.json",
+        "sha256": "80cb89703f902cdd71c25b7ca419d93f984acfc748847c51568184fdf6602bb0",
+        "bytes": 1083
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/licm-negative-lower/selection.json",
+        "sha256": "e168426344f4bb90f949c01fe157b45f28362099aa53a03355774cafdb870214",
+        "bytes": 1324
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "licm-two-carries",
+      "mode": "licm",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/licm-two-carries/receipt.json",
+        "sha256": "4f0da3ed066b3c6e7467cb33172e6d71fcac42d04ca66bf334ac792af8fc1695",
+        "bytes": 219618
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/licm-two-carries/report.json",
+        "sha256": "6c68617cdd2c884f584516234302194fc60e53a48bc13574a822637af0eaf8f7",
+        "bytes": 1077
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/licm-two-carries/selection.json",
+        "sha256": "4bd61346db2d5ff76ab5fbbabb929fca6931aec8f146ef0b448085bdc7050229",
+        "bytes": 1310
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "licm-dynamic-bound",
+      "mode": "licm",
+      "changed": true,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/licm-dynamic-bound/receipt.json",
+        "sha256": "85c5ec74d871fe0e38694634260f61b4ba238d4807dc2729663418396bf0c2c3",
+        "bytes": 219720
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/licm-dynamic-bound/report.json",
+        "sha256": "4d6e1896a699a967c1cf5b44437caef268709462ef361c32c0ba3617781a4955",
+        "bytes": 1081
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/licm-dynamic-bound/selection.json",
+        "sha256": "95d1c9a7941ae4bc838627014be97c5b3d58a51418a5126bcfb513747a1fbc84",
+        "bytes": 1319
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "chain",
+      "mode": "chain",
+      "changed": true,
+      "stage_changed": [
+        true,
+        true
+      ],
+      "proof_routes": [
+        "first-full-boundary",
+        "second-full-boundary",
+        "checked-middle-composition",
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/receipt.json",
+        "sha256": "9b28960c31534232dd39e1ae516c5a84c0b5d7c769719696b7451094536792b6",
+        "bytes": 220088
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/chain/report.json",
+        "sha256": "c59aa1700fd9f6df0edf8b296fa2ca6483f7cb8e3aed6c12fdb3c11c0f36d140",
+        "bytes": 1055
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/chain/selection.json",
+        "sha256": "b9df8fbc03b97dab84cc42a20c3d3680617501c5d3d63946223d5af258e3be5d",
+        "bytes": 1515
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "zero-chain",
+      "mode": "chain",
+      "changed": true,
+      "stage_changed": [
+        true,
+        true
+      ],
+      "proof_routes": [
+        "first-full-boundary",
+        "second-full-boundary",
+        "checked-middle-composition",
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/zero-chain/receipt.json",
+        "sha256": "3f577c3a8dfc9b551d63ab8679e257c7621f0cce8f913d79c1fc7091af10a38d",
+        "bytes": 220378
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/zero-chain/report.json",
+        "sha256": "1bd55ec9d9b47d3ad3decc577b2bdc9c4b29e01c1ce5d3b9876d0dd2645654b0",
+        "bytes": 1065
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/zero-chain/selection.json",
+        "sha256": "e4743441fec1a7d894d362e14f28794b98eefe706f7840dc86515f8d240c5298",
+        "bytes": 1545
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "nested-chain",
+      "mode": "chain",
+      "changed": true,
+      "stage_changed": [
+        true,
+        true
+      ],
+      "proof_routes": [
+        "first-full-boundary",
+        "second-full-boundary",
+        "checked-middle-composition",
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/nested-chain/receipt.json",
+        "sha256": "87273c62014f550bc2c079006033fe79833edff7d18aa5d714ea629c3af96235",
+        "bytes": 220494
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/nested-chain/report.json",
+        "sha256": "35af066b0de5a7149a7d7bc7efdcc4cf9710b9c91168d991b4a8f722d7ceb936",
+        "bytes": 1069
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/nested-chain/selection.json",
+        "sha256": "a31830c135fe7a73971692812c9a2f8a8f28b1275f6c616ffd0fe4aa95c60f2f",
+        "bytes": 1557
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    },
+    {
+      "case": "identity-flags",
+      "mode": "cse",
+      "changed": false,
+      "stage_changed": null,
+      "proof_routes": [
+        "direct-original-final"
+      ],
+      "receipt": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/identity-flags/receipt.json",
+        "sha256": "9b819a8c2c63fa8c4547f8927f6fa3648f24a05609a1e978e608ae3118b6294a",
+        "bytes": 219504
+      },
+      "replay": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/replays/identity-flags/report.json",
+        "sha256": "7a372f2fad82609311eefe3b5045cc180af3af6494387534f76c84d925e0c724",
+        "bytes": 1073
+      },
+      "selection": {
+        "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-scalar/qualification-v1/originals/identity-flags/selection.json",
+        "sha256": "fea819c883a2b098527be9a9477cf92d978e31a832e9d1ffc47f2b5ef1ee0e9f",
+        "bytes": 1299
+      },
+      "claims": {
+        "status": "conditional_graph_checked",
+        "public_acceptance_issued": false,
+        "review_approved": false,
+        "native_fidelity_proved": false,
+        "primitive_fidelity_proved": false,
+        "source_success_proved": false,
+        "poison_freedom_proved": false,
+        "numerical_gates_discharged": false,
+        "full_model_claim": false
+      }
+    }
+  ],
+  "tests": {
+    "tests": 95,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "valid_actual_mutations": 20,
+  "unsupported_scopes": [
+    "unknown-region",
+    "cfg",
+    "zero-stride",
+    "internal-call"
+  ],
+  "audit_theorem_counts_by_mode": {
+    "cse": [
+      489,
+      494
+    ],
+    "licm": [
+      489
+    ],
+    "chain": [
+      498
+    ]
+  },
+  "axioms_used": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "violations": [],
+  "source_layout_tests": 18,
+  "broad_structure_gate": "fails existing foreign zephyr_model.py ceiling 3557 > 3537; untouched",
+  "model_witnesses": "explicit initialized/nonzero/zero-trip/partial/nested Int operational models; actual primitive fidelity unproved",
+  "countermodels": "typed observer deletion and empty-loop partial speculation; source/refined policy separation preserved",
+  "actual_model_coverage": "unmeasured; independently selected actual production API fixtures only",
+  "native_MLIR_device_coverage": "unmeasured/unavailable; no selected full LeanMLIR manifest",
+  "preserved_monolithic_execution_timeout": "60s four-iteration/two-carry conversion UNQUALIFIED; no retry/limit raise; separate per-step proof route qualified",
+  "elision_status_preserved": "ZERO qualified originals/replays; unknown SIGSEGV unchanged",
+  "Std_Time_incident": "checked ONCE absent from recorded scalar import/object closure; pins remain exact; no global causal claim",
+  "public_acceptance_issued": false,
+  "review_approved": false,
+  "native_fidelity_proved": false,
+  "primitive_fidelity_proved": false,
+  "source_success_proved": false,
+  "poison_freedom_proved": false,
+  "numerical_gates_discharged": false,
+  "full_model_claim": false,
+  "old37_capsules_integrity": [
+    {
+      "capsule": "graph-state/review/sealed-v2",
+      "files": 1126,
+      "sources": 12,
+      "manifest_sha256": "0fb830998b4dd508db2d68af090e97b3b43ee1ef6d8bd3dfd4f897a65997493a",
+      "failures": []
+    },
+    {
+      "capsule": "graph-state-chain/review/sealed-packed-v1",
+      "files": 12149,
+      "sources": 15,
+      "manifest_sha256": "7fab2dc80e035a0db9953dcdc988164faa29f101ad94bcdbbaf6bba20351d0f3",
+      "failures": []
+    },
+    {
+      "capsule": "graph-state-elision/review/sealed-diagnostic-v1",
+      "files": 8145,
+      "sources": 10,
+      "manifest_sha256": "460db8d27e03239effd9d1fe9e0942dd0b93a6f1963244f237c7d462320cdb58",
+      "failures": []
+    }
+  ]
+}

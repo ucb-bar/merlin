@@ -1,0 +1,17 @@
+{
+  "checker": {
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/out/build/lean/build/bin/merlin-lean",
+    "bytes": 134944720,
+    "sha256": "67795ef5d7771cb3dd0f56691a341db8583adef1f5a5903a0411dcbaaf2b6cb8"
+  },
+  "matrix": {
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/out/artifacts/verification/merlin-passes/bf16-integration-20261028/F-QUALIFICATION/fixtures-v3/MATRIX.json",
+    "bytes": 66555,
+    "sha256": "1e72cf7b70ae39adc40b54c669a819d5278ee071cc0aa0521cc9720c18beb5ad"
+  },
+  "lock": {
+    "path": "/home/jeremy/Projects/merlin-bf16-verification/merlin/lean/SPEC_LOCK",
+    "bytes": 33934,
+    "sha256": "6cc97b6a0742795378cca76393642932b62cc9f8998693f3961f22a5bc44b23b"
+  }
+}

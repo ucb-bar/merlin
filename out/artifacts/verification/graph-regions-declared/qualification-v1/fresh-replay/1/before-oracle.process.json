@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/home/jeremy/Projects/model2MLIR/.venv/bin/python",
+    "-B",
+    "/home/jeremy/Projects/merlin/src/merlin/verify/lean_graph_regions_declared_oracle.py",
+    "mlir",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/capture/source.mlir",
+    "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/qualification-v1/fresh-replay/1/before-oracle",
+    "--exporter",
+    "/home/jeremy/Projects/merlin/src/merlin/verify/lean/mlir_export.py"
+  ],
+  "returncode": 0,
+  "stderr": "",
+  "stdout": ""
+}

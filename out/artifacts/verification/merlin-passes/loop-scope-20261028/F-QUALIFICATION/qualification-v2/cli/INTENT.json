@@ -1,0 +1,22 @@
+{
+  "command": [
+    "/home/jeremy/Projects/merlin/.venv/bin/python",
+    "-m",
+    "merlin.verify.loop_transform_cli",
+    "--source",
+    "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/positives/factor3_carry2_nonaligned/original-input.mlir",
+    "--reference",
+    "/home/jeremy/Projects/merlin-graph-proof-intake",
+    "--lean",
+    "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/bin/lean",
+    "--destination",
+    "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/final-v2/cli",
+    "--factor",
+    "3",
+    "--tile",
+    "2",
+    "--output",
+    "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/F-QUALIFICATION/qualification-v2/cli-delivered.mlir"
+  ],
+  "timeout": 120
+}

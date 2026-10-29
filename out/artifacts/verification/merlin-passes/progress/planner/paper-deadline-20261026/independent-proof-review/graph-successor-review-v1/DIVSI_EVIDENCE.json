@@ -1,0 +1,15 @@
+{
+  "test_source": {
+    "path": "q-schedule/source-snapshot/owned/merlin/tests/ir/test_lean_graph_pipeline_gate_schedule.py",
+    "sha256": "33f6a001a5253d6039701e0b2caf18cbba21dff66afab63fed7c2e47ad7ea60a",
+    "bytes": 12144
+  },
+  "test_method": "test_partial_empty_effect_arithmetic_is_not_total_or_commutative",
+  "before_raw_sha256": null,
+  "after_raw_sha256": null,
+  "owner_confirmation": "Q confirmed no standalone divsi raw pair retained; fixed source/test log only; no new run requested",
+  "counterexample_status": "DESIGN_ONLY_NOT_NATIVE_BUG",
+  "design": "Keep observe before a may-fail division in source, move division ahead of observe. Model division failure as error preserving current world and observer as world increment. On failing division, terminal world depends on whether observer already ran; zero memory effects alone does not justify motion.",
+  "source_pass_result": "Retained owner test applies actual pinned producer and verifies output then schedule preparation refuses changed opaque anchor/context. Not rerun here.",
+  "semantic_or_kernel_failure_observed": false
+}

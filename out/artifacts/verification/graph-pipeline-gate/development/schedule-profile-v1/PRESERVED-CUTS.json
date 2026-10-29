@@ -1,0 +1,29 @@
+{
+  "runtime_or_objects_read": false,
+  "checks": [
+    {
+      "cut": "chain-endpoint-v1",
+      "exact_packet_files": 141
+    },
+    {
+      "cut": "service-route-review-v1",
+      "exact_packet_files": 77
+    },
+    {
+      "cut": "larger-profiles-v1",
+      "exact_packet_files": 186
+    },
+    {
+      "cut": "source-checkpoint-v10",
+      "exact_live_owned_sources": 12
+    },
+    {
+      "cut": "chain-endpoint-v1",
+      "exact_live_owned_sources": 5
+    },
+    {
+      "cut": "larger-profiles-v1",
+      "exact_live_owned_sources": 4
+    }
+  ]
+}

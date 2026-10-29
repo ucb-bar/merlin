@@ -1,0 +1,77 @@
+{
+  "scope": "cited exact paths plus five known verification namespaces; no build/SDK/binary/temp/global scan",
+  "max_candidate_json": 200,
+  "max_depth": 4,
+  "max_bytes_each": 2097152,
+  "roots": [
+    {
+      "path": "out/artifacts/verification/transform-receipt.json",
+      "exists": false,
+      "scope": "exact cited/known output path"
+    },
+    {
+      "path": "out/artifacts/verification/detection_matrix.json",
+      "exists": false,
+      "scope": "exact cited/known output path"
+    },
+    {
+      "path": "out/runs/verification",
+      "exists": false,
+      "scope": "exact cited/known output path"
+    },
+    {
+      "path": "out/artifacts/verification/roundtrip-dev",
+      "exists": true,
+      "scope": "known verification product namespace, depth<=4"
+    },
+    {
+      "path": "out/artifacts/verification/g1",
+      "exists": true,
+      "scope": "known verification product namespace, depth<=4"
+    },
+    {
+      "path": "out/artifacts/verification/g1-scan",
+      "exists": true,
+      "scope": "known verification product namespace, depth<=4"
+    },
+    {
+      "path": "out/artifacts/verification/g1-dce",
+      "exists": true,
+      "scope": "known verification product namespace, depth<=4"
+    },
+    {
+      "path": "out/artifacts/verification/g2",
+      "exists": true,
+      "scope": "known verification product namespace, depth<=4"
+    },
+    {
+      "path": "out/artifacts/verification/v1",
+      "exists": false,
+      "scope": "known verification product namespace, depth<=4"
+    }
+  ],
+  "candidate_json": [
+    {
+      "path": "out/artifacts/verification/g2/stages/0000_xdsl-pruned/receipt.json",
+      "bytes": 1330,
+      "sha256": "7f87a70219859fcad8150416264fff792dd5df7f8d5a0674c6739d45279b68bb",
+      "read": true
+    },
+    {
+      "path": "out/artifacts/verification/g2/stages/0001_xdsl-quant-lowered/receipt.json",
+      "bytes": 1351,
+      "sha256": "66b4c396abf8cd7eee1f0b03de3c3679b2a9d832af94a2ebd7d518f8482189af",
+      "read": true
+    },
+    {
+      "path": "out/artifacts/verification/g2/stages/0002_xdsl-c-interface/receipt.json",
+      "bytes": 1432,
+      "sha256": "8d02c16013912ebdb01a4ec787d402f268540064014c2fef22fc4e182675db67",
+      "read": true
+    }
+  ],
+  "matching_receipts": [],
+  "exact_example_checker_output": "UNAVAILABLE_IN_BOUNDED_RETAINED_SEARCH",
+  "global_absence_claimed": false,
+  "tests_executed": false
+}

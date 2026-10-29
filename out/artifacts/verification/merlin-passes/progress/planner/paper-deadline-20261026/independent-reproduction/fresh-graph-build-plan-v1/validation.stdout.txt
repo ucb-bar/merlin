@@ -1,0 +1,12 @@
+{
+  "scope": "one bounded source/data validation batch",
+  "actual_profiles": 6,
+  "actual_source_data_files": 487,
+  "tiny_controls": 10,
+  "all_tiny_controls_expected": true,
+  "same_file_relocation": "PASSED",
+  "guard_denials": [],
+  "SDK_or_native_reads_or_process_launches": 0,
+  "provider_controller_or_Lean_execution": false,
+  "proof_or_qualification": false
+}

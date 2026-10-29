@@ -1,0 +1,47 @@
+[
+  {
+    "path": "merlin/tests/ir/test_lean_graph_loops_memory_scf_after_entries.py",
+    "sha256": "e8f2d79709042c410e55942b091a795948beee753355ca205b3e24f9d769bbad",
+    "bytes": 7860
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesChain.lean",
+    "sha256": "ec4e7bddea5bd4e1b13359dca6bea0f36dbf1f05939b1b51a12cfdfbcadeb7fe",
+    "bytes": 7084
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesClosure.lean",
+    "sha256": "44478ab6e3b2bbe636943fe369209fa96c58ea679c8bd22d435eb252dbf89366",
+    "bytes": 6254
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesMeaning.lean",
+    "sha256": "478311e1d64352a42cd8e71012a001f0276820f9b5f3ba268d30a018fbc18469",
+    "bytes": 6624
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesRoster.lean",
+    "sha256": "b1a40d49a7d095429e82bf0e053e53707b557996c01c308c4a5bdc0524e86e07",
+    "bytes": 5337
+  },
+  {
+    "path": "src/merlin/verify/lean/Merlin/GraphLoopsMemorySCFAfterEntriesWitness.lean",
+    "sha256": "a8a8ead22ebbf08b26cea5e9ff901463d97d8a31403032baf2e07fa1f7dd9744",
+    "bytes": 5522
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+    "sha256": "21c9af7755cb1bf9032932cd0957894993e4c7bfefc12cd282d714495fc31b61",
+    "bytes": 9275
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_data.py",
+    "sha256": "e3bd007e4fe26eec0adb107d2fa84473a606ec211503f92b0e44dcc144d81fc8",
+    "bytes": 4537
+  },
+  {
+    "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+    "sha256": "3fbace47addf4df9ecebcd8ec916e0134171cbc717be4439ca366d83cfb201e1",
+    "bytes": 3610
+  }
+]

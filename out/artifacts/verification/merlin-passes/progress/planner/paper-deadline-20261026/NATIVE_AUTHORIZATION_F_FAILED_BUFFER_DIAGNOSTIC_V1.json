@@ -1,0 +1,81 @@
+{
+  "schema": "merlin.coordinator.bounded-runtime-diagnostic.v1",
+  "created_utc": "2026-10-26T20:36:43.174265+00:00",
+  "authorized_worker": "01a15b82-8d58-75f1-9281-f529977e0bad",
+  "proposal": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/NEXT-EXPERIMENT.json",
+    "sha256": "5de6bf971968058d3f2fce2520fcc947b3f650e83edbd36e72dccc04b2ceba4e",
+    "bytes": 7001
+  },
+  "source_metadata_checks": [
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/source/lean_graph_original_image_context.py",
+      "sha256": "5a347febb25d0627a9a89dc245fc41e078118d402c50555ff7de11e4aaa9ea50",
+      "bytes": 24917
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/source/lean_graph_original_image_context_data.py",
+      "sha256": "77d30d01f1c839edb52da314c386c307424f5bb2ebcccae2f9ee43b7c59d32e1",
+      "bytes": 15692
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/source/lean_graph_original_image_context_io.py",
+      "sha256": "92c8b43ec1b2d5a8e66f8d819c3079f2cdd7be12d559a67efc1505b4cec2118c",
+      "bytes": 7265
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/project-source/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "bytes": 8229
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/project-source/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "bytes": 6170
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/progress/planner/paper-deadline-20261026/runtime-snapshot-review/METADATA-REVIEW-v2.json",
+      "sha256": "8c4a1566fac6ecba764c91e8179b5732d7ccda1a5e9a6f58559d7a130770cd82",
+      "bytes": 3017778
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/original-runtime-candidate-v1/RESULT.json",
+      "sha256": "849060513fb300270eb75fd79518cc187325b4f8472105b34570faeaaf85a7ce",
+      "bytes": 3531848
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/original-image-context-review-v5/REVIEWED-RUNTIME-INTENT-v2.json",
+      "sha256": "ccb70d1da9990d786dd59328686a389f4cd891c1a8aa24cf78625e3924a8e2f8",
+      "bytes": 214970
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/original-runtime-candidate-v1/basic-kernel-probe-v1/trace_parser.py",
+      "sha256": "2aaae713ed80a46735434eca16dbb6fd2ed63e4bd8e7df50308f64ac56d0b7ba",
+      "bytes": 9118
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/run_next_experiment.py",
+      "sha256": "6f70c8f16ef0e1bbaeb1b2ee69297f46f511f23f0943bc12316543bc4f0d1923",
+      "bytes": 3508
+    }
+  ],
+  "runner": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/run_next_experiment.py",
+    "sha256": "6f70c8f16ef0e1bbaeb1b2ee69297f46f511f23f0943bc12316543bc4f0d1923",
+    "bytes": 3508
+  },
+  "workspace": "/home/jeremy/Projects/merlin/out/build/graph-paper-deadline/f-diagnostic-failed-buffer-v1",
+  "output": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-regions-declared/runtime-forensics-v1/diagnostic-provider-candidate-v1/native-observation-v1",
+  "allowed_action": "ONE execution of exact proposed runner, with exact reviewed proposal digest, two fixed library builds only",
+  "max_native_commands": 4,
+  "attempts": 1,
+  "source_runtime_expected_refs": "ONLY original unchanged refs in exact selected proposal/review; no installed SDK/archive image reads or new pins",
+  "failed_bytes": "preserve already-read bytes and original error before propagating; never reread to replace failure",
+  "first_failure": "stop entire workload at first preparation/binding/runtime/compiler/observer failure; no retry",
+  "prior_holds_cleared": false,
+  "all_other_worker_native_authorizations_suspended": true,
+  "graph_acceptance_authorized": false,
+  "qualification_authorized": false,
+  "repair_or_ir_extension_authorized": false,
+  "reason": "New diagnostic evidence sink closes lost-buffer evidence gap; one fixed earliest workload adds observable failed bytes if mismatch recurs. Completion without mismatch is not diagnosis or qualification."
+}

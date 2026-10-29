@@ -1,0 +1,39 @@
+{
+  "role": "W-REVIEW",
+  "scope": "MACC_ONLY",
+  "status": "NINE_SOURCE_Q_V2_REVIEW_COMPLETE",
+  "branch": "feat/bf16-f32acc-verification",
+  "head_at_final_review": "4cb0f5b599b5158808c86a1b7443cb64ed3daba4",
+  "reviewed_cut": "out/artifacts/verification/merlin-passes/bf16-integration-20261028/Q-INTEGRATION/source-cut-v2",
+  "source_check": "SOURCE_CHECK.json",
+  "new_implementation_corrections": [],
+  "human_reviewed": false,
+  "approved_gate_acceptance_claimed": false,
+  "native_checks_by_W": false,
+  "owned_live_jobs": [],
+  "findings": [
+    {
+      "case": "wrong_final_rounding",
+      "status": "resolved: authoritative MLIR-valid and actual Lean policy refusal; initial xDSL diagnostic retained"
+    },
+    {
+      "case": "one_input_contraction",
+      "status": "decoded identity/zero-candidate raw match; host conservative coverage refusal; outside MACC policy domain"
+    },
+    {
+      "case": "named_batch_outside_domain",
+      "status": "decoded identity/zero-candidate raw match; host conservative coverage refusal; outside MACC policy domain"
+    }
+  ],
+  "followup": [
+    "F final actual qualification/audit/receipt replay evidence",
+    "independent human policy review and coordinator-approved installation only"
+  ],
+  "limits": [
+    "zero-init same-format bf16/f16 only",
+    "source-derived policy reference relation",
+    "parametric FloatModel and reduction-order/SSA/call/lowering premises",
+    "F14/F18 retained",
+    "no half-source equivalence/whole-model/native-bit claim"
+  ]
+}

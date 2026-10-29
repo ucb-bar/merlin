@@ -436,7 +436,7 @@ ADAPTERS = {
             "descriptor": Option("input", True, flag=""),
             "corpus_seal": Option("input", flag=""),
             "require_reviewed_corpus": Option("bool", flag=""),
-            "level": Option(choices=("EL1", "EL2", "EL3", "EL4", "EL3-E", "EL4-V"), flag=""),
+            "level": Option(choices=("EL1", "EL2", "EL3", "EL4", "EL3-E", "EL4-V", "EL4-P"), flag=""),
             "arm": Option(required=True, choices=("raw_baseline", "cpp_merlininfra", "merlin_assisted")),
             "treatment": Option(choices=("baseline", "rtlchecks")),
             "model": _REQUIRED_TEXT,

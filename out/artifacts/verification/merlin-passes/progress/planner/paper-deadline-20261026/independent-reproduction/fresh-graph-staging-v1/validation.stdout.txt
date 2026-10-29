@@ -1,0 +1,24 @@
+{
+  "status": "PASSED_SOURCE_STAGING_DATA_BATCH",
+  "actual_materialization_runs": 1,
+  "profiles": 4,
+  "query_cases": 33,
+  "files": 337,
+  "tiny_controls": 10,
+  "all_tiny_controls_expected": true,
+  "relocation_associations": 337,
+  "SDK_provider_controller_Lean_native_execution": false,
+  "compile_audit_qualification": "UNEXECUTED",
+  "materializer_source": {
+    "sha256": "3d5a36d660153fa656b7d5c16044399326b54089d2d6774ff0f9ddbbfaee1e24",
+    "bytes": 15540
+  },
+  "plan_core_source": {
+    "sha256": "98ddc01714c539289503ef7befc3eea14b219727ab10ec5525301e4c44d23685",
+    "bytes": 20024
+  },
+  "spec": {
+    "sha256": "74463f68ec13f631d70d7da02857ccc577c64709e0710b6d2f71fb8f93e514bb",
+    "bytes": 120006
+  }
+}

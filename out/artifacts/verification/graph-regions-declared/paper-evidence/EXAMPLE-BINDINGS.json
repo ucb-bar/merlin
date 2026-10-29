@@ -1,0 +1,37 @@
+[
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/physical-development-v2-i8/source.mlir",
+    "bytes": 3852,
+    "sha256": "1a6d48ae471f28253035e84370379e909466c3c2941393cb8d6027879926c389"
+  },
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/physical-development-v2-i8/retained-source.mlir",
+    "bytes": 3852,
+    "sha256": "1a6d48ae471f28253035e84370379e909466c3c2941393cb8d6027879926c389"
+  },
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/physical-development-v2-i8/original-provider-kernel.json",
+    "bytes": 3949,
+    "sha256": "7ced8494a29cb2d7e6162a11d9c6862e2a2537b9ab4a6a020f023610a80e8e22"
+  },
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/physical-development-v2-i8/actual-output-kernel.json",
+    "bytes": 3940,
+    "sha256": "c579c5215324435a81a2bcc34aa0c928b99d2f51e2874024a42e6ff66fa88bea"
+  },
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/physical-development-v2-i8/original-connected-plan.json",
+    "bytes": 1344,
+    "sha256": "bb8b74c136b4419e2698494fe88a8235f2388329c5cdbe33d854078cc6ec9633"
+  },
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/packet-development-v4-i8/Check.lean",
+    "bytes": 23768,
+    "sha256": "f9086cfb8c493aa62edfb05d3eea6e0fa6b827e03edc9887954f23418d038fcf"
+  },
+  {
+    "path": "out/artifacts/verification/graph-regions-declared/packet-development-v4-i8/process.json",
+    "bytes": 326,
+    "sha256": "2ec9a3168ee16f62b251f350783582ef048317301d0d028eb9f9c5b54abd8f2a"
+  }
+]

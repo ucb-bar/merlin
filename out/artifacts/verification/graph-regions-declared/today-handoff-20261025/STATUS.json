@@ -1,0 +1,27 @@
+{
+  "schema": "merlin.graph-regions.today-checkpoint.v1",
+  "status": "PAUSED BY NEW USER STOP",
+  "path": "/home/jeremy/Projects/merlin",
+  "branch": "feat/pass-verification",
+  "head": "58dbc7c00acdb6770d440b773cc2954328c78472",
+  "owned_source_count": 35,
+  "transitive_project_dependency_count": 14,
+  "source_patch": {
+    "bytes": 325805,
+    "sha256": "bccd739cd98405a1d050c1066447804df02278aea7adcc6a610338c1847b8263"
+  },
+  "live_owned_jobs": 0,
+  "stopped_owned_jobs": 0,
+  "signals_sent": 0,
+  "native_runtime_hold": true,
+  "current_runtime_fidelity_resolved": false,
+  "recorded_pre_hold_capture_modules": 20,
+  "recorded_pre_hold_std3_roots": 80,
+  "graph_native_qualification": false,
+  "new_proof_sources_since_hold": 0,
+  "post_hold_source_projection_data_tests": 20,
+  "other_retained_source_binding_data_tests": 11,
+  "independent_review": false,
+  "publication": "coordinator only; no staging/commit/push",
+  "next_resume_requires": "NEW genuine user instruction; queued tasks are not a resume; native work ALSO requires explicit resolution of selected-runtime hold"
+}

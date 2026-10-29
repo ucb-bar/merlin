@@ -1,0 +1,77 @@
+{
+  "new_native_checked": false,
+  "runtime_or_objects_reopened": false,
+  "raw_buffers_match_historical_original_refs": true,
+  "rows": [
+    {
+      "source": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/receipt.json",
+      "snapshot": "historical-text-evidence/pipeline/0-receipt.json",
+      "sha256": "be6ea9b9052864732a6b592aa2a02a0392f9110851b38f41a249dfdd46c48005",
+      "bytes": 845042,
+      "historical_only": true
+    },
+    {
+      "source": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/report.json",
+      "snapshot": "historical-text-evidence/pipeline/1-report.json",
+      "sha256": "e437acf40dfb9fef61c009c52c2534c86a01aea4344344131b55cb1057a1b1a6",
+      "bytes": 11023,
+      "historical_only": true
+    },
+    {
+      "source": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/report.json",
+      "snapshot": "historical-text-evidence/pipeline/2-report.json",
+      "sha256": "4f435545837866a167e5cf1abe209f1c10a936b24c55737170f281404df30c7e",
+      "bytes": 492720,
+      "historical_only": true
+    },
+    {
+      "source": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/kernel.stdout",
+      "snapshot": "historical-text-evidence/pipeline/3-kernel.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "historical_only": true
+    },
+    {
+      "source": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-pipeline/qualification-v1/suite/test_actual_complete_pipeline_0/checked/kernel/kernel.stderr",
+      "snapshot": "historical-text-evidence/pipeline/4-kernel.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "historical_only": true
+    },
+    {
+      "source": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/qualification-v2/suite/test_actual_six_buffer_chain_30/receipt.json",
+      "snapshot": "historical-text-evidence/integer/0-receipt.json",
+      "sha256": "1171774c8d1593332fb41c22f1d945cc0e41a11ef18289ae5ad6957076934166",
+      "bytes": 869229,
+      "historical_only": true
+    },
+    {
+      "source": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/report.json",
+      "snapshot": "historical-text-evidence/integer/1-report.json",
+      "sha256": "666104b2b28c193f52f769b94a9d4b9b24f873e8cde89638242d7d5e2418c008",
+      "bytes": 7353,
+      "historical_only": true
+    },
+    {
+      "source": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/review/sealed-v2/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/report.json",
+      "snapshot": "historical-text-evidence/integer/2-report.json",
+      "sha256": "3f415532175a2ad683c81023edbcdd63a5b8869fe1da1e6f1bfb6b803e6b5276",
+      "bytes": 498355,
+      "historical_only": true
+    },
+    {
+      "source": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/kernel.stdout",
+      "snapshot": "historical-text-evidence/integer/3-kernel.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "historical_only": true
+    },
+    {
+      "source": "/home/jeremy/Projects/merlin/out/artifacts/verification/graph-state-integer/qualification-v2/suite/test_actual_six_buffer_chain_30/checked/lean/kernel.stderr",
+      "snapshot": "historical-text-evidence/integer/4-kernel.stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "historical_only": true
+    }
+  ]
+}

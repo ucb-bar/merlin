@@ -1,0 +1,279 @@
+{
+  "schema": "merlin.graph_larger_profile_request.v1",
+  "profile": "scalar_scf_four_transform_source_v1",
+  "prepared_identity": "cb4876e17df027d777d9c3878fd76e164983678b8ecfaaf181ff0e40ef6cf8ac",
+  "module": "GraphLargerProfile_cb4876e17df027d777d9c3878fd76e164983678b8ecfaaf181ff0e40ef6cf8ac",
+  "query": "import Merlin.GraphStatePipelineIndex\nimport Merlin.GraphStatePipelineLiterals\nimport Merlin.GraphStatePipelineScope\nimport Merlin.GraphStatePipelineLoops\nimport Merlin.GraphStatePipelineProgram\nimport Merlin.GraphStateScalar\nset_option maxRecDepth 4096\nset_option maxHeartbeats 2000000\nset_option linter.unusedSimpArgs false\nnamespace Merlin.GraphStatePipelineInstance\nopen Merlin.GraphState.Scalar Merlin.GraphState.Pipeline\ndef registry : List Signature := [{inputs := [.index,.index],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [],outputs := [.index]},{inputs := [.index,.index],outputs := [.index]},{inputs := [(.bits 32),.index],outputs := [(.bits 32)]},{inputs := [(.bits 32)],outputs := []}]\ndef controls : Controls := [(some .add),(some (.constant (0))),(some (.constant (1))),(some (.constant (24))),(some (.constant (2))),(some (.constant (6))),(some .minui),none,none]\ntheorem controlAccepted : checkControl registry controls = true := by decide\ndef profileBits : Nat := 32\ntheorem literalsAccepted : checkLiterals profileBits controls = true := by decide\ntheorem literalsFit (identity : Nat) (value : Int) (found : Merlin.GraphState.Pipeline.controlAt controls identity = some (.constant value)) :\n    signedRepresentative profileBits value := checkLiterals_sound literalsAccepted found\ndef M {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) : Model Int World Error registry :=\n  indexModel (checkControl_sound controlAccepted) primitive external\ntheorem naturalRange (lower upper step : Nat) (positive : 0 < step) :\n  indexIterations (Int.ofNat lower) (Int.ofNat upper) (Int.ofNat step) =\n    (scfRange lower upper step).map Int.ofNat := by\n  change indexIterations (lower : Int) (upper : Int) (step : Int) = _\n  have pos : (0 : Int) < (step : Int) := by omega\n  simp only [indexIterations,Int.natCast_nonneg,pos,and_self,\u2193reduceIte,Int.toNat_natCast]\nnamespace F3\ndef inputs : List Ty := [(.bits 32),(.bits 32)]\ndef outputs : List Ty := [(.bits 32)]\ndef S0 : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 32) [3,3] (.loop 3 2 1 [4] [(.bits 32)] (.pure (.add 32) [7,7] (.pure (.add 32) [8,8] (.pure (.add 32) [3,0] (.pure (.add 32) [0,2] (.opaque 7 [0,4] [(.bits 32)] (.ret [0])))))) (.opaque 8 [0] [] (.ret [0])))))))\ntheorem typed0 : checkTypes registry inputs outputs S0 = true := by decide\ndef S1 : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.loop 2 1 0 [3] [(.bits 32)] (.pure (.add 32) [6,6] (.pure (.add 32) [2,0] (.pure (.add 32) [0,1] (.opaque 7 [0,3] [(.bits 32)] (.ret [0]))))) (.opaque 8 [0] [] (.ret [0]))))))\ntheorem typed1 : checkTypes registry inputs outputs S1 = true := by decide\ndef S2 : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 32) [4,4] (.loop 3 2 1 [4] [(.bits 32)] (.pure (.add 32) [1,2] (.pure (.add 32) [0,3] (.opaque 7 [0,2] [(.bits 32)] (.ret [0])))) (.opaque 8 [0] [] (.ret [0])))))))\ntheorem typed2 : checkTypes registry inputs outputs S2 = true := by decide\ndef S3 : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 32) [4,4] (.opaque 4 [] [.index] (.opaque 3 [] [.index] (.loop 5 0 1 [6] [(.bits 32)] (.pure (.add 32) [1,4] (.pure (.add 32) [0,5] (.opaque 7 [0,2] [(.bits 32)] (.opaque 2 [] [.index] (.opaque 0 [4,0] [.index] (.pure (.add 32) [2,9] (.pure (.add 32) [0,10] (.opaque 7 [0,2] [(.bits 32)] (.ret [0]))))))))) (.opaque 8 [0] [] (.ret [0])))))))))\ntheorem typed3 : checkTypes registry inputs outputs S3 = true := by decide\ndef S4 : Program := (.opaque 1 [] [.index] (.opaque 3 [] [.index] (.opaque 2 [] [.index] (.pure (.add 32) [4,4] (.opaque 4 [] [.index] (.opaque 3 [] [.index] (.opaque 5 [] [.index] (.loop 6 1 0 [7] [(.bits 32)] (.opaque 0 [0,2] [.index] (.opaque 6 [0,4] [.index] (.loop 2 0 6 [3] [(.bits 32)] (.pure (.add 32) [1,9] (.pure (.add 32) [0,10] (.opaque 7 [0,2] [(.bits 32)] (.opaque 2 [] [.index] (.opaque 0 [4,0] [.index] (.pure (.add 32) [2,14] (.pure (.add 32) [0,15] (.opaque 7 [0,2] [(.bits 32)] (.ret [0]))))))))) (.ret [0])))) (.opaque 8 [0] [] (.ret [0]))))))))))\ntheorem typed4 : checkTypes registry inputs outputs S4 = true := by decide\ntheorem firstAccepted : check registry inputs outputs S0 S1 = true := by decide\ntheorem secondAccepted : check registry inputs outputs S1 S2 = true := by decide\ntheorem firstTwo : Preserves registry inputs.length S0 S2 := check_composes firstAccepted secondAccepted\ndef E2 (primitive : Prim \u2192 List Int \u2192 Int) (x0 x1 : Int) : List Int := [(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1]\ndef B2 : Program := (.pure (.add 32) [1,2] (.pure (.add 32) [0,3] (.opaque 7 [0,2] [(.bits 32)] (.ret [0]))))\ndef N2 : Program := (.opaque 8 [0] [] (.ret [0]))\ndef E3 (primitive : Prim \u2192 List Int \u2192 Int) (x0 x1 : Int) : List Int := [(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1]\ndef B3 : Program := (.pure (.add 32) [1,4] (.pure (.add 32) [0,5] (.opaque 7 [0,2] [(.bits 32)] (.opaque 2 [] [.index] (.opaque 0 [4,0] [.index] (.pure (.add 32) [2,9] (.pure (.add 32) [0,10] (.opaque 7 [0,2] [(.bits 32)] (.ret [0])))))))))\ndef N3 : Program := (.opaque 8 [0] [] (.ret [0]))\ndef E4 (primitive : Prim \u2192 List Int \u2192 Int) (x0 x1 : Int) : List Int := [(6 : Int),(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1]\ndef B4 : Program := (.opaque 0 [0,2] [.index] (.opaque 6 [0,4] [.index] (.loop 2 0 6 [3] [(.bits 32)] (.pure (.add 32) [1,9] (.pure (.add 32) [0,10] (.opaque 7 [0,2] [(.bits 32)] (.opaque 2 [] [.index] (.opaque 0 [4,0] [.index] (.pure (.add 32) [2,14] (.pure (.add 32) [0,15] (.opaque 7 [0,2] [(.bits 32)] (.ret [0]))))))))) (.ret [0]))))\ndef N4 : Program := (.opaque 8 [0] [] (.ret [0]))\nvariable {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (x0 x1 : Int)\ntheorem form2 (world : World) : evalProgram (M primitive external) S2 [x0,x1] world =\n  (loopEval 1 (fun i carry w => evalProgram (M primitive external) B2 (i::carry++E2 primitive x0 x1) w)\n    (indexIterations (0 : Int) (24 : Int) (1 : Int)) [x0] world).bind\n      (fun result => evalProgram (M primitive external) N2 (result.1++E2 primitive x0 x1) result.2) := by rfl\ntheorem form3 (world : World) : evalProgram (M primitive external) S3 [x0,x1] world =\n  (loopEval 1 (fun i carry w => evalProgram (M primitive external) B3 (i::carry++E3 primitive x0 x1) w)\n    (indexIterations (0 : Int) (24 : Int) (2 : Int)) [x0] world).bind\n      (fun result => evalProgram (M primitive external) N3 (result.1++E3 primitive x0 x1) result.2) := by rfl\ntheorem form4 (world : World) : evalProgram (M primitive external) S4 [x0,x1] world =\n  (loopEval 1 (fun i carry w => evalProgram (M primitive external) B4 (i::carry++E4 primitive x0 x1) w)\n    (indexIterations (0 : Int) (24 : Int) (6 : Int)) [x0] world).bind\n      (fun result => evalProgram (M primitive external) N4 (result.1++E4 primitive x0 x1) result.2) := by rfl\ntheorem body_group (base : Int) (carry : List Int) (world : World) (arity : carry.length = 1) :\n  evalProgram (M primitive external) B3 (base::carry++E3 primitive x0 x1) world =\n  loopEval 1 (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)\n    [base,(base+1)] carry world := by\n  obtain \u27e8c0,rfl\u27e9 := List.length_eq_one_iff.mp arity\n  simp only [B2,B3,E2,E3,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\n  cases step0 : external.run 7 [(primitive (.add 32) [(primitive (.add 32) [c0,(primitive (.add 32) [x1,x1])]),(primitive (.add 32) [x1,x1])]),base] world with\n  | error failure =>\n    rcases failure with \u27e8error,terminal\u27e9\n    simp only [step0,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\n  | ok result =>\n    rcases result with \u27e8values,w0\u27e9\n    have size : values.length = 1 := by\n      have localArity := external.arity 7 [(primitive (.add 32) [(primitive (.add 32) [c0,(primitive (.add 32) [x1,x1])]),(primitive (.add 32) [x1,x1])]),base] world values w0 step0\n      simpa only [registry,signature,List.getElem?_cons_succ,List.getElem?_cons_zero,Option.getD_some,List.length_cons,List.length_nil] using localArity\n    obtain \u27e8v0_0,rfl\u27e9 := List.length_eq_one_iff.mp size\n    simp only [step0,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\n    cases step1 : external.run 7 [(primitive (.add 32) [(primitive (.add 32) [v0_0,(primitive (.add 32) [x1,x1])]),(primitive (.add 32) [x1,x1])]),(base+1)] w0 with\n    | error failure =>\n      rcases failure with \u27e8error,terminal\u27e9\n      simp only [step1,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\n    | ok result =>\n      rcases result with \u27e8values,w1\u27e9\n      have size : values.length = 1 := by\n        have localArity := external.arity 7 [(primitive (.add 32) [(primitive (.add 32) [v0_0,(primitive (.add 32) [x1,x1])]),(primitive (.add 32) [x1,x1])]),(base+1)] w0 values w1 step1\n        simpa only [registry,signature,List.getElem?_cons_succ,List.getElem?_cons_zero,Option.getD_some,List.length_cons,List.length_nil] using localArity\n      obtain \u27e8v1_0,rfl\u27e9 := List.length_eq_one_iff.mp size\n      simp only [step1,M,indexModel,indexEffect,controls,Merlin.GraphState.Pipeline.controlAt,IndexOp.eval,opaqueStep,evalProgram,reads,List.map_cons,List.map_nil,List.cons_append,List.nil_append,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some,Option.getD_none,Except.bind,List.length_cons,List.length_nil,\u2193reduceIte,loopEval]\ndef I4 : Program := (.pure (.add 32) [1,9] (.pure (.add 32) [0,10] (.opaque 7 [0,2] [(.bits 32)] (.opaque 2 [] [.index] (.opaque 0 [4,0] [.index] (.pure (.add 32) [2,14] (.pure (.add 32) [0,15] (.opaque 7 [0,2] [(.bits 32)] (.ret [0])))))))))\ndef LS : List Expr := [(.var 0),(.var 1),(.var 7),(.var 8),(.var 9),(.var 10),(.var 7),(.var 12),(.var 13),(.var 14)]\ndef RS : List Expr := [(.var 0),(.var 1),(.var 2),(.var 3),(.var 4),(.var 5),(.var 6),(.var 7),(.var 8),(.var 9),(.var 10),(.var 11),(.var 12),(.var 13),(.var 14)]\ntheorem innerAccepted : Scope.check registry LS RS B3 I4 = true := by decide\ntheorem inner_same (iv outer outerCarry0 : Int) (carry : List Int) (world : World) (arity : carry.length = 1) :\n  evalProgram (M primitive external) I4 (iv::carry++[(min (outer + (6 : Int)) (24 : Int)),(outer + (6 : Int)),outer,outerCarry0,(6 : Int),(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1]) world =\n  evalProgram (M primitive external) B3 (iv::carry++E3 primitive x0 x1) world := by\n  obtain \u27e8c0,rfl\u27e9 := List.length_eq_one_iff.mp arity\n  have checked := Scope.check_sound innerAccepted (M primitive external) [iv,c0,(min (outer + (6 : Int)) (24 : Int)),(outer + (6 : Int)),outer,outerCarry0,(6 : Int),(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1] world\n  simpa only [LS,RS,E3,evalExpr,List.cons_append,List.nil_append,List.map_cons,List.map_nil,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some] using checked.symm\ndef CL23 : List Expr := [(.var 0),(.var 3),(.var 4),(.var 1),(.var 6),(.var 7),(.var 8)]\ndef CR23 : List Expr := [(.var 0),(.var 1),(.var 2),(.var 3),(.var 4),(.var 5),(.var 6),(.var 7),(.var 8)]\ntheorem suffixAccepted23 : Scope.check registry CL23 CR23 N2 N3 = true := by decide\ntheorem suffix_same23 (carry : List Int) (world : World) (arity : carry.length = 1) :\n  evalProgram (M primitive external) N2 (carry++E2 primitive x0 x1) world =\n  evalProgram (M primitive external) N3 (carry++E3 primitive x0 x1) world := by\n  obtain \u27e8c0,rfl\u27e9 := List.length_eq_one_iff.mp arity\n  have checked := Scope.check_sound suffixAccepted23 (M primitive external) [c0,(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1] world\n  simpa only [CL23,CR23,E2,E3,evalExpr,List.cons_append,List.nil_append,List.map_cons,List.map_nil,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some] using checked\ndef CL34 : List Expr := [(.var 0),(.var 2),(.var 3),(.var 4),(.var 5),(.var 2),(.var 7),(.var 8),(.var 9)]\ndef CR34 : List Expr := [(.var 0),(.var 1),(.var 2),(.var 3),(.var 4),(.var 5),(.var 6),(.var 7),(.var 8),(.var 9)]\ntheorem suffixAccepted34 : Scope.check registry CL34 CR34 N3 N4 = true := by decide\ntheorem suffix_same34 (carry : List Int) (world : World) (arity : carry.length = 1) :\n  evalProgram (M primitive external) N3 (carry++E3 primitive x0 x1) world =\n  evalProgram (M primitive external) N4 (carry++E4 primitive x0 x1) world := by\n  obtain \u27e8c0,rfl\u27e9 := List.length_eq_one_iff.mp arity\n  have checked := Scope.check_sound suffixAccepted34 (M primitive external) [c0,(6 : Int),(24 : Int),(2 : Int),(primitive (.add 32) [x1,x1]),(1 : Int),(24 : Int),(0 : Int),x0,x1] world\n  simpa only [CL34,CR34,E3,E4,evalExpr,List.cons_append,List.nil_append,List.map_cons,List.map_nil,List.getElem?_cons_zero,List.getElem?_cons_succ,Option.getD_some] using checked\ntheorem outer_form (base c0 : Int) (world : World) :\n  evalProgram (M primitive external) B4 (base::[c0]++E4 primitive x0 x1) world =\n  (loopEval 1 (fun i cs w => evalProgram (M primitive external) I4\n    (i::cs++[min (base+6) 24,base+6,base,c0]++E4 primitive x0 x1) w)\n      (indexIterations base (min (base+6) 24) 2) [c0] world).bind\n        (fun result => evalProgram (M primitive external) (.ret [0])\n          (result.1++[min (base+6) 24,base+6,base,c0]++E4 primitive x0 x1) result.2) := by\n  simp only [List.append_assoc]\n  rfl\ntheorem outer_same (base : Nat) (carry : List Int) (world : World) (arity : carry.length = 1) :\n  evalProgram (M primitive external) B4 (Int.ofNat base::carry++E4 primitive x0 x1) world =\n  loopEval 1 (fun i cs w => evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w)\n    ((scfRange base (min (base+2*3) 24) 2).map Int.ofNat) carry world := by\n  obtain \u27e8c0,rfl\u27e9 := List.length_eq_one_iff.mp arity\n  rw [outer_form]\n  have bodies : \u2200 i cs w, cs.length = 1 \u2192\n      evalProgram (M primitive external) I4 (i::cs++[min (Int.ofNat base+6) 24,Int.ofNat base+6,Int.ofNat base,c0]++E4 primitive x0 x1) w =\n      evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w := by\n    intro i cs w size\n    simpa only [E4,List.append_assoc,List.cons_append,List.nil_append] using\n      inner_same primitive external x0 x1 i (Int.ofNat base) c0 cs w size\n  rw [loopEval_congr 1 _ _ bodies]\n  have minimum : min (Int.ofNat base+6) 24 = Int.ofNat (min (base+6) 24) := minui_natural (base+6) 24\n  have ranges : indexIterations (Int.ofNat base) (Int.ofNat (min (base+6) 24)) 2 =\n      (scfRange base (min (base+6) 24) 2).map Int.ofNat := naturalRange base (min (base+6) 24) 2 (by decide)\n  rw [minimum,ranges]\n  cases run : loopEval 1 (fun i cs w => evalProgram (M primitive external) B3 (i::cs++E3 primitive x0 x1) w)\n      ((scfRange base (min (base+6) 24) 2).map Int.ofNat) [c0] world with\n  | error failure => rfl\n  | ok result =>\n    have size := loopEval_arity 1 _ _ _ _ run\n    rcases result with \u27e8values,final\u27e9\n    obtain \u27e8returned0,rfl\u27e9 := List.length_eq_one_iff.mp size\n    rfl\ndef unrollBounds : Merlin.GraphLoopsUnroll.Bounds :=\n  { bits := 32, lower := 0, upper := 24, step := 1, factor := 2, count := 24, groups := 12, remainder := 0 }\ndef segmentBounds : Merlin.GraphLoopsSegment.Bounds :=\n  { bits := 32, lower := 0, upper := 24, step := 2, tile := 3 }\ntheorem unrollBoundsChecked : unrollBounds.Valid := by decide\ntheorem segmentBoundsChecked : segmentBounds.Valid := by decide\ntheorem unroll_actual (world : World) :\n    evalProgram (M primitive external) S2 [x0,x1] world = evalProgram (M primitive external) S3 [x0,x1] world := by\n  have bodies : \u2200 index values w, values.length = 1 \u2192\n      evalProgram (M primitive external) B3 (Int.ofNat index::values++E3 primitive x0 x1) w =\n      loopEval 1 (fun i c current => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) current)\n        ((progression index 1 2).map Int.ofNat) values w := by\n    intro index values w size\n    simpa [progression,Int.ofNat_eq_natCast,Int.add_assoc] using body_group primitive external x0 x1 (Int.ofNat index) values w size\n  have loops : loopEval 1 (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)\n      (indexIterations 0 24 1) [x0] world =\n    loopEval 1 (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)\n      (indexIterations 0 24 2) [x0] world :=\n    unroll_loop 1 _ _ 0 24 1 2 12 (by decide) (by decide) (by decide) bodies [x0] world\n  rw [form2,form3,loops]\n  cases run : loopEval 1 (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)\n      (indexIterations 0 24 2) [x0] world with\n  | error failure => rfl\n  | ok result => exact suffix_same23 primitive external x0 x1 result.1 result.2 (loopEval_arity 1 _ _ _ _ run)\ntheorem segment_actual (world : World) :\n    evalProgram (M primitive external) S3 [x0,x1] world = evalProgram (M primitive external) S4 [x0,x1] world := by\n  have r2 : indexIterations 0 24 2 = (scfRange 0 24 2).map Int.ofNat := naturalRange 0 24 2 (by decide)\n  have r6 : indexIterations 0 24 6 = (scfRange 0 24 6).map Int.ofNat := naturalRange 0 24 6 (by decide)\n  have loops : loopEval 1 (fun i c w => evalProgram (M primitive external) B3 (i::c++E3 primitive x0 x1) w)\n      (indexIterations 0 24 2) [x0] world =\n    loopEval 1 (fun i c w => evalProgram (M primitive external) B4 (i::c++E4 primitive x0 x1) w)\n      (indexIterations 0 24 6) [x0] world := by\n    rw [r2,r6]\n    exact segment_loop 1 _ _ 0 24 2 3 (by decide) (by decide) (outer_same primitive external x0 x1) [x0] world\n  rw [form3,form4,loops]\n  cases run : loopEval 1 (fun i c w => evalProgram (M primitive external) B4 (i::c++E4 primitive x0 x1) w)\n      (indexIterations 0 24 6) [x0] world with\n  | error failure => rfl\n  | ok result => exact suffix_same34 primitive external x0 x1 result.1 result.2 (loopEval_arity 1 _ _ _ _ run)\ntheorem actual_inputs (world : World) :\n    evalProgram (M primitive external) S0 [x0,x1] world = evalProgram (M primitive external) S4 [x0,x1] world :=\n  (firstTwo Int World Error (M primitive external) [x0,x1] world rfl).trans\n    ((unroll_actual primitive external x0 x1 world).trans (segment_actual primitive external x0 x1 world))\ntheorem actual (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S4 arguments world := by\n  cases arguments with\n  | nil => simp only [inputs,List.length_nil,List.length_cons] at arity; contradiction\n  | cons first rest =>\n    cases rest with\n    | nil => simp only [inputs,List.length_nil,List.length_cons] at arity; contradiction\n    | cons second later =>\n      have empty : later = [] := List.length_eq_zero_iff.mp (by\n        simp only [inputs,List.length_nil,List.length_cons] at arity\n        omega)\n      subst later\n      exact actual_inputs primitive external first second world\nend F3\nnamespace F4\ndef inputs : List Ty := [(.bits 32)]\ndef outputs : List Ty := [(.bits 32)]\ndef S0 : Program := (.ret [0])\ntheorem typed0 : checkTypes registry inputs outputs S0 = true := by decide\ndef S1 : Program := (.ret [0])\ntheorem typed1 : checkTypes registry inputs outputs S1 = true := by decide\ndef S2 : Program := (.ret [0])\ntheorem typed2 : checkTypes registry inputs outputs S2 = true := by decide\ndef S3 : Program := (.ret [0])\ntheorem typed3 : checkTypes registry inputs outputs S3 = true := by decide\ndef S4 : Program := (.ret [0])\ntheorem typed4 : checkTypes registry inputs outputs S4 = true := by decide\ntheorem firstAccepted : check registry inputs outputs S0 S1 = true := by decide\ntheorem secondAccepted : check registry inputs outputs S1 S2 = true := by decide\ntheorem firstTwo : Preserves registry inputs.length S0 S2 := check_composes firstAccepted secondAccepted\ntheorem actual {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int) (external : External World Error registry)\n    (arguments : List Int) (world : World) (arity : arguments.length = inputs.length) :\n    evalProgram (M primitive external) S0 arguments world = evalProgram (M primitive external) S4 arguments world :=\n  firstTwo Int World Error (M primitive external) arguments world arity\nend F4\ndef originalEntries : List Entry := [{inputs := F3.inputs, outputs := F3.outputs, body := F3.S0},{inputs := F4.inputs, outputs := F4.outputs, body := F4.S0}]\ndef finalEntries : List Entry := [{inputs := F3.inputs, outputs := F3.outputs, body := F3.S4},{inputs := F4.inputs, outputs := F4.outputs, body := F4.S4}]\ntheorem originalEntriesChecked : checkEntries registry originalEntries = true := by decide\ntheorem finalEntriesChecked : checkEntries registry finalEntries = true := by decide\ntheorem complete {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) : PreservesEntries (M primitive external) originalEntries finalEntries :=\n  entries_cons (M primitive external) rfl rfl (F3.actual primitive external) (entries_cons (M primitive external) rfl rfl (F4.actual primitive external) (entries_nil (M primitive external)))\nend Merlin.GraphStatePipelineInstance\nnamespace Merlin.GraphGateProfileAdjacent\nopen Merlin.GraphState.Scalar Merlin.GraphState.Pipeline\nabbrev registry := Merlin.GraphStatePipelineInstance.registry\ndef entries0 : List Entry := [{inputs := Merlin.GraphStatePipelineInstance.F3.inputs, outputs := Merlin.GraphStatePipelineInstance.F3.outputs, body := Merlin.GraphStatePipelineInstance.F3.S0},{inputs := Merlin.GraphStatePipelineInstance.F4.inputs, outputs := Merlin.GraphStatePipelineInstance.F4.outputs, body := Merlin.GraphStatePipelineInstance.F4.S0}]\ndef entries1 : List Entry := [{inputs := Merlin.GraphStatePipelineInstance.F3.inputs, outputs := Merlin.GraphStatePipelineInstance.F3.outputs, body := Merlin.GraphStatePipelineInstance.F3.S1},{inputs := Merlin.GraphStatePipelineInstance.F4.inputs, outputs := Merlin.GraphStatePipelineInstance.F4.outputs, body := Merlin.GraphStatePipelineInstance.F4.S1}]\ndef entries2 : List Entry := [{inputs := Merlin.GraphStatePipelineInstance.F3.inputs, outputs := Merlin.GraphStatePipelineInstance.F3.outputs, body := Merlin.GraphStatePipelineInstance.F3.S2},{inputs := Merlin.GraphStatePipelineInstance.F4.inputs, outputs := Merlin.GraphStatePipelineInstance.F4.outputs, body := Merlin.GraphStatePipelineInstance.F4.S2}]\ndef entries3 : List Entry := [{inputs := Merlin.GraphStatePipelineInstance.F3.inputs, outputs := Merlin.GraphStatePipelineInstance.F3.outputs, body := Merlin.GraphStatePipelineInstance.F3.S3},{inputs := Merlin.GraphStatePipelineInstance.F4.inputs, outputs := Merlin.GraphStatePipelineInstance.F4.outputs, body := Merlin.GraphStatePipelineInstance.F4.S3}]\ndef entries4 : List Entry := [{inputs := Merlin.GraphStatePipelineInstance.F3.inputs, outputs := Merlin.GraphStatePipelineInstance.F3.outputs, body := Merlin.GraphStatePipelineInstance.F3.S4},{inputs := Merlin.GraphStatePipelineInstance.F4.inputs, outputs := Merlin.GraphStatePipelineInstance.F4.outputs, body := Merlin.GraphStatePipelineInstance.F4.S4}]\ntheorem step2F3 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (arguments : List Int) (world : World)\n    (arity : arguments.length = Merlin.GraphStatePipelineInstance.F3.inputs.length) :\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F3.S2 arguments world =\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F3.S3 arguments world := by\n  cases arguments with\n  | nil => simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity; contradiction\n  | cons first rest =>\n    cases rest with\n    | nil => simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity; contradiction\n    | cons second later =>\n      have empty : later = [] := List.length_eq_zero_iff.mp (by\n        simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity\n        omega)\n      subst later\n      exact Merlin.GraphStatePipelineInstance.F3.unroll_actual primitive external first second world\ntheorem step3F3 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (arguments : List Int) (world : World)\n    (arity : arguments.length = Merlin.GraphStatePipelineInstance.F3.inputs.length) :\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F3.S3 arguments world =\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F3.S4 arguments world := by\n  cases arguments with\n  | nil => simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity; contradiction\n  | cons first rest =>\n    cases rest with\n    | nil => simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity; contradiction\n    | cons second later =>\n      have empty : later = [] := List.length_eq_zero_iff.mp (by\n        simp only [Merlin.GraphStatePipelineInstance.F3.inputs,List.length_nil,List.length_cons] at arity\n        omega)\n      subst later\n      exact Merlin.GraphStatePipelineInstance.F3.segment_actual primitive external first second world\ntheorem step2F4 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (arguments : List Int) (world : World)\n    (arity : arguments.length = Merlin.GraphStatePipelineInstance.F4.inputs.length) :\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F4.S2 arguments world =\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F4.S3 arguments world := by\n  revert arity\n  intro _\n  rfl\ntheorem step3F4 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) (arguments : List Int) (world : World)\n    (arity : arguments.length = Merlin.GraphStatePipelineInstance.F4.inputs.length) :\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F4.S3 arguments world =\n    evalProgram (Merlin.GraphStatePipelineInstance.M primitive external) Merlin.GraphStatePipelineInstance.F4.S4 arguments world := by\n  revert arity\n  intro _\n  rfl\ntheorem complete0 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) :\n    PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external) entries0 entries1 :=\n  entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (check_sound Merlin.GraphStatePipelineInstance.F3.firstAccepted Int World Error (Merlin.GraphStatePipelineInstance.M primitive external)) (entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (check_sound Merlin.GraphStatePipelineInstance.F4.firstAccepted Int World Error (Merlin.GraphStatePipelineInstance.M primitive external)) (entries_nil (Merlin.GraphStatePipelineInstance.M primitive external)))\ntheorem complete1 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) :\n    PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external) entries1 entries2 :=\n  entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (check_sound Merlin.GraphStatePipelineInstance.F3.secondAccepted Int World Error (Merlin.GraphStatePipelineInstance.M primitive external)) (entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (check_sound Merlin.GraphStatePipelineInstance.F4.secondAccepted Int World Error (Merlin.GraphStatePipelineInstance.M primitive external)) (entries_nil (Merlin.GraphStatePipelineInstance.M primitive external)))\ntheorem complete2 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) :\n    PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external) entries2 entries3 :=\n  entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (step2F3 primitive external) (entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (step2F4 primitive external) (entries_nil (Merlin.GraphStatePipelineInstance.M primitive external)))\ntheorem complete3 {World Error : Type} (primitive : Prim \u2192 List Int \u2192 Int)\n    (external : External World Error registry) :\n    PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external) entries3 entries4 :=\n  entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (step3F3 primitive external) (entries_cons (Merlin.GraphStatePipelineInstance.M primitive external) rfl rfl (step3F4 primitive external) (entries_nil (Merlin.GraphStatePipelineInstance.M primitive external)))\ntheorem original_join : entries0 = Merlin.GraphStatePipelineInstance.originalEntries := rfl\ntheorem final_join : entries4 = Merlin.GraphStatePipelineInstance.finalEntries := rfl\nend Merlin.GraphGateProfileAdjacent\ntheorem merlin_profile_transform {World Error : Type}\n    (primitive : Merlin.GraphState.Scalar.Prim \u2192 List Int \u2192 Int)\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry) :\n    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external)\n      Merlin.GraphStatePipelineInstance.originalEntries Merlin.GraphStatePipelineInstance.finalEntries :=\n  Merlin.GraphStatePipelineInstance.complete primitive external\n",
+  "query_sha256": "fc08b9e2eecf2450b8647bea4b246ed34946ccb72c596203e9915aba87e79299",
+  "exact_final_statement": "theorem merlin_profile_transform {World Error : Type}\n    (primitive : Merlin.GraphState.Scalar.Prim \u2192 List Int \u2192 Int)\n    (external : Merlin.GraphState.Pipeline.External World Error Merlin.GraphStatePipelineInstance.registry) :\n    Merlin.GraphState.Pipeline.PreservesEntries (Merlin.GraphStatePipelineInstance.M primitive external)\n      Merlin.GraphStatePipelineInstance.originalEntries Merlin.GraphStatePipelineInstance.finalEntries :=\n  Merlin.GraphStatePipelineInstance.complete primitive external\n",
+  "final_root": "merlin_profile_transform",
+  "support_roots": [
+    "Merlin.GraphStatePipelineInstance.complete",
+    "Merlin.GraphStatePipelineInstance.controlAccepted",
+    "Merlin.GraphStatePipelineInstance.literalsAccepted",
+    "Merlin.GraphStatePipelineInstance.literalsFit",
+    "Merlin.GraphStatePipelineInstance.originalEntriesChecked",
+    "Merlin.GraphStatePipelineInstance.finalEntriesChecked",
+    "Merlin.GraphStatePipelineInstance.F3.actual",
+    "Merlin.GraphStatePipelineInstance.F3.firstAccepted",
+    "Merlin.GraphStatePipelineInstance.F3.secondAccepted",
+    "Merlin.GraphStatePipelineInstance.F3.firstTwo",
+    "Merlin.GraphStatePipelineInstance.F3.typed0",
+    "Merlin.GraphStatePipelineInstance.F3.typed1",
+    "Merlin.GraphStatePipelineInstance.F3.typed2",
+    "Merlin.GraphStatePipelineInstance.F3.typed3",
+    "Merlin.GraphStatePipelineInstance.F3.typed4",
+    "Merlin.GraphStatePipelineInstance.F3.body_group",
+    "Merlin.GraphStatePipelineInstance.F3.innerAccepted",
+    "Merlin.GraphStatePipelineInstance.F3.inner_same",
+    "Merlin.GraphStatePipelineInstance.F3.outer_same",
+    "Merlin.GraphStatePipelineInstance.F3.suffixAccepted23",
+    "Merlin.GraphStatePipelineInstance.F3.suffixAccepted34",
+    "Merlin.GraphStatePipelineInstance.F3.suffix_same23",
+    "Merlin.GraphStatePipelineInstance.F3.suffix_same34",
+    "Merlin.GraphStatePipelineInstance.F3.unrollBoundsChecked",
+    "Merlin.GraphStatePipelineInstance.F3.segmentBoundsChecked",
+    "Merlin.GraphStatePipelineInstance.F3.form2",
+    "Merlin.GraphStatePipelineInstance.F3.form3",
+    "Merlin.GraphStatePipelineInstance.F3.form4",
+    "Merlin.GraphStatePipelineInstance.F3.unroll_actual",
+    "Merlin.GraphStatePipelineInstance.F3.segment_actual",
+    "Merlin.GraphStatePipelineInstance.F4.actual",
+    "Merlin.GraphStatePipelineInstance.F4.firstAccepted",
+    "Merlin.GraphStatePipelineInstance.F4.secondAccepted",
+    "Merlin.GraphStatePipelineInstance.F4.firstTwo",
+    "Merlin.GraphStatePipelineInstance.F4.typed0",
+    "Merlin.GraphStatePipelineInstance.F4.typed1",
+    "Merlin.GraphStatePipelineInstance.F4.typed2",
+    "Merlin.GraphStatePipelineInstance.F4.typed3",
+    "Merlin.GraphStatePipelineInstance.F4.typed4",
+    "Merlin.GraphGateProfileAdjacent.step2F3",
+    "Merlin.GraphGateProfileAdjacent.step3F3",
+    "Merlin.GraphGateProfileAdjacent.step2F4",
+    "Merlin.GraphGateProfileAdjacent.step3F4",
+    "Merlin.GraphGateProfileAdjacent.complete0",
+    "Merlin.GraphGateProfileAdjacent.complete1",
+    "Merlin.GraphGateProfileAdjacent.complete2",
+    "Merlin.GraphGateProfileAdjacent.complete3",
+    "Merlin.GraphGateProfileAdjacent.original_join",
+    "Merlin.GraphGateProfileAdjacent.final_join",
+    "Merlin.GraphState.Scalar.check_sound",
+    "Merlin.GraphState.Pipeline.entries_cons",
+    "Merlin.GraphState.Pipeline.unroll_loop",
+    "Merlin.GraphState.Pipeline.segment_loop",
+    "Merlin.GraphState.Pipeline.Scope.check_sound",
+    "Merlin.GraphState.Pipeline.checkControl_sound",
+    "Merlin.GraphState.Pipeline.checkLiterals_sound"
+  ],
+  "boundary_roots": [
+    [
+      "scalar_redundancy_elimination",
+      [
+        "Merlin.GraphGateProfileAdjacent.complete0",
+        "Merlin.GraphStatePipelineInstance.F3.firstAccepted",
+        "Merlin.GraphStatePipelineInstance.F4.firstAccepted"
+      ]
+    ],
+    [
+      "scalar_loop_invariant_motion",
+      [
+        "Merlin.GraphGateProfileAdjacent.complete1",
+        "Merlin.GraphStatePipelineInstance.F3.secondAccepted",
+        "Merlin.GraphStatePipelineInstance.F4.secondAccepted"
+      ]
+    ],
+    [
+      "ordered_loop_unrolling",
+      [
+        "Merlin.GraphGateProfileAdjacent.complete2",
+        "Merlin.GraphStatePipelineInstance.F3.unroll_actual"
+      ]
+    ],
+    [
+      "ordered_loop_segmentation",
+      [
+        "Merlin.GraphGateProfileAdjacent.complete3",
+        "Merlin.GraphStatePipelineInstance.F3.segment_actual"
+      ]
+    ]
+  ],
+  "project_sources": [
+    {
+      "module": "Merlin.GraphLoopsSegment",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegment.lean",
+      "sha256": "4a5c9bc7acc32982d6ba8e14d2b132bb4019ecb29c6bfb2edf2d5ff33c0e8e68",
+      "bytes": 9653
+    },
+    {
+      "module": "Merlin.GraphLoopsSegmentBounds",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentBounds.lean",
+      "sha256": "19c3b0e8aba5635ef5604ef5b655fc9d735a0d4c2bca330364fb9a1766a77e22",
+      "bytes": 3962
+    },
+    {
+      "module": "Merlin.GraphLoopsSegmentModel",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentModel.lean",
+      "sha256": "465255ee4afd19e85a1080d91255ef812c1ce952a4f487aa72782810ab0cc66a",
+      "bytes": 7091
+    },
+    {
+      "module": "Merlin.GraphLoopsSegmentState",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsSegmentState.lean",
+      "sha256": "2cf7c5b2f1aea4d96c8f278d7cfe03bb642e7bacf901824a09f59bc5dff3fed2",
+      "bytes": 2118
+    },
+    {
+      "module": "Merlin.GraphLoopsUnroll",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnroll.lean",
+      "sha256": "69b05b4159d94a849b3d6719b06ebcc2ce07d9c0349fc21a4290912be91d7eab",
+      "bytes": 5730
+    },
+    {
+      "module": "Merlin.GraphLoopsUnrollBounds",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnrollBounds.lean",
+      "sha256": "14c482baf5f36fcc6a68568872e8299dfeec1552d6530914425b5876366e63fa",
+      "bytes": 5106
+    },
+    {
+      "module": "Merlin.GraphLoopsUnrollGrouping",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphLoopsUnrollGrouping.lean",
+      "sha256": "e4c3f6e0c18cc22065bf19f5937ef3121800ced12d49cad1298c22c3220515ac",
+      "bytes": 9854
+    },
+    {
+      "module": "Merlin.GraphStatePipelineControl",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineControl.lean",
+      "sha256": "81de56f72fb5bb24375c6a4b447dfa79ed8846a067a044592dd465d644b27035",
+      "bytes": 5747
+    },
+    {
+      "module": "Merlin.GraphStatePipelineFailure",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineFailure.lean",
+      "sha256": "c96aa35941bc5cfb38156823fcc6a46cd13653a42f7eb77d6ab3357130c8f215",
+      "bytes": 4641
+    },
+    {
+      "module": "Merlin.GraphStatePipelineFold",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineFold.lean",
+      "sha256": "e9d957f54f68b4383e5fd9588dbd6a604a74eb82476ffd6922380c313239471b",
+      "bytes": 7412
+    },
+    {
+      "module": "Merlin.GraphStatePipelineIndex",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineIndex.lean",
+      "sha256": "f78c2e0960a8c130b227cee516a4d5c9a2a8cb10d376ae6493cf1605956b4604",
+      "bytes": 7569
+    },
+    {
+      "module": "Merlin.GraphStatePipelineLiterals",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineLiterals.lean",
+      "sha256": "f5aba53d53ce61b8ca454911dcacdc191c81c5f53ace1503aa3c9ea126fa8751",
+      "bytes": 1400
+    },
+    {
+      "module": "Merlin.GraphStatePipelineLoops",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineLoops.lean",
+      "sha256": "6dea3e36422575b5b228e017711ecb05d6552ee0d64437dc00ff19630fe3a5cb",
+      "bytes": 8734
+    },
+    {
+      "module": "Merlin.GraphStatePipelineProgram",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineProgram.lean",
+      "sha256": "2c807d9a09ec68753db306e14d4b639ebd7f62760674e2e92305c6d4eb4ea453",
+      "bytes": 3197
+    },
+    {
+      "module": "Merlin.GraphStatePipelineScope",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineScope.lean",
+      "sha256": "6cd50e08d9a51d669554f035f58361ed096e3174cfc216216d7a3affc9ea51d9",
+      "bytes": 2509
+    },
+    {
+      "module": "Merlin.GraphStatePipelineSegments",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStatePipelineSegments.lean",
+      "sha256": "39d38abfc3ea44b5e57790977e46fb675b8237fa46dafff3bc8154823efd0124",
+      "bytes": 4541
+    },
+    {
+      "module": "Merlin.GraphStateScalar",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalar.lean",
+      "sha256": "d5e379f3931381087947907233ba1cffefc343fd35a835e17d050388523ece02",
+      "bytes": 4654
+    },
+    {
+      "module": "Merlin.GraphStateScalarContract",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarContract.lean",
+      "sha256": "c0802b19dd4be875997d58cb96d6005693dc604059319c8231a33909c2346db9",
+      "bytes": 8229
+    },
+    {
+      "module": "Merlin.GraphStateScalarInitialized",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarInitialized.lean",
+      "sha256": "265883892cf3f137bdb9ea426cb6a5156d02f633de7fd4c52987aff92a7b0d8a",
+      "bytes": 11782
+    },
+    {
+      "module": "Merlin.GraphStateScalarNormalize",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarNormalize.lean",
+      "sha256": "a2ef3bb65c0e84c175274baadb5156f757a6115e54c2e057ce0741213d6ac114",
+      "bytes": 6170
+    },
+    {
+      "module": "Merlin.GraphStateScalarSound",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarSound.lean",
+      "sha256": "14f90d232ef752641c2dd789c0066197328c4077fa80293fd711b08dffab1e9d",
+      "bytes": 9963
+    },
+    {
+      "module": "Merlin.GraphStateScalarTyping",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/GraphStateScalarTyping.lean",
+      "sha256": "d22f43df330aea2150460c91e3997386943895a58c9af40542059435d638908d",
+      "bytes": 6614
+    },
+    {
+      "module": "Merlin.ResourceGeometry",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/ResourceGeometry.lean",
+      "sha256": "7390c6b1df0defa806b123edb8f335e11008a957280be1b78c1e74faa0cb4edf",
+      "bytes": 3246
+    },
+    {
+      "module": "Merlin.StateEffects",
+      "path": "/home/jeremy/Projects/merlin/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176",
+      "bytes": 4537
+    }
+  ],
+  "domain": "complete_scalar_scf_static_no_tail_entries_v1",
+  "relation": "equal_all_entry_returns_errors_terminal_world",
+  "premises": [
+    "trusted complete xDSL parsing, actual source projection and host source binding",
+    "same Scalar.Program/evalProgram, concrete mathematical Int index control and complete terminal world",
+    "external calls explicitly declared; same possibly failing descriptor interpretation with local successful arity",
+    "no internal call bridge, native ABI/alias/allocator/completion fidelity or hidden private-SSA observers",
+    "one static nonnegative changed top-level loop per changed function, positive stride, no-tail bulk count>factor",
+    "factor2..4, tile2..16, signed32|64 control bounds, one..four word carries, two-input changed functions",
+    "region-free original loop body, at most16 lane external calls, bounded syntax, no broader control modes",
+    "one total deterministic state-free primitive interpretation; no source-success premise"
+  ],
+  "entry_contract": "all Int entry arguments; missing/wrong arity included",
+  "audit_policy": [
+    "exact final and EVERY listed support/boundary root type and transitive std3 audit",
+    "only propext/Classical.choice/Quot.sound; no reflection or new axioms",
+    "exact selected project source/import/object closure and runtime pre/post evidence",
+    "same typed live CheckedQuery identity revalidated under newly approved provider"
+  ],
+  "host_admission_requirements": [
+    "fresh recomputation from every original actual buffer and registered adjacent roster",
+    "SAME live original-to-final completion AND all checked actual adjacent boundary roots/receipts",
+    "exact source/query/domain/entry-contract/provider/budget binding at delivery",
+    "plan_only=False enforced by reviewed service; no local/saved/copied JSON authority",
+    "no promotion from old qualified receipts or current minimal7/two-kind completions"
+  ],
+  "query_contract": "pure_declarations_separate_root_audit_v1",
+  "provider_selection": "UNSELECTED_HELD_REQUIRES_NEW_EXACT_CONTEXT_REVIEW",
+  "authority": false,
+  "native_authorization": false,
+  "query_status": "UNCOMPILED",
+  "outcome": "UNOBSERVED",
+  "qualification": "UNQUALIFIED"
+}

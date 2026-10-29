@@ -1,0 +1,10 @@
+{
+  "selected_originals": 17,
+  "unique_actual_imported_objects": 1121,
+  "incident_target": "/home/jeremy/.elan/toolchains/leanprover--lean4---v4.35.0/lib/lean/Std/Time/Format/Basic.olean",
+  "target_in_actual_selected_closure": false,
+  "original_expected_bindings_used": true,
+  "SDK_incident_cause": "UNKNOWN",
+  "toolchain_written": false,
+  "global_toolchain_innocence_asserted": false
+}
