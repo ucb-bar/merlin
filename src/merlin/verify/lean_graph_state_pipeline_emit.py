@@ -128,25 +128,55 @@ theorem naturalRange (lower upper step : Nat) (positive : 0 < step) :
 
 
 def body_group_text(capture, loops, envs, count, factor, step):
-    result = f"""theorem body_group (base : Int) (carry : List Int) (world : World) (arity : carry.length = {count}) :
+    # Exact actual Program suffixes, not a replacement body/evaluator.
+    control_map = {r["identity"]: r for r in capture["index_operations"]}
+    result, groups = "", {}
+    for stage in (2, 3):
+        records = loops[stage]["body"]
+        # Validate full terms through the unchanged serializer first.
+        program(records)
+        pieces, pending = [], []
+        for i, row in enumerate(records):
+            name = f"Piece{stage}_{i}"
+            pending.append(name)
+            external = "effect" in row and row["effect"] not in control_map
+            if external or "ret" in row:
+                pieces.append(pending)
+                pending = []
+        if pending or len(pieces) < 1:
+            raise ValueError("complete actual suffix/call partition required")
+        groups[stage] = pieces
+        for i in reversed(range(len(records))):
+            row = records[i]
+            if "ret" in row:
+                term = program([row])
+            else:
+                if "loop" in row:
+                    raise ValueError("region-free actual unrolled body required")
+                term = program([row, {"ret": []}])
+                if term.count("(.ret [])") != 1:
+                    raise ValueError("unique structural suffix continuation required")
+                term = term.replace("(.ret [])", f"Piece{stage}_{i+1}", 1)
+            result += f"@[irreducible] def Piece{stage}_{i} : Program := {term}\n"
+        result += f"theorem B{stage}_factored : B{stage} = Piece{stage}_0 := by\n"
+        result += "  unfold B" + str(stage) + " " + " ".join(f"Piece{stage}_{i}" for i in range(len(records))) + "\n  rfl\n"
+    source_calls = len(groups[2]) - 1
+    if len(groups[3]) - 1 != factor * source_calls:
+        raise ValueError("actual target external prefix count differs from source lanes")
+    result += f"""theorem body_group (base : Int) (carry : List Int) (world : World) (arity : carry.length = {count}) :
   evalProgram (M primitive external) B3 (base::carry++E3 primitive x0 x1) world =
   loopEval {count} (fun i c w => evalProgram (M primitive external) B2 (i::c++E2 primitive x0 x1) w)
     {lean_list(["base" if lane == 0 else f"(base+{step * lane})" for lane in range(factor)])} carry world := by
 """
     result += unpack("carry", "arity", count, "c")
-    result += f"  simp only [B2,B3,E2,E3,{SIMPS},loopEval]\n"
+    initial = ",".join(groups[2][0] + groups[3][0])
+    result += f"  simp only [B2_factored,B3_factored,{initial},E2,E3,{SIMPS},loopEval]\n"
     values = [f"c{i}" for i in range(count)]
-    control_map = {r["identity"]: r for r in capture["index_operations"]}
     calls = []
     for lane in range(factor):
         iv = "base" if lane == 0 else f"(base+{step * lane})"
-        values, more = symbolic_body(
-            loops[2]["body"],
-            [iv, *values, *envs[2]],
-            control_map,
-            len(calls),
-            "world" if not calls else f"w{len(calls) - 1}",
-        )
+        values, more = symbolic_body(loops[2]["body"], [iv,*values,*envs[2]], control_map,
+                                     len(calls), "world" if not calls else f"w{len(calls)-1}")
         calls += more
     if len(calls) > 16:
         raise ValueError("bounded lane proof supports at most sixteen retained calls")
@@ -154,15 +184,19 @@ def body_group_text(capture, loops, envs, count, factor, step):
         pad = "  " + "  " * depth
         index, identity = call["index"], call["identity"]
         args, world = lean_list(call["arguments"]), call["world"]
+        next_defs = groups[3][index+1] + groups[2][(index+1) % source_calls]
+        if (index+1) % source_calls == 0:
+            next_defs += groups[2][-1]
+        definitions = ",".join(next_defs)
         result += f"{pad}cases step{index} : external.run {identity} {args} {world} with\n"
         result += f"{pad}| error failure =>\n{pad}  rcases failure with ⟨error,terminal⟩\n"
-        result += f"{pad}  simp only [step{index},{SIMPS},loopEval]\n"
+        result += f"{pad}  simp only [step{index},{definitions},{SIMPS},loopEval]\n"
         result += f"{pad}| ok result =>\n{pad}  rcases result with ⟨values,w{index}⟩\n"
         result += f"{pad}  have size : values.length = {call['outputs']} := by\n"
         result += f"{pad}    have localArity := external.arity {identity} {args} {world} values w{index} step{index}\n"
         result += f"{pad}    simpa only [registry,signature,List.getElem?_cons_succ,List.getElem?_cons_zero,Option.getD_some,List.length_cons,List.length_nil] using localArity\n"
         result += unpack("values", "size", call["outputs"], f"v{index}_", pad + "  ")
-        result += f"{pad}  simp only [step{index},{SIMPS},loopEval]\n"
+        result += f"{pad}  simp only [step{index},{definitions},{SIMPS},loopEval]\n"
     return result
 
 
