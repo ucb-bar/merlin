@@ -4,7 +4,7 @@ kind: guide
 status: current
 owner: verification
 last_verified: 2026-10-29
-related: [lean_pass_gate, lean_loop_transform_gate, lean_buffer_reuse_gate, lean_configuration_elision_gate, lean_configuration_hoist_gate, verified_compiler_tooling, merlin_lean_verification]
+related: [lean_pass_gate, lean_loop_transform_gate, lean_buffer_reuse_gate, lean_configuration_elision_gate, lean_configuration_hoist_gate, verified_compiler_tooling, merlin_lean_verification, lean_pass_integration_completion]
 code_refs:
   - src/merlin/verify/pass_validation.py
   - src/merlin/verify/compiler_transforms.py
@@ -22,6 +22,9 @@ code_refs:
 Current qualification and remaining limits are in
 the [integration handoff](../../out/artifacts/handoff/pass-verif-integration-20261028/README.md).
 That handoff distinguishes retained evidence from checks on the current source.
+The [completion plan](../design/lean_pass_integration_completion.md) defines the
+remaining work to cover Merlin pass proofs and compiler integration through
+output IR, leaving only explicit semantic contracts for human review.
 
 Select transformations to change the compiler's output. Select validation to
 require a proof of their actual input/output boundaries. Both are opt-in.
@@ -158,12 +161,17 @@ to a new check. The standalone pinned-producer workflow still takes its explicit
 `reference` argument.
 
 The supported source domain has one changed top-level loop per changed function,
-zero to sixteen scalar entry arguments, one to sixteen word carries, a region-free body, static nonnegative
-bounds, positive stride and index64. Unrolling supports factors 2..4 with a
-nonempty bulk larger than the factor and no unroll remainder. Tiling supports
-sizes 2..16 and short final segments. External calls retain the modeled state
+scalar entry arguments and word carries without separate fixed arity caps
+(including zero carries), a region-free body, static nonnegative bounds,
+positive stride and index64. Scalar unroll factors and tile sizes are integers
+at least two. Unrolling requires a nonempty bulk larger than the factor and no
+unroll remainder; tiling supports short final segments. Complete syntax,
+expression/proof expansion, query-size, signed-index and runtime budgets still
+apply. External calls retain the modeled state
 and failure semantics. Dynamic/multidimensional tiling and arbitrary nesting
-need additional bridges. The gate does not insert a loop-lowering pass to turn
+need additional bridges. Untouched context must also fit the projection;
+unchanged loop-containing definitions currently require another context bridge.
+The gate does not insert a loop-lowering pass to turn
 arbitrary tensor programs into supported source SCF.
 
 Multiple changed function definitions are checked together. Exact unchanged
@@ -184,6 +192,7 @@ merlin-compile ... --loop-tile-size 2 \
 The equivalent options are
 `Options(tile_size=2, buffer_allocator="total_private_unobservable")`.
 This selection explicitly states the allocator model and requires tiling.
+The private-buffer proof route retains its tile-size domain of 2..16.
 It is separate from source unrolling.
 
 These inputs already own their `memref.alloc`/`memref.dealloc` lifetimes. The

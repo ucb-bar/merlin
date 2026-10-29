@@ -1,3 +1,69 @@
+# Completion plan and scalar loop generalization — 2026-10-29
+
+Use **`feat/pass-verif-integration`**, code `0fd1b0294`, based on the colleague's
+`a829c1a66` checkpoint. The agreed endpoint is Merlin pass proofs and compiler
+integration through output IR. The
+[completion plan](../../../../docs/design/lean_pass_integration_completion.md)
+defines the work packages, actual producer coverage and release criteria.
+**The milestone where only human review remains is still open.**
+
+The compiler now accepts scalar argument/carry lists without a separate fixed
+arity cap, including zero carries. Scalar unroll factors and tile sizes are
+integers at least two without the old factor-four / size-sixteen upper bounds.
+List-proof emission is iterative; complete SSA syntax is charged before proof
+generation. Syntax/input/query resource overflows are unavailable outcomes.
+Historical standalone and private-buffer parameter domains stay explicit.
+No production transformation, Lean semantic definition, specification, lock or
+numerical approval changed. The ledger corrects its stale Q/DQ pruning wording
+without changing A9's purity premise.
+
+The incoming `ae144d959` fix requires the complete Lean proof library and both
+executables to be current, including audit-only objects. It retains `--no-build`
+and refuses stale/missing artifacts. Its three real-project regression cases
+passed in this merged qualification.
+
+**59 targeted checks passed, zero failures/errors/skips.** They cover arguments
+and carries beyond sixteen, an effectful zero-carry loop with failure-state
+equality, CLI/type/resource controls, artifact controls, one actual private-buffer
+chain, all six Q/DQ compiler pairs, both bf16/f16 MACC compiler pairs, default
+selection and corrupt-output rejection. Four loop compiler pairs have matching
+gated/ungated LLVM and independent native wrapping results. Factor seven and
+tile seventeen are checked on 126 iterations, exercising a short final tile.
+The buffer proof retains its separate possible-success observation relation.
+
+A separate process rebuilt and delivered the factor-seven / tile-seventeen
+boundary from descriptive buffers/settings with saved approval fields omitted.
+The target hash matched exactly; the audit used only the standard three axioms.
+The fresh completion, rather than the saved JSON, authorized delivery.
+
+Evidence is local under `out/build/pass-proof-completion-20261029-v1/`:
+`merged.xml`, `merged.log`, `SUMMARY.json`, `replay-summary.json` and the original
+proof directories. [qualification.json](qualification.json) records the source
+manifest and unique current test IDs. The earlier 32-case arity run and the
+premerge run stopped after 51 passes retain separate cuts; the latter records
+its interruption and unfinished tail. These runs overlap and must not be summed.
+Ignored toolchains/logs are not distributed by Git.
+
+Formatting, staged source/layout/path/ratchet checks, documentation and protected
+Lean file locks pass. Current boundary proofs have their own kernel/axiom audits;
+the full Lean guard was not rerun because its Lean/specification inputs are
+unchanged. No full legacy suite was run. Whole-repository checks retain 16
+structure, two overfit-register and two provenance findings in untouched baseline
+files; no ratchet or policy was weakened.
+
+Next work is the shared semantic/context bridges, inline/tail/nested loop
+execution, independently usable untiled reuse, complete numerical boundaries
+and configuration consumer wiring. The current word/SCF projection and retained
+proof-expansion budgets still constrain support. Real original-PT2 SourceCapture
+qualification remains deferred until the pinned tools are available. Q/DQ source
+semantics and MACC numerical policy retain their proposed/draft status, outside
+`all`. The [stack guide](../../../../docs/guides/lean_compiler_stack.md) and offline
+stack now show the updated domains.
+
+Everything below retains earlier source cuts and qualification.
+
+---
+
 # Q/DQ compiler integration follow-up — 2026-10-29
 
 Compiler code `0a463e725` integrates the colleague's `85b354f0d` tooling with explicit

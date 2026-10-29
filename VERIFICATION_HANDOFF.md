@@ -1,3 +1,32 @@
+# Pass proof completion plan and loop generalization — 2026-10-29
+
+Continue on **`feat/pass-verif-integration`**. Code `0fd1b0294` removes separate
+compiler argument/carry caps (including zero carries) and scalar unroll-factor /
+tile-size upper bounds. Existing standalone and private-buffer profiles retain
+their declared domains and resource guards remain enforced. The colleague's
+audit-only object freshness fix and handoff through `a829c1a66` are integrated.
+
+**59 targeted checks passed on the merged cut, zero failures or skips**, plus
+fresh-process replay of factor seven / tile seventeen with saved approval fields
+omitted. The larger example has 126 iterations, including a short final tile.
+Earlier 32-case and interrupted 51-pass runs retain their own cuts and overlap;
+they are not additional current qualification. No full legacy suite was run.
+
+The [completion plan](docs/design/lean_pass_integration_completion.md) defines
+the agreed endpoint through Merlin output IR, work order and acceptance criteria.
+**The human-review-only milestone is not yet complete.** Loop inline/tail/context
+bridges, direct untiled reuse, semantic joins, numerical producer/source coverage
+and real configuration consumers remain engineering work. Q/DQ source approval
+and MACC independent numerical review remain pending; real SourceCapture
+qualification still needs the previously deferred pinned tools.
+
+See the [current checkpoint](out/artifacts/handoff/pass-verif-integration-20261028/README.md),
+[updated compiler stack](docs/guides/lean_compiler_stack.md) and
+[assumption ledger](merlin/lean/LEDGER.md). Earlier domain summaries and results
+below retain their stated source cuts.
+
+---
+
 # MACC freshness fix and remaining integration — 2026-10-29
 
 On `feat/pass-verif-integration`, `ae144d959` makes checker admission require

@@ -63,6 +63,10 @@ records inherited source Q/DQ proofs and the independent numerical review still
 required. MACC acceptance establishes candidate-reference conformance, with
 numerical approval still abstracted. The design and historical proof counts
 below do not enable approved quantization or numerical-policy compiler gates.
+The [pass integration completion plan](lean_pass_integration_completion.md)
+defines the agreed endpoint through Merlin output IR, work packages and the
+conditions for leaving only human semantic review. It separates current full
+theorems from missing adapter coverage, semantic joins and producer fixes.
 
 ## 0. Summary
 

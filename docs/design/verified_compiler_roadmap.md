@@ -15,6 +15,9 @@ The [usage guide](../guides/verified_compiler_tooling.md) states the callable AP
 experiment boundaries and proof scope. Existing shared and upstream components
 can satisfy part of a row; a row is complete only when the ordinary compiler
 actually invokes it and its declared assurance and feedback are exercised.
+For the nine existing Lean pass interfaces, the focused
+[completion plan](lean_pass_integration_completion.md) defines the work through
+Merlin output IR and the acceptance criteria for a human-review-only handoff.
 
 ## Ownership and phases
 

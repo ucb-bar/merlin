@@ -1003,5 +1003,194 @@
       "outcome": "first successful proof refused by new tuple/list result-shape mismatch; owned run interrupted, representation fixed, full targeted rerun passed"
     },
     "prior_evidence_scope": "Earlier current_* fields retain c553814aa and earlier cuts; their bound sources changed. Do not sum overlapping historical/current test IDs or recover live authority from saved status."
-  }
+  },
+  "loop_generalization_20261029": {
+    "schema": "merlin.pass-integration-completion.qualification.v1",
+    "branch": "feat/pass-verif-integration",
+    "base": "a829c1a66ee36d56b9a9928585924e0ac05facc3",
+    "scope": "Merlin pass proofs and compiler integration through output IR",
+    "human_review_only_milestone_complete": false,
+    "current_merged_qualification": {
+      "cases_recorded": 59,
+      "passed": 59,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0,
+      "ids": [
+        "merlin.tests.ir.test_pass_gate_audit_freshness::test_current_library_and_executables_are_accepted",
+        "merlin.tests.ir.test_pass_gate_audit_freshness::test_audit_only_object_must_be_current[stale]",
+        "merlin.tests.ir.test_pass_gate_audit_freshness::test_audit_only_object_must_be_current[missing]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_general_loop_parameters_compiler_gate_and_native_outputs[False]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_general_loop_parameters_compiler_gate_and_native_outputs[True]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_compiler_gate_above_old_caps_matches_native_outputs[17-1]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_compiler_gate_above_old_caps_matches_native_outputs[2-17]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_zero_carry_effects_and_failure_state_check_in_kernel",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_general_entry_shapes_reconstruct[0-1-1-False]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_general_entry_shapes_reconstruct[1-1-1-True]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_general_entry_shapes_reconstruct[3-5-1-False]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_general_entry_shapes_reconstruct[6-2-2-False]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_general_entry_shapes_reconstruct[17-1-1-False]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_general_entry_shapes_reconstruct[2-17-1-True]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_generalized_compiler_domain_does_not_widen_legacy_profiles[3-1]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_generalized_compiler_domain_does_not_widen_legacy_profiles[2-5]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_entry_list_expansion_does_not_use_python_recursion",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_syntax_budget_counts_unused_arguments_before_proof_generation",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_zero_carry_does_not_widen_historical_profile",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_general_loop_parameters_keep_historical_limits[False]",
+        "merlin.tests.ir.test_compiler_loop_generalization::test_general_loop_parameters_keep_historical_limits[True]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_explicit_outside_domain_choices_refuse[options0]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_explicit_outside_domain_choices_refuse[options1]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_explicit_outside_domain_choices_refuse[options2]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_explicit_outside_domain_choices_refuse[options3]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_explicit_outside_domain_choices_refuse[options4]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_explicit_outside_domain_choices_refuse[options5]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_explicit_outside_domain_choices_refuse[options6]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_explicit_outside_domain_choices_refuse[options7]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_new_cli_choices_select_transforms_separately_from_validation[2-3]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_new_cli_choices_select_transforms_separately_from_validation[7-17]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_cli_rejects_invalid_loop_parameters_before_compilation[-1---loop-unroll-factor]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_cli_rejects_invalid_loop_parameters_before_compilation[-1---loop-tile-size]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_cli_rejects_invalid_loop_parameters_before_compilation[0---loop-unroll-factor]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_cli_rejects_invalid_loop_parameters_before_compilation[0---loop-tile-size]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_cli_rejects_invalid_loop_parameters_before_compilation[1---loop-unroll-factor]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_cli_rejects_invalid_loop_parameters_before_compilation[1---loop-tile-size]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_cli_rejects_invalid_loop_parameters_before_compilation[2.5---loop-unroll-factor]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_cli_rejects_invalid_loop_parameters_before_compilation[2.5---loop-tile-size]",
+        "merlin.tests.ir.test_loop_transform_artifacts::test_private_tree_refuses_mutation[replace]",
+        "merlin.tests.ir.test_loop_transform_artifacts::test_private_tree_refuses_mutation[add]",
+        "merlin.tests.ir.test_loop_transform_artifacts::test_private_tree_refuses_mutation[remove]",
+        "merlin.tests.ir.test_loop_transform_artifacts::test_private_tree_refuses_mutation[symlink]",
+        "merlin.tests.ir.test_loop_transform_artifacts::test_audit_time_mutation_never_issues_live_completion[replace]",
+        "merlin.tests.ir.test_loop_transform_artifacts::test_audit_time_mutation_never_issues_live_completion[add]",
+        "merlin.tests.ir.test_loop_transform_artifacts::test_audit_time_mutation_never_issues_live_completion[redirect]",
+        "merlin.tests.ir.test_loop_transform_artifacts::test_audit_time_mutation_never_issues_live_completion[snapshot]",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_compiler_buffer_chain_uses_distinct_memory_claim[case0]",
+        "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[False-quantize]",
+        "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[False-tensor]",
+        "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[False-channel]",
+        "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[True-quantize]",
+        "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[True-tensor]",
+        "merlin.tests.ir.test_compiler_qdq::test_actual_compiler_qdq_gate_matches_ungated_llvm[True-channel]",
+        "merlin.tests.ir.test_compiler_macc_wiring::test_macc_draft_compiler_gate_matches_actual_ungated_llvm[bf16]",
+        "merlin.tests.ir.test_compiler_macc_wiring::test_macc_draft_compiler_gate_matches_actual_ungated_llvm[f16]",
+        "merlin.tests.ir.test_lean_pass_gate::test_all_registers_formal_gates_without_draft_numerical_policy",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_actual_unroll_bug_rejects_compiler_products",
+        "merlin.tests.ir.test_compiler_formal_transforms::test_tiling_wrong_carry_is_rejected_by_lean"
+      ],
+      "xml": "out/build/pass-proof-completion-20261029-v1/merged.xml",
+      "log": "out/build/pass-proof-completion-20261029-v1/merged.log"
+    },
+    "retained_initial_arity_cut": {
+      "cases_recorded": 32,
+      "passed": 32,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0,
+      "xml": "out/build/pass-proof-completion-20261029-v1/kernel.xml",
+      "log": "out/build/pass-proof-completion-20261029-v1/kernel.log"
+    },
+    "retained_interrupted_premerge_cut": {
+      "cases_recorded": 52,
+      "passed": 52,
+      "failure": 0,
+      "error": 0,
+      "skipped": 0,
+      "xml": "out/build/pass-proof-completion-20261029-v1/final.xml",
+      "log": "out/build/pass-proof-completion-20261029-v1/final.log"
+    },
+    "interruption_reason": "Stopped the remaining premerge regression to merge the newly fetched audit-only freshness fix; exit 2 and unfinished cases are retained.",
+    "source_files": [
+      {
+        "path": "merlin/lean/LEDGER.md",
+        "bytes": 52887,
+        "sha256": "fbed99c9e4145b9eebc10e01b755f495dbcbf56d39da4375aaa0a14af4341c40"
+      },
+      {
+        "path": "merlin/tests/ir/test_compiler_formal_transforms.py",
+        "bytes": 17940,
+        "sha256": "b3586a81f82b4ae99f22ba9b50fe8f8ccc85c945b46a98111819c7ce490a5fca"
+      },
+      {
+        "path": "merlin/tests/ir/test_compiler_loop_generalization.py",
+        "bytes": 14493,
+        "sha256": "afc859895a575c69a4dfe9dfe5e2826181b3cf03f1f93c1abc57706c74ac8440"
+      },
+      {
+        "path": "merlin/tests/ir/test_pass_gate_audit_freshness.py",
+        "bytes": 2781,
+        "sha256": "5bcf24c7c5d5e16659a3d46f91f203f7de9b9bce6dc75e170675fc75081b13f8"
+      },
+      {
+        "path": "src/merlin/compile/command.py",
+        "bytes": 12991,
+        "sha256": "2b9b3e9c6324eb15548982b22a48a3e23fc51a3a48191c22f6f509a69c2e4c38"
+      },
+      {
+        "path": "src/merlin/verify/compiler_loop_intake.py",
+        "bytes": 8980,
+        "sha256": "6a6fc1617ae8d7016ab4ae9cfb94f4574e73fa64c8dd7de48a29ca9cd05ba90f"
+      },
+      {
+        "path": "src/merlin/verify/compiler_transforms.py",
+        "bytes": 11123,
+        "sha256": "148b6ccf3862fe9b3b98e5f8c6516049557a31769f0088b0c6f26eae48d3a90d"
+      },
+      {
+        "path": "src/merlin/verify/lean_graph_pipeline_gate_profile_prepare.py",
+        "bytes": 20002,
+        "sha256": "c45ac5411127b67e3427be3c9ab29db0b3faf5b5122f7ac40cbb996320f9a5ae"
+      },
+      {
+        "path": "src/merlin/verify/lean_graph_state_pipeline_emit.py",
+        "bytes": 30299,
+        "sha256": "dc129b3c849bcf0c256838c99736ba4f28016a1fb95008c5cce9ccb482eead60"
+      },
+      {
+        "path": "src/merlin/verify/pass_validation.py",
+        "bytes": 12266,
+        "sha256": "5933c464f41dcaeea75c8c7cfafa7351f2c8bae4510b1c706ce59834fd65c9fa"
+      }
+    ],
+    "full_legacy_suite_run": false,
+    "full_lean_guard_rerun": false,
+    "protected_lean_lock_check": "passed; no Lean semantic/specification/lock changes",
+    "baseline_findings": {
+      "structure": 16,
+      "overfit_register": 2,
+      "provenance": 2
+    },
+    "authority": false,
+    "compiler_commit": "0fd1b0294e8e17e1f854f6cf336550cb9bf08e46",
+    "fresh_replay": {
+      "fresh_process": true,
+      "incoming_live_completions": 0,
+      "saved_approval_fields_omitted": true,
+      "factor": 7,
+      "tile": 17,
+      "exact_target_sha256": "a132409e5baec5901f8c01cb890a0e6c72f26ba7187b3be94f28a38c5d0886a7",
+      "relation": "all defined entries equal returned values/errors/terminal world",
+      "axioms": [
+        "propext",
+        "Classical.choice",
+        "Quot.sound"
+      ],
+      "report": "out/build/pass-proof-completion-20261029-v1/fresh-replay/REPORT.json",
+      "authority": false
+    },
+    "resource_policy": "at most two single-CPU lanes; native thread pools limited; nice 19",
+    "completion_plan": "docs/design/lean_pass_integration_completion.md",
+    "open_engineering": [
+      "shared semantic/context joins",
+      "inline/tail/nested loop operational bridges",
+      "direct untiled buffer reuse",
+      "numerical producer/source coverage and real SourceCapture qualification",
+      "configuration consumer wiring"
+    ],
+    "retained_repo_file_refs_revalidated": {
+      "count": 991,
+      "changed": 0,
+      "issues_live_authority": false
+    }
+  },
+  "latest_followup": "loop_generalization_20261029"
 }

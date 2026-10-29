@@ -23,7 +23,7 @@
     "example": "14 ordered iterations\n\u2192 7 groups \u00d7 2 ordered lanes\nThe accumulator passes through every lane.",
     "claim": "Equal returned values, modeled errors and terminal world, under the common scalar/SCF interpretation.",
     "proof": "Merlin.GraphGateProfileAdjacent.complete2",
-    "limit": "Static index64, one changed loop per changed function, 0\u201316 scalar inputs and 1\u201316 word carries. Multiple changed definitions; factors 2\u20134, no unroll remainder.",
+    "limit": "Static index64, one changed loop per changed function. No separate argument/carry arity cap; zero carries allowed. Integer factors at least two, no unroll remainder. Syntax, expression/query and runtime budgets apply.",
     "registered": true,
     "in_all": true
   },
@@ -37,7 +37,7 @@
     "example": "7 groups\n\u2192 segments [3, 3, 1]\nA short final segment retains the original order.",
     "claim": "Scalar route: equal returns, modeled errors and terminal world. Memory route: the whole storage chain's successful-observation relation.",
     "proof": "Merlin.GraphGateProfileAdjacent.complete3",
-    "limit": "Static index64 and region-free scalar source bodies; tile sizes 2\u201316. General multidimensional tiling needs another bridge.",
+    "limit": "Static index64 and region-free scalar source bodies. Scalar tile sizes are integers at least two within signed-index and resource bounds; private-buffer proofs retain sizes 2\u201316. General multidimensional tiling needs another bridge.",
     "registered": true,
     "in_all": true
   },
