@@ -1,0 +1,44 @@
+[
+  {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/configuration_elision_producer.py",
+    "sha256": "0f888a8dbc6873958d1c1cae7e172152858a017df22dc474e83ce614dbb38683",
+    "bytes": 8033,
+    "snapshot": "sources/src/merlin/verify/configuration_elision_producer.py"
+  },
+  {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/configuration_elision_bridge.py",
+    "sha256": "5a07268a8a6b3b84d91b06628bbb5bed1af4a5034bb270993e1c96bc74e79770",
+    "bytes": 18598,
+    "snapshot": "sources/src/merlin/verify/configuration_elision_bridge.py"
+  },
+  {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/configuration_elision_emit.py",
+    "sha256": "f1d263bd16d4722d3eb0309e2a780891b606e7cdd98f1c406e3fff423ef15cb4",
+    "bytes": 5890,
+    "snapshot": "sources/src/merlin/verify/configuration_elision_emit.py"
+  },
+  {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/configuration_elision_intake.py",
+    "sha256": "d8dfbdb1e6c0f32f0f190ed3630407a031abde8eaf1c18ca2ceafab14af8f328",
+    "bytes": 6085,
+    "snapshot": "sources/src/merlin/verify/configuration_elision_intake.py"
+  },
+  {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/configuration_elision_gate.py",
+    "sha256": "da173f9602668ed50f50a08aa3de1860a89e355aa8efe869646386685faf1eb9",
+    "bytes": 14906,
+    "snapshot": "sources/src/merlin/verify/configuration_elision_gate.py"
+  },
+  {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/test_configuration_elision_bridge_unit.py",
+    "sha256": "6a90e8070b548b2a70553e9000ebc2ab0edc8df424501f45203354d4d164e8f3",
+    "bytes": 5185,
+    "snapshot": "sources/merlin/tests/ir/test_configuration_elision_bridge_unit.py"
+  },
+  {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/merlin/tests/ir/test_configuration_elision_gate_unit.py",
+    "sha256": "b2c62934d1dbfeabe2ce741ef63f4ccd93c5a76595cecd87fc7da3e9a967af03",
+    "bytes": 5455,
+    "snapshot": "sources/merlin/tests/ir/test_configuration_elision_gate_unit.py"
+  }
+]

@@ -1,0 +1,6 @@
+{
+  "status": "checked",
+  "reason": "complete conditional hoist Kernel obligation and std3/root audit checked",
+  "report": "/home/jeremy/Projects/merlin/out/build/graph-hoist-primary/check-v1/REPORT.json",
+  "exact_consumer": true
+}

@@ -1,0 +1,8 @@
+{
+  "status": "FINAL_OWNER_CUT5_SOURCE_REVIEW_PASSED",
+  "manifest_sha256": "0c5e3ac64e7fbdedff50fa526cf3b6f9fae6e149c6fdcaff3213b72327c82aab",
+  "members": 208,
+  "host_delta": "Only approved installed-package-origin anchor in intake; remaining five leaves identical to reviewed cut2; canonical SDK tests migrated/snapshotted exactly.",
+  "native_status": "F qualification-v1 running; no source changes allowed",
+  "user_stop": "Finish this hoist, write handoffs and stop; no subsequent task"
+}

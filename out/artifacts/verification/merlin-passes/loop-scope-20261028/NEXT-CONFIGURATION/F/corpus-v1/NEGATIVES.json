@@ -1,0 +1,128 @@
+[
+  {
+    "name": "drop_first_write",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "drop_observer",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "wrong_retained_value",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "wrong_same_typed_binding",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "changed_constant",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "changed_visibility",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "changed_symbol",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "changed_input_type",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "changed_signature",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "changed_metadata",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "reordered_observer",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "inserted_observer",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "drop_unused_constant",
+    "source_case": "multifield",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "wrong_retained_field",
+    "source_case": "single_fields",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "drop_reset",
+    "source_case": "partial_clobber",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "drop_required_after_clobber",
+    "source_case": "partial_clobber",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "drop_unknown",
+    "source_case": "unknown_effect",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "drop_unordered",
+    "source_case": "unordered_effect",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "drop_pulse",
+    "source_case": "pulse_retained",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "wrong_token_binding",
+    "source_case": "ssa_results",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  },
+  {
+    "name": "drop_changed_pair",
+    "source_case": "partially_changed_value",
+    "status": "XDSL_VALID_AWAITING_AUTHORITATIVE_COMPILER",
+    "original_production_conformance": "PRODUCTION_CONFORMANCE_REFUSED"
+  }
+]

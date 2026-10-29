@@ -1,0 +1,81 @@
+{
+  "members": [
+    {
+      "path": "ActualConfigurationHoistWitness.lean",
+      "bytes": 8973,
+      "sha256": "6ff74c8c674fa5a89d5fb35e9a18032a7a0d93272e0aefc7e4a386a63014bba4"
+    },
+    {
+      "path": "BINDINGS.json",
+      "bytes": 1653,
+      "sha256": "08d2ea3537052a2a8f837fae21bb3ceca5408ab7790a24d219d96ae606d76d87"
+    },
+    {
+      "path": "RESULT.json",
+      "bytes": 189421,
+      "sha256": "42d35e15f7d71c1ac9ce8b9d71ca38c38abd2fb8da284d96cb77a0354f1e1433"
+    },
+    {
+      "path": "audit.intent.json",
+      "bytes": 455,
+      "sha256": "692e186f50030fea1149d5a37e8a25a5477c3d2a28ff07fe3941957ad3dcf391"
+    },
+    {
+      "path": "audit.process.json",
+      "bytes": 22,
+      "sha256": "1e3f6691f455051e8adb15d961e4bf3c7a17e83dd88b2afdd13315cc288250bb"
+    },
+    {
+      "path": "audit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "audit.stdout",
+      "bytes": 99432,
+      "sha256": "91942660210fb3e39db5c631235653299539ef7881664773a2e60218259bbca2"
+    },
+    {
+      "path": "compile.intent.json",
+      "bytes": 628,
+      "sha256": "be19bfa67e4c9b8c752a90f4bfbcde3ccc587a3b605f9e1c3fe4a5864d0741ac"
+    },
+    {
+      "path": "compile.process.json",
+      "bytes": 22,
+      "sha256": "1e3f6691f455051e8adb15d961e4bf3c7a17e83dd88b2afdd13315cc288250bb"
+    },
+    {
+      "path": "compile.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "compile.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "types.intent.json",
+      "bytes": 5780,
+      "sha256": "8b3374f945b12d24e3064f2c98dc1bb0d5e92494f069bab04d06b97e8d185885"
+    },
+    {
+      "path": "types.process.json",
+      "bytes": 22,
+      "sha256": "1e3f6691f455051e8adb15d961e4bf3c7a17e83dd88b2afdd13315cc288250bb"
+    },
+    {
+      "path": "types.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "types.stdout",
+      "bytes": 66110,
+      "sha256": "253bbebad4b999807fd1e1dda3a7e16394494aa962f5c5670c386298fa0e6ab1"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "685617b3bbee081da774eacec0c6912bf6454601b7da4e947267f04c69773023"
+}

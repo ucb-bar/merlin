@@ -1,0 +1,1106 @@
+{
+  "isa": {
+    "facts_sha256": "7346cf7a64845755a3d9463ab56d7c0d5e475c1aa6f1705f21468d5df80e724c",
+    "instructions": [
+      {
+        "effects": {
+          "reads": [],
+          "writes": [
+            "configuration"
+          ]
+        },
+        "encoding": [
+          {
+            "fixed": {
+              "fact": [
+                "facts",
+                "codes",
+                0
+              ]
+            },
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                0
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                0
+              ]
+            }
+          },
+          {
+            "argument": "slot",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                1
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                1
+              ]
+            }
+          },
+          {
+            "argument": "a",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                2
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                2
+              ]
+            }
+          },
+          {
+            "argument": "b",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                3
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                3
+              ]
+            }
+          }
+        ],
+        "immediates": [],
+        "name": "set",
+        "operands": [
+          {
+            "name": "slot",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  1
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "a",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  2
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "b",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  3
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          }
+        ],
+        "results": []
+      },
+      {
+        "effects": {
+          "reads": [],
+          "writes": [
+            "configuration"
+          ]
+        },
+        "encoding": [
+          {
+            "fixed": {
+              "fact": [
+                "facts",
+                "codes",
+                1
+              ]
+            },
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                0
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                0
+              ]
+            }
+          },
+          {
+            "argument": "slot",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                1
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                1
+              ]
+            }
+          },
+          {
+            "argument": "a",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                2
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                2
+              ]
+            }
+          },
+          {
+            "argument": "b",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                3
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                3
+              ]
+            }
+          }
+        ],
+        "immediates": [],
+        "name": "pair",
+        "operands": [
+          {
+            "name": "slot",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  1
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "a",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  2
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "b",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  3
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          }
+        ],
+        "results": []
+      },
+      {
+        "effects": {
+          "reads": [
+            "configuration",
+            "input"
+          ],
+          "writes": [
+            "output"
+          ]
+        },
+        "encoding": [
+          {
+            "fixed": {
+              "fact": [
+                "facts",
+                "codes",
+                2
+              ]
+            },
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                0
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                0
+              ]
+            }
+          },
+          {
+            "argument": "slot",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                1
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                1
+              ]
+            }
+          },
+          {
+            "argument": "a",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                2
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                2
+              ]
+            }
+          },
+          {
+            "argument": "b",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                3
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                3
+              ]
+            }
+          }
+        ],
+        "immediates": [],
+        "name": "work",
+        "operands": [
+          {
+            "name": "slot",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  1
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "a",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  2
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "b",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  3
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          }
+        ],
+        "results": []
+      },
+      {
+        "effects": {
+          "reads": [],
+          "writes": [
+            "configuration"
+          ]
+        },
+        "encoding": [
+          {
+            "fixed": {
+              "fact": [
+                "facts",
+                "codes",
+                3
+              ]
+            },
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                0
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                0
+              ]
+            }
+          },
+          {
+            "argument": "slot",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                1
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                1
+              ]
+            }
+          },
+          {
+            "argument": "a",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                2
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                2
+              ]
+            }
+          },
+          {
+            "argument": "b",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                3
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                3
+              ]
+            }
+          }
+        ],
+        "immediates": [],
+        "name": "reset",
+        "operands": [
+          {
+            "name": "slot",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  1
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "a",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  2
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "b",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  3
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          }
+        ],
+        "results": []
+      },
+      {
+        "effects": {
+          "reads": [],
+          "writes": [
+            "configuration",
+            "events"
+          ]
+        },
+        "encoding": [
+          {
+            "fixed": {
+              "fact": [
+                "facts",
+                "codes",
+                4
+              ]
+            },
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                0
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                0
+              ]
+            }
+          },
+          {
+            "argument": "slot",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                1
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                1
+              ]
+            }
+          },
+          {
+            "argument": "a",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                2
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                2
+              ]
+            }
+          },
+          {
+            "argument": "b",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                3
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                3
+              ]
+            }
+          }
+        ],
+        "immediates": [],
+        "name": "pulse",
+        "operands": [
+          {
+            "name": "slot",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  1
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "a",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  2
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "b",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  3
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          }
+        ],
+        "results": []
+      },
+      {
+        "effects": {
+          "reads": [],
+          "writes": [
+            "configuration"
+          ]
+        },
+        "encoding": [
+          {
+            "fixed": {
+              "fact": [
+                "facts",
+                "codes",
+                5
+              ]
+            },
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                0
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                0
+              ]
+            }
+          },
+          {
+            "argument": "slot",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                1
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                1
+              ]
+            }
+          },
+          {
+            "argument": "a",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                2
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                2
+              ]
+            }
+          },
+          {
+            "argument": "b",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                3
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                3
+              ]
+            }
+          }
+        ],
+        "immediates": [],
+        "name": "unordered",
+        "operands": [
+          {
+            "name": "slot",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  1
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "a",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  2
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "b",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  3
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          }
+        ],
+        "results": []
+      },
+      {
+        "encoding": [
+          {
+            "fixed": {
+              "fact": [
+                "facts",
+                "codes",
+                6
+              ]
+            },
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                0
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                0
+              ]
+            }
+          },
+          {
+            "argument": "slot",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                1
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                1
+              ]
+            }
+          },
+          {
+            "argument": "a",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                2
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                2
+              ]
+            }
+          },
+          {
+            "argument": "b",
+            "offset": {
+              "fact": [
+                "facts",
+                "offsets",
+                3
+              ]
+            },
+            "width": {
+              "fact": [
+                "facts",
+                "widths",
+                3
+              ]
+            }
+          }
+        ],
+        "immediates": [],
+        "name": "unknown",
+        "operands": [
+          {
+            "name": "slot",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  1
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "a",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  2
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          },
+          {
+            "name": "b",
+            "type": {
+              "bits": {
+                "fact": [
+                  "facts",
+                  "widths",
+                  3
+                ]
+              },
+              "kind": "integer",
+              "signed": false
+            },
+            "unit": "integer"
+          }
+        ],
+        "results": []
+      }
+    ],
+    "namespace": "configuration_fixture_isa",
+    "resources": [
+      {
+        "capacity": {
+          "fact": [
+            "facts",
+            "capacity"
+          ]
+        },
+        "kind": "state",
+        "name": "configuration",
+        "unit": "fields"
+      },
+      {
+        "kind": "memory",
+        "name": "input",
+        "unit": "bytes"
+      },
+      {
+        "kind": "memory",
+        "name": "output",
+        "unit": "bytes"
+      },
+      {
+        "kind": "memory",
+        "name": "events",
+        "unit": "bytes"
+      }
+    ],
+    "schema": "merlin.isa_spec.v1",
+    "word_bits": {
+      "fact": [
+        "facts",
+        "word_bits"
+      ]
+    }
+  },
+  "scheduling": {
+    "configuration": {
+      "pair": {
+        "clobbers": [],
+        "ordered": true,
+        "pure_write": true,
+        "reads": [],
+        "writes": [
+          {
+            "index": {
+              "constant": 0
+            },
+            "resource": "configuration",
+            "value": {
+              "argument": "a"
+            }
+          },
+          {
+            "index": {
+              "constant": 1
+            },
+            "resource": "configuration",
+            "value": {
+              "argument": "b"
+            }
+          }
+        ]
+      },
+      "pulse": {
+        "clobbers": [],
+        "ordered": true,
+        "pure_write": false,
+        "reads": [],
+        "writes": [
+          {
+            "index": {
+              "argument": "slot"
+            },
+            "resource": "configuration",
+            "value": {
+              "argument": "a"
+            }
+          }
+        ]
+      },
+      "reset": {
+        "clobbers": [
+          {
+            "index": {
+              "argument": "slot"
+            },
+            "resource": "configuration"
+          }
+        ],
+        "ordered": true,
+        "pure_write": false,
+        "reads": [],
+        "writes": []
+      },
+      "set": {
+        "clobbers": [],
+        "ordered": true,
+        "pure_write": true,
+        "reads": [],
+        "writes": [
+          {
+            "index": {
+              "argument": "slot"
+            },
+            "resource": "configuration",
+            "value": {
+              "argument": "a"
+            }
+          }
+        ]
+      },
+      "unordered": {
+        "clobbers": [],
+        "ordered": false,
+        "pure_write": false,
+        "reads": [],
+        "writes": [
+          {
+            "index": {
+              "argument": "slot"
+            },
+            "resource": "configuration",
+            "value": {
+              "argument": "a"
+            }
+          }
+        ]
+      },
+      "work": {
+        "clobbers": [],
+        "ordered": true,
+        "pure_write": false,
+        "reads": [
+          {
+            "index": {
+              "constant": 0
+            },
+            "resource": "configuration",
+            "value": {
+              "constant": 3
+            }
+          },
+          {
+            "index": {
+              "constant": 1
+            },
+            "resource": "configuration",
+            "value": {
+              "constant": 5
+            }
+          }
+        ],
+        "writes": []
+      }
+    },
+    "instruction_byteorder": "little",
+    "numerical_policy": "no-numerical-claim",
+    "schema": "merlin.schedule_effects.v1"
+  },
+  "schema": "merlin.software_spec.v1",
+  "status": "reviewed",
+  "target": "configuration_fixture"
+}

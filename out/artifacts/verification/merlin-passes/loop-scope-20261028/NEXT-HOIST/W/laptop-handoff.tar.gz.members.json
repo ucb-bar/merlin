@@ -1,0 +1,246 @@
+{
+  "members": [
+    {
+      "path": "FINAL_STATUS.json",
+      "bytes": 1289,
+      "sha256": "c03123253c7e001860abab7cefaeb47d0f51bd3c055f821ba3f3e3a8df34f32e"
+    },
+    {
+      "path": "OWNED-SOURCES.json",
+      "bytes": 2385,
+      "sha256": "5481e1e8c46a280fb9c36e1c42bb03f6bae6bfcfb42cad97efcdc849ba505697"
+    },
+    {
+      "path": "PACKAGE-MANIFEST-PRELIMINARY.json",
+      "bytes": 6171,
+      "sha256": "8c17362c6dadfd2cd3da58b9607fecacbefd3dea7d2b967764128e2eabf05826"
+    },
+    {
+      "path": "PACKAGE-MANIFEST.json",
+      "bytes": 7630,
+      "sha256": "23860f12f91af487b15a7da43c4212fa640b469424ee8744b7b5c254f9fa8bc0"
+    },
+    {
+      "path": "README.md",
+      "bytes": 7863,
+      "sha256": "6948e19b8e74d75ee5a61cd73f8d6e224b5882c3496e0a98613a5016bfd06187"
+    },
+    {
+      "path": "SOURCE-MANIFEST.json",
+      "bytes": 4394,
+      "sha256": "9e6ba79a808697b3ff45677ded018c8252374015891217ccecfae0398c55db15"
+    },
+    {
+      "path": "WORKSPACE.json",
+      "bytes": 317,
+      "sha256": "a4622f64d58d9323e8d201d4098cd376e1d9468417e61b89ca8008ef2fe2e0b3"
+    },
+    {
+      "path": "compile_proofs.py",
+      "bytes": 3862,
+      "sha256": "8efec52ba6035153902154c779f97db42185464c4c2f633b1efcb90bebc64159"
+    },
+    {
+      "path": "core-source.patch",
+      "bytes": 18784,
+      "sha256": "df33ead03f576e4ed8d2049ebd1889b396cd5ba4696d966937bd26a238ba8aed"
+    },
+    {
+      "path": "first-failure/7-Merlin.GraphStateConfigurationHoistModel.process.json",
+      "bytes": 514,
+      "sha256": "681684f403a8314e12e9e0bacf78763cd80563eadf310444a61a0757bcc7530c"
+    },
+    {
+      "path": "first-failure/7-Merlin.GraphStateConfigurationHoistModel.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "first-failure/7-Merlin.GraphStateConfigurationHoistModel.stdout",
+      "bytes": 860,
+      "sha256": "5f804dd85507d5d7e86211e384b6f4af743731b50b5b24a0db0b78d646b18cb2"
+    },
+    {
+      "path": "first-failure/GraphStateConfigurationHoistModel.lean",
+      "bytes": 5672,
+      "sha256": "dd8c93112f1ea62721a1d89a6df592e476fdd03357917824b781e9ef6e97a930"
+    },
+    {
+      "path": "lean/ActualConfigurationHoist.lean",
+      "bytes": 10313,
+      "sha256": "19392427c2a2917fc51e79da9877d2441229b0f0b9cdbe0f64bc74c12da5c62a"
+    },
+    {
+      "path": "lean/ActualConfigurationHoistWitness.lean",
+      "bytes": 8973,
+      "sha256": "6ff74c8c674fa5a89d5fb35e9a18032a7a0d93272e0aefc7e4a386a63014bba4"
+    },
+    {
+      "path": "lean/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "path": "lean/Merlin/GraphStateAudit.lean",
+      "bytes": 3451,
+      "sha256": "377eb83eafd6c8d5a625c59f6dbe59d762b4aff003894efcc51df4944580bf99"
+    },
+    {
+      "path": "lean/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "path": "lean/Merlin/GraphStateConfigurationHoistChecker.lean",
+      "bytes": 8433,
+      "sha256": "a0697593e535a7c506a7469145b996d9ae2ff5c911d370937208459205cca593"
+    },
+    {
+      "path": "lean/Merlin/GraphStateConfigurationHoistCountermodels.lean",
+      "bytes": 4387,
+      "sha256": "e4391f0887316deac5d80b3ecd2a8514a08ff4167559e53dc14ec05736530f5b"
+    },
+    {
+      "path": "lean/Merlin/GraphStateConfigurationHoistModel.lean",
+      "bytes": 5711,
+      "sha256": "35b510c6d60fa3294f0a4f858b13e476b49341b10873cfbc83226eb9552ca0a3"
+    },
+    {
+      "path": "lean/Merlin/GraphStateConfigurationPartialHoist.lean",
+      "bytes": 3956,
+      "sha256": "f6794a9c8c1b710071772dfdea7b9a9dc02ac1fbaeb21937fdcdfb9c63427dbd"
+    },
+    {
+      "path": "lean/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "path": "lean/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "path": "lean/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "path": "lean/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "path": "owned-python/audit_selected.py",
+      "bytes": 2433,
+      "sha256": "07239f412cb7fcdd520edcb67c505c60fd23c4efc566eeb127eb0d3590f169af"
+    },
+    {
+      "path": "owned-python/build.py",
+      "bytes": 2690,
+      "sha256": "0b7e53ea3d29b5c9cb570dace4a8c7f0bb2bbd07679e4a21a8f2a840444d3dae"
+    },
+    {
+      "path": "owned-python/review_final_qualification.py",
+      "bytes": 6019,
+      "sha256": "8db38297a719f15de4ddac80b647648591402d12a182f81c743107ca38864968"
+    },
+    {
+      "path": "reports/ACTUAL-QUERY-INTAKE.json",
+      "bytes": 1294,
+      "sha256": "4c4909a22d6dccd40ce758a710f23e765c2a3da82e907765b8a7268a1e836dee"
+    },
+    {
+      "path": "reports/CORE-SOURCE-DELIVERY.json",
+      "bytes": 1598,
+      "sha256": "d64ccac48563aaf6cf5e18f502a2062a529636d9a7e1c06824a62eed68fb85de"
+    },
+    {
+      "path": "reports/F-TERMINAL-REVIEW-v1.json",
+      "bytes": 14341,
+      "sha256": "74f43fd34e039dbc6dfdc03ac8829dc71e76bdd18c49570beeda7097b21fc2b6"
+    },
+    {
+      "path": "reports/F-WITNESS-REVIEW-v1.json",
+      "bytes": 1058,
+      "sha256": "dcdb7640949b156088a1b9114bd3f07677eb1ce900ce9d49ee81d4d951b0e043"
+    },
+    {
+      "path": "reports/F-WITNESS-TYPE-DIFF-v1.json",
+      "bytes": 13453,
+      "sha256": "5197310592af195907ff77ca8b672a37fc023886197d5d8aa6e43289269947ef"
+    },
+    {
+      "path": "reports/PHASE1-RESULT-v1.json",
+      "bytes": 1073,
+      "sha256": "fa27a34e6e08ec04ca7e1fd0ed86e3a21937cfb09ba4923033bf1529037f10da"
+    },
+    {
+      "path": "reports/PRODUCER-REFERENCE.json",
+      "bytes": 524,
+      "sha256": "6f22b3da975e38b04e844c0275afffe2510bc87073db4e327eda5d55bcf4979a"
+    },
+    {
+      "path": "reports/actual-query-audit-v1/RESULT.json",
+      "bytes": 193,
+      "sha256": "56aa91a39542d39a552dd0a4b0a91d7430a16e9ae4ea344474c22f7937af9af0"
+    },
+    {
+      "path": "reports/actual-witness-audit-v1/RESULT.json",
+      "bytes": 193,
+      "sha256": "e8a0108858ac70799c0273b10e9790063465f4ccaeb240cfd8309d5e33fd0753"
+    },
+    {
+      "path": "reports/actual-witness-audit-v1/ROOTS.json",
+      "bytes": 5921,
+      "sha256": "e5bde930dd6c148a31b8cfd18098ac3fdd831643aaf5d3a1724682b7f37b4383"
+    },
+    {
+      "path": "reports/actual-witness-audit-v1/audit.stdout",
+      "bytes": 99297,
+      "sha256": "5c800b1188c42eb9fa4753ba007948b91100bcf63d6f813d71845de75c414019"
+    },
+    {
+      "path": "reports/actual-witness-audit-v1/types.stdout",
+      "bytes": 66976,
+      "sha256": "89ee2da31b6f69de3b9a77e94fa67865933823ace6983fde2bb42015f6572221"
+    },
+    {
+      "path": "reports/checker-audit-v1/RESULT.json",
+      "bytes": 192,
+      "sha256": "53d88e0162f35e7e9f5bd2a7652444ed744be0c606975b8d36d7b74f6f9ef7fa"
+    },
+    {
+      "path": "reports/checker-audit-v1/ROOTS.json",
+      "bytes": 4397,
+      "sha256": "ce200db2b432a8b2dff4abedd667e068cd162c66453c52253975229e44efd648"
+    },
+    {
+      "path": "reports/countermodels-audit-v1/RESULT.json",
+      "bytes": 193,
+      "sha256": "b66f89c9345cb6431b1521cadf13fa8d4da3d4faf993365d7d4f798db7380ae0"
+    },
+    {
+      "path": "reports/source-review-v3/CURRENT-MISMATCH.json",
+      "bytes": 1869,
+      "sha256": "fdbe9cc31fa2208db7f4276f334952274c9a66ef97de0148d24b4062a7d1b87e"
+    },
+    {
+      "path": "reports/source-review-v4/RESULT.json",
+      "bytes": 582,
+      "sha256": "92bd0e9f8ecd4d1099ee258bf64d06b03673269c4d183dd7961ef620424d4080"
+    },
+    {
+      "path": "reports/source-review-v5/ENVIRONMENT-REGRESSION.json",
+      "bytes": 273,
+      "sha256": "48c44e71e698311eec57f1958fe9ffebcc1b620a19fedce95a063c922ff0e521"
+    },
+    {
+      "path": "reports/source-review-v5/RESULT.json",
+      "bytes": 459,
+      "sha256": "efc28a25a9f68688fd1f723323379d050abf2fad0666457fa8361778b20c5207"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "8f0500166f755f06a0aa5ff60d416bbe8cca7bed79874ffc23ba57668db2f505"
+}

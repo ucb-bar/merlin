@@ -1,0 +1,86 @@
+[
+  {
+    "source_case": "multifield",
+    "mutation": "drop_first_write"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "drop_observer"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "wrong_retained_value"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "wrong_same_typed_binding"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "changed_constant"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "changed_visibility"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "changed_symbol"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "changed_input_type"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "changed_signature"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "changed_metadata"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "reordered_observer"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "inserted_observer"
+  },
+  {
+    "source_case": "multifield",
+    "mutation": "drop_unused_constant"
+  },
+  {
+    "source_case": "single_fields",
+    "mutation": "wrong_retained_field"
+  },
+  {
+    "source_case": "partial_clobber",
+    "mutation": "drop_reset"
+  },
+  {
+    "source_case": "partial_clobber",
+    "mutation": "drop_required_after_clobber"
+  },
+  {
+    "source_case": "unknown_effect",
+    "mutation": "drop_unknown"
+  },
+  {
+    "source_case": "unordered_effect",
+    "mutation": "drop_unordered"
+  },
+  {
+    "source_case": "pulse_retained",
+    "mutation": "drop_pulse"
+  },
+  {
+    "source_case": "ssa_results",
+    "mutation": "wrong_token_binding"
+  },
+  {
+    "source_case": "partially_changed_value",
+    "mutation": "drop_changed_pair"
+  }
+]

@@ -1,0 +1,27 @@
+{
+  "status": "REVIEWED_EXACT_ONEFILE_WORKER_CANONICAL_INTAKE",
+  "source": {
+    "source": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/Merlin/GraphStateConfigurationEntries.lean",
+    "target": "src/merlin/verify/lean/Merlin/GraphStateConfigurationEntries.lean",
+    "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0",
+    "bytes": 8677
+  },
+  "dependencies_exact_worker_and_primary": true,
+  "audit": {
+    "status": "audited",
+    "roots": 122,
+    "theorems": 281,
+    "axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "violations": [],
+    "actual_compiler_IR_bound": false
+  },
+  "semantic_review": "Actual checkEntries structural correspondence, per-entry lookup including missing names, Elision common Admitted partial interpretation, complete Except error/state and observation preservation; frame/header equality is projection data, not native/MLIR correspondence proof. No source-success/run-equality premise.",
+  "primary_edited": false,
+  "worker_target": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/lean/Merlin/GraphStateConfigurationEntries.lean",
+  "actual_IR_qualification": false,
+  "time": "2026-10-29T02:38:04.365330+00:00"
+}

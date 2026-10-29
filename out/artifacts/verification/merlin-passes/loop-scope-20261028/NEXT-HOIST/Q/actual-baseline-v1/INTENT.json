@@ -1,0 +1,13 @@
+{
+  "command": [
+    "/home/jeremy/Projects/merlin/.venv/bin/python",
+    "-I",
+    "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/sources/configuration_hoist_worker.py"
+  ],
+  "worker": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/sources/configuration_hoist_worker.py",
+    "sha256": "4b7095b488e57a6990417495871e8afc212e4bcffdda2490952545c32b0eb14b",
+    "bytes": 5809
+  },
+  "Git_SDK_Lean_native_launches": false
+}

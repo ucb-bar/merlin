@@ -1,0 +1,14 @@
+{
+  "status": "REVIEWED_EXACT_FAIL_CLOSED_ADMISSION_FIX_APPLIED_AFTER_F_TERMINAL",
+  "source": {
+    "canonical_modified": false,
+    "preimage": "14adf4cbe372b6fe16a02ec3e9749856d4ddfffa5f9a9030c64aa982bf80bb69",
+    "candidate_sha256": "5a07268a8a6b3b84d91b06628bbb5bed1af4a5034bb270993e1c96bc74e79770",
+    "change": "structural lexer refusal of raw reserved attribute keys before xDSL may overwrite them; no query/model/proof/limits change"
+  },
+  "target": "/home/jeremy/Projects/merlin-loop-verification/src/merlin/verify/configuration_elision_bridge.py",
+  "review": "MLIRLexer structured preflight refuses raw reserved marker names before xDSL can overwrite metadata; decoded quoted/escaped keys covered. Conservative extra refusals acceptable; existing13 queries/roots/models/limits unchanged. No regex, evaluator/spec/ISA change.",
+  "prior_cut2": "UNQUALIFIED due metadata-loss gap despite full selected campaign successes; retain rawcounterpair and results",
+  "native_after_fix": false,
+  "time": "2026-10-29T03:01:52.475014+00:00"
+}

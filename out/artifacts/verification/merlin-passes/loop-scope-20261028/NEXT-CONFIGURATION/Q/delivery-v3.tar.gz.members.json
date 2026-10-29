@@ -1,0 +1,66 @@
+{
+  "members": [
+    {
+      "member": "EXACT-Q3-F3-JOIN.json",
+      "bytes": 7204,
+      "sha256": "1ba80c7a891f096b38d3deb93628745ccebbb73435efd110597e9e5c00e1bad5"
+    },
+    {
+      "member": "F3-FRESH-REPLAY.json",
+      "bytes": 404,
+      "sha256": "d4e50b12ce604e63c048ed5650f0a8bc03fef1f375dede33bfa0f7c8233cd253"
+    },
+    {
+      "member": "F3-NEGATIVES.json",
+      "bytes": 10257,
+      "sha256": "2f6b80f7f85b51b946e41d77659f687d0eca3a8fcb8ccf9cddf9109847ec67c0"
+    },
+    {
+      "member": "F3-POSITIVES.json",
+      "bytes": 20537,
+      "sha256": "d919b617fd9d0bd71d9f9e5e165e040b3c429db5b807a36217e388b1cdb4d554"
+    },
+    {
+      "member": "F3-RESULT.json",
+      "bytes": 753,
+      "sha256": "8a6393eb57f4f3545a32da1054422c568ab081145d0fe1769c563fe168a830a4"
+    },
+    {
+      "member": "F3-SOURCE-CUTS.json",
+      "bytes": 557,
+      "sha256": "89ce60ed94f23d4349361369e7bf78a35915900bb239a9ed97a7f9dc8305c9df"
+    },
+    {
+      "member": "F3-UNSUPPORTED.json",
+      "bytes": 172,
+      "sha256": "55f0a8b9a8393c7af435cf94ccb84e64511e99f06d4954d8b8293d2d775cf2b2"
+    },
+    {
+      "member": "OWNED.json",
+      "bytes": 2115,
+      "sha256": "5555e5a214486500be06599e2efddd6fdf265443bd3258084e3a7b09135fd083"
+    },
+    {
+      "member": "Q3-MANIFEST.json",
+      "bytes": 40246,
+      "sha256": "a21acb15ada9d459c75ea125909dbbf4c02fcaae119a2dd61fd35faebe6d0f0d"
+    },
+    {
+      "member": "README.md",
+      "bytes": 1579,
+      "sha256": "e0ac94ef1c04773352ea0ae693ea6f29027b795d32c5a5dd256a7e0b444be6d5"
+    },
+    {
+      "member": "SEAL.json",
+      "bytes": 1834,
+      "sha256": "85048986c39454023df4b528bd268a05c9278a11e997f0654bbcaa09acdff2f7"
+    },
+    {
+      "member": "owned.patch",
+      "bytes": 66270,
+      "sha256": "aab76b09733cafbc971e0e207d24fb0e245e70db1be4bf28f4179038b18d7520"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "19ddcb726db2d73fd8f47f7b31d4ff0d5ca9f64fdab9b5508473d3774b4b10cb"
+}

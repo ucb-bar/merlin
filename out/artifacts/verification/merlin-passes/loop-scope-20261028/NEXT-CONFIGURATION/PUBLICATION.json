@@ -1,0 +1,60 @@
+{
+  "status": "SELECTED_Q3_F3_SOURCE_AND_TEXT_ARCHIVED",
+  "archives": [
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/Q/paper-evidence-v2.tar.gz",
+      "members": 18,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/Q/delivery-v3.tar.gz",
+      "members": 12,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/qualification-v1.tar.gz",
+      "members": 389,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/qualification-v2.tar.gz",
+      "members": 1557,
+      "excluded": 1
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/qualification-v3.tar.gz",
+      "members": 53,
+      "excluded": 1
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/witness-binding-v2.tar.gz",
+      "members": 17,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/delivery-v1.tar.gz",
+      "members": 1651,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/PAPER-EXAMPLE-v1.tar.gz",
+      "members": 19,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/paper-evidence.tar.gz",
+      "members": 1,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W.tar.gz",
+      "members": 529,
+      "excluded": 0
+    }
+  ],
+  "excluded_binary_negative_controls": "Referenced in manifests/original reports; regenerate fresh owned objects for replay. No SDK/native object shipped.",
+  "old_cut1_unavailable": true,
+  "old_cut2_unqualified": true,
+  "human_approved": false,
+  "whole_pass_verified": false
+}

@@ -1,0 +1,56 @@
+{
+  "members": [
+    {
+      "path": "RESULT.json",
+      "bytes": 374,
+      "sha256": "aebd88ddf522d6c2078265bc6a96a5233157ad91e571a11a939d9d2d3b6de652"
+    },
+    {
+      "path": "fake-root/src/merlin/verify/lean/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "path": "fake-root/src/merlin/verify/lean/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "path": "fake-root/src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistChecker.lean",
+      "bytes": 8433,
+      "sha256": "a0697593e535a7c506a7469145b996d9ae2ff5c911d370937208459205cca593"
+    },
+    {
+      "path": "fake-root/src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistModel.lean",
+      "bytes": 5711,
+      "sha256": "35b510c6d60fa3294f0a4f858b13e476b49341b10873cfbc83226eb9552ca0a3"
+    },
+    {
+      "path": "fake-root/src/merlin/verify/lean/Merlin/GraphStateConfigurationPartialHoist.lean",
+      "bytes": 3956,
+      "sha256": "f6794a9c8c1b710071772dfdea7b9a9dc02ac1fbaeb21937fdcdfb9c63427dbd"
+    },
+    {
+      "path": "fake-root/src/merlin/verify/lean/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "path": "fake-root/src/merlin/verify/lean/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "path": "fake-root/src/merlin/verify/lean/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "path": "fake-root/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "97ca02f165e6675e682ba9dee8b40d1c204486425fb773db694366d5bfa08149"
+}

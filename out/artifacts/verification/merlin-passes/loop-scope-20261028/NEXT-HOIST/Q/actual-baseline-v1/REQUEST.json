@@ -1,0 +1,9 @@
+{
+  "reference": "/home/jeremy/Projects/merlin-dce-cse-integration",
+  "facts": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/fixtures-v1/schema-i32/facts.json",
+  "software": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/fixtures-v1/schema-i32/software.yaml",
+  "target": "configuration_fixture",
+  "mode": "produce",
+  "source": "kernel hoist_fixture(input: i8[17] read, output: i8[23] write)\n  attrs {fixture=phase1}\n  unknown(slot=0, a=0, b=0)\n  for i in 0..3:\n    pair(slot=0, a=3, b=5)\n    work(slot=0, a=0, b=0)\n    work(slot=0, a=0, b=0)\n  work(slot=0, a=0, b=0)\n",
+  "premise_label": "unapproved-synthetic-local-state-model"
+}

@@ -1,0 +1,51 @@
+{
+  "claims": [
+    {
+      "root": "Merlin.GraphState.Configuration.Entries.check_sound",
+      "domain": "arbitrary finite supported whole entry roster, common deterministic partial retained interpretation, arbitrary initial complete modeled state",
+      "premises": [
+        "check fields before after=true",
+        "pointwise Elision.Admitted for every source atom"
+      ],
+      "conclusion": "all defined or missing name lookup outcomes exactly equal; successful state and retained error/terminalstate"
+    },
+    {
+      "root": "ActualConfigurationElision.complete_entries",
+      "domain": "F constructed multifield exact raw before/final projection",
+      "premises": [
+        "Entries.Admitted common actualinstruction interpretation"
+      ],
+      "conclusion": "same complete-entry outcome, arbitrary initial state"
+    },
+    {
+      "root": "ActualConfigurationWitness.source_success",
+      "domain": "exact decoded original multifield program; explicit Int fixture interpretation/initialstate",
+      "premises": [],
+      "conclusion": "constructed source success;observer21"
+    },
+    {
+      "root": "ActualConfigurationWitness.final_success",
+      "domain": "same exact final multifield program/interpretation/state",
+      "premises": [],
+      "conclusion": "corresponding final success;observer21"
+    },
+    {
+      "root": "ActualConfigurationWitness.source_first_failure",
+      "domain": "same source; explicit second-work-failure interpretation",
+      "premises": [],
+      "conclusion": "firsterror73;terminalobserver21"
+    },
+    {
+      "root": "ActualConfigurationWitness.final_first_failure",
+      "domain": "same actual final; identical interpretation",
+      "premises": [],
+      "conclusion": "same firsterror73/terminalobserver21"
+    }
+  ],
+  "assumed_source_execution": false,
+  "assumed_whole_run_equality": false,
+  "numerical_or_native_correspondence": false,
+  "projection_trusted_python": true,
+  "independent_human_review": false,
+  "adjacent_pipeline_composition": false
+}

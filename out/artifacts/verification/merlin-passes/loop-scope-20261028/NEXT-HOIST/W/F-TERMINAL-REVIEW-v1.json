@@ -1,0 +1,356 @@
+{
+  "status": "independent_readonly_scoped_qualification_terminal_review_passed",
+  "campaign": {
+    "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/qualification-v1/RESULT.json",
+    "sha256": "f01658b1361a642ee9613c8ebc241705f89d369d1fd137d505b14a33adee687a",
+    "bytes": 454
+  },
+  "positive_reports": [
+    {
+      "case": "baseline_extent3",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/baseline_extent3/REPORT.json",
+        "sha256": "b53bfc8081fecaef611df19bc52fdb672862f30aa112426eb79470d8ce4b9b86",
+        "bytes": 293598
+      },
+      "exact_raw_pair_query_projection_roots": true,
+      "sources": 95,
+      "processes": 12,
+      "private_project_import_paths": 10,
+      "types": 15,
+      "theorems": 315,
+      "std3": true,
+      "exact_consumer": true
+    },
+    {
+      "case": "extent1",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/extent1/REPORT.json",
+        "sha256": "42b12746707e23ad895cb3b2b86bbba4d6dc9d38c7c80bd8e4e9721412b2ebab",
+        "bytes": 292823
+      },
+      "exact_raw_pair_query_projection_roots": true,
+      "sources": 95,
+      "processes": 12,
+      "private_project_import_paths": 10,
+      "types": 15,
+      "theorems": 315,
+      "std3": true,
+      "exact_consumer": true
+    },
+    {
+      "case": "extent7",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/extent7/REPORT.json",
+        "sha256": "bfb5fd04aacfdb429473b7e721320c490a4844e1831e1bf8159e0c3eb771d21b",
+        "bytes": 292824
+      },
+      "exact_raw_pair_query_projection_roots": true,
+      "sources": 95,
+      "processes": 12,
+      "private_project_import_paths": 10,
+      "types": 15,
+      "theorems": 315,
+      "std3": true,
+      "exact_consumer": true
+    },
+    {
+      "case": "ordered_surroundings",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/ordered_surroundings/REPORT.json",
+        "sha256": "9e6a6fee71e831eab7920727cc671bcf2cf9fd83b7ddd29b44172a60a85a54c0",
+        "bytes": 293942
+      },
+      "exact_raw_pair_query_projection_roots": true,
+      "sources": 95,
+      "processes": 12,
+      "private_project_import_paths": 10,
+      "types": 15,
+      "theorems": 315,
+      "std3": true,
+      "exact_consumer": true
+    },
+    {
+      "case": "disjoint_body_write",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/disjoint_body_write/REPORT.json",
+        "sha256": "97f3d67ac73b79b38edf0a0c765b0ba8a8fa4e20d1ebe72b5ec3fe4847b18346",
+        "bytes": 293856
+      },
+      "exact_raw_pair_query_projection_roots": true,
+      "sources": 95,
+      "processes": 12,
+      "private_project_import_paths": 10,
+      "types": 15,
+      "theorems": 315,
+      "std3": true,
+      "exact_consumer": true
+    },
+    {
+      "case": "disjoint_body_clobber",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/disjoint_body_clobber/REPORT.json",
+        "sha256": "1b092cc0f601be8310c035a739a4be320f9c495a63343a7d15c6938b358245b1",
+        "bytes": 294028
+      },
+      "exact_raw_pair_query_projection_roots": true,
+      "sources": 95,
+      "processes": 12,
+      "private_project_import_paths": 10,
+      "types": 15,
+      "theorems": 315,
+      "std3": true,
+      "exact_consumer": true
+    },
+    {
+      "case": "unsigned64_body_value",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/unsigned64_body_value/REPORT.json",
+        "sha256": "0b5b8e760de4a2439020a16427e4423598d9b2bb437ed5db15ff680980238efe",
+        "bytes": 294028
+      },
+      "exact_raw_pair_query_projection_roots": true,
+      "sources": 95,
+      "processes": 12,
+      "private_project_import_paths": 10,
+      "types": 15,
+      "theorems": 315,
+      "std3": true,
+      "exact_consumer": true
+    }
+  ],
+  "boundaries": 9,
+  "actual_Lean_refusals": [
+    {
+      "case": "drop_hoisted_setup",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/drop_hoisted_setup/ActualConfigurationHoist.lean",
+        "sha256": "7b206f3b2a3610ec86364f9e5c07bbc1acc90b0fc680fa185bb52c215bc33291",
+        "bytes": 9644
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/drop_hoisted_setup/query.process.json",
+        "sha256": "0599adeca8063e324d22039bacbfc539ab28d3462c7f19d77906240552b84c9d",
+        "bytes": 435
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "wrong_setup_value",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_setup_value/ActualConfigurationHoist.lean",
+        "sha256": "3ae6f67c67a446c90025638c48d1f44ab53ca4765a19ec3ccbc5203939a40e54",
+        "bytes": 10313
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_setup_value/query.process.json",
+        "sha256": "72a3eadeb5554b3eb6d162fb405ed4cf0f4c51e8e14ee8dfe43f8b573c9b2a73",
+        "bytes": 433
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "wrong_loop_extent",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_loop_extent/ActualConfigurationHoist.lean",
+        "sha256": "0a6b5071238fb0f0db28fad90ab0324a9784e742b8d0029c11c41dbe0dabcc8f",
+        "bytes": 10313
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_loop_extent/query.process.json",
+        "sha256": "fa7a6bfa4371e2f2a207e9ab3089388b15bbf2f0e03599172223b10c9bd434c7",
+        "bytes": 433
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "wrong_loop_variable",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_loop_variable/ActualConfigurationHoist.lean",
+        "sha256": "13fedbc23be6f6a12db2a56bca582ccd1ca6ae3fdece65488b8649c01c95b069",
+        "bytes": 10313
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_loop_variable/query.process.json",
+        "sha256": "e27e672bb8772e4707f7416f74730767877617e3ae737d2060059bea8ef6ff09",
+        "bytes": 437
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "drop_body_observer",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/drop_body_observer/ActualConfigurationHoist.lean",
+        "sha256": "8dca571096892decaf678098ab753072951a74a558454ba456c57d28f9aa32fd",
+        "bytes": 9648
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/drop_body_observer/query.process.json",
+        "sha256": "2fa17c235a4b88dbe6f73f44640703125b8569aafdf7e6a720aede503e7f721b",
+        "bytes": 435
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "wrong_body_argument",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_body_argument/ActualConfigurationHoist.lean",
+        "sha256": "91343820a526c2cef5da22f064709a34f5448092bbaedaaeb2649a216df6f660",
+        "bytes": 10313
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_body_argument/query.process.json",
+        "sha256": "c16659ca9a499f14c4c4ef40b7c1d4652fd3df24e17d4c96b41ee4e46258d082",
+        "bytes": 437
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "drop_surrounding_observer",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/drop_surrounding_observer/ActualConfigurationHoist.lean",
+        "sha256": "bc6d1d88cc7df0e8b251f5ff90b7eff20312892909de9ab90fb7cf71df695fe3",
+        "bytes": 9642
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/drop_surrounding_observer/query.process.json",
+        "sha256": "dc27e2160ed43b0c2f35e51246334380544a915b61e0b9ea326e1e694d2dd75d",
+        "bytes": 449
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "wrong_surrounding_call",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_surrounding_call/ActualConfigurationHoist.lean",
+        "sha256": "052b2da69c151877067b99e420adac9a20b4164053471d0033bd4f8dbab067f7",
+        "bytes": 10400
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_surrounding_call/query.process.json",
+        "sha256": "535a0c6aafa22a299333f59c48b8aefd9b8847f923faa17de17a08e37aa000eb",
+        "bytes": 443
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "wrong_metadata",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_metadata/ActualConfigurationHoist.lean",
+        "sha256": "0f3a515d8ecc3565b69400dbda106895c9b04670191fdc6e6027f4d7540cbad0",
+        "bytes": 10314
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_metadata/query.process.json",
+        "sha256": "d9110a6529005cb9203e72939b242c0836675054457d53747f3ee9e745123364",
+        "bytes": 427
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "wrong_entry_name",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_entry_name/ActualConfigurationHoist.lean",
+        "sha256": "985f2a3330f500763608d50f321852ce3776dad68d6b66737340bb768e97721b",
+        "bytes": 10307
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_entry_name/query.process.json",
+        "sha256": "23640761ed6676a07764f001cf61971361bb6c29a9c389e32d46901bd375f4fc",
+        "bytes": 431
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "wrong_buffer_shape",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_buffer_shape/ActualConfigurationHoist.lean",
+        "sha256": "ea737f86dbfbaafd2610342d702fa0fe27dcb4cab4a5ac295330c1434c6d9a88",
+        "bytes": 10313
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_buffer_shape/query.process.json",
+        "sha256": "905fd209cdf0d93089412d8a8aa747fdf6e64d36f0d2d5d3490e911c690114a7",
+        "bytes": 435
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "wrong_buffer_type",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_buffer_type/ActualConfigurationHoist.lean",
+        "sha256": "84ff56a217e30caca3e42caf46849b9382bf233c6ff938e76959289897e89496",
+        "bytes": 10314
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_buffer_type/query.process.json",
+        "sha256": "967b003f414e6a181069f701666607bcbc3ed56b96106750b819509f49bb6b5a",
+        "bytes": 433
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "wrong_buffer_access",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_buffer_access/ActualConfigurationHoist.lean",
+        "sha256": "e56d249381274ea43091348898bcdfaa22babc6ac9939f1a36e3d24a35259ce0",
+        "bytes": 10317
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/wrong_buffer_access/query.process.json",
+        "sha256": "1711ebad50cfd55a475682c456fa5d5a128b162721f7079a911a0d3d0826e5d4",
+        "bytes": 437
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "reordered_setup_before_surrounding",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/reordered_setup_before_surrounding/ActualConfigurationHoist.lean",
+        "sha256": "3103e9f915a14a219689e10474e6099f3a3ea37be176d8c7929a7d8aaf5a8bd6",
+        "bytes": 10313
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/reordered_setup_before_surrounding/query.process.json",
+        "sha256": "9bce98b4fcdfb0bd06afda0f2799132facc60dea33f6103ef5a454aab7554a32",
+        "bytes": 467
+      },
+      "exact_false_obligation": true
+    },
+    {
+      "case": "inserted_pulse",
+      "source": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/inserted_pulse/ActualConfigurationHoist.lean",
+        "sha256": "65f984b0aa784ba457854cf6b3e801bab9ce8b7536a5a5edd2a9803c58a41a0b",
+        "bytes": 10977
+      },
+      "process": {
+        "path": "out/build/loop-scope-20261028/qualification/hoist-v1/negatives/inserted_pulse/query.process.json",
+        "sha256": "76d0e30ccaa8301e7fdcfbbe8b197c7eb993141e5a8dd5f444d2b7b1f1ecaac8",
+        "bytes": 427
+      },
+      "exact_false_obligation": true
+    }
+  ],
+  "host_completion_refusal": [
+    {
+      "name": "changed_completion_incoming",
+      "status": "HOST_DOMAIN_REFUSAL",
+      "reason": "phase1 has no asynchronous/unit/completion/staging semantics"
+    }
+  ],
+  "forged_requests": 16,
+  "live_artifact_controls": 12,
+  "fresh_empty_ledger_replay": true,
+  "replay_report": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/fresh-replay/REPORT.json",
+    "sha256": "9724452f6dffb121132b8821d20b1abe7cd1418b2ac51069ab4005ee5d65b509",
+    "bytes": 292394
+  },
+  "replay_types": 15,
+  "replay_theorems": 315,
+  "SDK_or_proof_object_contents_read": false,
+  "new_native_launch_by_W": false,
+  "hardware_native_human_review": false,
+  "finish_then_stop": true
+}

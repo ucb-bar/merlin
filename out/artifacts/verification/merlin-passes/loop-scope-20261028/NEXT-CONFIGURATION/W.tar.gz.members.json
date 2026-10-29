@@ -1,0 +1,2651 @@
+{
+  "members": [
+    {
+      "member": "ACTIVE-before-Qcut2.md",
+      "bytes": 5771,
+      "sha256": "9e866c2ed9a2c4e62b2d8ef7d680a92d565448abef080fb2828401ea85ce6950"
+    },
+    {
+      "member": "ACTIVE-before-compiled-entries.md",
+      "bytes": 2607,
+      "sha256": "674669f63c196d91c672f663bd0cb2e2963644cd5e3d9dc0fd46ba1a9b5d309e"
+    },
+    {
+      "member": "ACTIVE.md",
+      "bytes": 5168,
+      "sha256": "e351564121c465c65548a8363f08d5e6a05fa01d4561d9e2ff08b3e180b27cb1"
+    },
+    {
+      "member": "ACTUAL-QUERY-INTAKE.json",
+      "bytes": 1305,
+      "sha256": "9142d7c5b2caf29d26c1b9a81f9bfe527d499770e944505c83315da471bc28a7"
+    },
+    {
+      "member": "CAPACITY-RESUME-1.json",
+      "bytes": 1156,
+      "sha256": "9829fbeaf7e558c7a95bcfe3ea95db9f8c0a0b0f6ec9ccbc24af9e85e8c41256"
+    },
+    {
+      "member": "ENTRY-SOURCE-DELIVERY.json",
+      "bytes": 2601,
+      "sha256": "e4c9f4f5a7f9ac1bb33b62f2c4707898a8399b5848d28c0d70638fb1c9b87729"
+    },
+    {
+      "member": "F-POSITIVES-OBSERVATION-1.json",
+      "bytes": 9059,
+      "sha256": "c0e897cb7625f7f61f30e4b8a2e7dc044f5107aed1fc1d36e80c3338e5681b29"
+    },
+    {
+      "member": "F-TERMINAL-OBSERVATION-v1.json",
+      "bytes": 15455,
+      "sha256": "1a629979f92f5e1365e5e86a3a83f2539753ec5e258013d082028a98a110bc1d"
+    },
+    {
+      "member": "F3-POSITIVES-OBSERVATION-1.json",
+      "bytes": 9089,
+      "sha256": "2cce84b8fe4b7b8fe2bace984fe7ba250519dece40d562c2bd7f6636b12f001d"
+    },
+    {
+      "member": "F3-TERMINAL-OBSERVATION-v1.json",
+      "bytes": 15501,
+      "sha256": "bd91aa004ded86dc43a5969a5954607d468ed4e9ee0f2c7fb370e56b79997bde"
+    },
+    {
+      "member": "F3-WITNESS-OBSERVATION-v1.json",
+      "bytes": 782,
+      "sha256": "898d47fdec0801992e7aa17b2c6a784778aba9b9b1294c30b529995a66eaff9d"
+    },
+    {
+      "member": "F3-WITNESS-REVIEW-FIRST-FAILURE.txt",
+      "bytes": 190,
+      "sha256": "487087d875f4cf4fbb19655754432d6206ad24d44fff99ba55d279aa5f7e67c9"
+    },
+    {
+      "member": "F3-WITNESS-TYPE-DIFF.json",
+      "bytes": 1554,
+      "sha256": "c65b6a554f7e7339bbe959aa7ccb07c2c03e72b1b971f23bf2e1b6dc2627eb14"
+    },
+    {
+      "member": "FINAL-DELIVERY-v1.json",
+      "bytes": 980,
+      "sha256": "3e61503dcf72a3815cff52ba568e3080030a1e5b028f768715ff5ef0b1728a85"
+    },
+    {
+      "member": "FINAL-OWNED-DELIVERY-SEAL-v1.json",
+      "bytes": 2631,
+      "sha256": "64f0f0f31fca64b5004d44159cb44334267e2fa47acf4089a0b17e5a07f7ff2b"
+    },
+    {
+      "member": "INTERFACE-initial-proposal.md",
+      "bytes": 2161,
+      "sha256": "6fabc7f65d5d5656c41c84970418b568a596e84592e2a434e5871e840f42c0d4"
+    },
+    {
+      "member": "INTERFACE.md",
+      "bytes": 2533,
+      "sha256": "6d7d6b45bf49c16246e069d81ea2cd88475f12bbb53375813b7f45d20e48fdc2"
+    },
+    {
+      "member": "OWNED-SOURCES-v2.json",
+      "bytes": 2295,
+      "sha256": "b0ccece6e17d5fae1553f7390f84057c60ac0e90e640989c2f6ab0ceae976159"
+    },
+    {
+      "member": "OWNED-SOURCES-v3.json",
+      "bytes": 3043,
+      "sha256": "04a5eb6ccc74e64fae5c0f9876af0b8694309823670b21bf9db228291478af4e"
+    },
+    {
+      "member": "OWNED-SOURCES.json",
+      "bytes": 1810,
+      "sha256": "89f54da83c59f62fca17e7937dac97bca9c61ab2dfdbe9534f244d82a00e4223"
+    },
+    {
+      "member": "PRODUCER-REFERENCE.json",
+      "bytes": 573,
+      "sha256": "9431429bbf58ec24b207dfb03cbb223c21f35c023ef5c9d6ea74e92621346eea"
+    },
+    {
+      "member": "QUEUE-DELIVERY.json",
+      "bytes": 1009,
+      "sha256": "cbc558ef3217e31221690a09fe4a98253c11dba05513ae3a58835d0fe83544f5"
+    },
+    {
+      "member": "README-before-cut3-terminal.md",
+      "bytes": 2758,
+      "sha256": "02763ccc74e5dce41bed94fcb5ab5b3876dce9a454cb32c13e312fa222d5a047"
+    },
+    {
+      "member": "README.md",
+      "bytes": 1455,
+      "sha256": "61dc1a53acfa3746773b24724a2071f81e150b35c09680bfab8eb63e88c6e0cb"
+    },
+    {
+      "member": "RELEASE-DELIVERY.json",
+      "bytes": 2154,
+      "sha256": "5c23ec09dc553a831f896d94e3e8a9535740771bed8cbbb9cf333a4c998e604e"
+    },
+    {
+      "member": "RESULT-v1.json",
+      "bytes": 1159,
+      "sha256": "98130defb0c999150bbc87f9b73902c94ed682efe016e39eb3a9b8d133cc0577"
+    },
+    {
+      "member": "RESULT-v2.json",
+      "bytes": 1726,
+      "sha256": "d54266a7e58e4de08c5441e08877a16d930d99f92766461d5b8280dc3f9c4ad6"
+    },
+    {
+      "member": "RESULT-v3.json",
+      "bytes": 577,
+      "sha256": "b0a6e6d2950480e45d8c75fb0a8f700d57671ce843eeb527e56c088b3016ce86"
+    },
+    {
+      "member": "RESULT-v4.json",
+      "bytes": 827,
+      "sha256": "2b7bfd9bfdeb6ddb85b4f8a539deacce796ab7853915d059460e24e4f7574cde"
+    },
+    {
+      "member": "SOURCE-CLOSURE.json",
+      "bytes": 3052,
+      "sha256": "b2d5d25679d35bd3b68bc8452cb57b3e2fa66c271c6f3bd3a35071e76013a1f7"
+    },
+    {
+      "member": "TASK.md",
+      "bytes": 3577,
+      "sha256": "3fcedb6381f132c8fbb01f38cb4c240feea04265f8e5b8d1385c420f335aa82f"
+    },
+    {
+      "member": "THEOREM-PREMISE-MAP.json",
+      "bytes": 2033,
+      "sha256": "9593ebfc90946c4a14f272d3db786f021a6ea5bea78e16baac9bec95ad6ac453"
+    },
+    {
+      "member": "actual-query-audit-v1/RESULT.json",
+      "bytes": 191,
+      "sha256": "12a3693cfcf1b598875d3d4eb2837ff3b64eb0317d405b8ab86adf73dac8f15c"
+    },
+    {
+      "member": "actual-query-audit-v1/ROOTS.json",
+      "bytes": 4089,
+      "sha256": "a74f3e619ed56d37935be8a8e18a7b933e61d296623442b7a929866e9e501d7f"
+    },
+    {
+      "member": "actual-query-audit-v1/SOURCES.json",
+      "bytes": 2147,
+      "sha256": "8a8d73fbdbb348ecb93fb02e9173e1f79fc92d0371a5c2a4b68da407e4efd588"
+    },
+    {
+      "member": "actual-query-audit-v1/audit.process.json",
+      "bytes": 298,
+      "sha256": "be96d2e3d4b3997827dc2bae63f149908d682ba57b484965d2005231df8e2da0"
+    },
+    {
+      "member": "actual-query-audit-v1/audit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-audit-v1/audit.stdout",
+      "bytes": 98555,
+      "sha256": "d5bc09d7bee32574e48e0155629f542e5900b68103ccddb9f665f1560aac5f67"
+    },
+    {
+      "member": "actual-query-audit-v1/types.process.json",
+      "bytes": 3962,
+      "sha256": "0fb480d6706312e3fed8e69adb0665014b5ef13fd5883c7330a3fc5c29a79beb"
+    },
+    {
+      "member": "actual-query-audit-v1/types.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-audit-v1/types.stdout",
+      "bytes": 45449,
+      "sha256": "7d92b449ab39f5ffd831c5b1822584b120c8ed97db712ac42bd784b637247173"
+    },
+    {
+      "member": "actual-query-v1/0-Merlin.StateEffects.process.json",
+      "bytes": 414,
+      "sha256": "9a98bdaab36105b653f07da09db02c4d63cd501e47c15c977197bf7fa0d46dae"
+    },
+    {
+      "member": "actual-query-v1/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/1-Merlin.GraphStateContract.process.json",
+      "bytes": 426,
+      "sha256": "4450a535ae9fd87fecaab166bd6e6b55e7f51220577378286697da70087ce573"
+    },
+    {
+      "member": "actual-query-v1/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/2-Merlin.GraphState.process.json",
+      "bytes": 410,
+      "sha256": "5d86f96167d966ef13abd19ae28ea7183d8d6bcaca17a25c9684fdac4e57575a"
+    },
+    {
+      "member": "actual-query-v1/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "actual-query-v1/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 435,
+      "sha256": "7111cbdf19b2447c97895396bb14224d17b457f8a89790c67d2883481ae7c7f5"
+    },
+    {
+      "member": "actual-query-v1/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "actual-query-v1/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 438,
+      "sha256": "2b7a7d3073308efbd97648e4c51337b6753696fbe46d1093133e941933c99490"
+    },
+    {
+      "member": "actual-query-v1/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "actual-query-v1/5-Merlin.GraphStateElision.process.json",
+      "bytes": 422,
+      "sha256": "316de8be258bc08457a27a96ebd5da6b365ae6aeeed63bb1fd990b233d18491c"
+    },
+    {
+      "member": "actual-query-v1/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "actual-query-v1/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 516,
+      "sha256": "8e72542c702780eff2525399067d5896b2d621f4913b1880cade1bc8ed34401a"
+    },
+    {
+      "member": "actual-query-v1/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/7-ConfigurationElisionQuery.process.json",
+      "bytes": 491,
+      "sha256": "6e908305ff314e1b9e765e0bf2603298fc53ad4c5e89d056484870798f77a234"
+    },
+    {
+      "member": "actual-query-v1/7-ConfigurationElisionQuery.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/7-ConfigurationElisionQuery.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-query-v1/RESULT.json",
+      "bytes": 168,
+      "sha256": "19ce852409dfabb462b609467564709d1a1cca816e34cd788df1f65b1c2ff3bb"
+    },
+    {
+      "member": "actual-query-v1/SOURCES.json",
+      "bytes": 2147,
+      "sha256": "8a8d73fbdbb348ecb93fb02e9173e1f79fc92d0371a5c2a4b68da407e4efd588"
+    },
+    {
+      "member": "actual-query-v1/source-snapshot/ConfigurationElisionQuery.lean",
+      "bytes": 12277,
+      "sha256": "9cfb2201cf203d371c8beb6f1507ef3bd977ef2e7acbd658e9180f14c6230e36"
+    },
+    {
+      "member": "actual-query-v1/source-snapshot/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "actual-query-v1/source-snapshot/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "actual-query-v1/source-snapshot/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 8677,
+      "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0"
+    },
+    {
+      "member": "actual-query-v1/source-snapshot/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "actual-query-v1/source-snapshot/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "actual-query-v1/source-snapshot/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "actual-query-v1/source-snapshot/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "actual-witness-audit-v1/RESULT.json",
+      "bytes": 192,
+      "sha256": "798af455b3e381fa7292ce2be84dcdc885fe94c9cd5530dd5816aa3f52d78f97"
+    },
+    {
+      "member": "actual-witness-audit-v1/ROOTS.json",
+      "bytes": 4968,
+      "sha256": "96a053906a689d7139c676d98d14437e2adcec43e48af85faeb22c1da3e45412"
+    },
+    {
+      "member": "actual-witness-audit-v1/SOURCES.json",
+      "bytes": 2467,
+      "sha256": "1023553cb11361c611442cd774d0f5ebd80ae95887ef91d35f0b48356dba6227"
+    },
+    {
+      "member": "actual-witness-audit-v1/audit.process.json",
+      "bytes": 334,
+      "sha256": "d2b6072e6cf9a13bfb88ba365df36480064e9aee3c4e34c5917cd714c88f84b4"
+    },
+    {
+      "member": "actual-witness-audit-v1/audit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-audit-v1/audit.stdout",
+      "bytes": 98767,
+      "sha256": "5cbf8243f2268fb7f5622138f2b7b92d9039121d9eb93c2a1234fa5406828cb2"
+    },
+    {
+      "member": "actual-witness-audit-v1/types.process.json",
+      "bytes": 4776,
+      "sha256": "4d596aa1151712b25c3da268196e822e5c9ef2bfb27e45ef6257663f63be78f3"
+    },
+    {
+      "member": "actual-witness-audit-v1/types.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-audit-v1/types.stdout",
+      "bytes": 51962,
+      "sha256": "56da1f5ce476b355a4b889ac22a5a686cf136ec1fab7fa7d821943382acd920e"
+    },
+    {
+      "member": "actual-witness-audit-v2/RESULT.json",
+      "bytes": 192,
+      "sha256": "798af455b3e381fa7292ce2be84dcdc885fe94c9cd5530dd5816aa3f52d78f97"
+    },
+    {
+      "member": "actual-witness-audit-v2/ROOTS.json",
+      "bytes": 4968,
+      "sha256": "96a053906a689d7139c676d98d14437e2adcec43e48af85faeb22c1da3e45412"
+    },
+    {
+      "member": "actual-witness-audit-v2/SOURCES.json",
+      "bytes": 2467,
+      "sha256": "3a83b4921c9283bfeb40a3ca4c7a7f8d241cdd674cacccbd78242726f271d9a9"
+    },
+    {
+      "member": "actual-witness-audit-v2/audit.process.json",
+      "bytes": 334,
+      "sha256": "95d97fe4cd89a14382771d52c74eaca1499babebd82cac02b3526cff52a2c9da"
+    },
+    {
+      "member": "actual-witness-audit-v2/audit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-audit-v2/audit.stdout",
+      "bytes": 98767,
+      "sha256": "218b281010f5472cfd3ba83fad7b13555fede5230fd8930396de92d92327c111"
+    },
+    {
+      "member": "actual-witness-audit-v2/types.process.json",
+      "bytes": 4776,
+      "sha256": "d56b4ca7c5f110435e650429b5818d8f48df3c4ea1fe9fc1808311e5a0d2180f"
+    },
+    {
+      "member": "actual-witness-audit-v2/types.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-audit-v2/types.stdout",
+      "bytes": 51962,
+      "sha256": "56da1f5ce476b355a4b889ac22a5a686cf136ec1fab7fa7d821943382acd920e"
+    },
+    {
+      "member": "actual-witness-v1/0-ConfigurationElisionWitness.process.json",
+      "bytes": 499,
+      "sha256": "ce6e76957cd1991ee4de507ce14d8c02cbfdfa1bbe90ba992c9074ac91e38f1d"
+    },
+    {
+      "member": "actual-witness-v1/0-ConfigurationElisionWitness.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v1/0-ConfigurationElisionWitness.stdout",
+      "bytes": 522,
+      "sha256": "bc28c50956f443ed94b50715f03225a2fd009ebe371d2a39a12c0d5549d8cd8b"
+    },
+    {
+      "member": "actual-witness-v1/SOURCES.json",
+      "bytes": 323,
+      "sha256": "f2f8958662d59b7777aebb5b20edf160de801bb178e9dcd49bd7fe0431590c22"
+    },
+    {
+      "member": "actual-witness-v1/build.py",
+      "bytes": 2575,
+      "sha256": "71c102549f318081c0215159f2370b4e5119f4aae12f9c12b7fa082e3d4928a6"
+    },
+    {
+      "member": "actual-witness-v1/source-snapshot/ConfigurationElisionWitness.lean",
+      "bytes": 7674,
+      "sha256": "196ea28ff2147f32310e9f827fc20fda17b1dad429d71ba8fd634485fe9635f2"
+    },
+    {
+      "member": "actual-witness-v2/0-Merlin.StateEffects.process.json",
+      "bytes": 416,
+      "sha256": "d6c36b61bd01d42ce0db0029c32de50c6de13b584321ddf7a59b5bbadd98dd94"
+    },
+    {
+      "member": "actual-witness-v2/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/1-Merlin.GraphStateContract.process.json",
+      "bytes": 428,
+      "sha256": "c7502052399d5884d5565c9c2014452f4c299df4c19bbc5012eb50524db4a271"
+    },
+    {
+      "member": "actual-witness-v2/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/2-Merlin.GraphState.process.json",
+      "bytes": 412,
+      "sha256": "018c1d453a113b102aaea2ecd0bc3ef67c670e282b36e9fbc246af99528979df"
+    },
+    {
+      "member": "actual-witness-v2/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "actual-witness-v2/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 438,
+      "sha256": "147717fcae87c5d2ac823e3552077310c48a6827c6d02c9eebe340308122b844"
+    },
+    {
+      "member": "actual-witness-v2/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "actual-witness-v2/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 442,
+      "sha256": "8a6196ca63076d9afda93be2dd7b1fb9e17c9027e02981840e44f68a175a128f"
+    },
+    {
+      "member": "actual-witness-v2/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "actual-witness-v2/5-Merlin.GraphStateElision.process.json",
+      "bytes": 426,
+      "sha256": "cf853deb78a0ca7faa3a3af0b8647bd43d35bbe6557e3f886ff6bd40b3c1256a"
+    },
+    {
+      "member": "actual-witness-v2/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "actual-witness-v2/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 519,
+      "sha256": "d3f51a27b02d469a158d2c22b312ef4b07e9afac224726f42c63255e257ad676"
+    },
+    {
+      "member": "actual-witness-v2/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/7-ConfigurationElisionQuery.process.json",
+      "bytes": 494,
+      "sha256": "1237aa20f3dd7c41c9d77af97b4cedbe4c7905b663095118db0fb9b42344a5c8"
+    },
+    {
+      "member": "actual-witness-v2/7-ConfigurationElisionQuery.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/7-ConfigurationElisionQuery.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/8-ConfigurationElisionWitness.process.json",
+      "bytes": 499,
+      "sha256": "550076f5fbe77814de450310ba633f4538239d1c16a58c00c66c6c5bdcae20c4"
+    },
+    {
+      "member": "actual-witness-v2/8-ConfigurationElisionWitness.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v2/8-ConfigurationElisionWitness.stdout",
+      "bytes": 5978,
+      "sha256": "1a737f0fb4a650953e84373e7ab87eefec5ef763dd146cfc41223c61082bc215"
+    },
+    {
+      "member": "actual-witness-v2/SOURCES.json",
+      "bytes": 2467,
+      "sha256": "1c3a403c6ee8c4dcfe45517803ba2ae8472dea49ed6e6c688710a5498f9697c4"
+    },
+    {
+      "member": "actual-witness-v2/build.py",
+      "bytes": 2692,
+      "sha256": "0bc43866b9c5bc8f87ef4379973bf792cf0edef7afeda28cc8d1b9161d6589be"
+    },
+    {
+      "member": "actual-witness-v2/source-snapshot/ConfigurationElisionQuery.lean",
+      "bytes": 12277,
+      "sha256": "9cfb2201cf203d371c8beb6f1507ef3bd977ef2e7acbd658e9180f14c6230e36"
+    },
+    {
+      "member": "actual-witness-v2/source-snapshot/ConfigurationElisionWitness.lean",
+      "bytes": 7674,
+      "sha256": "196ea28ff2147f32310e9f827fc20fda17b1dad429d71ba8fd634485fe9635f2"
+    },
+    {
+      "member": "actual-witness-v2/source-snapshot/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "actual-witness-v2/source-snapshot/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "actual-witness-v2/source-snapshot/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 8677,
+      "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0"
+    },
+    {
+      "member": "actual-witness-v2/source-snapshot/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "actual-witness-v2/source-snapshot/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "actual-witness-v2/source-snapshot/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "actual-witness-v2/source-snapshot/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "actual-witness-v3/0-Merlin.StateEffects.process.json",
+      "bytes": 416,
+      "sha256": "63af4aaf0a8eff7eabd58458a5a841b355b9e36d06d0924b06e48dcecd929fc3"
+    },
+    {
+      "member": "actual-witness-v3/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/1-Merlin.GraphStateContract.process.json",
+      "bytes": 427,
+      "sha256": "ebd7ca13285df5da17a51e468adc9779db54681037a8e60b0e94d9b90218c515"
+    },
+    {
+      "member": "actual-witness-v3/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/2-Merlin.GraphState.process.json",
+      "bytes": 412,
+      "sha256": "8f93b8a31123fe86a5e594652fd3614591b37df960524e531aa08318055358ef"
+    },
+    {
+      "member": "actual-witness-v3/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "actual-witness-v3/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 437,
+      "sha256": "4b7b3a5e0530192246a3a871a1aaf1640886164557592f710dd352d6b3294b4f"
+    },
+    {
+      "member": "actual-witness-v3/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "actual-witness-v3/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 440,
+      "sha256": "60e10c085f68fdb0f84d0eef3bd0960212346a79745db3ea31475e3eda083fcc"
+    },
+    {
+      "member": "actual-witness-v3/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "actual-witness-v3/5-Merlin.GraphStateElision.process.json",
+      "bytes": 426,
+      "sha256": "ab74472fe1337aa55beb574f1edb6df5409e0812d4f64db1307f3740637dcba8"
+    },
+    {
+      "member": "actual-witness-v3/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "actual-witness-v3/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 518,
+      "sha256": "a9b7f9d0fdb8d336641da28d8e8d779e4090d6f5f74de1a9ced230beb0689aa6"
+    },
+    {
+      "member": "actual-witness-v3/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/7-ConfigurationElisionQuery.process.json",
+      "bytes": 493,
+      "sha256": "860fdad82eca1cad9588b6368b5c4f7b4aedadf2633e84c94cdd7a47a0121dc3"
+    },
+    {
+      "member": "actual-witness-v3/7-ConfigurationElisionQuery.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/7-ConfigurationElisionQuery.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/8-ConfigurationElisionWitness.process.json",
+      "bytes": 498,
+      "sha256": "7a2fa611eee40e0ed5bb856901712911551b2f0c7d5eff99485c2e108e703b62"
+    },
+    {
+      "member": "actual-witness-v3/8-ConfigurationElisionWitness.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v3/8-ConfigurationElisionWitness.stdout",
+      "bytes": 1460,
+      "sha256": "b3f79f50d868a62cfc51678333002b580b3eb01191db2a8c10e1a61cf3743bfd"
+    },
+    {
+      "member": "actual-witness-v3/RESULT.json",
+      "bytes": 170,
+      "sha256": "05ae8b20c2e8df7f08142ef37865765f1fdf3fcbd1f0e0711468c7292409eaf2"
+    },
+    {
+      "member": "actual-witness-v3/SOURCES.json",
+      "bytes": 2467,
+      "sha256": "1023553cb11361c611442cd774d0f5ebd80ae95887ef91d35f0b48356dba6227"
+    },
+    {
+      "member": "actual-witness-v3/build.py",
+      "bytes": 2692,
+      "sha256": "0bc43866b9c5bc8f87ef4379973bf792cf0edef7afeda28cc8d1b9161d6589be"
+    },
+    {
+      "member": "actual-witness-v3/source-snapshot/ConfigurationElisionQuery.lean",
+      "bytes": 12277,
+      "sha256": "9cfb2201cf203d371c8beb6f1507ef3bd977ef2e7acbd658e9180f14c6230e36"
+    },
+    {
+      "member": "actual-witness-v3/source-snapshot/ConfigurationElisionWitness.lean",
+      "bytes": 7724,
+      "sha256": "f07bea9d8c7d20be71586061f9a246a23b86ebeeb8a98859b1b031e9e7901b2d"
+    },
+    {
+      "member": "actual-witness-v3/source-snapshot/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "actual-witness-v3/source-snapshot/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "actual-witness-v3/source-snapshot/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 8677,
+      "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0"
+    },
+    {
+      "member": "actual-witness-v3/source-snapshot/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "actual-witness-v3/source-snapshot/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "actual-witness-v3/source-snapshot/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "actual-witness-v3/source-snapshot/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "actual-witness-v4/0-Merlin.StateEffects.process.json",
+      "bytes": 416,
+      "sha256": "507e3e08b1a6497c1533cc8e8acf0064cc43ed78402118f241691b4842a5c4d8"
+    },
+    {
+      "member": "actual-witness-v4/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/1-Merlin.GraphStateContract.process.json",
+      "bytes": 428,
+      "sha256": "c414ed4833672bd8571937580679c8fb83afed5a59c84f0758109c708dd81abf"
+    },
+    {
+      "member": "actual-witness-v4/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/2-Merlin.GraphState.process.json",
+      "bytes": 412,
+      "sha256": "faec2946e85ae63516d569f60387131b5113ab76cf32337d3339e151322e5205"
+    },
+    {
+      "member": "actual-witness-v4/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "actual-witness-v4/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 438,
+      "sha256": "90da3c74dca9c1a10df55fbf7cc157d039587f3817619de694288c8d96f7dc48"
+    },
+    {
+      "member": "actual-witness-v4/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "actual-witness-v4/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 442,
+      "sha256": "2897c73b34dd248de5746fe9d814bbe7d31ab23ab2f85526216713c85f0db575"
+    },
+    {
+      "member": "actual-witness-v4/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "actual-witness-v4/5-Merlin.GraphStateElision.process.json",
+      "bytes": 426,
+      "sha256": "42e5533ef9c7bdf5de891dd373415e79d0e30b491ddce6e1d1facd0efdd7f953"
+    },
+    {
+      "member": "actual-witness-v4/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "actual-witness-v4/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 519,
+      "sha256": "de918b56c39ac8b8be0c3b6631598393d6f6d8d44b8b169ac3c550628a5aaacf"
+    },
+    {
+      "member": "actual-witness-v4/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/7-ConfigurationElisionQuery.process.json",
+      "bytes": 493,
+      "sha256": "d5c015e4ac5892388965c90bd88aed82ca164876067d67b7eb6bc495d4803ffe"
+    },
+    {
+      "member": "actual-witness-v4/7-ConfigurationElisionQuery.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/7-ConfigurationElisionQuery.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/8-ConfigurationElisionWitness.process.json",
+      "bytes": 499,
+      "sha256": "317de8f2cd55bd3a03c195b810b157f6d0b2849662f96612bc37c79cfdfb26f0"
+    },
+    {
+      "member": "actual-witness-v4/8-ConfigurationElisionWitness.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/8-ConfigurationElisionWitness.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "actual-witness-v4/RESULT.json",
+      "bytes": 170,
+      "sha256": "84bd90620f6d87a01ae44dd7de9a7d2e7ebc6ad4dbb31be25a220bff3281677d"
+    },
+    {
+      "member": "actual-witness-v4/SOURCES.json",
+      "bytes": 2467,
+      "sha256": "3a83b4921c9283bfeb40a3ca4c7a7f8d241cdd674cacccbd78242726f271d9a9"
+    },
+    {
+      "member": "actual-witness-v4/build.py",
+      "bytes": 2692,
+      "sha256": "0bc43866b9c5bc8f87ef4379973bf792cf0edef7afeda28cc8d1b9161d6589be"
+    },
+    {
+      "member": "actual-witness-v4/source-snapshot/ConfigurationElisionQuery.lean",
+      "bytes": 12277,
+      "sha256": "9cfb2201cf203d371c8beb6f1507ef3bd977ef2e7acbd658e9180f14c6230e36"
+    },
+    {
+      "member": "actual-witness-v4/source-snapshot/ConfigurationElisionWitness.lean",
+      "bytes": 7694,
+      "sha256": "5b3a573d983c9618022f2db24c943d41a699db3a7860697e0fe595e782025b9c"
+    },
+    {
+      "member": "actual-witness-v4/source-snapshot/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "actual-witness-v4/source-snapshot/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "actual-witness-v4/source-snapshot/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 8677,
+      "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0"
+    },
+    {
+      "member": "actual-witness-v4/source-snapshot/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "actual-witness-v4/source-snapshot/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "actual-witness-v4/source-snapshot/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "actual-witness-v4/source-snapshot/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "audit.py",
+      "bytes": 2472,
+      "sha256": "d0f44719fbeeee9df49d5a0b77c2899ce199f3987fca5107c80922aaf1daa41b"
+    },
+    {
+      "member": "audit_selected.py",
+      "bytes": 2476,
+      "sha256": "78f33d4d34a14acfc1d1723b058d92bbb821eb692a933b5fd2d93234b4142bf6"
+    },
+    {
+      "member": "build.py",
+      "bytes": 2692,
+      "sha256": "0bc43866b9c5bc8f87ef4379973bf792cf0edef7afeda28cc8d1b9161d6589be"
+    },
+    {
+      "member": "entries-v1/0-Merlin.StateEffects.process.json",
+      "bytes": 409,
+      "sha256": "56c037b7cc91b871464edcac24a3b3b1b9e7291f429a01192f0e58c38718241b"
+    },
+    {
+      "member": "entries-v1/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v1/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v1/1-Merlin.GraphStateContract.process.json",
+      "bytes": 421,
+      "sha256": "b0a5e8cbacbe1e23426e2b5815e6e2b4108ec2ba24156fec67bfe53f48090193"
+    },
+    {
+      "member": "entries-v1/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v1/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v1/2-Merlin.GraphState.process.json",
+      "bytes": 404,
+      "sha256": "cdbd522a25ce3619171e76c1861af5b1b556ac2a9c09d48487cc5cb4719cca94"
+    },
+    {
+      "member": "entries-v1/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v1/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "entries-v1/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 431,
+      "sha256": "25e3f444998f30817a450d526e0a3df9c935f9df5bc70783cdfb29fd35e602f6"
+    },
+    {
+      "member": "entries-v1/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v1/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "entries-v1/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 435,
+      "sha256": "6638a35c49f6d6f82f6c9db584963518cc4351bcc5a4e99757e34b5e591f5007"
+    },
+    {
+      "member": "entries-v1/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v1/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "entries-v1/5-Merlin.GraphStateElision.process.json",
+      "bytes": 419,
+      "sha256": "64ae44ed4ffc8fb6ac7fed893d1668a6c1aacd909dbeaafc2c7bafdf60146be5"
+    },
+    {
+      "member": "entries-v1/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v1/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "entries-v1/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 512,
+      "sha256": "f8c7365012287b3f6b28306ea06d19012e2e7f23f3e79dc1da168c7b97bfab93"
+    },
+    {
+      "member": "entries-v1/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v1/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 2103,
+      "sha256": "507104ae5be011c46f6e27741ff9b33259be913d4538ecf029e4fde9dae6e0f2"
+    },
+    {
+      "member": "entries-v1/GraphStateConfigurationEntries.lean",
+      "bytes": 6340,
+      "sha256": "1eb70943abb86e7299c6c7b7bab35c5a25b5b5e4f50b2a73eaa62318cc68fd8b"
+    },
+    {
+      "member": "entries-v1/SOURCES.json",
+      "bytes": 1257,
+      "sha256": "c98c66dc9bad3cd600cb621aa927e28bf2fd8e7880ef1eb83eec5411794da73c"
+    },
+    {
+      "member": "entries-v1/build.py",
+      "bytes": 2344,
+      "sha256": "eba292a198d9c28a890f3b5e58305d87ae3b28664765e284f49458d162466ae5"
+    },
+    {
+      "member": "entries-v2/0-Merlin.StateEffects.process.json",
+      "bytes": 409,
+      "sha256": "280e2cb273fc95a57acb74ccf5d0ac2b4202ff6441a16dd057033d00a89e2a01"
+    },
+    {
+      "member": "entries-v2/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v2/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v2/1-Merlin.GraphStateContract.process.json",
+      "bytes": 421,
+      "sha256": "90ac41075f07a24990cb9fa6cfbd3067c760826b67ed7ccc8f6602c91ea47f29"
+    },
+    {
+      "member": "entries-v2/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v2/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v2/2-Merlin.GraphState.process.json",
+      "bytes": 405,
+      "sha256": "da30df3b77273518de632ce011caa69725f56092b24f15305828f96f29ca9986"
+    },
+    {
+      "member": "entries-v2/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v2/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "entries-v2/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 431,
+      "sha256": "e8bf2d28d634675752ae74277e66d17db79c0a4e2a73603cb2f4f0fea737ab5a"
+    },
+    {
+      "member": "entries-v2/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v2/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "entries-v2/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 435,
+      "sha256": "7bf3f20c9c2e0da8d4938d51cc28029f537b06313a48f287695e1fe530e7921d"
+    },
+    {
+      "member": "entries-v2/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v2/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "entries-v2/5-Merlin.GraphStateElision.process.json",
+      "bytes": 419,
+      "sha256": "c353312d8248fe259104a99478474d77853e7f4ab2bf7190c0863b1ab1bbcfb0"
+    },
+    {
+      "member": "entries-v2/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v2/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "entries-v2/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 510,
+      "sha256": "e4164bfb81a88f792c2b059fed539929687b476f0489177e67f64b1f109f46c1"
+    },
+    {
+      "member": "entries-v2/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v2/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 2200,
+      "sha256": "415a96fa421b479da5cba6ca3309fedd134eb7823515422172d7db981d1419f5"
+    },
+    {
+      "member": "entries-v2/SOURCES.json",
+      "bytes": 1831,
+      "sha256": "16a1a26afe2827c0b42934ee56f38995f3ca1243ef3b0cd787adc9ee06439187"
+    },
+    {
+      "member": "entries-v2/source-snapshot/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "entries-v2/source-snapshot/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "entries-v2/source-snapshot/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 6616,
+      "sha256": "355142a8d2a5f17240c95b67fa9c3ab5760a66f738415d3ebc0d0c0e39ca1b90"
+    },
+    {
+      "member": "entries-v2/source-snapshot/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "entries-v2/source-snapshot/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "entries-v2/source-snapshot/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "entries-v2/source-snapshot/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "entries-v3/0-Merlin.StateEffects.process.json",
+      "bytes": 409,
+      "sha256": "fefd5b1e814648288de6cd0e74933c7ca6d26f33bc84d7bec710be47680e613e"
+    },
+    {
+      "member": "entries-v3/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v3/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v3/1-Merlin.GraphStateContract.process.json",
+      "bytes": 421,
+      "sha256": "66b4112e10badebebd5a7da93cc4e888c7da68a588d9c35b550d3cc720c6ea36"
+    },
+    {
+      "member": "entries-v3/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v3/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v3/2-Merlin.GraphState.process.json",
+      "bytes": 405,
+      "sha256": "e7c0ef81c13ed5c7d6eb31b4adcd945c6ddc8585ab56b62ec7183df5b2c073a7"
+    },
+    {
+      "member": "entries-v3/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v3/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "entries-v3/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 431,
+      "sha256": "284ba4043a685f587f3fd6cff23aefb525f32da45120ef2912afdab08bf09193"
+    },
+    {
+      "member": "entries-v3/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v3/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "entries-v3/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 433,
+      "sha256": "c42c2b00e9bc1a01646b8fb7fefc1d2d35d5930ba427aadc9a32d5e5b7b53315"
+    },
+    {
+      "member": "entries-v3/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v3/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "entries-v3/5-Merlin.GraphStateElision.process.json",
+      "bytes": 419,
+      "sha256": "537984245139f9d835c68bcd4b10d4edec1680906737849252ea2e8ae5a11270"
+    },
+    {
+      "member": "entries-v3/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v3/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "entries-v3/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 512,
+      "sha256": "296fffce1571a89aa5484ea3d8b24816c18647bd46faf6ccc3cab230dc90173a"
+    },
+    {
+      "member": "entries-v3/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v3/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v3/RESULT.json",
+      "bytes": 163,
+      "sha256": "e3a569310a598341ac28ab395ce5442c72fa1c0cef441b1775778415e018467e"
+    },
+    {
+      "member": "entries-v3/SOURCES.json",
+      "bytes": 1831,
+      "sha256": "179a7c120b25bafb4a1cf7212a75ac3e37552780bd79a437227b5bf7ad5f459a"
+    },
+    {
+      "member": "entries-v3/source-snapshot/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "entries-v3/source-snapshot/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "entries-v3/source-snapshot/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 6634,
+      "sha256": "0bfce2fa9727c8d17d30e2acf1178e3fc9797be528b74937a44ab20b895c5c10"
+    },
+    {
+      "member": "entries-v3/source-snapshot/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "entries-v3/source-snapshot/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "entries-v3/source-snapshot/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "entries-v3/source-snapshot/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "entries-v4/0-Merlin.StateEffects.process.json",
+      "bytes": 409,
+      "sha256": "97fc77b0d1a3f0517aa9dba6ed2846ef169747ddc0b86efb431d2f841360f641"
+    },
+    {
+      "member": "entries-v4/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v4/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v4/1-Merlin.GraphStateContract.process.json",
+      "bytes": 421,
+      "sha256": "90d117fb337e5bcf6ab3b8bbc7c0eb16b10875a8a17c748f656c567c16003726"
+    },
+    {
+      "member": "entries-v4/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v4/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v4/2-Merlin.GraphState.process.json",
+      "bytes": 405,
+      "sha256": "dc7cef13c03b2608bde184a9e54d0c1b1f22e57018ae312489b8ab60bd1dd1b9"
+    },
+    {
+      "member": "entries-v4/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v4/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "entries-v4/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 431,
+      "sha256": "8a31f8f7154f5b7a25fc1a14fed7a21c73484e7457677e8b0c034d9ab82b925b"
+    },
+    {
+      "member": "entries-v4/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v4/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "entries-v4/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 434,
+      "sha256": "1e85dd8b3ed97e6e3071cce315302950d11410e420724fba23a279876c30c0c7"
+    },
+    {
+      "member": "entries-v4/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v4/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "entries-v4/5-Merlin.GraphStateElision.process.json",
+      "bytes": 419,
+      "sha256": "23a8d62c299575331fb611955297254c46dad459c942f93d14f9cb88e29a37fc"
+    },
+    {
+      "member": "entries-v4/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v4/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "entries-v4/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 512,
+      "sha256": "1eed6814cec3bbfa1fd95edcab4c9df847ebd77cd44f8eeed720bd3da147d961"
+    },
+    {
+      "member": "entries-v4/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v4/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "entries-v4/RESULT.json",
+      "bytes": 163,
+      "sha256": "ed7e502115d0753eeb5d90bade540eedc8108d49c4d1c6ec73cacc541af40d4d"
+    },
+    {
+      "member": "entries-v4/SOURCES.json",
+      "bytes": 1831,
+      "sha256": "4591135e46db46c1c5db4ce457398d550320fa7ba0704cfaef5a2e913af4bba9"
+    },
+    {
+      "member": "entries-v4/source-snapshot/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "entries-v4/source-snapshot/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "entries-v4/source-snapshot/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 8677,
+      "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0"
+    },
+    {
+      "member": "entries-v4/source-snapshot/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "entries-v4/source-snapshot/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "entries-v4/source-snapshot/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "entries-v4/source-snapshot/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "entry-source.patch",
+      "bytes": 8956,
+      "sha256": "926ca5bd0fd0f7f505ee3a9c422a99d86c2c67e5ee4703840337e676779f3fc1"
+    },
+    {
+      "member": "examples-v1/0-Merlin.StateEffects.process.json",
+      "bytes": 410,
+      "sha256": "0b7ed779eaf27d9590b07e218afd8b1dea420cd38cfdedac9d7065ad187d7cba"
+    },
+    {
+      "member": "examples-v1/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/1-Merlin.GraphStateContract.process.json",
+      "bytes": 422,
+      "sha256": "075ea78f60f1400d317b55eb85e5ad52385402b1d51926789ed9d577a6500475"
+    },
+    {
+      "member": "examples-v1/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/2-Merlin.GraphState.process.json",
+      "bytes": 406,
+      "sha256": "a9ea965989392ffa9fa7ff046f90ee95f58a59080b22147b003e970138c646c0"
+    },
+    {
+      "member": "examples-v1/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "examples-v1/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 432,
+      "sha256": "2de1c7d89dad3cc1395e694d177faec112d3afad1cf037274a20fbfc45ba39a9"
+    },
+    {
+      "member": "examples-v1/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "examples-v1/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 435,
+      "sha256": "7cc2493ca354d9f968bca6a01b6b851aa8f4ca2d018329c720d0fdea9de3da86"
+    },
+    {
+      "member": "examples-v1/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "examples-v1/5-Merlin.GraphStateElision.process.json",
+      "bytes": 420,
+      "sha256": "e5468d0c56e3e7396ffc84b6718d2e8c26b29cf466915c842cc460a584e9ea89"
+    },
+    {
+      "member": "examples-v1/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "examples-v1/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 513,
+      "sha256": "f7034cce4689149f4eea2ce21ab786e419f4d206cf2c9388b9dd92ec7dc2a2a0"
+    },
+    {
+      "member": "examples-v1/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/7-Merlin.GraphStateConfigurationExamples.process.json",
+      "bytes": 514,
+      "sha256": "d844e3599f3422275553379ec334b651928a1bfca416d5a2650e57a6473aff90"
+    },
+    {
+      "member": "examples-v1/7-Merlin.GraphStateConfigurationExamples.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v1/7-Merlin.GraphStateConfigurationExamples.stdout",
+      "bytes": 4803,
+      "sha256": "65ed2f997de9d7b8bef07c04b3686dd401fad1068cfefc10ff05f57f38d7ea7c"
+    },
+    {
+      "member": "examples-v1/SOURCES.json",
+      "bytes": 2173,
+      "sha256": "d8c35a54d4990f7ed277925c055c0af05b10045cc3aff92539f4f3deaaf49afa"
+    },
+    {
+      "member": "examples-v1/source-snapshot/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "examples-v1/source-snapshot/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "examples-v1/source-snapshot/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 6634,
+      "sha256": "0bfce2fa9727c8d17d30e2acf1178e3fc9797be528b74937a44ab20b895c5c10"
+    },
+    {
+      "member": "examples-v1/source-snapshot/Merlin/GraphStateConfigurationExamples.lean",
+      "bytes": 7446,
+      "sha256": "64b8c9ac72fa5eefe52d1baf9aff6860bc76f6d4183ceb3b6c8e294423f483d5"
+    },
+    {
+      "member": "examples-v1/source-snapshot/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "examples-v1/source-snapshot/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "examples-v1/source-snapshot/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "examples-v1/source-snapshot/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "examples-v2/0-Merlin.StateEffects.process.json",
+      "bytes": 410,
+      "sha256": "dd712305b82e5aad32c75de3c68ed29f6ed7b80862a0c8998b0f397c154f372b"
+    },
+    {
+      "member": "examples-v2/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/1-Merlin.GraphStateContract.process.json",
+      "bytes": 421,
+      "sha256": "117475a62cbf4487757658bf316ed64c4439d172d836167d96629f20b10b7a2a"
+    },
+    {
+      "member": "examples-v2/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/2-Merlin.GraphState.process.json",
+      "bytes": 406,
+      "sha256": "c4dba8eada9e8c33c87f79b7e1dfc522035125c197e576aa52f277db08303a2f"
+    },
+    {
+      "member": "examples-v2/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "examples-v2/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 431,
+      "sha256": "dea443fa50624b13b028098a10e922bc9a40060bdd9ba720f759eabff452f055"
+    },
+    {
+      "member": "examples-v2/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "examples-v2/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 435,
+      "sha256": "9fcea4ef14944d067281357f357996491e47ee4f6ff10ab9a8c49514fab8bb96"
+    },
+    {
+      "member": "examples-v2/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "examples-v2/5-Merlin.GraphStateElision.process.json",
+      "bytes": 420,
+      "sha256": "48d2e826de3156b9b82a013a0a5fc17cdca65bbf752352252c0a2fb0c146ddb0"
+    },
+    {
+      "member": "examples-v2/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "examples-v2/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 513,
+      "sha256": "1a8d172b3160b9e7072b35322c9931ffc786dbfa8addcede522b1ba8d3332d91"
+    },
+    {
+      "member": "examples-v2/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/7-Merlin.GraphStateConfigurationExamples.process.json",
+      "bytes": 514,
+      "sha256": "fa7eee34b85ba8636a8ec814426c8d48cb7f8cd96b68520de70d3a221834f2f1"
+    },
+    {
+      "member": "examples-v2/7-Merlin.GraphStateConfigurationExamples.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v2/7-Merlin.GraphStateConfigurationExamples.stdout",
+      "bytes": 2430,
+      "sha256": "51bd7e96d994f119e1473d13dd7f42406951674ddffd698a6ea123228efa6f2f"
+    },
+    {
+      "member": "examples-v2/SOURCES.json",
+      "bytes": 2173,
+      "sha256": "df61976281a041478236919b0829e0027ada4420bb777f1851af5e1d3cf93df3"
+    },
+    {
+      "member": "examples-v2/source-snapshot/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "examples-v2/source-snapshot/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "examples-v2/source-snapshot/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 6634,
+      "sha256": "0bfce2fa9727c8d17d30e2acf1178e3fc9797be528b74937a44ab20b895c5c10"
+    },
+    {
+      "member": "examples-v2/source-snapshot/Merlin/GraphStateConfigurationExamples.lean",
+      "bytes": 7821,
+      "sha256": "5d3dda0a37637af8e61102fa8fd9e945f9cde95c013c0b11c7bf0f76f27210f9"
+    },
+    {
+      "member": "examples-v2/source-snapshot/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "examples-v2/source-snapshot/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "examples-v2/source-snapshot/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "examples-v2/source-snapshot/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "examples-v3/0-Merlin.StateEffects.process.json",
+      "bytes": 410,
+      "sha256": "6c38e55828de6bbd8b4a3061164ee47866518f51ceecf35d0dbd4459c2a6fd36"
+    },
+    {
+      "member": "examples-v3/0-Merlin.StateEffects.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/0-Merlin.StateEffects.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/1-Merlin.GraphStateContract.process.json",
+      "bytes": 422,
+      "sha256": "0794208558b26d3356813677dab04ea8befc880f29d8dc5f51db95eeea3b88c5"
+    },
+    {
+      "member": "examples-v3/1-Merlin.GraphStateContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/1-Merlin.GraphStateContract.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/2-Merlin.GraphState.process.json",
+      "bytes": 406,
+      "sha256": "d59b80f21d0499df652a0c437522071bae352031b864c0c314fc02a95e40da97"
+    },
+    {
+      "member": "examples-v3/2-Merlin.GraphState.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/2-Merlin.GraphState.stdout",
+      "bytes": 305,
+      "sha256": "38dbbb4a06713c9d1ff9696da0cca0779940df491e045c992dd3974f99a672d7"
+    },
+    {
+      "member": "examples-v3/3-Merlin.GraphStateConfiguration.process.json",
+      "bytes": 431,
+      "sha256": "785cddb3b2e9bec01968e792e7ef75d08735eadd43cbf4b0415b814676fb9a53"
+    },
+    {
+      "member": "examples-v3/3-Merlin.GraphStateConfiguration.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/3-Merlin.GraphStateConfiguration.stdout",
+      "bytes": 177,
+      "sha256": "2d71d23185d2e7fa5e5727155f6df90a3c7a3a48fadb9da694a00bd68979b253"
+    },
+    {
+      "member": "examples-v3/4-Merlin.GraphStateElisionContract.process.json",
+      "bytes": 436,
+      "sha256": "62d5e5c61417f41b9e636a8c3fa651f28c1fe3d1b32576a5d774fb2c52c048b0"
+    },
+    {
+      "member": "examples-v3/4-Merlin.GraphStateElisionContract.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/4-Merlin.GraphStateElisionContract.stdout",
+      "bytes": 396,
+      "sha256": "4e5c41958bfccd9f23ee0156e4f92927b081fc63944fc4b72a9230f1450eb54e"
+    },
+    {
+      "member": "examples-v3/5-Merlin.GraphStateElision.process.json",
+      "bytes": 419,
+      "sha256": "2f87331a77d38cdefdaa54e535cefd1db56b08791b4b457485cd84c28e6b1851"
+    },
+    {
+      "member": "examples-v3/5-Merlin.GraphStateElision.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/5-Merlin.GraphStateElision.stdout",
+      "bytes": 304,
+      "sha256": "df4c0fc8f16230bb3ba1015f1a498f8c34aba7c68668923da29af0f2c4cd5dc9"
+    },
+    {
+      "member": "examples-v3/6-Merlin.GraphStateConfigurationEntries.process.json",
+      "bytes": 512,
+      "sha256": "082b8e6307b33cbc6a1fdcb21b85f2ae4e021db21285f745e10ce70a3f1cf1f3"
+    },
+    {
+      "member": "examples-v3/6-Merlin.GraphStateConfigurationEntries.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/6-Merlin.GraphStateConfigurationEntries.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/7-Merlin.GraphStateConfigurationExamples.process.json",
+      "bytes": 514,
+      "sha256": "987dd3050884a7a7e923d913b4e0dc0303ee09b6896294ab9d41231ad77f9b8c"
+    },
+    {
+      "member": "examples-v3/7-Merlin.GraphStateConfigurationExamples.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "examples-v3/7-Merlin.GraphStateConfigurationExamples.stdout",
+      "bytes": 754,
+      "sha256": "2ddbb84d559943ee99439722f05b2a5daf982c5ffa4b69058ae317ee8cf8281b"
+    },
+    {
+      "member": "examples-v3/RESULT.json",
+      "bytes": 164,
+      "sha256": "977cd6d7cf63bdc79b8ad39ff90d6a8c498e5820f681cfa442a4a709d7da8b16"
+    },
+    {
+      "member": "examples-v3/SOURCES.json",
+      "bytes": 2173,
+      "sha256": "a86910f2b60c501d40183757e46c783c320834bdb601eb62df1cce3e67d6b3a0"
+    },
+    {
+      "member": "examples-v3/source-snapshot/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "examples-v3/source-snapshot/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "examples-v3/source-snapshot/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 8677,
+      "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0"
+    },
+    {
+      "member": "examples-v3/source-snapshot/Merlin/GraphStateConfigurationExamples.lean",
+      "bytes": 7917,
+      "sha256": "7b6de5062f31e1f8a93382e9f35311be5a57f319eae360867532540d10761120"
+    },
+    {
+      "member": "examples-v3/source-snapshot/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "examples-v3/source-snapshot/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "examples-v3/source-snapshot/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "examples-v3/source-snapshot/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "final-source-snapshot-v2/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/audit.py",
+      "bytes": 2472,
+      "sha256": "d0f44719fbeeee9df49d5a0b77c2899ce199f3987fca5107c80922aaf1daa41b"
+    },
+    {
+      "member": "final-source-snapshot-v2/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/audit_selected.py",
+      "bytes": 2476,
+      "sha256": "78f33d4d34a14acfc1d1723b058d92bbb821eb692a933b5fd2d93234b4142bf6"
+    },
+    {
+      "member": "final-source-snapshot-v2/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/build.py",
+      "bytes": 2692,
+      "sha256": "0bc43866b9c5bc8f87ef4379973bf792cf0edef7afeda28cc8d1b9161d6589be"
+    },
+    {
+      "member": "final-source-snapshot-v2/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/review_reports.py",
+      "bytes": 3316,
+      "sha256": "dcf8b857f979b0f65696f469c380129a5816998bbc25063eb2a15180fd496645"
+    },
+    {
+      "member": "final-source-snapshot-v2/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/review_terminal.py",
+      "bytes": 5495,
+      "sha256": "361d77cde9def3c6724cc9be8156d599c9ab4db84c42a9b0dd33f3af7d1af192"
+    },
+    {
+      "member": "final-source-snapshot-v2/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/ConfigurationElisionQuery.lean",
+      "bytes": 12277,
+      "sha256": "9cfb2201cf203d371c8beb6f1507ef3bd977ef2e7acbd658e9180f14c6230e36"
+    },
+    {
+      "member": "final-source-snapshot-v2/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/ConfigurationElisionWitness.lean",
+      "bytes": 7694,
+      "sha256": "5b3a573d983c9618022f2db24c943d41a699db3a7860697e0fe595e782025b9c"
+    },
+    {
+      "member": "final-source-snapshot-v2/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 8677,
+      "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0"
+    },
+    {
+      "member": "final-source-snapshot-v2/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/Merlin/GraphStateConfigurationExamples.lean",
+      "bytes": 7917,
+      "sha256": "7b6de5062f31e1f8a93382e9f35311be5a57f319eae360867532540d10761120"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/audit.py",
+      "bytes": 2472,
+      "sha256": "d0f44719fbeeee9df49d5a0b77c2899ce199f3987fca5107c80922aaf1daa41b"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/audit_selected.py",
+      "bytes": 2476,
+      "sha256": "78f33d4d34a14acfc1d1723b058d92bbb821eb692a933b5fd2d93234b4142bf6"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/build.py",
+      "bytes": 2692,
+      "sha256": "0bc43866b9c5bc8f87ef4379973bf792cf0edef7afeda28cc8d1b9161d6589be"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/review_reports.py",
+      "bytes": 3316,
+      "sha256": "dcf8b857f979b0f65696f469c380129a5816998bbc25063eb2a15180fd496645"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/review_reports_cut3.py",
+      "bytes": 3346,
+      "sha256": "72de4d9fa0e599acde436aafacdb1724da31187318fa2807ffa8bc0441970644"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/review_reserved_admission.py",
+      "bytes": 2572,
+      "sha256": "c7f4447c9f832682cc69a33a4e1aabb588bbc14ae373c723895ada8a25cdd9da"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/review_terminal.py",
+      "bytes": 5495,
+      "sha256": "361d77cde9def3c6724cc9be8156d599c9ab4db84c42a9b0dd33f3af7d1af192"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/review_terminal_cut3.py",
+      "bytes": 6058,
+      "sha256": "007cd0918a5210cd16222fdcf54503b0fe1d5d095681b1d7d3bf0ec02d425ded"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/ConfigurationElisionQuery.lean",
+      "bytes": 12277,
+      "sha256": "9cfb2201cf203d371c8beb6f1507ef3bd977ef2e7acbd658e9180f14c6230e36"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/ConfigurationElisionWitness.lean",
+      "bytes": 7694,
+      "sha256": "5b3a573d983c9618022f2db24c943d41a699db3a7860697e0fe595e782025b9c"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 8677,
+      "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0"
+    },
+    {
+      "member": "final-source-snapshot-v3/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/Merlin/GraphStateConfigurationExamples.lean",
+      "bytes": 7917,
+      "sha256": "7b6de5062f31e1f8a93382e9f35311be5a57f319eae360867532540d10761120"
+    },
+    {
+      "member": "final-source-snapshot-v3/src/merlin/verify/lean/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "final-source-snapshot-v3/src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+      "bytes": 3451,
+      "sha256": "377eb83eafd6c8d5a625c59f6dbe59d762b4aff003894efcc51df4944580bf99"
+    },
+    {
+      "member": "final-source-snapshot-v3/src/merlin/verify/lean/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "final-source-snapshot-v3/src/merlin/verify/lean/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "final-source-snapshot-v3/src/merlin/verify/lean/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "final-source-snapshot-v3/src/merlin/verify/lean/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "final-source-snapshot-v3/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "model-audit-v1/ROOTS.json",
+      "bytes": 6102,
+      "sha256": "e12274f825cbf45ebd6406fc06145d33a949a34a87c730cdc76c60fd243ee9a4"
+    },
+    {
+      "member": "model-audit-v1/SOURCES.json",
+      "bytes": 2173,
+      "sha256": "a86910f2b60c501d40183757e46c783c320834bdb601eb62df1cce3e67d6b3a0"
+    },
+    {
+      "member": "model-audit-v1/audit.process.json",
+      "bytes": 313,
+      "sha256": "dd9ec705f66cb03a4e6919a3b423cc515c7c50f2442b37750385e5951948e17d"
+    },
+    {
+      "member": "model-audit-v1/audit.py",
+      "bytes": 2407,
+      "sha256": "a1eed1a0551c88c4b4713e468feee4783865b389e6b7622c4bd4950eba0328da"
+    },
+    {
+      "member": "model-audit-v1/audit.stderr",
+      "bytes": 107,
+      "sha256": "ff52793c1359da73e2f47adc053207d541537af68801bd372345a867a5c7651a"
+    },
+    {
+      "member": "model-audit-v1/audit.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "model-audit-v2/RESULT.json",
+      "bytes": 193,
+      "sha256": "1a0b383c1541fc02f59d820a04de1ed2e64c43bb01080a0520fb9a669dec09cc"
+    },
+    {
+      "member": "model-audit-v2/ROOTS.json",
+      "bytes": 6102,
+      "sha256": "e12274f825cbf45ebd6406fc06145d33a949a34a87c730cdc76c60fd243ee9a4"
+    },
+    {
+      "member": "model-audit-v2/SOURCES.json",
+      "bytes": 2173,
+      "sha256": "a86910f2b60c501d40183757e46c783c320834bdb601eb62df1cce3e67d6b3a0"
+    },
+    {
+      "member": "model-audit-v2/audit.process.json",
+      "bytes": 311,
+      "sha256": "308fd8ab0e3753d7b9e6dbdab6226925aba584c5ef3e360a95463396a6260cec"
+    },
+    {
+      "member": "model-audit-v2/audit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "model-audit-v2/audit.stdout",
+      "bytes": 98549,
+      "sha256": "ef8947b76752dbefe74585e58db632d75f6a0142e0220d8454b77fb69d025dec"
+    },
+    {
+      "member": "model-audit-v2/types.process.json",
+      "bytes": 5827,
+      "sha256": "5201738f0647c2ff9cd750a19ec3e22508dbabb7eda9b377087df12c102be2f9"
+    },
+    {
+      "member": "model-audit-v2/types.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "model-audit-v2/types.stdout",
+      "bytes": 60017,
+      "sha256": "8831b7b431125054ed5914a84f6005f54365d337851014b47a644c2a05f84aff"
+    },
+    {
+      "member": "owned-source-review-v2.patch",
+      "bytes": 55073,
+      "sha256": "62472bc59f6a93a61c0cfd74eb629df9fc72d4d22c5f5a8d87c22e281a8db61a"
+    },
+    {
+      "member": "owned-source-review-v3.patch",
+      "bytes": 67633,
+      "sha256": "76f79c74fa9f65681ac7493f254446c4d9eaa97a121c0fca587019a40db62d68"
+    },
+    {
+      "member": "owned-source-review.patch",
+      "bytes": 45878,
+      "sha256": "6e7eb1687a061b308737656a86c83dfabd23da51d6748e9a67413a88f79e3d93"
+    },
+    {
+      "member": "paper-evidence/README-before-cut3-terminal.md",
+      "bytes": 8381,
+      "sha256": "13242d0eff8d27db909c3316612587cbf9a959d0fafaa18947037e2e55f1e2b1"
+    },
+    {
+      "member": "paper-evidence/README-before-reserved-admission.md",
+      "bytes": 7033,
+      "sha256": "44e345d49d34fa168aa3c87cd2a182be01a1312b12ba7b5668b3de90f3062aea"
+    },
+    {
+      "member": "paper-evidence/README.md",
+      "bytes": 7524,
+      "sha256": "194ab4fd453becb321d77df30f08e0d18b196eb23af6a386e0a3b87f652e3155"
+    },
+    {
+      "member": "reserved-admission-review-v1/RESULT.json",
+      "bytes": 1058,
+      "sha256": "0939c8f5507888157d12bca6be781de473243d4aa51935f511d12e2768eccc5e"
+    },
+    {
+      "member": "reserved-admission-review-v1/after_comma_comment.mlir",
+      "bytes": 121,
+      "sha256": "6db45721b823e036bce58889626c9fff40eeb53819887438ee124e54b1448f9c"
+    },
+    {
+      "member": "reserved-admission-review-v1/comment_between_key_value.mlir",
+      "bytes": 106,
+      "sha256": "3de857825e80d84c9ca10e36346c7d4df643b6204e5d55a8b06faec2b0f1e569"
+    },
+    {
+      "member": "reserved-admission-review-v1/comment_text.mlir",
+      "bytes": 101,
+      "sha256": "3f3e1c4d990bd36656ff866954a75bb701b701774e6e6f6c32cdf5f82389dc2d"
+    },
+    {
+      "member": "reserved-admission-review-v1/escaped_underscore.mlir",
+      "bytes": 96,
+      "sha256": "1bf5716b7b386108f8c79cdbfef3a1d6ad7c9fe12d6f7bebcbce0f9d71cb9e4b"
+    },
+    {
+      "member": "reserved-admission-review-v1/fully_byte_escaped.mlir",
+      "bytes": 112,
+      "sha256": "f52f1099f64b5f58dabddf8be862a72e2bda1da9bab63ef3e1ba1b7c606d86a6"
+    },
+    {
+      "member": "reserved-admission-review-v1/near_key.mlir",
+      "bytes": 92,
+      "sha256": "d59e0c6481c1c4bf917a6b6b4a9393b2590348e17adfb1d9ac2821b537b0b803"
+    },
+    {
+      "member": "reserved-admission-review-v1/ordinary_value.mlir",
+      "bytes": 93,
+      "sha256": "c3445f8f05443f565fb19c5afe836498ca0e56dc0d7139dfa4c15b78d5a1cb8e"
+    },
+    {
+      "member": "review_reports.py",
+      "bytes": 3316,
+      "sha256": "dcf8b857f979b0f65696f469c380129a5816998bbc25063eb2a15180fd496645"
+    },
+    {
+      "member": "review_reports_cut3.py",
+      "bytes": 3346,
+      "sha256": "72de4d9fa0e599acde436aafacdb1724da31187318fa2807ffa8bc0441970644"
+    },
+    {
+      "member": "review_reserved_admission.py",
+      "bytes": 2572,
+      "sha256": "c7f4447c9f832682cc69a33a4e1aabb588bbc14ae373c723895ada8a25cdd9da"
+    },
+    {
+      "member": "review_terminal.py",
+      "bytes": 5495,
+      "sha256": "361d77cde9def3c6724cc9be8156d599c9ab4db84c42a9b0dd33f3af7d1af192"
+    },
+    {
+      "member": "review_terminal_cut3.py",
+      "bytes": 6058,
+      "sha256": "007cd0918a5210cd16222fdcf54503b0fe1d5d095681b1d7d3bf0ec02d425ded"
+    },
+    {
+      "member": "source-invocation-finding-v1/FINDING.json",
+      "bytes": 1274,
+      "sha256": "0f4eec4f5027540d24b4f283f677aa2374242434a9404d5fa19e40c7d53a85b9"
+    },
+    {
+      "member": "source-invocation-finding-v1/import-0.process.json",
+      "bytes": 369,
+      "sha256": "21867fc62f872d58e6fdf4f2ea246f3f89b1eaf7ff2b52d1a9f3ed57ab23b4bf"
+    },
+    {
+      "member": "source-invocation-finding-v1/import-0.stderr",
+      "bytes": 279,
+      "sha256": "943a7fdcaa4d5aad6daa0dd9076fbf07bc80b25f8dfe1942cc218457026d5c8e"
+    },
+    {
+      "member": "source-invocation-finding-v1/import-0.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "source-review-v1/README.md",
+      "bytes": 3478,
+      "sha256": "6d6068350aee236af640c73309f1bc53c0940f5822d21cb1f7c2d21039aad87d"
+    },
+    {
+      "member": "source-review-v1/SOURCES.json",
+      "bytes": 697,
+      "sha256": "bb5dd5f5e502ce341b97a43258ca3b4ba4c4f96fef3faf7e15b5d73a258531fa"
+    },
+    {
+      "member": "source-review-v2/README.md",
+      "bytes": 1214,
+      "sha256": "9905318ec121bb09bccbbfe4e717eee13451bc7234bd1af7a15a45327697d472"
+    },
+    {
+      "member": "source-review-v2/RESULT.json",
+      "bytes": 2187,
+      "sha256": "e24328abfaf79c2583f82ef3d274a1fc009dff937a0b59eafddfea2c0fb1c17f"
+    },
+    {
+      "member": "source-review-v3/MANIFEST-RECHECK.json",
+      "bytes": 173,
+      "sha256": "52183ae49da2e6c775b7032f132cef4a9a7b627c5cd53e340c029d5acaefe219"
+    },
+    {
+      "member": "source-review-v3/README.md",
+      "bytes": 850,
+      "sha256": "c8524a7ce9c229e6ca4e0189c1eaf408cd5de703e1a6cd59b9db0355f8f64bac"
+    },
+    {
+      "member": "source-review-v3/RESULT.json",
+      "bytes": 693,
+      "sha256": "230db363cc07e6808c56fd72dff6008fcee7367abd6e1f00f6cc47bb6ec546c9"
+    },
+    {
+      "member": "source-review-v3/configuration_elision_gate.py.patch",
+      "bytes": 386,
+      "sha256": "dcb14eb86960b7e9b7fc1e80844d5acd1e67d6567326a7a1f421c028ebd2c46e"
+    },
+    {
+      "member": "source-review-v3/test_configuration_elision_gate_unit.py.patch",
+      "bytes": 1182,
+      "sha256": "7267afe2287134edd1e14e54c06c286b7fc4ffae2b9a6022d3f91262ed5c7cfe"
+    },
+    {
+      "member": "source-review-v4/README.md",
+      "bytes": 1525,
+      "sha256": "31456410214f4880ad52a1ec0d04aeb1c580e7ad2fde260b9c73bfc8c25ccbb2"
+    },
+    {
+      "member": "source-review-v4/RESULT.json",
+      "bytes": 561,
+      "sha256": "b0acc7a66c9091406d46ac41346301ac356124a117eb65ee522b9a84ed90a5a4"
+    },
+    {
+      "member": "source-review-v4/previous-ACTIVE.md",
+      "bytes": 4751,
+      "sha256": "10d1d87c32442ff9ec7e000cc2af65e428a3d554b29394e9c3cebb11f4af2ec0"
+    },
+    {
+      "member": "source-review-v4/previous-README.md",
+      "bytes": 2306,
+      "sha256": "ed9163188508addc843f6f201418331e4c56dacd378c287ac5f55ef773e42477"
+    },
+    {
+      "member": "source-snapshot/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/audit.py",
+      "bytes": 2472,
+      "sha256": "d0f44719fbeeee9df49d5a0b77c2899ce199f3987fca5107c80922aaf1daa41b"
+    },
+    {
+      "member": "source-snapshot/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/audit_selected.py",
+      "bytes": 2476,
+      "sha256": "78f33d4d34a14acfc1d1723b058d92bbb821eb692a933b5fd2d93234b4142bf6"
+    },
+    {
+      "member": "source-snapshot/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/build.py",
+      "bytes": 2692,
+      "sha256": "0bc43866b9c5bc8f87ef4379973bf792cf0edef7afeda28cc8d1b9161d6589be"
+    },
+    {
+      "member": "source-snapshot/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/ConfigurationElisionQuery.lean",
+      "bytes": 12277,
+      "sha256": "9cfb2201cf203d371c8beb6f1507ef3bd977ef2e7acbd658e9180f14c6230e36"
+    },
+    {
+      "member": "source-snapshot/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/ConfigurationElisionWitness.lean",
+      "bytes": 7694,
+      "sha256": "5b3a573d983c9618022f2db24c943d41a699db3a7860697e0fe595e782025b9c"
+    },
+    {
+      "member": "source-snapshot/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 8677,
+      "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0"
+    },
+    {
+      "member": "source-snapshot/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/sources/Merlin/GraphStateConfigurationExamples.lean",
+      "bytes": 7917,
+      "sha256": "7b6de5062f31e1f8a93382e9f35311be5a57f319eae360867532540d10761120"
+    },
+    {
+      "member": "source-snapshot/src/merlin/verify/lean/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "member": "source-snapshot/src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+      "bytes": 3451,
+      "sha256": "377eb83eafd6c8d5a625c59f6dbe59d762b4aff003894efcc51df4944580bf99"
+    },
+    {
+      "member": "source-snapshot/src/merlin/verify/lean/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "member": "source-snapshot/src/merlin/verify/lean/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "member": "source-snapshot/src/merlin/verify/lean/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "member": "source-snapshot/src/merlin/verify/lean/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "member": "source-snapshot/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "member": "sources/ConfigurationElisionQuery.lean",
+      "bytes": 12277,
+      "sha256": "9cfb2201cf203d371c8beb6f1507ef3bd977ef2e7acbd658e9180f14c6230e36"
+    },
+    {
+      "member": "sources/ConfigurationElisionWitness.lean",
+      "bytes": 7694,
+      "sha256": "5b3a573d983c9618022f2db24c943d41a699db3a7860697e0fe595e782025b9c"
+    },
+    {
+      "member": "sources/Merlin/GraphStateConfigurationEntries.lean",
+      "bytes": 8677,
+      "sha256": "05c35122c765cc93456d521e8afff872fe97d816e5036bc786e6bd8317a108b0"
+    },
+    {
+      "member": "sources/Merlin/GraphStateConfigurationExamples.lean",
+      "bytes": 7917,
+      "sha256": "7b6de5062f31e1f8a93382e9f35311be5a57f319eae360867532540d10761120"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "c17c08a051f70e767554b3df398463a26705d7c477479038b79eb56681753b02"
+}
