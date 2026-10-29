@@ -85,6 +85,17 @@ _FOREIGN_LIVENESS_TTL_NS = 50_000_000
 _FRONT_POLL_S = 0.005
 _NEAR_POLL_S = 0.01
 _DEEP_POLL_S = 0.05
+_DEEP_BACKOFF_S = 0.004  # per waiter queued beyond the slot count
+_DEEP_POLL_MAX_S = 0.5  # stays far below _WAITER_STALL_NS, so a deep waiter is never presumed dead
+
+
+def _deep_poll_s(surplus: int) -> float:
+    """Bounded backoff: with far more threads than slots a deep waiter cannot be admitted for several
+    releases, and measured polling at a fixed 50 ms spent ~12,700 opens in 8 s on idle waiters.
+    Local releases still wake front waiters through their event; this only slows the rescan."""
+    return min(_DEEP_POLL_MAX_S, _DEEP_POLL_S + _DEEP_BACKOFF_S * max(0, surplus))
+
+
 _WAITER_FDS: set[int] = set()
 _WAITER_FD_LOCK = threading.Lock()
 # This process's queued waiters (key -> wake event); their liveness needs no lock proof.
@@ -810,7 +821,13 @@ def _acquire_slot(
             if waiter is None:
                 waiter = _Waiter(root, level, queued_ns, cpus)
                 continue
-            waiter.wake.wait(_FRONT_POLL_S if ahead == 0 else _NEAR_POLL_S if ahead < len(cpus) else _DEEP_POLL_S)
+            waiter.wake.wait(
+                _FRONT_POLL_S
+                if ahead == 0
+                else _NEAR_POLL_S
+                if ahead < len(cpus)
+                else _deep_poll_s(ahead - len(cpus))
+            )
             waiter.wake.clear()
     finally:
         if waiter is not None:

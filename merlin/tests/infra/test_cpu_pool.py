@@ -64,3 +64,11 @@ def test_memfd_falls_back_to_the_kernel_api_without_os_memfd_create(monkeypatch)
     finally:
         os.close(native)
         os.close(fallback)
+
+
+def test_deep_waiters_back_off_boundedly():
+    from merlin.common import cpu_pool
+
+    assert cpu_pool._deep_poll_s(0) == cpu_pool._DEEP_POLL_S
+    assert cpu_pool._deep_poll_s(40) > cpu_pool._deep_poll_s(10) > cpu_pool._DEEP_POLL_S
+    assert cpu_pool._deep_poll_s(10**6) == cpu_pool._DEEP_POLL_MAX_S < cpu_pool._WAITER_STALL_NS / 1e9
