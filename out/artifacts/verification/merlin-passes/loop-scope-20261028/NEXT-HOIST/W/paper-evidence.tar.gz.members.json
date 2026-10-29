@@ -1,0 +1,16 @@
+{
+  "members": [
+    {
+      "path": "README-before-capture-guards.md",
+      "bytes": 5430,
+      "sha256": "32520ace3d03a359c153be374a19cbe9b8e5e108028f7bb08f478a589f3dae8f"
+    },
+    {
+      "path": "README.md",
+      "bytes": 7033,
+      "sha256": "6e9551174cfa7c7f8fab416866118e75d5a9cf7eeb4316169e5b274768ffd452"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "1f3e3d3aae766d243eca4cd228b4d58fd679dfd4740ef9166098b3829c13825a"
+}

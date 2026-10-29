@@ -1,0 +1,30 @@
+{
+  "status": "REVIEWED_COMPLETE_SCOPED_HOIST_SOURCE_FOR_PRIMARY_MERGE",
+  "source_commit": "dbaad5090d9099cefe795cf27329767839c7caca",
+  "files": [
+    "merlin/tests/ir/test_configuration_hoist_gate.py",
+    "merlin/tests/ir/test_configuration_hoist_projection.py",
+    "src/merlin/verify/configuration_hoist_bridge.py",
+    "src/merlin/verify/configuration_hoist_capture.py",
+    "src/merlin/verify/configuration_hoist_emit.py",
+    "src/merlin/verify/configuration_hoist_gate.py",
+    "src/merlin/verify/configuration_hoist_intake.py",
+    "src/merlin/verify/configuration_hoist_worker.py",
+    "src/merlin/verify/lean/Merlin/GraphStateConfigurationPartialHoist.lean",
+    "src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistModel.lean",
+    "src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistChecker.lean"
+  ],
+  "Fcampaign": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/qualification-v1/RESULT.json",
+    "sha256": "f01658b1361a642ee9613c8ebc241705f89d369d1fd137d505b14a33adee687a",
+    "bytes": 454
+  },
+  "Fwitness": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/witness-binding-v1/RESULT.json",
+    "sha256": "42d35e15f7d71c1ac9ce8b9d71ca38c38abd2fb8da284d96cb77a0354f1e1433",
+    "bytes": 189421
+  },
+  "source_held_postguards_passed": true,
+  "limitations": "Common modeled state/effect/typed-parser assumptions, no source-success premise; concrete ISA/hardware fidelity, human approval, composition/enforcement remain separate.",
+  "user_stop": "No next pass; complete integration, handoffs and stop."
+}

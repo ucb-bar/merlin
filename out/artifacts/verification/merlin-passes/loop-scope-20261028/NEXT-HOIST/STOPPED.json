@@ -1,0 +1,11 @@
+{
+  "status": "ALL_THREE_STOPPED_AFTER_SCOPED_HOIST",
+  "threads": {
+    "Q": "01a16018-1974-7b53-ade5-e42d3d020739",
+    "W": "01a141ba-7640-7d21-bb41-b65635302b71",
+    "F": "01a15b82-8d58-75f1-9281-f529977e0bad"
+  },
+  "jobs_live": 0,
+  "automatic_resume_authorized": false,
+  "restart_requires_new_user_instruction": true
+}

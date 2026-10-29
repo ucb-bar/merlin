@@ -1,0 +1,265 @@
+{
+  "schema": "merlin.configuration-hoist.projection.v1",
+  "before": {
+    "frame": "{\"args\":{\"tuple\":[{\"class\":\"merlin.sched.ir.kernel.TensorArg\",\"fields\":{\"access\":\"read\",\"dtype\":\"i8\",\"name\":\"input\",\"shape\":{\"tuple\":[17]}}},{\"class\":\"merlin.sched.ir.kernel.TensorArg\",\"fields\":{\"access\":\"write\",\"dtype\":\"i8\",\"name\":\"output\",\"shape\":{\"tuple\":[23]}}}]},\"attrs\":{\"tuple\":[{\"tuple\":[\"fixture\",\"phase1\"]}]},\"name\":\"hoist_fixture\"}",
+    "atoms": [
+      {
+        "id": 0,
+        "token": "{\"class\":\"merlin.sched.ir.kernel.Call\",\"fields\":{\"args\":{\"tuple\":[{\"tuple\":[\"slot\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"a\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"b\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]}]},\"assumes\":{\"tuple\":[]},\"awaits\":{\"tuple\":[]},\"instr\":\"unknown\",\"produces\":null,\"sets\":{\"tuple\":[]},\"stages\":{\"tuple\":[]},\"unit\":null}}",
+        "effect": null,
+        "eraseAllowed": false
+      },
+      {
+        "id": 1,
+        "token": "{\"class\":\"merlin.sched.ir.kernel.Call\",\"fields\":{\"args\":{\"tuple\":[{\"tuple\":[\"slot\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"a\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":3}}]},{\"tuple\":[\"b\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":5}}]}]},\"assumes\":{\"tuple\":[]},\"awaits\":{\"tuple\":[]},\"instr\":\"pair\",\"produces\":null,\"sets\":{\"tuple\":[]},\"stages\":{\"tuple\":[]},\"unit\":null}}",
+        "effect": {
+          "reads": [],
+          "writes": [
+            [
+              0,
+              3
+            ],
+            [
+              1,
+              5
+            ]
+          ],
+          "clobbers": [],
+          "ordered": true,
+          "pureWrite": true
+        },
+        "eraseAllowed": true
+      },
+      {
+        "id": 2,
+        "token": "{\"class\":\"merlin.sched.ir.kernel.Call\",\"fields\":{\"args\":{\"tuple\":[{\"tuple\":[\"slot\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"a\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"b\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]}]},\"assumes\":{\"tuple\":[]},\"awaits\":{\"tuple\":[]},\"instr\":\"work\",\"produces\":null,\"sets\":{\"tuple\":[]},\"stages\":{\"tuple\":[]},\"unit\":null}}",
+        "effect": {
+          "reads": [
+            [
+              0,
+              3
+            ],
+            [
+              1,
+              5
+            ]
+          ],
+          "writes": [],
+          "clobbers": [],
+          "ordered": true,
+          "pureWrite": false
+        },
+        "eraseAllowed": false
+      },
+      {
+        "id": 3,
+        "token": "{\"class\":\"merlin.sched.ir.kernel.Call\",\"fields\":{\"args\":{\"tuple\":[{\"tuple\":[\"slot\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"a\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"b\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]}]},\"assumes\":{\"tuple\":[]},\"awaits\":{\"tuple\":[]},\"instr\":\"work\",\"produces\":null,\"sets\":{\"tuple\":[]},\"stages\":{\"tuple\":[]},\"unit\":null}}",
+        "effect": {
+          "reads": [
+            [
+              0,
+              3
+            ],
+            [
+              1,
+              5
+            ]
+          ],
+          "writes": [],
+          "clobbers": [],
+          "ordered": true,
+          "pureWrite": false
+        },
+        "eraseAllowed": false
+      },
+      {
+        "id": 4,
+        "token": "{\"class\":\"merlin.sched.ir.kernel.Call\",\"fields\":{\"args\":{\"tuple\":[{\"tuple\":[\"slot\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"a\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"b\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]}]},\"assumes\":{\"tuple\":[]},\"awaits\":{\"tuple\":[]},\"instr\":\"work\",\"produces\":null,\"sets\":{\"tuple\":[]},\"stages\":{\"tuple\":[]},\"unit\":null}}",
+        "effect": {
+          "reads": [
+            [
+              0,
+              3
+            ],
+            [
+              1,
+              5
+            ]
+          ],
+          "writes": [],
+          "clobbers": [],
+          "ordered": true,
+          "pureWrite": false
+        },
+        "eraseAllowed": false
+      }
+    ],
+    "commands": [
+      {
+        "call": 0
+      },
+      {
+        "loop": {
+          "var": "i",
+          "extent": 3,
+          "body": [
+            1,
+            2,
+            3
+          ],
+          "metadata": "{\"extent\":3,\"iter_args\":{\"tuple\":[]},\"results\":{\"tuple\":[]},\"var\":\"i\",\"yields\":{\"tuple\":[]}}",
+          "iterArgs": [],
+          "yields": [],
+          "results": []
+        }
+      },
+      {
+        "call": 4
+      }
+    ]
+  },
+  "after": {
+    "frame": "{\"args\":{\"tuple\":[{\"class\":\"merlin.sched.ir.kernel.TensorArg\",\"fields\":{\"access\":\"read\",\"dtype\":\"i8\",\"name\":\"input\",\"shape\":{\"tuple\":[17]}}},{\"class\":\"merlin.sched.ir.kernel.TensorArg\",\"fields\":{\"access\":\"write\",\"dtype\":\"i8\",\"name\":\"output\",\"shape\":{\"tuple\":[23]}}}]},\"attrs\":{\"tuple\":[{\"tuple\":[\"fixture\",\"phase1\"]}]},\"name\":\"hoist_fixture\"}",
+    "atoms": [
+      {
+        "id": 0,
+        "token": "{\"class\":\"merlin.sched.ir.kernel.Call\",\"fields\":{\"args\":{\"tuple\":[{\"tuple\":[\"slot\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"a\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"b\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]}]},\"assumes\":{\"tuple\":[]},\"awaits\":{\"tuple\":[]},\"instr\":\"unknown\",\"produces\":null,\"sets\":{\"tuple\":[]},\"stages\":{\"tuple\":[]},\"unit\":null}}",
+        "effect": null,
+        "eraseAllowed": false
+      },
+      {
+        "id": 1,
+        "token": "{\"class\":\"merlin.sched.ir.kernel.Call\",\"fields\":{\"args\":{\"tuple\":[{\"tuple\":[\"slot\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"a\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":3}}]},{\"tuple\":[\"b\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":5}}]}]},\"assumes\":{\"tuple\":[]},\"awaits\":{\"tuple\":[]},\"instr\":\"pair\",\"produces\":null,\"sets\":{\"tuple\":[]},\"stages\":{\"tuple\":[]},\"unit\":null}}",
+        "effect": {
+          "reads": [],
+          "writes": [
+            [
+              0,
+              3
+            ],
+            [
+              1,
+              5
+            ]
+          ],
+          "clobbers": [],
+          "ordered": true,
+          "pureWrite": true
+        },
+        "eraseAllowed": true
+      },
+      {
+        "id": 2,
+        "token": "{\"class\":\"merlin.sched.ir.kernel.Call\",\"fields\":{\"args\":{\"tuple\":[{\"tuple\":[\"slot\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"a\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"b\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]}]},\"assumes\":{\"tuple\":[]},\"awaits\":{\"tuple\":[]},\"instr\":\"work\",\"produces\":null,\"sets\":{\"tuple\":[]},\"stages\":{\"tuple\":[]},\"unit\":null}}",
+        "effect": {
+          "reads": [
+            [
+              0,
+              3
+            ],
+            [
+              1,
+              5
+            ]
+          ],
+          "writes": [],
+          "clobbers": [],
+          "ordered": true,
+          "pureWrite": false
+        },
+        "eraseAllowed": false
+      },
+      {
+        "id": 3,
+        "token": "{\"class\":\"merlin.sched.ir.kernel.Call\",\"fields\":{\"args\":{\"tuple\":[{\"tuple\":[\"slot\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"a\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"b\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]}]},\"assumes\":{\"tuple\":[]},\"awaits\":{\"tuple\":[]},\"instr\":\"work\",\"produces\":null,\"sets\":{\"tuple\":[]},\"stages\":{\"tuple\":[]},\"unit\":null}}",
+        "effect": {
+          "reads": [
+            [
+              0,
+              3
+            ],
+            [
+              1,
+              5
+            ]
+          ],
+          "writes": [],
+          "clobbers": [],
+          "ordered": true,
+          "pureWrite": false
+        },
+        "eraseAllowed": false
+      },
+      {
+        "id": 4,
+        "token": "{\"class\":\"merlin.sched.ir.kernel.Call\",\"fields\":{\"args\":{\"tuple\":[{\"tuple\":[\"slot\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"a\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]},{\"tuple\":[\"b\",{\"class\":\"merlin.sched.ir.expr.Const\",\"fields\":{\"value\":0}}]}]},\"assumes\":{\"tuple\":[]},\"awaits\":{\"tuple\":[]},\"instr\":\"work\",\"produces\":null,\"sets\":{\"tuple\":[]},\"stages\":{\"tuple\":[]},\"unit\":null}}",
+        "effect": {
+          "reads": [
+            [
+              0,
+              3
+            ],
+            [
+              1,
+              5
+            ]
+          ],
+          "writes": [],
+          "clobbers": [],
+          "ordered": true,
+          "pureWrite": false
+        },
+        "eraseAllowed": false
+      }
+    ],
+    "commands": [
+      {
+        "call": 0
+      },
+      {
+        "call": 1
+      },
+      {
+        "loop": {
+          "var": "i",
+          "extent": 3,
+          "body": [
+            2,
+            3
+          ],
+          "metadata": "{\"extent\":3,\"iter_args\":{\"tuple\":[]},\"results\":{\"tuple\":[]},\"var\":\"i\",\"yields\":{\"tuple\":[]}}",
+          "iterArgs": [],
+          "yields": [],
+          "results": []
+        }
+      },
+      {
+        "call": 4
+      }
+    ]
+  },
+  "move": {
+    "earlier": [
+      0
+    ],
+    "later": [
+      4
+    ],
+    "setup": 1,
+    "body": [
+      2,
+      3
+    ],
+    "var": "i",
+    "extent": 3,
+    "metadata": "{\"extent\":3,\"iter_args\":{\"tuple\":[]},\"results\":{\"tuple\":[]},\"var\":\"i\",\"yields\":{\"tuple\":[]}}"
+  },
+  "fields": [
+    "configuration:0",
+    "configuration:1"
+  ],
+  "authority": false,
+  "kernel_outcome": "UNOBSERVED",
+  "Python_projection_trusted": true,
+  "actual_ISA_effect_model_approved": false
+}

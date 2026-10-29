@@ -1,0 +1,24 @@
+{
+  "status": "COMPLETED_SCOPED_HOIST_PRIMARY_INTEGRATION_ALL_WORKERS_STOPPED",
+  "source_commit": "dbaad5090",
+  "primary_merge": "0415d140b",
+  "tests": 242,
+  "ruff": "passed eight new Python modules/tests",
+  "structure": "passed",
+  "native_primary": "Fresh actual baseline check/exact final consumer and separate-Python fresh replay;15roots315std3/0; no borrowed objects",
+  "qualification": "Q5/F1 sevenpositives,nineunsupported,fifteenactualLeanrefusals+onehostscope refusal,sixteenforged,twelveartifact,freshreplay; F-only124root345std3witness",
+  "stopped_workers": {
+    "Q": "idle/completed",
+    "W": "idle/completed",
+    "F": "idle/completed"
+  },
+  "user_instruction": "Finish loop-invariant configuration hoisting, document progress, notify user, stop agents; no further pass.",
+  "scope": "one positive static counted-loop/one pure constant setter/nonempty ordered disjoint body; empty completion lists and asynchronous annotations",
+  "whole_pass_verified": false,
+  "policy_reviewed": false,
+  "primitive_model_laws_verified": false,
+  "native_fidelity": false,
+  "compiler_wide_enforcement": false,
+  "source_findings": "proof-root env gap fixed to actual installed-package origins; provisional snapshots and preflight failures retained",
+  "time": "2026-10-29T04:56:28.996083+00:00"
+}

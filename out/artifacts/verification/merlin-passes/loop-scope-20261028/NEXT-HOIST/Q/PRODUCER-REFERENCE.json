@@ -1,0 +1,57 @@
+{
+  "revision": "e0484f4886ae0780d0325cdfa998842b61bb647c",
+  "HEAD_verified_direct_worktree_file": true,
+  "Git_commands_executed": false,
+  "source_files": [
+    {
+      "path": "/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/compile/scheduling/configuration_loops.py",
+      "sha256": "e97af1770621177176be95db72a610ae8355da75418902fa4be4d9c59c576f62",
+      "bytes": 11627,
+      "historical4499_sha256": "1c187dc01021e61514a2587cc7a1a60ae24d9a515b7fc768a60bd1c9e170c674",
+      "same_historical_bytes": false
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/compile/scheduling/configuration.py",
+      "sha256": "3dd17bdbc6a08de8ccf2913e4687ca352d5a118017e41dd9e1b1a9edeb8527b8",
+      "bytes": 9736,
+      "historical4499_sha256": "3dd17bdbc6a08de8ccf2913e4687ca352d5a118017e41dd9e1b1a9edeb8527b8",
+      "same_historical_bytes": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/compile/scheduling/selected_contracts.py",
+      "sha256": "463bd1db9c33bbbff0139819b426ec6f68aaf60b335246fc9bad0dd2d624003d",
+      "bytes": 20957,
+      "historical4499_sha256": "463bd1db9c33bbbff0139819b426ec6f68aaf60b335246fc9bad0dd2d624003d",
+      "same_historical_bytes": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/sched/ir/kernel.py",
+      "sha256": "8603fb041e7033f5ca83798bdc49745bcae8eb03bc3be0f94fad8619c0448fe7",
+      "bytes": 16869,
+      "historical4499_sha256": "513697a4a32a8e7302f86de194a2e3af1f374bbc3a1b939f779ea3e273b41e4e",
+      "same_historical_bytes": false
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/sched/ir/expr.py",
+      "sha256": "45e311e72c194a679349334e2baa16078c623a39b83ac50c3759116ad5225e76",
+      "bytes": 5739,
+      "historical4499_sha256": "45e311e72c194a679349334e2baa16078c623a39b83ac50c3759116ad5225e76",
+      "same_historical_bytes": true
+    },
+    {
+      "path": "/home/jeremy/Projects/merlin-dce-cse-integration/src/merlin/sched/ir/parse.py",
+      "sha256": "3b405cadcc670893fd76472de38812481061a49f02d06777e8a8ea42fd241af0",
+      "bytes": 15565,
+      "historical4499_sha256": "ae66843c9dcbde727eb113f541f9c9c3214ef01c4dc1f0ed8035e32bfae758a3",
+      "same_historical_bytes": false
+    }
+  ],
+  "historical4499_not_selected": true,
+  "critical_differences": [
+    "Loop adds iter_args/yields/results; phase1 requires all empty",
+    "new producer preserves same-value body writes; checker refuses all overlap",
+    "_same_call compares complete call values including exact float bits",
+    "actual verifier does not explicitly compare new Loop completion fields; independent host and Lean guards required"
+  ],
+  "source_byte_identity_not_hardware_approval": true
+}

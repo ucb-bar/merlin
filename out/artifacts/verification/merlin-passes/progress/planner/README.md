@@ -1,3 +1,28 @@
+# STOPPED — scoped configuration hoist completed, 2026-10-28
+
+The latest user requested finish loop-invariant configuration hoisting, notify
+them and STOP all agents. This checkpoint fulfills that scoped task; all three
+workers are idle/completed with no live jobs and documented handoffs. No next
+pass is queued. Do not resume from any older continuous-work instruction.
+A NEW user instruction is required. Root integration is feat/pass-verification
+0415d140b (source dbaad5090), with final evidence in this publication checkpoint.
+Read [the exact result, limits and three handoffs](../../loop-scope-20261028/NEXT-HOIST/README.md).
+
+Qualified scope: seven actual supported pairs; nine unsupported boundaries;
+fifteen Lean + one host valid-mutant refusals; request/artifact controls, fresh
+replay and independent124-root witness. Primary242tests, structure/lint and
+fresh baseline check/exactconsumer/separate replay passed. Conditional declared
+state/effect model only: no full-pass/all-graph/native/human-review claim.
+Protected semantics/locks, failed profiles and counterexamples remain intact.
+
+Earlier loop/buffer integration is also pushed to Graham branch at e0484f488.
+That detached read-only producer stays pinned there. Configuration elision and
+this hoist are on primary and have not been ported to that branch.
+
+Everything below is historical context, not authorization to resume.
+
+---
+
 # Current — configuration elision integrated; loop-hoist graph work active
 
 Latest continuous-work instruction remains active until a NEW user stop. Root

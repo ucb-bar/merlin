@@ -1,0 +1,1051 @@
+{
+  "members": [
+    {
+      "path": "CANONICAL-RELOCATION.md",
+      "bytes": 309,
+      "sha256": "f63b4d14f646293e6a202191441f933bcf7c364d9449bc6175dfb14669a9a899"
+    },
+    {
+      "path": "CASES.json",
+      "bytes": 4815,
+      "sha256": "72ab5df572fcbe79ab8bf6f67c898bfb1fb0432b7681480f64ff0891b8d981b6"
+    },
+    {
+      "path": "DEPENDENCIES.json",
+      "bytes": 30050,
+      "sha256": "72e89f4b5d6ed848be1346ce4c40fe1cdb4b8390afe7dc3001bc0f7c59a7f267"
+    },
+    {
+      "path": "MANIFEST.json",
+      "bytes": 38842,
+      "sha256": "0c5e3ac64e7fbdedff50fa526cf3b6f9fae6e149c6fdcaff3213b72327c82aab"
+    },
+    {
+      "path": "OWNED.json",
+      "bytes": 2450,
+      "sha256": "8d537fdde2c5a35b2cb4a0a61aafbcfb96f18a92bc40a025a801e4bb55d68d2c"
+    },
+    {
+      "path": "PRODUCER-REFERENCE.json",
+      "bytes": 2797,
+      "sha256": "312dd8da796416570cbdee95355698a43a4348c019048d47f1e6654e2ed8e6bd"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4523,
+      "sha256": "726c7370596d0596ee1b356512c2f47911ab35a5bbb20e0721b2612796e0cd96"
+    },
+    {
+      "path": "SOURCE-ROOT-REPAIR.json",
+      "bytes": 403,
+      "sha256": "159db60eaca1609993a75289e46dfbf973df7e2f99154fc5b3e64e198f8c89c1"
+    },
+    {
+      "path": "canonical-lint-v5.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "canonical-lint-v5.stdout",
+      "bytes": 19,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "canonical-tests-v1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "canonical-tests-v1.stdout",
+      "bytes": 99,
+      "sha256": "f55a1335ed2f84d8f69891334cc537f185fff66089fafd509d5d768f641f5a8e"
+    },
+    {
+      "path": "canonical-tests-v5.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "canonical-tests-v5.stdout",
+      "bytes": 99,
+      "sha256": "8533fb8b5e7d058318b7dd7bd1569d953d6b2c1da2455debd7ea20299ad9c9c7"
+    },
+    {
+      "path": "cases/IV_dependent_setup/final.mk",
+      "bytes": 212,
+      "sha256": "789510b96c5191e74cc59c19eb5a9e7c799c0d6fafdb592d3d157930c0bc6a31"
+    },
+    {
+      "path": "cases/IV_dependent_setup/source.mk",
+      "bytes": 212,
+      "sha256": "789510b96c5191e74cc59c19eb5a9e7c799c0d6fafdb592d3d157930c0bc6a31"
+    },
+    {
+      "path": "cases/baseline_extent3/ACTUAL.json",
+      "bytes": 60557,
+      "sha256": "0d330095531407ca5590f6e9c5b8360cf792b770541c433f229061ac880b2756"
+    },
+    {
+      "path": "cases/baseline_extent3/ActualConfigurationHoist.lean",
+      "bytes": 10313,
+      "sha256": "19392427c2a2917fc51e79da9877d2441229b0f0b9cdbe0f64bc74c12da5c62a"
+    },
+    {
+      "path": "cases/baseline_extent3/PROJECTION.json",
+      "bytes": 10689,
+      "sha256": "236d2928a6b22dc8d1483a27960b21b86d3a9fc59721e20d86d57c478dca71d6"
+    },
+    {
+      "path": "cases/baseline_extent3/PROOF-PLAN.json",
+      "bytes": 2508,
+      "sha256": "3a644fbc651eb8800d12594e56dec6a3c8d27204ab3580fa3489110c06f1a2a1"
+    },
+    {
+      "path": "cases/baseline_extent3/REQUEST.json",
+      "bytes": 2226,
+      "sha256": "4a7d08a33283522f9b3df5314a836d2379811b97bd9e5a19e5fce9a253ce3e8e"
+    },
+    {
+      "path": "cases/baseline_extent3/ROOTS.json",
+      "bytes": 922,
+      "sha256": "0275307416c693fcf5d56faf425e30f9024897bdf421fc0991549453a10cc647"
+    },
+    {
+      "path": "cases/baseline_extent3/SOURCE-REQUEST.json",
+      "bytes": 646,
+      "sha256": "8f81d190164e43de07b9bd7fc0c7d8e2760e9d605062e08bde04175871a6ec83"
+    },
+    {
+      "path": "cases/baseline_extent3/final.mk",
+      "bytes": 237,
+      "sha256": "fc1a887a63148fa8659223b552e50e0dc588b596f10543fcb343838808f08bf9"
+    },
+    {
+      "path": "cases/baseline_extent3/source.mk",
+      "bytes": 239,
+      "sha256": "0266a1d9d2b679920b47f97885c23e8bc5d5993f5ead955221cdf67942d27213"
+    },
+    {
+      "path": "cases/conflicting_body_write/final.mk",
+      "bytes": 238,
+      "sha256": "6adee869af359c87dba0457454d02624222680f06969765e949375399a7d2108"
+    },
+    {
+      "path": "cases/conflicting_body_write/source.mk",
+      "bytes": 238,
+      "sha256": "6adee869af359c87dba0457454d02624222680f06969765e949375399a7d2108"
+    },
+    {
+      "path": "cases/disjoint_body_clobber/ACTUAL.json",
+      "bytes": 64667,
+      "sha256": "8198f25f2fd65eb8b2d20075f3e5641423e19d66a2fd19eb2bb431893b6be409"
+    },
+    {
+      "path": "cases/disjoint_body_clobber/ActualConfigurationHoist.lean",
+      "bytes": 11625,
+      "sha256": "ae7d698c813e8e9b2587c23ef779bc91edc1166bdd361ab709c09c1796d5972d"
+    },
+    {
+      "path": "cases/disjoint_body_clobber/PROJECTION.json",
+      "bytes": 12293,
+      "sha256": "88afc6c8206909f5625610b1b30f99c68796b21041912a5965c534bef5eb62bb"
+    },
+    {
+      "path": "cases/disjoint_body_clobber/PROOF-PLAN.json",
+      "bytes": 2508,
+      "sha256": "3a644fbc651eb8800d12594e56dec6a3c8d27204ab3580fa3489110c06f1a2a1"
+    },
+    {
+      "path": "cases/disjoint_body_clobber/REQUEST.json",
+      "bytes": 2226,
+      "sha256": "9e23f331c06a238fc686ddb0836a83a04fc126d3bde16c6e28702daef73de77e"
+    },
+    {
+      "path": "cases/disjoint_body_clobber/ROOTS.json",
+      "bytes": 922,
+      "sha256": "0275307416c693fcf5d56faf425e30f9024897bdf421fc0991549453a10cc647"
+    },
+    {
+      "path": "cases/disjoint_body_clobber/SOURCE-REQUEST.json",
+      "bytes": 646,
+      "sha256": "8f81d190164e43de07b9bd7fc0c7d8e2760e9d605062e08bde04175871a6ec83"
+    },
+    {
+      "path": "cases/disjoint_body_clobber/final.mk",
+      "bytes": 265,
+      "sha256": "aed606e80e5238049aaf6f8436ed0b4f5d07257e89913fc6d3cab6de80cede4f"
+    },
+    {
+      "path": "cases/disjoint_body_clobber/source.mk",
+      "bytes": 267,
+      "sha256": "774a168c3197284f1d6105d1c050f2dc9aa3a07137d80f643a994f1e8a125913"
+    },
+    {
+      "path": "cases/disjoint_body_write/ACTUAL.json",
+      "bytes": 64659,
+      "sha256": "66d59f563072c99c288fdee670e7444ecfcb27863bfa03e8b753d7d67cc2cef1"
+    },
+    {
+      "path": "cases/disjoint_body_write/ActualConfigurationHoist.lean",
+      "bytes": 11627,
+      "sha256": "1b70e8b99ebd837921cf476a08535310d7aa8ab2eeca7fb4b08d905052ef204b"
+    },
+    {
+      "path": "cases/disjoint_body_write/PROJECTION.json",
+      "bytes": 12379,
+      "sha256": "e13d51225dab5bd0d3eccc2f0b8a1587787aa4c2088a39fabe6964013e14d7b7"
+    },
+    {
+      "path": "cases/disjoint_body_write/PROOF-PLAN.json",
+      "bytes": 2508,
+      "sha256": "3a644fbc651eb8800d12594e56dec6a3c8d27204ab3580fa3489110c06f1a2a1"
+    },
+    {
+      "path": "cases/disjoint_body_write/REQUEST.json",
+      "bytes": 2226,
+      "sha256": "4d7e8c2cfcea90d8adce76c767d09e1677625d9bab42983cad32dde53eaff7d5"
+    },
+    {
+      "path": "cases/disjoint_body_write/ROOTS.json",
+      "bytes": 922,
+      "sha256": "0275307416c693fcf5d56faf425e30f9024897bdf421fc0991549453a10cc647"
+    },
+    {
+      "path": "cases/disjoint_body_write/SOURCE-REQUEST.json",
+      "bytes": 646,
+      "sha256": "8f81d190164e43de07b9bd7fc0c7d8e2760e9d605062e08bde04175871a6ec83"
+    },
+    {
+      "path": "cases/disjoint_body_write/final.mk",
+      "bytes": 263,
+      "sha256": "ce3c8243a52d9758c8e73356ed6bb34225d85ab4c187bdc7e847d6bf2cef4445"
+    },
+    {
+      "path": "cases/disjoint_body_write/source.mk",
+      "bytes": 265,
+      "sha256": "890e95725e3885c5705ea5c29c31b6d1bd5a27507c20d0358a99c59a3d40ea35"
+    },
+    {
+      "path": "cases/extent1/ACTUAL.json",
+      "bytes": 56451,
+      "sha256": "e817046479b7a1650a4be39ae964423aaf0011be56e02f141581a1a3a9b3ec65"
+    },
+    {
+      "path": "cases/extent1/ActualConfigurationHoist.lean",
+      "bytes": 8980,
+      "sha256": "1bbb8e577b2dfd4f212e10405adc2adae472ebbaff8c0502b4ae6bbdc94e263a"
+    },
+    {
+      "path": "cases/extent1/PROJECTION.json",
+      "bytes": 8892,
+      "sha256": "4e969ac2b8f405c5ec11e8739448dd8a8e4d0361a51ffa6f862a06d69b339f3e"
+    },
+    {
+      "path": "cases/extent1/PROOF-PLAN.json",
+      "bytes": 2508,
+      "sha256": "3a644fbc651eb8800d12594e56dec6a3c8d27204ab3580fa3489110c06f1a2a1"
+    },
+    {
+      "path": "cases/extent1/REQUEST.json",
+      "bytes": 2226,
+      "sha256": "de0b9d99c2a12434ea6dd4911441098469fefb2902148fd8d280e7887c28da79"
+    },
+    {
+      "path": "cases/extent1/ROOTS.json",
+      "bytes": 922,
+      "sha256": "0275307416c693fcf5d56faf425e30f9024897bdf421fc0991549453a10cc647"
+    },
+    {
+      "path": "cases/extent1/SOURCE-REQUEST.json",
+      "bytes": 646,
+      "sha256": "8f81d190164e43de07b9bd7fc0c7d8e2760e9d605062e08bde04175871a6ec83"
+    },
+    {
+      "path": "cases/extent1/final.mk",
+      "bytes": 210,
+      "sha256": "02cd1d2ff5a738685bdfe63a3b5097c87d6268a4635b2750780d613b8b16feff"
+    },
+    {
+      "path": "cases/extent1/source.mk",
+      "bytes": 212,
+      "sha256": "3a84d6239abfb24475f55fd0b4a6b7afc25be8d2627b6708389ff7f9b477f9e2"
+    },
+    {
+      "path": "cases/extent7/ACTUAL.json",
+      "bytes": 60557,
+      "sha256": "b05c79194ee4ab2b527b8cbe8f009dbacc41ca0e71deda44a4f80ffd17ba9aa4"
+    },
+    {
+      "path": "cases/extent7/ActualConfigurationHoist.lean",
+      "bytes": 10313,
+      "sha256": "82cb30768e6bbf04ac3e5d3ed344fee68daac142e12daafc0b2c1e6fe24a2511"
+    },
+    {
+      "path": "cases/extent7/PROJECTION.json",
+      "bytes": 10689,
+      "sha256": "0c5306e7f85d0ea4be112831a55c39f34a5d9c7a31b62ab44d86b237385bd963"
+    },
+    {
+      "path": "cases/extent7/PROOF-PLAN.json",
+      "bytes": 2508,
+      "sha256": "3a644fbc651eb8800d12594e56dec6a3c8d27204ab3580fa3489110c06f1a2a1"
+    },
+    {
+      "path": "cases/extent7/REQUEST.json",
+      "bytes": 2226,
+      "sha256": "92c8b575368a33929b99e0d71b3030cddbf839593bb8861ff73befda8e86ca25"
+    },
+    {
+      "path": "cases/extent7/ROOTS.json",
+      "bytes": 922,
+      "sha256": "0275307416c693fcf5d56faf425e30f9024897bdf421fc0991549453a10cc647"
+    },
+    {
+      "path": "cases/extent7/SOURCE-REQUEST.json",
+      "bytes": 646,
+      "sha256": "8f81d190164e43de07b9bd7fc0c7d8e2760e9d605062e08bde04175871a6ec83"
+    },
+    {
+      "path": "cases/extent7/final.mk",
+      "bytes": 237,
+      "sha256": "b1b328308768b0a1e99eb68cbcb00052ca1610d5d6c3982304ba9a2daf6a6e96"
+    },
+    {
+      "path": "cases/extent7/source.mk",
+      "bytes": 239,
+      "sha256": "08dbed630dbec7c5feb6420ca5bc7169cf20a2957b595bad0a1bb6ce517eb974"
+    },
+    {
+      "path": "cases/nested_body/final.mk",
+      "bytes": 231,
+      "sha256": "84616dc570ee23062c171bce1654b63a794383fa3e42635d4a6a5a9dc6d2f23a"
+    },
+    {
+      "path": "cases/nested_body/source.mk",
+      "bytes": 233,
+      "sha256": "9ed3346efcf647c3b50af7025f23c7a5ea7e4123fa5795adc4597013aed78c9a"
+    },
+    {
+      "path": "cases/ordered_surroundings/ACTUAL.json",
+      "bytes": 59637,
+      "sha256": "c4fb9f2dd168ec35ac846c5542e076c4c6285125b165f70cda80c4e90eae35e0"
+    },
+    {
+      "path": "cases/ordered_surroundings/ActualConfigurationHoist.lean",
+      "bytes": 10488,
+      "sha256": "bb053b80ea9990abfeed5838aa08d3e05a67a14b1a2ccc4ea627f4d16a47d3a4"
+    },
+    {
+      "path": "cases/ordered_surroundings/PROJECTION.json",
+      "bytes": 11042,
+      "sha256": "94c161ece6713377fa775ac71d3704d6fcdca988f0ac2683de0c91edcc4c554c"
+    },
+    {
+      "path": "cases/ordered_surroundings/PROOF-PLAN.json",
+      "bytes": 2508,
+      "sha256": "3a644fbc651eb8800d12594e56dec6a3c8d27204ab3580fa3489110c06f1a2a1"
+    },
+    {
+      "path": "cases/ordered_surroundings/REQUEST.json",
+      "bytes": 2226,
+      "sha256": "99fa3750c14b0025825595fdfbef356b2d9c17c8c5627766505c533ccb51dd71"
+    },
+    {
+      "path": "cases/ordered_surroundings/ROOTS.json",
+      "bytes": 922,
+      "sha256": "0275307416c693fcf5d56faf425e30f9024897bdf421fc0991549453a10cc647"
+    },
+    {
+      "path": "cases/ordered_surroundings/SOURCE-REQUEST.json",
+      "bytes": 646,
+      "sha256": "8f81d190164e43de07b9bd7fc0c7d8e2760e9d605062e08bde04175871a6ec83"
+    },
+    {
+      "path": "cases/ordered_surroundings/final.mk",
+      "bytes": 234,
+      "sha256": "2c3787ea04c80f148260b67ce3e5f38654d284aa5ab1a8dbc0db632912313c8f"
+    },
+    {
+      "path": "cases/ordered_surroundings/source.mk",
+      "bytes": 236,
+      "sha256": "7d68f989a5ae51f5524c60c8372e56d3bb7e3d618be5b0153667a6af415b9535"
+    },
+    {
+      "path": "cases/pulse_prefix/final.mk",
+      "bytes": 240,
+      "sha256": "83e0e621fbedf85f88f50090a27a70992798b0f6ad8272be6568590c7b602cfa"
+    },
+    {
+      "path": "cases/pulse_prefix/source.mk",
+      "bytes": 240,
+      "sha256": "83e0e621fbedf85f88f50090a27a70992798b0f6ad8272be6568590c7b602cfa"
+    },
+    {
+      "path": "cases/same_value_overlap/final.mk",
+      "bytes": 236,
+      "sha256": "e4684d8f477a4646572ae49dc5e0232fb4b177396c07ace5902eac943cf50a95"
+    },
+    {
+      "path": "cases/same_value_overlap/source.mk",
+      "bytes": 238,
+      "sha256": "b1b468a54153c4b71dc6517a972075ee5895b051ea130fcb6728903cfa408876"
+    },
+    {
+      "path": "cases/setup_field_clobber/final.mk",
+      "bytes": 240,
+      "sha256": "04d76ff41029a9b30d4b086a5c3e8c383aab016cb5d9d092d5d2fb4cef4a22cf"
+    },
+    {
+      "path": "cases/setup_field_clobber/source.mk",
+      "bytes": 240,
+      "sha256": "04d76ff41029a9b30d4b086a5c3e8c383aab016cb5d9d092d5d2fb4cef4a22cf"
+    },
+    {
+      "path": "cases/two_setter_prefix/final.mk",
+      "bytes": 234,
+      "sha256": "3cb6fd504c04d0cf75c553ea89c9d59d6b5d9cb203c92f6246cd215fbf7946fe"
+    },
+    {
+      "path": "cases/two_setter_prefix/source.mk",
+      "bytes": 238,
+      "sha256": "5d163eba726184089fe0398241f5d074897d790c45ea196e6ee2a4ccb883b615"
+    },
+    {
+      "path": "cases/unknown_body/final.mk",
+      "bytes": 242,
+      "sha256": "9291df7037537cb8355de7fbfdaa63cd0151a1d2533afbeb99f599eda81ac630"
+    },
+    {
+      "path": "cases/unknown_body/source.mk",
+      "bytes": 242,
+      "sha256": "9291df7037537cb8355de7fbfdaa63cd0151a1d2533afbeb99f599eda81ac630"
+    },
+    {
+      "path": "cases/unordered_body/final.mk",
+      "bytes": 244,
+      "sha256": "d44b0f71131c0990cfa42932f131a3cf7498cff28fd407b577750964a2415899"
+    },
+    {
+      "path": "cases/unordered_body/source.mk",
+      "bytes": 244,
+      "sha256": "d44b0f71131c0990cfa42932f131a3cf7498cff28fd407b577750964a2415899"
+    },
+    {
+      "path": "cases/unsigned64_body_value/ACTUAL.json",
+      "bytes": 64736,
+      "sha256": "fe7d0f267767ae656fce9420a94c0ee1f0c2aaaa54a93c44a01243c59a999e16"
+    },
+    {
+      "path": "cases/unsigned64_body_value/ActualConfigurationHoist.lean",
+      "bytes": 11703,
+      "sha256": "ad7c33bd9076460ce0b474a72622aaee24763f3ddeda6781e3161679f5106b22"
+    },
+    {
+      "path": "cases/unsigned64_body_value/PROJECTION.json",
+      "bytes": 12455,
+      "sha256": "93f90abe38f95de7163d569325be931ee86e5c4bc9e56f20cdb3c95e0ebbb1ef"
+    },
+    {
+      "path": "cases/unsigned64_body_value/PROOF-PLAN.json",
+      "bytes": 2508,
+      "sha256": "3a644fbc651eb8800d12594e56dec6a3c8d27204ab3580fa3489110c06f1a2a1"
+    },
+    {
+      "path": "cases/unsigned64_body_value/REQUEST.json",
+      "bytes": 2226,
+      "sha256": "e201aeeb39c18b9fa8e667035f44fa0930a74028a30e068b2a47d8634d64fb33"
+    },
+    {
+      "path": "cases/unsigned64_body_value/ROOTS.json",
+      "bytes": 922,
+      "sha256": "0275307416c693fcf5d56faf425e30f9024897bdf421fc0991549453a10cc647"
+    },
+    {
+      "path": "cases/unsigned64_body_value/SOURCE-REQUEST.json",
+      "bytes": 646,
+      "sha256": "ea8492a44b83e1493a10e86ffa150aada2da1a9987413927bc0d0f0e4485214e"
+    },
+    {
+      "path": "cases/unsigned64_body_value/final.mk",
+      "bytes": 282,
+      "sha256": "b8abf7df202cf8434db81ca95694af150198f204226ec63b2eb6a3cf33192715"
+    },
+    {
+      "path": "cases/unsigned64_body_value/source.mk",
+      "bytes": 284,
+      "sha256": "4e872a49cdde718c7aca63f5813dfe8f79950ade7743fd8d4f5e3bbcb39efc9a"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/__init__.py",
+      "bytes": 742,
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/common/__init__.py",
+      "bytes": 144,
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/common/dense_float_ir.py",
+      "bytes": 4746,
+      "sha256": "7ac691a75dd946bff139f68f2943ab31da48480b63d3547dbadb10c638d4e575"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/__init__.py",
+      "bytes": 633,
+      "sha256": "92721d5b005b1f6bdb33fb81918f2b1001c9368056bca02172b507fe69eeccce"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/__init__.py",
+      "bytes": 1895,
+      "sha256": "0811ba56924f50f4ef550de4dce72c481bccd30a932f0963e82a1151b8783669"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/block_schedule.py",
+      "bytes": 73411,
+      "sha256": "fd4997d265ec4d61c28e8b3bf2c06ad2985a1d83cd205072ac748ac777e8526c"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/compact_dense.py",
+      "bytes": 36688,
+      "sha256": "e3f1fe75d7cab4b18009940d0f89065a05fcdcde943b55595526c39b5e907f97"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/compact_verification.py",
+      "bytes": 39282,
+      "sha256": "96147c524edd77c1c343182ac57fe757d6d217886a70542fbc223bdb19a0f5c7"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/configuration.py",
+      "bytes": 9736,
+      "sha256": "3dd17bdbc6a08de8ccf2913e4687ca352d5a118017e41dd9e1b1a9edeb8527b8"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/configuration_ir.py",
+      "bytes": 19833,
+      "sha256": "64eca6d38dd7c557c7a340f8faa77790fe692b6bdc3db895d756ff4b9cb3782d"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/configuration_loops.py",
+      "bytes": 11627,
+      "sha256": "e97af1770621177176be95db72a610ae8355da75418902fa4be4d9c59c576f62"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/copy_elimination.py",
+      "bytes": 5258,
+      "sha256": "31d66c0ec4872cc06561fada87f0bcc210babb4629eabd9235d968bff3c48566"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/dense_contracts.py",
+      "bytes": 34470,
+      "sha256": "d30a68ebe3b927b480c9dea3eaf667353979f295ef607be288064bca7b0d717a"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/dense_source.py",
+      "bytes": 23107,
+      "sha256": "e2bbbc74ccbd014efb1b7e512940efba42c9f5d1f25d328debbd55c7b77c45b5"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/derive.py",
+      "bytes": 6930,
+      "sha256": "10810c48ea0056b235ae0f3a161363578650edd64e402b3505bb6c288d0ee653"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/device_spills.py",
+      "bytes": 9430,
+      "sha256": "668bdc114224b68db6e26128238501954d37bda756d9806cb9d819a063a5103d"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/fusion.py",
+      "bytes": 15465,
+      "sha256": "144298845e4fff2134dc3506466c210fb60ed8aba03208e73a49f53392b3e9e3"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/fusion_contracts.py",
+      "bytes": 11419,
+      "sha256": "0a54500cd8e92df596e0732ba9ab2b21e2277fbddbc710a141cc71bff6478d3b"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/fusion_semantics.py",
+      "bytes": 8317,
+      "sha256": "d857358fc81e9f04636ce83242278844f2cd56d7d1c4a0f094ec24e5801a9757"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/library_sources.py",
+      "bytes": 15246,
+      "sha256": "d8e1012f0d66ba95f20de06c45d2a78a680eb7191461deeed4e8d5eb96c03246"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/pointwise_source.py",
+      "bytes": 33744,
+      "sha256": "b5078dbd3519a5b54147fa11325d819fdda4badd78c4ee8e7d5b59d31605698d"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/program_contracts.py",
+      "bytes": 20338,
+      "sha256": "1b386d67b46b2211b44171620227ee9f2360ddc52f9b3c177a2483f28b2108c0"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/program_limits.py",
+      "bytes": 22728,
+      "sha256": "0eaa03348cf16bebcef2ec5dd2658059dbc4a0399f789af741b615f57d0f16e0"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/row_contracts.py",
+      "bytes": 16603,
+      "sha256": "fdac6f442489cfa1a7577279716124230ec99b742154d2335bf8c38f865b87be"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/row_softmax.py",
+      "bytes": 40962,
+      "sha256": "57d53dbad821ed37c0000f585043dcf1310b91bb6153f46f8fc5c5155f347bf9"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/row_softmax_verification.py",
+      "bytes": 9995,
+      "sha256": "c520304653a3b788b32b59707f978620428eef519e5af8d8141f03c8ad4731ce"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/schedule_pipeline.py",
+      "bytes": 68429,
+      "sha256": "3bbb7a5be0ef5e5485e298ea8f3e75ae3897923f9fd16e6f33b82642937126a5"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/selected_contracts.py",
+      "bytes": 20957,
+      "sha256": "463bd1db9c33bbbff0139819b426ec6f68aaf60b335246fc9bad0dd2d624003d"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/spill_conformance.py",
+      "bytes": 16403,
+      "sha256": "62c4d210966f7846b047ec4ec3338f84d0285e1cf148676779e73db0b0425f5b"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/spill_contracts.py",
+      "bytes": 8119,
+      "sha256": "7aeff5b6e27de83a15a4f40fde0246d2b027a9fac9202ba9430ab192d5d96b84"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/storage_contracts.py",
+      "bytes": 27303,
+      "sha256": "9d3f5a0df073a0a2325fa392da6d28fa3bc3cb5ae00290c4b8d99dac46962814"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/compile/scheduling/temporary_storage.py",
+      "bytes": 33929,
+      "sha256": "6041a26d852d8468192648355b05f508ac0a7b5aea6ead36401d8e72f9ba628c"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/llvmlower/__init__.py",
+      "bytes": 773,
+      "sha256": "8a2a6206e74b555f98b42b04c78f8ad19b96807442e9a54e98a0baaf72bcbf6d"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/llvmlower/cpu_softmax.py",
+      "bytes": 9201,
+      "sha256": "3370f42d1f8563530af38ddb1ee91d6f44c197bae351d191e4959aa7b9ab7527"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/sched/__init__.py",
+      "bytes": 668,
+      "sha256": "b84e4c42421f5277d338c12ae9726ba256befa5c1491d4928c2da994fc1ee7a0"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/sched/codegen/__init__.py",
+      "bytes": 8858,
+      "sha256": "24b29e7a2c3f276d67aebeef37cc482f1c621d09e7d421e9f2197a8b7469bd35"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/sched/ir/__init__.py",
+      "bytes": 935,
+      "sha256": "7783c6bfc27bde3f32164ca70803d6d4d21dde9e812363da2c05693a46fedfd9"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/sched/ir/events.py",
+      "bytes": 2895,
+      "sha256": "59357460f6fe54766c81bc076b988ba9b8d6c51537ea652a5e1390377fb60b6f"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/sched/ir/expr.py",
+      "bytes": 5739,
+      "sha256": "45e311e72c194a679349334e2baa16078c623a39b83ac50c3759116ad5225e76"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/sched/ir/integer_domain.py",
+      "bytes": 3645,
+      "sha256": "975f54c1607fe7db57425834bf71e2cd3b47cdac7956bbf9223f6c5c18dcbd65"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/sched/ir/kernel.py",
+      "bytes": 16869,
+      "sha256": "8603fb041e7033f5ca83798bdc49745bcae8eb03bc3be0f94fad8619c0448fe7"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/sched/ir/parse.py",
+      "bytes": 15565,
+      "sha256": "3b405cadcc670893fd76472de38812481061a49f02d06777e8a8ea42fd241af0"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/sched/isa/__init__.py",
+      "bytes": 775,
+      "sha256": "b6cd8226548aaa1edfd17bc464b75578ebdbb55d4e12613ed661ecd897bb2310"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/sched/isa/types.py",
+      "bytes": 2683,
+      "sha256": "d36576f047352f0b1230e17e26fcc675f08feb4770ea509dbac919db709cb91b"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/semantic_compiler/__init__.py",
+      "bytes": 224,
+      "sha256": "f2103ce7e4638a4f655c80f62c61acda55ef8135a293503d0e036bc53724d18b"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/semantic_compiler/allocate.py",
+      "bytes": 21653,
+      "sha256": "d680d5bcd3b8d63de40a5be7e0571ad9909e17b23fbb9bc5491ab093b5011673"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/semantic_compiler/allocation_types.py",
+      "bytes": 3561,
+      "sha256": "08ca15534bc4e1704613712270d356b40f86bd6e2155c3d3c781acdb37cc7c4a"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/semantic_compiler/egg_bridge.py",
+      "bytes": 3079,
+      "sha256": "4a017658944366a2b4a2f31e35095ecda126c5694798b80f8b67d8b20f362afc"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/semantic_compiler/extract.py",
+      "bytes": 6223,
+      "sha256": "315a4a545020fe910c151618f6826cc1c8ee628afc345ef5eaa29efe51b390cf"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/semantic_compiler/model.py",
+      "bytes": 14252,
+      "sha256": "5f784c7b26e458236004bd7e11e058dcf87dd7d5ab66afc969aa1bd4fda8f6b6"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/semantic_compiler/rules.py",
+      "bytes": 24500,
+      "sha256": "378c156c6c79a89254f67a62e7b1021ab5f78e99ffc213389d90da5cad91bfc5"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/targetgen/__init__.py",
+      "bytes": 340,
+      "sha256": "7dae9fca1d8a5a860c76b424adfe208304bf12642774611599e78f7148210c70"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/targetgen/address_space.py",
+      "bytes": 56857,
+      "sha256": "339c01f53e0203a850a01588d77fc213c950d1ff1339ee6b1aff9fd4fa4d2c64"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/targetgen/isa_dialect_gen.py",
+      "bytes": 16632,
+      "sha256": "a87f11dcbb7d6a4caf942514d6b677839149ebe56e0d9aae4bd45fe69de7c497"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/targetgen/isa_spec.py",
+      "bytes": 18990,
+      "sha256": "c7504461b20154ad2678d7a0b4e534c6705f76792ee4c49641b05b3ec2c4a5e2"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/__init__.py",
+      "bytes": 1017,
+      "sha256": "b13dba76f50bf5666daac971dcef7305172807f22ecc96046333efd219e77b39"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/certificates.py",
+      "bytes": 9294,
+      "sha256": "c2d9d3fd12c869863d60587ea98c73708217f03af9bfcea9b7ba6e94a1ddef9b"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/dense_ir.py",
+      "bytes": 21438,
+      "sha256": "87582d8d4eaeef6734c26e62349a4e25dc41e919bf24e6ebf807e8ddc24cea51"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/dense_planning.py",
+      "bytes": 14404,
+      "sha256": "6602f9ba078da2fe307aac490bb920e9544ec41244286ddbcc0b97b29b3db3ac"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/loops.py",
+      "bytes": 4572,
+      "sha256": "23121b6b069bb96974f8394dfad08a4fdd8089b1164fd60ebb0a2e6a72c08d8e"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/normalization.py",
+      "bytes": 4097,
+      "sha256": "2150598f0b0da52cf4cf7c3c8c2b54af22e7b7440af7600411fac87f0fc0df84"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/pipeline.py",
+      "bytes": 8634,
+      "sha256": "dcdb590ba2035d62febe05bf1fcdb471d41fe541d337c7b0f6259a92a663e3a0"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/pipeline_state.py",
+      "bytes": 12317,
+      "sha256": "2430a63e7cbb9e27b5724fa713aa7b3465bb005baeac858a96b18138357c6652"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/planning.py",
+      "bytes": 12381,
+      "sha256": "3c3d0b7c170f5629dbbc3d8fa6d740ccc7c9a97d416c25869eaef7bad4cf5f39"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/pure_scalar.py",
+      "bytes": 6617,
+      "sha256": "bec764097889938b36a0138c56f52433549c4fd26c6f449142d4c8634243cd06"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/scalar_witness.py",
+      "bytes": 2083,
+      "sha256": "44e4d53e6f4c1017bd60b103ca72908ad090d48616a30088eb2b51171cdc3b31"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/unrolling.py",
+      "bytes": 7588,
+      "sha256": "04e286ddce1132f6609a30f3a7ff0764db53197a520078f0c952e6b4a8fc535f"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/transforms/validation.py",
+      "bytes": 10145,
+      "sha256": "293154f879d236624d0f66399c49173f4a6e48fca7c25f3b4bf879af6319e159"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/verify/__init__.py",
+      "bytes": 1018,
+      "sha256": "efa25d1ea886cb3005f0239a7e8570c13724c9b1d852b31254058c2f0f5b1298"
+    },
+    {
+      "path": "dependencies/reference-e048/src/merlin/verify/epilogue_applicability.py",
+      "bytes": 15851,
+      "sha256": "98bdd5789a9ffef705a74ecf621be41fbc15f8e80a83a976c3261e5422e9e65f"
+    },
+    {
+      "path": "dependencies/worker/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/PRODUCER-SOURCE-MANIFEST-e0484f488.json",
+      "bytes": 528280,
+      "sha256": "bb35450b5374e4fea125d0f766588830eea7a771131de7d1e961d5a4a4ea2626"
+    },
+    {
+      "path": "dependencies/worker/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/fixtures-v1/schema-i32/facts.json",
+      "bytes": 304,
+      "sha256": "7de7681eb54f1cc3dac69883d9b7173ae25b2c833a2c31f7c79e8ea9c89136da"
+    },
+    {
+      "path": "dependencies/worker/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/fixtures-v1/schema-i32/software.yaml",
+      "bytes": 23188,
+      "sha256": "8568033a7b4e568dabe22e179cda50fdb21adf1b762de470e4f9659098f81df5"
+    },
+    {
+      "path": "dependencies/worker/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/fixtures-v1/schema-i64/facts.json",
+      "bytes": 305,
+      "sha256": "7346cf7a64845755a3d9463ab56d7c0d5e475c1aa6f1705f21468d5df80e724c"
+    },
+    {
+      "path": "dependencies/worker/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/fixtures-v1/schema-i64/software.yaml",
+      "bytes": 23188,
+      "sha256": "dafa337de401ce861978c6d1dcbaee3abf095336cbaaa7368c9bc5894b575d24"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/__init__.py",
+      "bytes": 742,
+      "sha256": "469a9d94cb84365f192f23c63a47e695ba8758a7f3005451f33a66152f143086"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/common/__init__.py",
+      "bytes": 144,
+      "sha256": "5158ded00a221c254ffb32e1c4e3960bcea0a6542909d6331005d2a5f3783f3e"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/common/owned_process.py",
+      "bytes": 5515,
+      "sha256": "096779cceee8d757264731b8bf6d05ee0a59138b220422a7f1decbe878feb910"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/common/paths.py",
+      "bytes": 17204,
+      "sha256": "ce9238694f7622d92ffb0e4bdae09839604f4c625092b2cef8f286773dca85b9"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/__init__.py",
+      "bytes": 1017,
+      "sha256": "ed2b23769b23d2a34b47f38b316aca76277193efbcbce589670188a5cceeffe4"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/configuration_elision_emit.py",
+      "bytes": 5890,
+      "sha256": "f1d263bd16d4722d3eb0309e2a780891b606e7cdd98f1c406e3fff423ef15cb4"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/configuration_hoist_bridge.py",
+      "bytes": 10630,
+      "sha256": "8f9b500969fa90a2d061bab486abc8b40158c0214f50fafca3d7a9a42a88ee0c"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/configuration_hoist_capture.py",
+      "bytes": 3251,
+      "sha256": "124278e3cf2ce7a9e13bc862f87981593d1d205a4862bae886b4d698e0de8d74"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/configuration_hoist_emit.py",
+      "bytes": 5160,
+      "sha256": "ac90f9cb47400ea6660a8b877043428bfbd5c730fb49d6361925b1b73efae0c2"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/configuration_hoist_gate.py",
+      "bytes": 15133,
+      "sha256": "247849a33335a3d381398c5b49a225c5b678ab272f7cd11ded9db9a494edfb17"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/configuration_hoist_intake.py",
+      "bytes": 7933,
+      "sha256": "268f6902e473babc2eba3b3757d25ae7854e96465a628f8a5ce8d16df11f304c"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/configuration_hoist_worker.py",
+      "bytes": 8443,
+      "sha256": "dffb138e2b0af576682b9bb798d0309a66594b3fa20a8400bb9cddc97e1ab281"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/lean/Merlin/GraphState.lean",
+      "bytes": 6450,
+      "sha256": "223727685b28a8f166a310740c1e369a5f9cb55cbc928a20647cbefae3738445"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/lean/Merlin/GraphStateAudit.lean",
+      "bytes": 3451,
+      "sha256": "377eb83eafd6c8d5a625c59f6dbe59d762b4aff003894efcc51df4944580bf99"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/lean/Merlin/GraphStateConfiguration.lean",
+      "bytes": 8337,
+      "sha256": "133a225921394f4b0da1e1c353d5157f8aa724ab1ffdad2549556b5070edc794"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistChecker.lean",
+      "bytes": 8433,
+      "sha256": "a0697593e535a7c506a7469145b996d9ae2ff5c911d370937208459205cca593"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistModel.lean",
+      "bytes": 5711,
+      "sha256": "35b510c6d60fa3294f0a4f858b13e476b49341b10873cfbc83226eb9552ca0a3"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/lean/Merlin/GraphStateConfigurationPartialHoist.lean",
+      "bytes": 3956,
+      "sha256": "f6794a9c8c1b710071772dfdea7b9a9dc02ac1fbaeb21937fdcdfb9c63427dbd"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/lean/Merlin/GraphStateContract.lean",
+      "bytes": 1329,
+      "sha256": "d4911054bdec52e90f063db23baf8bcae6a4d42cbe21c971d9018a5d6aca99b0"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/lean/Merlin/GraphStateElision.lean",
+      "bytes": 6641,
+      "sha256": "4aa73e3b00a5b10c355a4b6cd9737cfd6a4fd1ae4c4a5356502ef0edfd029aab"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/lean/Merlin/GraphStateElisionContract.lean",
+      "bytes": 11938,
+      "sha256": "ec74bceca99f8bb92f2ddd3484ccfe3daf48375d1f87435c1d7b7b2e33671e8f"
+    },
+    {
+      "path": "dependencies/worker/src/merlin/verify/lean/Merlin/StateEffects.lean",
+      "bytes": 4537,
+      "sha256": "f5bfccb9d8141a7979a350699d1cffd06eb5f8bc9272841fafe77e64f375b176"
+    },
+    {
+      "path": "lint-final.stdout",
+      "bytes": 19,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "lint-precut.stdout",
+      "bytes": 2724,
+      "sha256": "669a83f711d0e3588f6929de6131773b081e27140fde12d764bbf913776b600d"
+    },
+    {
+      "path": "owned/merlin/tests/ir/test_configuration_hoist_gate.py",
+      "bytes": 3667,
+      "sha256": "e60532578dfed113373cba3c0028ea5812b4ffbd72bb5b169cd9919655ea6c80"
+    },
+    {
+      "path": "owned/merlin/tests/ir/test_configuration_hoist_projection.py",
+      "bytes": 3907,
+      "sha256": "2e9370df9bc8d0c6afa63c7d0e2933b65aec1065b12b82de302013c78e33cf2b"
+    },
+    {
+      "path": "owned/src/merlin/verify/configuration_hoist_bridge.py",
+      "bytes": 10630,
+      "sha256": "8f9b500969fa90a2d061bab486abc8b40158c0214f50fafca3d7a9a42a88ee0c"
+    },
+    {
+      "path": "owned/src/merlin/verify/configuration_hoist_capture.py",
+      "bytes": 3251,
+      "sha256": "124278e3cf2ce7a9e13bc862f87981593d1d205a4862bae886b4d698e0de8d74"
+    },
+    {
+      "path": "owned/src/merlin/verify/configuration_hoist_emit.py",
+      "bytes": 5160,
+      "sha256": "ac90f9cb47400ea6660a8b877043428bfbd5c730fb49d6361925b1b73efae0c2"
+    },
+    {
+      "path": "owned/src/merlin/verify/configuration_hoist_gate.py",
+      "bytes": 15133,
+      "sha256": "247849a33335a3d381398c5b49a225c5b678ab272f7cd11ded9db9a494edfb17"
+    },
+    {
+      "path": "owned/src/merlin/verify/configuration_hoist_intake.py",
+      "bytes": 7933,
+      "sha256": "268f6902e473babc2eba3b3757d25ae7854e96465a628f8a5ce8d16df11f304c"
+    },
+    {
+      "path": "owned/src/merlin/verify/configuration_hoist_worker.py",
+      "bytes": 8443,
+      "sha256": "dffb138e2b0af576682b9bb798d0309a66594b3fa20a8400bb9cddc97e1ab281"
+    },
+    {
+      "path": "owned-source.patch",
+      "bytes": 60203,
+      "sha256": "7950502348e6493fe3c3dfe3071f40bfbb83bb63444dc6bfdd06f37e0b941e19"
+    },
+    {
+      "path": "sdk-tests-v1.stdout",
+      "bytes": 99,
+      "sha256": "a43b1c44dd1e7077494364be64b82b24c56360825914f2412562a9c3c39cbf49"
+    },
+    {
+      "path": "sdk-tests-v4.stdout",
+      "bytes": 1412,
+      "sha256": "9f85677218dcd136b97ae7ea3f41e58c25590ca092dff9a3898c5f11c833f5c1"
+    },
+    {
+      "path": "sdk-tests-v5.stdout",
+      "bytes": 99,
+      "sha256": "9b008d790f6f7b378a8d0e3c8e41c47a60e5bceb8fc117405066db118a75d893"
+    },
+    {
+      "path": "sdk-tests-v7.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "sdk-tests-v7.stdout",
+      "bytes": 99,
+      "sha256": "8b28a8c8c77db2fb44dad0aa663effd3672bc1197b2376cd6ff12bb10c8a7528"
+    },
+    {
+      "path": "source-root-repair.patch",
+      "bytes": 2190,
+      "sha256": "9252b0e04303057cb50a3e8e332555e00292a7cf242fdd25c0604361515c01b8"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "fd0f3b4869dce4c13c06d158ab00d982cadddd0448269b1272f3b38444730f0d"
+}

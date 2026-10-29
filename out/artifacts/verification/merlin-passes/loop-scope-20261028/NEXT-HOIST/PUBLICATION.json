@@ -1,0 +1,285 @@
+{
+  "status": "SELECTED_QUALIFIED_HOIST_SOURCE_AND_TEXT_HANDOFF",
+  "source_commit": "dbaad5090",
+  "primary_merge": "0415d140b",
+  "records": [
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/source-cut-v5.tar.gz",
+      "members": 209,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/handoff.tar.gz",
+      "members": 11,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/delivery-v5.tar.gz",
+      "members": 7,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/paper-evidence.tar.gz",
+      "members": 1,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/source-root-finding-v1.tar.gz",
+      "members": 10,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/laptop-handoff.tar.gz",
+      "members": 48,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/paper-evidence.tar.gz",
+      "members": 2,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/source-delivery-v2.tar.gz",
+      "members": 116,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/qualification-v1.tar.gz",
+      "members": 22,
+      "excluded": 1
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/witness-binding-v1.tar.gz",
+      "members": 15,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/handoff.tar.gz",
+      "members": 1,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/paper-evidence.tar.gz",
+      "members": 11,
+      "excluded": 0
+    },
+    {
+      "archive": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/actual-producer-v1.tar.gz",
+      "members": 132,
+      "excluded": 0
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/HANDOFF.md",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/HANDOFF.md",
+      "bytes": 5466,
+      "sha256": "121a2dad92f1d05474e6f5d0df81f0149b40682baa31674c65150a4d22d0eb80"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/PRODUCER-REFERENCE.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/PRODUCER-REFERENCE.json",
+      "bytes": 2797,
+      "sha256": "312dd8da796416570cbdee95355698a43a4348c019048d47f1e6654e2ed8e6bd"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/WORKSPACE-IDENTITY.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/WORKSPACE-IDENTITY.json",
+      "bytes": 199,
+      "sha256": "b457ada14f02dab504ad6a15b3afa6555d860bd0ff552784eddfc7edc6e4a048"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/CORE-SOURCE-DELIVERY.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/CORE-SOURCE-DELIVERY.json",
+      "bytes": 1598,
+      "sha256": "d64ccac48563aaf6cf5e18f502a2062a529636d9a7e1c06824a62eed68fb85de"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/PHASE1-RESULT-v1.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/PHASE1-RESULT-v1.json",
+      "bytes": 1073,
+      "sha256": "fa27a34e6e08ec04ca7e1fd0ed86e3a21937cfb09ba4923033bf1529037f10da"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/F-TERMINAL-REVIEW-v1.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/F-TERMINAL-REVIEW-v1.json",
+      "bytes": 14341,
+      "sha256": "74f43fd34e039dbc6dfdc03ac8829dc71e76bdd18c49570beeda7097b21fc2b6"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/F-WITNESS-REVIEW-v1.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/F-WITNESS-REVIEW-v1.json",
+      "bytes": 1058,
+      "sha256": "dcdb7640949b156088a1b9114bd3f07677eb1ce900ce9d49ee81d4d951b0e043"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/F-WITNESS-TYPE-DIFF-v1.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/F-WITNESS-TYPE-DIFF-v1.json",
+      "bytes": 13453,
+      "sha256": "5197310592af195907ff77ca8b672a37fc023886197d5d8aa6e43289269947ef"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/laptop-handoff/README.md",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/laptop-handoff/README.md",
+      "bytes": 7863,
+      "sha256": "6948e19b8e74d75ee5a61cd73f8d6e224b5882c3496e0a98613a5016bfd06187"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/laptop-handoff/FINAL_STATUS.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/laptop-handoff/FINAL_STATUS.json",
+      "bytes": 1289,
+      "sha256": "c03123253c7e001860abab7cefaeb47d0f51bd3c055f821ba3f3e3a8df34f32e"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/FINAL_STATUS.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/FINAL_STATUS.json",
+      "bytes": 15183,
+      "sha256": "2b0ddffa66d424cbe877c575bd96d046530d0984480c737140f4f3c3bcd2356c"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/SEAL-v1.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/SEAL-v1.json",
+      "bytes": 537330,
+      "sha256": "d95db767fed6e6c9f1938d51cba698a8942af7f2febca0ba01da9203b742650d"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/handoff/README.md",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/handoff/README.md",
+      "bytes": 6511,
+      "sha256": "a0c0e559e4dac0768e5f7bd599c549b41b74aee9d7e073c8a4b907e7378614f6"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/paper-evidence/README.md",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/paper-evidence/README.md",
+      "bytes": 8414,
+      "sha256": "a803efe4920a232b72599843d44e1ed1ee14f0d47b3ec0700c7206716646461b"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/source-delivery-v2/SOURCES.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/source-delivery-v2/SOURCES.json",
+      "bytes": 92501,
+      "sha256": "6b3128556131c9f8c7e71a366ba3102ddd896beae6f3166020cca5cd783fd1eb"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/qualification-v1/RESULT.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/qualification-v1/RESULT.json",
+      "bytes": 454,
+      "sha256": "f01658b1361a642ee9613c8ebc241705f89d369d1fd137d505b14a33adee687a"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/native-reports/baseline_extent3.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/baseline_extent3/REPORT.json",
+      "bytes": 293598,
+      "sha256": "b53bfc8081fecaef611df19bc52fdb672862f30aa112426eb79470d8ce4b9b86"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/native-reports/extent1.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/extent1/REPORT.json",
+      "bytes": 292823,
+      "sha256": "42b12746707e23ad895cb3b2b86bbba4d6dc9d38c7c80bd8e4e9721412b2ebab"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/native-reports/extent7.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/extent7/REPORT.json",
+      "bytes": 292824,
+      "sha256": "bfb5fd04aacfdb429473b7e721320c490a4844e1831e1bf8159e0c3eb771d21b"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/native-reports/ordered_surroundings.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/ordered_surroundings/REPORT.json",
+      "bytes": 293942,
+      "sha256": "9e6a6fee71e831eab7920727cc671bcf2cf9fd83b7ddd29b44172a60a85a54c0"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/native-reports/disjoint_body_write.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/disjoint_body_write/REPORT.json",
+      "bytes": 293856,
+      "sha256": "97f3d67ac73b79b38edf0a0c765b0ba8a8fa4e20d1ebe72b5ec3fe4847b18346"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/native-reports/disjoint_body_clobber.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/disjoint_body_clobber/REPORT.json",
+      "bytes": 294028,
+      "sha256": "1b092cc0f601be8310c035a739a4be320f9c495a63343a7d15c6938b358245b1"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/native-reports/unsigned64_body_value.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/hoist-v1/positives/unsigned64_body_value/REPORT.json",
+      "bytes": 294028,
+      "sha256": "0b5b8e760de4a2439020a16427e4423598d9b2bb437ed5db15ff680980238efe"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/CORE-INTAKE-REVIEW.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/CORE-INTAKE-REVIEW.json",
+      "bytes": 1932,
+      "sha256": "65f3885a1649830aa1720dec5ba6661cf3874940ae0558e40a838c8e3c1268e0"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/PRODUCER-SOURCE-MANIFEST-e0484f488.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/PRODUCER-SOURCE-MANIFEST-e0484f488.json",
+      "bytes": 528280,
+      "sha256": "bb35450b5374e4fea125d0f766588830eea7a771131de7d1e961d5a4a4ea2626"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/PRODUCER-SOURCE-MANIFEST-e0484f488.sha256",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/PRODUCER-SOURCE-MANIFEST-e0484f488.sha256",
+      "bytes": 65,
+      "sha256": "066f344a69628a4da5defb45502fff5e7aa2f8708ecf733bc3aba39699c01fcf"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/HOST-INTAKE-REVIEW.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/HOST-INTAKE-REVIEW.json",
+      "bytes": 2048,
+      "sha256": "a4240ff3ac9f7be77f2146c8611bca05f41eaeaeac6c882cfdd356cd752395b8"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/ACTIVE.md",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/ACTIVE.md",
+      "bytes": 2691,
+      "sha256": "e4a7fb7a371eeec8e56304eec0123a160df6e03bc0075deb43a3bb4ad34731fe"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/FINAL-CUT5-REVIEW.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/FINAL-CUT5-REVIEW.json",
+      "bytes": 496,
+      "sha256": "5f06cdd0a14fc90a4802ab962cefc0c922b9ef2383c66089b8e43f59f6357a70"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/FINAL-SOURCE-REVIEW.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/COORDINATOR/FINAL-SOURCE-REVIEW.json",
+      "bytes": 1711,
+      "sha256": "acdb3142a10f91086a8ef32e1dec1d4fbab9f1c5f8a59ba2dffcb42f9e581972"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/RELEASE.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/RELEASE.json",
+      "bytes": 297,
+      "sha256": "1c79f8b0699aa7cee1faa087acbad519d69ffa087d7f2305488af9afbc3445bc"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/STOP-AFTER-HOIST.json",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/STOP-AFTER-HOIST.json",
+      "bytes": 270,
+      "sha256": "013fff6ff66ded0458bd11f30cd2fca9fca94ab5d9cd4aaea11533395f1da4a5"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/TASK.md",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/Q/TASK.md",
+      "bytes": 3874,
+      "sha256": "f2f0fa9e060f7f486042ee0f750e7850ddb92df44656db77a5fe1485ef02be66"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/TASK.md",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/W/TASK.md",
+      "bytes": 4030,
+      "sha256": "3c45135805e63fcc5cae0354510fee90361f7f1b0f1ec460677c06812f47f747"
+    },
+    {
+      "retained": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/TASK.md",
+      "original": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-HOIST/F/TASK.md",
+      "bytes": 4051,
+      "sha256": "6f18ee086d5f2ed3a4012308cdd42ca7447a5828a27c307b7380c4c2a9d0bc2a"
+    }
+  ],
+  "all_agents_stopped": true,
+  "binary_SDK_objects_shipped": false,
+  "limitations": "Conditional modeled state/effect correctness; human/ISA/native/Python fidelity and adjacent-pass composition/enforcement remain open."
+}

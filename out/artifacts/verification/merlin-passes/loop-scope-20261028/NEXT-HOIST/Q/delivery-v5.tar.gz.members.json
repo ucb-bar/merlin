@@ -1,0 +1,41 @@
+{
+  "members": [
+    {
+      "path": "F-FINAL-STATUS.json",
+      "bytes": 15183,
+      "sha256": "2b0ddffa66d424cbe877c575bd96d046530d0984480c737140f4f3c3bcd2356c"
+    },
+    {
+      "path": "F-FRESH-REPLAY.json",
+      "bytes": 388,
+      "sha256": "e6b5445b14a2d31b505b06b3c29f820e8afe60d3c401f995bd824d0ac6733e9c"
+    },
+    {
+      "path": "F-QUALIFICATION.json",
+      "bytes": 454,
+      "sha256": "f01658b1361a642ee9613c8ebc241705f89d369d1fd137d505b14a33adee687a"
+    },
+    {
+      "path": "Q-EXACT-EVIDENCE-JOIN.json",
+      "bytes": 3324,
+      "sha256": "538d492484eaab2907dde9584ad4bbf92ce9ad00cc98c79e07fa033ed5a82456"
+    },
+    {
+      "path": "README.md",
+      "bytes": 634,
+      "sha256": "845f2511e6613d4742f231b416686561fd243e0706414080154ea962c2843c63"
+    },
+    {
+      "path": "SEAL.json",
+      "bytes": 5599,
+      "sha256": "6c5c93bfd5693ae791a15ec03950f84370ff2e0d46aad747ff77e34aaaf6d146"
+    },
+    {
+      "path": "TERMINAL-JOIN.json",
+      "bytes": 2295,
+      "sha256": "8094f32cc715c9a15c7f6ef9d84c09703edc090ac944e85a35bc03962217d82b"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "5e8458706a8150da8e762e492f4512c360b667f4c2903d7ecdf611387bfcd26b"
+}

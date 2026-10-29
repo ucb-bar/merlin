@@ -1,0 +1,36 @@
+{
+  "status": "phase1_model_checker_actual_query_success_first_error_and_counterexamples_compiled_audited",
+  "source_ref": "e0484f4886ae0780d0325cdfa998842b61bb647c",
+  "actual_static_calls": 5,
+  "actual_loop_extent": 3,
+  "checked_field_values": [
+    3,
+    5
+  ],
+  "source_success": {
+    "observer": 61,
+    "order_trace": 1234567
+  },
+  "first_body_error": {
+    "code": 73,
+    "iteration": 1,
+    "call_id": 3,
+    "observer": 37,
+    "order_trace": 1234
+  },
+  "prefix_error": {
+    "code": 91,
+    "initial_configuration_unchanged": true
+  },
+  "source_execution_or_whole_run_equality_premise": false,
+  "scope": "positive single static countedLoop/single invariant pure setup/nonemptyflatbody/no setupfield write/clobber overlap/emptycompletionfields",
+  "generic_roots": 92,
+  "actual_roots": 100,
+  "witness_roots": 124,
+  "witness_theorems": 345,
+  "std3": true,
+  "violations": [],
+  "canonical_intake_and_qualification_held_for_root_review": true,
+  "Python_projection_and_ISA_primitive_native_hardware_human_review_separate": true,
+  "live_W_jobs": []
+}

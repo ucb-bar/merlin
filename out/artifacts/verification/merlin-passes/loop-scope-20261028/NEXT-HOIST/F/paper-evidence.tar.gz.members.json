@@ -1,0 +1,61 @@
+{
+  "members": [
+    {
+      "path": "ActualConfigurationHoist.lean",
+      "bytes": 10313,
+      "sha256": "19392427c2a2917fc51e79da9877d2441229b0f0b9cdbe0f64bc74c12da5c62a"
+    },
+    {
+      "path": "BINDINGS.json",
+      "bytes": 2923,
+      "sha256": "0dcfecf9c9401e7d5319df788125366f0de3c45520fdd77fb00fd09c9c130708"
+    },
+    {
+      "path": "CHECKED-REPORT.json",
+      "bytes": 293598,
+      "sha256": "b53bfc8081fecaef611df19bc52fdb672862f30aa112426eb79470d8ce4b9b86"
+    },
+    {
+      "path": "PREPARATION.md",
+      "bytes": 4687,
+      "sha256": "832d95dd4a62199af94443cbedfccfcb9af3a33be6c9e0c806b1cd43776d4338"
+    },
+    {
+      "path": "README.md",
+      "bytes": 8414,
+      "sha256": "a803efe4920a232b72599843d44e1ed1ee14f0d47b3ec0700c7206716646461b"
+    },
+    {
+      "path": "after.mk",
+      "bytes": 237,
+      "sha256": "fc1a887a63148fa8659223b552e50e0dc588b596f10543fcb343838808f08bf9"
+    },
+    {
+      "path": "before.mk",
+      "bytes": 239,
+      "sha256": "0266a1d9d2b679920b47f97885c23e8bc5d5993f5ead955221cdf67942d27213"
+    },
+    {
+      "path": "negative-wrong-value.lean",
+      "bytes": 10313,
+      "sha256": "3ae6f67c67a446c90025638c48d1f44ab53ca4765a19ec3ccbc5203939a40e54"
+    },
+    {
+      "path": "negative-wrong-value.process.json",
+      "bytes": 433,
+      "sha256": "72a3eadeb5554b3eb6d162fb405ed4cf0f4c51e8e14ee8dfe43f8b573c9b2a73"
+    },
+    {
+      "path": "negative-wrong-value.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "negative-wrong-value.stdout",
+      "bytes": 278,
+      "sha256": "3bd59b387d0bf8517dd09021155fd1ca4a43c3fb4880da8f77ebd31cbf101288"
+    }
+  ],
+  "excluded": [],
+  "archive_sha256": "a676ceb1f8f067fbcc79ef2d1538771441dc00cf707bbf76fe531d30f3e4ca49"
+}

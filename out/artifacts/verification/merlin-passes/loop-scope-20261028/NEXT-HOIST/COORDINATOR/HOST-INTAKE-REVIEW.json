@@ -1,0 +1,36 @@
+{
+  "status": "REVIEWED_SIX_EXACT_CANONICAL_HOST_LEAVES_INTAKEN",
+  "manifest_sha256": "0bc37b377842e65c5812deece59ff83dee64d4cf4ff52d414500ddf8eacfe8c3",
+  "manifest_files": 201,
+  "installed": [
+    {
+      "path": "src/merlin/verify/configuration_hoist_bridge.py",
+      "sha256": "8f9b500969fa90a2d061bab486abc8b40158c0214f50fafca3d7a9a42a88ee0c"
+    },
+    {
+      "path": "src/merlin/verify/configuration_hoist_capture.py",
+      "sha256": "124278e3cf2ce7a9e13bc862f87981593d1d205a4862bae886b4d698e0de8d74"
+    },
+    {
+      "path": "src/merlin/verify/configuration_hoist_emit.py",
+      "sha256": "ac90f9cb47400ea6660a8b877043428bfbd5c730fb49d6361925b1b73efae0c2"
+    },
+    {
+      "path": "src/merlin/verify/configuration_hoist_gate.py",
+      "sha256": "247849a33335a3d381398c5b49a225c5b678ab272f7cd11ded9db9a494edfb17"
+    },
+    {
+      "path": "src/merlin/verify/configuration_hoist_intake.py",
+      "sha256": "e0650414f7179141e908fdf6162514d4ae5a7d26c7bd422fe80a28411bf62b0c"
+    },
+    {
+      "path": "src/merlin/verify/configuration_hoist_worker.py",
+      "sha256": "dffb138e2b0af576682b9bb798d0309a66594b3fa20a8400bb9cddc97e1ab281"
+    }
+  ],
+  "global_init_unchanged": true,
+  "source_review": "Root reviewed complete typed Kernel export/parse roundtrips, explicit empty completion fields, preserved headers/calls/descriptors/args, field decode and all-overlap rejection, stable source-ID terms and common partial model; source Git manifest bb3545 pins every used file/origin, fresh cache prefix and pre/post hashes; native checking uses canonical nine-module closure only, fresh private objects, complete roots/std3, live authority/source/artifact controls and replay. No source-success or whole-run premise.",
+  "review_limits": "Python/parser/ISA/native fidelity and independent human model approval remain explicit. No full-graph/pipeline/native claim.",
+  "qualification": "Held pending owner canonical relocation/refreeze; F may launch only exact coherent canonical cut.",
+  "time": "2026-10-29T04:13:01.968157+00:00"
+}

@@ -1,0 +1,36 @@
+{
+  "status": "COMPLETED_SCOPED_HOIST_DOCUMENTED_STOPPED_BY_USER",
+  "workspace": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification",
+    "branch": "feat/loop-transform-verification",
+    "HEAD": "dbaad5090d9099cefe795cf27329767839c7caca",
+    "observed_utc": "2026-10-29T04:46:29.509647+00:00",
+    "metadata_read_only": true,
+    "live_W_jobs": [],
+    "F_jobs": "root reports all reaped/stopped"
+  },
+  "canonical_Q_cut": "v5",
+  "Q_manifest_sha256": "0c5e3ac64e7fbdedff50fa526cf3b6f9fae6e149c6fdcaff3213b72327c82aab",
+  "F_campaign": "qualification-v1",
+  "supported_pairs": 7,
+  "unsupported_boundaries": 9,
+  "actual_Lean_mutation_refusals": 15,
+  "host_completion_refusals": 1,
+  "forged_request_controls": 16,
+  "live_artifact_controls": 12,
+  "fresh_process_replay": true,
+  "independent_actual_witness": {
+    "roots": 124,
+    "theorems": 345,
+    "std3": true,
+    "source_success_assumed": false,
+    "whole_run_equality_assumed": false
+  },
+  "generic_proofs_complete": true,
+  "qualification_complete_in_scoped_conditional_model": true,
+  "native_hardware_human_approval": false,
+  "production_enforcement": false,
+  "adjacent_fullpipeline_composition": false,
+  "next_work_requires_NEW_user_resume": true,
+  "publication_and_integration_owner": "coordinator"
+}
