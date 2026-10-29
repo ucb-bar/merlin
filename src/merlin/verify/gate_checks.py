@@ -176,3 +176,9 @@ def compiler_configuration_hoist_refinement(job: dict[str, Any]) -> dict[str, An
     from .compiler_configuration_hoist import check
 
     return check(job)
+
+
+def compiler_memory_dce_refinement(job: dict[str, Any]) -> dict[str, Any]:
+    from .compiler_memory_dce import check
+
+    return check(job)

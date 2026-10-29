@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os as _os
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -338,9 +339,12 @@ def lower_model(
             ):
                 raise ValueError("original recomputation completion checker changed; replan")
             recomputation_check()
-    with IrAudit(
-        workdir, enabled=ir_audit, producer="merlin.llvmlower.lower_model", source=__file__, sidecars=audit_sidecars
-    ) as audit:
+    with (
+        IrAudit(
+            workdir, enabled=ir_audit, producer="merlin.llvmlower.lower_model", source=__file__, sidecars=audit_sidecars
+        ) as audit,
+        ExitStack() as memory_scopes,
+    ):
         work = Path(workdir)
         work.mkdir(parents=True, exist_ok=True)
         for name in (
@@ -388,6 +392,23 @@ def lower_model(
                     "formal source transforms require a separate original source from other owned selections"
                 )
             audit.stage("formal-source-transforms", mlir_text)
+        memory_origin = None
+        if (
+            formal_transform_report is not None
+            and formal_transform_report["memory_source"]
+            and _validation.current() is not None
+        ):
+            from merlin.verify.compiler_memory_origin import compiler_scope
+            from merlin.verify.compiler_transforms import memory_lowering_pipeline
+
+            memory_origin = memory_scopes.enter_context(
+                compiler_scope(
+                    work,
+                    original_source=mlir_text,
+                    memory_pipeline=memory_lowering_pipeline(),
+                    validation=_validation.current(),
+                )
+            )
         if recomputation is not None:
             recomputation.retain(work)
             mlir_text = recomputation.selected_source
@@ -731,6 +752,8 @@ def lower_model(
             ):
                 raise ValueError("explicit memory source lowering requires its scalar pipeline without tensor features")
             memory_pipeline = memory_lowering_pipeline()
+            if memory_origin is not None:
+                memory_origin.bind_upstream(upstream_text)
         try:
             if descriptor_preparation is not None:
                 descriptor_check()
