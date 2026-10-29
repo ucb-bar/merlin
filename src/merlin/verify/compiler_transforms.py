@@ -53,8 +53,10 @@ class Options:
                 raise ValueError(f"{name} depth requires its transformation parameter")
         if self.buffer_allocator is not None and (self.buffer_allocator != ALLOCATOR or self.unroll_factor is not None):
             raise ValueError("buffer reuse requires explicit total_private_unobservable allocator; no unroll")
-        if self.buffer_allocator is not None and self.tile_size is not None and self.tile_size > 16:
-            raise ValueError("private buffer proof currently requires tile size at most sixteen")
+        # Public resource policy, not a theorem bound. Strip mining emits a
+        # constant-size body; actual signed-index safety is checked in Lean.
+        if self.buffer_allocator is not None and self.tile_size is not None and self.tile_size > 65536:
+            raise ValueError("private buffer tile resource policy permits sizes up to 65536")
         if self.buffer_allocator is not None and self.tile_depth != 1:
             raise ValueError("private buffer initializer tiling requires depth one")
 

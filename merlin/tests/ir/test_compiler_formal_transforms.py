@@ -119,7 +119,7 @@ def test_project_proof_root_ignores_caller_repository_override(tmp_path, monkeyp
         {"tile_size": True},
         {"buffer_allocator": True},
         {"buffer_allocator": "finite", "tile_size": 3},
-        {"buffer_allocator": transforms.ALLOCATOR, "tile_size": 17},
+        {"buffer_allocator": transforms.ALLOCATOR, "tile_size": 65537},
         {"buffer_allocator": transforms.ALLOCATOR, "tile_size": 3, "unroll_factor": 2},
     ],
 )
