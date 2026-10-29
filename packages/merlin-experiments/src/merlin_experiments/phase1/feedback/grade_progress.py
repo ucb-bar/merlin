@@ -91,12 +91,12 @@ class SnapshotProgress:
         row = qa._per_capsule_from_results(self.runs_root, only_capsule=name).get(name)
         if row is not None:
             self.rows[name] = {"capsule": name, **row}
+            self.guard.observe(self.rows[name])
             self._write("running")
 
     def finish(self, verdict):
-        superseded = self.guard.reason() is not None
-        state = ("superseded_snapshot" if getattr(self.guard, "finish_bounded_snapshot", False)
-                 else "deferred") if superseded else "complete"
+        superseded = self.guard.ended_early()
+        state = self.guard.terminal_status() if superseded else "complete"
         self._write(state, verdict=verdict)
 
     def _write(self, state, *, verdict=None):

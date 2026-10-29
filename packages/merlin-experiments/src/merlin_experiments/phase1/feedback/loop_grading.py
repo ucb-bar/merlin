@@ -384,6 +384,8 @@ def grade(
         with shared_compute_pool(timeout_s=timeout):
             RI.strip_build_state(cand)  # clean, relocatable build per grade (abc9 L3-build bug)
             snapshot_digest = hash_tree(cand)["sha256"]
+        if background_guard is not None:
+            background_guard.smoke(cand)  # pending_reason then gates the whole roster, unrun and unjudged
         # The harness commits exactly the bytes about to be graded; the agent never touches the repo.
         oot_commit = OH.commit_graded(run_dir, cand, label=label, key=_key, sandbox_roots=(ws.parent,))
         with shared_compute_pool(timeout_s=timeout):
@@ -476,14 +478,14 @@ def grade(
                     max_workers=background_workers,
                 )
             verdict = _attribute_source(verdict, ws, snapshot_digest, stage="capsule_evidence_before_shape_probes")
-            if background_guard is not None and background_guard.reason() is not None:
+            if background_guard is not None and background_guard.ended_early():
                 verdict.update(
                     all_pass=None,
                     gradeable=False,
                     n_capsules=len(verdict.get("per_capsule") or []),
                     background_grade={
-                        "status": "superseded_snapshot" if background_guard.finish_bounded_snapshot else "deferred",
-                        "reason": background_guard.deferred,
+                        "status": background_guard.terminal_status(),
+                        "reason": background_guard.ended_reason(),
                         "source_sha256": background_guard.source,
                     },
                 )
@@ -607,7 +609,7 @@ def grade(
             and _cert
             and isinstance(verdict, dict)
             and verdict.get("per_capsule")
-            and (background_guard is None or background_guard.deferred is None)
+            and (background_guard is None or background_guard.ended_reason() is None)
         ):
             _p = _promote(
                 ws,
@@ -848,6 +850,7 @@ def fast_grade(
         RI.copy_candidate_tree(ws / "submission", cand, ignore=RI.SUBMISSION_IGNORED)
         RI.strip_build_state(cand)
     snapshot_digest = hash_tree(cand)["sha256"]
+    background_guard.smoke(cand)  # a compiler that cannot load is skipped, not graded 270 times
     fruns = run_dir / "_qa_work" / f"fruns_{tick}"
     te = load_target_experiment(inputs.context.descriptor)
     from .. import joint_control
@@ -873,7 +876,8 @@ def fast_grade(
             completed_promotion = _completed_loop_promoter(ws, cand.parent, fruns, loop, cert, cover, inputs=inputs)
     except Exception as exc:  # noqa: BLE001 -- scheduling cannot invalidate completed loop evidence
         print(f"[first-grade] streaming promotion unavailable: {type(exc).__name__}: {exc}", flush=True)
-    from merlin.targetgen.capsule_scheduling import timing_history
+    from merlin.common.cpu_pool import demote_when_stale
+    from merlin.targetgen.capsule_scheduling import observe_supersession, timing_history
 
     progress = SnapshotProgress(ws, fruns, snapshot_digest, background_guard)
     from . import joint_curriculum
@@ -936,8 +940,10 @@ def fast_grade(
         with (rolling as case_timeout,
               compiler_execution(inputs, candidate=cand, run_dir=run_dir),
               timing_history(history),
+              observe_supersession(background_guard.interrupt_reason),
+              demote_when_stale(lambda: background_guard.newer_snapshot() is not None),
               CompletionProcessing(process_completed) as completion_processing):
-            _fast_score = {} if not selected_roots else (
+            _fast_score = {} if not selected_roots or background_guard.prescreen_failure else (
                 _CG.grade(
                     str(cand),
                     capsules_root=selected_roots,
@@ -1009,15 +1015,18 @@ def fast_grade(
             "Finish the declared tool; the first grade will retry shortly. The selected cohort is unchanged.",
         )
     verdict = _attribute_source(verdict, ws, snapshot_digest, stage="loop_screen")
-    if background_guard.reason() is not None:
+    if background_guard.ended_early():
+        skipped = sum(1 for row in verdict.get("per_capsule") or [] if row.get("status") == "gated")
         verdict.update(
             all_pass=None,
             gradeable=False,
             mandatory_tiers_complete=False,
             background_grade={
-                "status": "superseded_snapshot" if background_guard.finish_bounded_snapshot else "deferred",
-                "reason": background_guard.deferred,
+                "status": background_guard.terminal_status(),
+                "reason": background_guard.ended_reason(),
                 "source_sha256": background_guard.source,
+                # Honest accounting: these were never run (unknown), not passed and not failed.
+                "n_skipped_unknown": skipped,
             },
         )
     verdict["graded_request_sha256"] = background_guard.source
@@ -1045,7 +1054,7 @@ def fast_grade(
         from merlin_experiments.phase1.feedback.promotion import resolve_tiers as _resolve
 
         _loop, _cert, _cover = _resolve(ws, context=inputs.context, capsules_root=inputs.promotion_root)
-        if _loop and _cert and verdict.get("per_capsule") and background_guard.deferred is None:
+        if _loop and _cert and verdict.get("per_capsule") and background_guard.ended_reason() is None:
             _promote(
                 ws,
                 ws / ".qa_channel",

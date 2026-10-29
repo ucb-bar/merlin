@@ -187,14 +187,85 @@ def source_digest(ws):
 
 
 class BackgroundGuard:
+    #: How a superseded bounded snapshot treats work after a newer snapshot of different source appears:
+    #: ``interrupt`` skips unstarted capsules and gates the next compiler command of started ones;
+    #: ``drain`` only skips unstarted capsules (started ones run to their verdict).
+    STALE_POLICIES = ("interrupt", "drain")
+
     def __init__(self, ws, public, inputs, source_sha256, *, finish_bounded_snapshot=False):
         self.ws, self.public, self.inputs, self.source = ws, public, inputs, source_sha256
         self.deferred = None
         self.finish_bounded_snapshot = finish_bounded_snapshot
+        from .snapshot_publication import current_token
+        from . import snapshot_smoke
+
+        self.token = current_token()
+        self.skip_noted = None  # the reason work was actually skipped, once any was
+        self.prescreen_failure = None  # why the rest of this snapshot is skipped (smoke), else None
+        self.screen = snapshot_smoke.LoadFailureScreen() if snapshot_smoke.enabled() else None
+        self.stale_policy = os.environ.get('MERLIN_SNAPSHOT_STALE_POLICY', 'interrupt')
+        if self.stale_policy not in self.STALE_POLICIES:
+            raise ValueError('MERLIN_SNAPSHOT_STALE_POLICY must be interrupt or drain')
         selected = os.environ.get('MERLIN_BACKGROUND_FINISH_SNAPSHOT', '0')
         if selected not in {'0', '1'}:
             raise ValueError('MERLIN_BACKGROUND_FINISH_SNAPSHOT must be 0 or 1')
         # Legacy selection remains accepted, but may never keep queuing obsolete work.
+
+    def newer_snapshot(self):
+        """Token of a newer snapshot of DIFFERENT source (this one is superseded), else None."""
+        if not self.finish_bounded_snapshot or self.token is None:
+            return None
+        from .snapshot_publication import superseding_snapshot
+
+        return superseding_snapshot(self.ws, self.token)
+
+    def smoke(self, tree):
+        """Static smoke of the copied compiler before any capsule dispatch."""
+        from . import snapshot_smoke
+
+        if self.screen is not None and self.prescreen_failure is None:
+            self.prescreen_failure = snapshot_smoke.static_smoke(tree)
+        return self.prescreen_failure
+
+    def observe(self, row):
+        """Feed a completed redacted row to the load-failure screen."""
+        if self.screen is not None:
+            self.screen.observe(row)
+            if self.prescreen_failure is None and self.screen.reason is not None:
+                self.prescreen_failure = self.screen.reason
+
+    def skip_reason(self):
+        """Why the rest of this snapshot should not run: a failed smoke or a newer snapshot.
+
+        Handing out a reason means work was (or is about to be) skipped for it: remember that, so a
+        snapshot that finished its whole roster before being superseded is not relabelled."""
+        if self.prescreen_failure is not None:
+            self.skip_noted = self.prescreen_failure
+            return self.prescreen_failure
+        newer = self.newer_snapshot()
+        if newer is not None:
+            self.skip_noted = f"superseded by newer snapshot {newer} (different source)"
+            return self.skip_noted
+        return None
+
+    def interrupt_reason(self):
+        """Reason for work that has not begun its next command; ``None`` lets started work drain."""
+        if self.prescreen_failure is not None or self.stale_policy == 'interrupt':
+            return self.skip_reason()
+        return None
+
+    def terminal_status(self):
+        """Verdict label for a snapshot that did not run its roster: superseded vs smoke vs deferred."""
+        if self.prescreen_failure is not None:
+            return 'prescreen_failed'
+        return 'superseded_snapshot' if self.finish_bounded_snapshot else 'deferred'
+
+    def ended_early(self):
+        """The grade is not a complete verdict: source moved on, or work was skipped as superseded/smoke."""
+        return self.reason() is not None or self.skip_noted is not None
+
+    def ended_reason(self):
+        return self.deferred or self.skip_noted
 
     def pending_reason(self):
         """A selected bounded joint smoke finishes its immutable copied source.
@@ -202,6 +273,7 @@ class BackgroundGuard:
         Live edits still revoke current-source attribution and promotion through
         reason/current. They do not invalidate computations on the frozen copy.
         Existing invocation deadlines and the shared CPU lease priorities remain.
+        A failed smoke, or a newer snapshot of different source, stops starting more.
         """
         if self.finish_bounded_snapshot:
             from .. import joint_control
@@ -213,8 +285,8 @@ class BackgroundGuard:
                 return stop
             if joint_control.remaining() <= 0:
                 return "joint campaign deadline reached"
-            return None
-        return self.reason()
+            return self.skip_reason()
+        return self.reason() or self.prescreen_failure
 
     def reason(self):
         # Only obsolescence defers pending work. A concurrent same-source author

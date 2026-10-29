@@ -62,13 +62,15 @@ def _checkpoint_command_admission():
     custody or while an owned child is running. Final frozen-compiler checks do
     not carry the background snapshot admission scope and remain eligible.
     """
-    from merlin.targetgen.capsule_scheduling import background_admission_selected
+    from merlin.targetgen.capsule_scheduling import background_admission_selected, supersession_reason
 
     if not background_admission_selected():
         return
     from .. import joint_control
 
-    reason = joint_control.stop_reason()
+    # A newer snapshot of different source, or a failed smoke, ends this grade at the next command
+    # boundary: the command is gated (unknown), before it pays the multi-minute custody entry.
+    reason = joint_control.stop_reason() or supersession_reason()
     if reason is not None:
         raise P.NotMeasuredFailure(
             "preparation_admission", "BACKGROUND_DEFERRED", reason, status="gated",

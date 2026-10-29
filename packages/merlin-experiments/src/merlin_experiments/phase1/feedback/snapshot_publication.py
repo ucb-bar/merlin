@@ -19,12 +19,59 @@ def _lock(workspace):
         yield directory / '.snapshot-publication.json'
 
 
-def claim(workspace, token):
-    """Called by the single lifecycle owner before dispatching its newest snapshot."""
+_SOURCES_KEPT = 16
+
+
+def _record(path):
+    try:
+        record = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def claim(workspace, token, source=None):
+    """Called by the single lifecycle owner before dispatching its newest snapshot.
+
+    ``source`` (the snapshot's source identity) is remembered per token so a running grade can tell a
+    newer snapshot of DIFFERENT source (supersedes it) from a same-source overlap (complements it)."""
     with _lock(workspace) as path:
+        sources = dict(_record(path).get('sources') or {})
+        if source is not None:
+            sources[str(token)] = str(source)
+        sources = dict(sorted(sources.items(), key=lambda item: int(item[0]) if item[0].isdecimal() else 0)[-_SOURCES_KEPT:])
         temporary = path.with_suffix('.next.json')
-        temporary.write_text(json.dumps({'token': str(token)}) + '\n')
+        temporary.write_text(json.dumps({'token': str(token), 'sources': sources}) + '\n')
         temporary.replace(path)
+
+
+def release(workspace, token, fallback=None):
+    """A claimed snapshot that never graded (deferred or failed to start) stops being the newest."""
+    with _lock(workspace) as path:
+        record = _record(path)
+        if record.get('token') != str(token):
+            return
+        sources = {k: v for k, v in (record.get('sources') or {}).items() if k != str(token)}
+        record = {'token': str(fallback) if fallback is not None else '', 'sources': sources}
+        temporary = path.with_suffix('.next.json')
+        temporary.write_text(json.dumps(record) + '\n')
+        temporary.replace(path)
+
+
+def superseding_snapshot(workspace, token):
+    """The newer claimed token whose source differs from ``token``'s, else ``None``.
+
+    Reads the atomically replaced claim file without the lock. Unknown sources never supersede."""
+    if token is None:
+        return None
+    record = _record(Path(workspace) / 'qa' / '.snapshot-publication.json')
+    newest, sources = record.get('token'), record.get('sources') or {}
+    token = str(token)
+    if (not isinstance(newest, str) or newest == token or not newest.isdecimal() or not token.isdecimal()
+            or int(newest) <= int(token)):
+        return None
+    mine, theirs = sources.get(token), sources.get(newest)
+    return newest if mine is not None and theirs is not None and mine != theirs else None
 
 
 @contextmanager

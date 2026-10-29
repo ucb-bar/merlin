@@ -45,9 +45,48 @@ _PARSED: dict[tuple, tuple[str, dict[str, float], dict[str, int]] | None] = {}
 _PARSED_LOCK = threading.Lock()
 
 
+_SUPERSESSION: ContextVar[Callable[[], str | None] | None] = ContextVar("merlin_snapshot_supersession", default=None)
+
+
+@contextmanager
+def observe_supersession(probe: Callable[[], str | None]) -> Iterator[None]:
+    """Mark this context's grade as stoppable by a trusted snapshot owner.
+
+    ``probe`` returns a reason once a NEWER snapshot of different source (or a failed smoke) makes the
+    rest of this grade pointless, else ``None``. Capsules not yet started and compiler commands not yet
+    begun are skipped as ``gated``/``BACKGROUND_DEFERRED`` with that reason: never a pass, never a fail.
+    A command already running is not killed here (the operator child polls it, see ``active_defer_probe``)."""
+    token = _SUPERSESSION.set(probe)
+    try:
+        yield
+    finally:
+        _SUPERSESSION.reset(token)
+
+
+def supersession_reason() -> str | None:
+    probe = _SUPERSESSION.get()
+    if probe is None:
+        return None
+    reason = probe()
+    return reason if isinstance(reason, str) and reason else None
+
+
 def active_defer_probe() -> Callable[[], str | None] | None:
     """The scheduler's observed deferral reason for this worker, if it is a background grade."""
-    return _DEFER_PROBE.get()
+    probe = _DEFER_PROBE.get()
+    if _SUPERSESSION.get() is None:
+        return probe
+    return lambda: (probe() if probe is not None else None) or supersession_reason()
+
+
+def deferred_row(capsule: Mapping[str, Any] | dict, reason: str) -> dict:
+    """The one honest record of a capsule a stale or smoke-failed snapshot never ran."""
+    return {
+        "capsule": capsule["name"], "kind": capsule.get("kind"), "label": capsule.get("label"),
+        "status": "gated", "background_deferred": reason, "execution_status": "not_started",
+        "correctness": "unknown",
+        "failure": {"plane": "gate", "category": "BACKGROUND_DEFERRED", "detail": reason},
+    }
 
 
 @contextmanager
@@ -486,6 +525,11 @@ def run_pipelined(
         original_run_one = run_one
 
         def run_one(capsule, parallel):
+            # Safe point before any work: a member queued behind the pool when its snapshot was
+            # superseded (or failed its smoke) is skipped, not run to a guaranteed-stale result.
+            stale = deferred or supersession_reason()
+            if stale:
+                return deferred_row(capsule, stale)
             token = _DEFER_PROBE.set((lambda: deferred) if defer_running else None)
             try:
                 return original_run_one(capsule, parallel)
@@ -516,7 +560,9 @@ def run_pipelined(
                     "status": "gated",
                     "background_deferred": deferred or admission_closed,
                     **({"admission_deferred": True, "execution_status": "not_started",
-                        "correctness": "unknown"} if admission_closed and cap["name"] not in admitted else {}),
+                        "correctness": "unknown"} if admission_closed and cap["name"] not in admitted else
+                       {"execution_status": "not_started", "correctness": "unknown"}
+                       if cap["name"] not in admitted else {}),
                     "failure": {"plane": "gate",
                         "category": "ADMISSION_DEFERRED" if admission_closed else "BACKGROUND_DEFERRED",
                         "detail": deferred or admission_closed},

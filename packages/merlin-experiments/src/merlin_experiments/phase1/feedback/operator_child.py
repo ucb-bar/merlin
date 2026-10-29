@@ -233,6 +233,10 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
     selection = adapter_selection(adapters, target=target)
     if capsule.get("kind") == "model":
         raise StageGateError("operator child cannot replace the whole-model route")
+    from merlin.targetgen.capsule_scheduling import deferred_row, supersession_reason
+
+    if (stale := supersession_reason()) is not None:  # before custody preparation, never mid-child
+        return deferred_row(capsule, stale)
     costs = {tier: tier_policy.observed_cost(target, tier) for tier in selection}
     document = {
         "grade_kind": "operator",

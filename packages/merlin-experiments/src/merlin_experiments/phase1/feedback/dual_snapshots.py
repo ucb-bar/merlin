@@ -81,7 +81,7 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
         job = dict(token=str(tick), tick=tick, source=source, started_at_epoch=time.time(),
                    closed=threading.Event(), done=threading.Event(), first=first_pending)
         first_pending = False
-        snapshot_publication.claim(workspace, job['token'])
+        snapshot_publication.claim(workspace, job['token'], source)
 
         def closed(reason):
             job['admission_reason'] = reason
@@ -117,6 +117,10 @@ def run(workspace, run_dir, stop, *, interval_s, first_grade, grade, source_iden
                     continue
                 join_background(job['thread'])
                 active.remove(job)
+                if job.get('deferred') or (job.get('error') and not job.get('verdict')):
+                    # It never graded, so it must not keep supersede-marking the older grade.
+                    others = [j['token'] for j in active]
+                    snapshot_publication.release(workspace, job['token'], max(others, key=int) if others else None)
                 if job.get('deferred'):
                     first_pending = first_pending or job['first']
                     next_start = 0.0

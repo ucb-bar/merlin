@@ -148,7 +148,29 @@ def lease_priority(environ: Mapping[str, str] | None = None) -> int:
     class.
     """
     level = _explicit_priority(environ)
-    return GRADE if level is None else level
+    level = GRADE if level is None else level
+    if level == GRADE:
+        probe = _STALE_GRADE.get()
+        if probe is not None and probe():
+            return PREPARATION  # a superseded snapshot's next lease waits behind the newest snapshot's
+    return level
+
+
+_STALE_GRADE = ContextVar("cpu_stale_grade_probe", default=None)
+
+
+@contextmanager
+def demote_when_stale(probe):
+    """While ``probe()`` is true, leases this context requests at :data:`GRADE` queue at
+    :data:`PREPARATION` instead, so the newest snapshot's grade capsules take free slots first.
+
+    Only the queue order of FUTURE lease requests changes: a held slot is never preempted, a waiting
+    entry keeps its position, and nothing a step computes or is allowed to do changes."""
+    token = _STALE_GRADE.set(probe)
+    try:
+        yield
+    finally:
+        _STALE_GRADE.reset(token)
 
 
 @contextmanager
