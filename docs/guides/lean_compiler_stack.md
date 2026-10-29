@@ -462,7 +462,15 @@ the actual C emission domain, original selected contracts and checked products
 through `result.emit_c(...)`. Its V5 profile admits positive extents through
 2^63−1; huge cases are checked symbolically. Ordinary V1–V4 calls retain their
 existing cap and schemas. See the [hoisting guide](lean_configuration_hoist_gate.md)
-for the controlled API and independent replay.
+for the controlled API and independent replay. V6 additionally checks actual
+nested positive counted loops and motions at multiple lexical levels, restoring
+the parent IV environment for surrounding work. Its whole-entry theorem
+preserves partial errors and terminal state under an all-environment Models
+premise. All 78 installed pytest cases and five separate legacy reconstruction
+checks pass, including original C64 emission, fresh replay, two genuine
+mutation refusals and 27 finite native state/failure observations. The ordinary
+one-million cap remains; the original C64 consumer separately admits symbolic
+positive extents through 2^63−1.
 Its state relation does not approve numerical policy or the selected
 instruction implementation.
 
@@ -486,7 +494,8 @@ surrounding calls. After any modeled failure, both versions retain the same
 error and terminal state. V3 derives the whole prefix's last-write-wins assignment;
 retained body writes may repeat its final values while keeping their other effects.
 Conflicting writes/clobbers and nonempty completion/asynchronous annotations
-refuse. Nested Kernel commands remain engineering work. Counted Kernel IR requires
+refuse. V6 supports nested positive counted-Kernel commands; carried completion
+fields and dynamic configuration effects remain outside its profile. Counted Kernel IR requires
 positive extents; this differs from the source-SCF empty-loop case. A zero-trip loop
 cannot be hoisted this way: the original executes no setter.
 

@@ -62,7 +62,7 @@
     "kind": "tensor",
     "boundary": "Exact IR immediately before and after the compiler's preprocessing pruning.",
     "interface": "--validate-passes prune_dead_pure_tensor_ops\nPassValidation(..., passes=frozenset({...}))",
-    "example": "%dead = tensor.empty()\n%answer = arith.addi %a, %b\nreturn %answer\n\u2192 erase %dead",
+    "example": "%dead = tensor.empty()\n%answer = arith.addi %a, %b\nreturn %answer\n\u2192 erase %dead\nMemory route: unused index literal + retained memref/SCF work\n\u2192 the same complete entry without that unused literal.",
     "claim": "Strict tensor-stage refinement on inputs of the declared types, with source support established. Original memory route: equality of complete successful returned-value/world relations for actual dead index-constant deletions.",
     "proof": "MerlinVerify.Check.TypedModule.check_sound\nMerlinVerify.Check.supportCheck_sound\ncompose_chain\nMerlin.GraphLoopsShape.DeadConstants.checked_complete",
     "limit": "Only modeled effect-free tensor/scalar operations may be erased. Numerical preparation and native lowering are separate boundaries. The memory rule retains partial actions, casts, dimensions and regions; no categorized-error or divergence equivalence. Actual default-all untiled and tile32-tail routes pass.",
@@ -119,10 +119,10 @@
     "registered": true,
     "boundary": "The public hoist_loop_configuration producer under its original typed ISA/effect selection, before the existing Kernel consumer.",
     "interface": "PassValidation(..., passes=frozenset({'configuration_loop_hoisting'}))\nhoist_loop_configuration(kernel, adapter, pass_validation=validation,\n  selected_contracts=original_selection)\n# Indexed data uses an explicitly selected proposal_adapter.",
-    "example": "loop A: set cfg=3; workA(i)\nloop B: set cfg=5; workB(j)\n\u2192 set3; loop A: workA(i)\n   set5; loop B: workB(j)",
-    "claim": "Complete modeled outcome/error/terminal-state equality under all-index Models, with exact full command contexts, frame/atoms and terminal join for each motion.",
+    "example": "for i: for j: set cfg=3; work(i,j)\n\u2192 for i: set cfg=3; for j: work(i,j)\nThe setter remains inside the original outer scope.",
+    "claim": "Complete modeled outcome/error/terminal-state equality under one all-environment instruction/effect model, with exact recursive command contexts and terminal joins.",
     "proof": "ActualConfigurationHoist.complete_kernel",
-    "limit": "V1 static, V2 retained IV data, V3 overlapping setter prefixes, V4 multiple flat positive loops. Explicit original C64 consumers add V5 through extent2^63\u22121 and bind actual controlled emission. 129 distinct cases, symbolic wide boundaries, fresh replay and prior-profile compatibility pass. Default profiles keep their existing cap. Nested commands, completion fields and dynamic configuration values remain unsupported; model/hardware approval stays separate.",
+    "limit": "V1\u2013V5 remain supported; V6 adds recursive positive counted Kernel loops. Original C64 emission/replay binds actual endpoint domains through extent2^63\u22121; ordinary calls retain the one-million cap. 78 installed pytest cases plus five separate legacy checks pass, including three public workers, fresh C64 replay, two genuine mutations and 27 finite native observations. Completion fields and dynamic configuration effects refuse; model/hardware/native/LLVM fidelity remain separate.",
     "in_all": false
   }
 ]

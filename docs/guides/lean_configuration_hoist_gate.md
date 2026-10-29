@@ -13,6 +13,9 @@ code_refs:
   - src/merlin/verify/compiler_configuration_hoist.py
   - src/merlin/verify/compiler_configuration_hoist_intake.py
   - src/merlin/verify/compiler_configuration_hoist_multi.py
+  - src/merlin/verify/compiler_configuration_hoist_recursive.py
+  - src/merlin/verify/configuration_hoist_recursive_emit.py
+  - src/merlin/verify/lean/Merlin/GraphStateConfigurationRecursiveHoist.lean
   - src/merlin/verify/lean/Merlin/GraphStateConfigurationHoistFocus.lean
   - src/merlin/compile/scheduling/configuration_loops.py
   - src/merlin/compile/scheduling/configuration_c_consumer.py
@@ -81,8 +84,8 @@ complete outcomes, including failure state; finite native comparisons remain
 separate qualification. V1/V2 keep their original nine-module proof closures.
 Installed qualification covers 53 distinct current-source cases, including four
 V3 public-producer/worker/native paths, V1/V2 compatibility and a real reversed
-setter-order proof refusal. Nested Kernel loops, completion fields and IV-dependent
-configuration values still require further engineering.
+setter-order proof refusal. Completion fields and IV-dependent configuration
+values remain outside this profile. The V6 profile below adds nested Kernel loops.
 
 The current V4 profile composes prefix motions across multiple flat top-level
 loops. Each checked stage retains the actual earlier/later command context,
@@ -95,8 +98,9 @@ The 153 native initial/failure observations remain finite qualification.
 
 Counted Kernel IR requires positive extents. Zero-extent Kernel inputs are
 rejected by the existing structure checker and producer before optimization;
-they receive no coverage. Nested Kernel commands and completion fields remain
-unsupported. Ordinary calls retain the inherited extent cap of 1,000,000.
+they receive no coverage. V1–V5 do not decode nested Kernel commands; completion
+fields remain unsupported. Ordinary calls retain the inherited extent cap of
+1,000,000, including the current nested profile below.
 
 An explicit original C64 consumer supports a separate current-only V5 wide
 profile; smaller counts retain V1–V4 selection:
@@ -140,6 +144,93 @@ changed-count refusal, preserved legacy V4 schemas and 15 small compiled
 state/failure comparisons. This establishes the declared consumer-domain binding;
 all-index `Models`, actual instruction/rendering/encoding/native fidelity and
 human effect-policy review remain separate.
+
+The current V6 profile checks recursive positive counted Kernel loops through
+that same public producer and original consumer interface. For example, a pure
+setup can move out of the inner loop while remaining inside the outer loop:
+
+```text
+repeat 2 times with i:             repeat 2 times with i:
+  repeat 3 times with j:             set a = 3
+    set a = 3             →          repeat 3 times with j:
+    work(i, j)                        work(i, j)
+  observe(i)                        observe(i)
+```
+
+Every enclosing loop, sibling and call suffix is interpreted in the checked
+command tree. The parent index environment is restored for the suffix after a
+loop; retained work can refer to both outer and inner IVs. Multiple pure setup
+writes, including overlapping writes with the same final-value discipline as
+V3, may move at several nesting levels. Each move stays at its original lexical
+scope. The checker compares exact actual frame, atom, operand, binder, loop
+metadata and full terminal command trees; a proposed stage or a host
+`actual_final_join` flag supplies no proof authority.
+
+Select `configuration_loop_hoisting` in the original `PassValidation` and call
+`hoist_loop_configuration` as above. A nested source selects the fixed domain
+`current-compiler-recursive-positive-loops-pure-prefix-hoist-v6`; a caller cannot
+relabel it as V1–V5. To bind actual C emission, create
+`ConfigurationCConsumer(index_bits=64)` before the producer, call
+`consumer.hoist(...)`, and consume only the original result's `emit_c(...)`.
+This is the same immutable original-consumer, live worker, delivery and fresh
+replay protocol shown above. A plain `PassValidation` index-width setting does
+not select that consumer or lift the ordinary 1,000,000 cap.
+
+The default cap is a compatibility policy, not a count-enumerating proof limit.
+With the original C64 consumer, each positive static loop extent may reach
+2^63−1, subject to the actual original and final integer-domain checks, retained
+expression ranges and the finite structural budgets. Full expression literals,
+including factors, comparison values and unreachable branches, must fit the
+selected rendering domain. The current source limits are 4,096 statements,
+64 levels of recursive inspection, 256 configuration fields, 65,536 proposed
+stages, and 32 MiB aggregate stage capture. These bound checking work; they are
+not effect or model premises. Large-count qualification is symbolic/text only.
+Native examples use small loops.
+
+`GraphStateConfigurationRecursiveHoist.lean` derives recursive body fixedness,
+loop congruence, full-context congruence and stage-chain composition from the
+existing pure-prefix laws. The closed
+`ActualConfigurationHoist.complete_kernel` theorem preserves the whole partial
+outcome, including the error and its terminal state, for every initial state
+and every IV environment under one common
+`PartialHoist.Recursive.Models fields literal before.atoms run` premise. It
+assumes neither source success, local simulation nor whole-run equality.
+Successful-body fixedness is derived from the admitted call effects; failures
+short-circuit from equal states. All relevant memory, return and observer state
+must be represented by the original interpretation with nonaliasing
+configuration fields. Host range checks and finite native observations do not
+discharge this all-environment model premise.
+
+The canonical V6 closure has eleven modules. Its private qualification compiles
+the exact library, explicit first/later inner/outer failure probes, six actual
+positive endpoint queries and seven genuine closed-negative endpoint queries.
+Positive obligations audit 31 roots and 502 declarations with only the standard
+three axioms. Installed host qualification passes 73 cases, and five freshly
+reconstructed legacy profiles retain the same semantic payloads while rejecting
+stale source-cut identities. All five installed public cases pass: three accepted original-owner workers,
+one fresh original-C64 replay and two genuine operand/frame query refusals.
+The controlled C fixture contributes 27 finite state/failure observations from
+small 2×3 loops; exact emitted text joins the compiled fixture. This is 78
+distinct installed pytest cases (73 host plus five public), with five legacy
+reconstruction checks counted separately. The public cohort completes in
+369.28 seconds. Evidence is retained under
+`out/build/configuration-hoist-nested-20261029/installed-qualification-v1/`.
+These cohorts retain separate exact source cuts.
+
+The supported tree is ordinary static positive counted loops and ordered
+integer-operand calls with admitted effects. Retained data expressions can use
+multiple active IVs, sums, scales and selects through the existing explicit
+untrusted `proposal_adapter`. The default selected adapter retains its
+conservative behavior. Moved pure-setter operands and configuration effect
+indices/values remain literal constants. A motion refuses when its retained
+body has unknown or unordered effects, a conflicting configuration write or a
+clobber. Unchanged surrounding calls remain exact partial calls; they do not
+need a fictitious body frame. Pointer/noninteger operands, carried completion
+fields, async/unit/staging annotations, IV shadowing and unknown expression or
+control forms remain outside this profile. No producer math, default emitter
+behavior, V1–V5 domain/schema,
+ISA/effect approval or numerical policy changes. Native instruction semantics,
+encoding, downstream MLIR/LLVM and executable/hardware fidelity remain separate.
 
 This current route has no historical producer-checkout requirement. The
 standalone API below retains its original revision and source-manifest guard.

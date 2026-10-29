@@ -44,9 +44,15 @@ It admits positive counts through 2^63−1 without changing V1–V4 defaults.
 one genuine Lean count refusal and 15 small native state/failure observations.
 All-index `Models`, complete-state and selected ISA-effect premises remain.
 
-**The human-review-only milestone remains open.** Nested Kernel commands,
-broader memory ranks/source profiles and remaining source-contract coverage need
-engineering. Rank-one buffer source/target bridges are committed in `5f9fb92de`.
+Recursive positive counted-Kernel hoisting is now qualified through its
+original compiler and C64 consumer: 78 installed pytest cases, five separate
+legacy reconstruction checks, fresh replay and 27 finite native state/failure
+observations pass. Commits `30ec04967` and `0990c2806` add the proof and gate.
+All-environment instruction/effect Models remains an explicit premise.
+
+**The human-review-only milestone remains open.** General LLM data contexts,
+computed initializer prefixes, broader memory/source profiles and remaining
+source-contract coverage need engineering. Rank-one buffer source/target bridges are committed in `5f9fb92de`.
 Their installed qualification now passes all 33 distinct cases: 12 host and 21
 SDK/native cases, including both public compiler routes, fresh-process replay,
 actual target mutations and initializer-link component refusals. Q/DQ stays proposed and MACC stays
@@ -60,8 +66,8 @@ Start at the [current evidence and remaining work](out/artifacts/handoff/pass-ve
 [stack/interfaces/examples](docs/guides/lean_compiler_stack.md),
 [completion scope](docs/design/lean_pass_integration_completion.md) and
 [assumption ledger](merlin/lean/LEDGER.md). Remote publication and both GitHub
-identities were verified through `85dc14726`, including complete rank-one
-qualification documentation. Colleague numerical changes were fast-forwarded
+identities were verified through `df8799c42`, including the default-all memory
+gates and strengthened claim documentation. Colleague numerical changes were fast-forwarded
 through merge `c95fb1012`, preserving Jeremy Mills's authorship.
 Earlier evidence retains its
 recorded source cut; changing bound sources requires a fresh check.

@@ -39,6 +39,21 @@ symbolic large-count proofs, fresh controlled MAX63 replay, an actual Lean
 changed-count refusal and 15 small native state/failure comparisons. Huge
 loops were not compiled or executed. This binds the declared C integer domain;
 it does not prove C/encoding/native equivalence or discharge all-index `Models`.
+The additive V6 recursive checker interprets actual nested positive counted
+Kernel loops and full lexical contexts. Its complete-entry root preserves every
+partial outcome, including error and terminal state, for all initial states and
+IV environments under the explicit original call/effect Models premise. Actual
+frame/atoms/trees and every stage terminal join are checked; no source success,
+local simulation or whole-run equality is assumed. Ordinary extents retain the
+one-million compatibility cap; original C64 consumers separately admit signed
+index64 extents through 2^63−1 under actual endpoint/render checks. V1–V5 remain
+intact. All 78 installed pytest cases pass, with five separate fresh legacy
+reconstruction checks, original C64 replay, two genuine target refusals and
+27 small native state/failure observations. Each accepted proof audits 31 roots
+and 502 STD3 declarations from eleven canonical modules. Completion fields,
+dynamic configuration values and unsupported effects/control remain refusals;
+no ISA/effect, numerical or native/LLVM fidelity approval is introduced.
+
 Their state relations
 must not be substituted for a numerical-policy proof or for one another.
 

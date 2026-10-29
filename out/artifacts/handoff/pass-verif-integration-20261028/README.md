@@ -11,18 +11,20 @@ records 143 MACC passes/two absent-retained-artifact skips, 71 Q/DQ passes,
 10 final regressions and six fresh lowering replays. The full new-module import
 audit checks 4,272 theorems with no violations; all 235 existing pins match.
 
-Work on **`feat/pass-verif-integration`**. Latest implementation commits are
+Work on **`feat/pass-verif-integration`**. Earlier implementation landmarks include
 `5f9fb92de` (rank-one complete-entry bridges), `ef46cc269` (retained deeper loop
 bodies) and `91661f328` (original C64 consumer and wide-count hoisting). Remote
-publication and both GitHub identities are verified through `85dc14726`,
-including complete rank-one qualification documentation. Incoming numerical
+publication and both GitHub identities are verified through `df8799c42`,
+including default-all memory gates and strengthened claim documentation. Incoming numerical
 changes were fast-forwarded through `c95fb1012`, preserving colleague authorship.
 Earlier proof records retain their own source cuts.
 
 All nine pass families have compiler selectors within their declared profiles.
 Five belong to `all`; Q/DQ, draft MACC and the two ISA configuration checks require
-explicit selection. **The human-review-only milestone remains open:** nested
-Kernel commands and broader source/profile coverage still require engineering.
+explicit selection. **The human-review-only milestone remains open:** general
+LLM operation contexts, computed initializer prefixes and broader source/profile
+coverage still require engineering. Recursive positive counted-Kernel hoisting
+is now qualified in commits `30ec04967` and `0990c2806`.
 The proof boundary is Merlin-owned transformations through their output IR, with downstream
 MLIR/LLVM/executable/hardware fidelity separate.
 
@@ -32,11 +34,11 @@ MLIR/LLVM/executable/hardware fidelity separate.
 | CSE | Leading tensor gate; original live memory route binds authentic unchanged native CSE with zero jobs/credit | Changed memory CSE refuses; downstream lowering remains independent |
 | Unrolling | Empty/inline/bulk/tail, siblings, full lexical contexts and explicit inner depths through dynamic ancestors; 20 actual cases, 18 API controls and public native checks | Actual source strides remain known positive; scalar/SCF/resource admission remains |
 | Ordered tiling | Explicit inner depth, partial effects and short tails; independent public TILE and combined UNROLL→TILE one-worker/native controls pass with exact middle/final joins | Static selected index64 controls and supported scalar/SCF contexts |
-| Buffer reuse | Actual three-buffer untiled or four-buffer tiled chain; direct check, fresh-process replay and ordinary compiler passed; 2,372 audited declarations, eight finite native observations | Rank-two i8/i16/i32/i64 profile, possible-success relation, explicit total/private/unobservable allocator |
+| Buffer reuse | Rank-one uniform-seed and rank-two actual untiled/tiled chains, fresh replay and ordinary compiler; rank-one 33-case qualification plus default-all memory composition | Captured rank-one i32 or rank-two i8/i16/i32/i64; possible-success relation under explicit total/private/unobservable allocator |
 | Q/DQ | 14 native/freshness cases, seven source-byte controls, eight actual lowerings and separate-process replays, final prefix/source-mutation control passed | Proposed source semantics; broader formats/per-group/mixed source graphs and definedness remain separate |
 | MACC | Shared/init SSA binding, fresh live replay, approved atomic producer rejection; 49 producer/checker cases with three historical skips and two native regressions | Draft numerical-reference conformance, not original half-source equivalence or numerical approval |
 | Configuration elision | Original-owner function/bare-instruction/Kernel gates; actual schedule→worker→encoded bytes→native paths; independent retained-work/frame/initial-setter refusals | Straight-line current profiles and explicit original ISA/effect interpretation |
-| Configuration hoist | V1–V4 plus explicit C64 V5 through positive extent2^63−1; 129 cases, symbolic wide proofs, controlled fresh replay and native small cases | All-index Models remains a premise; nested Kernel commands, completion fields and dynamic configuration values remain separate |
+| Configuration hoist | V1–V5 plus recursive V6 actual nested counted-Kernel full-entry checks; 78 installed pytest cases, five separate fresh legacy checks, original C64 replay and 27 finite native observations | All-environment Models remains explicit; completion fields and dynamic configuration effects refuse; no ISA/native/LLVM fidelity claim |
 
 The independent validator checks the pass agents' theorem scope, actual input/
 output custody, source bindings, canonical roots, real consumer enforcement and

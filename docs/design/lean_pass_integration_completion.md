@@ -64,7 +64,10 @@ canonical/native qualification. Selected innermost-loop depths also have actual
 compiler/native qualification through dynamic ancestors, including retained
 deeper bodies with auxiliary stride captures. Explicit original C64 consumers
 now bind actual emitted integer domains and admit symbolic positive extents
-through 2^63−1, preserving default profiles. Nested Kernel commands and broader
+through 2^63−1, preserving default profiles. Recursive positive counted-Kernel hoisting now has installed original-owner
+worker, C64 emission and replay qualification: 78 pytest cases plus five separate
+legacy reconstruction checks, with 27 finite native state/failure observations.
+All-environment Models and selected effect contracts remain explicit. Broader
 memory/source profiles remain engineering work. Rank-one uniform-seed buffers
 now pass all 33 installed host/compiler/native/replay/mutation cases through
 the complete-entry root, for actual untiled and tiled output. Computed initializer
@@ -84,6 +87,15 @@ downstream native-fidelity proof. Evidence is retained under
 `out/build/default-all-memory-20261029/installed-qualification-v3/`.
 Private-buffer tile sizes now have a finite 65,536 resource ceiling, separate
 from the existing signed-index64 safety obligations.
+General LLM operation contexts remain engineering. Existing scalar loop
+projection does not admit arbitrary tensor/float data carried through
+`linalg.generic` contexts. Actual recapture inventories also exceed its older
+2,048 weighted-record budget. A private generic-value/index-carrier extension
+has four compiled additive math modules and actual source/target queries under
+qualification; it installs no new production eligibility yet. The correction
+work retains partial outcomes and one shared external interpretation, without
+converting arbitrary tensor/float payloads to mathematical integers.
+
 The effort table below is the earlier scope estimate, not remaining effort.
 Broader buffer ranks, producer-language coverage and numerical/source-contract
 coverage remain engineering; the human-review-only exit has not been reached.
