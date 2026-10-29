@@ -52,6 +52,41 @@ def _static(*typed: dict | None) -> bool:
     )
 
 
+def _movement_broadcasting(attributes: dict, source: dict | None, result: dict | None) -> str | None:
+    """Broadcast class of a shape-changing single-source movement, from its form's own static parameters.
+
+    A ``slice`` or ``pad`` form reads each result element from one selected source element (or a pad fill):
+    no operand is broadcast, whatever the result extent. A ``broadcast`` or ``repeat`` form replays source
+    rows: ``outer`` when the innermost axis is replayed unchanged, ``inner`` when it is expanded, and no
+    observation (unresolved) when the form's parameters do not state the replay exactly.
+    """
+    if not _static(source, result):
+        return None
+    form = attributes.get("form")
+    if form in {"slice", "pad"}:
+        return "none"
+    src, out = source["shape"], result["shape"]
+    if form == "broadcast":
+        if len(out) < len(src):
+            return None
+        padded = [1] * (len(out) - len(src)) + list(src)
+        if any(have not in (1, want) for have, want in zip(padded, out)):
+            return None
+        return "inner" if padded[-1] != out[-1] else "outer"
+    if form == "repeat":
+        repeats = attributes.get("repeats")
+        if (
+            not isinstance(repeats, list)
+            or len(repeats) != len(src)
+            or len(out) != len(src)
+            or any(type(count) is not int or count < 1 for count in repeats)
+            or any(extent * count != want for extent, count, want in zip(src, repeats, out))
+        ):
+            return None
+        return "inner" if repeats[-1] != 1 else "outer"
+    return None
+
+
 def _row(index: int, opcode: str, operation: str, family: str | None, **fields) -> dict:
     return {
         "ordinals": [index],
@@ -232,6 +267,10 @@ def command_rows(cb: dict[str, Any]) -> list[dict]:
         if family in {"elementwise_map", "movement"} and typed_sources and _static(*typed_sources, result):
             if all(item["shape"] == result["shape"] for item in typed_sources):
                 row["broadcasting"] = "none"
+        if family == "movement" and "broadcasting" not in row and len(typed_sources) == 1:
+            observed = _movement_broadcasting(attributes, typed_sources[0], result)
+            if observed is not None:
+                row["broadcasting"] = observed
         if opcode == "RESIDUAL_ADD" and len(typed_sources) == 2 and all(item is not None for item in typed_sources):
             row["tensor_operands"] = 2
             row["expression"] = "affine"
