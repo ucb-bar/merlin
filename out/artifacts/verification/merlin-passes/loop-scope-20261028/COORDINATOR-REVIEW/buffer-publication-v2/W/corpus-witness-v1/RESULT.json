@@ -1,0 +1,338 @@
+{
+  "new_actual_cases": [
+    {
+      "case": "three_disjoint_epochs",
+      "status": "development_compiled_std3_audited",
+      "root": "GraphCorpusWitness.actual_kernel_nonvacuity",
+      "root_has_premises": false,
+      "audited_modules": [
+        "WholeShape",
+        "WholeReuse",
+        "WholeMemory",
+        "EpochSyntax",
+        "EpochCommands",
+        "EpochPlan",
+        "EpochKernel",
+        "WholeEpoch",
+        "WholeMaterialization",
+        "WholeExpansion",
+        "WholeFinal",
+        "RawChainEntries",
+        "CorpusWitnessBase",
+        "CorpusWitnessStates",
+        "CorpusWitnessInitializers",
+        "CorpusWitnessSteps",
+        "CorpusWitnessExecution",
+        "CorpusWitnessObservations"
+      ],
+      "printed_roots": 355,
+      "transitive_theorems": 2451,
+      "violations": [],
+      "interpretation": "Int addition for selected binary operations; literal value 1",
+      "source_commands": 40,
+      "initializer_cells": [
+        6,
+        6,
+        6
+      ],
+      "input_scalars": [
+        3,
+        5
+      ],
+      "initial_caller": 7,
+      "returned": [
+        65,
+        2
+      ],
+      "final_caller": 29,
+      "ordered_touches": [
+        {
+          "state": 14,
+          "register": 18,
+          "value": 13
+        },
+        {
+          "state": 25,
+          "register": 30,
+          "value": 23
+        },
+        {
+          "state": 36,
+          "register": 42,
+          "value": 29
+        }
+      ],
+      "user": 99,
+      "actual_raw4": [
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/three_disjoint_epochs/stage0.mlir",
+          "sha256": "4c4398108d52d19cf4b5abeb0a9743559dfff60827c8e73989cabe11ba2996d4"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/three_disjoint_epochs/stage1.mlir",
+          "sha256": "2dab38608fcba69fc934007e3bc07c988a2155458cba0188edb5376377a0f24b"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/three_disjoint_epochs/stage2.mlir",
+          "sha256": "af64ec69fb4bdda09803f995773d5deefe150ca1ed7734cc54ac7cce4222c2b8"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/three_disjoint_epochs/stage3.mlir",
+          "sha256": "522974d1e2c75e1cf82e4da40a05a76b3358517ba74c585fc55d2c658605709f"
+        }
+      ],
+      "qualification": false,
+      "native_fidelity": false,
+      "finite_allocator_equivalence": false,
+      "human_approval": false
+    },
+    {
+      "case": "alignment32_tile3",
+      "status": "development_compiled_std3_audited",
+      "root": "GraphCorpusWitness.actual_kernel_nonvacuity",
+      "root_has_premises": false,
+      "audited_modules": [
+        "WholeShape",
+        "WholeReuse",
+        "WholeMemory",
+        "EpochSyntax",
+        "EpochCommands",
+        "EpochPlan",
+        "EpochKernel",
+        "WholeEpoch",
+        "WholeMaterialization",
+        "WholeExpansion",
+        "WholeFinal",
+        "RawChainEntries",
+        "CorpusWitnessBase",
+        "CorpusWitnessStates",
+        "CorpusWitnessInitializers",
+        "CorpusWitnessSteps",
+        "CorpusWitnessExecution",
+        "CorpusWitnessObservations"
+      ],
+      "printed_roots": 328,
+      "transitive_theorems": 2443,
+      "violations": [],
+      "interpretation": "Int addition for selected binary operations; literal value 1",
+      "source_commands": 28,
+      "initializer_cells": [
+        6,
+        6
+      ],
+      "input_scalars": [
+        3,
+        5
+      ],
+      "initial_caller": 7,
+      "returned": [
+        36,
+        2
+      ],
+      "final_caller": 23,
+      "ordered_touches": [
+        {
+          "state": 14,
+          "register": 18,
+          "value": 13
+        },
+        {
+          "state": 25,
+          "register": 30,
+          "value": 23
+        }
+      ],
+      "user": 99,
+      "actual_raw4": [
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/alignment32_tile3/stage0.mlir",
+          "sha256": "ca7058dd9d777a3d24729f7645f64ef734405024dc4cd0de5cd90180a868e3e4"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/alignment32_tile3/stage1.mlir",
+          "sha256": "48c6b6ae454ab4b2ada775bff3025a58fea85bf9983d00114b0c3e6fd4d8bb53"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/alignment32_tile3/stage2.mlir",
+          "sha256": "f0cf2cc6d87d28a0164ff50ae09eadcfa9b6bf3af9eaaeab1fcb3a0c84d546ae"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/alignment32_tile3/stage3.mlir",
+          "sha256": "e1b2f009669aaefe52de0da5222621a1e3c02f33ecb3488e2a0a75c1084f6965"
+        }
+      ],
+      "qualification": false,
+      "native_fidelity": false,
+      "finite_allocator_equivalence": false,
+      "human_approval": false
+    },
+    {
+      "case": "rows1_columns1_tile3",
+      "status": "development_compiled_std3_audited",
+      "root": "GraphCorpusWitness.actual_kernel_nonvacuity",
+      "root_has_premises": false,
+      "audited_modules": [
+        "WholeShape",
+        "WholeReuse",
+        "WholeMemory",
+        "EpochSyntax",
+        "EpochCommands",
+        "EpochPlan",
+        "EpochKernel",
+        "WholeEpoch",
+        "WholeMaterialization",
+        "WholeExpansion",
+        "WholeFinal",
+        "RawChainEntries",
+        "CorpusWitnessBase",
+        "CorpusWitnessStates",
+        "CorpusWitnessInitializers",
+        "CorpusWitnessSteps",
+        "CorpusWitnessExecution",
+        "CorpusWitnessObservations"
+      ],
+      "printed_roots": 328,
+      "transitive_theorems": 2443,
+      "violations": [],
+      "interpretation": "Int addition for selected binary operations; literal value 1",
+      "source_commands": 28,
+      "initializer_cells": [
+        1,
+        1
+      ],
+      "input_scalars": [
+        3,
+        5
+      ],
+      "initial_caller": 7,
+      "returned": [
+        36,
+        1
+      ],
+      "final_caller": 23,
+      "ordered_touches": [
+        {
+          "state": 14,
+          "register": 18,
+          "value": 13
+        },
+        {
+          "state": 25,
+          "register": 30,
+          "value": 23
+        }
+      ],
+      "user": 99,
+      "actual_raw4": [
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/rows1_columns1_tile3/stage0.mlir",
+          "sha256": "c55d26bb5f78e2afd42b6c776185c7b0a0f51342b97855b178fc1ffa760143c3"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/rows1_columns1_tile3/stage1.mlir",
+          "sha256": "dfd92e9a41b41fb7db6100badbe6c87f0058a5d14ac6e23b33c1678d8d0baaad"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/rows1_columns1_tile3/stage2.mlir",
+          "sha256": "ac3cfc1afc49100d6792e43dbc52f66bde4c7c89d09b111c6cac965c0e60978a"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/rows1_columns1_tile3/stage3.mlir",
+          "sha256": "388caad9196f0df538d8c23f1432296e47da6470d74e802fc7c4ebf59600139c"
+        }
+      ],
+      "qualification": false,
+      "native_fidelity": false,
+      "finite_allocator_equivalence": false,
+      "human_approval": false
+    },
+    {
+      "case": "rows3_columns2_tile2_short",
+      "status": "development_compiled_std3_audited",
+      "root": "GraphCorpusWitness.actual_kernel_nonvacuity",
+      "root_has_premises": false,
+      "audited_modules": [
+        "WholeShape",
+        "WholeReuse",
+        "WholeMemory",
+        "EpochSyntax",
+        "EpochCommands",
+        "EpochPlan",
+        "EpochKernel",
+        "WholeEpoch",
+        "WholeMaterialization",
+        "WholeExpansion",
+        "WholeFinal",
+        "RawChainEntries",
+        "CorpusWitnessBase",
+        "CorpusWitnessStates",
+        "CorpusWitnessInitializers",
+        "CorpusWitnessSteps",
+        "CorpusWitnessExecution",
+        "CorpusWitnessObservations"
+      ],
+      "printed_roots": 328,
+      "transitive_theorems": 2443,
+      "violations": [],
+      "interpretation": "Int addition for selected binary operations; literal value 1",
+      "source_commands": 28,
+      "initializer_cells": [
+        6,
+        6
+      ],
+      "input_scalars": [
+        3,
+        5
+      ],
+      "initial_caller": 7,
+      "returned": [
+        36,
+        3
+      ],
+      "final_caller": 23,
+      "ordered_touches": [
+        {
+          "state": 14,
+          "register": 18,
+          "value": 13
+        },
+        {
+          "state": 25,
+          "register": 30,
+          "value": 23
+        }
+      ],
+      "user": 99,
+      "actual_raw4": [
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/rows3_columns2_tile2_short/stage0.mlir",
+          "sha256": "8a8e24aad23cf6433abc6b574613bc6299dfdd88242f6648d121bf58f91f444c"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/rows3_columns2_tile2_short/stage1.mlir",
+          "sha256": "21cccc992d4ccb628309d52aa4fdc68e45668243d26d1896a15849db87d10e4f"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/rows3_columns2_tile2_short/stage2.mlir",
+          "sha256": "a2c93b3d256fef89d8d8bb166790712083213ff58e6af6e8e5d955a8eaa54a0d"
+        },
+        {
+          "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-v1/positives/rows3_columns2_tile2_short/stage3.mlir",
+          "sha256": "62eeebe7ab8df1ce45f044b5b2720548ef6c4c0d4d284e4cddef1b18242a91e8"
+        }
+      ],
+      "qualification": false,
+      "native_fidelity": false,
+      "finite_allocator_equivalence": false,
+      "human_approval": false
+    }
+  ],
+  "retained_case": "RETAINED-EXACT-RAW4.json",
+  "owned_sources": 29,
+  "project_source_closure": 189,
+  "scope": "existing finite actual F buffer corpus; successful public observations only",
+  "allocator": "total/private/unobservable; 8-to-16-byte finite-capacity counterexample retained",
+  "qualification": false,
+  "native_fidelity": false,
+  "human_approval": false
+}

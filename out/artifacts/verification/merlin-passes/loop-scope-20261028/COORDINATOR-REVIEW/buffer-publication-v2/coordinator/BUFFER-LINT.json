@@ -1,0 +1,48 @@
+{
+  "all_other_rules": "passed",
+  "E501": "7preexisting exact lines in two reused generators; no source-format mutation",
+  "preexisting": [
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "row": 37,
+      "code": "E501",
+      "exact_line_already_in_HEAD": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "row": 75,
+      "code": "E501",
+      "exact_line_already_in_HEAD": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "row": 123,
+      "code": "E501",
+      "exact_line_already_in_HEAD": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "row": 135,
+      "code": "E501",
+      "exact_line_already_in_HEAD": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "row": 136,
+      "code": "E501",
+      "exact_line_already_in_HEAD": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries.py",
+      "row": 141,
+      "code": "E501",
+      "exact_line_already_in_HEAD": true
+    },
+    {
+      "path": "src/merlin/verify/lean_graph_loops_memory_scf_after_entries_witness.py",
+      "row": 24,
+      "code": "E501",
+      "exact_line_already_in_HEAD": true
+    }
+  ]
+}

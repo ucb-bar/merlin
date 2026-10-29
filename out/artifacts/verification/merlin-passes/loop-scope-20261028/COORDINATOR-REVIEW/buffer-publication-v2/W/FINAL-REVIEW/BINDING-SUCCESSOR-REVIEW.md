@@ -1,0 +1,13 @@
+# Buffer source-binding successor review
+
+Q's candidate575842be fixes the five imported-project-source omission found by W's original copied-source reproduction. The complete change is eight added lines in `buffer_reuse_intake.prepare_chain`: extend the existing source path set with `merlin/sched/__init__.py` and `ir/{__init__,expr,kernel,parse}.py`. The existing candidate revalidation checks these entries before proof checking, completion validation and delivery; replay reconstructs the candidate from the actual buffers. No primitive semantics, generated proof, theorem type, numerical or allocator assumptions change.
+
+W independently compared the exact original preimage, complete candidate bytes and Q's patch. In W's new isolated191-source copy, all five actual raw4 cases produce identical canonical Lean query/parts/root lists to Q5; all53 actual loaded Merlin modules are covered by the191-source ledger. The fresh baseline check passed with125successful subprocesses,250printed types and2338std3 audited theorems. All250 type strings equal the old clean-source baseline. Separate-process replay also passed with125successful processes,250exact printed types and2338std3 theorems, exact-final delivery and live revalidation. `../binding-successor-v1/RESULT.json` binds both completed runs.
+
+Q independently tested staleness of each added file before native admission in its separate SDK-free copy. W read those results and reviewed the revalidation call sites; W did not duplicate those mutation tests or reinterpret environment errors as semantic refusals.
+
+F2's original five-positive/24-mutant/live-guard/replay campaign passed at its186-source Q5 cut. Its native proofs remain evidence for the exact source bytes used; it does not retrospectively have191-source stale-source protection. The new candidate requires its own identity and additive evidence. This review recommends the narrow source-binding correction; it is not a new whole-corpus qualification, human approval, hardware allocator review or primary-merge authorization.
+
+The full terminal F2 evidence review is `F2-TERMINAL-OBSERVATION.json`. Twenty-three host refusals are distinguished from the single actual Lean false-obligation refusal. The compiler-byte verification used Module.parse/operation.verify with unregistered dialects allowed, as explicitly recorded. Complete Python IR projection, parser/native fidelity and primitive/allocator interpretations remain trust boundaries.
+
+All earlier capsules, first failures and the8→16 finite-capacity counterexample remain unchanged. Context-wrapper extensions and configuration elimination are outside this MVP review.

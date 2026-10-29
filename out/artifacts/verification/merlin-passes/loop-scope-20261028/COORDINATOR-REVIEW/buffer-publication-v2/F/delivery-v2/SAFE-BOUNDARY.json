@@ -1,0 +1,20 @@
+{
+  "status": "ALL_F_NATIVE_JOBS_TERMINAL_OLD186_SOURCE_SNAPSHOT_SAVED",
+  "old186_manifest": {
+    "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v2/OLD186-SOURCES.json",
+    "sha256": "bc822fff85437576ec387fb4154cf84021f6f715eef69fa472720965441be815",
+    "bytes": 36200
+  },
+  "baseline_witness": {
+    "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/RESULT.json",
+    "sha256": "92a984761ebd410755558d35f6dcdbbddc62f8ee2fc9cf7e212783c0f419aa51",
+    "bytes": 608740
+  },
+  "corpus_partial": {
+    "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/FINAL.json",
+    "sha256": "34c1c3040a9f90b686823cc3851228b6fb0f23f5f52261d7d5c3e2cde74e061f",
+    "bytes": 1280
+  },
+  "canonical186_hold_released": true,
+  "native_retries": false
+}

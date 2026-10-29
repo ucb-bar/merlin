@@ -1,0 +1,86 @@
+[
+  {
+    "boundary": "Whole raw source/final",
+    "actual_fields": "All operations, SSA operands/results, types, region/terminator structure, attributes/properties, locations, function prototypes",
+    "representation": "SingleDecoder.ordinary_module/ordinary_block; independently invoked for each boundary",
+    "roots": "GraphMemoryAfterWhole.source_term_exact; GraphMemoryAfterMaterialization.actual_final_syntax",
+    "remaining": "Python/xDSL parsing/export and Lean literal emission remain trusted"
+  },
+  {
+    "boundary": "Whole surrounding frame",
+    "actual_fields": "Module metadata plus full function metadata/prototype list, including visibility",
+    "representation": "sourceFrame/finalFrame and independent source frame literal",
+    "roots": "source_frame_exact; After.check; actual_materialized",
+    "remaining": "Visibility is preserved metadata, not native linkage semantics"
+  },
+  {
+    "boundary": "Shape normalization",
+    "actual_fields": "Each identical memref.cast; static memref.dim axis/value and index constant; full code after alias resolution",
+    "representation": "Shape Model.Valid/normalize; Epoch.normalizedModule",
+    "roots": "GraphShapeObligation.valid/accepted; GraphShapeEpochObligation.normalized_syntax; source_normalized",
+    "remaining": "Descriptor interpretation is declared, native descriptor conformance separate"
+  },
+  {
+    "boundary": "Exact normalized join",
+    "actual_fields": "Same stage1 bytes as shape output and reuse source; full plan.module term",
+    "representation": "reconstruct_chain four parses; PlanContext.module",
+    "roots": "source_normalized; plan_valid; kernel_facts",
+    "remaining": "Hashes document inputs but do not replace term equalities"
+  },
+  {
+    "boundary": "Reuse/liveness",
+    "actual_fields": "Object extents/alignment, allocation/free sites, slot owners, ordered uses and overlaps",
+    "representation": "Reuse projection; MemoryBinding objects/configs/instructions",
+    "roots": "GraphReuseObligation.accepted; GraphMemorySCFObligation.accepted; memory_binding",
+    "remaining": "Total/private/unobservable allocation; finite capacity not preserved"
+  },
+  {
+    "boundary": "Initializer coverage",
+    "actual_fields": "Actual outer/inner loops, IVs, seed captures, shape, nested store coordinates, element type",
+    "representation": "InitializerLink.Facts; rectangular HeapRun; per-command initialize",
+    "roots": "kernel_facts; memory_binding; initializer_local; target_initializer_link",
+    "remaining": "Selected rectangular uniform initialization only"
+  },
+  {
+    "boundary": "Segmentation/control",
+    "actual_fields": "Tile, original bounds/stride, outer IV, add, min, inner bounds and carry/return structure",
+    "representation": "TiledInitializer.ControlFacts; Bounds.Valid; IndexOpcodes; expansions",
+    "roots": "expansion_checked; Expansion.local_checked; bound_local_simulations",
+    "remaining": "Signed index range premises checked; abstract index model/native fidelity separate"
+  },
+  {
+    "boundary": "Complete source command coverage",
+    "actual_fields": "All eight Command constructors, order, fresh scratch names, allocations/aliases/dropped frees/loads/stores/calls/terminal return",
+    "representation": "expansions.map source = kernel.commands; scoped RegistersRelated; lists",
+    "roots": "all_source_commands; expansions_forward/backward; expanded_complete_equivalent",
+    "remaining": "LocalSimulation is derived constructorwise, not an endpoint assumption"
+  },
+  {
+    "boundary": "Actual final materialization",
+    "actual_fields": "Independently decoded final tree, finite bijective SSA renaming and exact expanded body/frame",
+    "representation": "computed_target; After.check whole module",
+    "roots": "computed_target; expanded_to_actual; actual_materialized",
+    "remaining": "No copied-string or full-tree Python matcher serves as semantic proof"
+  },
+  {
+    "boundary": "One common interpretation",
+    "actual_fields": "Operation keys, binary/literal relations, index key selection, calls and effects",
+    "representation": "finalMeaning/entryMeaning; SourceIndexAbsent; NoOpcodeOverrides; LiteralModuleFacts",
+    "roots": "source_index_absent; literal_source/final; kernel_support; complete_actual_chain",
+    "remaining": "Shared partial scalar/literal meaning; no reassociation, rounding or native arithmetic law"
+  },
+  {
+    "boundary": "Complete entry roster",
+    "actual_fields": "Every defined function name/order, interface, declaration/visibility fields and reachable call targets",
+    "representation": "DefinedHeaders; EntryRosterFacts; ClosedAgreement",
+    "roots": "roster_facts; complete_roster; every_definition",
+    "remaining": "Basic route covers changed kernel plus unchanged call-closed entries; declarations/wrappers reaching kernel refused"
+  },
+  {
+    "boundary": "Input/output domain",
+    "actual_fields": "Typed Runtime values; external caller descriptors; no returned private views; caller heap/user/return tuple",
+    "representation": "EntryDomain; ValuesHold; CallersValid; NoViewBindings; observeWorld/visibleHeap",
+    "roots": "every_definition; actual_kernel_nonvacuity",
+    "remaining": "Equality of possible successful observations only; no whole-world/error/divergence relation"
+  }
+]

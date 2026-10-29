@@ -1,0 +1,17 @@
+--- a/src/merlin/verify/buffer_reuse_intake.py
++++ b/src/merlin/verify/buffer_reuse_intake.py
+@@ -129,6 +129,14 @@
+         parent / "lean_graph_pipeline_gate_projection.py",
+     }
+     paths.update(parent.glob("lean_graph_loops*.py"))
++    # Literal rendering imports the Kernel IR namespace through
++    # lean_graph_loops_unroll -> lean_graph_loops. These five project sources
++    # are required even when only the literal helpers are called. Bind them
++    # before proof checking and again at delivery/replay, not just in packaging.
++    paths.update(
++        parent.parent / "sched" / name
++        for name in ("__init__.py", "ir/__init__.py", "ir/expr.py", "ir/kernel.py", "ir/parse.py")
++    )
+     paths.update(parent / name for name in ("lean_graph_loops_unroll.py", "lean_graph_loops_segment_projection.py"))
+     for path in sorted(paths):
+         data = path.read_bytes()

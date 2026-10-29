@@ -1,0 +1,11 @@
+{
+  "status": "RELEASED_BY_COORDINATOR_AFTER_REVIEWED_BUFFER_PRIMARY_MERGE",
+  "primary_branch": "feat/pass-verification",
+  "primary_merge": "09fea17e6",
+  "postmerge_tests": "84passed",
+  "structure": "passed",
+  "all5primary_queries": "exact qualified IR/query/root match;191sources",
+  "qualification_lineage": "full Q5/F2 five-case186 campaign; exact metadata-only191 successor check+separate replay and extra-file SDK guards; no historical relabeling",
+  "scope": "straightline redundant pure persistent-configuration writes; Model/effect agreement explicit; no numerical/native/fullpipeline claim",
+  "time": "2026-10-29T02:23:51.525438+00:00"
+}

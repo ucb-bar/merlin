@@ -1,0 +1,7 @@
+{
+  "phase": "initial inline source-only collector",
+  "error": "KeyError: bytes",
+  "cause": "report project source refs use size, unlike file refs",
+  "native_launched": false,
+  "snapshot_was_not_saved": true
+}

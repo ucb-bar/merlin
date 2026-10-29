@@ -1,0 +1,357 @@
+{
+  "archive": {
+    "path": "/home/jeremy/Projects/merlin/out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/kernel-witness-v1.tar.gz",
+    "bytes": 71509,
+    "sha256": "1a0f145c49c979d265415439ab30db1d56ad7b3893b4583bed83deac0c86b1ee"
+  },
+  "members": [
+    {
+      "member": "ACTUAL-PLAN.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/ACTUAL-PLAN.json",
+      "bytes": 673441,
+      "sha256": "e3a38f9533767f7ac7e5aa602b7d3e2e4752bb67d51023f597f1baff24d6c8fc"
+    },
+    {
+      "member": "KernelWitnessBase.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/KernelWitnessBase.lean",
+      "bytes": 2472,
+      "sha256": "e293677a537cff6494bbf0848d4b4141aa0233a4f14046b000d6e270e618af3a"
+    },
+    {
+      "member": "KernelWitnessExecution.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/KernelWitnessExecution.lean",
+      "bytes": 8679,
+      "sha256": "ec30738271304c4ef4f4c8f266c68ae024eb66e693812bb969e7b9a030a5ec60"
+    },
+    {
+      "member": "KernelWitnessInitializers.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/KernelWitnessInitializers.lean",
+      "bytes": 1833,
+      "sha256": "c82798c327186d75a8036660e4815a3c17d71dfe13a6d805df2f818536502350"
+    },
+    {
+      "member": "KernelWitnessStates.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/KernelWitnessStates.lean",
+      "bytes": 22587,
+      "sha256": "450207e35e8d5dee9ddaff022f8a62a50151a1194a90784bb318b6b56adc475c"
+    },
+    {
+      "member": "KernelWitnessSteps.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/KernelWitnessSteps.lean",
+      "bytes": 12440,
+      "sha256": "cc3fe8518f86373aca9fa1b0f7ba8e53c6ebd085f6c51c54796a3f24c7b152a0"
+    },
+    {
+      "member": "PROPOSED-STATES.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/PROPOSED-STATES.json",
+      "bytes": 16981,
+      "sha256": "b3b98f00670e2d3c6b89c1d2220da62a1d9d29ed6d1603e1c379f059519ae62c"
+    },
+    {
+      "member": "RAW-BINDINGS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/RAW-BINDINGS.json",
+      "bytes": 861,
+      "sha256": "6518d668aadbb4e2426f29bb8d5e404ccaf28781f0966cf8ba846e010b6510b8"
+    },
+    {
+      "member": "README.md",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/README.md",
+      "bytes": 4974,
+      "sha256": "0c2cd6db58980ea73eaee88a8a47e9063a79dd051aaabbd2a7e85a6598894f85"
+    },
+    {
+      "member": "RESULT.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/RESULT.json",
+      "bytes": 751,
+      "sha256": "4d1bbaf7fba689ca4a9b0575fce831cce3d4037dd8b9b0aa6250c63b30195e6d"
+    },
+    {
+      "member": "ROOTS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/ROOTS.json",
+      "bytes": 3378,
+      "sha256": "372abdd4779b830c0cc7a1f6797361aaf39a8d8b2f47b0af94433181de9fb14f"
+    },
+    {
+      "member": "SOURCES.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/SOURCES.json",
+      "bytes": 2961,
+      "sha256": "ec765a777b225b475bfca50a305edcd56df54343a405e22a34231cf1f38b2bde"
+    },
+    {
+      "member": "audit.process.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/audit.process.json",
+      "bytes": 565,
+      "sha256": "af2a9912ad41418adfbebc53d328d15ae240db8abdf4e492c79c84e1b1d106bd"
+    },
+    {
+      "member": "audit.stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/audit.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "audit.stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/audit.stdout",
+      "bytes": 180783,
+      "sha256": "fcebf13f8fab20a3c93d01fa212bb95f8a521706fd9e85e20449f20572273760"
+    },
+    {
+      "member": "author_states.py",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/author_states.py",
+      "bytes": 4327,
+      "sha256": "ff0687669cda1602e770fd745084afb65d40c4402dfbb22d8a2d65fd3d3faf50"
+    },
+    {
+      "member": "author_steps.py",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/author_steps.py",
+      "bytes": 3229,
+      "sha256": "ca64178813b9356289f170abb4047ed1bac9ea9d536ab8d1374e413b8675a040"
+    },
+    {
+      "member": "base-build-v1/KernelWitnessBase.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/base-build-v1/KernelWitnessBase.lean",
+      "bytes": 2444,
+      "sha256": "ceb49fa434d9aafdd88398da28f2b0722609f5d12ec2868556acda66328484b7"
+    },
+    {
+      "member": "base-build-v1/PROCESS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/base-build-v1/PROCESS.json",
+      "bytes": 598,
+      "sha256": "6c185a2f1315ec3cde7139e60bfcf0f1dde0467958a1dd97ff068ff036b456ae"
+    },
+    {
+      "member": "base-build-v1/stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/base-build-v1/stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "base-build-v1/stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/base-build-v1/stdout",
+      "bytes": 384,
+      "sha256": "f22a30ba538b1ab1eb0c53419c83c08aad66393ba08368a903b0d554b24ba6a4"
+    },
+    {
+      "member": "base-build-v2/KernelWitnessBase.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/base-build-v2/KernelWitnessBase.lean",
+      "bytes": 2472,
+      "sha256": "e293677a537cff6494bbf0848d4b4141aa0233a4f14046b000d6e270e618af3a"
+    },
+    {
+      "member": "base-build-v2/PROCESS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/base-build-v2/PROCESS.json",
+      "bytes": 599,
+      "sha256": "009d4fee66ffa7bdaaa7be7620ee72820f6cd230ceddced9fe95c9d7099adb62"
+    },
+    {
+      "member": "base-build-v2/stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/base-build-v2/stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "base-build-v2/stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/base-build-v2/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "compile.py",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/compile.py",
+      "bytes": 1204,
+      "sha256": "aada511f48f9282dbbf668c9d6b955e40d9ea460cca884e9fdb69747c5e565af"
+    },
+    {
+      "member": "execution-build-v1/KernelWitnessExecution.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/execution-build-v1/KernelWitnessExecution.lean",
+      "bytes": 5852,
+      "sha256": "2eac8f23e14cabc7ac1634e2ef0db9e2c81ed4afc3c8410adef0d4e143d434ef"
+    },
+    {
+      "member": "execution-build-v1/PROCESS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/execution-build-v1/PROCESS.json",
+      "bytes": 609,
+      "sha256": "b0f58d6b99f02196e0d7899be328715c8f6c21e65e1a72ced18ea494d6fbd831"
+    },
+    {
+      "member": "execution-build-v1/stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/execution-build-v1/stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "execution-build-v1/stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/execution-build-v1/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "execution-build-v2/KernelWitnessExecution.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/execution-build-v2/KernelWitnessExecution.lean",
+      "bytes": 8679,
+      "sha256": "ec30738271304c4ef4f4c8f266c68ae024eb66e693812bb969e7b9a030a5ec60"
+    },
+    {
+      "member": "execution-build-v2/PROCESS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/execution-build-v2/PROCESS.json",
+      "bytes": 608,
+      "sha256": "3ac4d7740b8efd0c223309702e2d8a9f1894564bb0dc247830def1367c4547da"
+    },
+    {
+      "member": "execution-build-v2/stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/execution-build-v2/stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "execution-build-v2/stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/execution-build-v2/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "initializer-witness.PROCESS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/initializer-witness.PROCESS.json",
+      "bytes": 563,
+      "sha256": "95032657547c52741bb54710c0a835bc2c72fa62d5b569d30d2dac6606675fd9"
+    },
+    {
+      "member": "initializer-witness.stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/initializer-witness.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "initializer-witness.stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/initializer-witness.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "initializers-build-v1/KernelWitnessInitializers.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/initializers-build-v1/KernelWitnessInitializers.lean",
+      "bytes": 1833,
+      "sha256": "c82798c327186d75a8036660e4815a3c17d71dfe13a6d805df2f818536502350"
+    },
+    {
+      "member": "initializers-build-v1/PROCESS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/initializers-build-v1/PROCESS.json",
+      "bytes": 614,
+      "sha256": "4db907afc2b9a748b107c61e1d55eb843206fe478c991773741a53814100d701"
+    },
+    {
+      "member": "initializers-build-v1/stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/initializers-build-v1/stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "initializers-build-v1/stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/initializers-build-v1/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "owned-source.patch",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/owned-source.patch",
+      "bytes": 58670,
+      "sha256": "8b41a8311fc0c3e936a388a5604d613ca5de2caa062a121b39fc2929b7c200f3"
+    },
+    {
+      "member": "states-build-v1/KernelWitnessStates.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/states-build-v1/KernelWitnessStates.lean",
+      "bytes": 22587,
+      "sha256": "450207e35e8d5dee9ddaff022f8a62a50151a1194a90784bb318b6b56adc475c"
+    },
+    {
+      "member": "states-build-v1/PROCESS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/states-build-v1/PROCESS.json",
+      "bytes": 602,
+      "sha256": "794c9959090919268405f17033ce5ae00b97f2933cae03c1380869ae6476944c"
+    },
+    {
+      "member": "states-build-v1/stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/states-build-v1/stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "states-build-v1/stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/states-build-v1/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "steps-build-v1/KernelWitnessSteps.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/steps-build-v1/KernelWitnessSteps.lean",
+      "bytes": 13584,
+      "sha256": "f27a27a63cf20c48c94c97e6dd6952d407e14ffca025f8d1e280f9fbbb0a09d3"
+    },
+    {
+      "member": "steps-build-v1/PROCESS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/steps-build-v1/PROCESS.json",
+      "bytes": 600,
+      "sha256": "ffa19dfec1003a36143a080ed2327741ab15dc06e45e7036593e56513e8f357f"
+    },
+    {
+      "member": "steps-build-v1/author_steps.py",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/steps-build-v1/author_steps.py",
+      "bytes": 3127,
+      "sha256": "46254ba27d48aa28e90f7ed7a893dd8b0035172adee9d6b8ca86f0a8a708dbbd"
+    },
+    {
+      "member": "steps-build-v1/stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/steps-build-v1/stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "steps-build-v1/stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/steps-build-v1/stdout",
+      "bytes": 23766,
+      "sha256": "976ac1c96073f958cc2a939d8c77637778c6a77882eb7944ba5d87009052feff"
+    },
+    {
+      "member": "steps-build-v2/KernelWitnessSteps.lean",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/steps-build-v2/KernelWitnessSteps.lean",
+      "bytes": 12440,
+      "sha256": "cc3fe8518f86373aca9fa1b0f7ba8e53c6ebd085f6c51c54796a3f24c7b152a0"
+    },
+    {
+      "member": "steps-build-v2/PROCESS.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/steps-build-v2/PROCESS.json",
+      "bytes": 599,
+      "sha256": "9f9f34f2f62b807fbd14f4badfbc1b2a07663b4073e005e0063247adf165f354"
+    },
+    {
+      "member": "steps-build-v2/stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/steps-build-v2/stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "steps-build-v2/stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/steps-build-v2/stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "types.process.json",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/types.process.json",
+      "bytes": 3588,
+      "sha256": "00f6cc8fe77c234e64076624dde02368d1f83e4b0ac5659c67dc1b1854f8eefd"
+    },
+    {
+      "member": "types.stderr",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/types.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "member": "types.stdout",
+      "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/types.stdout",
+      "bytes": 46493,
+      "sha256": "ce666315d559bf56c6caab14ae5228cce5cb301c7ead084c265760f5c7fe31f4"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "status": "read_only_terminal_evidence_review_passed",
+  "result": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/RESULT.json",
+    "bytes": 828,
+    "sha256": "b92e6cdd9b93b38dc8a81a942aae76aaa7cbace46bdc5a2faa1a3126787e69a6"
+  },
+  "compiler_verified_actual_buffers": 116,
+  "positive_quadruples": 5,
+  "valid_mutant_quadruples": 24,
+  "host_refusals": 23,
+  "actual_Lean_false_obligation_refusals": 1,
+  "native_negative_source": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/negatives/final_wrong_inner_cutoff/WholeMemory.lean",
+    "bytes": 63396,
+    "sha256": "ba848fa2e8242c9368982052b89ae6f24364decd34412188a5db824b32dd74a9"
+  },
+  "native_negative_process": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/negatives/final_wrong_inner_cutoff/query-2-WholeMemory.process.json",
+    "bytes": 435,
+    "sha256": "39ecab740cf27c21cb73ca12bf3fb8222aebdd14eadf864b0b10d65adb51204c"
+  },
+  "artifact_guard_controls": 9,
+  "replay_report": {
+    "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/fresh-process-replay/REPORT.json",
+    "sha256": "59be95351e550526d4bd64740fe751f026dff7f05f3ebae7d364b5b11fe15be1",
+    "bytes": 929097
+  },
+  "fresh_replay_processes": 125,
+  "replay_roots": 250,
+  "replay_theorems": 2338,
+  "std3": true,
+  "object_or_sdk_contents_read": false,
+  "new_native_launch": false,
+  "independent_human_approval": false,
+  "limitations": [
+    "Q5/F2 binds186 sources; separate191-source successor fixes five missing imported source fingerprints",
+    "23 host refusals are not Lean counterexample proofs",
+    "Partial possible-success public relation, not errors/divergence/native allocator conformance",
+    "Compiler parser uses allow_unregistered_dialects=True as recorded; no new compiler invocation in this review"
+  ]
+}

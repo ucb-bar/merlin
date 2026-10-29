@@ -1,0 +1,67 @@
+{
+  "status": "exact_191_source_successor_baseline_check_and_separate_process_replay_passed",
+  "cases": [
+    {
+      "mode": "check",
+      "result": {
+        "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/check-v1/RESULT.json",
+        "bytes": 942,
+        "sha256": "d0a92e0b34e140a86b7e4c023f2587513363b3ace91c6c7c2b056eaec0c9b7e3"
+      },
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/check-v1/fresh-check/REPORT.json",
+        "bytes": 975217,
+        "sha256": "ef8ccacd5ff23680e825312d8dee2f87bf39a16c205318b81492da7eb4de6ad5"
+      },
+      "all_five_queries_exact": true,
+      "source_files": 191,
+      "loaded_local_merlin_files": 53,
+      "private_project_imports": 123,
+      "process_successes": 125,
+      "roots": 250,
+      "audited_theorems": 2338,
+      "std3": true,
+      "root_types_equal_prior_baseline": true,
+      "consumer_called": true,
+      "live_revalidated": true,
+      "final_sha256": "3b0a5fed1763d89d10284f879777ab40d3ea111f418e8595bf185d6ec7156525"
+    },
+    {
+      "mode": "replay",
+      "result": {
+        "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/replay-v1/RESULT.json",
+        "bytes": 945,
+        "sha256": "f1b4a3e91eaf32a0927219f56a3b084a60edbf69fb9dd0157fa6d5cda59f7335"
+      },
+      "report": {
+        "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/replay-v1/fresh-replay/REPORT.json",
+        "bytes": 976767,
+        "sha256": "a44519c8c5dda6c397c03fdfa1cbc16a79c06ab8790a13262a62b2985e5410ff"
+      },
+      "all_five_queries_exact": true,
+      "source_files": 191,
+      "loaded_local_merlin_files": 53,
+      "private_project_imports": 123,
+      "process_successes": 125,
+      "roots": 250,
+      "audited_theorems": 2338,
+      "std3": true,
+      "root_types_equal_prior_baseline": true,
+      "consumer_called": true,
+      "live_revalidated": true,
+      "final_sha256": "3b0a5fed1763d89d10284f879777ab40d3ea111f418e8595bf185d6ec7156525"
+    }
+  ],
+  "candidate_sha256": "575842becf867163b3aacdadb55d4653c05b8f4aac3e0a77beede2098f060768",
+  "only_change": "five existing imported project source fingerprint entries",
+  "old_capsules_preserved": true,
+  "canonical_edited": false,
+  "old_project_objects_supplied": false,
+  "original_merlin_fallback": false,
+  "same_selected_Lean_Python_environment": true,
+  "new_host_qualification": false,
+  "all_five_native_rerun": false,
+  "all_five_generated_query_part_root_identity": true,
+  "independent_human_or_native_allocator_approval": false,
+  "note": "Historical Q5/F2 campaign remains bound186; this additive successor evidence binds191 in its own copy, without relabeling old receipts."
+}

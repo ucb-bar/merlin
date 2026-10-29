@@ -1,0 +1,791 @@
+{
+  "status": "SELECTED_SOURCE_AND_TEXT_EVIDENCE_ARCHIVED_NO_NATIVE_OBJECTS",
+  "primary_merge": "09fea17e6",
+  "lineage": "F2 fivecases historical186; W191 baseline check and separate replay additive; no transfer to allfive191 or newhost",
+  "rows": [
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/source-cut-v6.tar.gz",
+      "members": 411,
+      "uncompressed_bytes": 9409257
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/source-cut-v6.tar.gz.members.json"
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/README.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v6/README.md",
+        "bytes": 2527,
+        "sha256": "af25a7b997104131cf15ac6182be8ce846c5e65049dfa18bb30f6bfadc0ce529"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/REVIEW.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v6/REVIEW.md",
+        "bytes": 4054,
+        "sha256": "c1c957ba9e0c717fa4ef1a2248e8b530787c2aa33d1df1d0f4d91f9883f1599a"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/RUN.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v6/RUN.md",
+        "bytes": 2814,
+        "sha256": "69e6e1dd5899d9d1eb19455bb8a04e6c58cf42b51b5780c9d23df145a6c34a1e"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/GATE-INTERFACE.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v6/GATE-INTERFACE.md",
+        "bytes": 1938,
+        "sha256": "615089d0635d4a794ef1f20b5e49550698cb1ff79c634c80d16796abb03e465b"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/PAPER-ROW.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v6/PAPER-ROW.md",
+        "bytes": 1905,
+        "sha256": "d8443e1e597f0c161f8f3d5ec016e17af311ba310cd25ceff63c0042b29685dc"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/EVIDENCE-LINEAGE.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v6/EVIDENCE-LINEAGE.json",
+        "bytes": 5105,
+        "sha256": "9530b75f754a3b8e90e7372f76e63b7cdbe1e390bf016120592b8f0abc115d55"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/Q6-CANDIDATES.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v6/Q6-CANDIDATES.json",
+        "bytes": 3841,
+        "sha256": "9ce2ac0c0985169df372ccbd261ae166f7c052c51f9269e02b66f61c0606a29b"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/MANIFEST.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v6/MANIFEST.json",
+        "bytes": 78056,
+        "sha256": "84bd00632f143bed712481a5e98a684c9940af18d0dc71179c59cd26943479c2"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/SOURCE-CLOSURE-RELATIVE.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v6/SOURCE-CLOSURE-RELATIVE.json",
+        "bytes": 52145,
+        "sha256": "5a8cb33b3fdc6a96facf6bd64a9bf1c4c80cae796161dcc3ffd11fc05123caf7"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/Q/SDK-TEST-STATUS.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/source-cut-v6/SDK-TEST-STATUS.json",
+        "bytes": 655,
+        "sha256": "ebdb8919d41d903e0ae15dbd782ee4a1937e2e3a5cd5dded06d48958daacc2d1"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/README.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/README.md",
+        "bytes": 2488,
+        "sha256": "c4ac71c403a0c99d3572cec41f7f18cee18ab776e20973639461d645fba347e0"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/REMAINING-OBLIGATIONS.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/REMAINING-OBLIGATIONS.md",
+        "bytes": 3969,
+        "sha256": "ed6b12b2103033f99109557af1c597d574d349b1f364c7365c6c202b5487b305"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/FINAL_STATUS.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/FINAL_STATUS.json",
+        "bytes": 4418,
+        "sha256": "a85e0abefd8116b4308f80d46e55f3a18d86e758305780f8da35e1e0d93d0e7c"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/SOURCE-DELIVERY.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/SOURCE-DELIVERY.json",
+        "bytes": 95824,
+        "sha256": "3ef78175d31d05e1b5032c01fd4bb92b9baab7ec7f6ca63e0364342c1195992a"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/qualification-v2/SOURCE-CUT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/SOURCE-CUT.json",
+        "bytes": 3769,
+        "sha256": "4daeed8b7a016922b8e7300a9e4b0cedd10385fbfd210f04435918b89b5792ac"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/qualification-v2/EXACT-INPUTS.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/EXACT-INPUTS.json",
+        "bytes": 38882,
+        "sha256": "02beb4efae9b95e5252530325ab5f23dfa5ffa117ddef9e7745f55480bfb82b2"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/qualification-v2/POSITIVES.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/POSITIVES.json",
+        "bytes": 2619,
+        "sha256": "dc1248c23e1b3c4851a26666f8835e0425c74ae4a03052bce919432a72d2fc51"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/qualification-v2/NEGATIVES.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/NEGATIVES.json",
+        "bytes": 4538,
+        "sha256": "42aedaf76a042ca720b4d8f6e043264585cde8193cbc672b04a9322b1a99d5e6"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/qualification-v2/REPLAY-INTENT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/REPLAY-INTENT.json",
+        "bytes": 1032,
+        "sha256": "85e08a8905b3a7840316bb7b8cdfcdafaea7314f64babefe0b3ff5a630df5f23"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/qualification-v2/replay.stdout",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/replay.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/qualification-v2/replay.stderr",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/replay.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/qualification-v2/REPLAY-PROCESS.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/REPLAY-PROCESS.json",
+        "bytes": 42,
+        "sha256": "f56eb476d06d58aa4ecfe6588c2f39defd15ccc55778160d6639fac917dd6292"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/qualification-v2/PROTOCOL.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/PROTOCOL.json",
+        "bytes": 355,
+        "sha256": "ec91f4357a0539271b374e5c4639d32da3ab210b42d10d4d2f3ac0b60eb40188"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/qualification-v2/RESULT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/RESULT.json",
+        "bytes": 828,
+        "sha256": "b92e6cdd9b93b38dc8a81a942aae76aaa7cbace46bdc5a2faa1a3126787e69a6"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/SOURCES.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/SOURCES.json",
+        "bytes": 2601,
+        "sha256": "c1d63b01bd9d53e460791b193d990ce57fa1995ac6d4ede6bfbb39bd09d00ba6"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/owned.patch",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/owned.patch",
+        "bytes": 75672,
+        "sha256": "6f589c621340f629df4fed20e5055b1eb95f4856c90398aa84ddc29acad030fd"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification.py",
+        "bytes": 8506,
+        "sha256": "c999d8c845d6aa209dd2a91fba86573d9fcf13218da2da0d7418bfebf89208ba"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_cases.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_cases.py",
+        "bytes": 9323,
+        "sha256": "f724e7b909f326ae70218d1ad2562cc2fd767d72fecf5bad88c2c18e70dfab0f"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_classifier.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_classifier.py",
+        "bytes": 3306,
+        "sha256": "997b0ab91364d936eea3d794ef58f8054226276d9d9d63ea669a454d12f2980f"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_components.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_components.py",
+        "bytes": 8157,
+        "sha256": "787261a3d8525469e5cb9f808036fbdbc079ad2fda7604b9c2bf64792757bdcb"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_live.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_live.py",
+        "bytes": 17553,
+        "sha256": "9b31492516369a11c4490f0d44365590663d1734375d2474ac9002678c5a408d"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_protocol.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_protocol.py",
+        "bytes": 8967,
+        "sha256": "1b507b60b4f120d5d79ca0f9fa347595ef2852783be30ed7b6af6197de24f8e5"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_review.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_review.py",
+        "bytes": 7182,
+        "sha256": "d86df7e96eec4ef7f4cac8e14604ec2c4c38848c2975dab93cdb3c615d75e70b"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_worker.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/sources/merlin/tests/ir/buffer_reuse_qualification_worker.py",
+        "bytes": 4238,
+        "sha256": "b70bf0c14c5f574581315a8fd45306942a9fc70f37c9a662d335e479170b5e70"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/sources/merlin/tests/ir/test_buffer_reuse_qualification_classifier.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/sources/merlin/tests/ir/test_buffer_reuse_qualification_classifier.py",
+        "bytes": 1974,
+        "sha256": "177da80a8c40a507f65cf4c860f1d965518e2f5436f4484a20faba5cd4978e3e"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/source-cut-v2/sources/merlin/tests/ir/test_buffer_reuse_qualification_review.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/source-cut-v2/sources/merlin/tests/ir/test_buffer_reuse_qualification_review.py",
+        "bytes": 2172,
+        "sha256": "6dc45256d2231b8760c7f96a39856c54a27cdb4f7ef6f3d093fe72c949d361ac"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/delivery-v2/SAFE-BOUNDARY.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v2/SAFE-BOUNDARY.json",
+        "bytes": 903,
+        "sha256": "9236ea884747995a746de8a201843353525affad0dd1150baf840d58dcf22409"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/delivery-v2/OLD186-SOURCES.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v2/OLD186-SOURCES.json",
+        "bytes": 36200,
+        "sha256": "bc822fff85437576ec387fb4154cf84021f6f715eef69fa472720965441be815"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/delivery-v2/RETAINED-OUTPUT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v2/RETAINED-OUTPUT.json",
+        "bytes": 1343684,
+        "sha256": "3c7ba41199efd9ef86d912eb295d5d4564ebb2286812c15ed21049367425f6e3"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/delivery-v2/FIRST-COLLECTOR-ERROR.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v2/FIRST-COLLECTOR-ERROR.json",
+        "bytes": 214,
+        "sha256": "a40a0f35021fdbfc5ab81aa89caf06c714072c5aa9543e4b766a14218f48103a"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/historical186-source-process-evidence.tar.gz",
+      "members": 2782,
+      "uncompressed_bytes": 16913942
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/historical186-source-process-evidence.tar.gz.members.json"
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/native-reports/three_disjoint_epochs.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/REPORT.json",
+        "bytes": 940136,
+        "sha256": "4e1d017fe2a4d64cb2e7de6bb3f7d7f0882b22d70fc3c1d7f1a7e3d8888623bb"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/native-reports/retained_two_epochs.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/retained_two_epochs/REPORT.json",
+        "bytes": 936072,
+        "sha256": "3498e8345150ff4193441e0cc3a980df589b6d77331ad56e065fe14c117d0547"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/native-reports/rows3_columns2_tile2_short.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/rows3_columns2_tile2_short/REPORT.json",
+        "bytes": 941497,
+        "sha256": "cdc33d0c3fa1efd370ee9c97118ef5a78660ba0152285eb96e651bcf14950ac1"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/native-reports/rows1_columns1_tile3.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/rows1_columns1_tile3/REPORT.json",
+        "bytes": 936847,
+        "sha256": "34f6c3e38a06075713ad7613fc280ca047764ee57259323cef92aa58a7611ed7"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/native-reports/alignment32_tile3.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/alignment32_tile3/REPORT.json",
+        "bytes": 934522,
+        "sha256": "195f277f3b337d01ee2bb30d5f7bb7cd08bece84c1a13066d43de0212d050637"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/kernel-witness-binding-v1/RESULT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/kernel-witness-binding-v1/RESULT.json",
+        "bytes": 608740,
+        "sha256": "92a984761ebd410755558d35f6dcdbbddc62f8ee2fc9cf7e212783c0f419aa51"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/F/corpus-witness-binding-v1/FINAL.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/FINAL.json",
+        "bytes": 1280,
+        "sha256": "34c1c3040a9f90b686823cc3851228b6fb0f23f5f52261d7d5c3e2cde74e061f"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/REPAIRS.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/REPAIRS.json",
+        "bytes": 11631,
+        "sha256": "dc6e269de4df17af726f69ac56cf74f7bed216d69f81e14491a5cb1bbd4b62d4"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/F2-OBSERVATION-1.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/F2-OBSERVATION-1.json",
+        "bytes": 97309,
+        "sha256": "448be3329546d51a771c7613ef90b59dd2c78289dd741043668f11ba501e59e5"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/IR-FIELD-MAP.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/IR-FIELD-MAP.json",
+        "bytes": 5303,
+        "sha256": "71594f0cd34f05009579633c54291cff01d21ed0465aecd185d9704d3545bf67"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/README.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/README.md",
+        "bytes": 12440,
+        "sha256": "fd2668b08f13dc1a832288456be1602e6326dff1ac641a0c7c6c74a228b49a11"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/FINDINGS.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/FINDINGS.json",
+        "bytes": 2925,
+        "sha256": "057e6f8f3e99d39c4085dccae2dae1928fe9a41b7a0a9371811678e9eb8ffa6b"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/observe_f2.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/observe_f2.py",
+        "bytes": 4135,
+        "sha256": "a6e09d9f282e81fc1b5bd921c9b3555d8990a6f1a4c1c33185ce6f75eebb907b"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/F2-OBSERVATION-2.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/F2-OBSERVATION-2.json",
+        "bytes": 5138,
+        "sha256": "0ccbd1da8febfa4e8cdf5d3023784aa99be16ef71d2c4e3bd5ae58cd616ab219"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/observe_f2_terminal.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/observe_f2_terminal.py",
+        "bytes": 4923,
+        "sha256": "910665c67c5fa42efbb06b4c55fd55030c1c89a5225797cfcd8258069c49ada9"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/observe_f2_terminal_first.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/observe_f2_terminal_first.py",
+        "bytes": 4864,
+        "sha256": "ae0d650a65d05207a28fa6d50e3f8a6ab93ab26b8533e6a11400ace1a74514ea"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/F2-TERMINAL-REVIEW-FIRST-FAILURE.txt",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/F2-TERMINAL-REVIEW-FIRST-FAILURE.txt",
+        "bytes": 248,
+        "sha256": "bf080c34a76811c9aa66bdb3c86b4dfc7e509f9076fc069bdfe89da7ae2c966a"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/F2-TERMINAL-OBSERVATION.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/F2-TERMINAL-OBSERVATION.json",
+        "bytes": 2081,
+        "sha256": "32725089e8fd96cda6d3ce8fab3f39778f76573e622796c9541540973ebc8a57"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/FINAL-REVIEW/BINDING-SUCCESSOR-REVIEW.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/FINAL-REVIEW/BINDING-SUCCESSOR-REVIEW.md",
+        "bytes": 2655,
+        "sha256": "cdb34c60a90f808911b71b1f3e36039b6886d2e63ea013bdb169bb513cbbcf9f"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/README.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/README.md",
+        "bytes": 3466,
+        "sha256": "4033b903f73bea29f4c1a1768f8a176d9314287da13194296996fa9e47a3f7b2"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/RESULT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/RESULT.json",
+        "bytes": 2910,
+        "sha256": "57b6c3c739c693ce8da3ce79c3ad9d7dd4e8bdd1394b74a08da52e9bccb57e51"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/REVIEW.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/REVIEW.json",
+        "bytes": 318,
+        "sha256": "b963c81c60d42842a5bf1a0c48b135342a7a2ba524f1c060017f34d708b80b07"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/SOURCE-MANIFEST.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/SOURCE-MANIFEST.json",
+        "bytes": 69717,
+        "sha256": "61e03066b35b8c499790631536ecef2dbdc0afbe5e48fec40ac58564561e676a"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/PORTABLE-MANIFEST.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/PORTABLE-MANIFEST.json",
+        "bytes": 55604,
+        "sha256": "cd41cf45621776ef2913ea3ef1fa185f159bf54ec7bdb8e80d61ca571b9aec6c"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/ARCHIVE.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/ARCHIVE.json",
+        "bytes": 213,
+        "sha256": "b6b973df9f1c43c53351c82837eac795aac526aa3ced306ac21ab37d033c290d"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/portable-source.tar.gz",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/portable-source.tar.gz",
+        "bytes": 711809,
+        "sha256": "e735146c73769a1844bc0538b99ce59822093af66e240ff90fe21dfebf1e26c2"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/candidate.patch",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/candidate.patch",
+        "bytes": 890,
+        "sha256": "6e66b8e1379f449ee48ac4d7d8568fa0b41fff9dc2e7ca312b58a65747fa93a4"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/run.py",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/run.py",
+        "bytes": 8368,
+        "sha256": "fa322c35715c79cea8566979eff58a7346333c7851bf5ea2825cf9872fd0cc12"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/check-v1/RESULT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/check-v1/RESULT.json",
+        "bytes": 942,
+        "sha256": "d0a92e0b34e140a86b7e4c023f2587513363b3ace91c6c7c2b056eaec0c9b7e3"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/check-v1/ALL-CASES.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/check-v1/ALL-CASES.json",
+        "bytes": 2681,
+        "sha256": "0f216f2e1457cfd6586929b80763b1f53f95e97fe1becbc7d16faa0ded6c2fd9"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/check-v1/IMPORTS.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/check-v1/IMPORTS.json",
+        "bytes": 36571,
+        "sha256": "bcf3d21332209ba9fcd7ee6d9a4a85be12e5597d1c230c4ddae7eb120e9fc772"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/check-v1/REPORT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/check-v1/fresh-check/REPORT.json",
+        "bytes": 975217,
+        "sha256": "ef8ccacd5ff23680e825312d8dee2f87bf39a16c205318b81492da7eb4de6ad5"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/replay-v1/RESULT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/replay-v1/RESULT.json",
+        "bytes": 945,
+        "sha256": "f1b4a3e91eaf32a0927219f56a3b084a60edbf69fb9dd0157fa6d5cda59f7335"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/replay-v1/ALL-CASES.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/replay-v1/ALL-CASES.json",
+        "bytes": 2681,
+        "sha256": "0f216f2e1457cfd6586929b80763b1f53f95e97fe1becbc7d16faa0ded6c2fd9"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/replay-v1/IMPORTS.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/replay-v1/IMPORTS.json",
+        "bytes": 36571,
+        "sha256": "bcf3d21332209ba9fcd7ee6d9a4a85be12e5597d1c230c4ddae7eb120e9fc772"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/binding-successor-v1/replay-v1/REPORT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/replay-v1/fresh-replay/REPORT.json",
+        "bytes": 976767,
+        "sha256": "a44519c8c5dda6c397c03fdfa1cbc16a79c06ab8790a13262a62b2985e5410ff"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/kernel-witness-v1.tar.gz",
+      "members": 58,
+      "uncompressed_bytes": 1152777
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/kernel-witness-v1.tar.gz.members.json"
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/kernel-witness-v1/README.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/README.md",
+        "bytes": 4974,
+        "sha256": "0c2cd6db58980ea73eaee88a8a47e9063a79dd051aaabbd2a7e85a6598894f85"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/kernel-witness-v1/RESULT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/W/kernel-witness-v1/RESULT.json",
+        "bytes": 751,
+        "sha256": "4d1bbaf7fba689ca4a9b0575fce831cce3d4037dd8b9b0aa6250c63b30195e6d"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/corpus-witness-v1.tar.gz",
+      "members": 434,
+      "uncompressed_bytes": 11123268
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/corpus-witness-v1.tar.gz.members.json"
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/corpus-witness-v1/README.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/corpus-witness-v1/README.md",
+        "bytes": 3846,
+        "sha256": "7bfe0522a7dbbbba2bf53086de92b85788c7c9ce9ef3ec952e39fa513f9e42f7"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/W/corpus-witness-v1/RESULT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/corpus-witness-v1/RESULT.json",
+        "bytes": 10827,
+        "sha256": "a8e50b56c518576bf7eb10bb2653548248f1407d86674ef3e1f0a05ad594f4a9"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/coordinator/BUFFER-REPAIRS.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/BUFFER-REPAIRS.json",
+        "bytes": 15495,
+        "sha256": "218b166482b6a4a99dbfe794ab684afb663539e5ea37f43d69911f0165ce9ebd"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/coordinator/BUFFER-EPOCH-REPAIR.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/BUFFER-EPOCH-REPAIR.json",
+        "bytes": 593,
+        "sha256": "1da44b37c36eab43c5cd77a284fbd411b0188ee581ed4c0e4d224c53e530f2b7"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/coordinator/BUFFER-DIAGNOSTIC-REPAIR.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/BUFFER-DIAGNOSTIC-REPAIR.json",
+        "bytes": 667,
+        "sha256": "2fbdbf88ca97ac870377497642367842206c6029c17f91c834c2b7ce97e626f5"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/coordinator/BUFFER-INTAKE-REVIEW.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/BUFFER-INTAKE-REVIEW.md",
+        "bytes": 3079,
+        "sha256": "983bd012748609a5cced159e7da79c8f129690735d9dba6a1813c2bc854a820e"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/coordinator/BUFFER-SHAPE-REPAIR.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/BUFFER-SHAPE-REPAIR.json",
+        "bytes": 1425,
+        "sha256": "16a2cf4340ca768784afd10b22fb15361bdf0839006249d8d1333ead3e428d31"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/coordinator/BUFFER-BINDING-REPAIR.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/BUFFER-BINDING-REPAIR.json",
+        "bytes": 812,
+        "sha256": "4664f30598c2e1545a4de92b9474703ef523d80880d72dfb90386e337d8b596c"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/coordinator/BUFFER-LINT.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/BUFFER-LINT.json",
+        "bytes": 1370,
+        "sha256": "515a08e5b4a588a953c5b6a66f9ebf705e6c29401490aef897c9624c914a1f47"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/configuration-tasks/Q/TASK.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/Q/TASK.md",
+        "bytes": 3675,
+        "sha256": "3b8eeca3028b9d604653cdc00132d08db84ed9274beeef64b6f0b87f2285f206"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/configuration-tasks/Q/RELEASE-DELIVERY.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/Q/RELEASE-DELIVERY.json",
+        "bytes": 2154,
+        "sha256": "a226f67ac48b45b267662b1b4a0b6a8505702db2a594d85b018fe6a7e5d18657"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/configuration-tasks/W/TASK.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/TASK.md",
+        "bytes": 3577,
+        "sha256": "3fcedb6381f132c8fbb01f38cb4c240feea04265f8e5b8d1385c420f335aa82f"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/configuration-tasks/W/RELEASE-DELIVERY.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/W/RELEASE-DELIVERY.json",
+        "bytes": 2154,
+        "sha256": "5c23ec09dc553a831f896d94e3e8a9535740771bed8cbbb9cf333a4c998e604e"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/configuration-tasks/F/TASK.md",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/TASK.md",
+        "bytes": 3595,
+        "sha256": "73673bfdbb53299aa796fd88016165fe5e972703cd3a7d1ab392a09ae1e100b8"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/configuration-tasks/F/RELEASE-DELIVERY.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/F/RELEASE-DELIVERY.json",
+        "bytes": 2154,
+        "sha256": "31cc5c9215bfa7634dcb32973186738d4a2d11ffdf6eb318b50fcd8f2637445e"
+      }
+    },
+    {
+      "published": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/buffer-publication-v2/configuration-tasks/RELEASE.json",
+      "original": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-CONFIGURATION/RELEASE.json",
+        "bytes": 653,
+        "sha256": "4286b3dec355f7b7ab0fc4946c682b0fd73a1ff73e02d570050b94b4ec707372"
+      }
+    }
+  ]
+}

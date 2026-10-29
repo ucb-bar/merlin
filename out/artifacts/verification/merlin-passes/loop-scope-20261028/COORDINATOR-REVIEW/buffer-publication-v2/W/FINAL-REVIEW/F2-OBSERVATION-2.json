@@ -1,0 +1,142 @@
+{
+  "cases": [
+    {
+      "case": "three_disjoint_epochs",
+      "observed_status": "checked",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/three_disjoint_epochs/REPORT.json",
+        "sha256": "4e1d017fe2a4d64cb2e7de6bb3f7d7f0882b22d70fc3c1d7f1a7e3d8888623bb",
+        "bytes": 940136
+      },
+      "raw4_exact": true,
+      "generated_sources_exact": 12,
+      "bound_sources_exact": 186,
+      "project_import_paths": 123,
+      "process_successes": 125,
+      "roots": 255,
+      "audit_theorems": 2343,
+      "std3": true,
+      "consumer_called": true,
+      "final_bytes_identical": true,
+      "flags": {
+        "independent_review_approved": false,
+        "independently_qualified": false,
+        "native_allocator_conformance": false,
+        "production_enforcement": false,
+        "full_error_world_equivalence": false
+      },
+      "object_or_sdk_contents_read": false
+    },
+    {
+      "case": "retained_two_epochs",
+      "observed_status": "checked",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/retained_two_epochs/REPORT.json",
+        "sha256": "3498e8345150ff4193441e0cc3a980df589b6d77331ad56e065fe14c117d0547",
+        "bytes": 936072
+      },
+      "raw4_exact": true,
+      "generated_sources_exact": 12,
+      "bound_sources_exact": 186,
+      "project_import_paths": 123,
+      "process_successes": 125,
+      "roots": 250,
+      "audit_theorems": 2338,
+      "std3": true,
+      "consumer_called": true,
+      "final_bytes_identical": true,
+      "flags": {
+        "independent_review_approved": false,
+        "independently_qualified": false,
+        "native_allocator_conformance": false,
+        "production_enforcement": false,
+        "full_error_world_equivalence": false
+      },
+      "object_or_sdk_contents_read": false
+    },
+    {
+      "case": "rows3_columns2_tile2_short",
+      "observed_status": "checked",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/rows3_columns2_tile2_short/REPORT.json",
+        "sha256": "cdc33d0c3fa1efd370ee9c97118ef5a78660ba0152285eb96e651bcf14950ac1",
+        "bytes": 941497
+      },
+      "raw4_exact": true,
+      "generated_sources_exact": 12,
+      "bound_sources_exact": 186,
+      "project_import_paths": 123,
+      "process_successes": 125,
+      "roots": 250,
+      "audit_theorems": 2338,
+      "std3": true,
+      "consumer_called": true,
+      "final_bytes_identical": true,
+      "flags": {
+        "independent_review_approved": false,
+        "independently_qualified": false,
+        "native_allocator_conformance": false,
+        "production_enforcement": false,
+        "full_error_world_equivalence": false
+      },
+      "object_or_sdk_contents_read": false
+    },
+    {
+      "case": "rows1_columns1_tile3",
+      "observed_status": "checked",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/rows1_columns1_tile3/REPORT.json",
+        "sha256": "34f6c3e38a06075713ad7613fc280ca047764ee57259323cef92aa58a7611ed7",
+        "bytes": 936847
+      },
+      "raw4_exact": true,
+      "generated_sources_exact": 12,
+      "bound_sources_exact": 186,
+      "project_import_paths": 123,
+      "process_successes": 125,
+      "roots": 250,
+      "audit_theorems": 2338,
+      "std3": true,
+      "consumer_called": true,
+      "final_bytes_identical": true,
+      "flags": {
+        "independent_review_approved": false,
+        "independently_qualified": false,
+        "native_allocator_conformance": false,
+        "production_enforcement": false,
+        "full_error_world_equivalence": false
+      },
+      "object_or_sdk_contents_read": false
+    },
+    {
+      "case": "alignment32_tile3",
+      "observed_status": "checked",
+      "report": {
+        "path": "/home/jeremy/Projects/merlin-loop-verification/out/build/loop-scope-20261028/qualification/buffer-final-v2/positives/alignment32_tile3/REPORT.json",
+        "sha256": "195f277f3b337d01ee2bb30d5f7bb7cd08bece84c1a13066d43de0212d050637",
+        "bytes": 934522
+      },
+      "raw4_exact": true,
+      "generated_sources_exact": 12,
+      "bound_sources_exact": 186,
+      "project_import_paths": 123,
+      "process_successes": 125,
+      "roots": 250,
+      "audit_theorems": 2338,
+      "std3": true,
+      "consumer_called": true,
+      "final_bytes_identical": true,
+      "flags": {
+        "independent_review_approved": false,
+        "independently_qualified": false,
+        "native_allocator_conformance": false,
+        "production_enforcement": false,
+        "full_error_world_equivalence": false
+      },
+      "object_or_sdk_contents_read": false
+    }
+  ],
+  "required_positive_count": 5,
+  "full_campaign_qualification": false,
+  "limitation": "Read-only case review; F owns full campaign/seal, Q5 imported-source gap remains explicit."
+}

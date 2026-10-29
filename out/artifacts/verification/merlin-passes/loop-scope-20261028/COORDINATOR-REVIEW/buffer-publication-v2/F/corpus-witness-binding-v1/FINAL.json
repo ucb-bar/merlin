@@ -1,0 +1,27 @@
+{
+  "status": "PARTIAL_UNAVAILABLE_FIRST_WITNESS_COMPILE_TIMEOUT",
+  "completed_cases": 0,
+  "expected_cases": 4,
+  "first_case": "three_disjoint_epochs",
+  "first_module": "CorpusWitnessStates",
+  "timeout_seconds": 120,
+  "process": {
+    "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/build-CorpusWitnessStates/PROCESS.json",
+    "sha256": "193854737f76f3c1d737f78932c0aedb20744b97e62a6876963e15b373b54fd5",
+    "bytes": 750
+  },
+  "raw_traceback": {
+    "path": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/runner.log",
+    "sha256": "f4168d12ee061a252101133904ff6d6418bcca8e3b896259739ac77a7ecb0b86",
+    "bytes": 2420
+  },
+  "cleanup": [
+    "owned subprocess cleanup: {'pid': 211339, 'group': 211339, 'direct_child_reaped': True, 'group_kill_attempted': True, 'group_kill_sent': False, 'descendant_exit_confirmed': False, 'errors': []}"
+  ],
+  "no_unchanged_retry": true,
+  "baseline_independent_witness": "kernel-witness-binding-v1/RESULT.json",
+  "main_qualification": "qualification-v2/RESULT.json",
+  "main_qualification_status_unchanged": true,
+  "independent_F_all4_witness_qualification": false,
+  "human_approved": false
+}

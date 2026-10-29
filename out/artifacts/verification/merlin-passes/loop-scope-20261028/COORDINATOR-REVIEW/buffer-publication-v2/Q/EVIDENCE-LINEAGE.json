@@ -1,0 +1,102 @@
+{
+  "schema": "merlin.buffer-reuse.q6-evidence-lineage.v1",
+  "records": [
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/COORDINATOR-REVIEW/BUFFER-BINDING-REPAIR.json",
+      "snapshot": "evidence-lineage/ROOT-BINDING-REPAIR.json",
+      "sha256": "4664f30598c2e1545a4de92b9474703ef523d80880d72dfb90386e337d8b596c",
+      "bytes": 812
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/delivery-v2/SAFE-BOUNDARY.json",
+      "snapshot": "evidence-lineage/F-SAFE-BOUNDARY.json",
+      "sha256": "9236ea884747995a746de8a201843353525affad0dd1150baf840d58dcf22409",
+      "bytes": 903
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/RESULT.json",
+      "snapshot": "evidence-lineage/F2-MAIN-186.json",
+      "sha256": "b92e6cdd9b93b38dc8a81a942aae76aaa7cbace46bdc5a2faa1a3126787e69a6",
+      "bytes": 828
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/qualification-v2/fresh-process-replay/RESULT.json",
+      "snapshot": "evidence-lineage/F2-REPLAY-186.json",
+      "sha256": "18243d84e5f4bf6997f1b19bacba224baf85b91386be62974393a917d2be2883",
+      "bytes": 475
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/RESULT.json",
+      "snapshot": "evidence-lineage/W-191-CHECK-REPLAY.json",
+      "sha256": "57b6c3c739c693ce8da3ce79c3ad9d7dd4e8bdd1394b74a08da52e9bccb57e51",
+      "bytes": 2910
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/check-v1/RESULT.json",
+      "snapshot": "evidence-lineage/W-191-CHECK.json",
+      "sha256": "d0a92e0b34e140a86b7e4c023f2587513363b3ace91c6c7c2b056eaec0c9b7e3",
+      "bytes": 942
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/CONTEXT/W/binding-successor-v1/replay-v1/RESULT.json",
+      "snapshot": "evidence-lineage/W-191-REPLAY.json",
+      "sha256": "f1b4a3e91eaf32a0927219f56a3b084a60edbf69fb9dd0157fa6d5cda59f7335",
+      "bytes": 945
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/Q/paper-evidence-v1/WITNESS-JOIN.json",
+      "snapshot": "evidence-lineage/W-CONSTRUCTIVE-CORPUS-JOIN.json",
+      "sha256": "b9262d385e90c203b7c41ea38f116467da25e82a95deecfbd6827a8d315802dc",
+      "bytes": 4603
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/FINAL.json",
+      "snapshot": "evidence-lineage/F-CORPUS-WITNESS-PARTIAL.json",
+      "sha256": "34c1c3040a9f90b686823cc3851228b6fb0f23f5f52261d7d5c3e2cde74e061f",
+      "bytes": 1280
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/build-CorpusWitnessStates/PROCESS.json",
+      "snapshot": "evidence-lineage/F-CORPUS-WITNESS-FIRST-PROCESS.json",
+      "sha256": "193854737f76f3c1d737f78932c0aedb20744b97e62a6876963e15b373b54fd5",
+      "bytes": 750
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/build-CorpusWitnessStates/INTENT.json",
+      "snapshot": "evidence-lineage/F-CORPUS-WITNESS-FIRST-INTENT.json",
+      "sha256": "c49bbfc61a1686096ffffbf3db7cd08a5a51fd35a0b5741b4e55ab353ba3a479",
+      "bytes": 543
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/build-CorpusWitnessStates/stdout",
+      "snapshot": "evidence-lineage/F-CORPUS-WITNESS-FIRST-stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/three_disjoint_epochs/build-CorpusWitnessStates/stderr",
+      "snapshot": "evidence-lineage/F-CORPUS-WITNESS-FIRST-stderr",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "original": "out/artifacts/verification/merlin-passes/loop-scope-20261028/NEXT-BUFFER/F/corpus-witness-binding-v1/runner.log",
+      "snapshot": "evidence-lineage/F-CORPUS-WITNESS-FIRST-TRACEBACK.txt",
+      "sha256": "f4168d12ee061a252101133904ff6d6418bcca8e3b896259739ac77a7ecb0b86",
+      "bytes": 2420
+    }
+  ],
+  "historical_F2_binding": 186,
+  "F2_positives": 5,
+  "F2_valid_mutations": 24,
+  "successor_binding": 191,
+  "W_successor_native_cases": [
+    "retained_two_epochs"
+  ],
+  "W_successor_separate_process_replay": true,
+  "all5_successor_preparation_identity": true,
+  "full191_five_case_independent_qualification": false,
+  "qualification_transferred": false,
+  "human_approval": false,
+  "native_allocator_fidelity": false
+}
