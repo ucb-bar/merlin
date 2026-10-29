@@ -22,7 +22,7 @@ def Fragment.code : Fragment → Code → Code
   | .alias origin result type, rest => .cast origin result type type rest
   | .empty, rest => rest
 
-def Fragment.step {Value World : Type} (meaning : Interpretation Value World) (fragment : Fragment)
+def Fragment.step {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World) (fragment : Fragment)
     (env : GraphLoopsShape.Env Value) (before : World) (next : GraphLoopsShape.Env Value) (after : World) : Prop :=
   match fragment with
   | .atom instruction => instruction.step meaning env before next after
@@ -33,7 +33,7 @@ def Fragment.step {Value World : Type} (meaning : Interpretation Value World) (f
 /-- The actual scoped alias reads one existing descriptor and defines one
 name. Unrelated registers (including generated temporaries) are unrestricted.
 -/
-theorem alias_actual_iff {Value World : Type} (meaning : Interpretation Value World)
+theorem alias_actual_iff {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World)
     (origin result : Binding) (type : ViewType) (env : GraphLoopsShape.Env Value)
     (value : Runtime Value) (read : env origin.name = value) (typed : value.kind = .view type)
     (before : World) (next : GraphLoopsShape.Env Value) (after : World) :
@@ -48,7 +48,7 @@ theorem alias_actual_iff {Value World : Type} (meaning : Interpretation Value Wo
   · rintro ⟨next, final⟩
     exact ⟨value, rfl, next, final⟩
 
-theorem Fragment.eval_suffix {Value World : Type} (meaning : Interpretation Value World)
+theorem Fragment.eval_suffix {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World)
     (fragment : Fragment) (rest : Code) (env : GraphLoopsShape.Env Value)
     (before : World) (outputs : List (Runtime Value)) (after : World) :
     Eval meaning false [] (fragment.code rest) env before outputs after ↔
@@ -72,7 +72,7 @@ theorem Fragment.eval_suffix {Value World : Type} (meaning : Interpretation Valu
 def fragmentsCode (fragments : List Fragment) (returned : List Binding) : Code :=
   fragments.foldr Fragment.code (.returned returned)
 
-inductive FragmentsRun {Value World : Type} (meaning : Interpretation Value World) :
+inductive FragmentsRun {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World) :
     List Fragment → GraphLoopsShape.Env Value → World → GraphLoopsShape.Env Value → World → Prop where
   | done (env : GraphLoopsShape.Env Value) (before : World) : FragmentsRun meaning [] env before env before
   | more {fragment : Fragment} {rest : List Fragment} {env middleEnv finalEnv : GraphLoopsShape.Env Value}
@@ -84,7 +84,7 @@ inductive FragmentsRun {Value World : Type} (meaning : Interpretation Value Worl
 /-- Every fragment, suffix and returned value participates in ordinary Code
 execution. A later epoch simulation must discharge each actual fragment step.
 -/
-theorem fragments_complete {Value World : Type} (meaning : Interpretation Value World)
+theorem fragments_complete {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World)
     (fragments : List Fragment) (returned : List Binding) (env : GraphLoopsShape.Env Value)
     (before : World) (outputs : List (Runtime Value)) (after : World) :
     Eval meaning false [] (fragmentsCode fragments returned) env before outputs after ↔
@@ -110,7 +110,7 @@ theorem fragments_complete {Value World : Type} (meaning : Interpretation Value 
 changes only the new SSA binding; the actual descriptor/heap/caller is preserved.
 Slot equality and both logical bounds are explicit finite plan obligations.
 -/
-theorem alias_slot {Value World : Type} (meaning : Interpretation Value World)
+theorem alias_slot {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World)
     (objects : GraphLoopsReuse.Objects) (owner object : Nat)
     (ownerInside : owner < objects.length) (objectInside : object < objects.length)
     (sameSlot : GraphLoopsReuse.slotOf objects owner = GraphLoopsReuse.slotOf objects object)

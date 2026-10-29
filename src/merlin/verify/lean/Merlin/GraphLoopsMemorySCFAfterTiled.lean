@@ -59,7 +59,7 @@ instance (program : TiledInitializer) : Decidable program.ControlFacts := by
   infer_instance
 
 theorem TiledInitializer.live_body {Value Public : Type}
-    (base : Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
+    (base : GraphLoopsShape.Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
     (program : TiledInitializer) (bits rows columns tile object : Nat) (element : String) (value : Value)
     (valid : (GraphLoopsSegment.Bounds.mk bits 0 rows 1 tile).Valid)
     (facts : program.uniform.Facts rows columns element) (controls : program.ControlFacts)
@@ -84,15 +84,15 @@ theorem TiledInitializer.live_body {Value Public : Type}
     intro equal
     apply sumFresh
     simp [names, TiledInitializer.captures, ← equal]
-  have prefix := program.control_prefix (withMemory base classify)
+  have controlPrefix := program.control_prefix (withMemory base classify)
     ⟨bits, 0, rows, 1, tile⟩ valid add minimum sumKind sumPlain boundKind boundPlain rowsFresh
     (extendAliases aliases [program.tileIV]) first outer live ivValue
     (by simpa only [Nat.one_mul] using firstInputs.tileValue) firstInputs.rowsValue
     ⟨observed, before⟩ outputs after
-  simp only [Nat.one_mul] at prefix
+  simp only [Nat.one_mul] at controlPrefix
   change Eval (withMemory base classify) false (extendAliases aliases [program.tileIV])
     program.body first ⟨observed, before⟩ outputs after ↔ _
-  rw [prefix]
+  rw [controlPrefix]
   let second := GraphLoopsShape.put first program.sum.name (.index (outer + tile))
   let third := GraphLoopsShape.put second program.bound.name (.index (min (outer + tile) rows))
   have secondInputs := firstInputs.put program.sum.name (.index (outer + tile)) sumFresh
@@ -101,7 +101,9 @@ theorem TiledInitializer.live_body {Value Public : Type}
     simp only [third, second, GraphLoopsShape.put, ivSum, ivBound, ↓reduceIte, ivValue]
   have upperValue : third program.bound.name = .index (min (outer + tile) rows) := by
     simp only [third, GraphLoopsShape.put, ↓reduceIte]
-  have result := program.inner_heap_iff base classify rows columns element facts store loop _ third object outer
+  have result := program.inner_heap_iff base classify rows columns element facts store loop
+    (extendAliases (extendAliases (extendAliases aliases [program.tileIV]) [program.sum]) [program.bound])
+    third object outer
     (min (outer + tile) rows) value thirdInputs.seed thirdInputs.buffer thirdInputs.zero
     thirdInputs.columnsValue thirdInputs.one lowerValue upperValue ⟨observed, before⟩ after outputs
   simpa only [Chunk, Nat.one_mul] using result
@@ -111,7 +113,7 @@ execution for arbitrary fitting dimensions and tails, including empty shapes.
 This remains a local initializer theorem, not a complete two-epoch program claim.
 -/
 theorem TiledInitializer.eval_rows {Value Public : Type}
-    (base : Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
+    (base : GraphLoopsShape.Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
     (program : TiledInitializer) (bits rows columns tile object : Nat) (element : String) (value : Value)
     (valid : (GraphLoopsSegment.Bounds.mk bits 0 rows 1 tile).Valid)
     (facts : program.uniform.Facts rows columns element) (controls : program.ControlFacts)
@@ -148,7 +150,7 @@ meaning, derived from its syntax/SSA instructions and ordered rows. This root
 does not equate the surrounding actual final function with an epoch blueprint.
 -/
 theorem TiledInitializer.eval_epoch {Value Public : Type}
-    (base : Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
+    (base : GraphLoopsShape.Interpretation Value (MemoryWorld Value Public)) (classify : String → MemoryOpcode)
     (program : TiledInitializer) (bits rows columns tile object : Nat) (element : String) (value : Value)
     (valid : (GraphLoopsSegment.Bounds.mk bits 0 rows 1 tile).Valid)
     (facts : program.uniform.Facts rows columns element) (controls : program.ControlFacts)

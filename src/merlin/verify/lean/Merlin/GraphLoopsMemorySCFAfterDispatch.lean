@@ -14,7 +14,7 @@ open GraphLoopsShape
 def expandedMeaning {Value User : Type} (bits : Nat) (indices : IndexOpcodes)
     (plan : Epoch.PlanContext) (kernel : Epoch.Kernel) (expansions : List Expansion)
     (scalar : Epoch.BinaryMeaning Value) (depth : Nat) :
-    Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
+    GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)) :=
   withCalls (finalMeaning bits indices plan.opcodes scalar) (expandedModule plan kernel expansions)
     (GraphLoopsShape.invoke (finalMeaning bits indices plan.opcodes scalar)
       (expandedModule plan kernel expansions) false (depth + 1))

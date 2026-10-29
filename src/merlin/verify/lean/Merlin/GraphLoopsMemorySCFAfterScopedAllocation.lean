@@ -12,7 +12,7 @@ open GraphLoopsShape
 
 theorem scoped_alias_iff {Value User : Type} (objects : GraphLoopsReuse.Objects)
     (configs : List Configuration) (old : GraphLoopsMemorySCF.Interpretation Value (Epoch.PublicState Value User))
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (context : Context) (clock owner object : Nat)
     (ownerInside : owner < objects.length) (inside : object < objects.length)
     (sameSlot : GraphLoopsReuse.slotOf objects owner = GraphLoopsReuse.slotOf objects object)
@@ -44,7 +44,7 @@ theorem scoped_alias_iff {Value User : Type} (objects : GraphLoopsReuse.Objects)
 
 theorem scoped_allocate_iff {Value User : Type} (objects : GraphLoopsReuse.Objects)
     (configs : List Configuration) (old : GraphLoopsMemorySCF.Interpretation Value (Epoch.PublicState Value User))
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (context : Context) (clock object : Nat) (inside : object < objects.length)
     (slotInside : GraphLoopsReuse.slotOf objects object < objects.length)
     (ordinal : clock = GraphLoopsReuse.slotOf objects object)
@@ -75,7 +75,7 @@ theorem scoped_allocate_iff {Value User : Type} (objects : GraphLoopsReuse.Objec
 
 theorem scoped_release_iff {Value User : Type} (objects : GraphLoopsReuse.Objects)
     (configs : List Configuration) (old : GraphLoopsMemorySCF.Interpretation Value (Epoch.PublicState Value User))
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (context : Context) (clock object : Nat) (inside : object < objects.length)
     (slotInside : GraphLoopsReuse.slotOf objects object < objects.length)
     (operation : String) (buffer : Binding) (bound : buffer ∈ context) (shape : List Nat) (element : String)
@@ -93,7 +93,7 @@ theorem scoped_release_iff {Value User : Type} (objects : GraphLoopsReuse.Object
     rw [related buffer bound, pinned]
   simp only [candidate_release_iff, exists_eq_left, Epoch.Atom.step, readArguments, List.map_cons,
     List.map_nil, Bool.false_eq_true, ↓reduceIte, read, release]
-  rw [release_retained objects objects.length object clock inside slotInside shape element before]
+  simp only [release_retained objects objects.length object clock inside slotInside shape element before]
   constructor
   · rintro ⟨values, ⟨rfl, world⟩, _, assigned⟩
     refine ⟨assigned, world, ?_⟩
@@ -104,7 +104,7 @@ theorem scoped_release_iff {Value User : Type} (objects : GraphLoopsReuse.Object
 
 theorem scoped_drop_release_iff {Value User : Type} (objects : GraphLoopsReuse.Objects)
     (configs : List Configuration) (old : GraphLoopsMemorySCF.Interpretation Value (Epoch.PublicState Value User))
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (context : Context) (clock object : Nat)
     (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
     (actual : GraphLoopsShape.Env Value) (related : RegistersRelated objects context before.observed.registers actual)

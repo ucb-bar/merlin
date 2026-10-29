@@ -112,13 +112,15 @@ theorem eval_swapped {Value World : Type} (left right : Nat) (meaning : Interpre
     Eval meaning false aliases code env before outputs after ↔
       Eval meaning false other (swapCode left right code) (swapEnv left right env) before outputs after := by
   induction code generalizing aliases other env before outputs after with
-  | returned values => simp only [Eval, swapCode, arguments_swapped]
+  | returned values => simp only [Eval, swapCode, arguments_swapped left right aliases other values env]
   | cast origin result source target rest induction =>
     simp only [Eval, swapCode, Bool.false_eq_true, ↓reduceIte, swapBinding, swapEnv, swap_twice]
     constructor
     · rintro ⟨value, found, suffix⟩
       refine ⟨value, found, ?_⟩
-      have next := (induction _ _ _ _ _ _).mp suffix
+      have next := (induction _
+        ((swapName left right result.name, resolve other (swapName left right origin.name)) :: other)
+        _ _ _ _).mp suffix
       simpa only [put_swapped] using next
     · rintro ⟨value, found, suffix⟩
       refine ⟨value, found, ?_⟩
@@ -129,19 +131,20 @@ theorem eval_swapped {Value World : Type} (left right : Nat) (meaning : Interpre
     constructor
     · rintro ⟨actual, found, suffix⟩
       refine ⟨actual, found, ?_⟩
-      have next := (induction _ _ _ _ _ _).mp suffix
+      have next := (induction _
+        ((swapName left right result.name, swapName left right result.name) :: other) _ _ _ _).mp suffix
       simpa only [put_swapped] using next
     · rintro ⟨actual, found, suffix⟩
       refine ⟨actual, found, ?_⟩
       apply (induction _ _ _ _ _ _).mpr
       simpa only [put_swapped] using suffix
   | constant result value rest induction =>
-    simpa only [Eval, swapCode, put_swapped] using
+    simpa only [Eval, swapCode, put_swapped, swapBinding] using
       induction ((result.name, result.name) :: aliases)
         (((swapBinding left right result).name, (swapBinding left right result).name) :: other)
         (put env result.name (.index value)) before outputs after
   | action key operands results rest induction =>
-    simp only [Eval, swapCode, arguments_swapped, values_swapped_iff]
+    simp only [Eval, swapCode, arguments_swapped left right aliases other operands env, values_swapped_iff]
     constructor
     · rintro ⟨values, middle, step, typed, suffix⟩
       refine ⟨values, middle, step, typed, ?_⟩
@@ -163,7 +166,8 @@ theorem eval_swapped {Value World : Type} (left right : Nat) (meaning : Interpre
       apply and_congr_right
       intro _
       simpa only [assign_swapped] using bodyInduction _ _ (assign env parameters inputs) initial returned final
-    simp only [Eval, swapCode, arguments_swapped, values_swapped_iff]
+    simp only [Eval, swapCode, arguments_swapped left right aliases other operands env, values_swapped_iff]
+    simp only [values_swapped_iff] at bodyEqual
     rw [bodyEqual]
     constructor
     · rintro ⟨values, middle, step, typed, suffix⟩
@@ -188,9 +192,13 @@ theorem function_swapped {Value World : Type} (left right : Nat) (function : Fun
   simp only [Function.invoke, swapFunction, values_swapped_iff]
   apply and_congr_right
   intro _
-  have related := eval_swapped left right meaning function.code _ _
+  have related := eval_swapped left right meaning function.code
+    (extendAliases [] function.parameters)
+    (extendAliases [] (function.parameters.map (swapBinding left right)))
     (assign emptyEnv function.parameters inputs) before outputs after
-  simpa only [assign_swapped, swapEnv, emptyEnv] using related
+  have empty : swapEnv left right (emptyEnv : Env Value) = emptyEnv := rfl
+  rw [assign_swapped, empty] at related
+  exact related
 
 theorem functionAt_swapped (left right : Nat) (module : Module) (name : String) :
     functionAt (swapModule left right module) name = (functionAt module name).map (swapFunction left right) := by

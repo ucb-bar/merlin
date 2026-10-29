@@ -22,7 +22,7 @@ theorem final_observations {Value User : Type} (bits : Nat) (indices : IndexOpco
       ⟨bits, expandedModule plan kernel expansions, actualFinal, swaps, sourceFrame, finalFrame⟩ = true)
     (scalar : Epoch.BinaryMeaning Value)
     (inputs : List (Runtime Value)) (typed : ValuesHold kernel.function.parameters inputs)
-    (callers : Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv kernel.function.parameters inputs))
+    (callers : Epoch.CallersValid plan.objects.length plan.callers (GraphLoopsShape.assign emptyEnv kernel.function.parameters inputs))
     (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
     Epoch.graphOutcomes plan.objects.length (finalMeaning bits indices plan.opcodes scalar) actualFinal kernel.function.name
       inputs heap user observed ↔ Epoch.epochOutcomes plan kernel scalar true true
@@ -58,7 +58,7 @@ theorem checked_actual_chain {Value User : Type} (source : Module) (bits : Nat) 
       ⟨bits, expandedModule plan kernel expansions, actualFinal, swaps, sourceFrame, finalFrame⟩ = true)
     (scalar : Epoch.BinaryMeaning Value)
     (inputs : List (Runtime Value)) (typed : ValuesHold kernel.function.parameters inputs)
-    (callers : Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv kernel.function.parameters inputs))
+    (callers : Epoch.CallersValid plan.objects.length plan.callers (GraphLoopsShape.assign emptyEnv kernel.function.parameters inputs))
     (heap : Heap Value) (user : User) (observed : Epoch.Observation Value User) :
     Epoch.graphOutcomes plan.objects.length (finalMeaning bits indices plan.opcodes scalar) source kernel.function.name
       inputs heap user observed ↔

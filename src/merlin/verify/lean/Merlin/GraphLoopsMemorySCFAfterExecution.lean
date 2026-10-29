@@ -21,7 +21,7 @@ def physicalFinalClock : Nat → List Expansion → Nat
 
 structure LocalSimulation {Value User : Type} (plan : Epoch.PlanContext)
     (scalar : Epoch.BinaryMeaning Value)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (context : Context) (clock : Nat) (expansion : Expansion) : Prop where
   forward : ∀ (before after : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
     (actual : GraphLoopsShape.Env Value),
@@ -45,14 +45,14 @@ structure LocalSimulation {Value User : Type} (plan : Epoch.PlanContext)
       RegistersRelated plan.objects (extendContext context expansion.source.results) after.observed.registers next
 
 def LocalSimulations {Value User : Type} (plan : Epoch.PlanContext) (scalar : Epoch.BinaryMeaning Value)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User))) :
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User))) :
     Context → Nat → List Expansion → Prop
   | _, _, [] => True
   | context, clock, expansion :: rest => LocalSimulation plan scalar meaning context clock expansion ∧
       LocalSimulations plan scalar meaning (extendContext context expansion.source.results)
         (expansion.nextClock clock) rest
 
-theorem fragments_append {Value World : Type} (meaning : Interpretation Value World)
+theorem fragments_append {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World)
     (first rest : List Fragment) (actual next : GraphLoopsShape.Env Value) (before after : World) :
     FragmentsRun meaning (first ++ rest) actual before next after ↔
       ∃ middleEnv middle, FragmentsRun meaning first actual before middleEnv middle ∧
@@ -67,18 +67,18 @@ theorem fragments_append {Value World : Type} (meaning : Interpretation Value Wo
     · intro run
       cases run with
       | more head suffix =>
-        obtain ⟨middleEnv, middle, prefix, remaining⟩ := (induction _ _).mp suffix
-        exact ⟨middleEnv, middle, .more head prefix, remaining⟩
-    · rintro ⟨middleEnv, middle, prefix, remaining⟩
-      cases prefix with
+        obtain ⟨middleEnv, middle, initialRun, remaining⟩ := (induction _ _).mp suffix
+        exact ⟨middleEnv, middle, .more head initialRun, remaining⟩
+    · rintro ⟨middleEnv, middle, initialRun, remaining⟩
+      cases initialRun with
       | more head suffix => exact .more head ((induction _ _).mpr ⟨middleEnv, middle, suffix, remaining⟩)
 
 theorem expansions_forward {Value User : Type} (plan : Epoch.PlanContext)
     (scalar : Epoch.BinaryMeaning Value)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (expansions : List Expansion) (context : Context) (sourceClock clock : Nat)
     (checked : Epoch.CommandsValid plan context sourceClock (expansions.map Expansion.source))
-    (local : LocalSimulations plan scalar meaning context clock expansions)
+    (localLaw : LocalSimulations plan scalar meaning context clock expansions)
     (before after : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
     (actual : GraphLoopsShape.Env Value)
     (registers : Epoch.RegistersValid context plan.views before.observed.registers)
@@ -100,21 +100,21 @@ theorem expansions_forward {Value User : Type} (plan : Epoch.PlanContext)
   | cons expansion rest induction =>
     cases run with
     | more first suffix =>
-      obtain ⟨middleEnv, firstRun, middleRelated⟩ := local.1.forward before _ actual registers callers related first
+      obtain ⟨middleEnv, firstRun, middleRelated⟩ := localLaw.1.forward before _ actual registers callers related first
       have invariant := candidate_preserves plan context sourceClock expansion.source checked.1 scalar
         before _ registers callers first
       obtain ⟨next, remaining, finalRelated, finalRegisters, finalCallers⟩ :=
         induction (extendContext context expansion.source.results) (expansion.source.nextClock sourceClock)
-          (expansion.nextClock clock) checked.2 local.2 _ middleEnv invariant.1 invariant.2 middleRelated suffix
+          (expansion.nextClock clock) checked.2 localLaw.2 _ middleEnv invariant.1 invariant.2 middleRelated suffix
       exact ⟨next, (fragments_append meaning expansion.fragments (rest.flatMap Expansion.fragments)
         actual next _ _).mpr ⟨middleEnv, _, firstRun, remaining⟩, finalRelated, finalRegisters, finalCallers⟩
 
 theorem expansions_backward {Value User : Type} (plan : Epoch.PlanContext)
     (scalar : Epoch.BinaryMeaning Value)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (expansions : List Expansion) (context : Context) (sourceClock clock : Nat)
     (checked : Epoch.CommandsValid plan context sourceClock (expansions.map Expansion.source))
-    (local : LocalSimulations plan scalar meaning context clock expansions)
+    (localLaw : LocalSimulations plan scalar meaning context clock expansions)
     (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
     (actual next : GraphLoopsShape.Env Value) (world : MemoryWorld Value (Epoch.AllocationPublic User))
     (registers : Epoch.RegistersValid context plan.views before.observed.registers)
@@ -136,14 +136,14 @@ theorem expansions_backward {Value User : Type} (plan : Epoch.PlanContext)
   | cons expansion rest induction =>
     obtain ⟨middleEnv, middleWorld, firstRun, suffix⟩ := (fragments_append meaning expansion.fragments
       (rest.flatMap Expansion.fragments) actual next _ world).mp run
-    obtain ⟨middle, oldFirst, worldEqual, middleRelated⟩ := local.1.backward before actual middleEnv middleWorld
+    obtain ⟨middle, oldFirst, worldEqual, middleRelated⟩ := localLaw.1.backward before actual middleEnv middleWorld
       registers callers related firstRun
     have invariant := candidate_preserves plan context sourceClock expansion.source checked.1 scalar
       before middle registers callers oldFirst
     rw [worldEqual] at suffix
     obtain ⟨after, oldRemaining, finalWorld, finalRelated, finalRegisters, finalCallers⟩ :=
       induction (extendContext context expansion.source.results) (expansion.source.nextClock sourceClock)
-        (expansion.nextClock clock) checked.2 local.2 middle middleEnv invariant.1 invariant.2 middleRelated suffix
+        (expansion.nextClock clock) checked.2 localLaw.2 middle middleEnv invariant.1 invariant.2 middleRelated suffix
     exact ⟨after, .more oldFirst oldRemaining, finalWorld, finalRelated, finalRegisters, finalCallers⟩
 
 end Merlin.GraphLoopsMemorySCF.After

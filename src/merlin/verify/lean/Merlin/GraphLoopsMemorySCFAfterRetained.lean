@@ -1,4 +1,4 @@
-/- UNCOMPILED. Derived local simulations for retained constants, partial
+/- UNCOMPILED. Derived localLaw simulations for retained constants, partial
 arithmetic and actual internal Touch calls. Arithmetic is never reassociated or
 made total; the observer proof executes the expanded module's selected body.
 -/
@@ -10,7 +10,7 @@ namespace Merlin.GraphLoopsMemorySCF.After
 
 open GraphLoopsShape
 
-theorem fragments_single {Value World : Type} (meaning : Interpretation Value World) (fragment : Fragment)
+theorem fragments_single {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World) (fragment : Fragment)
     (actual next : GraphLoopsShape.Env Value) (before after : World) :
     FragmentsRun meaning [fragment] actual before next after ↔ fragment.step meaning actual before next after := by
   constructor
@@ -23,7 +23,7 @@ action formula. The binary/observer theorems below derive it from frozen roots.
 theorem retained_local {Value User : Type} (plan : Epoch.PlanContext)
     (context : Context) (sourceClock clock : Nat) (command : Epoch.Command)
     (checked : command.Valid plan context sourceClock) (scalar : Epoch.BinaryMeaning Value)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (key operation : String) (operands results : List Binding) (spec : Epoch.Spec)
     (atomEqual : command.atom = .action operation operands results)
     (instructionEqual : command.instruction = .retained key) (resultsEqual : command.results = results)
@@ -34,7 +34,7 @@ theorem retained_local {Value User : Type} (plan : Epoch.PlanContext)
       Epoch.CallersValid plan.objects.length plan.callers before.observed.registers →
       RegistersRelated plan.objects context before.observed.registers actual →
       readArguments false [] actual operands = readArguments false [] before.observed.registers operands)
-    (local : ∀ (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User)),
+    (localLaw : ∀ (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User)),
       Epoch.RegistersValid context plan.views before.observed.registers →
       Epoch.CallersValid plan.objects.length plan.callers before.observed.registers →
       ∀ next world, (Epoch.Atom.action operation operands results).step meaning before.observed.registers
@@ -42,14 +42,14 @@ theorem retained_local {Value User : Type} (plan : Epoch.PlanContext)
         ∃ after, GraphLoopsMemorySCF.Step plan.objects plan.configs (plan.oldMeaning scalar) false false
           (.retained key) before after ∧ next = after.observed.registers ∧
           world = Epoch.clockWorld plan.objects.length clock after) :
-    LocalSimulation plan scalar meaning context clock (.keep command) := by
+    LocalSimulation (User := User) plan scalar meaning context clock (.keep command) := by
   have fresh : Fresh context results := resultsEqual ▸ checked.2.2.1
   constructor
   · intro before after actual registers callers related run
     rw [Expansion.source, instructionEqual] at run
     obtain ⟨next, actualRun, finalRelated⟩ := retained_scoped_forward plan context clock scalar meaning key operation spec
       selected operands results fresh noViews before after actual related
-      (arguments before actual registers callers related) (local before registers callers) run
+      (arguments before actual registers callers related) (localLaw before registers callers) run
     refine ⟨next, ?_, ?_⟩
     · rw [Expansion.fragments, atomEqual, clockEqual, fragments_single]
       exact actualRun
@@ -58,7 +58,7 @@ theorem retained_local {Value User : Type} (plan : Epoch.PlanContext)
     rw [Expansion.fragments, atomEqual, fragments_single] at run
     obtain ⟨after, oldRun, worldEqual, finalRelated⟩ := retained_scoped_backward plan context clock scalar meaning key operation
       spec selected operands results fresh noViews before actual next related
-      (arguments before actual registers callers related) world (local before registers callers) run
+      (arguments before actual registers callers related) world (localLaw before registers callers) run
     refine ⟨after, ?_, ?_, ?_⟩
     · simpa only [Expansion.source, instructionEqual] using oldRun
     · simpa only [clockEqual] using worldEqual
@@ -68,8 +68,8 @@ theorem constant_local {Value User : Type} (plan : Epoch.PlanContext)
     (context : Context) (sourceClock clock : Nat) (key : String) (result : Binding) (value : Nat)
     (checked : (Epoch.Command.constant key result value).Valid plan context sourceClock)
     (scalar : Epoch.BinaryMeaning Value)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User))) :
-    LocalSimulation plan scalar meaning context clock (.keep (.constant key result value)) := by
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User))) :
+    LocalSimulation (User := User) plan scalar meaning context clock (.keep (.constant key result value)) := by
   have normalized := candidate_retained_iff (User := User) plan.objects.length plan.specifications scalar plan.mapping
     key (.constant result value) checked.1.1 plan.objects plan.configs
   constructor
@@ -92,7 +92,7 @@ theorem binary_local {Value User : Type} (bits : Nat) (indices : IndexOpcodes)
     (context : Context) (sourceClock clock : Nat) (key operation : String) (left right result : Binding) (element : String)
     (checked : (Epoch.Command.binary key operation left right result element).Valid plan context sourceClock)
     (scalar : Epoch.BinaryMeaning Value) (depth : Nat) :
-    LocalSimulation plan scalar (expandedMeaning bits indices plan kernel expansions scalar depth)
+    LocalSimulation (User := User) plan scalar (expandedMeaning bits indices plan kernel expansions scalar depth)
       context clock (.keep (.binary key operation left right result element)) := by
   rcases checked.1 with ⟨selected, opcode, notCall, leftScalar, rightScalar, resultScalar⟩
   have action := (expanded_primitive (User := User) bits indices plan kernel expansions noOverrides scalar depth
@@ -125,7 +125,7 @@ theorem observer_local {Value User : Type} (bits : Nat) (indices : IndexOpcodes)
     (checked : (Epoch.Command.observer key operation name input buffer result program).Valid plan context sourceClock)
     (found : functionAt (expandedModule plan kernel expansions) name = some (program.function name))
     (scalar : Epoch.BinaryMeaning Value) (depth : Nat) :
-    LocalSimulation plan scalar (expandedMeaning bits indices plan kernel expansions scalar depth)
+    LocalSimulation (User := User) plan scalar (expandedMeaning bits indices plan kernel expansions scalar depth)
       context clock (.keep (.observer key operation name input buffer result program)) := by
   rcases checked.1 with ⟨selected, facts, _, separate, target, loadNotCall, binaryNotCall, storeNotCall,
     loadOpcode, storeOpcode, binaryOpcode, inputScalar, resultScalar, callerMember⟩

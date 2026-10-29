@@ -27,7 +27,7 @@ theorem unchanged_entry_outcomes {Value User : Type} (source : Module) (bits : N
     (actualFinal : Module) (swaps : List (Nat × Nat)) (sourceFrame finalFrame : List String)
     (materialized : GraphLoopsShape.After.check
       ⟨bits, expandedModule plan kernel expansions, actualFinal, swaps, sourceFrame, finalFrame⟩ = true)
-    (meaning : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
+    (meaning : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User)))
     (name : String) (member : name ∈ reachable) (inputs : List (Runtime Value)) (heap : Heap Value)
     (user : User) (observed : Epoch.Observation Value User) :
     Epoch.graphOutcomes plan.objects.length meaning source name inputs heap user observed ↔
@@ -79,7 +79,7 @@ theorem checked_entry_roster {Value User : Type} (source : Module) (bits : Nat) 
   | kernel =>
     have name : row.name = kernel.function.name := by simpa only [EntryRow.Facts, route] using entryFacts
     have inputsValid : ValuesHold kernel.function.parameters inputs ∧
-        Epoch.CallersValid plan.objects.length plan.callers (assign emptyEnv kernel.function.parameters inputs) := by
+        Epoch.CallersValid plan.objects.length plan.callers (GraphLoopsShape.assign emptyEnv kernel.function.parameters inputs) := by
       simpa only [EntryDomain, route] using domain.2
     rw [name]
     have beforeExtension := literal_outcomes_extension plan.objects.length (finalMeaning bits indices plan.opcodes scalar)
@@ -91,10 +91,10 @@ theorem checked_entry_roster {Value User : Type} (source : Module) (bits : Nat) 
       scalar inputs inputsValid.1 inputsValid.2 heap user observed
     exact beforeExtension.symm.trans (changed.trans afterExtension)
   | unchanged reachable =>
-    have local : row.name ∈ reachable ∧ ClosedAgreement plan.module (expandedModule plan kernel expansions) reachable := by
+    have localAgreement : row.name ∈ reachable ∧ ClosedAgreement plan.module (expandedModule plan kernel expansions) reachable := by
       simpa only [EntryRow.Facts, route] using entryFacts
-    exact unchanged_entry_outcomes source bits sourceValid plan normalized kernel expansions reachable local.2 actualFinal
+    exact unchanged_entry_outcomes source bits sourceValid plan normalized kernel expansions reachable localAgreement.2 actualFinal
       swaps sourceFrame finalFrame materialized (entryMeaning bits indices plan.opcodes scalar literals literal)
-      row.name local.1 inputs heap user observed
+      row.name localAgreement.1 inputs heap user observed
 
 end Merlin.GraphLoopsMemorySCF.After

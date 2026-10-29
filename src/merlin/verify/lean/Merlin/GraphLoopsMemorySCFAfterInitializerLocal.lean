@@ -43,7 +43,7 @@ theorem initializer_local {Value User : Type} (plan : Epoch.PlanContext) (planVa
     (fresh : program.tile.name ∉ names context)
     (slotInside : GraphLoopsReuse.slotOf plan.objects link.config.object < plan.objects.length)
     (scalar : Epoch.BinaryMeaning Value)
-    (base : Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User))) (classify : String → MemoryOpcode)
+    (base : GraphLoopsShape.Interpretation Value (MemoryWorld Value (Epoch.AllocationPublic User))) (classify : String → MemoryOpcode)
     (store : classify program.uniform.storeKey = .store) (loop : classify program.uniform.loopKey = .loop)
     (add : (withMemory base classify).action program.addKey = IndexAction bits .add)
     (minimum : (withMemory base classify).action program.minKey = IndexAction bits .minimum) :
@@ -52,7 +52,7 @@ theorem initializer_local {Value User : Type} (plan : Epoch.PlanContext) (planVa
   have bufferBound := checked.2.1 link.canonical.buffer (by simp [Epoch.Command.inputs])
   have unique : ∀ config ∈ plan.configs, config.key = link.config.key → config = link.config :=
     fun config member same => planValid.1 config member link.config configMember same
-  have local (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
+  have localLaw (before : GraphLoopsReuse.Memory Value (Epoch.PublicState Value User))
       (actual next : GraphLoopsShape.Env Value) (world : MemoryWorld Value (Epoch.AllocationPublic User))
       (registers : Epoch.RegistersValid context plan.views before.observed.registers)
       (related : RegistersRelated plan.objects context before.observed.registers actual) :
@@ -77,9 +77,9 @@ theorem initializer_local {Value User : Type} (plan : Epoch.PlanContext) (planVa
         (GraphLoopsShape.put actual program.tile.name (.index link.config.tile)) := by
       rw [publicSame]
       exact related.scratch program.tile.name (.index link.config.tile) fresh
-    exact ⟨_, (local before actual _ _ registers related).mpr ⟨after, run, rfl, rfl, finalRelated⟩, finalRelated⟩
+    exact ⟨_, (localLaw before actual _ _ registers related).mpr ⟨after, run, rfl, rfl, finalRelated⟩, finalRelated⟩
   · intro before actual next world registers callers related run
-    obtain ⟨after, oldRun, _, finalWorld, finalRelated⟩ := (local before actual next world registers related).mp run
+    obtain ⟨after, oldRun, _, finalWorld, finalRelated⟩ := (localLaw before actual next world registers related).mp run
     exact ⟨after, oldRun, finalWorld, finalRelated⟩
 
 end Merlin.GraphLoopsMemorySCF.After

@@ -68,7 +68,7 @@ fixed and its typed results are scalar/index. ALL world effects remain in the
 same action relation; no purity, totality or arithmetic law is postulated.
 -/
 theorem retained_action_fragment {Value World : Type}
-    (objects : GraphLoopsReuse.Objects) (meaning : Interpretation Value World)
+    (objects : GraphLoopsReuse.Objects) (meaning : GraphLoopsShape.Interpretation Value World)
     (key : String) (operands results : List Binding) (env : GraphLoopsShape.Env Value)
     (fixedArguments : ∀ binding ∈ operands, slotRuntime objects (env binding.name) = env binding.name)
     (scalarResults : NoViewBindings results)
@@ -83,7 +83,7 @@ theorem retained_action_fragment {Value World : Type}
   simp only [Epoch.Atom.step, arguments]
   constructor
   · rintro ⟨values, action, typed, assigned⟩
-    refine ⟨assign env results values, ⟨values, action, typed, rfl⟩, ?_⟩
+    refine ⟨GraphLoopsShape.assign env results values, ⟨values, action, typed, rfl⟩, ?_⟩
     rw [slot_assign, scalar_values_fixed objects results values typed scalarResults]
     exact assigned
   · rintro ⟨logicalNext, ⟨values, action, typed, rfl⟩, assigned⟩
@@ -91,7 +91,7 @@ theorem retained_action_fragment {Value World : Type}
     simpa only [slot_assign, scalar_values_fixed objects results values typed scalarResults] using assigned
 
 theorem constant_fragment {Value World : Type} (objects : GraphLoopsReuse.Objects)
-    (meaning : Interpretation Value World) (result : Binding) (value : Nat)
+    (meaning : GraphLoopsShape.Interpretation Value World) (result : Binding) (value : Nat)
     (env : GraphLoopsShape.Env Value) (before : World) (next : GraphLoopsShape.Env Value) (after : World) :
     (Epoch.Atom.constant result value).step meaning (slotEnv objects env) before next after ↔
       ∃ logicalNext, (Epoch.Atom.constant result value).step meaning env before logicalNext after ∧

@@ -74,7 +74,7 @@ instance expansionFactsDecidable (bits : Nat) (plan : Epoch.PlanContext) (indice
     cases command with
     | allocate operation item retained => cases retained <;> unfold Expansion.Facts <;> infer_instance
     | release operation item retained => cases retained <;> unfold Expansion.Facts <;> infer_instance
-    | constant | binary | initialize | load | store | observer => unfold Expansion.Facts; infer_instance
+    | constant | binary | «initialize» | load | store | observer => unfold Expansion.Facts; infer_instance
   | alias | dropRelease | tiled => unfold Expansion.Facts; infer_instance
 
 def ExpansionsValid (bits : Nat) (plan : Epoch.PlanContext) (indices : IndexOpcodes) :
@@ -144,7 +144,7 @@ theorem checked_materialization (bits : Nat) (plan : Epoch.PlanContext) (kernel 
     (sourceFrame finalFrame : List String)
     (checked : GraphLoopsShape.After.check
       ⟨bits, expandedModule plan kernel expansions, actualFinal, swaps, sourceFrame, finalFrame⟩ = true)
-    {Value World : Type} (meaning : Interpretation Value World) (name : String)
+    {Value World : Type} (meaning : GraphLoopsShape.Interpretation Value World) (name : String)
     (inputs : List (Runtime Value)) (before : World) (outputs : List (Runtime Value)) (after : World) :
     complete meaning (expandedModule plan kernel expansions) false name inputs before outputs after ↔
       complete meaning actualFinal false name inputs before outputs after :=
